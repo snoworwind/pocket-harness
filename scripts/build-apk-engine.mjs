@@ -94,13 +94,13 @@ export function assembleApk(options, runner = spawnSync) {
 }
 
 /** Validate the exact output scope used by a caller (directory or files). */
-export function verifyApks({ directories = [], files = [], signatureGate = join(SCRIPT_DIR, 'check-apk-signatures.mjs'), selfTest = true, log = console.log }, runner = spawnSync) {
+export function verifyApks({ directories = [], files = [], signatureGate = join(SCRIPT_DIR, 'check-apk-signatures.mjs'), certificateSha256File, selfTest = true, log = console.log }, runner = spawnSync) {
   log('验证最终输出 APK 的 v1/v2/v3 签名…')
   if (selfTest) execute(process.execPath, [signatureGate, '--self-test'], { cwd: SCRIPT_DIR }, runner)
   const targets = [...directories.flatMap((directory) => ['--dir', resolve(directory)]),
     ...files.flatMap((file) => ['--apk', resolve(file)])]
   if (!targets.length) throw new Error('signature verification requires at least one directory or APK')
-  execute(process.execPath, [signatureGate, ...targets], { cwd: SCRIPT_DIR }, runner)
+  execute(process.execPath, [signatureGate, ...targets, ...(certificateSha256File ? ['--certificate-sha256', resolve(certificateSha256File)] : [])], { cwd: SCRIPT_DIR }, runner)
 }
 
 export function parseArgs(argv) {

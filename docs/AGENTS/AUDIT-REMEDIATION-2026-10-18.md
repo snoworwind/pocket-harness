@@ -15,3 +15,5 @@
 本机证据目录 `.deploy-tmp/audit-fixes-2026-10-18/`；源码基线、输入和命令以对应 PR 与日志为准。未做设备验证。
 
 旧 PR #2 的输入法独有修复另行移植：保留当前 applicationId 与 Kotlin namespace 分离，IME 和广播接收器使用完整组件名；环境准备以 ime list 的完整组件匹配判断，不再 grep 旧包名。真实 env_prepare 工具的正反例与组件声明核对通过，设备层仍未验收。旧 PR 的整树包名改写不直接合入。
+
+旧 PR #3 的独立重建证明另行适配：两个全新 runner 用临时 PKCS12 证书构建，中间产物不得交付；第三个无生产 Secret 的 job 比较实际 APK entries、hard manifest 与 v3 快照语义，拒绝 JS/DEX/权限/条件导出顺序/服务文件差异，解析不执行或解压不可信内容到文件系统。只有隔离最终签名 job 读取正式 PKCS12 Secrets，核对 proof 的源码 SHA 和签名前 APK 摘要，签后重新绑定摘要；草稿准备再次验证。源码、夹具自测和负控通过不代表真实双构建已通过。真实 main 来源链和设备证据仍待取得。

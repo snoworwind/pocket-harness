@@ -7,6 +7,13 @@ import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { assembleApk, parseArgs, verifyApks } from './build-apk-engine.mjs'
 
+test('an intermediate replica uses its explicit temporary certificate without changing default delivery identity', () => {
+  const calls = []
+  verifyApks({ files: ['/build/replica.apk'], certificateSha256File: '/build/temporary.sha256', selfTest: false, log() {} },
+    (_cmd, args) => { calls.push(args); return { status: 0 } })
+  assert.deepEqual(calls[0].slice(-2), ['--certificate-sha256', resolve('/build/temporary.sha256')])
+})
+
 function fixture(t) {
   const root = mkdtempSync(join(tmpdir(), 'dsh-build-engine-'))
   t.after(() => rmSync(root, { recursive: true, force: true }))

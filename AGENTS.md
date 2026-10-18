@@ -33,7 +33,7 @@ DeepSeek Harness 的独立安卓应用 **Pocket Harness**（包名 `com.snoworwi
 ```powershell
 # 在本仓触发云端来源链（当前 ARM64；草稿发布见 docs/RELEASE.md §5）：
 gh workflow run build-apk-source.yml --repo snoworwind/pocket-harness --ref main
-# Linux / WSL 本地同链，仅构建已提交 HEAD，自动隔离检出：
+# Linux / WSL 本地来源副本，仅 main 已提交 HEAD、自动隔离；交付须云端双构建验证与正式签名：
 node scripts/source-build/run-local-source-chain.mjs
 # 产物与环境详见 docs/AGENTS/build-and-env.md；禁止旧本地/协调仓链出 APK。
 

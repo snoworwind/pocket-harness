@@ -19,7 +19,7 @@
 //
 // 环境：ANDROID_HOME 默认取 `.deploy-tmp/android-sdk`（缺失即判红并给出铺法）。
 import { execFileSync, spawnSync } from 'node:child_process'
-import { existsSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { assertMaintainedSource, committedWorkflow, prepareSourceWorkspace, sourceCommit } from './local-source-workspace.mjs'
@@ -64,7 +64,8 @@ const SKIP_STEP = /^(Set up job|Checkout project source|Prepare build tools|Run 
 function parseSteps() {
   // Windows 检出是 CRLF：行尾的 \r 会让 `(.*)$` 直接失配（JS 的 `.` 不匹配 \r），
   // 表现为「一个步骤都解析不到」。统一成 LF 再解析。
-  const text = committedWorkflow(ROOT, repoCommit).replaceAll('\r\n', '\n')
+  // Local execution owns one build replica, never the CI verifier/private signer.
+  const text = committedWorkflow(ROOT, repoCommit).replaceAll('\r\n', '\n').split('\n  verify-arm64:')[0]
   const lines = text.split('\n')
   const steps = []
   let current = null
@@ -230,6 +231,8 @@ const baseEnv = {
   GITHUB_WORKSPACE: buildRoot,
   GITHUB_SHA: repoCommit,
   SOURCE_REF: 'refs/heads/main',
+  RUNNER_TEMP: join(buildRoot, '.deploy-tmp', 'runner-temp'),
+  GITHUB_ENV: join(buildRoot, '.deploy-tmp', 'local-github-env'),
   PATH: `${nodePathPrefix}${join(homedir(), '.local', 'bin')}:${join(ANDROID_HOME, 'build-tools', '36.0.0')}:${join(ANDROID_HOME, 'platform-tools')}:${process.env.PATH}`,
   // pnpm 11 只认自己的前缀：实测 `npm_config_registry` 被忽略、`pnpm_config_registry` 生效
   // （npm 侧仍用 npm_config_registry，两条链各自生效）。
@@ -243,6 +246,18 @@ const baseEnv = {
     COREPACK_NPM_REGISTRY: npmMirror,
   } : {}),
 }
+mkdirSync(baseEnv.RUNNER_TEMP, { recursive: true })
+writeFileSync(baseEnv.GITHUB_ENV, '', { flag: 'a' })
+const applyStepEnvironment = () => {
+  const allowed = new Set(['npm_config_cache', 'POCKET_SIGNING_KEYSTORE_PATH', 'POCKET_SIGNING_KEYSTORE_PASSWORD', 'POCKET_BUILD_CERTIFICATE_FILE'])
+  for (const line of readFileSync(baseEnv.GITHUB_ENV, 'utf8').split(/\r?\n/).filter(Boolean)) {
+    const at = line.indexOf('=')
+    const key = line.slice(0, at)
+    if (at < 1 || !allowed.has(key)) throw new Error('Unsupported local GITHUB_ENV key')
+    baseEnv[key] = line.slice(at + 1)
+  }
+}
+applyStepEnvironment()
 
 // 抹掉 WSL_DISTRO_NAME：本链的步骤全部按 **CI 的原生 Linux 语义**写死路径
 // （`build-snapshot-013.mjs` 的 IN_WSL 分支会把 stage 改到 `~/.dsh-stage/<abi>`，而 workflow 的
@@ -263,6 +278,7 @@ for (const [i, item] of selected.entries()) {
     ? ['--noprofile', '--norc', '-eo', 'pipefail', '-c', item.run]
     : ['-e', '-c', item.run]
   const res = spawnSync('bash', shellArgs, { cwd: buildRoot, env: baseEnv, stdio: 'inherit' })
+  applyStepEnvironment()
   const seconds = ((Date.now() - started) / 1000).toFixed(1)
   if (res.status !== 0) {
     failed += 1
@@ -274,4 +290,4 @@ for (const [i, item] of selected.entries()) {
 }
 
 if (failed) process.exit(1)
-console.log(`\n本地来源链跑完（产出的 APK 在 ${join(buildRoot, 'out', 'v*')} 下）。`)
+console.log(`\n本地来源构建阶段完成（${join(buildRoot, 'out', 'v*')}）。这是临时签名的构建副本；仅 CI 双构建验证与正式签名完成后的 artifact 可交付。`)
