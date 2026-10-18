@@ -30,7 +30,7 @@ jobs:
         run: node --test scripts/tests/main-frame-bridge.test.mjs scripts/tests/engine-private-transport.test.mjs
       - name: 撤销存档导入安全回归
         if: always()
-        run: node --test vendor/dsh-undo-savepoint/test/import-plaintext.test.mjs plugins/dsh-linux-bootstrap/test/github-limits.test.mjs
+        run: node --test vendor/dsh-undo-savepoint/test/import-plaintext.test.mjs plugins/dsh-linux-bootstrap/test/github-limits.test.mjs plugins/dsh-linux-bootstrap/test/client-http.test.mjs
       - name: 冲突标记检查
         if: always()
         run: |

@@ -2681,3 +2681,7 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 421. **内置插件注入不能用目录名代替 package.json 包名（2026-10-18）**
 
 现象：磁盘回收修复后的 main run 39119416887 已通过快照封包、来源快照检查和 APK 前段门禁，却在注入后的 `check-inject-completeness` 判红：`@dsh-android/linux-bootstrap -> tar 内无该包成员`（web/headless 各一次），但 `inject-all` 的 `[add]` 日志显示它注入了 `@dsh-android/dsh-linux-bootstrap`。真因：`build_dsh_replacements` 用插件目录 basename 当包名；`plugins/dsh-linux-bootstrap` 的真实包名是 `@dsh-android/linux-bootstrap`，而 profile patch 也按真实包名引用。目录名与包名不同时，注入写进了另一个命名空间，产物成员检查才暴露。修法：@dsh-android 注入改为读取 `package.json.name`，只接受单个 `@dsh-android/<name>` 层级，目录名不同时打印审计行；新增 `scripts/source-build/test_inject_all.py` 用 `dsh-linux-bootstrap -> @dsh-android/linux-bootstrap` 正控，拒绝非命名空间和嵌套名。该轮未做设备验证；必须用修复后的 main 来源链重新产出 APK。
+
+422. **Linux 启动依赖缺失与前后端服务混用（2026-10-18）**
+
+    现象：android-linux-env failed to import，bootstrap 等待 linuxPluginHost/linuxBootstrapConfig；安全模式页面仍报 linuxBootstrap pending。真因：插件新增静态 XZ/TAR 导入，但注入器只复制 lib 与包清单，未把第三方依赖带入快照；浏览器插件又把仅存在于引擎 Cordis 的 linuxBootstrap 声明为必需注入。修法：overlay 登记锁文件中的完整解包闭包与许可；浏览器只依赖 slots，通过现有鉴权 HTTP 路由读写，保留 confirmed 确认参数与失败信息。复验：依赖闭包正控及删除 streamx 负控、真实客户端模块激活及 HTTP 503 负控通过；来源与 vendoring 哈希同步。设备三层验收尚未完成，不能据此宣称 APK 已验收。N1/F3 原生绑定提示是既有兼容回退。

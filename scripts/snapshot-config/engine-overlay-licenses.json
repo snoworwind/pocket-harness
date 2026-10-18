@@ -79,6 +79,14 @@
     "undici": "MIT",
     "unicorn-magic": "MIT",
     "which-command": "MIT",
-    "yoctocolors": "MIT"
+    "yoctocolors": "MIT",
+    "xz-decompress": "MIT",
+    "tar-stream": "MIT",
+    "b4a": "Apache-2.0",
+    "fast-fifo": "MIT",
+    "streamx": "MIT",
+    "events-universal": "Apache-2.0",
+    "text-decoder": "Apache-2.0",
+    "bare-events": "Apache-2.0"
   }
 }

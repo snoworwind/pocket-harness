@@ -52,6 +52,7 @@ const MANIFEST = {
 
 // Explicit local security fork; MANIFEST above retains the original upstream hashes.
 const LOCAL_PATCHES = {
+  'client/index.js': '4576301803d5eda59b76dfff62c7a2cd67cd05d65a25c58df12f3769e3f382cc',
   'README.md': 'b6a54ef5116942484304b8ea31da9bf514a22dcb6496ce2cd99aaadc82db8fb2',
   'src/asset-bundle.js': '7e32ce0f57ee0a7f75dfd2d2af6ff61357d63b6c34e4f0dbf7aa23cf4300e416',
   'src/github.js': '7b6369b5910ecb3e8b49f75a4dae3ca60ceac2d4164bf7f05f71c81803aa110c',
@@ -59,7 +60,7 @@ const LOCAL_PATCHES = {
 }
 
 /** Files this repo adds, including local security regression tests. */
-const ADDED = ['build.mjs', 'build-client.mjs', 'package.json', 'package-lock.json', 'test/github-limits.test.mjs', 'test/github-limits-negative-control.mjs']
+const ADDED = ['build.mjs', 'build-client.mjs', 'package.json', 'package-lock.json', 'test/github-limits.test.mjs', 'test/github-limits-negative-control.mjs', 'test/client-http.test.mjs']
 
 /** `lib/` is a build product (gitignored, rebuilt by `npm run build`); `node_modules` is never vendored. */
 const IGNORED_DIRS = new Set(['node_modules', 'lib', '.git'])
