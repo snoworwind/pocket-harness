@@ -7,6 +7,9 @@ app/src/main/assets/patched/*.js linguist-vendored -text
 app/src/main/assets/patched/*.html linguist-vendored -text
 # Anchored patch fixtures mirror upstream package bytes; line-ending conversion breaks patch matching.
 scripts/patches/tests/fixtures/dsh-client-modules-0.2.0-rc.2/lib/index.js -text
+# Capture manifests bind every fixture and the registry to exact Git bytes.
+scripts/patches/tests/fixtures/** -text
+scripts/patches/registry.json -text
 # 旧 LFS 底座（base/*.tar.xz）未导入：来源链明确禁止读取，本仓不启用 LFS。
 
 # 第三方通告随 APK 分发，禁用行尾转换（防 autocrlf 幻影 diff 复发）

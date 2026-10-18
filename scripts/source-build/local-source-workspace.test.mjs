@@ -5,6 +5,7 @@ import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSy
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { committedWorkflow, prepareSourceWorkspace, sourceCommit } from './local-source-workspace.mjs'
+import { resolveSourceRepository } from './record-project-components.mjs'
 
 function fixture(fn) {
   const root = mkdtempSync(join(tmpdir(), 'local-source-safety-'))
@@ -16,6 +17,7 @@ function fixture(fn) {
   git('init', '-q')
   git('config', 'user.name', 'Fixture')
   git('config', 'user.email', 'fixture@example.invalid')
+  git('remote', 'add', 'origin', 'https://github.com/example/independent-shell.git')
   writeFileSync(join(source, 'vendor/dshmarketplace-plugin/tracked.js'), 'committed marketplace\n')
   writeFileSync(join(source, 'scripts/snapshot-config/engine-overlay.json'), '{"committed":true}\n')
   writeFileSync(join(source, '.github/workflows/build-apk-source.yml'), 'committed workflow\n')
@@ -27,6 +29,13 @@ function fixture(fn) {
 }
 
 const linux = { skip: process.platform !== 'linux' }
+test('source identity survives a remote-free isolated checkout and rejects an unfrozen identity', () => fixture(({ root, source, commit }) => {
+  const identity = resolveSourceRepository(source, {})
+  const workspace = prepareSourceWorkspace(source, commit, join(root, 'identity-build'))
+  assert.throws(() => resolveSourceRepository(workspace, {}), /无法确定来源仓库/)
+  assert.equal(resolveSourceRepository(workspace, { DSH_SOURCE_REPOSITORY: identity }), 'https://github.com/example/independent-shell')
+}))
+
 test('dirty tracked, untracked and ignored source files survive successful and interrupted destructive steps', linux, () => fixture(({ root, source, commit }) => {
   writeFileSync(join(source, 'vendor/dshmarketplace-plugin/tracked.js'), 'uncommitted marketplace\n')
   writeFileSync(join(source, 'vendor/dshmarketplace-plugin/extra.txt'), 'untracked user data\n')
@@ -223,13 +232,14 @@ test('resume rejects deep source aliases and Git object alternates', linux, () =
 test('actual local runner routes cwd and build environment into isolation and keeps failed output for resume', linux, () => fixture(({ root, source, git }) => {
   const scriptDir = join(source, 'scripts/source-build')
   mkdirSync(scriptDir)
-  for (const file of ['run-local-source-chain.mjs', 'local-source-workspace.mjs']) copyFileSync(join(import.meta.dirname, file), join(scriptDir, file))
+  for (const file of ['run-local-source-chain.mjs', 'local-source-workspace.mjs', 'record-project-components.mjs']) copyFileSync(join(import.meta.dirname, file), join(scriptDir, file))
   writeFileSync(join(source, '.github/workflows/build-apk-source.yml'), [
     'jobs:', '  build:', '    steps:',
     '      - name: Checkout pinned fixture source', '        shell: bash', '        run: |',
     '          test "$PWD" = "$GITHUB_WORKSPACE"',
     '          test "$DSH_APK_DIR" = "$GITHUB_WORKSPACE"',
     '          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"',
+    '          test "$DSH_SOURCE_REPOSITORY" = https://github.com/example/independent-shell',
     '          rm -rf vendor/dshmarketplace-plugin',
     '          git show "$GITHUB_SHA:scripts/snapshot-config/engine-overlay.json" > scripts/snapshot-config/engine-overlay.json',
     '          mkdir -p .deploy-tmp/source-build',
@@ -254,7 +264,7 @@ test('actual local runner routes cwd and build environment into isolation and ke
   const workspace = join(root, 'runner-build')
   const result = spawnSync(process.execPath, [join(scriptDir, 'run-local-source-chain.mjs'), '--only', 'sources', '--build-workspace', workspace], {
     encoding: 'utf8', timeout: 15000,
-    env: { ...process.env, HOME: root, ANDROID_HOME: sdk, PATH: `${bin}:${dirname(process.execPath)}:/usr/bin:/bin` },
+    env: { ...process.env, DSH_SOURCE_REPOSITORY: '', GITHUB_REPOSITORY: '', HOME: root, ANDROID_HOME: sdk, PATH: `${bin}:${dirname(process.execPath)}:/usr/bin:/bin` },
   })
   assert.equal(result.status, 1, result.stderr + result.stdout)
   assert.ok(result.stderr.includes('--build-workspace'))

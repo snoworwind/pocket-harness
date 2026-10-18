@@ -1,5 +1,7 @@
 # EXECUTION-MAP.md — 执行地图（查点表 / 运行顺序 / 耦合 / 流程图）
 
+独立检出补充（K11 构建链）：本地编排器先从原仓冻结 `DSH_SOURCE_REPOSITORY`，所有隔离阶段使用相同身份，无须为隔离目录添加远端。`scripts/source-build/local-source-workspace.test.mjs` 覆盖遗漏身份的失败与显式冻结的成功；`scripts/maintenance-inputs.mjs` 在旧 push base 不可达时扫描当前树，`scripts/tests/maintenance-inputs.test.mjs` 覆盖缺失/有效 base 和无关变更。
+
 第二轮查点增量：K10 通知动作改为 `NotifyConfirmActivity` → 系统凭据认证 → 一次性许可 → `NotifyActionReceiver`，不再由通知 PendingIntent 直接应答；K04/特权入口的敏感桥经 `MainActivity.confirmPrivilegedChange`，用户授权状态不从 prefs 恢复。EngineTransport.admit 先完成有界头部认证再创建后端；来源快照门禁先从源码包重建参考树，依次重放补丁、chrome87 转换、shebang 转换，再核对每个第一方包及 pnpm 副本的实际载荷。来源、证据和未验边界统一见 [修复账本](SECURITY-REMEDIATION-2026-10-17-R2.md)。
 
 > **目的**：让排查 bug 的人 5 分钟内知道「这段代码什么时候跑、被谁拉起、跑完交给谁、坏了看哪里」。

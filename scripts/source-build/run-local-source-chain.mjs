@@ -23,6 +23,7 @@ import { existsSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { committedWorkflow, prepareSourceWorkspace, sourceCommit } from './local-source-workspace.mjs'
+import { resolveSourceRepository } from './record-project-components.mjs'
 
 const ROOT = resolve(import.meta.dirname, '..', '..')
 const argv = process.argv.slice(2)
@@ -217,6 +218,8 @@ const npmMirror = value('--npm-mirror', process.env.DSH_NPM_MIRROR ?? null)
 if (npmMirror) console.log(`npm 镜像：${npmMirror}`)
 const baseEnv = {
   ...process.env,
+  // Resolve before entering the remote-free checkout; all phases share this identity.
+  DSH_SOURCE_REPOSITORY: resolveSourceRepository(ROOT),
   ANDROID_HOME,
   ANDROID_SDK_ROOT: ANDROID_HOME,
   DSH_APK_DIR: buildRoot,

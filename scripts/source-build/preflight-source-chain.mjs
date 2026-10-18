@@ -6,7 +6,7 @@
 // 先跑本脚本再派发，把「远程跑到第 10 分钟才发现锚点没命中」这类往返省掉。
 //
 // 覆盖（都是本地可复现、且历史上真的判红过的面）：
-//   1. 与上游的同步性（落后主流即提示先合并——坑 204/204 都发生在合并之后）
+//   独立仓只验证固定输入和树内合同；不要求配置 upstream 或合并外部 main。
 //   2. 登记表补丁对仓库镜像自洽（apply-patches --check）
 //   3. 市场插件链：按 workflow 里钉的 URL+sha256 取发布产物 → 解包 → 打补丁 → 与镜像逐字节比对
 //   4. 来源链单测（预设载体漂移守卫、overlay 钉还原、锁文件根声明、vendor 锁对齐）
@@ -32,31 +32,16 @@ const ok = (label, detail = '') => console.log(`  PASS  ${label}${detail ? `：$
 const fail = (label, detail = '') => { failures += 1; console.error(`  FAIL  ${label}${detail ? `：${detail}` : ''}`) }
 
 /** 从 workflow 里读真源（不在本脚本里重复钉版本/哈希：两处登记必漂移）。 */
-function workflowFacts() {
-  const text = readFileSync(WORKFLOW, 'utf8')
+function workflowFacts(text = readFileSync(WORKFLOW, 'utf8')) {
   const url = /https:\/\/registry\.npmjs\.org\/dshmarketplace-plugin\/-\/dshmarketplace-plugin-([\w.-]+)\.tgz/.exec(text)
   const sha = /printf '%s  %s\\n' '([0-9a-f]{64})' "\$marketplace_tarball"/.exec(text)
   const version = /require\('\.\/vendor\/dshmarketplace-plugin\/package\.json'\)\.version"\)" = "([\w.-]+)"/.exec(text)
-  if (!url || !sha || !version) throw new Error('workflow 真源解析失败（URL / sha256 / 版本三处都必须能在文件里读到）')
+  if (!url || !sha || !version || !/^\d+\.\d+\.\d+(?:-[\w.-]+)?$/.test(version[1]) || url[1] !== version[1]) throw new Error('workflow 真源解析失败（URL / sha256 / 版本必须在场且一致）')
   return { url: url[0], tarball: `dshmarketplace-plugin-${url[1]}.tgz`, expectedSha256: sha[1], expectedVersion: version[1] }
 }
 
-function stepSyncWithUpstream() {
-  console.log('[1/5] 与上游同步性')
-  if (NO_NETWORK) return ok('跳过（--no-network）')
-  try {
-    execFileSync('git', ['fetch', '--quiet', 'upstream'], { cwd: ROOT, stdio: 'pipe' })
-  } catch {
-    return fail('git fetch upstream 失败（网络？）—— 无法判断是否落后主流')
-  }
-  const behind = Number(execFileSync('git', ['rev-list', '--count', 'upstream/main..HEAD'], { cwd: ROOT, encoding: 'utf8' }).trim())
-  const ahead = Number(execFileSync('git', ['rev-list', '--count', 'HEAD..upstream/main'], { cwd: ROOT, encoding: 'utf8' }).trim())
-  if (ahead > 0) return fail('落后 upstream/main', `${ahead} 个提交未合入——先合并再派发（合并会改变链的输入，见坑 204/204）`)
-  ok('未落后 upstream/main', `领先 ${behind} 个提交`)
-}
-
 function stepRegistryAgainstMirror() {
-  console.log('[2/5] 登记表补丁对仓库镜像自洽（apply-patches --check）')
+  console.log('[1/4] 登记表补丁对仓库镜像自洽（apply-patches --check）')
   const out = execFileSync('node', [join(ROOT, 'scripts', 'patches', 'apply-patches.mjs'), 'vendor', '--check'], { cwd: ROOT, encoding: 'utf8' })
   const allOk = /apply-patches: ALL OK（\d+\/\d+/.test(out)
   if (!allOk) return fail('补丁 check 档未全绿', out.trim().split('\n').slice(-3).join(' | '))
@@ -64,7 +49,7 @@ function stepRegistryAgainstMirror() {
 }
 
 function stepMarketplaceChain() {
-  console.log('[3/5] 市场插件链：发布产物 + 注册表补丁 == 仓库镜像')
+  console.log('[2/4] 市场插件链：发布产物 + 注册表补丁 == 仓库镜像')
   let facts
   try { facts = workflowFacts() } catch (e) { return fail('workflow 真源解析', e.message) }
   const tarball = join(CACHE, facts.tarball)
@@ -109,7 +94,7 @@ function stepMarketplaceChain() {
 }
 
 function stepSourceBuildTests() {
-  console.log('[4/5] 来源链单测')
+  console.log('[3/4] 来源链单测')
   const suites = [
     'source-chain-rerun.test.mjs',
     'security-r2.test.mjs',
@@ -132,15 +117,25 @@ function stepSourceBuildTests() {
 }
 
 function stepStaticGates() {
-  console.log('[5/5] 静态门禁')
+  console.log('[4/4] 静态门禁')
   try {
     execFileSync('node', [join(ROOT, 'scripts', 'check-code-map.mjs')], { cwd: ROOT, stdio: 'pipe' })
     ok('check-code-map')
   } catch { fail('check-code-map 判红') }
 }
 
-console.log('来源链派发前预检（本地可复现面）')
-stepSyncWithUpstream()
+if (process.argv.includes('--self-test')) {
+  const facts = workflowFacts()
+  if (!facts.url.startsWith('https://registry.npmjs.org/')) throw new Error('unexpected marketplace source')
+  for (const field of [facts.url, facts.expectedSha256, facts.expectedVersion]) {
+    let rejected = false
+    try { workflowFacts(readFileSync(WORKFLOW, 'utf8').replaceAll(field, 'INVALID')) } catch { rejected = true }
+    if (!rejected) throw new Error('invalid workflow input was accepted')
+  }
+  console.log('PASS source preflight self-test: real workflow and three invalid-input controls; no upstream required')
+  process.exit(0)
+}
+console.log('来源链派发前预检（独立仓固定输入，不要求 upstream）')
 stepRegistryAgainstMirror()
 stepMarketplaceChain()
 stepSourceBuildTests()
