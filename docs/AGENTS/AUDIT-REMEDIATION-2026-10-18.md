@@ -82,4 +82,6 @@
 - 聚合 `node scripts/check-release-gates.mjs --run` 本机 PASS（已执行 32/32 发布段，SKIP=21；快照/上游树缺席项按设计 SKIP）。`check-code-map`、`check-bridge-symmetry`、`check-control-ops`、`check-op-registry-parity`、`check-kotlin-comments`、`check-manifest-hardening` 等均 PASS。
 - `check-plugin-tests.mjs` 在本机 11 个单元中 9 个 PASS；2 个失败均为 macOS 环境限制（`dsh-android-linux-env` 的 `tar --sort=name`、`dsh-host-web-compat` 的 `/var`→`/private/var` realpath 断言），与本次改动无关，按既有环境豁免处理。
 
-未执行：CDP、ADB、ARM64 装机、来源双构建、真实长链、Pages 部署。本轮也**未推送分支/未开 PR**（远端操作被用户拒绝），因此 PR Gate 与云端 CI 结论为空；上述任何一项都不得由源码/宿主绿替代，发布前必须补齐。
+云端复核：[PR #27](https://github.com/snoworwind/pocket-harness/pull/27)（9 个提交）的 PR Gate run [39140825045](https://github.com/snoworwind/pocket-harness/actions/runs/39140825045) 全绿（Kotlin 编译门禁、冲突/敏感信息扫描、维护文档一致性均 success）；合并到 main 后的 PR Gate run [39141167175](https://github.com/snoworwind/pocket-harness/actions/runs/39141167175) 同样全绿。main 合并提交 `2df8be7`。
+
+未执行：CDP、ADB、ARM64 装机、来源双构建、真实长链、Pages 部署。上述任何一项都不得由源码/宿主绿或 PR Gate 替代，发布前必须补齐。
