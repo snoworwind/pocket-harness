@@ -18,9 +18,9 @@
         "plugins/dsh-linux-bootstrap/src/status.js": "494238e39094999e44105d1c56ca562f88ce3e65146bd3070806d4c82dd98f7b",
         "plugins/dsh-linux-bootstrap/src/version.js": "d0131f71b60ff38183070ddd3ef7142a98ae8a2cb54e2a57b725fa2e0d6b3636",
         "plugins/dsh-linux-bootstrap/package-lock.json": "d8c2983dfda560e62c38cf1ed58a31d5b8cccafa3b722284b41ea69bd592d4e4",
-        "plugins/dsh-linux-bootstrap/build.mjs": "e4a7e53492c6c75ac9fd37ad00147793da93ad3cb8803f2638d47ecf8ad51a95",
+        "plugins/dsh-linux-bootstrap/build.mjs": "5f416603bd54c216ef30bc2e9211c38373b2b967e92fb2e7ccb72e332e5b03bc",
         "plugins/dsh-linux-bootstrap/build-client.mjs": "43e1a6469c3244ccd6baad3b13ced28dc379f843d6e902670315af0b8ad64c20",
-        "plugins/dsh-linux-bootstrap/README.md": "127307a6a0929949e0959679946eee73038b3547064eeb40d7f6b9305e4546cf"
+        "plugins/dsh-linux-bootstrap/README.md": "b6a54ef5116942484304b8ea31da9bf514a22dcb6496ce2cd99aaadc82db8fb2"
       }
     }
   ],
@@ -59,9 +59,9 @@
     "plugins/dsh-linux-bootstrap/src/status.js": "494238e39094999e44105d1c56ca562f88ce3e65146bd3070806d4c82dd98f7b",
     "plugins/dsh-linux-bootstrap/src/version.js": "d0131f71b60ff38183070ddd3ef7142a98ae8a2cb54e2a57b725fa2e0d6b3636",
     "plugins/dsh-linux-bootstrap/package-lock.json": "d8c2983dfda560e62c38cf1ed58a31d5b8cccafa3b722284b41ea69bd592d4e4",
-    "plugins/dsh-linux-bootstrap/build.mjs": "e4a7e53492c6c75ac9fd37ad00147793da93ad3cb8803f2638d47ecf8ad51a95",
+    "plugins/dsh-linux-bootstrap/build.mjs": "5f416603bd54c216ef30bc2e9211c38373b2b967e92fb2e7ccb72e332e5b03bc",
     "plugins/dsh-linux-bootstrap/build-client.mjs": "43e1a6469c3244ccd6baad3b13ced28dc379f843d6e902670315af0b8ad64c20",
-    "plugins/dsh-linux-bootstrap/README.md": "127307a6a0929949e0959679946eee73038b3547064eeb40d7f6b9305e4546cf"
+    "plugins/dsh-linux-bootstrap/README.md": "b6a54ef5116942484304b8ea31da9bf514a22dcb6496ce2cd99aaadc82db8fb2"
   },
   "localPatches": {
     "vendor/dsh-linux-runtime/modules/manager.js": {

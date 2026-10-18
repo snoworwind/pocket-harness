@@ -23,6 +23,8 @@ gradlew text eol=lf
 dsh-host-web-compat/lib/*.js text eol=lf
 # Bootstrap source bytes are pinned before packaging; host line-ending conversion changes those hashes.
 plugins/dsh-linux-bootstrap/package.json -text
+plugins/dsh-linux-bootstrap/*.mjs -text
+plugins/dsh-linux-bootstrap/README.md -text
 plugins/dsh-linux-bootstrap/client/*.js -text
 plugins/dsh-linux-bootstrap/src/*.js -text
 # 旧 LFS 底座（base/*.tar.xz）未导入：来源链明确禁止读取，本仓不启用 LFS。
