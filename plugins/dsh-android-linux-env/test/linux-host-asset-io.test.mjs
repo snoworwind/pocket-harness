@@ -11,9 +11,8 @@ import { registerLinuxEnvironmentRoutes } from '../lib/linux-environment.js'
 import { Readable } from 'node:stream'
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
-import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
-import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createBootstrap } from '../../dsh-linux-bootstrap/src/index.js'
@@ -34,7 +33,7 @@ import {
 
 const RUNTIME_PACKAGE_NAME = '@dsh-android/linux-runtime'
 const MANIFEST_NAME = 'linux-release.json'
-const REPO = 'https://github.com/kelai141/dsh-bionilux'
+const REPO = 'https://github.com/snoworwind/pocket-harness'
 const TAG = 'v1.2.0'
 /** 宿主已解包树里的入口内容；正控与「篡改不得存活」都对着它断言。 */
 const GENUINE_ENTRY = 'export const apply = () => {}\n'
@@ -42,7 +41,9 @@ const GENUINE_ENTRY = 'export const apply = () => {}\n'
 const sha256 = (bytes) => createHash('sha256').update(bytes).digest('hex')
 
 async function tempFilesDir() {
-  return mkdtemp(join(tmpdir(), 'linux-host-asset-io-'))
+  const workspaceTemp = join(dirname(fileURLToPath(import.meta.url)), '../../../.deploy-tmp')
+  await mkdir(workspaceTemp, { recursive: true })
+  return mkdtemp(join(workspaceTemp, 'linux-host-asset-io-'))
 }
 
 /**
@@ -113,6 +114,7 @@ function makeBootstrap({ filesDir, manifest, pluginHost = makePluginHost() }) {
   const { fetchImpl, fetched } = makeFetch(manifest)
   const service = createBootstrap({
     ...createLinuxBootstrapConfig({ filesDir, appVersion: '0.15.0' }),
+    manifestProvider: async () => ({ manifest, releaseTag: TAG, sha256: '0'.repeat(64) }),
     // This fixture explicitly approves its synthetic manifest; production pins remain mandatory.
     verifyManifest: async () => true,
     pluginHost,
@@ -128,11 +130,59 @@ test('production trust policy refuses a self-declared release before activation'
   try {
     const asset = await stageBundle(filesDir)
     const pluginHost = makePluginHost()
-    const { fetchImpl } = makeFetch(makeManifest({ asset }))
-    const service = createBootstrap({ ...createLinuxBootstrapConfig({ filesDir, appVersion: '0.15.0' }), pluginHost, fetchImpl })
+    const manifest = makeManifest({ asset })
+    const service = createBootstrap({
+      ...createLinuxBootstrapConfig({ filesDir, appVersion: '0.15.0' }),
+      manifestProvider: async () => ({ manifest, releaseTag: TAG, sha256: '0'.repeat(64) }),
+      pluginHost,
+    })
     await assert.rejects(installConfirmed(service), /source-pinned trust policy/)
     assert.equal(pluginHost.activations.length, 0)
   } finally { await rm(filesDir, { recursive: true, force: true }) }
+})
+
+test('bundled source manifest is read as raw pinned bytes without network access', async () => {
+  const filesDir = await tempFilesDir()
+  const bundleDirectory = join(filesDir, 'bundle')
+  try {
+    await mkdir(bundleDirectory, { recursive: true })
+    const manifestBytes = await readFile(new URL('./fixtures/linux-release.v0.5.0.json', import.meta.url))
+    await writeFile(join(bundleDirectory, MANIFEST_NAME), manifestBytes)
+    await writeFile(join(bundleDirectory, 'linux-runtime-manifest.sha256'), `${sha256(manifestBytes)}\n`)
+    const config = createLinuxBootstrapConfig({ filesDir, appVersion: '0.15.0', bundleDirectory })
+    const supplied = await config.manifestProvider()
+    assert.equal(supplied.releaseTag, 'v0.5.0')
+    assert.equal(supplied.sha256, 'bafb6a434718295e3769b7dce59b725231f7c507ac51ce99d52b41d89d3e8797')
+    assert.equal(config.verifyManifest(supplied.manifest, { sourceSha256: supplied.sha256 }), true)
+    await writeFile(join(bundleDirectory, MANIFEST_NAME), '{}\n')
+    await assert.rejects(config.manifestProvider(), /does not match its sidecar/)
+  } finally { await rm(filesDir, { recursive: true, force: true }) }
+})
+
+test('offline asset adapter stages only a digest- and size-matched APK bundle file', async () => {
+  const filesDir = await tempFilesDir()
+  const prefix = join(filesDir, 'prefix')
+  const bundle = join(prefix, 'share/pocket-harness/linux-assets')
+  const bytes = Buffer.from('verified offline payload')
+  const digest = sha256(bytes)
+  try {
+    await mkdir(bundle, { recursive: true })
+    await writeFile(join(bundle, 'bionilux-backend-aarch64.tar.xz'), bytes)
+    const host = createHostAssetIO({ filesDir, bundleDirectory: bundle })
+    const asset = {
+      url: 'https://github.com/snoworwind/pocket-harness/releases/download/v0.5.0/bionilux-backend-aarch64.tar.xz',
+      sha256: digest,
+      size: bytes.length,
+    }
+    const staged = await host.downloadAsset(asset)
+    assert.deepEqual(await readFile(staged), bytes)
+    assert.deepEqual(await readdir(dirname(staged)), [RETAINED_ARCHIVE], 'staging must not leave temporary copies behind')
+    await writeFile(join(bundle, 'bionilux-backend-aarch64.tar.xz'), Buffer.alloc(bytes.length, 0x78))
+    await rm(staged, { force: true })
+    await assert.rejects(host.downloadAsset(asset), /摘要不符/)
+  } finally {
+    await rm(filesDir, { recursive: true, force: true })
+  }
 })
 
 // ── 正控：真正准备好的暂存包可以激活 ────────────────────────────────────────

@@ -13,6 +13,14 @@ from urllib.parse import urlparse
 ROOT = Path(__file__).resolve().parents[2]
 
 
+def sha256_file(path):
+    digest = hashlib.sha256()
+    with Path(path).open('rb') as stream:
+        for block in iter(lambda: stream.read(1024 * 1024), b''):
+            digest.update(block)
+    return digest.hexdigest()
+
+
 def package_assets(work, epoch):
     work = Path(work).resolve()
     if work != ROOT / '.deploy-tmp/linux-build':
@@ -21,8 +29,7 @@ def package_assets(work, epoch):
     stage = work / 'assets'
     stage.mkdir(parents=True, exist_ok=True)
     node_archive = work / 'input' / f'node-v{inputs["node"]}-linux-arm64.tar.xz'
-    with node_archive.open('rb') as stream:
-        actual = hashlib.file_digest(stream, 'sha256').hexdigest()
+    actual = sha256_file(node_archive)
     if actual != inputs['nodeSha256']:
         raise ValueError('official Node archive digest mismatch')
     node_source = work / 'node-source'
@@ -30,7 +37,12 @@ def package_assets(work, epoch):
         shutil.rmtree(node_source)
     node_source.mkdir()
     with tarfile.open(node_archive, 'r:xz') as archive:
-        archive.extractall(node_source, filter='data')
+        if sys.version_info >= (3, 12):
+            archive.extractall(node_source, filter='data')
+        else:
+            # Older local Python lacks tarfile's data filter. The archive is checked against the
+            # source-pinned official Node SHA-256 above before this compatibility path is reachable.
+            archive.extractall(node_source)
     original = node_source / f'node-v{inputs["node"]}-linux-arm64'
     node = work / 'node-stage'
     if node.exists():
@@ -58,7 +70,7 @@ def package_assets(work, epoch):
                 shutil.copyfile(source / path, target / path)
         else:
             source = ROOT / 'plugins/dsh-linux-bootstrap'
-            shutil.copytree(source / 'src', target / 'lib')
+            shutil.copytree(source / 'lib', target / 'lib')
             shutil.copytree(source / 'src', target / 'src')
             shutil.copytree(source / 'client', target / 'client')
             shutil.copyfile(source / 'package.json', target / 'package.json')
@@ -77,8 +89,7 @@ def package_assets(work, epoch):
 
     def describe(name):
         path = stage / name
-        with path.open('rb') as stream:
-            digest = hashlib.file_digest(stream, 'sha256').hexdigest()
+        digest = sha256_file(path)
         with tarfile.open(path, 'r:xz') as archive:
             size = sum(item.size for item in archive if item.isfile())
         if size <= 0:

@@ -5,9 +5,12 @@ is deliberately small: it discovers releases, verifies the runtime package befor
 staging it, and exposes status/actions to the mobile settings client. Its version
 is independent of the DSH Mobile app version.
 
-In this repository the bootstrap is currently vendored source only; it is not in
-the APK injector set, and its settings section is not available in the app. Offline
-asset delivery and runtime activation remain unfinished integration work.
+In this repository the bootstrap is built into the APK's internal plugin set.
+Its release manifest and five ARM64 runtime assets are embedded in the Termux
+snapshot; the host verifies the manifest sidecar and each asset hash before
+staging. Network release discovery is not used by the Pocket Harness adapter.
+The runtime remains opt-in: the settings entry is available, but installation
+and activation require explicit user actions.
 
 Both plugins in this system are **our own experimental internal plugins**:
 
@@ -25,7 +28,7 @@ import linuxBootstrap from '@dsh-android/linux-bootstrap'
 
 ctx.plugin(linuxBootstrap, {
   dataDir,                 // required: <filesDir>/linux-environment
-  releaseUrl,              // required: GitHub repo or /releases/latest API URL
+  releaseUrl,              // optional for standalone use; Pocket Harness supplies a bundled manifestProvider
   pluginHost,              // required: linuxPluginHost {install, uninstall, isInjected}
   downloadAsset,           // required: checksum-verifying downloader
   extractArchive,          // required: safe extractor (no shell tar)

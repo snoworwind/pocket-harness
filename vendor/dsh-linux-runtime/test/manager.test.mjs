@@ -3,13 +3,12 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 
-import { createManager, GUEST_PATH_PREFIXES, isGuestPath } from '../modules/manager.js';
+import { createManager, GUEST_PATH_PREFIXES, isGuestPath, spawnCommand } from '../modules/manager.js';
 import { validateManifest, validateAsset, selectRuntime } from '../modules/manifest.js';
 
-const temporaryRoot = path.join(os.tmpdir(), `bionilux-runtime-tests-${process.pid}`);
+const temporaryRoot = path.join(process.cwd(), '.deploy-tmp', `bionilux-runtime-tests-${process.pid}`);
 
 function sha256(buffer) {
   return createHash('sha256').update(buffer).digest('hex');
@@ -124,7 +123,7 @@ function makeIo(fixture, { onExtract } = {}) {
  * cancels it — that is what the cutover gate has to do before it replaces an
  * active rootfs.
  */
-function makeRunner({ instant } = {}) {
+function makeRunner({ instant, healthProbeResult = { stdout: 'v24.22.0', stderr: '', exitCode: 0 }, onHealthProbe } = {}) {
   const calls = [];
   const isInstant =
     instant ?? ((spec) => !String(spec.args?.at(-1) ?? '').includes('sleep'));
@@ -149,7 +148,11 @@ function makeRunner({ instant } = {}) {
             },
             { once: true },
           );
-          if (isInstant(spec)) settle({ stdout: 'ok', stderr: '', exitCode: 0 });
+          if (isInstant(spec)) {
+            const healthProbe = spec.args?.[0] === 'node' && spec.args?.[1] === '--version';
+            if (healthProbe) onHealthProbe?.(spec);
+            settle(healthProbe ? healthProbeResult : { stdout: 'ok', stderr: '', exitCode: 0 });
+          }
         }),
         cancel: () => {
           record.cancelled = true;
@@ -187,10 +190,41 @@ after(async () => {
   await rm(temporaryRoot, { recursive: true, force: true });
 });
 
+test('spawnCommand bounds captured stdout and stderr while continuing to drain both pipes', async () => {
+  const result = await spawnCommand({
+    file: process.execPath,
+    args: ['-e', 'process.stdout.write("o".repeat(300000)); process.stderr.write("e".repeat(300000))'],
+    timeout: 10_000,
+  }).promise;
+  assert.equal(result.exitCode, 0);
+  assert.equal(result.stdout.length, 256 * 1024 + '\n[output truncated after 262144 bytes]'.length);
+  assert.equal(result.stderr.length, 256 * 1024 + '\n[output truncated after 262144 bytes]'.length);
+  assert.match(result.stdout, /\[output truncated after 262144 bytes\]$/);
+  assert.match(result.stderr, /\[output truncated after 262144 bytes\]$/);
+});
+
+test('spawnCommand force-kills the process group when a timed-out child ignores SIGTERM', async (t) => {
+  if (process.platform === 'win32') return t.skip('POSIX process-group signal semantics required');
+  const started = Date.now();
+  const result = await spawnCommand({
+    file: process.execPath,
+    args: ['-e', 'process.on("SIGTERM", () => {}); setInterval(() => {}, 1000)'],
+    timeout: 20,
+  }).promise;
+  assert.equal(result.timedOut, true);
+  assert.equal(result.exitCode, null);
+  assert.equal(result.signal, 'SIGKILL');
+  assert.ok(Date.now() - started >= 1400, 'SIGKILL should follow the bounded TERM grace period');
+});
+
 test('install stages, proves health, then activates the runtime', async () => {
   const dataDir = tempDir();
   const fixture = makeManifest();
-  const { manager, io } = makeManager(fixture, { dataDir });
+  let activeDuringProbe;
+  const { manager, io } = makeManager(fixture, {
+    dataDir,
+    runnerOptions: { onHealthProbe: () => { activeDuringProbe = existsSync(path.join(dataDir, 'active.json')); } },
+  });
 
   assert.equal(manager.status().installed, false);
   assert.equal(manager.status().healthy, false);
@@ -201,6 +235,7 @@ test('install stages, proves health, then activates the runtime', async () => {
   assert.equal(status.installed, true);
   assert.equal(status.runtimeId, 'debian-minimal');
   assert.equal(status.version, '1.0.0');
+  assert.equal(activeDuringProbe, false, 'the new runtime is not active until the smoke probe succeeds');
 
   const record = JSON.parse(await readFile(path.join(dataDir, 'active.json'), 'utf8'));
   assert.equal(record.runtimeId, 'debian-minimal');
@@ -227,6 +262,23 @@ test('a failing install leaves the previous active runtime untouched', async () 
   assert.equal(after.version, '1.0.0');
   const record = JSON.parse(await readFile(path.join(dataDir, 'active.json'), 'utf8'));
   assert.equal(record.version, '1.0.0');
+});
+
+test('a runtime that fails the launch smoke probe cannot replace the active instance', async () => {
+  const dataDir = tempDir();
+  const firstFixture = makeManifest();
+  const first = makeManager(firstFixture, { dataDir });
+  const installed = await first.manager.install(firstFixture.manifest);
+  const activeBefore = await readFile(path.join(dataDir, 'active.json'), 'utf8');
+  const secondFixture = makeManifest({ version: '1.0.1' });
+  const second = makeManager(secondFixture, {
+    dataDir,
+    runnerOptions: { healthProbeResult: { stdout: '', stderr: 'ELF load failed', exitCode: 1 } },
+  });
+
+  await assert.rejects(() => second.manager.install(secondFixture.manifest), /runtime smoke probe failed/);
+  assert.equal(await readFile(path.join(dataDir, 'active.json'), 'utf8'), activeBefore);
+  assert.equal(second.manager.status().instanceId, installed.instanceId);
 });
 
 test('shared glibc Node is downloaded once and reused across releases', async () => {

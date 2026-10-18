@@ -83,3 +83,7 @@ raw npm overlay不会自动保留官方pnpm patch。六provider pi-upstream-stre
 ## Linux 插件归档解码依赖（2026-10-17）
 
 `plugins/dsh-android-linux-env` 新增固定运行时依赖 `xz-decompress@0.2.3`（MIT；内嵌 XZ WASM，含 xz-embedded 公有领域代码及 walloc MIT 代码）与 `tar-stream@3.1.7`（MIT），开发类型依赖 `@types/tar-stream@3.1.4`（MIT）。版本与 npm integrity 随该插件 package-lock.json 固定。用途是在 bootstrap 验证归档副本之后独立流式解码，兼容不同 Android ABI，不依赖 shell tar/xz 或新增宿主二进制；npm 依赖内嵌 WASM 不属于 vendored bootstrap 源码目录。最终 APK 闭包、许可资产及设备 WASM 执行仍需来源链候选验证；本轮未出 APK。
+
+## Linux bootstrap 客户端打包依赖（2026-10-18）
+
+`plugins/dsh-linux-bootstrap` 新增仅构建期依赖 `esbuild@0.25.12`（MIT），由独立 package-lock 的 npm integrity 固定。来源链用它将 `client/index.js` 与本地 `src/status.js` bundle 为 `lib/client.js`，目标 Chrome 87，React 与引擎 UI 契约作为 peer 外部引用；APK 注入器只携带生成的 `lib/**`，因此构建必须先运行 `npm ci` 与 build。它不增加 APK 内的 esbuild runtime payload。资产打包单测在 Linux/GNU tar 环境执行完整正控；Windows 当前缺 GNU tar，需云端链提供该证据。

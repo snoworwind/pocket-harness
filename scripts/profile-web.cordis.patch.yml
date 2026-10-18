@@ -83,6 +83,11 @@
     - id: android-linux-env
       name: '@dsh-android/dsh-android-linux-env'
 
+# ARM64 Debian runtime bootstrap. Config and assets come from the APK snapshot; user must explicitly install/activate.
+- insert:
+    - id: linux-bootstrap
+      name: '@dsh-android/linux-bootstrap'
+
 # 文件直达会话（0.13.0 F5，M3.5）：dsh-android-file-open——外部文件强制新会话请求/状态/清理。
 - insert:
     - id: android-file-open

@@ -1,17 +1,17 @@
 /**
- * Host archive adapter. Downloading remains a shell responsibility. Bootstrap copies and
- * hashes the retained archive; this adapter independently decodes that copy in process.
+ * Host archive adapter. Assets are copied from the signed APK's Termux snapshot into
+ * host staging; bootstrap independently hashes the retained archive before extraction.
  * Mutable host unpacked trees and cache markers are never used as executable payload.
  */
 import { createReadStream, createWriteStream } from 'node:fs'
-import { lstat, mkdir } from 'node:fs/promises'
+import { lstat, mkdir, readFile, rename, rm } from 'node:fs/promises'
 import { Readable, Transform } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 import xz from 'xz-decompress'
 import tar from 'tar-stream'
-import { isAbsolute, join, resolve, sep } from 'node:path'
-import { createHash } from 'node:crypto'
-import { LINUX_MANIFEST_PINS } from './linux-release-pins.js'
+import { basename, dirname, isAbsolute, join, resolve, sep } from 'node:path'
+import { createHash, randomUUID } from 'node:crypto'
+import { LINUX_MANIFEST_DIGEST_FILE } from './linux-release-pins.js'
 
 /** 与 Kotlin `LinuxAssetIO.ENV_DIR` 同口径（`check-linux-host-staging-invariant` 守）。 */
 export const LINUX_ENV_DIR = 'linux-environment'
@@ -28,6 +28,16 @@ const SHA256_PATTERN = /^[a-f0-9]{64}$/
 export const CODE_ASSET_NOT_PREPARED = 'linux-asset-not-prepared'
 export const CODE_ASSET_SPEC_INVALID = 'linux-asset-spec-invalid'
 export const CODE_HOST_TREE_UNSAFE = 'linux-host-tree-unsafe'
+export const LINUX_BUNDLE_DIR = 'share/pocket-harness/linux-assets'
+function defaultBundleDirectory(): string {
+  const prefix = process.env.TERMUX__PREFIX
+  return typeof prefix === 'string' && prefix !== '' ? join(prefix, LINUX_BUNDLE_DIR) : ''
+}
+const BUNDLED_ASSET_NAMES = new Set([
+  'linux-bootstrap-plugin.tar.xz', 'linux-runtime-plugin.tar.xz',
+  'bionilux-backend-aarch64.tar.xz', 'debian-minimal-aarch64.tar.xz',
+])
+const NODE_ASSET_NAME = /^node-glibc-v\d+\.\d+\.\d+-linux-arm64\.tar\.xz$/
 
 /** 宿主侧资产 IO 的失败都要带稳定码：界面与日志按码判读，不靠文本匹配。 */
 export class LinuxHostAssetError extends Error {
@@ -36,6 +46,31 @@ export class LinuxHostAssetError extends Error {
     super(message)
     this.name = 'LinuxHostAssetError'
     this.code = code
+  }
+}
+
+async function readBundledManifest(bundleDirectory: string) {
+  const manifestPath = join(bundleDirectory, 'linux-release.json')
+  const info = await lstat(manifestPath)
+  if (!info.isFile() || info.isSymbolicLink()) throw new Error('Bundled Linux manifest must be a regular file')
+  const bytes = await readFile(manifestPath)
+  const sha256 = createHash('sha256').update(bytes).digest('hex')
+  const digestPath = join(bundleDirectory, LINUX_MANIFEST_DIGEST_FILE)
+  const digestInfo = await lstat(digestPath)
+  if (!digestInfo.isFile() || digestInfo.isSymbolicLink()) throw new Error('Bundled Linux manifest digest must be a regular file')
+  const declaredDigest = (await readFile(digestPath, 'utf8')).trim()
+  if (!/^[a-f0-9]{64}$/.test(declaredDigest) || declaredDigest !== sha256) throw new Error('Bundled Linux manifest digest does not match its sidecar')
+  const manifest = JSON.parse(bytes.toString('utf8'))
+  return { manifest, releaseTag: `v${manifest.version}`, sha256 }
+}
+
+async function ensureDirectory(path: string): Promise<void> {
+  try {
+    const info = await lstat(path)
+    if (!info.isDirectory() || info.isSymbolicLink()) throw new Error(`Unsafe directory: ${path}`)
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+    await mkdir(path)
   }
 }
 
@@ -132,15 +167,57 @@ export interface HostAssetIO {
  *
  * @param filesDir 壳侧 `DSH_FILES_DIR`；暂存根 = `<filesDir>/linux-environment`。
  */
-export function createHostAssetIO(options: { filesDir: string }): HostAssetIO {
+export function createHostAssetIO(options: { filesDir: string; bundleDirectory?: string }): HostAssetIO {
   const { filesDir } = options
+  const bundleDirectory = options.bundleDirectory ?? defaultBundleDirectory()
   if (typeof filesDir !== 'string' || filesDir === '') throw new TypeError('filesDir is required')
 
   return {
-    async downloadAsset(asset: { sha256?: unknown }): Promise<string> {
+    async downloadAsset(asset: { sha256?: unknown; url?: unknown; size?: unknown }): Promise<string> {
       const archive = retainedArchiveFor(filesDir, asset?.sha256)
       if (archive === null) {
         throw new LinuxHostAssetError(CODE_ASSET_SPEC_INVALID, `清单摘要不合规，拒绝推导落点：${String(asset?.sha256)}`)
+      }
+      try {
+        const retained = await lstat(archive)
+        if (!retained.isFile() || retained.isSymbolicLink()) throw new LinuxHostAssetError(CODE_HOST_TREE_UNSAFE, `保留的归档必须是普通文件：${archive}`)
+        return archive
+      } catch (error) {
+        if (error instanceof LinuxHostAssetError) throw error
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+      }
+      if (typeof asset.url !== 'string' || typeof asset.size !== 'number' || !Number.isSafeInteger(asset.size) || asset.size < 0) {
+        throw new LinuxHostAssetError(CODE_ASSET_SPEC_INVALID, '内置 Linux 资产规格无效')
+      }
+      let assetUrl: URL
+      try { assetUrl = new URL(asset.url) } catch { throw new LinuxHostAssetError(CODE_ASSET_SPEC_INVALID, '内置 Linux 资产 URL 无效') }
+      const name = basename(assetUrl.pathname)
+      if (assetUrl.protocol !== 'https:' || assetUrl.hostname !== 'github.com' || assetUrl.username || assetUrl.password || assetUrl.port
+        || (!BUNDLED_ASSET_NAMES.has(name) && !NODE_ASSET_NAME.test(name))
+        || !/^\/snoworwind\/pocket-harness\/releases\/download\/v\d+\.\d+\.\d+\//.test(assetUrl.pathname)
+        || assetUrl.pathname.split('/').at(-1) !== name || assetUrl.search || assetUrl.hash) {
+        throw new LinuxHostAssetError(CODE_ASSET_SPEC_INVALID, 'Linux 资产不在固定的 ARM64 离线包清单内')
+      }
+      if (!bundleDirectory) throw new LinuxHostAssetError(CODE_ASSET_NOT_PREPARED, 'APK 内置 Linux 资产目录不可用')
+      const source = join(resolve(bundleDirectory), name)
+      let sourceInfo
+      try { sourceInfo = await lstat(source) } catch { throw new LinuxHostAssetError(CODE_ASSET_NOT_PREPARED, `APK 未包含 Linux 资产：${name}`) }
+      if (!sourceInfo.isFile() || sourceInfo.isSymbolicLink() || sourceInfo.size !== asset.size) {
+        throw new LinuxHostAssetError(CODE_HOST_TREE_UNSAFE, `APK 内 Linux 资产类型或体积不符：${name}`)
+      }
+      const digest = createHash('sha256')
+      for await (const chunk of createReadStream(source)) digest.update(chunk)
+      if (digest.digest('hex') !== asset.sha256) throw new LinuxHostAssetError(CODE_HOST_TREE_UNSAFE, `APK 内 Linux 资产摘要不符：${name}`)
+      const stagingParent = dirname(archive)
+      await ensureDirectory(join(filesDir, LINUX_ENV_DIR))
+      await ensureDirectory(join(filesDir, LINUX_ENV_DIR, STAGING_DIR))
+      await ensureDirectory(stagingParent)
+      const temp = `${archive}.tmp-${randomUUID()}`
+      try {
+        await pipeline(createReadStream(source), createWriteStream(temp, { flags: 'wx', mode: 0o600 }))
+        await rename(temp, archive)
+      } finally {
+        await rm(temp, { force: true }).catch(() => {})
       }
       let info
       try {
@@ -165,9 +242,6 @@ export function createHostAssetIO(options: { filesDir: string }): HostAssetIO {
   }
 }
 
-/** 用户的 Release 发现入口（本仓插件系统的版本独立于 App 版本）。 */
-export const LINUX_RELEASE_URL = 'https://github.com/kelai141/dsh-bionilux/releases/latest'
-
 /**
  * 组装 bootstrap 的 `apply(ctx, config)` 配置。
  *
@@ -182,17 +256,24 @@ export const LINUX_RELEASE_URL = 'https://github.com/kelai141/dsh-bionilux/relea
 export function createLinuxBootstrapConfig(options: {
   filesDir: string
   appVersion: string
-  releaseUrl?: string
+  bundleDirectory?: string
 }): Record<string, unknown> {
-  const { filesDir, appVersion, releaseUrl = LINUX_RELEASE_URL } = options
+  const { filesDir, appVersion } = options
+  const bundleDirectory = options.bundleDirectory ?? defaultBundleDirectory()
   const dataDir = linuxEnvironmentRoot(filesDir)
+  let approvedDigest = ''
+  const manifestProvider = async () => {
+    if (!bundleDirectory) throw new Error('Bundled Linux assets are unavailable without TERMUX__PREFIX')
+    const supplied = await readBundledManifest(bundleDirectory)
+    approvedDigest = supplied.sha256
+    return supplied
+  }
   return {
     dataDir,
-    releaseUrl,
-    verifyManifest: (manifest: unknown) => LINUX_MANIFEST_PINS.includes(
-      createHash('sha256').update(JSON.stringify(manifest)).digest('hex'),
-    ),
-    linuxAssetIO: createHostAssetIO({ filesDir }),
+    manifestProvider,
+    verifyManifest: (_manifest: unknown, source: { sourceSha256?: unknown }) =>
+      typeof source?.sourceSha256 === 'string' && source.sourceSha256 === approvedDigest,
+    linuxAssetIO: createHostAssetIO({ filesDir, bundleDirectory }),
     appVersionProvider: () => appVersion,
     stagingDirectory: join(dataDir, STAGING_DIR, 'runtime-plugin'),
   }

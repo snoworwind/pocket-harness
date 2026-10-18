@@ -4,6 +4,11 @@ set -euo pipefail
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)
 cd "$ROOT"
 node scripts/source-build/check-linux-sources.mjs
+(
+  cd plugins/dsh-linux-bootstrap
+  npm ci --no-audit --no-fund
+  npm run build
+)
 WORK="$ROOT/.deploy-tmp/linux-build"
 [[ "$(realpath -m "$WORK")" == "$WORK" ]] || { echo 'Linux build root escapes workspace' >&2; exit 1; }
 mkdir -p "$WORK/assets" "$WORK/input" "$WORK/provenance"
@@ -28,7 +33,7 @@ export CC_aarch64_linux_android="$TC/bin/aarch64-linux-android24-clang"
 export AR_aarch64_linux_android="$TC/bin/llvm-ar"
 export CARGO_TARGET_DIR="$WORK/cargo"
 export CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1
-export RUSTFLAGS='-C link-arg=-Wl,--threads=1'
+export RUSTFLAGS="--remap-path-prefix=$ROOT=/usr/src/pocket-harness --remap-path-prefix=${CARGO_HOME:-$HOME/.cargo}=/usr/local/cargo -C link-arg=-Wl,--threads=1"
 rustup toolchain install "$RUST_VERSION" --profile minimal --target aarch64-linux-android
 rustup run "$RUST_VERSION" cargo build --release --locked --jobs "$THREADS" --target aarch64-linux-android --manifest-path vendor/bionilux/Cargo.toml
 rustup run "$RUST_VERSION" cargo metadata --locked --format-version=1 --filter-platform aarch64-linux-android --manifest-path vendor/bionilux/Cargo.toml > "$WORK/provenance/cargo-metadata.json"
@@ -36,6 +41,7 @@ python3 scripts/source-build/collect-linux-licenses.py "$WORK/provenance/cargo-m
 mkdir -p "$WORK/backend/bin" "$WORK/backend/lib" "$WORK/backend/scripts"
 install -m755 "$CARGO_TARGET_DIR/aarch64-linux-android/release/bionilux" "$WORK/backend/bin/bionilux"
 aarch64-linux-gnu-gcc -shared -fPIC -O2 -Wall -Wextra -Werror -Wl,-soname,libbionilux_preload.so \
+  -ffile-prefix-map="$ROOT"=/usr/src/pocket-harness -fdebug-prefix-map="$ROOT"=/usr/src/pocket-harness \
   -Wl,-rpath,/usr/lib/aarch64-linux-gnu -o "$WORK/backend/lib/libbionilux_preload.so" vendor/bionilux/src/preload/hooks.c -pthread -ldl
 install -m755 vendor/bionilux/scripts/prepare-rootfs.sh "$WORK/backend/scripts/prepare-rootfs.sh"
 "$TC/bin/llvm-readelf" -h "$WORK/backend/bin/bionilux" | grep 'Machine:.*AArch64'
@@ -78,12 +84,28 @@ deb https://deb.debian.org/debian trixie main
 deb https://deb.debian.org/debian trixie-updates main
 deb https://security.debian.org/debian-security trixie-security main
 SOURCES
+sudo rm -f "$ROOTFS/etc/hostname"
+sudo tee "$ROOTFS/etc/hosts" >/dev/null <<'HOSTS'
+127.0.0.1 localhost
+::1 localhost ip6-localhost ip6-loopback
+HOSTS
+sudo find "$ROOTFS/etc/apt/apt.conf.d" -maxdepth 1 -type f -iname '*proxy*' -delete
+if sudo grep -RniE 'Acquire::(http|https)::Proxy|proxy=' "$ROOTFS/etc/apt/apt.conf.d"; then
+  echo 'Unexpected host-specific apt proxy configuration in guest rootfs' >&2
+  exit 1
+fi
 sudo rm -rf -- "$ROOTFS/debootstrap" "$ROOTFS/var/lib/apt/lists" "$ROOTFS/var/cache/apt/archives" "$ROOTFS/etc/apt/sources.list.d"
 sudo mkdir -p "$ROOTFS/var/lib/apt/lists/partial" "$ROOTFS/var/cache/apt/archives/partial" "$ROOTFS/etc/apt/sources.list.d"
 sudo rm -f "$ROOTFS/etc/resolv.conf" "$ROOTFS/etc/machine-id" "$ROOTFS/var/lib/dbus/machine-id" "$ROOTFS/var/cache/ldconfig/aux-cache"
 sudo find "$ROOTFS/var/log" -type f -exec truncate -s0 {} +
 sudo sh vendor/bionilux/scripts/prepare-rootfs.sh --rootfs "$ROOTFS" --relative-links
 sudo sh vendor/bionilux/scripts/prepare-rootfs.sh --rootfs "$ROOTFS" --relative-links --verify
+test ! -e "$ROOTFS/etc/hostname"
+printf '%s\n' '127.0.0.1 localhost' '::1 localhost ip6-localhost ip6-loopback' | diff - "$ROOTFS/etc/hosts"
+if grep -RniE 'Acquire::(http|https)::Proxy|proxy=' "$ROOTFS/etc/apt/apt.conf.d"; then
+  echo 'Rootfs verification found host-specific apt proxy configuration' >&2
+  exit 1
+fi
 sudo tar --sort=name --mtime="@$EPOCH" --owner=0 --group=0 --numeric-owner --exclude='./dev/*' --exclude='./proc/*' \
   -cJf "$STAGE/debian-minimal-aarch64.tar.xz" -C "$ROOTFS" .
 sudo chmod 644 "$STAGE/debian-minimal-aarch64.tar.xz"

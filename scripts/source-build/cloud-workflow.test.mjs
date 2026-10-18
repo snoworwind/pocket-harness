@@ -21,6 +21,8 @@ test('source workflow uploads explicitly listed hidden provenance with APK', () 
   assert.match(upload, /^          if-no-files-found: error$/m)
   assert.match(upload, /^            \.deploy-tmp\/source-build\/project-component-provenance.json$/m)
   assert.match(upload, /^            \.deploy-tmp\/source-build\/apk-sha256.txt$/m)
+  assert.match(upload, /^            \.deploy-tmp\/source-build\/linux-bundle-injection.json$/m)
+  assert.match(upload, /^            \.deploy-tmp\/linux-build\/provenance\/\*\*$/m)
   assert.doesNotMatch(upload, /^            \.deploy-tmp\/\*\*$/m)
 })
 

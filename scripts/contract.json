@@ -15,6 +15,11 @@
     "$comment": "§7 判据的登记表（0.14.2 N-1）。上游 0.1.7 起在 boot 期按 peerDependencies 判兼容，不满足即整行 disabled + stderr 一行 ⇒ 功能面静默消失。这里只登记两类事实：① 没有 dsh peer 的行（上游 fail-open，不等于验过兼容）；② 被精确豁免的行（任一版本变动即重新判红，不允许带进发布）。",
     "noPeerRows": [
       {
+        "rowId": "linux-bootstrap",
+        "pkg": "@dsh-android/linux-bootstrap",
+        "why": "内置 bootstrap service has no @deepseek-ai/dsh peer by design; it only consumes the host linuxPluginHost contract and the shell-owned runtime manifest."
+      },
+      {
         "rowId": "host-web-compat",
         "pkg": "@dsh-android/dsh-host-web-compat",
         "why": "本轮实测其 package.json 无任何 @deepseek-ai/dsh* peer ⇒ 走的是上游「无 peer 即放行」，不是验过兼容。追版后的真处置是补 peer（§4 G-7 兼容元数据单一真源）；补上后本条必须删除。"
@@ -109,6 +114,11 @@
       "pkg": "@dsh-android/dsh-android-linux-env",
       "repo": "plugins/dsh-android-linux-env"
     },
+      {
+        "id": "linux-bootstrap",
+        "pkg": "@dsh-android/linux-bootstrap",
+        "repo": "plugins/dsh-linux-bootstrap"
+      },
     {
       "id": "android-file-open",
       "pkg": "@dsh-android/dsh-android-file-open",

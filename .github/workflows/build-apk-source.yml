@@ -604,6 +604,43 @@ jobs:
             .deploy-tmp/engine-deploy \
             .deploy-tmp/arm64-base/base-usr.tar.xz
 
+      - name: Install Linux asset cross-build tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu debootstrap debian-archive-keyring qemu-user-static binfmt-support xz-utils
+          sudo update-binfmts --enable qemu-aarch64
+
+      - name: Prepare pinned Debian archive trust keys for Linux assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          keydir="$GITHUB_WORKSPACE/.deploy-tmp/linux-keyring"
+          homedir="$keydir/gnupg"
+          mkdir -p "$homedir"
+          chmod 700 "$homedir"
+          archive_sha=$(node -p 'require("./scripts/source-build/linux-inputs.json").debianArchiveKey13Sha256')
+          archive_fingerprint=$(node -p 'require("./scripts/source-build/linux-inputs.json").debianArchiveKey13Fingerprint')
+          release_sha=$(node -p 'require("./scripts/source-build/linux-inputs.json").debianReleaseKey13Sha256')
+          release_fingerprint=$(node -p 'require("./scripts/source-build/linux-inputs.json").debianReleaseKey13Fingerprint')
+          curl --fail --location --retry 3 https://ftp-master.debian.org/keys/archive-key-13.asc -o "$keydir/archive-key-13.asc"
+          curl --fail --location --retry 3 https://ftp-master.debian.org/keys/release-13.asc -o "$keydir/release-13.asc"
+          printf '%s  %s\n%s  %s\n' "$archive_sha" "$keydir/archive-key-13.asc" "$release_sha" "$keydir/release-13.asc" | sha256sum --check --strict
+          gpg --batch --quiet --homedir "$homedir" --import /usr/share/keyrings/debian-archive-keyring.gpg "$keydir/archive-key-13.asc" "$keydir/release-13.asc"
+          fingerprints=$(gpg --batch --homedir "$homedir" --with-colons --list-keys | awk -F: '$1 == "fpr" { print $10 }')
+          grep -Fx "$archive_fingerprint" <<<"$fingerprints"
+          grep -Fx "$release_fingerprint" <<<"$fingerprints"
+          gpg --batch --quiet --homedir "$homedir" --export > "$keydir/debian-archive-keyring.gpg"
+          test -s "$keydir/debian-archive-keyring.gpg"
+
+      - name: Build source-owned offline ARM64 Linux assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          ndk=$(node -p 'require("./scripts/source-build/linux-inputs.json").ndk')
+          NDK="$GITHUB_WORKSPACE/.deploy-tmp/source-build/ndk/android-ndk-$ndk" DEBIAN_KEYRING="$GITHUB_WORKSPACE/.deploy-tmp/linux-keyring/debian-archive-keyring.gpg" bash scripts/source-build/build-linux-assets.sh
+
       - name: Build runtime snapshot from verified inputs
         shell: bash
         run: |
@@ -673,6 +710,11 @@ jobs:
             .deploy-tmp/snapshot-013/arm64/stage/root/usr/lib/node_modules/@deepseek-ai/dsh \
             .deploy-tmp/engine-overlay/source-build-manifest.json \
             .deploy-tmp/source-build/pnpm-package-materialization.json
+          node scripts/source-build/prepare-linux-snapshot-bundle.mjs --self-test \
+            .deploy-tmp/linux-build/assets .deploy-tmp/linux-build/provenance
+          node scripts/source-build/prepare-linux-snapshot-bundle.mjs \
+            .deploy-tmp/linux-build/assets .deploy-tmp/linux-build/provenance \
+            .deploy-tmp/snapshot-013/arm64/stage/root
           snapshot_archive="$GITHUB_WORKSPACE/.deploy-tmp/snapshot-013/arm64/snapshot.tar.xz"
           snapshot_repacked="$GITHUB_WORKSPACE/.deploy-tmp/snapshot-013/arm64/snapshot.source-built.tar.xz"
           (
@@ -857,6 +899,8 @@ jobs:
             .deploy-tmp/source-build/gradle-artifacts-sha256.txt
             .deploy-tmp/source-build/signing-certificate-sha256.txt
             .deploy-tmp/source-build/package-manager-versions.txt
+            .deploy-tmp/source-build/linux-bundle-injection.json
+            .deploy-tmp/linux-build/provenance/**
             .deploy-tmp/source-build/pnpm-deploy-build-policy.json
             .deploy-tmp/source-build/pnpm-deploy-runtime-closure.json
             .deploy-tmp/source-build/pnpm-deploy-runtime-closure.lock.yaml

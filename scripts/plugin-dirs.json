@@ -7,6 +7,7 @@
     "plugins/dsh-android-bridge",
     "plugins/dsh-android-manage",
     "plugins/dsh-android-linux-env",
+    "plugins/dsh-linux-bootstrap",
     "plugins/dsh-android-file-open",
     "plugins/dsh-model-capability",
     "plugins/dsh-android-browser",

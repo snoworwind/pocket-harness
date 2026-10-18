@@ -2,11 +2,11 @@
 
 ## ARM64 Linux 离线资产来源（2026-10-18）
 
-`build-linux-assets.yml` 是只读、无秘密的内部资产链，不构建 APK、不创建 Release；手动 `gh workflow run build-linux-assets.yml --repo snoworwind/pocket-harness --ref main`。Bionilux 与运行时插件源码已导入 `vendor/bionilux` / `vendor/dsh-linux-runtime`；实际打包的 bootstrap 九个输入也登记于 `linux-source-manifest.json` 的独立来源提交与摘要。`check-linux-sources.mjs --self-test` 校验 vendor 文件及 bootstrap 实际打包文件的字节摘要、记录的本地文档偏差，以及同体积投毒/额外编译输入负控。Debian 13 自动签名密钥与 stable key 从 ftp-master 官方地址下载，分别按 SHA-256 和 primary fingerprint 固定，再与 runner 现有 keyring 合并；禁止因 runner keyring 旧而忽略未知签名。
+`build-linux-assets.yml` 是只读、无秘密的独立资产检查链，不构建 APK、不创建 Release；手动 `gh workflow run build-linux-assets.yml --repo snoworwind/pocket-harness --ref main`。APK 来源 workflow 另在同一来源提交中重跑该资产构建，并把经过验证的资产嵌入 Termux 快照，不依赖短期 Actions artifact。Bionilux 与运行时插件源码已导入 `vendor/bionilux` / `vendor/dsh-linux-runtime`；实际打包的 bootstrap 输入也登记于 `linux-source-manifest.json` 的独立来源提交与摘要。`check-linux-sources.mjs --self-test` 校验 vendor 文件及 bootstrap 实际打包文件的字节摘要、记录的本地文档偏差，以及同体积投毒/额外编译输入负控。Debian 13 自动签名密钥与 stable key 从 ftp-master 官方地址下载，分别按 SHA-256 和 primary fingerprint 固定，再与 runner 现有 keyring 合并；禁止因 runner keyring 旧而忽略未知签名。
 
 构建计划使用固定 Rust、官方 NDK、官方 Node ARM64 SHA-256、Debian 固定快照 InRelease SHA-256 与官方签名；下载参数在 linux-inputs.json。Cargo 许可清单只收集 `aarch64-linux-android` 过滤后，从当前 crate 根沿 normal/build 边可达的包；dev 依赖和其他目标不纳入。Debian dpkg 包版本/源包版本与 deb 摘要、源码归档计划随 provenance 提供。归档内计划保留 Debian copyright、Node LICENSE 及原生依赖许可清单；对外分发前仍需按 GPL 合规详档核对对应源码资产，不能只凭构建成功宣布发行合规。
 
-资产构建目前没有成功运行记录：原 run 39093355168 因错误扫描 `r-efi` 失败；修复许可闭包后，run 39102854750 又证明 runner 自带 keyring 不含 Debian 13 Trixie 当前归档签名密钥，严格验签拒绝了 InRelease，仍未产出资产。keyring 已改为下载并校验官方密钥后复跑，必须等完整 workflow 上传成功，才能把“计划产物”改成实测事实。rootfs/QEMU、Node 后续步骤此前未执行。即使资产链通过，仍未接入 APK，也不代表 Linux 设备功能已验收。
+真实 ARM64 工厂资产 run [39103194656](https://github.com/snoworwind/pocket-harness/actions/runs/39103194656) 已完整构建并上传资产与 provenance；此前 `r-efi` 全量扫描和 runner 缺 Debian Trixie keyring 的两次失败分别由目标闭包遍历和官方公钥指纹验证修复。约 59 MB、7 天保留的 artifact 仅供独立检查；APK 来源链在自身运行中重建资产，随后校验来源 commit、manifest 原始字节 sidecar、资产 SHA-256/长度和固定 GitHub namespace，再嵌入快照。当前等待本次改动的云端 APK 来源链证明；设备验收按用户决定集中后做。
 
 ## 独立检出与固定字节（2026-10-18）
 
@@ -260,4 +260,4 @@ gh workflow run build-apk-source.yml --repo snoworwind/pocket-harness --ref main
 **云端 npm 缓存隔离**：来源工作流在依赖预检前覆盖 npm 缓存到 `$RUNNER_TEMP/dsh-npm-cache`，否则 `dsh-shell-termux/.npmrc` 的 Windows 绝对路径会被 Linux npm 落入组件树，并在 provenance 输出复核时报未跟踪输入。根因及反证见 gotchas.md 坑 350。
 
 
-Linux bootstrap 本地安全分叉（2026-10-17）：`check-vendored-linux-bootstrap.mjs` 保留 MANIFEST 的原上游哈希，用 LOCAL_PATCHES 单列 asset-bundle.js 的本地安全哈希，并要求与 package.json.dshVendor.localPatches 一致；不能把本地修改改记为上游原样。运行 `node scripts/check-vendored-linux-bootstrap.mjs --self-test` 验证漂移拒绝；归档解码新增依赖见 DEPENDENCIES.md。
+Linux bootstrap 本地安全分叉（2026-10-18）：`check-vendored-linux-bootstrap.mjs` 保留 MANIFEST 的上游摘要，用 LOCAL_PATCHES 单列 `src/asset-bundle.js`、`src/index.js` 与 README 的本地摘要，并要求与 `package.json.dshVendor.localPatches` 一致；新增的 package-lock / build scripts / client bundler 作为本仓来源输入独立钉哈希。不能把本地修改改记为上游原样。运行 `node scripts/check-vendored-linux-bootstrap.mjs --self-test` 验证漂移拒绝；构建客户端新增的 `esbuild` 依赖见 DEPENDENCIES.md。

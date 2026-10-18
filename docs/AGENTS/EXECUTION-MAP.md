@@ -1452,15 +1452,17 @@ flowchart TD
 
 #### P04 文件打开、Linux 环境与模型能力插件
 
-Linux 内部插件宿主适配（实验性 internal，默认不启用）：`plugins/dsh-android-linux-env/src/linux-environment.ts` 提供受鉴权的 Linux 生命周期 HTTP 路由和 `linuxPluginHost`；`plugins/dsh-android-linux-env/src/linux-host-asset-io.ts` 提供引擎侧 `linuxAssetIO` 的**宿主透传面**（见下）。bootstrap 与 runtime 是我们自己的实验性内部插件，随应用放入内置（hard）插件目录，但**默认不启用——存在不等于启用**；应用更新或插件新版本发布都不会启用它们。宿主不下载、校验或解包资产，也不替用户启用；内部 bootstrap 被启用（服务在场）后设置页才注册「Linux环境」，未启用则 503 且无入口。runtime 目录由内部 bootstrap 完成事务后交给宿主，必须位于 `$DSH_FILES_DIR/linux-environment/plugins` 内；宿主核对 realpath 后动态 import，等待 Cordis fiber 激活，失败或卸载时 dispose。`linuxPluginHost.isInjected({name?,runtimeId?,directory?})` 只读上报**在场**（平铺或 `<name>/<version>` 布局，拒绝分隔符与外逃符号链接）并作为权威判定：显式查询未命中即不在场（不回落内存已激活目录），手工删除后 `install()` 以不在场失败关闭，新 Release 或新应用版本不会把插件重新写回。
+Linux 内部插件宿主适配（实验性 internal，默认不启用）：`plugins/dsh-android-linux-env/src/linux-environment.ts` 提供受鉴权的 Linux 生命周期 HTTP 路由和 `linuxPluginHost`；`plugins/dsh-android-linux-env/src/linux-host-asset-io.ts` 提供引擎侧 `linuxAssetIO`。bootstrap 已纳入 APK 注入集，来源链会先重建其 `lib/index.js` 与 `lib/client.js`；Linux 工厂链产出的 ARM64 runtime、Bionilux、Debian rootfs、Node、bootstrap 与 runtime 插件包，在 APK 快照构建前经来源提交、原始 manifest sidecar、URL 命名空间、摘要和体量校验后放入 `usr/share/pocket-harness/linux-assets`。`linux-env` 启动时通过 `linuxBootstrapConfig` 注入该目录、应用版本与信任校验；没有有效 Termux 前缀时不提供配置，缺少资产或校验失败则关闭安装路径、不联网回退。`linuxAssetPrepare` 是独立的壳侧准备路径。runtime 目录必须位于 `$DSH_FILES_DIR/linux-environment/plugins` 内；宿主核对 realpath 后动态 import，等待 Cordis fiber 激活，失败或卸载时 dispose。`linuxPluginHost.isInjected({name?,runtimeId?,directory?})` 只读上报**在场**（平铺或 `<name>/<version>` 布局，拒绝分隔符与外逃符号链接）并作为权威判定：显式查询未命中即不在场（不回落内存已激活目录），手工删除后 `install()` 以不在场失败关闭，新 Release 或新应用版本不会把插件重新写回。当前自检和主机单测通过；来源 APK 与设备链尚待验证，见 [known-gaps.md](known-gaps.md)。
 
 引擎侧 `linuxAssetIO`（2026-10-17 安全修复）：`downloadAsset` 只交回按摘要推导的宿主归档路径；bootstrap 复制归档并验证摘要与长度，然后 `extractArchive` 用 XZ WASM + 流式 tar 重新解码全新 staging，拒绝穿越、重复路径、链接与特殊条目，限制条目数、单文件、总展开量。复核 unpackedSize、包名与入口后原子交换槽位；不读宿主解包树、不按缓存标记或大小复用代码。源码本地分叉在 `dshVendor.localPatches` 与 vendored 门禁登记，保留原上游 commit/hash。完整边界见 BRIDGE-API.md 的 Linux 节。
 
 壳侧 `LinuxAssetPrepare.start`：清单/环境/URL 预检不改共享状态 → 锁内领取独占任务代次 → runner 下载/校验/解包 → 同代次结果提交（成功、异常及调度失败均有终态）。未拥有任务的无效请求不能释放 busy，陈旧完成不能覆盖新任务。
 
+Linux runtime manager（`vendor/dsh-linux-runtime/modules/manager.js`）：结构检查通过后，在切换 `active.json` 前经 Bionilux 在目标 rootfs 下运行共享 Node 的 `--version`，10 秒内无有效版本输出即拒绝并清理新实例，保留旧 active；外部命令输出每个流最多保留 256 KiB，超时/取消先发 TERM，1.5 秒后对进程组发 KILL。health 结构检查仍为同步只读面；安装/升级提交另需实际 smoke probe 成功。
+
 版本变化链为 `linuxBootstrap 服务就绪 → 读取持久化安装版本/应用基线/自动更新偏好/尝试记录 → 基线不同时 checkForUpdates({source:'mobile-version-change'})`；偏好开关和页面挂载都不发更新检查。手动检查只调用 `source:'manual'`，安装、重装、卸载与开关写入均需 `confirmed:true`。设置页不持久化第二份系统状态，读写都回到 bootstrap；无该服务时 HTTP 503 且不注册设置入口。这两个实验性内部插件的发布不修改注入目录或默认启用状态。
 
-vendored bootstrap 与注入集的关系（0.15.0）：`plugins/dsh-linux-bootstrap/`（源 `kelai141/dsh-bionilux@3f86a85`，只源码；`lib/` 由 `build.mjs` 在链上重建）**刻意不登记**进 `scripts/plugin-dirs.json`、`scripts/contract.json` 的 `inserted`、`scripts/profile-web.cordis.patch.yml` —— 它的 `apply()` 需要函数型 config（`linuxAssetIO`），YAML 挂载表达不了，挂进 profile 只会抛 `TypeError`；不入注入集也让 `check-patch-mounts`/`check-contract` 的双向一致断言保持真绿（它们守注入集 ↔ 挂载集，本包两边都不在）。漂移由 `scripts/check-vendored-linux-bootstrap.mjs` 守（自带 `--self-test` 正反控），它**不进** `check-release-gates.mjs` 的 `GATES`（进册即要求本地链与云端链接线，该门目前仍单独执行，尚未接入 APK 聚合链）。完整协议见 `docs/AGENTS/BRIDGE-API.md` 的 Linux 内部插件宿主节；设备证据限未启用状态，不代表完成真实安装验收。
+vendored bootstrap 与注入集的关系（0.15.0）：`plugins/dsh-linux-bootstrap/` 的 profile 注入行现已登记；函数型配置由 `dsh-android-linux-env` 在服务装配期提供，不依赖 YAML 表达回调。包本体的上游来源与本地差异由 `scripts/check-vendored-linux-bootstrap.mjs` 守，编译产物 `lib/` 不作为源输入提交，来源链从已哈希登记的源码重建。Android 侧真实安装/更新流程尚未设备验收，不能以插件注入或构建通过代替用户体验证明。
 
 
 - **一句话**：三个引擎侧插件的合块——`dsh-android-file-open` 把壳侧拷好的外部文件变成一条「强制新会话、未发送的附件草稿」（配五条受鉴权的 exact 路由与自有临时项清单）、`dsh-android-linux-env` 提供工具链/环境配方视图与开发者选项的运行时缓存白名单清理、`dsh-model-capability` 为手填供应商路由探测能力并把缺失字段写回 settings.yaml。

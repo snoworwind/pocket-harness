@@ -7,10 +7,11 @@ import { installVerifiedPluginBundle } from './asset-bundle.js'
 import { compareVersions, parseVersion } from './version.js'
 
 export const name = 'dsh-linux-bootstrap'
-export const inject = ['linuxPluginHost']
+export const inject = ['linuxPluginHost', 'linuxBootstrapConfig']
 export const DEFAULT_RUNTIME_ID = 'debian-minimal'
 export const BOOTSTRAP_VERSION = '0.5.0'
 export const STATE_FILE_NAME = 'linux-bootstrap-state.json'
+const SOURCE_MANIFEST_SHA256 = Symbol('source-manifest-sha256')
 const isManager = (value) => value && typeof value.install === 'function' && typeof value.uninstall === 'function'
 const safeError = (error) => error instanceof Error ? error.message : String(error)
 const optionalVersion = (value) => typeof value === 'string' && parseVersion(value) ? value.replace(/^v/, '') : null
@@ -155,6 +156,7 @@ export function createMobileBootstrap(options = {}) {
     managerProvider,
     getManager,
     fetchImpl = globalThis.fetch,
+    manifestProvider,
     cacheDir = dataDir ? path.join(dataDir, 'cache') : undefined,
     stagingDirectory = options.stagingDirectory ?? options.pluginDirectory ?? (dataDir ? path.join(dataDir, 'staging', 'runtime-plugin') : undefined),
     // Where the host stages a bundle it fetched itself (D-015): `<root>/<sha256>/`.
@@ -171,10 +173,10 @@ export function createMobileBootstrap(options = {}) {
   } = options
 
   if (typeof dataDir !== 'string' || !dataDir) throw new TypeError('dataDir is required')
-  if (typeof releaseUrl !== 'string' || !releaseUrl) throw new TypeError('releaseUrl is required')
+  if (typeof manifestProvider !== 'function' && (typeof releaseUrl !== 'string' || !releaseUrl)) throw new TypeError('releaseUrl or manifestProvider is required')
   if (!pluginHost || typeof pluginHost.install !== 'function' || typeof pluginHost.uninstall !== 'function') throw new TypeError('linuxPluginHost.install and uninstall are required')
   if (typeof downloadAsset !== 'function' || typeof extractArchive !== 'function') throw new TypeError('linuxAssetIO.downloadAsset and extractArchive are required')
-  if (typeof fetchImpl !== 'function') throw new TypeError('fetchImpl must be fetch-compatible')
+  if (typeof manifestProvider !== 'function' && typeof fetchImpl !== 'function') throw new TypeError('fetchImpl must be fetch-compatible')
   if (typeof appVersionProvider !== 'function' && !(appVersionProvider && (typeof appVersionProvider.getVersion === 'function' || typeof appVersionProvider.getCurrentVersion === 'function')) && installedMobileVersion == null) throw new TypeError('appVersionProvider is required')
   if (initialManager !== undefined && !isManager(initialManager)) throw new TypeError('manager must expose install() and uninstall()')
   if (managerProvider !== undefined && typeof managerProvider !== 'function') throw new TypeError('managerProvider must be a function')
@@ -215,13 +217,16 @@ export function createMobileBootstrap(options = {}) {
     return mobileVersion
   }
   const fetchManifest = async () => {
-    const { manifest, releaseTag } = await fetchLatestManifest(releaseUrl, fetchImpl)
+    const { manifest, releaseTag, sha256: sourceSha256 } = typeof manifestProvider === 'function'
+      ? await manifestProvider()
+      : await fetchLatestManifest(releaseUrl, fetchImpl)
     let checked = validateManifestShape(manifest, releaseTag)
-    await requireApprovedManifest(checked)
+    if (typeof sourceSha256 === 'string') checked[SOURCE_MANIFEST_SHA256] = sourceSha256
+    await requireApprovedManifest(checked, sourceSha256)
     return checked
   }
-  const requireApprovedManifest = async (manifest) => {
-    if (typeof verifyManifest !== 'function' || await verifyManifest(manifest) !== true) {
+  const requireApprovedManifest = async (manifest, sourceSha256 = manifest?.[SOURCE_MANIFEST_SHA256]) => {
+    if (typeof verifyManifest !== 'function' || await verifyManifest(manifest, { sourceSha256 }) !== true) {
       throw new Error('Release manifest is not approved by the source-pinned trust policy')
     }
   }
@@ -545,11 +550,12 @@ export function createMobileBootstrap(options = {}) {
 export const createBootstrap = createMobileBootstrap
 
 export function apply(ctx, config = {}) {
+  const hostConfig = ctx.linuxBootstrapConfig ?? {}
   const pluginHost = config.pluginHost ?? ctx.linuxPluginHost
-  const filesDir = config.filesDir ?? ctx.filesDir
-  const dataDir = config.dataDir ?? (filesDir ? path.join(filesDir, 'linux-environment') : null)
-  if (!dataDir) throw new TypeError('dataDir or ctx.filesDir is required')
-  const service = createMobileBootstrap({ ...config, dataDir, pluginHost })
+  const filesDir = config.filesDir ?? ctx.filesDir ?? process.env.DSH_FILES_DIR
+  const dataDir = config.dataDir ?? hostConfig.dataDir ?? (filesDir ? path.join(filesDir, 'linux-environment') : null)
+  if (!dataDir) throw new TypeError('dataDir or DSH_FILES_DIR is required')
+  const service = createMobileBootstrap({ ...hostConfig, ...config, dataDir, pluginHost })
   if (typeof ctx.provide !== 'function') throw new TypeError('Cordis context must provide provide(name, service)')
   ctx.provide('linuxBootstrap', service)
   return service

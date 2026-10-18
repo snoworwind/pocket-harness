@@ -4,6 +4,7 @@ import io
 import json
 import os
 from pathlib import Path
+import subprocess
 import tarfile
 import tempfile
 import unittest
@@ -28,7 +29,7 @@ class PackageLinuxAssetsTest(unittest.TestCase):
         self.archive(node, {f'node-v{self.inputs["node"]}-linux-arm64/{name}': text for name, text in {
             'bin/node': 'fixture Node bytes, not a native runtime', 'lib/node_modules/npm/index.js': 'fixture npm', 'LICENSE': 'fixture license'}.items()})
         with node.open('rb') as stream:
-            self.inputs['nodeSha256'] = hashlib.file_digest(stream, 'sha256').hexdigest()
+            self.inputs['nodeSha256'] = hashlib.sha256(stream.read()).hexdigest()
         self.put('scripts/source-build/linux-inputs.json', json.dumps(self.inputs))
         for package in ['linux-runtime', 'linux-bootstrap']:
             directory = 'vendor/dsh-linux-runtime' if package == 'linux-runtime' else 'plugins/dsh-linux-bootstrap'
@@ -40,6 +41,8 @@ class PackageLinuxAssetsTest(unittest.TestCase):
             else:
                 self.put(directory + '/src/index.js', 'export const fixture = true')
                 self.put(directory + '/client/index.js', 'export const fixture = true')
+                self.put(directory + '/lib/index.js', 'export const fixture = true')
+                self.put(directory + '/lib/client.js', 'window.__ModuleLoader__ = true')
         self.put('vendor/bionilux/LICENSE', 'fixture license')
         for name in ['bionilux-backend-aarch64.tar.xz', 'debian-minimal-aarch64.tar.xz']:
             self.archive(self.work / 'assets' / name, {'fixture': 'fixture archive, not a native runtime'})
@@ -62,12 +65,17 @@ class PackageLinuxAssetsTest(unittest.TestCase):
             return module.package_assets(self.work, 1)
 
     def test_local_manifest_binds_all_archives_and_has_no_runtime_download_requirement(self):
+        version = subprocess.run(['tar', '--version'], capture_output=True, text=True)
+        if version.returncode != 0 or 'GNU tar' not in version.stdout:
+            self.skipTest('asset archive reproducibility test requires GNU tar; Linux CI runs it')
         manifest = self.run_package()
         self.assertEqual(manifest['runtimes'][0]['architecture'], 'arm64')
         for asset in [*manifest['plugins'].values(), *[manifest['runtimes'][0][key] for key in ['backendAsset', 'rootfsAsset', 'nodeAsset']]]:
             archive = self.work / 'assets' / asset['url'].rsplit('/', 1)[1]
             with archive.open('rb') as stream:
-                self.assertEqual(hashlib.file_digest(stream, 'sha256').hexdigest(), asset['sha256'])
+                self.assertEqual(hashlib.sha256(stream.read()).hexdigest(), asset['sha256'])
+        with tarfile.open(self.work / 'assets/linux-bootstrap-plugin.tar.xz', 'r:xz') as archive:
+            self.assertIn('./lib/client.js', archive.getnames())
         data = (self.work / 'assets/linux-release.json').read_bytes()
         self.assertEqual((self.work / 'assets/linux-runtime-manifest.sha256').read_text().strip(), hashlib.sha256(data).hexdigest())
 
