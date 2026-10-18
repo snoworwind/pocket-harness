@@ -144,6 +144,15 @@ let toolsRequire = null;
 export const name = 'dsh-undo-savepoint';
 export const inject = ['tools', 'systemPrompt', 'webServer'];
 
+// Snapshot IDs use local time; keep human-readable timestamps in that same zone.
+function formatSnapshotTime(value) {
+  if (typeof value !== 'string' || value === '') return value ?? '';
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return value;
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+}
+
 /** 最近一次 apply() 的 ctx 引用（供 hasOpenTurn 取 session store）。 */
 let ctxRef = null;
 
@@ -433,7 +442,7 @@ export function apply(ctx, config = {}) {
           + (s.profileFiles ?? []).filter((f) => f.hash).length;
         const truncated = (s.plugins ?? []).some((p) => p.truncated);
         const sizeTxt = typeof s.totalBytes === 'number' ? `, ${fmtBytes(s.totalBytes)}` : '';
-        return `${s.id}  ${(s.time ?? '').replace('T', ' ').slice(0, 19)}  ${s.kind}${mark ? ` [${mark}]` : ''}${truncated ? ' [truncated]' : ''}  [${loc}]  ${(s.reason ?? '').slice(0, 50)}  (${s.files.length} file(s)${pluginCount > 0 ? `, ${pluginCount} plugin file(s)` : ''}${sizeTxt})`;
+        return `${s.id}  ${formatSnapshotTime(s.time)}  ${s.kind}${mark ? ` [${mark}]` : ''}${truncated ? ' [truncated]' : ''}  [${loc}]  ${(s.reason ?? '').slice(0, 50)}  (${s.files.length} file(s)${pluginCount > 0 ? `, ${pluginCount} plugin file(s)` : ''}${sizeTxt})`;
       });
       const alert = cfg.bootAlert?.crashed
         ? `⚠️ Previous DSH run did not finish starting (crashed or was killed).${lastGood ? ` Last known-good snapshot: ${lastGood.id} (${(lastGood.time ?? '').replace('T', ' ').slice(0, 19)}${lastGood.reason ? `, ${lastGood.reason}` : ''}).` : ''} You may want to undo back to it: undo_restore mode "id" snapshot_id ${lastGood?.id ?? '<id from list>'}.${crashAdvice(cfg.bootAlert?.crashReason)} If DSH cannot boot at all, use undo_safe_mode action "on" to boot with only this plugin.\n`
