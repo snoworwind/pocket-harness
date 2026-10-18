@@ -29,6 +29,7 @@ class ReleasePreparationTest(unittest.TestCase):
             if '*' not in path:
                 self.put(path, '{}')
         self.put('scripts/patches/tests/fixtures/test-0.2.0-rc.2/probe.js', 'fixture')
+        self.put('.deploy-tmp/linux-build/provenance/linux-assets.json', '{}')
         self.apk = 'out/v1-source/pocket-harness-v1-source-arm64.apk'
         self.put(self.apk, 'original APK bytes')
         self.base = '.deploy-tmp/source-build/'

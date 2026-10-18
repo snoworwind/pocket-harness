@@ -7,6 +7,7 @@
     { "plugin": "plugins/dsh-android-file-open", "reason": "同 dsh-android-bridge：@dsh-android 插件随快照出厂，不由 build-release.ps1 注入" },
     { "plugin": "plugins/dsh-model-capability", "reason": "同 dsh-android-bridge：@dsh-android 插件随快照出厂，不由 build-release.ps1 注入（F-ENV-04/05 的 pluginDirs 单常量收敛另批处理）" },
     { "plugin": "plugins/dsh-android-browser", "reason": "同 dsh-android-bridge：@dsh-android 插件随快照出厂，不由 build-release.ps1 注入" },
-    { "plugin": "plugins/dsh-android-vdisplay", "reason": "同 dsh-android-bridge：@dsh-android 插件随快照出厂，不由 build-release.ps1 注入" }
+    { "plugin": "plugins/dsh-android-vdisplay", "reason": "同 dsh-android-bridge：@dsh-android 插件随快照出厂，不由 build-release.ps1 注入" },
+    { "plugin": "plugins/dsh-linux-bootstrap", "reason": "ARM64 Linux bootstrap 源码由当前来源链构建并作为离线资产嵌入快照；旧 build-release.ps1 已退役，也没有另行注入该插件的第二条链" }
   ]
 }

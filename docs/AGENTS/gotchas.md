@@ -2625,3 +2625,7 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 407. **导入新工厂插件或应用身份后同步更新对应测试锚点（2026-10-18）**
 
 现象：PR Kotlin 单测在新增 `linux-bootstrap` 工厂补丁后，`FactoryProfilePatchTest` 的权威工厂条目计数仍按旧数值；应用身份改为 Pocket Harness 后，`OwnershipRepairCoreTest` 的正例 anchor 仍使用旧 applicationId，入口解析自然拒绝。真因：变更同时新增了一个顶层插件声明并收紧了数据目录可信边界，但测试只更新了邻近的身份断言。修法：工厂结构断言按实际 23 个顶层条目加注释头更新为 24 块；OwnershipRepair 正例用新 applicationId，旧 applicationId 留作拒绝负控。PR Linux CI 首次运行 1310 个 Kotlin 用例时发现三项失败用例、归为两类；修复后以该工作流完整回归确认。
+
+408. **来源 artifact、捕获夹具、生成物和差异注册表需同时更新（2026-10-18）**
+
+现象：新增 Linux provenance 上传项后，发布准备单测缺少对应文件；包名迁移还让捕获记录夹具和生成型 protocol JSON 与来源清单/生成器不符，新增 bootstrap 插件则漏登记退役发布脚本的显式差集。真因：这些门禁各自以工作流上传 globs、捕获哈希、生成器输出和注册表为真源，手改单边不能维持合同。修法：测试搭建阶段按实际上传清单创建 Linux provenance 文件；历史设备证据恢复原字节；protocol 夹具重新由 `gen-protocol-v2-fixture.mjs` 生成；`release-plugin-src-gaps.json` 明确记录 bootstrap 不走退役注入链。验证：发布准备测试需在 Linux/UTF-8 环境运行；patch fixture、protocol v2 与 `check-release-gates.mjs` 已本地通过，PR Linux CI 复验其余环境条件。
