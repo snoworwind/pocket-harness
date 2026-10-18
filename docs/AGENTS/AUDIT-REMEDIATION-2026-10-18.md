@@ -28,3 +28,9 @@
 - 真实旧 ARM64 来源资产 `437eea45…` 的 runtime/Node/backend/rootfs 逐个核对 manifest SHA-256 与长度后，调用当前生产解包器在 WSL ext4 成功，Node npm 与 rootfs bin/sh 链接可解析；`real-assets-ext4.log`。首次 NTFS 上 `PAM.7.gz`/`pam.7.gz` 大小写冲突的 EEXIST 保留在 `real-assets.log`，原样转 ext4 后通过。旧资产只证明格式兼容，不能证明本次源码的 APK 已构建或 Android 原生执行已验收。
 - 已实际触发 main 包装入口 `build-apk.yml`、`draft_release=false`：[来源双构建 run 39112321118](https://github.com/snoworwind/pocket-harness/actions/runs/39112321118)，源码为 `f5d0d92…`。启动时两台 runner 均通过来源预检、main guard 和临时证书自证，进入实际源码构建；最终比对/正式签名结果须以该 run 后续结论为准，不在此提前记 PASS。
 - **未做设备验证**：实际 `/home/zouhaoyu/.local/share/android-sdk/platform-tools/adb devices -l` 为空。未取得 CDP/ADB 自主任务、双方向截图、实际 IME/通知/授权交互或最终 ARM64 APK 装机证据；不能把源码修复或宿主绿记为功能完整验收，未创建 Release、未公开发布。
+
+## 最终 main 来源链的容量失败与修复（2026-10-18）
+
+- 最终 main HEAD `d4aa9fcc50ea2b4fc0ab249929b5b3d3bb695613` 的来源双构建 run [39113529859](https://github.com/snoworwind/pocket-harness/actions/runs/39113529859) 未通过：两个 replica 都在 APK 构建的 `check-engine-overlay` 适配器处失败，日志先显示 `Free space left: 83 MB`，随后 `check-dsh-source-snapshot.mjs` 在复制解包后的 engine 到 `/tmp/.../reference` 时 `ENOSPC`。这不是业务判据失败，也不是源码修复回退；该 run 不能作为最终候选证据。
+- 新增 `scripts/source-build/reclaim-build-disk.mjs`：在快照封包和 post-snapshot 检查后删除不再被后续步骤读取的 source-only 树，保留 `snapshot-013/.../stage`、`engine-overlay`、`source-build` 报告和 `linux-build/provenance`；每目标校验真实路径位于 `.deploy-tmp`，拒绝 symlink、挂载中的 rootfs 和特殊文件，清理后低于 4 GiB 即失败。`cloud-workflow.test.mjs` 增加调用位置回归和“删掉调用必须判红”的负控。
+- 本机证据：WSL Linux 下 `reclaim-build-disk.mjs --self-test` 通过（正控、symlink escape、`--check-only`、空间下限四项）；`node --test scripts/source-build/*.test.mjs` 为 **120/120，零失败、零跳过**（`source-tests-final.log`）。Linux 全量来源测试已取得；新的 main 双构建仍待运行，不能提前记为 PASS。设备侧仍未验收。

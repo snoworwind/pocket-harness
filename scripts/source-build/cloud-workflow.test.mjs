@@ -75,6 +75,29 @@ test('source build overrides the checked-in Windows npm cache before any npm ins
   assert.match(source.slice(setup, source.indexOf('\n      - name:', setup + 1)), /npm_config_cache=\$RUNNER_TEMP\/dsh-npm-cache/)
 })
 
+const reclaimInvocation = 'node scripts/source-build/reclaim-build-disk.mjs --root "$GITHUB_WORKSPACE"'
+function assertReclaimPlacement(source) {
+  const selfTest = source.indexOf('node scripts/source-build/reclaim-build-disk.mjs --self-test')
+  const snapshotStep = source.indexOf('      - name: Build runtime snapshot from verified inputs')
+  const reclaim = source.indexOf(reclaimInvocation)
+  const checker = source.indexOf('node scripts/source-build/check-dsh-source-snapshot.mjs "$snapshot_archive"')
+  const kotlinStep = source.indexOf('      - name: 单元测试门禁前置')
+  assert.ok(selfTest > 0)
+  assert.ok(snapshotStep > 0)
+  assert.ok(reclaim > snapshotStep)
+  assert.ok(checker > reclaim)
+  assert.ok(kotlinStep > checker)
+  assert.match(source.slice(snapshotStep, checker), /reclaim-build-disk\.mjs --root "\$GITHUB_WORKSPACE"/)
+}
+test('source workflow reclaims source-only trees before the APK gate and keeps the self-test', () => {
+  const source = read('build-apk-source.yml')
+  assertReclaimPlacement(source)
+})
+test('negative control: missing disk reclamation is rejected', () => {
+  const source = read('build-apk-source.yml')
+  assert.throws(() => assertReclaimPlacement(source.replace(reclaimInvocation, '')), assert.AssertionError)
+})
+
 test('draft workflow builds read-only and publishes only this run artifacts as a draft', () => {
   const workflow = read('release-source-draft.yml')
   assert.match(workflow, /SOURCE_REF: \$\{\{ github.ref \}\}/)

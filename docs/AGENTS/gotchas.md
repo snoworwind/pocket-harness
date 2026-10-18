@@ -2673,3 +2673,7 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 419. **bootstrap package-lock 也是逐字节来源输入，必须禁止 autocrlf（2026-10-18）**
 
 现象：分支切换后 package-lock 变成 CRLF，严格来源门禁报摘要不符，而 Git 语义 diff 为空。真因：既有 -text 只登记了 package.json、mjs、src 和 README，漏掉同样被 source manifest 哈希覆盖的 lock。修法：对 bootstrap/package-lock.json 也设 -text；不改变 Git blob、lock 解析或批准摘要。实际临时 Git autocrlf checkout 正控保持摘要，删除该属性的负控必改变摘要且仅换行不同；来源 self-test 在 POSIX 原样通过。
+
+420. **14 GB runner 在 APK gate 重解快照前就会耗尽磁盘（2026-10-18）**
+
+现象：最终 main run 39113529859 的两个 replica 都在 `[build-apk/arm64] 门禁：引擎 overlay 抽验` 处失败；日志先出现 `Free space left: 83 MB`，随后快照检查器在 `cpSync` 到 `/tmp/dsh-source-snapshot-*/reference/...` 时报 `ENOSPC`。真因：快照封包后，runner 仍同时保留 Harness 依赖树、pnpm deploy 树、Linux rootfs/cargo/assets、NDK、Termux webroot、解包 stage、快照归档和 engine-overlay 源包缓存；APK gate 的 overlay 适配器还会再次解包快照并把完整 engine 复制成 reference，峰值超过标准 GitHub 托管 runner 的 14 GB 磁盘。修法：在快照封包与 post-snapshot 检查后、第一次来源快照检查前运行 `scripts/source-build/reclaim-build-disk.mjs --root "$GITHUB_WORKSPACE"`，只删除已不属于后续输入的 `engine-deploy`、`linux-build` 非 provenance 内容、NDK、Termux webroot、bootstrap/node deb 解包树和 Harness ignored 构建产物；保留 `snapshot-013/.../stage`（`check-contract.mjs` 读取）、`engine-overlay` 源包缓存、`source-build` 报告和 `linux-build/provenance`。脚本对每个目标校验真实路径必须位于 `.deploy-tmp` 内，拒绝符号链接目标、已挂载 rootfs 和非目录/文件；清理后可用空间低于 4 GiB 即失败。受控证据：`reclaim-build-disk.mjs --self-test` 的正控、symlink escape、`--check-only` 和空间下限负控通过；`cloud-workflow.test.mjs` 拒绝缺失调用。该失败不是业务门禁判红，不能记作源码修复验收；须以新 main 来源 run 的最终结论替换本条。设备侧仍无在线设备，未做设备验证。
