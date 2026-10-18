@@ -155,9 +155,11 @@ export function apply(ctx, config = {}) {
     ctx.provide('linuxRuntimeManager', manager);
   }
   if (typeof ctx.effect === 'function') {
-    ctx.effect(() => () => {
+    ctx.effect(() => async () => {
       disposeTool();
       manager.off('change', syncTool);
+      // A host-supplied manager retains its external owner; scopes own managers they create.
+      if (!config.manager) await manager.dispose();
     });
   }
   return manager;
