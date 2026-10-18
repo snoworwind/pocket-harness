@@ -898,7 +898,8 @@ export class LinuxRuntimeManager {
 
   async uninstall() {
     return this._exclusive(async () => {
-      if (this.disposed) return this.status();
+      // Bootstrap may retain the handle after scope teardown solely to remove its data.
+      // Disposal still prevents new execution/installation, but must not turn uninstall into a no-op.
       const previous = this._readActive();
       if (!previous) {
         await this._removeActive().catch(() => undefined);

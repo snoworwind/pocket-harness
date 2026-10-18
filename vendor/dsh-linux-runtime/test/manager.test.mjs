@@ -6,6 +6,7 @@ import { existsSync } from 'node:fs';
 import path from 'node:path';
 
 import { createManager, ExecutionGate, GUEST_PATH_PREFIXES, isGuestPath, spawnCommand } from '../modules/manager.js';
+import { apply as applyRuntime } from '../lib/index.js';
 import { validateManifest, validateAsset, selectRuntime } from '../modules/manifest.js';
 
 const temporaryRoot = path.join(process.cwd(), '.deploy-tmp', `bionilux-runtime-tests-${process.pid}`);
@@ -358,6 +359,37 @@ test('active-pointer write failure retains the previous pointer and removes only
   assert.equal(manager.status().healthy, true);
   const { readdir } = await import('node:fs/promises');
   assert.deepEqual(await readdir(path.join(dataDir, 'instances')), [before.instanceId]);
+});
+
+test('scope disposal stops owned commands and a retained disposed handle can still uninstall data', { timeout: 3000 }, async () => {
+  const fixture = makeManifest(), dataDir = tempDir();
+  const io = makeIo(fixture), runner = makeRunner();
+  let dispose;
+  const manager = applyRuntime({ tools: { register: () => () => {} }, provide() {}, effect(fn) { dispose = fn(); } }, {
+    dataDir, downloadAsset: io.downloadAsset, extractArchive: io.extractArchive, runCommand: runner.runCommand,
+  });
+  await manager.install(fixture.manifest);
+  const running = manager.execute({ command: 'sleep 100' });
+  await new Promise(resolve => setImmediate(resolve));
+  try {
+    await dispose();
+    assert.equal(manager.disposed, true);
+    assert.equal((await running).exitCode, 130);
+    await assert.rejects(manager.execute({ command: 'echo stale' }), /disposed/);
+    const removed = await manager.uninstall();
+    assert.equal(removed.installed, false);
+    assert.equal(existsSync(path.join(dataDir, 'active.json')), false);
+  } finally { await manager.dispose(); }
+});
+
+test('scope disposal does not take ownership of an externally supplied manager', async () => {
+  const fixture = makeManifest();
+  const { manager } = makeManager(fixture, { dataDir: tempDir() });
+  let dispose;
+  applyRuntime({ tools: { register: () => () => {} }, provide() {}, effect(fn) { dispose = fn(); } }, { manager });
+  await dispose();
+  assert.equal(manager.disposed, false);
+  await manager.dispose();
 });
 
 test('shared glibc Node is downloaded once and reused across releases', async () => {
