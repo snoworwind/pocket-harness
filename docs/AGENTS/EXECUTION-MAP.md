@@ -2436,3 +2436,5 @@ app/src/main/java/com/dsharnessmobile/shell/LogSanitizer.kt
 - [B02] 漂移：`scripts/check-code-map.mjs` 只在 apk 仓存在（协调仓 `scripts/` 无此文件），且原先未被列进 `MIRROR_TOP` → 当时这条门禁自身没有镜像守护（**2026-10-15：`MIRROR_TOP` 与整个镜像层已按用户决定移除，本项随之失效**）。
 
 Linux runtime gate：共享计数归零即唤醒管理等待者；pendingExclusive 先于等待登记，后来的 execute 不得越过排队 install/uninstall/dispose。反例位于 vendor/dsh-linux-runtime/test/manager.test.mjs。
+
+Linux runtime 安装提交点为 _writeActive 成功返回；此后旧实例清理不进入删除新实例的回滚域，失败通过 cleanupWarning 返回。change 观察者按 rawListeners 独立调用并保留 once 语义。

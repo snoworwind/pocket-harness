@@ -598,8 +598,10 @@ export class LinuxRuntimeManager {
   }
 
   _emitState() {
-    const state = this.status();
-    this.events.emit('change', state);
+    const state = Object.freeze({ ...this.status(), ...(this.lastCleanupError ? { cleanupWarning: this.lastCleanupError } : {}) });
+    for (const listener of this.events.rawListeners('change')) {
+      try { listener.call(this.events, state); } catch { /* Observers cannot undo a committed installation. */ }
+    }
     try {
       this.onStateChange?.(state);
     } catch {
@@ -826,6 +828,7 @@ export class LinuxRuntimeManager {
     const finalInstance = this._instancePaths(instanceId).root;
     let nodeCreated = false;
     let finalPublished = false;
+    let committedRecord;
     const nodeKey = nodeKeyFor(selection.runtime);
     try {
       await fs.mkdir(stagedInstance, { recursive: true });
@@ -870,10 +873,7 @@ export class LinuxRuntimeManager {
       await this._probeRuntime(health);
       await this._stopChildren();
       await this._writeActive(record);
-      if (previous && previous.instanceId !== record.instanceId) {
-        await this._removePreviousInstance(previous, nodeKey);
-      }
-      return this._emitState();
+      committedRecord = record;
     } catch (error) {
       if (finalPublished) await removeTree(finalInstance).catch(() => undefined);
       if (nodeCreated && !this._nodeReferencedByAnyInstance(this._nodePath(nodeKey))) {
@@ -883,6 +883,13 @@ export class LinuxRuntimeManager {
     } finally {
       await removeTree(staging).catch(() => undefined);
     }
+    // The active pointer is committed. Garbage collection must never roll it back.
+    this.lastCleanupError = null;
+    if (previous && previous.instanceId !== committedRecord.instanceId) {
+      try { await this._removePreviousInstance(previous, nodeKey); }
+      catch (error) { this.lastCleanupError = String(error?.message ?? error); }
+    }
+    return this._emitState();
   }
 
   async reinstall(manifest, runtimeId = 'debian-minimal') {
