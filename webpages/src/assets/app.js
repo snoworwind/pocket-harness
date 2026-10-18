@@ -14,7 +14,7 @@
  */
 import {
   ABI_LABELS, API_LATEST_URL, LATEST_RELEASE_URL, MIRROR_TEMPLATES, RELEASES_URL, SUPPORTED_ABIS,
-  assetUrl, canonicalApkName, classifyAbi, formatBytes, pickAsset, probeUrl,
+  assetUrl, canonicalApkName, classifyAbi, formatBytes, isSourceApkName, pickAsset, probeUrl,
 } from './release.js';
 
 const MIRROR_KEY = 'dsh.pages.mirror.v1';
@@ -360,10 +360,22 @@ function renderDownload(release, classification) {
   if (!asset) return renderNoAsset(tag, classification, release);
 
   const canonical = canonicalApkName(tag, classification.abi);
-  const legacyNote = asset.name !== canonical ? '<p class="muted small">该版本沿用历史资产名。</p>' : '';
+  // 来源链草稿的资产名本来就不由 tag 推导（tag 不含版本），不能当成「历史资产名」告警。
+  const legacyNote = !isSourceApkName(asset.name, classification.abi) && asset.name !== canonical
+    ? '<p class="muted small">该版本沿用历史资产名。</p>'
+    : '';
   let current = initialMirror();
   const digest = release.sha256?.[classification.abi];
   const hasDigest = typeof digest === 'string' && /^[0-9a-f]{64}$/i.test(digest);
+  // 校验文件名/地址来自构建期合同：普通 release = MANIFEST.txt，来源草稿 = SHA256SUMS.txt。
+  // 缺字段时退回 Releases 页面，不再把 MANIFEST.txt 写死成唯一入口。
+  const checksumFile = typeof release.checksumFile === 'string' && release.checksumFile !== ''
+    ? release.checksumFile
+    : 'MANIFEST.txt';
+  const checksumHref = typeof release.checksumUrl === 'string' && release.checksumUrl !== ''
+    ? release.checksumUrl
+    : RELEASES_URL;
+  const checksumLink = '<a href="' + esc(checksumHref) + '" rel="noopener">' + esc(checksumFile) + '</a>';
 
   el.body.innerHTML =
     '<div class="verline">' +
@@ -388,8 +400,9 @@ function renderDownload(release, classification) {
         '<li>当前发行仅提供 arm64 安装包。</li>' +
       '</ol>' +
       (hasDigest
-        ? '<p class="hash">SHA-256（' + esc(asset.name) + '）<br>' + esc(digest) + '</p>'
-        : '<p class="hash">该版本未提供内联校验值，可在 Releases 页面的 MANIFEST.txt 中核对。</p>') +
+        ? '<p class="hash">SHA-256（' + esc(asset.name) + '）<br>' + esc(digest) +
+          '<br><span class="muted small">校验文件：' + checksumLink + '</span></p>'
+        : '<p class="hash">该版本未提供内联校验值，可在 ' + checksumLink + ' 中核对。</p>') +
     '</details>' +
     '';
 
