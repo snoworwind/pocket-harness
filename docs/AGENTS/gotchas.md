@@ -2657,3 +2657,7 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 415. **离线 Linux 必须用生产全链验证归档格式、包槽与 IO 约定（2026-10-18）**
 
 现象：各层单测绿，实际归档却因 ./ 根条目拒绝；Node/rootfs 链接被插件政策一刀切拒绝，包槽不在宿主根内，runtime 又没有资产 IO。真因：资产正控只接替身宿主/管理器，没串生产消费者。修法：仅接受一次零体积目录根条目；plugin 继续禁链接，runtime 延迟创建内根链接、拒绝链接父目录和逃逸，rootfs 的绝对链接转成根内相对链接；包槽改到 plugins/linux-runtime；runtime 明确适配“写 destination”下载约定并转发 kind。禁网联测使用真实 GNU tar、host、Cordis、bootstrap 和 manager，只有 ARM64 原生执行器为宿主夹具；覆盖安装、工具执行、重装、卸载和路径/链接负控。日志 offline-integration.log、linux-host-io.log；设备仍未验收。
+
+416. **独立 applicationId 不会改写 Kotlin 组件类名（2026-10-18）**
+
+现象：IME/键盘广播把新包名与 .AdbKeyboardService/.Receiver 拼在一起，实际会解析到不存在的新 namespace 类；环境准备还 grep 旧包名，造成启用成功误判或他包误命中。真因：应用身份与类 namespace 的边界混淆。修法：组件写成新 applicationId/原 namespace 全类名，列表按规范化完整 ComponentName 比较，旧包/旧短类/前后缀相似项均拒绝。承接旧 PR #2 独有修复但不引回其整树类重命名。组件和真实 env_prepare 工具反证通过；未做设备验证。
