@@ -10,6 +10,10 @@ scripts/patches/tests/fixtures/dsh-client-modules-0.2.0-rc.2/lib/index.js -text
 # Capture manifests bind every fixture and the registry to exact Git bytes.
 scripts/patches/tests/fixtures/** -text
 scripts/patches/registry.json -text
+# Reviewed native/runtime source imports retain the original bytes on every host.
+vendor/bionilux/** -text
+vendor/dsh-linux-runtime/** -text
+scripts/source-build/build-linux-assets.sh text eol=lf
 # 旧 LFS 底座（base/*.tar.xz）未导入：来源链明确禁止读取，本仓不启用 LFS。
 
 # 第三方通告随 APK 分发，禁用行尾转换（防 autocrlf 幻影 diff 复发）
