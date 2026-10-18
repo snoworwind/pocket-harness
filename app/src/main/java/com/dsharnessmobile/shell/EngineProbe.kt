@@ -1,4 +1,4 @@
-package com.dsharnessmobile.shell
+package com.pocketharness.shell
 
 import java.net.ConnectException
 import java.net.HttpURLConnection

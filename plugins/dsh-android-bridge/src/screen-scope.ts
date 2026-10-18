@@ -22,7 +22,7 @@ export function isVirtualScreenId(screenId: string | undefined): boolean {
   return virtualScreenOrdinal(screenId) !== null
 }
 
-const SHELL_SCREEN_SCOPE_PREFS_DEFAULT = '/data/user/0/com.dsharnessmobile.shell/shared_prefs/dsh_screen_scope.xml'
+const SHELL_SCREEN_SCOPE_PREFS_DEFAULT = '/data/user/0/com.pocketharness.shell/shared_prefs/dsh_screen_scope.xml'
 
 /** Result returned before a tool reads pixels, a UI tree, or dispatches an input action. */
 export type ScreenAccessDecision =

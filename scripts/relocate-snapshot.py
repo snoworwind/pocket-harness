@@ -25,11 +25,11 @@ import tarfile
 
 OLD = b"/data/data/com.termux"
 OLD_S = "/data/data/com.termux"
-DEFAULT_NEW = "/data/user/0/com.dsharnessmobile.shell"
+DEFAULT_NEW = "/data/user/0/com.pocketharness.shell"
 # legacy package-name prefixes (pre-FX-1) that must also be relocated:
 LEGACY_PKG = b"com.dshmobile.shell"
 LEGACY_PKG_S = "com.dshmobile.shell"
-NEW_PKG_S = "com.dsharnessmobile.shell"
+NEW_PKG_S = "com.pocketharness.shell"
 
 # build-residue fragments/suffixes — intermediate files only.  Native module
 # products (*.node / *.so under node_modules/<pkg>/build/Release) are KEPT.

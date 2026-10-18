@@ -1,4 +1,4 @@
-package com.dsharnessmobile.shell
+package com.pocketharness.shell
 
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.GestureDescription

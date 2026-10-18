@@ -3,6 +3,7 @@
 > 全部版本历史都堆在这里（AGENTS.md 不再设更新记录表）。**新条目倒序加在表格最上方**。细节写进对应详档，这里只留一行摘要。
 
 | 时间 | 版本 | 更新内容 | 更新者 |
+| 2026-10-18 | **独立应用身份（源码与宿主验证完成，设备待验）** | 迁移为 Pocket Harness / com.pocketharness.shell，AIDL、插件、运行时前缀与设备脚本同步；最终 APK 在独立 job 以私有新签名交付，构建 worker 不持私钥。仅支持 ARM64；私有仓暂不使用收费分支保护，Actions 强制 SHA 固定与 token 默认只读。Kotlin 1310 项、来源链 Linux 109 项通过，未做设备验证。 | Codex |
 | 2026-10-18 | **pocket-harness 首次提交（基线导入，未做设备验证）** | 基于 `snoworwind/dsh-mobile-apk` 的 `security/hardening` 分支提交 `cb1c315` 建立独立私有仓；只调整仓库级标识（README / AGENTS / CODEOWNERS、站点默认坐标、CI 与来源草稿入口的分支改为 `main`），运行时代码与 Android 标识未改；应用名、applicationId、APK 产物前缀的迁移边界见 `BASELINE.md`。 | DSH Agent |
 | 2026-10-17 | **第二轮 17 项安全发现源码修复（设备待验，云端草稿已出）** | 授权改为进程内状态与系统凭据确认，通知动作原生认证，中继先鉴权再分配流槽位；市场安装强制审批、响应体限额、状态路由只读、nonce 校验、路径/注入收紧；来源快照实际载荷绑定、preinstall 重建、缓存/下载摘要与 Gradle pin。Linux 原发布 API 404，空 pin 失败关闭。云端 run 39050643684 从 `bb8176a` 成功创建草稿 Release `hardening-source-bb8176a9ca99-39050643684-1`（draft+prerelease，ARM64 APK+provenance，本机复核哈希一致）；此前 run 39047619605 在来源包 payload pin 处失败，该判据因构建不可复现已撤回并登记为 385 未关闭缺口。设备三层验收未做；测试与边界见 SECURITY-REMEDIATION-2026-10-17-R2.md。 | Codex |
 | 2026-10-17 | **第二轮漏洞挖掘登记（只记录，未修复）** | 按用户指示继续挖掘并先记文档：17 项新发现（坑 376-392），覆盖用户授权状态可被 app-uid/同源页面改写、通知审批可被监听应用代按、3080 中继与 public status 的可用性、市场无确认安装、Linux 第三方 Release 信任锚、前端 title/子串哨兵/open-path、来源链快照、preinstall、摘要、缓存、Gradle 五处缺口。全部静态审查，未修、未构建 APK、未做设备验证；详档 SECURITY-AUDIT-2026-10-17-R2.md。 | Codex |

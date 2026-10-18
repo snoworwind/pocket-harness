@@ -74,7 +74,7 @@ function selfTest() {
   if (topOnDisplay0(dump) !== 'com.android.settings') { failed++; console.error('SELF-TEST FAIL：display 0 前台解析') }
   if (topOnDisplay0('') !== '') { failed++; console.error('SELF-TEST FAIL：空输入必须为空串') }
   if (topOnDisplay0('    topResumedActivity=ActivityRecord{1 u0 a/.M t1}') !== '') { failed++; console.error('SELF-TEST FAIL：无 Display 锚点不得猜屏') }
-  if (a11yBound('Bound services:{Service[1]\n  com.dsharnessmobile.shell/.DeviceControlService}', 'dsharnessmobile') !== true) { failed++; console.error('SELF-TEST FAIL：a11y 绑定判定') }
+  if (a11yBound('Bound services:{Service[1]\n  com.pocketharness.shell/.DeviceControlService}', 'dsharnessmobile') !== true) { failed++; console.error('SELF-TEST FAIL：a11y 绑定判定') }
   if (failed > 0) { console.error(`VERIFY-ADB-ONLY-TREE SELF-TEST FAILED（${failed}）`); process.exit(1) }
   console.log('VERIFY-ADB-ONLY-TREE SELF-TEST PASSED（4 例：前台解析 / 空输入 / 无锚点 fail-closed / a11y 绑定）')
 }
@@ -160,14 +160,14 @@ async function main() {
 
   // ── P0 前置：设备在线 / 快照就绪 / 应用在前台 / **无障碍必须是关的** ──
   if (!adb(['devices']).includes(SERIAL)) { record('设备在线', 'INCONCLUSIVE', SERIAL); process.exit(2) }
-  const fp = sh('run-as com.dsharnessmobile.shell ls files/.snapshot-fingerprint')
-  const tx = sh('run-as com.dsharnessmobile.shell ls files/.snapshot-transaction')
+  const fp = sh('run-as com.pocketharness.shell ls files/.snapshot-fingerprint')
+  const tx = sh('run-as com.pocketharness.shell ls files/.snapshot-transaction')
   if (!fp.includes('.snapshot-fingerprint') || !/No such file/.test(tx)) {
     record('快照就绪', 'INCONCLUSIVE', '刷新期间禁跑验收'); process.exit(2)
   }
-  sh('am start -n com.dsharnessmobile.shell/.MainActivity')
+  sh('am start -n com.pocketharness.shell/.MainActivity')
   await new Promise((r) => setTimeout(r, 2500))
-  const a11y = a11yBound(sh('dumpsys accessibility'), 'com.dsharnessmobile.shell')
+  const a11y = a11yBound(sh('dumpsys accessibility'), 'com.pocketharness.shell')
   if (a11y) {
     record('前提：无障碍关闭（纯 Shizuku）', 'INCONCLUSIVE',
       '本套件测的是「只有 ADB/Shizuku」这条形态；当前无障碍已开——请先在系统设置里关掉「DSH 设备控制」再跑')

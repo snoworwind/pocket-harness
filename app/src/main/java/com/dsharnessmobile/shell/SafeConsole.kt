@@ -1,4 +1,4 @@
-package com.dsharnessmobile.shell
+package com.pocketharness.shell
 
 /**
  * 控制台离线口令 `dsh safe` 的解析结果（缺陷 D/fx-2）。

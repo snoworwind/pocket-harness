@@ -1,4 +1,4 @@
-package com.dsharnessmobile.shell
+package com.pocketharness.shell
 
 import java.io.File
 import org.junit.Assert.assertEquals
@@ -75,7 +75,7 @@ class UserCopyTest {
 
   @Test
   fun legacyBrandNamesAreGoneFromUserVisibleResources() {
-    // 旧形态：同一个应用四个名字（DeepCode / DSH / dsh / DeepSeek Harness）。
+    // 旧形态：同一个应用四个名字（Pocket Harness / DSH / dsh / DeepSeek Harness）。
     // 资源文件里的每个字符串都是用户可见的，一律不得再出现旧名。
     // 只看**值**：注释里出现旧名不算命中（渠道 ID 仍是 dsh，注释里点名它是对的——
     // 那是内部标识，不是用户可见文案）。这与门禁「只看代码不看注释」的口径一致。

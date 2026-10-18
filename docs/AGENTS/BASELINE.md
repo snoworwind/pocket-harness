@@ -18,9 +18,9 @@
 - 来源草稿入口的分支校验：`refs/heads/security/hardening` → `refs/heads/main`。
 - 补丁夹具 `manifest.capture.registrySha256` 重封：基线前 registry 已加入 vendor-only 补丁，engine 夹具字节未变；理由见 [known-gaps.md](known-gaps.md) 对应行。
 
-## 刻意未改的应用/产物标识
+## 首个提交未迁移的标识（历史边界）
 
-以下标识仍沿用基线值。它们会改变安装身份、用户可见文案或发布产物，必须单独提交并完成仓库规定的验证；本轮环境没有 Android SDK 与 adb，无法完成编译、打包与设备三层验收。
+首个提交沿用以下基线值。现行身份已迁移为 Pocket Harness / `com.pocketharness.shell`（applicationId 与 namespace），最终来源 APK 使用私有新签名；旧 DeepCode 可并排保留，不能覆盖升级。用户数据不自动跨 UID 读取，须由用户显式导出/导入；代码目录暂保留历史路径，不影响 Kotlin 包声明。APK 文件前缀暂保留兼容发布链。以下表格只记录首个提交的历史边界。它们会改变安装身份、用户可见文案或发布产物，必须单独提交并完成仓库规定的验证；本轮环境没有 Android SDK 与 adb，无法完成编译、打包与设备三层验收。
 
 | 标识 | 基线值 | 为什么不在首个提交改 |
 |---|---|---|

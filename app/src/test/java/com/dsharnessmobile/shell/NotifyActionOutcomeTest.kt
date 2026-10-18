@@ -1,4 +1,4 @@
-package com.dsharnessmobile.shell
+package com.pocketharness.shell
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -62,7 +62,7 @@ class NotifyActionOutcomeTest {
   fun 结果键与显式动作字面量稳定() {
     // 三处必须同字面量：通知动作、接收侧读取、用例
     assertEquals("dsh.reply", NotifyActionReceiver.REPLY_KEY)
-    assertEquals("com.dsharnessmobile.shell.action.NOTIFY_ACTION", NotifyActionReceiver.ACTION_NOTIFY_ACTION)
+    assertEquals("com.pocketharness.shell.action.NOTIFY_ACTION", NotifyActionReceiver.ACTION_NOTIFY_ACTION)
     assertEquals("dsh.action", NotifyActionReceiver.EXTRA_ACTION)
     assertEquals("dsh.eventId", NotifyActionReceiver.EXTRA_EVENT_ID)
     assertEquals("dsh.kind", NotifyActionReceiver.EXTRA_KIND)

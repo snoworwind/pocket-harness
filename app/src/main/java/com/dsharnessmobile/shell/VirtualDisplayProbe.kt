@@ -1,4 +1,4 @@
-package com.dsharnessmobile.shell
+package com.pocketharness.shell
 
 import android.content.Context
 import android.hardware.display.DisplayManager

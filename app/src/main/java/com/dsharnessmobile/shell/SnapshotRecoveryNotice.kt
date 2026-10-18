@@ -1,4 +1,4 @@
-package com.dsharnessmobile.shell
+package com.pocketharness.shell
 
 /**
  * 快照恢复期「拒绝回滚」的用户可见上报（0.14.2-fx-2 缺口）。

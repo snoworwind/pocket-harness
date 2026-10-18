@@ -1,4 +1,4 @@
-package com.dsharnessmobile.shell
+package com.pocketharness.shell
 
 import android.os.Bundle
 import android.os.ParcelFileDescriptor
@@ -26,7 +26,7 @@ import java.nio.file.Paths
  */
 object OwnershipRepair {
   const val DEFAULT_TIMEOUT_MS = 20_000L
-  private const val PACKAGE_NAME = "com.dsharnessmobile.shell"
+  private const val PACKAGE_NAME = "com.pocketharness.shell"
 
   /** Full Android UID, including user/profile ID; never reduce it to the appId for fchown. */
   fun isTrustedAppDataAnchor(dataDir: String, uid: Int): Boolean {

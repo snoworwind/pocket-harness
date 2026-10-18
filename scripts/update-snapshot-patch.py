@@ -5,7 +5,7 @@
 以主仓库 scripts/profile-web.cordis.patch.yml 为权威（make-snapshot.sh 既有原则：权威副本覆盖防漂移）。
 2026-08-23（审核 M1）：0.13.0 装配只对 web profile 有意义——非 web profile（headless 等保留形态）
 默认跳过，除非传 --all-profiles 显式覆盖。
-路径表单为内嵌包路径（/data/data/com.dsharnessmobile.shell/files/... = /data/user/0/... 同一物理目录）。
+路径表单为内嵌包路径（/data/data/com.pocketharness.shell/files/... = /data/user/0/... 同一物理目录）。
 用法：python update-snapshot-patch.py <snapshot.tar.xz> <out.tar.xz> <authoritative.patch.yml> [--all-profiles]
 """
 import io

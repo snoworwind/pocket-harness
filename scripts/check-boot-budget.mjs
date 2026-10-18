@@ -859,7 +859,7 @@ function discoverArtifacts(explicitSegments, explicitProbe) {
  */
 function pullFromDevice(serial, dir) {
   const adb = process.env.ADB || 'adb'
-  const pkg = process.env.DSH_SHELL_PACKAGE || 'com.dsharnessmobile.shell'
+  const pkg = process.env.DSH_SHELL_PACKAGE || 'com.pocketharness.shell'
   try {
     mkdirSync(dir, { recursive: true })
     const targets = [

@@ -1,4 +1,4 @@
-package com.dsharnessmobile.shell
+package com.pocketharness.shell
 
 /**
  * 功能 B（0.14.6）诊断包出口的**唯一脱敏咽喉**（规格 B4）。

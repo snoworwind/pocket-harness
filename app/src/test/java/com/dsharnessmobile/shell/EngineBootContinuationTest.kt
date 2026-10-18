@@ -1,4 +1,4 @@
-package com.dsharnessmobile.shell
+package com.pocketharness.shell
 
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit

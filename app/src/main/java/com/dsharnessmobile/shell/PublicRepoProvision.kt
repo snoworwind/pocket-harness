@@ -1,4 +1,4 @@
-package com.dsharnessmobile.shell
+package com.pocketharness.shell
 
 /**
  * 公共导出目录（`Documents/dshdata`）的**供给结果**与展示口径（纯逻辑，JVM 可直接测）。

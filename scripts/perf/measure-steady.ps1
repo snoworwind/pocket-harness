@@ -18,7 +18,7 @@ param(
   [switch]$DryRun
 )
 $ErrorActionPreference = 'Stop'
-$pkg = 'com.dsharnessmobile.shell'
+$pkg = 'com.pocketharness.shell'
 $act = "$pkg/.MainActivity"
 
 function Invoke-Adb([string[]]$argv) {

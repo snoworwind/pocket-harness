@@ -2428,3 +2428,5 @@ app/src/main/java/com/dsharnessmobile/shell/LogSanitizer.kt
 - [B02] 漂移：`历史 BRIDGE-API 副本（当前契约见§6 K04）` 说聚合入口「`--list` 现数，当前 17 项」，源码 `scripts/check-release-gates.mjs:28`（`GATES` 数组）是 27 项（同仓 `docs/AGENTS/build-and-env.md:48` 写的是 27 项，两份文档自相矛盾）。
 - [B02] 漂移：5 个门禁脚本的两仓副本行尾不同（协调仓 CRLF、apk 仓 LF），`cmp` 字节不等、归一化后内容一致：`scripts/check-boot-budget.mjs`、`scripts/check-browser-syntax-floor.mjs`、`scripts/check-build-parallel-cap.mjs`、`scripts/check-snapshot-builder-output.mjs`、`scripts/check-tool-output-schema.mjs`；当时镜像门禁只按「仅行尾差异」告警放行——「逐字节镜像」在行尾层并不成立（**2026-10-15：镜像层已整体移除，本项随之失效**）。
 - [B02] 漂移：`scripts/check-code-map.mjs` 只在 apk 仓存在（协调仓 `scripts/` 无此文件），且原先未被列进 `MIRROR_TOP` → 当时这条门禁自身没有镜像守护（**2026-10-15：`MIRROR_TOP` 与整个镜像层已按用户决定移除，本项随之失效**）。
+
+独立身份（K01/K04/K11）：Kotlin 包与 namespace/applicationId 改为 `com.pocketharness.shell`；Java/Kotlin 源码目录保留历史名，AIDL 目录随接口包迁移。构建 worker 使用测试签名，`scripts/source-build/sign-source-artifacts.mjs` 在独立 job 签署最终 ARM64 APK，`prepare-signing.mjs` 以固定公钥证书拒绝旧 key；最终哈希与证书报告随后重写。私钥不进入构建 worker。

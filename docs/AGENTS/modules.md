@@ -277,3 +277,5 @@ Android API 面登记见 `docs/AGENTS/ANDROID-API-USAGE.md` §1/§3/§4/§8；�
 
 - `PluginManagementPage.kt` 的 `pluginEngineAvailability`：区分未启动、启动中、在线和启动失败。未启动不读库存；启动入口委托现有主按钮，在线后读取真实列表。
 - `ConsoleActivity.kt` / `assets/console.html`：控制台黑白灰日夜主题；会话与桥行为保持原有实现。
+
+独立应用身份：源码目录保留历史路径，所有 Kotlin 包声明及 Android namespace 均为 `com.pocketharness.shell`；`app/src/main/aidl/com/pocketharness/shell/ShizukuUserService.aidl` 生成同包 Binder 接口。图标使用 `ic_pocket_foreground.xml`，显示名来自 UserCopy/strings.xml。

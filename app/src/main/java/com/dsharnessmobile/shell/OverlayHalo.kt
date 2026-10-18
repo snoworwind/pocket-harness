@@ -1,4 +1,4 @@
-package com.dsharnessmobile.shell
+package com.pocketharness.shell
 
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable

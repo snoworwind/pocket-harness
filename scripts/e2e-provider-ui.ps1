@@ -71,7 +71,7 @@ function ConvertFrom-SecureApiKey([System.Security.SecureString]$value) {
 Write-Output "== 1. 前置：应用置前台（要求从聊天页开始；若停在设置/表单里请先手动 BACK 或重开应用）=="
 adb -s $Serial shell input keyevent 3 | Out-Null
 Start-Sleep -Milliseconds 700
-adb -s $Serial shell am start -n com.dsharnessmobile.shell/.MainActivity | Out-Null
+adb -s $Serial shell am start -n com.pocketharness.shell/.MainActivity | Out-Null
 Start-Sleep -Seconds 3
 Shot "start"
 
@@ -131,7 +131,7 @@ Tap 707 1523 4000 "创建提供方"
 Shot "created"
 
 Write-Output "== 7. 校验落盘（settings.yaml 是否出现该路由）=="
-$yaml = adb -s $Serial shell "run-as com.dsharnessmobile.shell cat files/home/.dsh/settings.yaml" 2>$null
+$yaml = adb -s $Serial shell "run-as com.pocketharness.shell cat files/home/.dsh/settings.yaml" 2>$null
 $hasRoute = ($yaml -join "`n") -match "(?m)^\s*$([regex]::Escape($ProviderId)):"
 Write-Output ("  settings.yaml route present: {0}" -f $hasRoute)
 if (-not $hasRoute) { Write-Output "  （提示：路由写入有延迟，可在 5-10 秒后重跑第 7 步校验）" }

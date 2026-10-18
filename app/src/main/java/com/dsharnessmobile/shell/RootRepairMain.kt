@@ -1,4 +1,4 @@
-package com.dsharnessmobile.shell
+package com.pocketharness.shell
 
 import androidx.annotation.Keep
 import kotlin.system.exitProcess
@@ -6,7 +6,7 @@ import kotlin.system.exitProcess
 /**
  * Fixed root-only operation, loaded from ApplicationInfo.sourceDir (the installed signed APK):
  * CLASSPATH=<trusted-sourceDir> /system/bin/app_process /system/bin
- *   com.dsharnessmobile.shell.RootRepairMain <fullUid> <dataDir> <relativeSubpath> <cap> <timeoutMs>
+ *   com.pocketharness.shell.RootRepairMain <fullUid> <dataDir> <relativeSubpath> <cap> <timeoutMs>
  *
  * Exactly five positional arguments, no flags, shell snippets or arbitrary commands. An empty
  * relativeSubpath selects the anchor; '.' is not an alias. All fields are bounded and checked before

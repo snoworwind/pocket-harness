@@ -1,4 +1,4 @@
-package com.dsharnessmobile.shell
+package com.pocketharness.shell
 
 /**
  * Pure, injectable policy for repairing root-origin ownership inside one trusted app-data anchor.

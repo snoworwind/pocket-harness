@@ -1,4 +1,4 @@
-package com.dsharnessmobile.shell
+package com.pocketharness.shell
 
 import android.content.Context
 import org.json.JSONObject
@@ -306,7 +306,7 @@ object RootAccess {
     val apk = app.applicationInfo.sourceDir
     if (apk.isNullOrBlank() || !File(apk).isFile) return fail("installed-apk-unavailable", "无法读取已安装的应用代码。")
     val command = "CLASSPATH=" + shq(apk) + " /system/bin/app_process /system/bin " +
-      "com.dsharnessmobile.shell.RootRepairMain " + args.joinToString(" ") { shq(it) }
+      "com.pocketharness.shell.RootRepairMain " + args.joinToString(" ") { shq(it) }
     RootMaintenanceLease.begin(app, "su-ownership")?.let { return it }
     val transport = execPrivileged(app, command, budget.toInt(), requireAiGrant = false)
     if (!transport.has("exitCode") && transport.optString("code") in setOf("no-su", "root-not-granted", "requesting", "empty-command", "su-exec-failed")) {

@@ -55,7 +55,7 @@ gh workflow run build-apk.yml --repo snoworwind/pocket-harness --ref main -f dra
 2. 只读准备任务仅下载同次运行 artifact，核对必需证据、来源仓库、提交与 APK 哈希，原字节复制 APK 并压缩证据。
 3. 独立 `contents: write` 任务只下载整理后的同次 artifact、复核哈希并创建草稿；不检出源码、不编译、不重签。
 
-草稿资产为 ARM64 APK、`provenance.zip`、`SHA256SUMS.txt` 与 `notes.md`。tag 为 `hardening-source-<短提交>-<run_id>-<run_attempt>`，避免与主线版本及重跑冲突；不覆盖已有 Release。当前仅 ARM64，沿用历史 debug 签名，公开前必须按 AGENTS 的设备三层验收要求补齐候选证据。自动生成的说明明确标为未做设备验证；公开发布由维护者验收后手动完成。
+草稿资产为 ARM64 APK、`provenance.zip`、`SHA256SUMS.txt` 与 `notes.md`。tag 为 `hardening-source-<短提交>-<run_id>-<run_attempt>`，避免与主线版本及重跑冲突；不覆盖已有 Release。当前仅 ARM64，最终 APK 使用独立 Pocket Harness 私有签名；公共测试签名只用于隔离构建的中间产物，公开前必须按 AGENTS 的设备三层验收要求补齐候选证据。自动生成的说明明确标为未做设备验证；公开发布由维护者验收后手动完成。
 
 构建或证据核验失败不进入写权限任务。上传失败可能留下部分资产的草稿，不得直接公开；检查该次失败记录后重跑，新 attempt 创建独立草稿。来源证明支撑链路追溯，不等于 APK 字节可复现或设备已验收。
 

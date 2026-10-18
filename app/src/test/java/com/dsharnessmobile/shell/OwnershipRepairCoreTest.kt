@@ -1,4 +1,4 @@
-package com.dsharnessmobile.shell
+package com.pocketharness.shell
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -9,7 +9,7 @@ import java.io.IOException
 /** Deterministic fake-inode tests for external testers. No Android/root/device execution required. */
 class OwnershipRepairCoreTest {
   private val uid = 110_123
-  private val anchor = "/data/user/1/com.dsharnessmobile.shell"
+  private val anchor = "/data/user/1/com.pocketharness.shell"
   private class Clock(var now: Long = 0) : OwnershipRepairCore.NanoClock {
     override fun nanoTime(): Long = now
   }
@@ -404,7 +404,7 @@ class OwnershipRepairCoreTest {
     assertTrue(RootRepairMain.parse(good.copyOf().also { it[2] = "" }) != null)
     assertTrue(RootRepairMain.parse(good.copyOf().also { it[2] = "/outside" }) == null)
     assertTrue(RootRepairMain.parse(good.copyOf().also { it[2] = "files/../outside" }) == null)
-    assertTrue(RootRepairMain.parse(good.copyOf().also { it[1] = "/data/user/0/com.dsharnessmobile.shell" }) == null)
+    assertTrue(RootRepairMain.parse(good.copyOf().also { it[1] = "/data/user/0/com.pocketharness.shell" }) == null)
     assertTrue(RootRepairMain.parse(good.copyOf().also { it[1] = "/data/user/1/other.package" }) == null)
     assertTrue(RootRepairMain.parse(good.copyOf().also { it[0] = "010123" }) == null)
     assertTrue(RootRepairMain.parse(good.copyOf().also { it[3] = "200001" }) == null)

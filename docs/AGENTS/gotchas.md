@@ -2592,3 +2592,8 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 
 现象：本地来源链的组件 provenance 找不到 origin；Windows 夹具门禁报多处摘要不符；独立根导入后的维护提示报 bad object。真因：隔离检出有意不带远端，但编排器没有冻结原仓身份；Git autocrlf 改写 registry 和夹具；push.before 可能已不在新历史中。修法：统一传 DSH_SOURCE_REPOSITORY，固定字节输入全树 -text，维护输入检测对缺失 base 扫描当前树；预检移除 upstream/main 合并前提。反证：无冻结身份的隔离仓拒绝解析；缺失 base 仍触发维护检查；有效无关 diff 不触发；预检无效 URL/版本/摘要均拒绝。Windows 宿主用例 2 通过、13 个 Linux 专属跳过，夹具恢复 Git 字节后通过；L1 构建链修改未做设备验证，Linux 用例须在 CI/Linux 执行。
 补充复验：WSL Linux / Node 24 的隔离构建与维护输入 15 项全过，0 跳过；保留缺失身份和缺失历史负控。
+
+
+397. **应用独立化必须贯通 AIDL、运行时前缀和签名隔离（2026-10-18）**
+
+现象：只替换 Kotlin 包会使 Shizuku Binder 接口无法解析；沿用包名与公开 key 会使两个项目互相覆盖。真因：安装身份同时存在于 Gradle、AIDL、运行时绝对路径、插件与设备脚本，源码包改名不会自动修改 AIDL。修法：统一新包名与品牌，AIDL 目录同步，最终 APK 在无依赖安装的独立 job 使用私有 key 重签；构建 worker 只持测试 key，避免 npm/Gradle 进程读取发行私钥。证书 pin 与旧 key 拒绝负控见 prepare-signing.test.mjs。用户暂不能提供 ARM64 设备，未做设备验证，候选不得记为已验收。

@@ -10,6 +10,13 @@ scripts/patches/tests/fixtures/dsh-client-modules-0.2.0-rc.2/lib/index.js -text
 # Capture manifests bind every fixture and the registry to exact Git bytes.
 scripts/patches/tests/fixtures/** -text
 scripts/patches/registry.json -text
+# Generated cross-language fixtures are compared as exact canonical LF bytes.
+app/src/test/resources/screen-scope/*.json -text
+app/src/test/resources/protocol-v2/*.json -text
+plugins/dsh-android-manage/test/fixtures/protocol-v2/*.json -text
+gradlew text eol=lf
+# Host source is used both as exact provenance input and by source-body regressions.
+dsh-host-web-compat/lib/*.js text eol=lf
 # 旧 LFS 底座（base/*.tar.xz）未导入：来源链明确禁止读取，本仓不启用 LFS。
 
 # 第三方通告随 APK 分发，禁用行尾转换（防 autocrlf 幻影 diff 复发）

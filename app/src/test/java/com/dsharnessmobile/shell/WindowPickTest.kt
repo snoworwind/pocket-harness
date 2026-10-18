@@ -1,6 +1,6 @@
-package com.dsharnessmobile.shell
+package com.pocketharness.shell
 
-import com.dsharnessmobile.shell.DeviceControlService.WindowPick
+import com.pocketharness.shell.DeviceControlService.WindowPick
 import org.junit.Assert.assertEquals
 import org.junit.Test
 

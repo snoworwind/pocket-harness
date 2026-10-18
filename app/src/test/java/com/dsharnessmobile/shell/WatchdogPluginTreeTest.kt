@@ -1,4 +1,4 @@
-package com.dsharnessmobile.shell
+package com.pocketharness.shell
 
 import org.junit.After
 import org.junit.Assert.assertEquals

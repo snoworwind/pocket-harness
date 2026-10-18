@@ -1,4 +1,4 @@
-package com.dsharnessmobile.shell
+package com.pocketharness.shell
 
 /**
  * Determines whether an extracted regular file needs the executable bit. Snapshot

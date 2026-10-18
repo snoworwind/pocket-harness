@@ -421,7 +421,7 @@ function show(report){
     // 摘要只说发生了什么与能做什么，机器细节收进折叠块（反馈时仍可截图），且不自动跳转。
     var head=document.createElement('div');
     head.style.cssText='font-size:15px;font-weight:600;margin-bottom:10px';
-    head.textContent='DeepCode 启动没有完成';
+    head.textContent='Pocket Harness 启动没有完成';
     var summary=document.createElement('div');
     summary.style.cssText='margin-bottom:6px';
     summary.textContent='已经等待 '+Math.round(report.tookMs/1000)+' 秒，界面仍未显示出来。'

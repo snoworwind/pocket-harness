@@ -253,3 +253,8 @@ gh workflow run build-apk-source.yml --repo snoworwind/pocket-harness --ref main
 
 
 Linux bootstrap 本地安全分叉（2026-10-17）：`check-vendored-linux-bootstrap.mjs` 保留 MANIFEST 的原上游哈希，用 LOCAL_PATCHES 单列 asset-bundle.js 的本地安全哈希，并要求与 package.json.dshVendor.localPatches 一致；不能把本地修改改记为上游原样。运行 `node scripts/check-vendored-linux-bootstrap.mjs --self-test` 验证漂移拒绝；归档解码新增依赖见 DEPENDENCIES.md。
+
+
+独立签名（2026-10-18）：`com.pocketharness.shell` 与 Pocket Harness 品牌仅支持 ARM64。构建 worker 只持公共测试 key；独立 `sign-arm64` job 不安装 npm/Gradle 依赖，使用 GitHub 加密 Secret 重签并重算最终 APK 哈希，证书固定在 `prepare-signing.mjs`。私钥不入 Git，本地保存在用户目录 `~/.local/share/pocket-harness/release.keystore`，来源链可通过 `POCKET_SIGNING_KEYSTORE_PATH` 指定位置。旧 DeepCode 的 UID/数据保持独立，不能原地升级。
+
+用户决定保持私有且暂不使用收费分支保护，不升级套餐；CI/token/签名隔离与合并审查替代流程约束，不宣称等价于远端强制保护。

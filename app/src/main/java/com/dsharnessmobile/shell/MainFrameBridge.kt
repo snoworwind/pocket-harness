@@ -1,4 +1,4 @@
-package com.dsharnessmobile.shell
+package com.pocketharness.shell
 
 import android.webkit.JavascriptInterface
 import java.lang.reflect.Method

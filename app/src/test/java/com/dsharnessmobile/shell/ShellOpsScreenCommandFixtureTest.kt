@@ -1,4 +1,4 @@
-package com.dsharnessmobile.shell
+package com.pocketharness.shell
 
 import org.json.JSONObject
 import org.junit.Assert.assertEquals

@@ -1,4 +1,4 @@
-package com.dsharnessmobile.shell
+package com.pocketharness.shell
 
 import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
@@ -127,7 +127,7 @@ class SnapshotBundledAssetTest {
         cause, 1_700_000_000_000L, "aaa",
       )
       val text = File(files, "boot-fail.log").readText()
-      assertTrue("必须落出真因异常类名", text.contains("error=com.dsharnessmobile.shell.SnapshotFsException"))
+      assertTrue("必须落出真因异常类名", text.contains("error=com.pocketharness.shell.SnapshotFsException"))
       assertFalse("不得再是布尔占位", text.contains("error=none(boolean-failure-path)"))
       assertTrue("必须有可读栈", text.contains("stack=") && !text.contains("stack=none"))
       assertTrue("稳定错误码必须可见", text.contains(SnapshotBundledAsset.CODE_CORRUPT))

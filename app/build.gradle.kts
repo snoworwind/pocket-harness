@@ -4,11 +4,11 @@ plugins {
 }
 
 android {
-  namespace = "com.dsharnessmobile.shell"
+  namespace = "com.pocketharness.shell"
   compileSdk = 36
 
   defaultConfig {
-    applicationId = "com.dsharnessmobile.shell"
+    applicationId = "com.pocketharness.shell"
     minSdk = 26
     // targetSdk 34: Android 15+ forbids exec of app-data ELF for targetSdk 35+
     // (the embedded engine, bash, and every child command would need linker64
@@ -42,10 +42,8 @@ android {
   }
 
   signingConfigs {
-    // Fixed debug signing from the repo keystore: CI and local builds must produce
-    // byte-compatible signatures, otherwise users cannot install over previous
-    // releases (INSTALL_FAILED_UPDATE_INCOMPATIBLE). AGP's default debug keystore
-    // lookup (~/.android/debug.keystore) is unreliable on CI runners, so pin it.
+    // Build workers use a public test key only. The source workflow replaces
+    // this intermediate signature in a separate, dependency-free signing job.
     create("repoDebug") {
       storeFile = rootProject.file("keystore/debug.keystore")
       storePassword = "android"

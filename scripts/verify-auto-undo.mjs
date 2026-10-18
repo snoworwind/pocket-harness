@@ -30,7 +30,7 @@ const argOf = (n) => { const i = argv.indexOf('--' + n); return i >= 0 ? argv[i 
 const has = (n) => argv.includes('--' + n)
 const SERIAL = argOf('serial')
 const TIMEOUT_S = Number(argOf('timeout') ?? 240)
-const PKG = 'com.dsharnessmobile.shell'
+const PKG = 'com.pocketharness.shell'
 const FILES = '/data/user/0/' + PKG + '/files'
 const WEB = FILES + '/home/.dsh/profiles/web'
 const NM = WEB + '/node_modules/@dsh-android'

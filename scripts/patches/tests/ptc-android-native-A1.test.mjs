@@ -17,15 +17,15 @@ const rawChild = read('lib/process.js')
 const environment = patchEnvironment(rawIndex)
 const index = patchRuntimeIndex(environment)
 const child = patchEnvironment(rawChild)
-const prefix = '/data/data/com.dsharnessmobile.shell/files/usr'
+const prefix = '/data/data/com.pocketharness.shell/files/usr'
 const node = prefix + '/bin/node'
 const native = {
   TERMUX__PREFIX: prefix, TERMUX__ROOTFS: prefix.slice(0, -4),
   LD_PRELOAD: prefix + '/lib/libtermux-exec-ld-preload.so', LD_LIBRARY_PATH: prefix + '/lib',
   TERMUX_EXEC__SYSTEM_LINKER_EXEC__MODE: 'force', TERMUX_EXEC__EXECVE_CALL__INTERCEPT: '1',
-  TERMUX_APP__DATA_DIR: '/data/user/0/com.dsharnessmobile.shell',
-  TERMUX_APP__LEGACY_DATA_DIR: '/data/data/com.dsharnessmobile.shell',
-  TMPDIR: '/data/data/com.dsharnessmobile.shell/files/home/tmp',
+  TERMUX_APP__DATA_DIR: '/data/user/0/com.pocketharness.shell',
+  TERMUX_APP__LEGACY_DATA_DIR: '/data/data/com.pocketharness.shell',
+  TMPDIR: '/data/data/com.pocketharness.shell/files/home/tmp',
   OPENSSL_CONF: prefix + '/etc/tls/openssl.cnf', SSL_CERT_FILE: prefix + '/etc/tls/cert.pem',
 }
 function environmentSet(platform) {

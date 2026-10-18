@@ -1,6 +1,6 @@
-package com.dsharnessmobile.shell
+package com.pocketharness.shell
 
-import com.dsharnessmobile.shell.AcceptRouting.isImageOnly
+import com.pocketharness.shell.AcceptRouting.isImageOnly
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test

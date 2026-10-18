@@ -1,4 +1,4 @@
-package com.dsharnessmobile.shell
+package com.pocketharness.shell
 
 /**
  * 原生浏览器覆盖层的可见性判据（单一真源，纯函数，可 JVM 单测）。

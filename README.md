@@ -13,7 +13,7 @@
 
 > **本项目宗旨：最大程度提高安全性和可验证性。** 范围、实施原则、已接受风险与证据要求见 [安全加固分支宗旨](docs/AGENTS/SECURITY-HARDENING.md)。
 
-当前基线沿用应用名 `DeepCode`（图标文字 DeepSearch）、包名 `com.dsharnessmobile.shell`、
+当前使用独立应用名 `Pocket Harness`（口袋终端图标）、包名 `com.pocketharness.shell`、
 源码版本与 versionCode 见 [构建声明](app/build.gradle.kts)，后缀由构建属性决定；引擎 `@deepseek-ai/dsh` 0.2.0-rc.2（本地开发候选，**未发布**）。应用名、applicationId 与 APK 产物前缀的迁移边界见 [项目基线](docs/AGENTS/BASELINE.md)。
 
 > **插件市场适配警示**：内置市场牵涉大量第三方插件，**绝大多数插件在手机端不一定可用、大概率有 bug**
@@ -79,7 +79,7 @@
 
 ## 下载 / 安装
 
-新仓库尚未发布 APK，也没有可用的 Release。首次发布前会确定产物命名与签名策略；当前构建产物名仍沿用基线的 `dsh-mobile-apk-v<版本>-<abi>.apk`。
+新仓库尚未公开发布 APK。最终 ARM64 来源产物使用独立私有签名，不能覆盖升级旧 DeepCode；两者可并排安装，数据需用户显式导出/导入。产物文件名暂沿用 `dsh-mobile-apk-v<版本>-arm64.apk`。
 
 ```sh
 adb install -r -t <apk>    # 同签名覆盖安装

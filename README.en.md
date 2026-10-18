@@ -17,7 +17,7 @@ install: it boots a full dsh web agent that can really execute bash.
 
 > **Project charter: maximize security and verifiability.** See [the security charter](docs/AGENTS/SECURITY-HARDENING.md) for scope, principles, accepted risks and evidence requirements.
 
-The baseline retains the app name `DeepCode` (icon text DeepSearch) and package `com.dsharnessmobile.shell`,
+The app uses the independent name `Pocket Harness`, pocket-terminal icon and package `com.pocketharness.shell`,
 source version and versionCode follow the [build declarations](app/build.gradle.kts), with the suffix supplied by build properties; engine `@deepseek-ai/dsh` 0.2.0-rc.2 (local development candidate, **not released**). See the [project baseline](docs/AGENTS/BASELINE.md) for the migration boundary of the app name, applicationId and APK artifact prefix.
 
 > **Plugin-marketplace caveat**: the built-in marketplace covers many third-party plugins, and

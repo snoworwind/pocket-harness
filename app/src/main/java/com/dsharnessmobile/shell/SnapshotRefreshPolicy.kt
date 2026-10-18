@@ -1,4 +1,4 @@
-package com.dsharnessmobile.shell
+package com.pocketharness.shell
 
 /**
  * 快照刷新失败的**持久账本**与降级判据（纯逻辑，JVM 可直接测；不触碰 Android 类）。

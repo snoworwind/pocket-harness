@@ -67,7 +67,7 @@ Commit: {sha}
 Build: {server}/{repo}/actions/runs/{env['GITHUB_RUN_ID']}
 
 Draft prerelease only. Device validation has NOT been performed for this candidate.
-ARM64 only; do not install on x86_64 emulators. Uses the existing debug signing identity.
+ARM64 only; do not install on x86_64 emulators. Uses the independent private Pocket Harness signing identity; cannot upgrade the old DeepCode app.
 Complete device acceptance before making this release public.
 
 APK bytes are copied unchanged from this run's source build. provenance.zip contains

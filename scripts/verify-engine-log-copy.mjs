@@ -22,7 +22,7 @@ import { createHash } from 'node:crypto'
 const argv = process.argv.slice(2)
 const argOf = (name, def) => { const i = argv.indexOf('--' + name); return i >= 0 ? (argv[i + 1] ?? def) : def }
 const SERIAL = argOf('serial', '')
-const PKG = argOf('pkg', 'com.dsharnessmobile.shell')
+const PKG = argOf('pkg', 'com.pocketharness.shell')
 if (!SERIAL) { console.error('用法：--serial <adb-serial>'); process.exit(2) }
 
 const DIR = '/data/data/' + PKG + '/files'

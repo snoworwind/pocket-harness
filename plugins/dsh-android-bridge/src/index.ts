@@ -140,7 +140,7 @@ export interface AdbStatus {
 
 /** 审计记录落点：files/audit/audit.ndjson（换行分隔 JSON；DSH_ADB_AUDIT_PATH 可覆盖供测试） */
 function auditDir(): string {
-  return process.env.DSH_ADB_AUDIT_PATH ?? '/data/user/0/com.dsharnessmobile.shell/files/audit'
+  return process.env.DSH_ADB_AUDIT_PATH ?? '/data/user/0/com.pocketharness.shell/files/audit'
 }
 
 function writeAudit(entry: Record<string, unknown>) {
@@ -168,7 +168,7 @@ function writeAudit(entry: Record<string, unknown>) {
  * 端点）不得自改授权布尔（Shizuku：授权由管理器+特权服务器写入，客户端无权自授信）。
  * 桌面/非安卓宿主：文件路径不存在 → readShellAdbState 返回 undefined → 回落 env。
  */
-const SHELL_PREFS_DEFAULT = '/data/user/0/com.dsharnessmobile.shell/shared_prefs/dsh-adb.xml'
+const SHELL_PREFS_DEFAULT = '/data/user/0/com.pocketharness.shell/shared_prefs/dsh-adb.xml'
 
 export interface ShellAdbPrefs {
   allowSwitch: boolean
@@ -877,7 +877,7 @@ export class AndroidPrivilegeService {
    *
    * 0.13.5 W4 重构（PRD-0.13.2 §3.3 B3）：授权面从「ADB 三道人门」改为
    * **两条等价通道，无障碍优先**——
-   *   - 无障碍通道：系统设置里开启「DeepCode 设备控制」一次即成立（设备控制面 dump/click/input/scroll）；
+   *   - 无障碍通道：系统设置里开启「Pocket Harness 设备控制」一次即成立（设备控制面 dump/click/input/scroll）；
    *   - ADB 通道：完全访问 + 允许访问开关 + 无线调试配对（降级为高级/脚本通道：shell 执行、
    *     原图截图、系统面 pm/dumpsys）。
    * 两者都要求会话档位 danger-full-access（隐私敏感面不因通道简化而放宽）。
@@ -918,7 +918,7 @@ export class AndroidPrivilegeService {
       ok: false,
       gates,
       guidance: '设备控制未授权。任选其一即可：'
-        + '①（推荐，一次开关）到 系统设置 → 无障碍 → 已下载的服务 开启「DeepCode 设备控制」；'
+        + '①（推荐，一次开关）到 系统设置 → 无障碍 → 已下载的服务 开启「Pocket Harness 设备控制」；'
         + '②到设置页「手机控制」安装、启动并授权 Shizuku（shell / 截屏 / uiautomator / 虚拟屏走它执行）。'
         + '两者都会即时生效，无需重启。',
     }
@@ -933,7 +933,7 @@ export class AndroidPrivilegeService {
         ok: false,
         guidance: shizuku
           ? (st.message ?? '未授权')
-          : '未授权：到设置页「手机控制」开启「DeepCode 设备控制」无障碍服务，或安装、启动并授权 Shizuku（特权 shell / 截屏 / 虚拟屏）。',
+          : '未授权：到设置页「手机控制」开启「Pocket Harness 设备控制」无障碍服务，或安装、启动并授权 Shizuku（特权 shell / 截屏 / 虚拟屏）。',
       }
     }
     // 0.13.8 #172：tier（部署默认档位视图）不再作为拒绝条件——会话档位由各 execute 实时门禁。
@@ -1126,7 +1126,7 @@ export class AndroidPrivilegeService {
         screenId,
         guidance: '改用坐标操作：① 真实屏 → android_screenshot 拿分辨率锚点，再 android_ui_click 传 nx/ny（0-1 归一化）；' +
           '② 虚拟屏 → android_vdisplay_input（tap/swipe/keyevent/text，坐标基于该屏自身像素，经 input -d 注入，真实屏不受影响）。' +
-          '若确实需要语义树/ref 动作，请由用户在系统设置里开启「DeepCode 设备控制」无障碍服务。',
+          '若确实需要语义树/ref 动作，请由用户在系统设置里开启「Pocket Harness 设备控制」无障碍服务。',
       }
     }
     // vdInput writes screen content through Shizuku's `input -d` path, outside REAL_SCREEN_CONTROL_OPS.
@@ -1418,7 +1418,7 @@ export function buildPrivilegeStatusToolPayload(
       reason: d.reason,
       alternative: d.backend === 'a11y'
         ? { backend: 'shizuku', available: altPrivileged, missing: altPrivileged ? null : '设置页「手机控制」：安装 / 启动 / 授权 Shizuku' }
-        : { backend: 'a11y', available: altA11y, missing: altA11y ? null : '系统设置 → 无障碍 → 开启「DeepCode 设备控制」' },
+        : { backend: 'a11y', available: altA11y, missing: altA11y ? null : '系统设置 → 无障碍 → 开启「Pocket Harness 设备控制」' },
     }
   }
   const queue = svc.controlStats()
@@ -1439,7 +1439,7 @@ function tools(svc: AndroidPrivilegeService, shellFace?: { resolve?(spec: Record
   const statusTool = defineTool({
     name: 'android_privilege_status',
     description:
-      '查询设备控制授权状态。无障碍通道为主（系统设置开启「DeepCode 设备控制」一次即成立，'
+      '查询设备控制授权状态。无障碍通道为主（系统设置开启「Pocket Harness 设备控制」一次即成立，'
       + '提供 dump/click/input/scroll 语义操作）；特权 shell 通道由 Shizuku 承载（设置页「手机控制」安装、启动并授权后：'
       + 'shell 执行、原图截图、pm/dumpsys、虚拟屏）。两条通道独立可用，任一就绪即可完成同类动作；'
       + '返回结构化 gates 与 control 字段；都不可用时给出两条开启路径的引导。手机管理工具全部以此为前置检查，失败关闭。',
@@ -1481,7 +1481,7 @@ function tools(svc: AndroidPrivilegeService, shellFace?: { resolve?(spec: Record
             gates?.a11yEnabled ? '结论：设备控制可用（走无障碍通道）——下一步用 android_ui_dump 拿语义清单'
               : gates?.shizukuReady === true ? '结论：设备控制可用（走 Shizuku 特权通道）——**无障碍未开启，控件树用 android_ui_tree**（与 android_ui_dump 同形、可 ref 操作）'
                 : gates?.adbReady ? '结论：设备控制可用（走 ADB 通道）——**无障碍未开启，控件树用 android_ui_tree**'
-                : '结论：不可用——开启任一通道即可（推荐无障碍：系统设置 → 无障碍 → DeepCode 设备控制，一步即用）',
+                : '结论：不可用——开启任一通道即可（推荐无障碍：系统设置 → 无障碍 → Pocket Harness 设备控制，一步即用）',
             v.message ? `通道说明：${String(v.message)}` : '',
             (() => {
               const shell = v.shell as { protocol?: { shell?: number; engine?: number; ok?: boolean; reason?: string }; caps?: { ops?: unknown[] } | null } | undefined
@@ -1678,7 +1678,7 @@ export function apply(ctx: Context, config: Record<string, unknown> = {}) {
   // 已由壳首启授权）。引擎→壳方向无页面依赖（不依赖 androidBridge/WebView 上下文）——
   // 标记文件路经 files/home/.dsh/.task-done.ndjson，壳读后清空。事件面：assistant/message
   // （agent 完成一轮完整输出）+ assistant/message.interrupted（被打断不弹）。
-  const TASK_DONE_MARKER = (process.env.DSH_HOME ?? '/data/user/0/com.dsharnessmobile.shell/files/home/.dsh') + '/.task-done.ndjson'
+  const TASK_DONE_MARKER = (process.env.DSH_HOME ?? '/data/user/0/com.pocketharness.shell/files/home/.dsh') + '/.task-done.ndjson'
   const appendTaskMarker = (sessionId: unknown, title: string | undefined, text: string) => {
     try {
       const entry = JSON.stringify({ ts: new Date().toISOString(), sessionId: String(sessionId), title: title ?? '', text }) + '\n'
@@ -1691,7 +1691,7 @@ export function apply(ctx: Context, config: Record<string, unknown> = {}) {
   // report（turn/end）与 todo（todo/write）——提问/审批的弹窗由壳侧 NotifyBridge 从
   // `$events` waterfall 直接投放（应答必须走 mux + `$events/result`，不经本文件）。
   // `.task-done.ndjson` 兼容期保留（老壳仍读它）；新壳只读本文件，双读不双发。
-  const NOTIFY_FILE = (process.env.DSH_HOME ?? '/data/user/0/com.dsharnessmobile.shell/files/home/.dsh') + '/.notify.ndjson'
+  const NOTIFY_FILE = (process.env.DSH_HOME ?? '/data/user/0/com.pocketharness.shell/files/home/.dsh') + '/.notify.ndjson'
   const NOTIFY_MAX = 512 * 1024
   let notifyBytes = 0
   try { notifyBytes = statSync(NOTIFY_FILE).size } catch { /* 新文件 */ }
@@ -1717,7 +1717,7 @@ export function apply(ctx: Context, config: Record<string, unknown> = {}) {
     // ── 实时事件流（W7 悬浮球，2026-08-31；PRD-0.13.2 §4.2）──
     // 壳侧 OverlayService 经 FileObserver tail 消费（毫秒级、省电）；文件上限
     // 512KB，超限轮转 .1 一代。条目使用紧凑键：t=epoch ms s=sessionId k=类型。
-    const LIVE_FILE = (process.env.DSH_HOME ?? '/data/user/0/com.dsharnessmobile.shell/files/home/.dsh') + '/.live.ndjson'
+    const LIVE_FILE = (process.env.DSH_HOME ?? '/data/user/0/com.pocketharness.shell/files/home/.dsh') + '/.live.ndjson'
     const LIVE_MAX = 512 * 1024
     let liveBytes = 0
     try { liveBytes = statSync(LIVE_FILE).size } catch { /* 新文件 */ }

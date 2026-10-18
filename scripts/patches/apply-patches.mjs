@@ -220,10 +220,10 @@ const IMPLS = {
   // ── marketplace B：安装 runner execPath 安全化（apk#83/#89 bad ELF magic）──
   'market-B': {
     file: 'dshmarketplace-plugin/lib/index.js',
-    check: (s) => s.includes('execPath:(process.env.TERMUX__PREFIX||"/data/data/com.dsharnessmobile.shell/files/usr")+"/bin/node"'),
+    check: (s) => s.includes('execPath:(process.env.TERMUX__PREFIX||"/data/data/com.pocketharness.shell/files/usr")+"/bin/node"'),
     apply: (s) => {
       const OLD = 'execPath:process.execPath,cliPath:process.argv[1]'
-      const NEW = 'execPath:(process.env.TERMUX__PREFIX||"/data/data/com.dsharnessmobile.shell/files/usr")+"/bin/node",cliPath:process.argv[1]'
+      const NEW = 'execPath:(process.env.TERMUX__PREFIX||"/data/data/com.pocketharness.shell/files/usr")+"/bin/node",cliPath:process.argv[1]'
       if (s.includes(OLD)) return s.replace(OLD, NEW)
       if (s.includes(NEW)) return s
       throw new Error('execPath 锚点未命中且安全化形态不在场——T() 实现可能已变，请人工核对')
@@ -614,7 +614,7 @@ const IMPLS = {
         '    const dshMobileUndoControlToken = () => {',
         "      const valid = (value) => typeof value === 'string' && value.length >= 8 ? value : undefined;",
         '      const prefsPath = process.env.DSH_ADB_PREFS_PATH',
-        "        ?? ((process.env.TERMUX__PREFIX && process.env.DSH_HOME) ? '/data/user/0/com.dsharnessmobile.shell/shared_prefs/dsh-adb.xml' : undefined);",
+        "        ?? ((process.env.TERMUX__PREFIX && process.env.DSH_HOME) ? '/data/user/0/com.pocketharness.shell/shared_prefs/dsh-adb.xml' : undefined);",
         '      let fromPrefs;',
         '      if (prefsPath) {',
         "        try { fromPrefs = valid(/<string\\s+name=\"controlToken\">([^<]*)<\\/string>/.exec(readFileSync(prefsPath, 'utf8'))?.[1]); }",

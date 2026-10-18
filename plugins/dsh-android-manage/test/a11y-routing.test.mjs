@@ -400,7 +400,7 @@ test('a11y 通道：screenshot 走无障碍截屏（API 30+，不依赖 ADB scre
   const { face, calls } = makeFace({ backend: 'a11y' })
   face.controlExec = async (op, args) => {
     calls.control.push({ op, args })
-    if (op === 'screenshot') return { ok: true, data: { path: '/data/user/0/com.dsharnessmobile.shell/files/control-shots/shot-1.png', width: 900, height: 1600 } }
+    if (op === 'screenshot') return { ok: true, data: { path: '/data/user/0/com.pocketharness.shell/files/control-shots/shot-1.png', width: 900, height: 1600 } }
     return { ok: true, data: {} }
   }
   const { byName } = applyManage(face)

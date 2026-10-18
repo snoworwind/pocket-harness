@@ -1,4 +1,4 @@
-package com.dsharnessmobile.shell
+package com.pocketharness.shell
 
 import android.content.Context
 import android.hardware.display.DisplayManager
@@ -23,13 +23,13 @@ import java.io.File
  *
  * 产物（两份，互为交叉证据）：
  *   ① 设备内文件：`filesDir/vdisplay-probe.json`（完整 JSON，用
- *      `adb shell run-as com.dsharnessmobile.shell cat files/vdisplay-probe.json` 取回）
+ *      `adb shell run-as com.pocketharness.shell cat files/vdisplay-probe.json` 取回）
  *   ② logcat：tag `dsh-probe`（紧凑 JSON，`adb logcat -d -s dsh-probe` 取回）
  *
  * 跑法：
  *   gradlew :app:assembleDebugAndroidTest
- *   adb -s 127.0.0.1:16416 shell am instrument -w -e class com.dsharnessmobile.shell.VdisplayProbeTest \
- *       com.dsharnessmobile.shell.test/androidx.test.runner.AndroidJUnitRunner
+ *   adb -s 127.0.0.1:16416 shell am instrument -w -e class com.pocketharness.shell.VdisplayProbeTest \
+ *       com.pocketharness.shell.test/androidx.test.runner.AndroidJUnitRunner
  *   # 反向自证（泄漏金丝雀）：
  *   adb ... am instrument -w -e class ... -e leak true ...
  *

@@ -1,4 +1,4 @@
-package com.dsharnessmobile.shell
+package com.pocketharness.shell
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -14,7 +14,7 @@ class RootOwnershipTest {
   private fun kotlin(name: String) = source("java/com/dsharnessmobile/shell/$name.kt")
 
   @Test fun `protocol v4 appends acknowledged configuration without renumbering`() {
-    val aidl = source("aidl/com/dsharnessmobile/shell/ShizukuUserService.aidl")
+    val aidl = source("aidl/com/pocketharness/shell/ShizukuUserService.aidl")
     assertTrue(aidl.contains("void configure(int appUid, String appDataDir)"))
     assertTrue(aidl.contains("Bundle repairOwnership(in String path, int maxEntries)"))
     assertTrue(aidl.contains("Bundle configuration() = 10"))
@@ -73,13 +73,13 @@ class RootOwnershipTest {
   }
 
   @Test fun `trusted anchor keeps full work-profile UID`() {
-    assertTrue(OwnershipRepair.isTrustedAppDataAnchor("/data/user/10/com.dsharnessmobile.shell", 1_010_241))
-    assertFalse(OwnershipRepair.isTrustedAppDataAnchor("/data/user/0/com.dsharnessmobile.shell", 1_010_241))
+    assertTrue(OwnershipRepair.isTrustedAppDataAnchor("/data/user/10/com.pocketharness.shell", 1_010_241))
+    assertFalse(OwnershipRepair.isTrustedAppDataAnchor("/data/user/0/com.pocketharness.shell", 1_010_241))
     assertFalse(OwnershipRepair.isTrustedAppDataAnchor("/data/user/10/another.package", 1_010_241))
   }
 
   @Test fun `helper rejects path escapes and non-positional arguments`() {
-    val good = arrayOf("10241", "/data/user/0/com.dsharnessmobile.shell", "files", "100", "20000")
+    val good = arrayOf("10241", "/data/user/0/com.pocketharness.shell", "files", "100", "20000")
     assertEquals("files", RootRepairMain.parse(good)?.relativeTarget)
     for (path in listOf("../outside", "/outside", "files/../outside", "files//leaf", ".")) {
       assertNull(path, RootRepairMain.parse(good.copyOf().also { it[2] = path }))
@@ -88,7 +88,7 @@ class RootOwnershipTest {
   }
 
   @Test fun `helper rejects unbounded caps deadlines and numeric ambiguity`() {
-    val good = arrayOf("10241", "/data/user/0/com.dsharnessmobile.shell", "files", "100", "20000")
+    val good = arrayOf("10241", "/data/user/0/com.pocketharness.shell", "files", "100", "20000")
     for (cap in listOf("0", "200001", "-1", "+1", "0100")) {
       assertNull(cap, RootRepairMain.parse(good.copyOf().also { it[3] = cap }))
     }
@@ -100,7 +100,7 @@ class RootOwnershipTest {
   @Test fun `su maintenance loads installed APK and verifies complete helper result`() {
     val root = kotlin("RootAccess")
     assertTrue(root.contains("app.applicationInfo.sourceDir"))
-    assertTrue(root.contains("com.dsharnessmobile.shell.RootRepairMain"))
+    assertTrue(root.contains("com.pocketharness.shell.RootRepairMain"))
     assertTrue(root.contains("requireAiGrant = false"))
     assertTrue(root.contains("ProcIo.readBoundedMillis"))
     assertTrue(root.contains(""""unverifiedMutations", -1) == 0"""))

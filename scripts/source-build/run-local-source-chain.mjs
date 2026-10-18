@@ -53,6 +53,7 @@ const STAGES = [
   { key: 'snapshot', label: '构建运行时快照', match: /^Build runtime snapshot/ },
   { key: 'sign', label: 'keystore 自检', match: /^Verify the repository debug signing keystore/ },
   { key: 'apk', label: '门禁 + 注入 + 打包 ARM64 APK', match: /^Build ARM64 APK/ },
+  { key: 'final-sign', label: '最终 ARM64 私有签名', match: /^Sign final ARM64 source APK/ },
 ]
 const SKIP_STEP = /^(Set up job|Checkout project source|Prepare build tools|Run actions\/setup-|Install archive and signature tools|Upload APK and provenance|Post )/
 

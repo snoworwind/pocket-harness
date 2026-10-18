@@ -119,7 +119,7 @@ export function decideControl(input: ControlPolicyInput): ControlDecision {
     return {
       backend: 'deny',
       reason: '显式指定无障碍通道，但无障碍服务未开启',
-      guidance: '到系统设置 → 无障碍 → 已下载的服务里开启「DeepCode 设备控制」。',
+      guidance: '到系统设置 → 无障碍 → 已下载的服务里开启「Pocket Harness 设备控制」。',
     }
   }
 
@@ -128,7 +128,7 @@ export function decideControl(input: ControlPolicyInput): ControlDecision {
   return {
     backend: 'deny',
     reason: '无障碍服务未开启，且 ADB 三道人门未齐——设备控制不可用',
-    guidance: '任选其一：① 系统设置 → 无障碍 → 开启「DeepCode 设备控制」（推荐，一次开关）；'
+    guidance: '任选其一：① 系统设置 → 无障碍 → 开启「Pocket Harness 设备控制」（推荐，一次开关）；'
       + '② 打开「手机管理」授权页完成 ADB 三道人门（完全访问 + 授权开关 + 无线调试配对）。',
   }
 }

@@ -3,6 +3,9 @@ name: release-source-draft
 on:
   workflow_dispatch:
   workflow_call:
+    secrets:
+      POCKET_SIGNING_KEYSTORE_BASE64:
+        required: true
 
 permissions:
   contents: read
@@ -25,6 +28,7 @@ jobs:
     permissions:
       contents: read
     uses: ./.github/workflows/build-apk-source.yml
+    secrets: inherit
 
   prepare:
     needs: build

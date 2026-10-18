@@ -1,4 +1,4 @@
-package com.dsharnessmobile.shell
+package com.pocketharness.shell
 
 import android.net.LocalServerSocket
 import android.net.LocalSocket

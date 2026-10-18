@@ -43,7 +43,7 @@ NEGATIVE_CONTROL_PROFILES = ('headless-bad',)
 # They must point at the CURRENT applicationId's data dir **including the /files/ segment** —
 # the old chain wrote $SNAP_PKG_ROOT=/data/user/0/<pkg> (no /files), so every bash call failed
 # with "not executable" / assertBash() threw at boot while the prefix-only assertion still passed
-# (2026-08-21 incident: com.dshmobile.shell -> com.dsharnessmobile.shell).
+# (2026-08-21 incident: com.dshmobile.shell -> com.pocketharness.shell).
 PKG_KEYS = ('bashPath', 'prefix', 'home', 'cwd')
 AUTHORITATIVE_PATCH_NAME = 'profile-web.cordis.patch.yml'
 

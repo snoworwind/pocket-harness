@@ -1,4 +1,4 @@
-package com.dsharnessmobile.shell
+package com.pocketharness.shell
 
 /** A bundled snapshot without a usable SHA must not be refreshed or accepted as current. */
 internal object SnapshotFingerprintPolicy {

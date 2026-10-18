@@ -1,4 +1,4 @@
-package com.dsharnessmobile.shell
+package com.pocketharness.shell
 
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -23,7 +23,7 @@ class NotifyActionReceiver : BroadcastReceiver() {
 
   companion object {
     /** 显式 Intent 的 action（仅本包 PendingIntent 使用；不构成对外接口）。 */
-    const val ACTION_NOTIFY_ACTION = "com.dsharnessmobile.shell.action.NOTIFY_ACTION"
+    const val ACTION_NOTIFY_ACTION = "com.pocketharness.shell.action.NOTIFY_ACTION"
 
     const val ACTION_REPLY = "reply"
     const val ACTION_OPTION = "option"

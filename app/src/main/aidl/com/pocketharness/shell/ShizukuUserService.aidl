@@ -11,7 +11,7 @@
 // 供 screencap/uiautomator dump/shell 大输出等场景使用；文件推送（writeChunk）落地 pull/push 语义。
 // 版本握手：壳侧 protocolVersion() >= 2 才走 capture 面，旧服务（v1）明确拒绝而非静默降级。
 
-package com.dsharnessmobile.shell;
+package com.pocketharness.shell;
 
 import android.os.Bundle;
 

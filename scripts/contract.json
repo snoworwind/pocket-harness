@@ -748,7 +748,7 @@
     ]
   },
   "profiles": {
-    "device": "/data/data/com.dsharnessmobile.shell/files/home/.dsh/profiles",
+    "device": "/data/data/com.pocketharness.shell/files/home/.dsh/profiles",
     "patches": [
       "web/cordis.patch.yml",
       "headless/cordis.patch.yml"

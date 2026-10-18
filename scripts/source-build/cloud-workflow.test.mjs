@@ -4,7 +4,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 const read = name => readFileSync(new URL('../../.github/workflows/' + name, import.meta.url), 'utf8').replaceAll('\r\n', '\n')
 const entry = read('build-apk.yml')
-const expected = "name: build-apk\non:\n  workflow_dispatch:\n    inputs:\n      draft_release:\n        description: '源码构建成功后创建 ARM64 预发布草稿（不会公开）'\n        type: boolean\n        default: false\npermissions:\n  contents: read\njobs:\n  source-build:\n    if: ${{ !inputs.draft_release }}\n    uses: ./.github/workflows/build-apk-source.yml\n  source-draft:\n    if: ${{ inputs.draft_release }}\n    permissions:\n      contents: write\n    uses: ./.github/workflows/release-source-draft.yml"
+const expected = "name: build-apk\non:\n  workflow_dispatch:\n    inputs:\n      draft_release:\n        description: '源码构建成功后创建 ARM64 预发布草稿（不会公开）'\n        type: boolean\n        default: false\npermissions:\n  contents: read\njobs:\n  source-build:\n    if: ${{ !inputs.draft_release }}\n    uses: ./.github/workflows/build-apk-source.yml\n    secrets: inherit\n  source-draft:\n    if: ${{ inputs.draft_release }}\n    permissions:\n      contents: write\n    uses: ./.github/workflows/release-source-draft.yml\n    secrets: inherit"
 const check = text => assert.equal(text.split('\n').filter(line => line.trim() && !line.trimStart().startsWith('#')).join('\n').trim(), expected)
 test('cloud entry routes both modes exclusively through same-commit source workflows', () => check(entry))
 test('negative control: additional legacy job is rejected', () => {
@@ -46,4 +46,15 @@ test('draft workflow builds read-only and publishes only this run artifacts as a
   assert.match(draft, /--target "\$SOURCE_SHA" --draft --prerelease/)
   assert.doesNotMatch(draft, /actions\/checkout|build-apk\.mjs|npm |gradle /)
   assert.doesNotMatch(workflow, /run-id:|repository:|workflow_run:|\n  push:/)
+})
+
+test('the private key is unavailable to dependency builds and final signing uses a fresh job', () => {
+  const source = read('build-apk-source.yml')
+  const [builder, signer] = source.split('\n  sign-arm64:')
+  assert.ok(signer)
+  assert.doesNotMatch(builder, /secrets\.POCKET_SIGNING_KEYSTORE_BASE64/)
+  assert.match(builder, /dsh-mobile-apk-arm64-unsigned-/)
+  assert.match(signer, /secrets\.POCKET_SIGNING_KEYSTORE_BASE64/)
+  assert.match(signer, /sign-source-artifacts\.mjs/)
+  assert.doesNotMatch(signer, /npm (?:ci|install)|gradlew|gradle |corepack|pnpm /)
 })

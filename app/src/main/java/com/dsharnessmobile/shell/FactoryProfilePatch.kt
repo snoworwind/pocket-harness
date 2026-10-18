@@ -1,4 +1,4 @@
-package com.dsharnessmobile.shell
+package com.pocketharness.shell
 
 /**
  * profile `cordis.patch.yml` 的工厂语义纠正（0.14.0-preview，apk #214）。

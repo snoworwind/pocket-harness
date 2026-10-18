@@ -1,4 +1,4 @@
-package com.dsharnessmobile.shell
+package com.pocketharness.shell
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -20,9 +20,9 @@ class VdisplayLaunchLandingTest {
   /** 真实样本：包只在 Display #2（虚拟屏）上，Display #0 只有别的应用。 */
   private val onlyOnVirtual = listOf(
     "Display #0 (activities from top to bottom):",
-    "    mLastPausedActivity: ActivityRecord{201876071 u0 com.dsharnessmobile.shell/.MainActivity t489}",
-    "    topResumedActivity=ActivityRecord{201876071 u0 com.dsharnessmobile.shell/.MainActivity t489}",
-    "    * Hist  #0: ActivityRecord{201876071 u0 com.dsharnessmobile.shell/.MainActivity t489}",
+    "    mLastPausedActivity: ActivityRecord{201876071 u0 com.pocketharness.shell/.MainActivity t489}",
+    "    topResumedActivity=ActivityRecord{201876071 u0 com.pocketharness.shell/.MainActivity t489}",
+    "    * Hist  #0: ActivityRecord{201876071 u0 com.pocketharness.shell/.MainActivity t489}",
     "Display #2 (activities from top to bottom):",
     "  * Task{52b1f90 #493 type=standard A=10051:com.endday.game U=0 visible=true mode=fullscreen sz=1}",
     "    topResumedActivity=ActivityRecord{193219155 u0 com.endday.game/com.godot.game.GodotApp t493}",

@@ -32,7 +32,7 @@ const CONTROL_TOKEN_HEADER = 'x-dsh-control-token'
 const CONTROL_TOKEN_TEST_ENV = 'DSH_CONTROL_TOKEN_TEST'
 const CONTROL_TOKEN_ENV = 'DSH_CONTROL_TOKEN'
 const MIN_TOKEN_LENGTH = 8
-const SHELL_PREFS_DEFAULT = '/data/user/0/com.dsharnessmobile.shell/shared_prefs/dsh-adb.xml'
+const SHELL_PREFS_DEFAULT = '/data/user/0/com.pocketharness.shell/shared_prefs/dsh-adb.xml'
 
 /** 鉴权只需要的最小请求面（Node IncomingMessage 满足）。 */
 interface RouteRequestLike {

@@ -34,7 +34,7 @@ export const inject = ['tools', 'webServer', 'sessions', 'workspaceRegistry'] as
 
 /** 临时工作区（与壳侧 FileIncoming.tmpWorkspace 一致；环境注入 DSH_HOME 决定配置根） */
 function tmpWorkspace(): string {
-  const dshHome = process.env.DSH_HOME ?? '/data/user/0/com.dsharnessmobile.shell/files/home/.dsh'
+  const dshHome = process.env.DSH_HOME ?? '/data/user/0/com.pocketharness.shell/files/home/.dsh'
   return join(dshHome, 'workspaces', 'incoming')
 }
 

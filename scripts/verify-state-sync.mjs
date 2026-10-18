@@ -9,7 +9,7 @@
 //
 // 用法：
 //   node scripts/verify-state-sync.mjs --self-test                 # 无设备：桩驱动，含故意失败样本
-//   node scripts/verify-state-sync.mjs --serial 127.0.0.1:16416 [--pkg com.dsharnessmobile.shell] [--ws <cdp-ws-url>]
+//   node scripts/verify-state-sync.mjs --serial 127.0.0.1:16416 [--pkg com.pocketharness.shell] [--ws <cdp-ws-url>]
 // 退出码：0 = 全部用例 PASS；1 = 有用例 FAIL；2 = 用法/前置不满足。
 import { spawnSync } from 'node:child_process'
 
@@ -17,7 +17,7 @@ const argv = process.argv.slice(2)
 const argOf = (name, def) => { const i = argv.indexOf('--' + name); return i >= 0 ? (argv[i + 1] ?? def) : def }
 const SELF_TEST = argv.includes('--self-test')
 const SERIAL = argOf('serial', '')
-const PKG = argOf('pkg', 'com.dsharnessmobile.shell')
+const PKG = argOf('pkg', 'com.pocketharness.shell')
 const WS = argOf('ws', '')
 /**
  * CDP 转发用的 **host 端口**。
@@ -163,7 +163,7 @@ export const CASES = [
     id: 'ST-12 a11y-control-channel（系统服务类）',
     st: ['ST-12'],
     source: 'system: settings put secure enabled_accessibility_services',
-    mutate: (adb, on) => adb(['settings', 'put', 'secure', 'enabled_accessibility_services', on ? PKG + '/com.dsharnessmobile.shell.DeviceControlService' : 'null']),
+    mutate: (adb, on) => adb(['settings', 'put', 'secure', 'enabled_accessibility_services', on ? PKG + '/com.pocketharness.shell.DeviceControlService' : 'null']),
     observe: (page) => page.evaluate("(function(){ try { return JSON.parse(window.androidBridge?.a11yStatus?.() ?? '{}').enabled } catch { return null } })()"),
     expect: (on) => on,
     convergeMs: 3000,

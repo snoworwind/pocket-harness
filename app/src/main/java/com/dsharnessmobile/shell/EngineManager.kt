@@ -1,4 +1,4 @@
-package com.dsharnessmobile.shell
+package com.pocketharness.shell
 
 import android.app.ActivityManager
 import android.content.Context
@@ -2339,7 +2339,7 @@ class EngineManager(private val context: Context, private val pickToken: String?
       "TERMUX__ROOTFS" to usrDir.parentFile.absolutePath,
       "TERMUX__PREFIX" to usrDir.absolutePath,
       "TERMUX_APP__DATA_DIR" to context.filesDir.parentFile.absolutePath,
-      "TERMUX_APP__LEGACY_DATA_DIR" to "/data/data/com.dsharnessmobile.shell",
+      "TERMUX_APP__LEGACY_DATA_DIR" to "/data/data/com.pocketharness.shell",
       "TERMUX_VERSION" to BuildConfig.TERMUX_VERSION,
       // 版本口径单一来源（2026-09-10 用户定例）：壳侧 UI/桥/诊断都读 BuildConfig.VERSION_NAME，
       // 引擎侧插件（如 android-linux-env 导出的环境配方）一律读这两个环境变量，

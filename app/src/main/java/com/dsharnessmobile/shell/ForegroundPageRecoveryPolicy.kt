@@ -1,4 +1,4 @@
-package com.dsharnessmobile.shell
+package com.pocketharness.shell
 
 /** Activity page recovery only; engine task/service watchdogs do not use this policy. */
 internal class ForegroundPageRecoveryPolicy {

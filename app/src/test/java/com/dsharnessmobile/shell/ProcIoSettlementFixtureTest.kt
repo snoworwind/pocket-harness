@@ -1,4 +1,4 @@
-package com.dsharnessmobile.shell
+package com.pocketharness.shell
 
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
