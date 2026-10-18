@@ -30,6 +30,7 @@ import { parseUiTreeXml, pruneNodes, resolveRef, findActionableAncestor, checkUi
 import { cacheFromV2, decodeV2, isV2Payload, type V2Decoded } from './protocol-v2.js'
 import { detailRecord, pageRows, writeDetailStore } from './detail-store.js'
 import { resolveVirtualDisplayToken, vdTokenMissingText } from './vd-shot.js'
+import { isInputMethodEnabled } from './ime-component.js'
 
 // Keyboard auth is carried in Intent extras, so the broadcast must never be
 // resolved against other apps that may register the same legacy ADBKeyboard action.
@@ -2236,8 +2237,8 @@ return String(value.text ?? '') + (lines.length > 0 ? '\n' + lines.join('\n') : 
       if (ime) {
         const IME_ID = 'com.pocketharness.shell/.AdbKeyboardService'
         const en = await priv.execAdbShell(`ime enable ${IME_ID}`)
-        const list = await priv.execAdbShell(`ime list -s | grep -c dsharnessmobile`)
-        const enabled = list.ok && Number.parseInt(list.stdout.trim(), 10) > 0
+        const list = await priv.execAdbShell('ime list -s')
+        const enabled = list.ok && isInputMethodEnabled(list.stdout, IME_ID)
         if (!enabled) {
           notDone.push('输入法未启用（请在「设置 → 系统 → 语言与输入法」里手动启用「DSH 设备键盘」后重试'
             + (list.stdout.trim() ? `；ime list 返回 ${list.stdout.trim().slice(0, 80)}` : '') + '）')
