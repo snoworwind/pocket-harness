@@ -124,7 +124,7 @@ export declare function pruneNodes(raw: RawNode[], limits?: typeof PRUNE_LIMITS)
  *    - `text:新建会话#2`  —— 取 dump 顺序里的第 2 个匹配（1 基）
  *    - `text:新建会话@n5` —— 只在 n5 的子树内匹配（区域限定，避免侧边栏/主区同名互相污染）
  */
-export declare function resolveRef(byId: Map<string, NodeEntry>, nodes: UiNode[], ref: string, 
+export declare function resolveRef(byId: Map<string, NodeEntry>, nodes: UiNode[], ref: string,
 /** V2 专用：子树池提供者（预序区间切片）。缺省 = V1 的 origPath 前缀匹配。 */
 scopePool?: (scopeId: string) => UiNode[] | null): {
     ok: true;

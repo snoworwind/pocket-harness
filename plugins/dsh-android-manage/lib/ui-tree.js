@@ -226,7 +226,7 @@ export function pruneNodes(raw, limits = PRUNE_LIMITS) {
  *    - `text:新建会话#2`  —— 取 dump 顺序里的第 2 个匹配（1 基）
  *    - `text:新建会话@n5` —— 只在 n5 的子树内匹配（区域限定，避免侧边栏/主区同名互相污染）
  */
-export function resolveRef(byId, nodes, ref, 
+export function resolveRef(byId, nodes, ref,
 /** V2 专用：子树池提供者（预序区间切片）。缺省 = V1 的 origPath 前缀匹配。 */
 scopePool) {
     const r = ref.trim();
