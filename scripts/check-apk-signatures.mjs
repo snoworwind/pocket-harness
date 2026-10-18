@@ -3,7 +3,6 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
-import { X509Certificate } from 'node:crypto'
 
 const REQUIRED = ['v1', 'v2', 'v3']
 // The produced APKs use SHA-256 for JAR/v1 signatures. apksigner defaults
@@ -55,16 +54,6 @@ export function evaluateVerification({ exitCode, output, expectedCertificateSha2
   return { ok: exitCode === 0 && missing.length === 0 && certificateMatches, exitCode, schemes, missing, certificates, certificateMatches }
 }
 
-export function readKeystoreCertificate(keystore) {
-  const keytool = javaTool('keytool')
-  const result = spawnSync(keytool, ['-exportcert', '-rfc', '-keystore', path.resolve(keystore),
-    '-alias', 'androiddebugkey', '-storepass', 'android'], { encoding: 'utf8', windowsHide: true })
-  if (result.error || result.status !== 0) throw new Error('cannot export the repository signing certificate from ' + keystore)
-  const pem = result.stdout.match(/-----BEGIN CERTIFICATE-----[\s\S]*?-----END CERTIFICATE-----/)?.[0]
-  if (!pem) throw new Error('keytool did not return a certificate')
-  return new X509Certificate(pem).fingerprint256.replaceAll(':', '').toLowerCase()
-}
-
 function fail(message) {
   console.error(`APK signature gate: FAIL: ${message}`)
   process.exitCode = 1
@@ -97,13 +86,13 @@ function parseArgs(args) {
   const parsed = { apks: [], dirs: [], apksigner: undefined }
   for (let i = 0; i < args.length; i += 1) {
     const arg = args[i]
-    if (['--apk', '--dir', '--apksigner', '--keystore'].includes(arg) && (!args[i + 1] || args[i + 1].startsWith('--'))) {
+    if (['--apk', '--dir', '--apksigner', '--certificate-sha256'].includes(arg) && (!args[i + 1] || args[i + 1].startsWith('--'))) {
       throw new Error('missing value for ' + arg)
     }
     if (arg === '--apk') parsed.apks.push(args[++i])
     else if (arg === '--dir') parsed.dirs.push(args[++i])
     else if (arg === '--apksigner') parsed.apksigner = args[++i]
-    else if (arg === '--keystore') parsed.keystore = args[++i]
+    else if (arg === '--certificate-sha256') parsed.certificateSha256File = args[++i]
     else if (arg === '--self-test') parsed.selfTest = true
     else if (arg === '--help' || arg === '-h') parsed.help = true
     else throw new Error(`unknown argument: ${arg}`)
@@ -149,17 +138,20 @@ function main() {
     return fail(error.message)
   }
   if (options.help) {
-    console.log('Usage: node scripts/check-apk-signatures.mjs (--apk FILE | --dir DIR)+ [--apksigner PATH] [--keystore FILE] [--self-test]')
+    console.log('Usage: node scripts/check-apk-signatures.mjs (--apk FILE | --dir DIR)+ [--apksigner PATH] [--certificate-sha256 FILE] [--self-test]')
     return
   }
   if (options.selfTest) return runSelfTest()
   if (!options.apks.length && !options.dirs.length) return fail('provide at least one --apk or --dir')
   const apksigner = resolveApksigner(options.apksigner)
   if (!apksigner || !fs.existsSync(apksigner)) return fail('apksigner not found; pass --apksigner or set ANDROID_HOME/ANDROID_SDK_ROOT')
+  const certificateFile = options.certificateSha256File ?? path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'keystore', 'pocket-harness-cert-sha256.txt')
   let expectedCertificateSha256
-  if (options.keystore) {
-    try { expectedCertificateSha256 = readKeystoreCertificate(options.keystore) }
-    catch (error) { return fail(error.message) }
+  try {
+    expectedCertificateSha256 = fs.readFileSync(certificateFile, 'utf8').trim().toLowerCase()
+    if (!/^[0-9a-f]{64}$/.test(expectedCertificateSha256)) throw new Error('expected exactly one SHA-256 certificate fingerprint')
+  } catch (error) {
+    return fail(`cannot read trusted signing certificate fingerprint ${certificateFile}: ${error.message}`)
   }
   const files = [...options.apks]
   for (const dir of options.dirs) {

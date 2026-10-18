@@ -35,7 +35,7 @@ internal class GuideManagementController(
   fun build() {
     management = column()
     management.addView(label("管理中心", 26f))
-    management.addView(label("DeepCode · 应用与运行环境管理", 14f))
+    management.addView(label("Pocket Harness · 应用与运行环境管理", 14f))
     row("打开控制台", "查看终端与运行日志") {
       activity.startActivity(Intent(activity, ConsoleActivity::class.java))
     }

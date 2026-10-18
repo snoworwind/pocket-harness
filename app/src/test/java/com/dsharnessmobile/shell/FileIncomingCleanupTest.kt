@@ -31,7 +31,7 @@ class FileIncomingCleanupTest {
   @Test
   fun filesStillInThePendingLedgerSurvive() {
     val entries = listOf(".meta.ndjson", "alpha.pdf", "beta.txt")
-    val pending = listOf("/data/user/0/com.dsharnessmobile.shell/files/home/.dsh/workspaces/incoming/alpha.pdf")
+    val pending = listOf("/data/user/0/com.snoworwind.pocketharness/files/home/.dsh/workspaces/incoming/alpha.pdf")
     val deletions = FileIncoming.cleanupDeletions(entries, pending)
     assertEquals(listOf("beta.txt"), deletions)
     assertFalse("仍有 pending 的来件不许删（新会话 @<path> 会悬空）", deletions.contains("alpha.pdf"))
@@ -47,7 +47,7 @@ class FileIncomingCleanupTest {
   @Test
   fun queuedBlankSessionSourceSurvivesUntilBrowserClaim() {
     val entries = listOf("draft.pdf", "unrelated.txt", ".sessions")
-    val queued = listOf("/data/user/0/com.dsharnessmobile.shell/files/home/.dsh/workspaces/incoming/draft.pdf")
+    val queued = listOf("/data/user/0/com.snoworwind.pocketharness/files/home/.dsh/workspaces/incoming/draft.pdf")
     val deletions = FileIncoming.cleanupDeletions(entries, emptyList(), queued)
     assertEquals(listOf("unrelated.txt"), deletions)
     assertFalse("未 claim 的外部附件草稿源文件不许被 onTaskRemoved 删除", deletions.contains("draft.pdf"))

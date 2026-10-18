@@ -310,7 +310,7 @@ export function effortsFromLevels(levels: string[] | undefined): ReasoningEffort
  * @returns absolute cache file path.
  */
 export function modelsDevCachePath(home: string | undefined = process.env.DSH_HOME): string {
-  const base = home ?? '/data/user/0/com.dsharnessmobile.shell/files/home/.dsh'
+  const base = home ?? '/data/user/0/com.snoworwind.pocketharness/files/home/.dsh'
   return base.replace(/\/+$/, '') + '/models-dev.json'
 }
 

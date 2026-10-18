@@ -17,7 +17,7 @@ install: it boots a full dsh web agent that can really execute bash.
 
 > **Project charter: maximize security and verifiability.** See [the security charter](docs/AGENTS/SECURITY-HARDENING.md) for scope, principles, accepted risks and evidence requirements.
 
-The baseline retains the app name `DeepCode` (icon text DeepSearch) and package `com.dsharnessmobile.shell`,
+The app is named `Pocket Harness` and uses the independent package `com.snoworwind.pocketharness` (the Kotlin namespace remains `com.dsharnessmobile.shell`),
 source version and versionCode follow the [build declarations](app/build.gradle.kts), with the suffix supplied by build properties; engine `@deepseek-ai/dsh` 0.2.0-rc.2 (local development candidate, **not released**). See the [project baseline](docs/AGENTS/BASELINE.md) for the migration boundary of the app name, applicationId and APK artifact prefix.
 
 > **Plugin-marketplace caveat**: the built-in marketplace covers many third-party plugins, and
@@ -106,7 +106,7 @@ source version and versionCode follow the [build declarations](app/build.gradle.
 ## Download / install
 
 This new repository has no APK releases yet. Artifact naming and signing policy will be settled before the
-first release; current build outputs still use the baseline `dsh-mobile-apk-v<version>-<abi>.apk` names.
+first release. The source chain builds ARM64 only and names artifacts `pocket-harness-v<version>-source-arm64.apk`, signed with the independent private release key.
 
 ```sh
 adb install -r -t <apk>    # in-place upgrade, same signature

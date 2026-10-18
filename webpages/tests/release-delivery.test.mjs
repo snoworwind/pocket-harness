@@ -8,9 +8,9 @@ import { spawnSync } from 'node:child_process';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const tag = 'v0.14.7';
-const arm = 'a'.repeat(64), x86 = 'b'.repeat(64);
-const asset = abi => `dsh-mobile-apk-${tag}-${abi}.apk`;
-const assets = ['arm64', 'x86_64'].map(abi => ({ name: asset(abi), size: 100 }));
+const arm = 'a'.repeat(64);
+const asset = abi => `pocket-harness-${tag}-${abi}.apk`;
+const assets = ['arm64'].map(abi => ({ name: asset(abi), size: 100 }));
 
 test('offline seed and refresh round-trip preserve release identity and checksums', () => {
   const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'pages-delivery-'));
@@ -25,7 +25,7 @@ globalThis.fetch = async url => {
   // 「MANIFEST 不可用」警告——sha256 会被静默丢弃，正是本用例要抓的那种静默降级。
   const target = String(url);
   if (target.includes('api.github.com')) return { ok: true, status: 200, url: target, json: async () => (${JSON.stringify({ tag_name: tag, published_at: '2026-10-14T00:00:00Z', assets })}) };
-  return { ok: true, status: 200, url: target, text: async () => ${JSON.stringify(`${arm}  apk/${asset('arm64')}  100\n${x86}  apk/${asset('x86_64')}  100`)} };
+  return { ok: true, status: 200, url: target, text: async () => ${JSON.stringify(`${arm}  apk/${asset('arm64')}  100`)} };
 };`);
     const run = (offline, refresh = false) => {
       const result = spawnSync(process.execPath, ['--import', pathToFileURL(preload).href, path.join(scratch, 'tools/build.mjs'), ...(refresh ? ['--refresh'] : [])], {
@@ -34,12 +34,18 @@ globalThis.fetch = async url => {
       assert.equal(result.status, 0, result.stdout + result.stderr);
       const data = JSON.parse(fs.readFileSync(path.join(scratch, 'dist/data/releases.json')));
       const html = fs.readFileSync(path.join(scratch, 'dist/index.html'), 'utf8');
-      assert.equal(data.tag, tag);
-      assert.match(html, /"tag":"v0.14.7"/);
+      if (data.tag) {
+        assert.equal(data.tag, tag);
+        assert.match(html, /"tag":"v0.14.7"/);
+      } else {
+        assert.match(html, /"tag":null/);
+      }
       return data;
     };
-    assert.equal(run(true).source, 'seed');
-    assert.deepEqual(run(false, true).sha256, { arm64: arm, x86_64: x86 });
+    const empty = run(true);
+    assert.equal(empty.source, 'seed');
+    assert.equal(empty.tag, null);
+    assert.deepEqual(run(false, true).sha256, { arm64: arm });
     const restored = run(true);
     assert.equal(restored.publishedAt, '2026-10-14T00:00:00Z');
     // 离线档**不得**沿用种子里的哈希：只有取自官方 MANIFEST 的 sha256 才允许进页面
@@ -65,7 +71,7 @@ test('actual app renders the selected checksum, switches ABI, and handles missin
     const appUrl = pathToFileURL(path.join(root, 'src/assets/app.js')).href;
     fs.writeFileSync(runner, `
 import assert from 'node:assert/strict';
-const release = ${JSON.stringify({ tag, assets, sha256: { arm64: arm, x86_64: x86 } })};
+const release = ${JSON.stringify({ tag, assets, sha256: { arm64: arm } })};
 const nodes = new Map();
 const node = () => ({ textContent: '', innerHTML: '', dataset: {}, children: [],
   setAttribute(name, value) { this[name] = value; },
@@ -85,14 +91,11 @@ await import(${JSON.stringify(appUrl)});
 await new Promise(resolve => setImmediate(resolve));
 const html = () => get('dl-body').innerHTML;
 assert.ok(html().includes(release.sha256.arm64));
-assert.ok(!html().includes(release.sha256.x86_64));
-get('switch-abi').click();
-assert.ok(html().includes(release.sha256.x86_64));
-assert.ok(!html().includes(release.sha256.arm64));
-delete release.sha256.x86_64;
+assert.ok(!html().includes('x86_64'));
 // Reopen the same module in a fresh generation with the missing checksum.
+delete release.sha256.arm64;
 get('release-data').textContent = JSON.stringify(release);
-navigator.platform = 'Linux x86_64';
+navigator.platform = 'Linux arm64';
 await import(${JSON.stringify(appUrl + '?missing')});
 await new Promise(resolve => setImmediate(resolve));
 assert.ok(html().includes('未提供内联校验值'));

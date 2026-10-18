@@ -62,7 +62,7 @@ function rejectEscapedWriteRoots(workspace) {
         // Snapshot relocation changes Termux's prefix to the shell app's
         // /data/user/0 prefix. Resolve relative aliases such as rvim -> vim
         // before applying the same narrow runtime exemption.
-        const androidRuntimeLink = ['/data/data/com.termux/files/usr/', '/data/user/0/com.dsharnessmobile.shell/files/usr/']
+        const androidRuntimeLink = ['/data/data/com.termux/files/usr/', '/data/user/0/com.snoworwind.pocketharness/files/usr/']
           .some(prefix => target.startsWith(prefix)) && !existsSync(target)
           && androidStagingRoots.some(root => contains(root, path))
         if (!androidRuntimeLink && !contains(workspace, target)) {
@@ -103,6 +103,13 @@ function rejectSourceLinks(workspace, sourceRoot, directory = workspace) {
 
 export function sourceCommit(source) {
   return git(source, 'rev-parse', 'HEAD')
+}
+
+/** Real APK execution is limited to the maintained branch, including resumed runs. */
+export function assertMaintainedSource(source) {
+  let ref
+  try { ref = git(source, 'symbolic-ref', '--quiet', 'HEAD') } catch { /* Detached input is rejected. */ }
+  if (ref !== 'refs/heads/main') throw new Error('APK 来源构建仅允许 main 分支；其他分支只能 --list 或 --dry-run。')
 }
 
 export function committedWorkflow(source, commit) {

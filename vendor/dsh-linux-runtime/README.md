@@ -4,11 +4,12 @@ The **experimental** DSH Mobile Linux capability plugin: it installs,
 health-checks and runs the Debian/glibc environment, and it owns the
 Agent-facing `linux_bash` tool.
 
-In this repository this package is currently vendored as a source/build input
-only. It is not in the APK injector set and is not installed on devices. The
-asset builder packages it for a future offline integration; that integration is
-not complete. In the upstream system it ships in the built-in (hard) plugin
-directory, but is **not enabled by default**: presence is not activation.
+In this repository this package is vendored as a source/build input and is
+packaged into the APK's ARM64 Termux snapshot by the source-build workflow. Its
+assets are copied only after the same-commit provenance, manifest sidecar,
+SHA-256 and size checks pass. It remains experimental and is **not enabled by
+default**: presence is not activation. Android device installation and runtime
+acceptance are pending.
 
 ## What this package owns
 
@@ -20,10 +21,12 @@ directory, but is **not enabled by default**: presence is not activation.
 | Guest environment | Derived, host-clean environment (see below) |
 | Agent tool | `linux_bash`, registered only while the runtime is healthy |
 
-Bionilux, the Debian minimal rootfs and the Node.js package are built by this
-repository's separate internal asset workflow. They are not yet delivered to
-the APK or runtime plugin; the earlier upstream release-download flow is not
-available to this private project.
+Bionilux, the Debian minimal rootfs and the Node.js package are built from
+source by the Linux asset workflow. The APK source workflow rebuilds these
+assets for its own commit and embeds them beside this plugin, so runtime setup
+does not depend on a private GitHub Release or network download. Runtime updates
+arrive with a newly built APK; the embedded manifest and its raw-byte digest
+sidecar are verified before the bootstrap accepts it.
 
 ## Shared glibc Node.js
 

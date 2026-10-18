@@ -40,6 +40,8 @@ const HOST_ENV_ALLOWLIST = new Set([
   'all_proxy',
   'no_proxy',
 ]);
+const MAX_CAPTURED_OUTPUT_BYTES = 256 * 1024;
+const TERMINATION_GRACE_MS = 1500;
 const GUEST_PATH_PREFIXES_LIST = [
   '/bin',
   '/dev',
@@ -91,10 +93,11 @@ export class ExecutionGate {
     this.active = 0;
     this.exclusive = false;
     this.waiters = [];
+    this.pendingExclusive = 0;
   }
 
   get busy() {
-    return this.exclusive || this.active > 0;
+    return this.exclusive || this.active > 0 || this.pendingExclusive > 0;
   }
 
   _wake() {
@@ -104,10 +107,15 @@ export class ExecutionGate {
   }
 
   async acquireExclusive() {
-    while (this.exclusive || this.active > 0) {
-      await new Promise((resolve) => this.waiters.push(resolve));
+    this.pendingExclusive += 1;
+    try {
+      while (this.exclusive || this.active > 0) {
+        await new Promise((resolve) => this.waiters.push(resolve));
+      }
+      this.exclusive = true;
+    } finally {
+      this.pendingExclusive -= 1;
     }
-    this.exclusive = true;
   }
 
   releaseExclusive() {
@@ -116,7 +124,7 @@ export class ExecutionGate {
   }
 
   async acquireShared() {
-    while (this.exclusive) {
+    while (this.exclusive || this.pendingExclusive > 0) {
       await new Promise((resolve) => this.waiters.push(resolve));
     }
     this.active += 1;
@@ -124,7 +132,7 @@ export class ExecutionGate {
 
   releaseShared() {
     this.active -= 1;
-    if (this.active === 0 && this.exclusive) this._wake();
+    if (this.active === 0) this._wake();
   }
 }
 
@@ -202,7 +210,7 @@ function normaliseRunnerResult(raw) {
   return { promise: Promise.resolve(raw), cancel: undefined, forceKill: undefined };
 }
 
-function spawnCommand(spec) {
+export function spawnCommand(spec) {
   const detached = process.platform !== 'win32';
   const child = spawn(spec.file, spec.args ?? [], {
     cwd: spec.cwd,
@@ -211,18 +219,27 @@ function spawnCommand(spec) {
     detached,
     windowsHide: true,
   });
-  let stdout = '';
-  let stderr = '';
-  child.stdout?.setEncoding('utf8');
-  child.stderr?.setEncoding('utf8');
-  child.stdout?.on('data', (chunk) => {
-    stdout += chunk;
-  });
-  child.stderr?.on('data', (chunk) => {
-    stderr += chunk;
-  });
+  const capture = (stream) => {
+    const chunks = [];
+    let bytes = 0;
+    let truncated = false;
+    stream?.on('data', (chunk) => {
+      const value = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      const remaining = MAX_CAPTURED_OUTPUT_BYTES - bytes;
+      if (remaining > 0) {
+        const retained = value.subarray(0, remaining);
+        chunks.push(retained);
+        bytes += retained.length;
+      }
+      if (value.length > Math.max(remaining, 0)) truncated = true;
+    });
+    return () => `${Buffer.concat(chunks, bytes).toString('utf8')}${truncated ? `\n[output truncated after ${MAX_CAPTURED_OUTPUT_BYTES} bytes]` : ''}`;
+  };
+  const getStdout = capture(child.stdout);
+  const getStderr = capture(child.stderr);
 
   let timer;
+  let forceTimer;
   let settled = false;
   let timedOut = false;
   const terminate = (signal = 'SIGTERM') => {
@@ -238,26 +255,41 @@ function spawnCommand(spec) {
     }
   };
   const forceKill = () => terminate('SIGKILL');
+  const requestTermination = () => {
+    if (settled) return;
+    terminate('SIGTERM');
+    if (!forceTimer) {
+      forceTimer = setTimeout(forceKill, TERMINATION_GRACE_MS);
+      forceTimer.unref?.();
+    }
+  };
   const promise = new Promise((resolve, reject) => {
-    const onAbort = () => terminate('SIGTERM');
+    const onAbort = () => requestTermination();
+    const finish = () => {
+      settled = true;
+      if (timer) clearTimeout(timer);
+      if (forceTimer) clearTimeout(forceTimer);
+      spec.signal?.removeEventListener('abort', onAbort);
+    };
     if (spec.signal?.aborted) onAbort();
     else spec.signal?.addEventListener('abort', onAbort, { once: true });
     if (Number.isFinite(spec.timeout) && spec.timeout > 0) {
       timer = setTimeout(() => {
         timedOut = true;
-        terminate('SIGTERM');
+        requestTermination();
       }, spec.timeout);
       timer.unref?.();
     }
-    child.once('error', reject);
+    child.once('error', (error) => {
+      finish();
+      reject(error);
+    });
     child.once('close', (code, signal) => {
-      settled = true;
-      if (timer) clearTimeout(timer);
-      spec.signal?.removeEventListener('abort', onAbort);
-      resolve({ stdout, stderr, exitCode: code, signal, timedOut });
+      finish();
+      resolve({ stdout: getStdout(), stderr: getStderr(), exitCode: code, signal, timedOut });
     });
   });
-  return { promise, cancel: terminate, forceKill, child };
+  return { promise, cancel: requestTermination, forceKill, child };
 }
 
 async function removeTree(target) {
@@ -506,6 +538,34 @@ export class LinuxRuntimeManager {
     };
   }
 
+  async _probeRuntime(health) {
+    const nodeBin = path.join(health.paths.node, 'bin');
+    const result = normaliseCommandResult(await this._runManaged({
+      file: health.paths.launcher,
+      args: ['node', '--version'],
+      cwd: this.dataDir,
+      env: {
+        ...cleanHostEnvironment(),
+        BIONILUX_ROOTFS: health.paths.rootfs,
+        BIONILUX_PRELOAD: health.paths.preload,
+        BIONILUX_GUEST_CWD: '/',
+        BIONILUX_GUEST_PATH: `${nodeBin}:${DEFAULT_GUEST_PATH}`,
+        BIONILUX_HOST_PATHS: nodeBin,
+        BIONILUX_FAKE_ROOT: '1',
+        BIONILUX_LENIENT: '0',
+        BIONILUX_ANDROID_PATHS: '1',
+        PATH: `${nodeBin}${path.delimiter}${process.env.PATH ?? ''}`,
+      },
+      timeout: 10_000,
+    }));
+    if (result.timedOut || result.exitCode !== 0 || !/^v\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(result.stdout.trim())) {
+      const reason = result.timedOut
+        ? 'runtime smoke probe timed out'
+        : `runtime smoke probe failed (exit ${result.exitCode ?? 'unknown'}): ${(result.stderr || result.stdout).trim().slice(0, 500)}`;
+      throw new Error(reason);
+    }
+  }
+
   status() {
     if (this.disposed) {
       return Object.freeze({ healthy: false, installed: false, state: 'disposed', reason: 'manager is disposed' });
@@ -538,8 +598,10 @@ export class LinuxRuntimeManager {
   }
 
   _emitState() {
-    const state = this.status();
-    this.events.emit('change', state);
+    const state = Object.freeze({ ...this.status(), ...(this.lastCleanupError ? { cleanupWarning: this.lastCleanupError } : {}) });
+    for (const listener of this.events.rawListeners('change')) {
+      try { listener.call(this.events, state); } catch { /* Observers cannot undo a committed installation. */ }
+    }
     try {
       this.onStateChange?.(state);
     } catch {
@@ -765,6 +827,8 @@ export class LinuxRuntimeManager {
     const stagedInstance = path.join(staging, 'instance');
     const finalInstance = this._instancePaths(instanceId).root;
     let nodeCreated = false;
+    let finalPublished = false;
+    let committedRecord;
     const nodeKey = nodeKeyFor(selection.runtime);
     try {
       await fs.mkdir(stagedInstance, { recursive: true });
@@ -803,15 +867,15 @@ export class LinuxRuntimeManager {
         { flag: 'wx' },
       );
       await fs.rename(stagedInstance, finalInstance);
+      finalPublished = true;
       const health = this._healthForRecord(record);
       if (!health.healthy) throw new Error(`staged runtime is unhealthy: ${health.reason}`);
+      await this._probeRuntime(health);
       await this._stopChildren();
       await this._writeActive(record);
-      if (previous && previous.instanceId !== record.instanceId) {
-        await this._removePreviousInstance(previous, nodeKey);
-      }
-      return this._emitState();
+      committedRecord = record;
     } catch (error) {
+      if (finalPublished) await removeTree(finalInstance).catch(() => undefined);
       if (nodeCreated && !this._nodeReferencedByAnyInstance(this._nodePath(nodeKey))) {
         await removeTree(this._nodeRoot(nodeKey)).catch(() => undefined);
       }
@@ -819,6 +883,13 @@ export class LinuxRuntimeManager {
     } finally {
       await removeTree(staging).catch(() => undefined);
     }
+    // The active pointer is committed. Garbage collection must never roll it back.
+    this.lastCleanupError = null;
+    if (previous && previous.instanceId !== committedRecord.instanceId) {
+      try { await this._removePreviousInstance(previous, nodeKey); }
+      catch (error) { this.lastCleanupError = String(error?.message ?? error); }
+    }
+    return this._emitState();
   }
 
   async reinstall(manifest, runtimeId = 'debian-minimal') {

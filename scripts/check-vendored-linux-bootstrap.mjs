@@ -9,7 +9,7 @@
  * an edit to the vendored tree would be invisible: nothing else reads those files.
  *
  * What it asserts:
- *   1. the vendored file set is exactly the upstream package minus `test/`, plus the two files we add;
+ *   1. the vendored file set is exactly the upstream package minus `test/`, plus this repo's build, lock, and regression files;
  *   2. every upstream-faithful file still hashes to the recorded digest (EOL-normalized, so a CRLF
  *      checkout is not reported as drift);
  *   3. the two deliberate deviations are still present — an `exports`/`main` pointing at `./lib`
@@ -52,13 +52,14 @@ const MANIFEST = {
 
 // Explicit local security fork; MANIFEST above retains the original upstream hashes.
 const LOCAL_PATCHES = {
+  'README.md': 'b6a54ef5116942484304b8ea31da9bf514a22dcb6496ce2cd99aaadc82db8fb2',
   'src/asset-bundle.js': '7e32ce0f57ee0a7f75dfd2d2af6ff61357d63b6c34e4f0dbf7aa23cf4300e416',
   'src/github.js': '7b6369b5910ecb3e8b49f75a4dae3ca60ceac2d4164bf7f05f71c81803aa110c',
-  'src/index.js': '27708c714ba0a102a89a72611443c144a107307686146acc49b9fa4b4c1ba4b2',
+  'src/index.js': 'f55df666a7c95d5bdb65b1743f6376a8218dd9701c418490e25af553aeeb93bf',
 }
 
 /** Files this repo adds, including local security regression tests. */
-const ADDED = ['build.mjs', 'package.json', 'test/github-limits.test.mjs', 'test/github-limits-negative-control.mjs']
+const ADDED = ['build.mjs', 'build-client.mjs', 'package.json', 'package-lock.json', 'test/github-limits.test.mjs', 'test/github-limits-negative-control.mjs']
 
 /** `lib/` is a build product (gitignored, rebuilt by `npm run build`); `node_modules` is never vendored. */
 const IGNORED_DIRS = new Set(['node_modules', 'lib', '.git'])
@@ -73,7 +74,7 @@ const FORBIDDEN_EXTENSIONS = [
   // Executables/binaries of any kind.
   '.exe', '.dll', '.bin', '.elf', '.apk',
 ]
-const FORBIDDEN_NAMES = ['rootfs', 'node', 'npm', 'dsh-bionilux', 'linux-runtime', 'package-lock.json']
+const FORBIDDEN_NAMES = ['rootfs', 'node', 'npm', 'dsh-bionilux', 'linux-runtime']
 
 const normalize = (text) => text.replace(/\r\n/g, '\n')
 const digestOf = (path) => createHash('sha256').update(normalize(readFileSync(path, 'utf8')), 'utf8').digest('hex')

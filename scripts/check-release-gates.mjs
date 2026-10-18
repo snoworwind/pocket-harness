@@ -204,6 +204,8 @@ const SINK_KINDS = {
  *  此前这 5 条不在任何清单里：删掉 workflow 里的调用点，本地链 / 云端链 / 协调仓 CI 全绿，
  *  而它们从未真跑——正是本文件要防的「有人加了一道门禁但没人接线」。 */
 const SOURCE_GATES = [
+  'compare-independent-builds.mjs',
+  'sign-source-artifacts.mjs',
   'check-package-lock-roots.mjs',
   'check-dsh-runtime-dependencies.mjs',
   'check-android-native-runtime-packages.mjs',

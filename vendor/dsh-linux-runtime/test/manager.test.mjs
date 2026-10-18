@@ -3,13 +3,12 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 
-import { createManager, GUEST_PATH_PREFIXES, isGuestPath } from '../modules/manager.js';
+import { createManager, ExecutionGate, GUEST_PATH_PREFIXES, isGuestPath, spawnCommand } from '../modules/manager.js';
 import { validateManifest, validateAsset, selectRuntime } from '../modules/manifest.js';
 
-const temporaryRoot = path.join(os.tmpdir(), `bionilux-runtime-tests-${process.pid}`);
+const temporaryRoot = path.join(process.cwd(), '.deploy-tmp', `bionilux-runtime-tests-${process.pid}`);
 
 function sha256(buffer) {
   return createHash('sha256').update(buffer).digest('hex');
@@ -124,7 +123,7 @@ function makeIo(fixture, { onExtract } = {}) {
  * cancels it — that is what the cutover gate has to do before it replaces an
  * active rootfs.
  */
-function makeRunner({ instant } = {}) {
+function makeRunner({ instant, healthProbeResult = { stdout: 'v24.22.0', stderr: '', exitCode: 0 }, onHealthProbe } = {}) {
   const calls = [];
   const isInstant =
     instant ?? ((spec) => !String(spec.args?.at(-1) ?? '').includes('sleep'));
@@ -149,7 +148,11 @@ function makeRunner({ instant } = {}) {
             },
             { once: true },
           );
-          if (isInstant(spec)) settle({ stdout: 'ok', stderr: '', exitCode: 0 });
+          if (isInstant(spec)) {
+            const healthProbe = spec.args?.[0] === 'node' && spec.args?.[1] === '--version';
+            if (healthProbe) onHealthProbe?.(spec);
+            settle(healthProbe ? healthProbeResult : { stdout: 'ok', stderr: '', exitCode: 0 });
+          }
         }),
         cancel: () => {
           record.cancelled = true;
@@ -187,10 +190,72 @@ after(async () => {
   await rm(temporaryRoot, { recursive: true, force: true });
 });
 
+test('last shared release wakes an exclusive waiter and queued readers cannot overtake it', { timeout: 1000 }, async () => {
+  const gate = new ExecutionGate();
+  await gate.acquireShared();
+  const order = [];
+  const writer = gate.acquireExclusive().then(() => { order.push('writer'); });
+  const reader = gate.acquireShared().then(() => { order.push('reader'); gate.releaseShared(); });
+  await Promise.resolve();
+  assert.deepEqual(order, []);
+  gate.releaseShared();
+  await writer;
+  assert.deepEqual(order, ['writer']);
+  gate.releaseExclusive();
+  await reader;
+  assert.deepEqual(order, ['writer', 'reader']);
+  assert.equal(gate.busy, false);
+});
+
+test('multiple queued managers finish before newly queued commands', { timeout: 1000 }, async () => {
+  const gate = new ExecutionGate();
+  await gate.acquireShared();
+  const order = [];
+  const writers = [1, 2].map(n => gate.acquireExclusive().then(() => {
+    order.push(n); gate.releaseExclusive();
+  }));
+  const reader = gate.acquireShared().then(() => { order.push('reader'); gate.releaseShared(); });
+  gate.releaseShared();
+  await Promise.all([...writers, reader]);
+  assert.deepEqual(order, [1, 2, 'reader']);
+  assert.equal(gate.active, 0);
+});
+
+test('spawnCommand bounds captured stdout and stderr while continuing to drain both pipes', async () => {
+  const result = await spawnCommand({
+    file: process.execPath,
+    args: ['-e', 'process.stdout.write("o".repeat(300000)); process.stderr.write("e".repeat(300000))'],
+    timeout: 10_000,
+  }).promise;
+  assert.equal(result.exitCode, 0);
+  assert.equal(result.stdout.length, 256 * 1024 + '\n[output truncated after 262144 bytes]'.length);
+  assert.equal(result.stderr.length, 256 * 1024 + '\n[output truncated after 262144 bytes]'.length);
+  assert.match(result.stdout, /\[output truncated after 262144 bytes\]$/);
+  assert.match(result.stderr, /\[output truncated after 262144 bytes\]$/);
+});
+
+test('spawnCommand force-kills the process group when a timed-out child ignores SIGTERM', async (t) => {
+  if (process.platform === 'win32') return t.skip('POSIX process-group signal semantics required');
+  const started = Date.now();
+  const result = await spawnCommand({
+    file: process.execPath,
+    args: ['-e', 'process.on("SIGTERM", () => {}); setInterval(() => {}, 1000)'],
+    timeout: 1000,
+  }).promise;
+  assert.equal(result.timedOut, true);
+  assert.equal(result.exitCode, null);
+  assert.equal(result.signal, 'SIGKILL');
+  assert.ok(Date.now() - started >= 1400, 'SIGKILL should follow the bounded TERM grace period');
+});
+
 test('install stages, proves health, then activates the runtime', async () => {
   const dataDir = tempDir();
   const fixture = makeManifest();
-  const { manager, io } = makeManager(fixture, { dataDir });
+  let activeDuringProbe;
+  const { manager, io } = makeManager(fixture, {
+    dataDir,
+    runnerOptions: { onHealthProbe: () => { activeDuringProbe = existsSync(path.join(dataDir, 'active.json')); } },
+  });
 
   assert.equal(manager.status().installed, false);
   assert.equal(manager.status().healthy, false);
@@ -201,6 +266,7 @@ test('install stages, proves health, then activates the runtime', async () => {
   assert.equal(status.installed, true);
   assert.equal(status.runtimeId, 'debian-minimal');
   assert.equal(status.version, '1.0.0');
+  assert.equal(activeDuringProbe, false, 'the new runtime is not active until the smoke probe succeeds');
 
   const record = JSON.parse(await readFile(path.join(dataDir, 'active.json'), 'utf8'));
   assert.equal(record.runtimeId, 'debian-minimal');
@@ -227,6 +293,71 @@ test('a failing install leaves the previous active runtime untouched', async () 
   assert.equal(after.version, '1.0.0');
   const record = JSON.parse(await readFile(path.join(dataDir, 'active.json'), 'utf8'));
   assert.equal(record.version, '1.0.0');
+});
+
+test('a runtime that fails the launch smoke probe cannot replace the active instance', async () => {
+  const dataDir = tempDir();
+  const firstFixture = makeManifest();
+  const first = makeManager(firstFixture, { dataDir });
+  const installed = await first.manager.install(firstFixture.manifest);
+  const activeBefore = await readFile(path.join(dataDir, 'active.json'), 'utf8');
+  const secondFixture = makeManifest({ version: '1.0.1' });
+  const second = makeManager(secondFixture, {
+    dataDir,
+    runnerOptions: { healthProbeResult: { stdout: '', stderr: 'ELF load failed', exitCode: 1 } },
+  });
+
+  await assert.rejects(() => second.manager.install(secondFixture.manifest), /runtime smoke probe failed/);
+  assert.equal(await readFile(path.join(dataDir, 'active.json'), 'utf8'), activeBefore);
+  assert.equal(second.manager.status().instanceId, installed.instanceId);
+});
+
+test('old-instance cleanup failure preserves the committed runtime across manager restart', async () => {
+  const dataDir = tempDir();
+  const fixture = makeManifest();
+  const { manager } = makeManager(fixture, { dataDir });
+  const before = await manager.install(fixture.manifest);
+  manager._removePreviousInstance = async () => { throw new Error('controlled old-instance cleanup failure'); };
+  const after = await manager.reinstall(fixture.manifest);
+  assert.notEqual(after.instanceId, before.instanceId);
+  assert.equal(after.healthy, true);
+  assert.match(after.cleanupWarning, /controlled old-instance/);
+  const restarted = makeManager(fixture, { dataDir }).manager;
+  assert.equal(restarted.status().healthy, true);
+  assert.equal(restarted.status().instanceId, after.instanceId);
+  assert.equal(existsSync(path.join(dataDir, 'instances', before.instanceId)), true);
+  assert.equal((await restarted.execute({ command: 'echo usable' })).exitCode, 0);
+});
+
+test('throwing state observers cannot destroy committed instances or starve later observers', async () => {
+  const fixture = makeManifest();
+  const { manager } = makeManager(fixture, { dataDir: tempDir() });
+  const observed = [];
+  manager.on('change', () => { throw new Error('observer failed'); });
+  manager.on('change', state => observed.push(state));
+  let once = 0;
+  manager.events.once('change', () => { once++; throw new Error('once failed'); });
+  await manager.install(fixture.manifest);
+  const after = await manager.reinstall(fixture.manifest);
+  assert.equal(after.healthy, true);
+  assert.equal(observed.length, 2);
+  assert.equal(once, 1);
+  assert.equal(manager.status().instanceId, after.instanceId);
+});
+
+test('active-pointer write failure retains the previous pointer and removes only the staged instance', async () => {
+  const dataDir = tempDir();
+  const fixture = makeManifest();
+  const { manager } = makeManager(fixture, { dataDir });
+  const before = await manager.install(fixture.manifest);
+  const pointer = await readFile(path.join(dataDir, 'active.json'), 'utf8');
+  manager._writeActive = async () => { throw new Error('controlled pointer write failure'); };
+  await assert.rejects(manager.reinstall(fixture.manifest), /controlled pointer/);
+  assert.equal(await readFile(path.join(dataDir, 'active.json'), 'utf8'), pointer);
+  assert.equal(manager.status().instanceId, before.instanceId);
+  assert.equal(manager.status().healthy, true);
+  const { readdir } = await import('node:fs/promises');
+  assert.deepEqual(await readdir(path.join(dataDir, 'instances')), [before.instanceId]);
 });
 
 test('shared glibc Node is downloaded once and reused across releases', async () => {

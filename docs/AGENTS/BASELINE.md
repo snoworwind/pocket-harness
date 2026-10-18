@@ -18,15 +18,17 @@
 - 来源草稿入口的分支校验：`refs/heads/security/hardening` → `refs/heads/main`。
 - 补丁夹具 `manifest.capture.registrySha256` 重封：基线前 registry 已加入 vendor-only 补丁，engine 夹具字节未变；理由见 [known-gaps.md](known-gaps.md) 对应行。
 
-## 刻意未改的应用/产物标识
+## 应用身份迁移
 
-以下标识仍沿用基线值。它们会改变安装身份、用户可见文案或发布产物，必须单独提交并完成仓库规定的验证；本轮环境没有 Android SDK 与 adb，无法完成编译、打包与设备三层验收。
+独立身份已在本分支实现，旧 DeepCode 保持并行安装；不会自动复制旧应用数据。代码迁移已完成，来源 APK 构建与设备验收仍待完成，本轮不声明设备通过。
 
-| 标识 | 基线值 | 为什么不在首个提交改 |
+| 标识 | 当前值 | 迁移说明 |
 |---|---|---|
-| `applicationId` / `namespace` | `com.dsharnessmobile.shell` | 改变安装身份、签名与升级路径；旧包无法覆盖升级，需重签名并做设备验收 |
-| 应用显示名 | `DeepCode`（无障碍服务名 `DeepCode 设备控制`、控制台标题同源） | L3 UI 文案；`UserCopy.APP_NAME` 与单测、`strings.xml`、控制台标题需同步，且必须模拟器三层验收 |
-| APK 产物前缀 | `dsh-mobile-apk-v<版本>-<abi>.apk` | 与发布链、站点资产名、`SHA256SUMS` / `MANIFEST`、Python 发布准备与 CI artifact 名绑定，改名需同步全部门禁 |
+| `applicationId` | `com.snoworwind.pocketharness` | 独立安装身份；与旧 `com.dsharnessmobile.shell` 并排安装，不覆盖升级、不自动迁移数据 |
+| Kotlin `namespace` | `com.dsharnessmobile.shell` | 保留类与 AIDL 的现有命名空间，降低无关源码迁移风险 |
+| 应用显示名 | `Pocket Harness`（无障碍服务名、控制台标题同源） | `UserCopy.APP_NAME`、`strings.xml`、控制台标题、管理页已同步；ARM64 设备三层验收仍待集中执行，当前 MuMu x86_64 不能安装产品 APK |
+| APK 产物前缀 | `pocket-harness-v<版本>-arm64.apk` | 发布链、下载页、来源 artifact 与 Python 发布准备已统一为 ARM64 独立命名 |
+| 发布签名 | `POCKET_SIGNING_KEYSTORE_BASE64` 与 `POCKET_SIGNING_KEYSTORE_PASSWORD` 仓库 Secret | 私钥不入库；发布 APK 校验提交的证书 SHA-256 指纹 |
 | Gradle 子仓目录名 | `dsh-mobile-apk/` 兼容探测 | 多个门禁同时支持「协调仓布局」与「自包含布局」；改名要逐项回归，否则门禁会找不到树 |
 | 历史文档中的旧 URL | 旧仓库、旧 Actions run、旧 PR | 属于事实记录与来源证据，按安全加固宗旨不得改写成新项目事实 |
 
@@ -36,12 +38,11 @@
 - `LICENSE` 保留原版权声明。新增修改者的版权行、仓库公开范围与许可证策略需由项目所有者确认后另行提交。
 - 子仓 `package.json` 的 `repository` 字段是上游归属信息，不是本仓的运行时坐标，未改。
 
-## 迁移这些标识时
+## 后续验证与边界
 
-每一项按独立 PR 处理，并携带对应档位的证据：
+Gradle 子仓目录名仍保持历史兼容探测；此前下列项目不再是待迁移项：
 
-- 应用名 / applicationId：来源链构建 + Kotlin 单测 + 模拟器三层验收（竖屏与横屏）+ 真机补充门禁。
-- APK 产物前缀：同步发布链、站点、校验清单与测试，跑 `check-release-gates.mjs` 与相关 Node 测试。
+- 设备验收：来源链 ARM64 构建 + Kotlin 单测 + 模拟器三层验收（竖屏与横屏）+ 发布前真机补充门禁。
 - Gradle 目录名：逐项跑布局相关门禁，确认自包含布局与协调仓兼容探测都不回退。
 
-本文记录首个提交的边界，不构成「永不改名」的承诺。
+本文记录基线导入与独立身份迁移边界，不构成「永不改名」的承诺。

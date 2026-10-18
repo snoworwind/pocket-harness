@@ -38,10 +38,10 @@ test('资产名形态与 build-apk-013.ps1 的 --artifact-name 逐字一致', ()
   const ps1 = readRepo('scripts/build-apk-013.ps1');
   const m = ps1.match(/--artifact-name"?\s*,\s*"([^"]+)"/);
   assert.ok(m, 'build-apk-013.ps1 中找不到 --artifact-name 声明');
-  // 真源形如 dsh-mobile-apk-v<ver>-<abi>.apk，把变量位归一后比对
-  const shape = m[1].replace(/\$ver/g, 'X').replace(/\$abi/g, 'Y');
-  assert.equal(shape, 'dsh-mobile-apk-vX-Y.apk', '发布链产物名形态变了，站点需同步');
-  assert.equal(canonicalApkName('vX', 'Y'), shape, '站点资产名形态与发布链产物名不一致');
+  // 真源形如 pocket-harness-v<ver>-<abi>.apk，把变量位归一后比对
+  const shape = m[1].replace(/\$ver/g, 'X').replace(/\$abi/g, 'arm64');
+  assert.equal(shape, 'pocket-harness-vX-arm64.apk', '发布链产物名形态变了，站点需同步');
+  assert.equal(canonicalApkName('vX', 'arm64'), shape, '站点资产名形态与发布链产物名不一致');
 });
 
 /**
@@ -76,11 +76,12 @@ test('门禁自身具备判红能力（受控负控）', () => {
 
 // ── 命名历史兼容（坑 172 的防线）────────────────────────────────────────────
 
-test('arm64 同时接受现行与历史两种资产名，x86_64 只有一种', () => {
+test('Pocket Harness 发行仅接受 ARM64 资产命名', () => {
   assert.deepEqual(apkNameCandidates('v0.14.7', 'arm64'),
-    ['dsh-mobile-apk-v0.14.7-arm64.apk', 'dsh-mobile-apk-v0.14.7-arm64-v8a.apk']);
-  assert.deepEqual(apkNameCandidates('v0.14.2', 'x86_64'),
-    ['dsh-mobile-apk-v0.14.2-x86_64.apk']);
+    ['pocket-harness-v0.14.7-arm64.apk', 'pocket-harness-v0.14.7-arm64-v8a.apk']);
+  assert.deepEqual(SUPPORTED_ABIS, ['arm64']);
+  assert.deepEqual(apkNameCandidates('v0.14.2', 'x86_64'), []);
+  assert.equal(pickAsset('v0.14.2', 'x86_64', [{ name: 'pocket-harness-v0.14.2-x86_64.apk' }]), null);
 });
 
 test('带 v 与不带 v 的 tag 归一到同一资产名', () => {
@@ -88,16 +89,16 @@ test('带 v 与不带 v 的 tag 归一到同一资产名', () => {
 });
 
 test('pickAsset 命中真实发布历史里的两种 arm64 命名', () => {
-  const assetsNew = [{ name: 'dsh-mobile-apk-v0.14.7-arm64.apk', size: 158453224 }];
-  const assetsOld = [{ name: 'dsh-mobile-apk-v0.14.2-arm64-v8a.apk', size: 1 }];
+  const assetsNew = [{ name: 'pocket-harness-v0.14.7-arm64.apk', size: 158453224 }];
+  const assetsOld = [{ name: 'pocket-harness-v0.14.2-arm64-v8a.apk', size: 1 }];
   assert.ok(pickAsset('v0.14.7', 'arm64', assetsNew), '现行口径未命中');
   assert.ok(pickAsset('v0.14.2', 'arm64', assetsOld), '历史口径未命中');
 });
 
 test('兼容命名不放宽架构校验：异构资产永不命中', () => {
-  const x86Only = [{ name: 'dsh-mobile-apk-v0.14.7-x86_64.apk', size: 1 }];
+  const x86Only = [{ name: 'pocket-harness-v0.14.7-x86_64.apk', size: 1 }];
   assert.equal(pickAsset('v0.14.7', 'arm64', x86Only), null, 'arm64 设备不应拿到 x86_64 包');
-  const armOnly = [{ name: 'dsh-mobile-apk-v0.14.7-arm64.apk', size: 1 }];
+  const armOnly = [{ name: 'pocket-harness-v0.14.7-arm64.apk', size: 1 }];
   assert.equal(pickAsset('v0.14.7', 'x86_64', armOnly), null, 'x86_64 设备不应拿到 arm64 包');
 });
 
@@ -110,7 +111,7 @@ test('pickAsset 对空/畸形资产清单返回 null 而不抛错', () => {
 // ── URL 拼接 ────────────────────────────────────────────────────────────────
 
 test('URL 拼接为 release 资产直链，且各镜像只差域名前缀', () => {
-  const name = 'dsh-mobile-apk-v0.14.7-arm64.apk';
+  const name = 'pocket-harness-v0.14.7-arm64.apk';
   for (const tpl of MIRROR_TEMPLATES) {
     const url = assetUrl(tpl, 'v0.14.7', name);
     assert.ok(url.startsWith(tpl.prefix), tpl.id + ' 前缀未生效');
@@ -136,9 +137,10 @@ test('manifestUrl 指向 MANIFEST.txt', () => {
 
 // ── ABI 判定 ────────────────────────────────────────────────────────────────
 
-test('x86_64 不被误判为不支持的 x86（子串陷阱）', () => {
-  assert.equal(classifyAbi({ platform: 'Linux x86_64' }).abi, 'x86_64');
-  assert.equal(classifyAbi({ architecture: 'x86', bitness: '64' }).abi, 'x86_64');
+test('x86_64 设备被明确判为当前发行不支持', () => {
+  assert.equal(classifyAbi({ platform: 'Linux x86_64' }).abi, null);
+  assert.equal(classifyAbi({ platform: 'Linux x86_64' }).confidence, 'unsupported');
+  assert.equal(classifyAbi({ architecture: 'x86', bitness: '64' }).abi, null);
 });
 
 test('x86 32 位按结构化字段判为不支持（明确信号不给兜底）', () => {
@@ -176,8 +178,8 @@ test('architecture 有值但 bitness 为空时不再丢信号（真机实测形�
   assert.equal(r.confidence, 'likely');
   // 非桌面平台（模拟器/手机）才适用：桌面由零号规则拦下，见下方桌面用例
   const x = classifyAbi({ architecture: 'x86', bitness: '', platform: 'Linux', ua: 'Mozilla/5.0 (Linux; Android 12) Mobile' });
-  assert.equal(x.abi, 'x86_64');
-  assert.equal(x.confidence, 'likely');
+  assert.equal(x.abi, null);
+  assert.equal(x.confidence, 'unsupported');
 });
 
 test('明确 32 位结构化信号仍判不支持（兜底不得放宽确定性结论）', () => {
@@ -204,17 +206,18 @@ test('桌面系统一律判 unknown：PC 访客要装的是手机，架构无从
   assert.equal(classifyAbi({ platform: 'MacIntel', ua: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)' }).confidence, 'unknown');
 });
 
-test('Linux 桌面 x86_64 仍可正常判定（不被桌面兜底误伤）', () => {
+test('Linux 桌面 x86_64 判为当前发行不支持', () => {
   const r = classifyAbi({ platform: 'Linux x86_64', ua: 'Mozilla/5.0 (X11; Linux x86_64)' });
-  assert.equal(r.abi, 'x86_64');
-  assert.equal(r.confidence, 'certain');
+  assert.equal(r.abi, null);
+  assert.equal(r.confidence, 'unsupported');
 });
 
 test('MuMu 等模拟器：结构化 architecture=x86 优先于 Android 兜底', () => {
   // 模拟器内浏览器是 Android UA，若只靠 UA 会被兜底成 arm64（错）。
   // userAgentData 的 architecture=x86 必须胜出。
   const r = classifyAbi({ architecture: 'x86', bitness: '', platform: 'Linux', ua: 'Mozilla/5.0 (Linux; Android 12; MuMu) Chrome/120 Mobile' });
-  assert.equal(r.abi, 'x86_64');
+  assert.equal(r.abi, null);
+  assert.equal(r.confidence, 'unsupported');
 });
 
 test('真正更老的 32 位与异构架构仍判不支持', () => {
@@ -244,10 +247,10 @@ test('判定结果只可能是受支持集合内或 null（绝不越界）', () 
 
 test('从 MANIFEST.txt 取出 sha256（真实格式：hash 双空格 相对路径 空格 字节数）', () => {
   const text = [
-    '0d96f1b204f7a3d48a89199415f831168cd380ea84f2565717bf646d27ffb1ff  apk/dsh-mobile-apk-v0.14.7-arm64.apk  158453224',
-    '5d94b16da56ee7a08eb5030b422fcdd0e686e0208ad1dbaa79bd480b1012e46e  apk/dsh-mobile-apk-v0.14.7-x86_64.apk  155065330',
+    '0d96f1b204f7a3d48a89199415f831168cd380ea84f2565717bf646d27ffb1ff  apk/pocket-harness-v0.14.7-arm64.apk  158453224',
+    '5d94b16da56ee7a08eb5030b422fcdd0e686e0208ad1dbaa79bd480b1012e46e  apk/pocket-harness-v0.14.7-x86_64.apk  155065330',
   ].join('\n');
-  assert.equal(sha256FromManifest(text, 'apk/dsh-mobile-apk-v0.14.7-arm64.apk'),
+  assert.equal(sha256FromManifest(text, 'apk/pocket-harness-v0.14.7-arm64.apk'),
     '0d96f1b204f7a3d48a89199415f831168cd380ea84f2565717bf646d27ffb1ff');
   assert.equal(sha256FromManifest(text, 'apk/nope.apk'), null);
   assert.equal(sha256FromManifest('垃圾输入', 'apk/x.apk'), null);
@@ -291,7 +294,7 @@ test('sitemap.xml 与 robots.txt 由同一次构建产出（robots 声明的文�
 
 test('正文含可抓取的静态说明（不依赖 JS 渲染）', () => {
   const html = readRepo('webpages/src/index.html');
-  for (const token of ['关于 dsh-mobile', '该下载哪个架构', '安装说明', '常见问题']) {
+  for (const token of ['关于 Pocket Harness', '该下载哪个架构', '安装说明', '常见问题']) {
     assert.ok(html.includes(token), '缺少静态正文段落：' + token);
   }
   assert.ok(/<h1>/.test(html), '缺少 h1');

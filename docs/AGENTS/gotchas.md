@@ -2599,5 +2599,69 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 
 400. **Cargo 许可收集不能扫描 metadata 中所有包（2026-10-18）**
 
-现象：ARM64 Linux 资产 run 39093355168 编译完 Bionilux 后，在许可收集阶段因 `r-efi 6.0.0` 没有 LICENSE 文件而失败。真因：collector 遍历 Cargo metadata 的全部 `packages`，其中还包含当前目标未构建的 UEFI 依赖；Cargo 清单包集合不等于 Android ARM64 目标闭包。修法：调用 `cargo metadata --filter-platform aarch64-linux-android`，从 resolve root 只遍历 normal/build 边，忽略 dev 边；收集根目录许可文件及嵌套 LICENSES/LICENCES，并保留相对路径；任何可达包缺少许可仍失败关闭。反证：`test_collect_linux_licenses.py` 覆盖过滤后未达的 r-efi、dev-only 包、normal 依赖缺失许可与实际目标依赖许可。复验：该测试集通过；仍须 dispatch 完整资产构建，CI 单测不替代真实产物证据。
-401. **Debian Trixie InRelease 三重签名会被旧 runner keyring 的未知签名正确阻断**：runner 自带 keyring 可验证旧 Bookworm 自动密钥，却不含 Trixie 自动归档 key 与 stable release key；`gpgv` 因此返回非零，尽管其中一个旧 key 的签名有效。不得忽略未知签名或只接受任一签名；从 Debian ftp-master 下载 Trixie 官方公钥，分别验证固定 SHA-256 与 primary fingerprint，再与现有 keyring 合并，供 InRelease 和 debootstrap 共用。真实失败 run 39102854750；完整重跑待记录。
+现象：ARM64 Linux 资产 run 39093355168 编译完 Bionilux 后，在许可收集阶段因 `r-efi 6.0.0` 没有 LICENSE 文件而失败。真因：collector 遍历 Cargo metadata 的全部 `packages`，其中还包含当前目标未构建的 UEFI 依赖；Cargo 清单包集合不等于 Android ARM64 目标闭包。修法：调用 `cargo metadata --filter-platform aarch64-linux-android`，从 resolve root 只遍历 normal/build 边，忽略 dev 边；收集根目录许可文件及嵌套 LICENSES/LICENCES，并保留相对路径；任何可达包缺少许可仍失败关闭。反证：`test_collect_linux_licenses.py` 覆盖过滤后未达的 r-efi、dev-only 包、normal 依赖缺失许可与实际目标依赖许可。修复后真实 Linux ARM64 资产 run 39103194656 完成并上传 artifact，6 项许可/打包单测通过。
+401. **Debian Trixie InRelease 三重签名会被旧 runner keyring 的未知签名正确阻断**：runner 自带 keyring 可验证旧 Bookworm 自动密钥，却不含 Trixie 自动归档 key 与 stable release key；`gpgv` 因此返回非零，尽管其中一个旧 key 的签名有效。不得忽略未知签名或只接受任一签名；从 Debian ftp-master 下载 Trixie 官方公钥，分别验证固定 SHA-256 与 primary fingerprint，再与现有 keyring 合并，供 InRelease 和 debootstrap 共用。真实失败 run 39102854750；修复后 39103194656 完整来源构建通过并上传资产。
+
+402. **Linux runtime 的文件存在不等于可执行健康，子进程结果也必须有界（2026-10-18）**
+
+现象：active 记录只靠文件存在/可执行位判断，伪造或损坏的 launcher、Node ELF 仍可能被报告 healthy；`spawnCommand` 对输出无限拼接，timeout 只发 SIGTERM，忽略信号的进程会一直挂住管理操作。真因：`_healthForRecord` 是静态结构检查，安装在切换 active 前没有实际经过 launcher/rootfs/Node 执行路径；子进程捕获与超时终止没有资源上界。修法：安装暂存目录通过结构检查后，在提交 active 前以 10 秒 deadline 经 Bionilux 从目标 Node 运行 `node --version`，非零、超时或无效版本输出即拒绝并清掉新实例，保留旧 active；stdout/stderr 各最多保留 256 KiB，仍持续排空管道，超时/取消先 TERM 并在 1.5 秒宽限后对进程组 KILL。正反例在 `vendor/dsh-linux-runtime/test/manager.test.mjs`；Windows 本机 18 项中 16 通过、2 个既有/平台专属 skip，Linux 信号负控必须由 CI 执行。**未做设备验证**，不能据宿主模拟器替代 ARM64 包内 launcher/rootfs 实测。
+
+403. **离线 Linux manifest 必须 pin 原始字节，快照资产要和 APK 来源提交绑定（2026-10-18）**
+
+现象：旧空 pin 会让生产 bootstrap 永远拒绝 manifest；以 parse 后 JSON 再 stringify 的摘要会受空白/键顺序影响，且与资产 workflow 生成的原始文件 sidecar 不一致。另一个装配遗漏是构建器只打包 bootstrap 的服务端 `lib/`，客户端设置 bundle 实际缺席。真因：私有 Release 不是手机可匿名访问的资产源，资产链、APK 快照和 bootstrap 信任代码各自为政。修法：同一 APK 来源链从固定源码重新构建唯一 ARM64 资产集，校验 provenance 的源码 commit、原始 `linux-release.json` SHA-256 sidecar、manifest 的仓库/版本 URL 命名空间，以及全部文件摘要和长度；然后将这些文件随快照放在 APK 签名保护下的固定目录。bootstrap 从原始字节 provider 取 manifest 并验证 sidecar；host adapter 仅复制清单允许的内置资产，仍由 bootstrap 复验归档后解包；服务端和客户端 bundle 均在打包前重建。反证覆盖 manifest/sidecar 篡改、资产摘要与长度不符、未暂存时禁止网络下载和设置客户端实际入包。Windows 上系统临时目录的受限句柄不允许 Node 原子 rename；测试临时数据改放 `.deploy-tmp` 工作区并回归通过，不改产品路径语义。当前插件单测 66/66、Linux source self-test 与 bundle self-test 通过；**尚无本次来源 APK 云端全链和设备验收证据**。
+
+404. **独立应用身份、快照前缀和发布证书必须一起迁移（2026-10-18）**
+
+现象：只把桌面标签改成 Pocket Harness 会留下上游 applicationId、Termux 硬编码数据路径、通知 action、adb 验收脚本和下载页资产名；只换 applicationId 又会导致快照内 shebang/RUNPATH 仍指向旧 data directory。固定在仓库的 `android/android` debug keystore 也不适合作为独立发行的可信签名身份。修法：保留 Kotlin `namespace` 以避免改写类/AIDL 兼容面；统一 `applicationId=com.snoworwind.pocketharness`，运行时数据路径使用新包名，用户文案和 adb 组件使用新安装身份 + 原 Kotlin 类全名。来源链只构建 ARM64；发布 variant 从仓库 Secret 注入 PKCS12 私钥，commit 中只存证书 SHA-256 pin，最终 APK 的三种签名方案和证书 pin 必须同时通过。公开 debug keystore 已从仓库移除，debug variant 回到本机 Gradle debug key。下载页不携带基线仓 seed 资产，只有 ARM64 独立发布存在后才展示下载。**75 项定向 Node 回归通过；两个仓库 Secret 已按授权写入，新的来源 APK 与设备侧三层验收仍待完成，未做设备验证**。老 DeepCode 保持并行安装，不自动迁移其私有数据；identity/signing 输入变化后来源构建和安装验收证据必须重做。
+
+405. **跨平台来源摘要要针对 Git 字节而不是自动转换后的工作树（2026-10-18）**
+
+现象：Linux 资产 PR 检查在 `plugins/dsh-linux-bootstrap/build.mjs` 报源摘要不匹配；Windows 本地按工作树哈希生成的 manifest 通过，GitHub Linux checkout 却按不同字节失败。真因：bootstrap 构建脚本和 README 未配置 `-text`，Windows `core.autocrlf` 转换后的 CRLF 字节被写入严格的来源清单，Linux runner 取到仓库里的 LF blob。修法：对清单覆盖的根级 `.mjs` 与 `README.md` 固定 `-text`，摘要统一使用 Git blob 原始字节；与发行包身份无关的 vendored runtime 测试夹具恢复原样，避免破坏来源 pin。`node scripts/source-build/check-linux-sources.mjs` 在当前工作树验证 37 个文件通过；PR CI 需复验 Linux checkout。
+
+406. **进程组强杀回归必须等子进程装好信号处理器（2026-10-18）**
+
+现象：Linux CI 的超时回归期望 `SIGKILL`，偶尔却收到 `SIGTERM`，而 Windows 因 POSIX 限制会跳过此测试。真因：20ms 超时可能先于新 Node 子进程启动；进程组里的子进程在注册 SIGTERM handler 前已被终止，测试并未覆盖 handler 忽略 TERM 后的强杀分支。修法：把测试超时提高到 1000ms，使处理器有时间就绪；在 `linux-source-manifest.json` 更新 vendored 测试摘要并记录该本地测试修补。此改动仅提高测试确定性，不改变运行时的终止期限或产品行为；以 Linux CI 复验该分支。
+
+407. **导入新工厂插件或应用身份后同步更新对应测试锚点（2026-10-18）**
+
+现象：PR Kotlin 单测在新增 `linux-bootstrap` 工厂补丁后，`FactoryProfilePatchTest` 的权威工厂条目计数仍按旧数值；应用身份改为 Pocket Harness 后，`OwnershipRepairCoreTest` 的正例 anchor 仍使用旧 applicationId，入口解析自然拒绝。真因：变更同时新增了一个顶层插件声明并收紧了数据目录可信边界，但测试只更新了邻近的身份断言。修法：工厂结构断言按实际 23 个顶层条目加注释头更新为 24 块；OwnershipRepair 正例用新 applicationId，旧 applicationId 留作拒绝负控。PR Linux CI 首次运行 1310 个 Kotlin 用例时发现三项失败用例、归为两类；修复后以该工作流完整回归确认。
+
+408. **来源 artifact、捕获夹具、生成物和差异注册表需同时更新（2026-10-18）**
+
+现象：新增 Linux provenance 上传项后，发布准备单测缺少对应文件；包名迁移还让捕获记录夹具和生成型 protocol JSON 与来源清单/生成器不符，新增 bootstrap 插件则漏登记退役发布脚本的显式差集。真因：这些门禁各自以工作流上传 globs、捕获哈希、生成器输出和注册表为真源，手改单边不能维持合同。修法：测试搭建阶段按实际上传清单创建 Linux provenance 文件；历史设备证据恢复原字节；protocol 夹具重新由 `gen-protocol-v2-fixture.mjs` 生成；`release-plugin-src-gaps.json` 明确记录 bootstrap 不走退役注入链。验证：发布准备测试需在 Linux/UTF-8 环境运行；patch fixture、protocol v2 与 `check-release-gates.mjs` 已本地通过，PR Linux CI 复验其余环境条件。
+
+409. **源码切片回归须统一换行后再定位函数边界（2026-10-18）**
+
+现象：Windows CRLF 检出在本机与 WSL 同时触发 overlay/file-click 加载期断言失败。真因：测试按 LF 字节查函数尾，尚未执行业务断言。修法：只对被测试源码的内存副本归一化换行，产品字节和安全判据不变。原工作树负例见综合审查 A09；修复后同一 CRLF 工作树重跑两套业务回归，日志 audit-fixes-2026-10-18/test-portability.log。此项仅改测试，未做设备验证。
+
+410. **撤销列表不能把 ISO UTC 字符串裁成无时区本地时间（2026-10-18）**
+
+现象：UTC+8 下快照 id 为 12:00，列表却显示 04:00。真因：replace/slice 只去掉时区标记，没有转换时刻。修法：以 Date 的本地日期分量格式化，损坏时间原样保留；把既有工具执行回归接入依赖准备后的 PR Gate。复验：undo-time.log；旧实现原反例双平台失败，修复后同用例通过。未做设备验证，最终 APK 的展示另验。
+
+411. **runtime 共享任务结束必须唤醒管理等待者并阻止读者插队（2026-10-18）**
+
+现象：最后一个命令结束后 install/uninstall/dispose 可永久等待。真因：releaseShared 只在 exclusive=true 才唤醒，但等待者此时尚未获得独占锁；且新命令不受排队管理者约束。修法：active 归零必唤醒，pendingExclusive 在等待期间阻止新共享任务入场。反证覆盖最后共享者退出、双管理者和排队读者；保留实际 cutover 回归，来源 pin 同步更新。未做设备验证。
+
+412. **runtime 提交后的垃圾清理与观察者异常不能回滚当前实例（2026-10-18）**
+
+现象：active.json 已指向新实例，旧目录删除失败后 catch 却删了新实例。真因：提交、垃圾清理和通知共用回滚域。修法：指针成功写入即退出可回滚域；旧目录清理异常作为 cleanupWarning 返回，事件观察者逐个隔离。反证覆盖旧清理抛错后重启仍健康、坏监听者不阻塞后续监听者、once 语义与提交前指针写失败保持旧实例。来源摘要同步更新，未做设备验证。
+
+413. **复用工作流每层都要传递签名 Secrets（2026-10-18）**
+
+现象：直接来源链可读签名秘密，build-apk 包装入口却在非空断言拒绝。真因：外层 reusable workflow 调用没有 secrets 传递，内层 inherit 不能补回缺失值。修法：普通构建和草稿两条调用都显式 inherit，草稿已有下一层传递保持有效。cloud-workflow.test.mjs 对两个入口分别移除传递，合同必须拒绝；全套自检与受控负例通过。未做设备验证，真实签名仍须 main 来源全链。
+
+414. **来源链的已提交身份不能代替维护分支授权（2026-10-18）**
+
+现象：草稿要求 main，直接来源 workflow 与本地 runner 却接受任意分支 HEAD。真因：隔离检出只绑定 commit，没有绑定维护分支政策。修法：云端第一步检查 github.ref，签名与源码检出前拒绝其他 ref；本地实际执行（含续跑）须 attached main，纯 list/dry-run 可在候选审查。真实临时 Git 的 main/feature/detached 正反例及 shell 的 main/feature/tag/PR/空值反例覆盖。未构建非 main APK，未做设备验证。
+
+415. **离线 Linux 必须用生产全链验证归档格式、包槽与 IO 约定（2026-10-18）**
+
+现象：各层单测绿，实际归档却因 ./ 根条目拒绝；Node/rootfs 链接被插件政策一刀切拒绝，包槽不在宿主根内，runtime 又没有资产 IO。真因：资产正控只接替身宿主/管理器，没串生产消费者。修法：仅接受一次零体积目录根条目；plugin 继续禁链接，runtime 延迟创建内根链接、拒绝链接父目录和逃逸，rootfs 的绝对链接转成根内相对链接；包槽改到 plugins/linux-runtime；runtime 明确适配“写 destination”下载约定并转发 kind。禁网联测使用真实 GNU tar、host、Cordis、bootstrap 和 manager，只有 ARM64 原生执行器为宿主夹具；覆盖安装、工具执行、重装、卸载和路径/链接负控。日志 offline-integration.log、linux-host-io.log；设备仍未验收。
+
+416. **独立 applicationId 不会改写 Kotlin 组件类名（2026-10-18）**
+
+现象：IME/键盘广播把新包名与 .AdbKeyboardService/.Receiver 拼在一起，实际会解析到不存在的新 namespace 类；环境准备还 grep 旧包名，造成启用成功误判或他包误命中。真因：应用身份与类 namespace 的边界混淆。修法：组件写成新 applicationId/原 namespace 全类名，列表按规范化完整 ComponentName 比较，旧包/旧短类/前后缀相似项均拒绝。承接旧 PR #2 独有修复但不引回其整树类重命名。组件和真实 env_prepare 工具反证通过；未做设备验证。
+
+417. **独立重建必须比较实际载荷，且构建 job 不持有正式私钥（2026-10-18）**
+
+现象：单一可写构建目录可同时改包缓存、清单和快照；旧独立证明草稿仍使用过时名称与 debug 签名接口。真因：同一失败域生成与验证自己的证据。修法：两台全新 runner 各用临时证书产出当前 Pocket Harness release 载荷，第三个无生产 Secret 的 job 直接读 APK/快照并比较完整载荷与受控 v3 语义；最后隔离 job 才读取正式 PKCS12，签前 proof 绑定输入 SHA 与 APK 字节，签后重绑输出，草稿准备再次核对。构建证书只用于中间门禁，交付仍固定仓库生产证书 pin。回归包含 JS/DEX/权限/服务文件差异、路径穿越、条件导出顺序、陈旧证明、错误生产证书与签名 CLI 原子覆盖。新 --self-test 与受控负例通过；真实双构建、来源 APK 和设备层未完成前不能记验收关闭。本地来源入口只跑一份构建副本，支持白名单 GITHUB_ENV 传递且明确标记不能交付。

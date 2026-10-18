@@ -3,7 +3,7 @@
 // 输入：base-usr-<abi>.tar.xz（设备基座：0.12.5-fx-1 完整运行时 = 引擎 0.1.1-rc.2 + 原生模块 + 既有工具）
 // 流程：① 基座解压（WSL，保 symlink）② 预装工具集（Termux 源 binary-<abi>，镜像回退链：清华 Tuna → 官方）
 //        依赖闭包 BFS，.deb 下载 + SHA256 校验 + 提取 ③ dpkg 数据库初始化（status=安装清单）
-//        ④ shebang/RUNPATH 重写（com.termux → com.dsharnessmobile.shell，termux-elf-cleaner）
+//        ④ shebang/RUNPATH 重写（com.termux → com.snoworwind.pocketharness，termux-elf-cleaner）
 //        ⑤ 三缺陷固化：tar 包装（调用侧剔除遗留变量）/git safe.directory+模板目录/rg 平台包补齐
 //        ⑥ 归档 snapshot-<abi>.tar.xz（usr + home/.dsh + home/.gitconfig）
 // 输出：.deploy-tmp/snapshot-013/<abi>/snapshot.tar.xz（插件注入与装配由 inject-snapshot.py 在归档后执行）
@@ -75,7 +75,7 @@ const MIRRORS = PREINSTALL.mirrors
 // 注：termux 无 `licenses` 包（实测索引不存在）——usr/share/LICENSES 标准文本来自基座 bootstrap 或本脚本的
 // 仓库 LICENSE 复制（见 ensureLicenseTexts；x64 基座曾缺 → 架构无关确定化）。
 const TARGETS = PREINSTALL.targets
-const NEW_PREFIX = '/data/user/0/com.dsharnessmobile.shell/files/usr'
+const NEW_PREFIX = '/data/user/0/com.snoworwind.pocketharness/files/usr'
 const OLD_PREFIX = '/data/data/com.termux/files/usr'
 const BASE_DIR = join(ROOT, '.deploy-tmp', ABI === 'arm64' ? 'arm64-base' : 'x64-base')
 const OUT_DIR = join(ROOT, '.deploy-tmp', 'snapshot-013', ABI)
@@ -629,7 +629,7 @@ const availableBlocks = [...needed].sort().map((n) => rawBlocks.get(n)).filter(B
 writeFileSync(join(dpkgDir, 'available'), availableBlocks.join('\n\n') + '\n')
 log('dpkg status: ' + dpkgStatus.length + ' 包，available: ' + availableBlocks.length + ' 包')
 
-// ── 6. shebang 与 ELF RUNPATH 重写（com.termux → com.dsharnessmobile.shell）──
+// ── 6. shebang 与 ELF RUNPATH 重写（com.termux → com.snoworwind.pocketharness）──
 log('重写 shebang/RUNPATH…')
 execSync(`${PYTHON} scripts/fix-shebang.py "${U}" ${NEW_PREFIX}`, { encoding: 'utf8', stdio: 'inherit' })
 // termux-elf-cleaner：清理 ELF 中残留 com.termux RUNPATH（幂等：已清理的无操作）
@@ -899,7 +899,7 @@ if (ABI === 'arm64') {
 //     type"——构建期补主文件 + var/cache/apt + var/lib/apt/lists 目录骨架。
 // 真实二进制改名 .real；wrapper 读 TERMUX__PREFIX（引擎 env 注入）并回退硬编码内嵌前缀。
 log('生成包管理器编译期路径覆盖（apt.conf 主文件 + wrapper）…')
-const PKG_PREFIX = '/data/user/0/com.dsharnessmobile.shell/files/usr'
+const PKG_PREFIX = '/data/user/0/com.snoworwind.pocketharness/files/usr'
 const binDir = join(U, 'bin')
 const wrapHead = `#!/system/bin/sh\n# dsh-mobile 0.13.0: ${PKG_PREFIX} 编译期路径覆盖 wrapper（见 M3-VERIFICATION-NOTES §4）\nB="\${TERMUX__PREFIX:-${PKG_PREFIX}}"\nexport PREFIX="$B"\nexport APT_CONFIG="$B/etc/apt/apt.conf"\n`
 // apt.conf 主文件（APT_CONFIG 指向；覆盖全部编译期旧前缀目录）。

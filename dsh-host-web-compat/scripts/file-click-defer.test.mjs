@@ -13,7 +13,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 
-const SRC = readFileSync(new URL('../lib/index.js', import.meta.url), 'utf8')
+const SRC = readFileSync(new URL('../lib/index.js', import.meta.url), 'utf8').replaceAll('\r\n', '\n')
 
 /** 从 lib 里取出 hasUpstreamHandler 的函数体并实例化，用于直接测试判据。 */
 function loadHasUpstreamHandler() {

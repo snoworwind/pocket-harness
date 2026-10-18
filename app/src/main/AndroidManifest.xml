@@ -98,7 +98,7 @@
       android:name=".NotifyActionReceiver"
       android:exported="false">
       <intent-filter>
-        <action android:name="com.dsharnessmobile.shell.action.NOTIFY_ACTION" />
+        <action android:name="com.snoworwind.pocketharness.action.NOTIFY_ACTION" />
       </intent-filter>
     </receiver>
 

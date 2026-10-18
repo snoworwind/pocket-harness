@@ -74,10 +74,11 @@
 |---|---|---|
 | `app/src/main/java/com/dsharnessmobile/shell/LinuxAssetIO.kt` | Linux 环境资产 IO：宿主侧「下载 + 校验 + 安全解包」判据（0.15.0） | 只认 https + 主机白名单 + 本仓 Releases 的 `<tag>/<asset>` 形态；重定向**逐跳**复核（关掉 `instanceFollowRedirects`，自动跟随不校验中间跳）；摘要与**字节数**都验；解包复用 `SnapshotExtractor.extract`（绝对路径/`..`/符号链接逃逸/炸弹上限），落点由壳侧强制在 `DSH_FILES_DIR/linux-environment` 内。刻意**不复用** `UpdateChecker.download`（它走 gh-proxy 镜像链，与本面的「只认本仓直连」相反）。门禁 `environmentVerdict`：根目录 + `linux-bootstrap-state.json` 都在场才允许动作。绝不 shell out。 |
 | `app/src/main/java/com/dsharnessmobile/shell/LinuxAssetPrepare.kt` | Linux 环境资产准备入口（客户端触发，(iii) 形态） | 入参只有 `{url,sha256,size}`，落点按摘要推导，页面指定不了路径；先过环境/来源门再起后台线程（下载不得阻塞 WebView 线程）；下载→校验→解包全过才**原子发布**成 `staging/<sha256>/` 并**保留归档字节**供引擎侧复验；任一步失败只清工作目录、绝不发布半成品。状态经 linuxAssetPrepareStatus() 轮询；预检回执不释放活动 busy，结果绑定代次，工作/调度异常有失败终态。 |
-| `plugins/dsh-android-linux-env/src/linux-environment.ts` | 历史 Linux 插件的惰性宿主适配与鉴权路由 | 该基线逻辑保留，但在本仓 bootstrap/runtime 均未加入 APK 注入集，路由不会启动 Linux 运行时；本仓 Linux 源码/资产链状态见 [build-and-env.md](build-and-env.md)。历史实现使用 `linuxPluginHost` 只激活已校验/落位 Cordis runtime，要求 manager/rollback 合约，`isInjected` 表示注入状态，空批准 pin 失败关闭。不能据此声称本仓已有离线 Linux 安装能力。 |
+| `plugins/dsh-android-linux-env/src/linux-environment.ts` | Linux 宿主适配与鉴权路由 | 通过 `linuxPluginHost` 只激活安全落位的 Cordis runtime；APK 来源链经 `linuxBootstrapConfig` 提供快照内离线资产、manifest 原始字节 pin 与应用版本。资产缺失/哈希错误关闭，安装仍需用户确认；本机单测通过，来源 APK 与设备验收待做。 |
+| `vendor/dsh-linux-runtime/modules/manager.js` | Linux runtime 安装、健康检查与命令执行 | 安装在 active 交换前需经 Bionilux 实跑目标 Node `--version`；输出每流限 256 KiB，命令超时先 TERM、宽限后 KILL。Windows 单测不能替代 ARM64 设备验收。 |
 | linux-host-asset-io.ts | 已暂存归档适配与进程内独立解码 | bootstrap 验证归档副本后用 XZ WASM + 流式 tar 重建，拒绝穿越/重复/链接/特殊条目；执行顺序及限制见 EXECUTION-MAP.md Linux 节。 |
-| `plugins/dsh-linux-bootstrap/` | vendored 的实验性内部 bootstrap 源码（`@dsh-android/linux-bootstrap` 0.5.0，源 `kelai141/dsh-bionilux@3f86a85` `packages/linux-bootstrap`） | 目前仅作为源代码及单独资产构建输入，未加入 APK 注入集，设置入口和安装能力在本仓不可用。bootstrap 构建输入及独立源提交由 `scripts/source-build/linux-source-manifest.json` 哈希登记；本仓资产链未真实成功产出。历史 upstream bootstrap 的 `lib/` 由 build.mjs 重建，不能据此推断已注入。runtime/rootfs/Node 还未打入 APK。 |
-| `dsh-client-ui-responsive/src/client/index.ts`（`settings.section` 归属） | 本仓没有可用的 Linux 环境设置入口 | upstream bootstrap client 有 `linux-environment` section，但当前 bootstrap 不在本仓注入集，也没有运行时调用者；不要把其上游注册代码描述成本项目内已注册的用户入口。 |
+| `plugins/dsh-linux-bootstrap/` | 内置的实验性 Linux bootstrap（`@dsh-android/linux-bootstrap` 0.5.0，源 `kelai141/dsh-bionilux@3f86a85` `packages/linux-bootstrap`） | 已加入 APK 注入/profile；来源链从受哈希登记源码构建服务端与 `lib/client.js`，并把 bootstrap/runtime/ARM64 rootfs/Node 资产连同逐项 digest 的 manifest 打入 Termux 快照。默认不启用，用户确认后才执行安装/激活。当前缺来源 APK 云端全链与设备验收。 |
+| `dsh-client-ui-responsive/src/client/index.ts`（`settings.section` 归属） | Linux 环境设置入口挂载点 | bootstrap client bundle 注册 `linux-environment` 设置面板；只有宿主注入的 `linuxBootstrap` 服务可用时，设置入口才提供有效状态与受确认的操作。 |
 | `plugins/dsh-model-capability/src/models-dev.ts`（**0.14.2 P2 新增**） | **来源梯 S3**：models.dev 跨厂商百科，补引擎随包目录（S4）查不到的**长尾模型** | 字段路径**本仓实测**（2026-09-26 真实抓取，非抄自他人实现）：provider map `{ <providerId>: { id, name, models: { <modelId>: <entry> } } }`；`entry.limit.context`→contextWindow（8181/8181 在场）、`entry.limit.output`→maxTokens、`entry.modalities.input[]`→input、`entry.reasoning_options[]`→thinkingLevels（4796/8181 在场）。**`values` 数组只存在于 `effort` 变体**（实测四种条目形态：仅 type / type+values / type+min+max / type+min），裸 `type:'toggle'` 或 `budget_tokens` 不点名任何档位。**只保留上列字段、其余全丢**；落盘前先量尺寸，超 `MODELS_DEV_MAX_BYTES`（8 MiB）拒写。`MODELS_DEV_URL = https://models.dev/api.json`（单请求、无 body、无凭据）、`MODELS_DEV_TTL_MS = 7 天`。**S3 与 S4 逐字段仲裁：分歧字段记为冲突且不写入**（`mergeModelsDev`） |
 | `plugins/dsh-android-vdisplay/src/index.ts`（协调仓同名插件镜像） | 虚拟屏工具面，包含 `android_vdisplay_input` 的严格回执 schema | `callVdOp` 成功回执包含 `state`，输入工具 schema 必须显式声明；壳侧 `vdInput` 正常回执还含 `verb` / `screenId` / `displayId`。web 与 headless profile 共用注入插件目录中的同一 `lib/index.js`，镜像按 §5.1 同步 `src/lib/package.json/test`。 |
 
@@ -147,7 +148,7 @@
 7. **npm registry 元数据可能缺 dist.sha512**：pnpm tgz 完整性校验「在场则严格，缺席降级警告」。
 8. **run-as 引号地狱 / adb 二进制传输**：PowerShell 双引号内 `$var` 本地展开；二进制经 `adb exec-out`/push 传输。
 9. **template 字符串反斜杠**（页面注入）：`\n` 双写。
-10. **签名一致性**：debug.keystore 固定，否则覆盖安装失败。
+10. **签名一致性（历史说明已迁移）**：发布 APK 现在使用 Pocket Harness 独立发布密钥；本地 debug variant 使用本机 Gradle debug key，不能覆盖安装发布包。发布证书指纹固定见 `keystore/pocket-harness-cert-sha256.txt`。
 11. **CDP 断言注意**：input placeholder 不在 innerText（查 `[placeholder]`）；「live 会话禁止 API prompt」；`session.list` 的 stats 字段（turns/llmMs）判断代理是否真跑。
 12. **引擎级 OPENSSL_CONF 曾有缺口（2026-08-24 真机实锤，已修）**：快照 node 编译期硬编码 OpenSSL 配置路径 `/data/data/com.termux/files/usr/etc/tls/openssl.cnf`（app 域不可读）——`shellEnv()` 未注入 OPENSSL_CONF 时，**任何 node/npm 子进程（agent 工具调用）启动即 OpenSSL configuration error 退出**；引擎本体侥幸存活（不触发该初始化的路径）。修复 = `shellEnv()` 加 `OPENSSL_CONF=<usr>/etc/tls/openssl.cnf`（与 UndoGate/AdbState 统一；坑 #5 是本坑在 CLI 面的显式版）。
 13. **apt/dpkg 编译期路径（issue #80，2026-08-24 重写）**：apt/apt-get/dpkg 二进制内置 `/data/data/com.termux/files/usr` 编译期路径。`-o Dir::Etc=...` 参数覆盖不了 apt.conf.d 早期扫描（仍报 Permission denied）；**有效方案 = APT_CONFIG 主文件**（build-snapshot-013.mjs 7d 段生成 `usr/etc/apt/apt.conf`，wrapper 统一 `export APT_CONFIG`）——注意 `K='...$B...'` 单引号不展开曾令 wrapper 失效。**dpkg 的 SYSCONFDIR（dpkg.cfg.d 配置目录）无 env 可覆盖**（strings 证实无 DPKG_CONFIG_DIR 变量；`--admindir/--instdir` 不覆盖）→ apt 在线安装 dpkg 阶段受限；`scripts/check-prefix-residue.sh` 设备端自检验证。
@@ -277,3 +278,7 @@ Android API 面登记见 `docs/AGENTS/ANDROID-API-USAGE.md` §1/§3/§4/§8；�
 
 - `PluginManagementPage.kt` 的 `pluginEngineAvailability`：区分未启动、启动中、在线和启动失败。未启动不读库存；启动入口委托现有主按钮，在线后读取真实列表。
 - `ConsoleActivity.kt` / `assets/console.html`：控制台黑白灰日夜主题；会话与桥行为保持原有实现。
+
+Linux 资产独立解包器按 plugin/runtime kind 区分链接政策，文件写完后才创建受限链接；runtimePluginConfig 负责宿主返回路径到 manager 写文件接口的适配，包槽位于宿主 plugins 根内。对应联测见 linux-env/test/offline-install-integration.test.mjs。
+
+管理插件 ime-component.ts 统一键盘 IME/广播完整组件名，并规范化 ComponentName 做精确匹配；applicationId 为 com.snoworwind.pocketharness，类仍在 com.dsharnessmobile.shell。

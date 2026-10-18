@@ -2,11 +2,11 @@
 
 ## ARM64 Linux 离线资产来源（2026-10-18）
 
-`build-linux-assets.yml` 是只读、无秘密的内部资产链，不构建 APK、不创建 Release；手动 `gh workflow run build-linux-assets.yml --repo snoworwind/pocket-harness --ref main`。Bionilux 与运行时插件源码已导入 `vendor/bionilux` / `vendor/dsh-linux-runtime`；实际打包的 bootstrap 九个输入也登记于 `linux-source-manifest.json` 的独立来源提交与摘要。`check-linux-sources.mjs --self-test` 校验 vendor 文件及 bootstrap 实际打包文件的字节摘要、记录的本地文档偏差，以及同体积投毒/额外编译输入负控。Debian 13 自动签名密钥与 stable key 从 ftp-master 官方地址下载，分别按 SHA-256 和 primary fingerprint 固定，再与 runner 现有 keyring 合并；禁止因 runner keyring 旧而忽略未知签名。
+`build-linux-assets.yml` 是只读、无秘密的独立资产检查链，不构建 APK、不创建 Release；手动 `gh workflow run build-linux-assets.yml --repo snoworwind/pocket-harness --ref main`。APK 来源 workflow 另在同一来源提交中重跑该资产构建，并把经过验证的资产嵌入 Termux 快照，不依赖短期 Actions artifact。Bionilux 与运行时插件源码已导入 `vendor/bionilux` / `vendor/dsh-linux-runtime`；实际打包的 bootstrap 输入也登记于 `linux-source-manifest.json` 的独立来源提交与摘要。`check-linux-sources.mjs --self-test` 校验 vendor 文件及 bootstrap 实际打包文件的字节摘要、记录的本地文档偏差，以及同体积投毒/额外编译输入负控。Debian 13 自动签名密钥与 stable key 从 ftp-master 官方地址下载，分别按 SHA-256 和 primary fingerprint 固定，再与 runner 现有 keyring 合并；禁止因 runner keyring 旧而忽略未知签名。
 
 构建计划使用固定 Rust、官方 NDK、官方 Node ARM64 SHA-256、Debian 固定快照 InRelease SHA-256 与官方签名；下载参数在 linux-inputs.json。Cargo 许可清单只收集 `aarch64-linux-android` 过滤后，从当前 crate 根沿 normal/build 边可达的包；dev 依赖和其他目标不纳入。Debian dpkg 包版本/源包版本与 deb 摘要、源码归档计划随 provenance 提供。归档内计划保留 Debian copyright、Node LICENSE 及原生依赖许可清单；对外分发前仍需按 GPL 合规详档核对对应源码资产，不能只凭构建成功宣布发行合规。
 
-资产构建目前没有成功运行记录：原 run 39093355168 因错误扫描 `r-efi` 失败；修复许可闭包后，run 39102854750 又证明 runner 自带 keyring 不含 Debian 13 Trixie 当前归档签名密钥，严格验签拒绝了 InRelease，仍未产出资产。keyring 已改为下载并校验官方密钥后复跑，必须等完整 workflow 上传成功，才能把“计划产物”改成实测事实。rootfs/QEMU、Node 后续步骤此前未执行。即使资产链通过，仍未接入 APK，也不代表 Linux 设备功能已验收。
+真实 ARM64 工厂资产 run [39103194656](https://github.com/snoworwind/pocket-harness/actions/runs/39103194656) 已完整构建并上传资产与 provenance；此前 `r-efi` 全量扫描和 runner 缺 Debian Trixie keyring 的两次失败分别由目标闭包遍历和官方公钥指纹验证修复。约 59 MB、7 天保留的 artifact 仅供独立检查；APK 来源链在自身运行中重建资产，随后校验来源 commit、manifest 原始字节 sidecar、资产 SHA-256/长度和固定 GitHub namespace，再嵌入快照。当前等待本次改动的云端 APK 来源链证明；设备验收按用户决定集中后做。
 
 ## 独立检出与固定字节（2026-10-18）
 
@@ -60,7 +60,7 @@ java -classpath gradle/wrapper/gradle-wrapper.jar org.gradle.wrapper.GradleWrapp
 
 组件来源证明在输入、输出阶段均从固定 Git 提交独立重建清单；可写报告不能作为最终输入哈希的信任根。新增源码、报告篡改、合法锁文件变化与实际 CLI 负控的复核命令和边界见 [gotchas.md](gotchas.md) 坑 336。宿主 npm 配置若在组件目录生成未登记缓存，须移至构建目录的专用缓存区并留移动证据，不加入源码白名单。
 
-开发期按 AGENTS §2.2 选择测试，文档生成块用 `node scripts/check-maintenance-docs.mjs --write` 更新，再不带参数检查；该维护提示不替代功能门禁。最终完整验收与发布资格仍由双 ABI、设备三层及覆盖升级证据决定。
+开发期按 AGENTS §2.2 选择测试，文档生成块用 `node scripts/check-maintenance-docs.mjs --write` 更新，再不带参数检查；该维护提示不替代功能门禁。当前产品只发布 ARM64；最终完整验收与发布资格仍由 ARM64 来源链、设备三层及覆盖升级证据决定。
 
 来源链产物的复核面固定在交付目录：APK 一份，加 `verify-source-apk.sh`、`SHA256SUMS.txt`、内嵌快照的归一化摘要，以及 workflow 上传清单同款的 `evidence/`。`bc6637f` 的 arm64 产物按此复核通过：APK 内 `assets/snapshot.tar.xz` 与打包门禁实际校验的那份快照逐字节相同（同一 SHA-256），解包重跑 `normalize-snapshot.mjs` 得到的语义摘要与链条记录一致，内嵌引擎为固定的 0.2.0-rc.2；「未取 LFS」的判据是隔离检出里 `base/*.tar.xz` 仍为 133 字节指针、APK 内无基座归档载荷，运行时由已验签的 Termux 仓库包组装。复核三签时必须显式 `--min-sdk-version 18`（默认按清单 minSdk 26 会把在场的 v1 报成 false，见 [gotchas.md](gotchas.md) 坑 325）；宿主 npm 缓存路径会在 WSL 内落成 `D:/` 目录，不参与注入（坑 326）。字节级可复现不成立，判据是语义归一化摘要；该产物未做设备验收。
 
@@ -101,7 +101,7 @@ node scripts/smoke-bridge.mjs
 
 **历史 Release 模型目录跨 job 交接（该链已退役）**：快照 job 的生成 `lib/catalog-snapshot.json` 未跟随归档 artifact 上传，后续干净 checkout 不能依赖它。Release job 从实际输入 arm64 快照提取 pi-ai package metadata 与 `dist/providers/data`，运行 `gen-model-catalog.mjs` 后再注入。目录的 `engineRootHint` 使用快照内相对路径，避免将 runner 的本地绝对路径写进发布内容；本地正式构建仍由快照生成器生成同源目录。
 
-**最终签名与资产身份**：上传前同一 `check-apk-signatures.mjs --keystore keystore/debug.keystore` 同时检查 v1/v2/v3 与固定证书身份；Windows 通过 SDK 的 `apksigner.jar` 传独立参数，避免 shell 解释 APK 路径。来源链保留构建前证书预检，最终 gate 再验证实际 APK；来源构建产物由同次运行上传，选用草稿模式时另由独立写权限任务创建草稿，实际状态以对应 Actions run 为准。
+**最终签名与资产身份**：来源链从仓库 Secrets 解码独立 PKCS12 发布密钥到忽略目录，Gradle 只在发布 variant 读取该文件和密码；密钥不进入 Git、APK、provenance 或 Actions artifact。上传前 `check-apk-signatures.mjs` 检查 v1/v2/v3，并对照提交的 `keystore/pocket-harness-cert-sha256.txt` 指纹。debug variant 使用本机 Gradle debug key，不能覆盖安装发布 APK。来源链的签名预检在构建前验证 Secret 可用，最终 gate 验证实际 APK；草稿任务只搬运已校验的本次构建资产。
 
 草稿写权限任务在校验哈希前，要求目录恰有一个符合来源 ARM64 命名的 APK、provenance.zip、notes.md 和 SHA256SUMS.txt，全部为非链接普通文件；清单必须恰好覆盖前三项各一次，拒绝额外资产、漏项、重复项及含目录的路径。真实发布 shell 的正反例与边界见 [gotchas.md 坑 371](gotchas.md)。
 
@@ -155,16 +155,16 @@ Harness按固定0.2.0-rc.2源码完成全仓构建；prepare-harness-vendor-over
 
 来源链在构建期会把 `@deepseek-ai/*` 从 `scripts/snapshot-config/engine-overlay.json` 摘除（否则快照构建器会按登记表回拉上游发布版 tarball，整目录覆盖已注入的源码产物），摘除清单记进 `source-build-policy.json`；APK 步骤先由 `scripts/source-build/restore-overlay-pins.mjs` 把这份清单并回去，再跑门禁集——`check-contract.mjs` 第 7 节正是按它定运行时版本、并判 profile 里引擎包 insert 行是否与运行时同版（该门禁在拿不到 semver 时 SKIP，旧链因此从未真判过）。还原记录进策略 provenance，退出 trap 覆盖回原文件（坑 201）。
 
-**设备验证链路**（真机 arm64 vivo V2425A；模拟器 MuMu x86_64 竖屏 `127.0.0.1:16416`、横屏 `127.0.0.1:16384`——横屏实例勿改回竖屏）：
-- 安装：`adb -s <serial> install -r -t out\v<版本>\...apk`（同签名 debug.keystore；**指纹变更触发 refreshSnapshot 全量重解压（真机 ≈2-4 分钟、模拟器实测 ~8 分钟，勿在解压中杀进程——中途杀进程看门狗会拿半解压运行时拉引擎，见坑 37）**）。
+**设备验证链路**（产品验收使用 ARM64 Android 设备；MuMu x86_64 竖屏 `127.0.0.1:16416`、横屏 `127.0.0.1:16384` 不能安装产品 APK）：
+- 安装：`adb -s <serial> install -r -t out\v<版本>\pocket-harness-v<版本>-arm64.apk`（发布包使用固定 Pocket Harness 签名；**指纹变更触发 refreshSnapshot 全量重解压（真机 ≈2-4 分钟，勿在解压中杀进程——中途杀进程看门狗会拿半解压运行时拉引擎，见坑 37）**）。
 - 引擎探活：`adb -s <serial> forward tcp:23080 tcp:3080` → `http://127.0.0.1:23080/`。
 - WebView 调试：`adb shell "cat /proc/net/unix | grep webview_devtools"` → `forward tcp:29225 localabstract:webview_devtools_remote_<pid>`（**每次重启 pid 变**）→ CDP ws 连接后 Runtime.evaluate 驱动（例子脚本见 `.deploy-tmp/cdp-*.mjs`；断言注意 input placeholder 不在 innerText 里）。
 - 远程 RPC（测试面）：POST `/api/<method>`，body 必须全信封 `{"type":"client-request","rpcId":"r1","method":"session.list","payload":{}}`；`session.prompt` 拒绝 live 会话（被 UI 打开的）——直接 API 测代理需先用 session.create 建全新会话。
-- **构建前核对 ABI（见坑 18）**：无真机环境用模拟器（MuMu x86_64 竖屏 `127.0.0.1:16416` / 横屏 `127.0.0.1:16384`），有真机则安装 ABI 匹配的 APK——debug 包默认带 x86_64 快照，覆盖装到 arm64 真机会引擎崩溃。
+- **构建前核对 ABI（见坑 18）**：产品仅有 ARM64 APK，必须安装到 ARM64 Android 设备；MuMu x86_64 仅可用于不涉及产品安装的通用脚本开发，不能作为本产品的设备验收环境。
 
-## 3. 环境无关的开发/维护流程（新人先读此节再动手）
+## 3. 历史本地链与环境记录（已退役；勿用于生成 APK）
 
-> 本节与协调仓库根 `AGENTS.md` §2-4 对齐，但以壳子仓库为落点；**下列命令均在协调仓库根执行（除非注明「壳内」）**，shell 引用路径用 `scripts/` 前缀。
+> 本节保留历史环境实测与旧脚本细节，便于排查既有证据。当前只允许使用 AGENTS.md §2 的 ARM64 源码来源链；旧本地/协调仓脚本不得产出、归集或发布 APK。
 
 ### 3.1 环境矩阵（先对号入座）
 
@@ -180,7 +180,7 @@ Harness按固定0.2.0-rc.2源码完成全仓构建；prepare-harness-vendor-over
 
 1. **取代码**：clone 协调仓库（主分支 `main`）；壳子仓库 `dsh-mobile-apk/` 是**独立 git**（主分支亦 `main`），按需 clone/关联；上游 `dsh/` 只读。
 2. **构建快照**（仅 Windows 需 WSL）：`node scripts\build-snapshot-013.mjs <arm64|x86_64>`——Termux 源装配 + TARGETS 预装 + pnpm + 权威 cordis patch 覆盖 + 瘦身 + 归档（产物 snapshot.tar.xz + snapshot.sha256）。
-3. **一键打包**：`pwsh -File scripts\build-apk-013.ps1 -Suffix ""` → `out\v<版本>\dsh-mobile-apk-v<ver>-<abi>.apk`；门禁失败会中断并提示（清单见第 2 节）。
+3. **一键打包**：`pwsh -File scripts\build-apk-013.ps1 -Suffix ""` → `out\v<版本>\pocket-harness-v<ver>-<abi>.apk`；门禁失败会中断并提示（清单见第 2 节）。
 4. **ABI 核对（坑 18）**：`aapt dump badging <apk>` 看 native-code，或解快照 tar 读 `usr/bin/node` 的 ELF e_machine（**62=x86_64，183=arm64**）——与目标设备一致再装。
 5. **装机**：真机 `adb -s <serial> install -r -t out\v<版本>\...apk`（同签名 debug.keystore，坑 10）；模拟器 `adb -s 127.0.0.1:16416 install -r -t ...-x86_64.apk`。**首装/指纹变 → refreshSnapshot 全量重解压（真机 ≈2-4 分钟、模拟器 ~8 分钟），勿杀进程（坑 37）**。
 6. **验证**：`adb -s <serial> forward tcp:23080 tcp:3080` → `http://127.0.0.1:23080/`；WebView CDP 与 RPC 信封写法见第 2 节。
@@ -221,7 +221,7 @@ Harness按固定0.2.0-rc.2源码完成全仓构建；prepare-harness-vendor-over
 |---|---|---|
 | Windows Node 26 与 UI 测试 | Vitest 2/jsdom 的 localStorage 在当前 Node 26.5.0 worker 中为 undefined；不要删用例或用 storage mock 掩盖。使用本机来源链的 Node 22.22.1、相同输入和完整兄弟 vendor 布局复核可全部通过；保存失败与复核日志，隔离包目录内不要挂整个 vendor（会误收集 Node test 文件） | 坑 342 |
 | WSL（Windows 特有） | 快照构建必须在 WSL（tar 解压/符号链接/relocate 需 Linux 语义）；Windows 直读 WSL 9p 文件 = EACCES，校验走 `wsl tar -tvf` 视图；wsl.exe 输出前有 localhost 代理噪音行，解析时过滤 | 坑 6 |
-| ADB 真机特有步骤 | 同签名 debug.keystore 才能覆盖安装；配对走真实 `adb pair`、码值只进 argv（第 4 节 AdbState.kt）；CDP 每次重启 pid 变 | 坑 10/14、第 2/4 节 |
+| ADB 真机特有步骤 | Pocket Harness 发布 APK 用同一独立证书才能覆盖升级；本地 debug 包签名不同。配对走真实 `adb pair`、码值只进 argv（第 4 节 AdbState.kt）；CDP 每次重启 pid 变 | 坑 10/14、第 2/4 节 |
 | run-as 限制 | run-as 裸环境无 termux-exec 钩子 → `not executable: 64-bit ELF` / `CANNOT LINK` 是**假错误**；验证快照内二进制须带全套引擎 env（`LD_PRELOAD` + `TERMUX_EXEC__*` + `LD_LIBRARY_PATH` + `OPENSSL_CONF`） | 坑 22 |
 | PowerShell 转义 | 双引号内 `$var` 本地展开（引号地狱）；二进制经 `adb exec-out`/push 传输 | 坑 8 |
 | ABI 匹配 | debug 包默认 x86_64 快照，装 arm64 真机必崩；构建/安装前核对（3.2 步 4） | 坑 18 |
@@ -251,7 +251,7 @@ Harness按固定0.2.0-rc.2源码完成全仓构建；prepare-harness-vendor-over
 gh workflow run build-apk-source.yml --repo snoworwind/pocket-harness --ref main
 ```
 
-成功后从该次 Actions 的 Artifacts 下载 `dsh-mobile-apk-arm64-source-<commit>`，内含 APK、SHA-256 和列举的来源证明文件；上传显式包含隐藏目录内的证据，且不上传整个临时目录。当前仅 ARM64、版本后缀固定 `-source`，不支持 x86_64 或双 ABI，草稿发布见 [RELEASE.md §5](../RELEASE.md)。云端任务上限 180 分钟，沿用来源链全部测试与产物门禁。入口回归为 `node --test scripts/source-build/cloud-workflow.test.mjs`，含旧链与条件分流的受控负控。该 L1 入口改动未做设备验证，云端成功也不等于设备验收通过。
+成功后从该次 Actions 的 Artifacts 下载 `pocket-harness-arm64-source-<commit>`，内含 APK、SHA-256 和列举的来源证明文件；上传显式包含隐藏目录内的证据，且不上传整个临时目录。当前仅 ARM64、版本后缀固定 `-source`，不支持 x86_64 或双 ABI，草稿发布见 [RELEASE.md §5](../RELEASE.md)。云端任务上限 180 分钟，沿用来源链全部测试与产物门禁。入口回归为 `node --test scripts/source-build/cloud-workflow.test.mjs`，含旧链与条件分流的受控负控。该 L1 入口改动未做设备验证，云端成功也不等于设备验收通过。
 
 来源链预检的 provenance 夹具必须隔离 CI 仓库环境，复验时带 `GITHUB_REPOSITORY` 与 `GITHUB_SERVER_URL` 跑工作流同一组 Node 测试；否则本地通过不足以覆盖云端身份优先级。根因及修复见 gotchas.md 坑 347。
 
@@ -260,4 +260,14 @@ gh workflow run build-apk-source.yml --repo snoworwind/pocket-harness --ref main
 **云端 npm 缓存隔离**：来源工作流在依赖预检前覆盖 npm 缓存到 `$RUNNER_TEMP/dsh-npm-cache`，否则 `dsh-shell-termux/.npmrc` 的 Windows 绝对路径会被 Linux npm 落入组件树，并在 provenance 输出复核时报未跟踪输入。根因及反证见 gotchas.md 坑 350。
 
 
-Linux bootstrap 本地安全分叉（2026-10-17）：`check-vendored-linux-bootstrap.mjs` 保留 MANIFEST 的原上游哈希，用 LOCAL_PATCHES 单列 asset-bundle.js 的本地安全哈希，并要求与 package.json.dshVendor.localPatches 一致；不能把本地修改改记为上游原样。运行 `node scripts/check-vendored-linux-bootstrap.mjs --self-test` 验证漂移拒绝；归档解码新增依赖见 DEPENDENCIES.md。
+Linux bootstrap 本地安全分叉（2026-10-18）：`check-vendored-linux-bootstrap.mjs` 保留 MANIFEST 的上游摘要，用 LOCAL_PATCHES 单列 `src/asset-bundle.js`、`src/index.js` 与 README 的本地摘要，并要求与 `package.json.dshVendor.localPatches` 一致；新增的 package-lock / build scripts / client bundler 作为本仓来源输入独立钉哈希。不能把本地修改改记为上游原样。运行 `node scripts/check-vendored-linux-bootstrap.mjs --self-test` 验证漂移拒绝；构建客户端新增的 `esbuild` 依赖见 DEPENDENCIES.md。
+
+来源签名调用链：build-apk 的 source-build/source-draft 均显式 secrets: inherit，草稿 build 再传给 build-apk-source；只读 token 与写 Release job 的权限边界不变。回归见 cloud-workflow.test.mjs 的逐边删除传递负控。
+
+来源链分支授权：实际 APK 构建只允许 main。云端第一步检查 github.ref；本地包括 --from/--only/续跑都要求当前 attached main，--list/--dry-run 不构建可用于候选审查。
+
+离线 Linux 资产兼容验收：npm test（plugins/dsh-android-linux-env）包含生产 host/bootstrap/runtime 的禁网联测和真实 GNU tar 根条目、链接负控；需 POSIX tar/xz。该测试只替代原生 ARM64 执行器，不能作为最终 APK 或设备验收。
+
+## 签名前独立双构建
+
+当前云端来源链：两个 build-arm64 replica 从同一提交、全新 runner 各自构建，只有临时签名证书；verify-arm64 不执行产物，只比较实际 APK 条目、hard manifest 与 v3 快照语义；sign-arm64 等验证通过后才读取正式 PKCS12 Secret，使用固定生产证书 pin 验证三签并更新 APK 摘要；最终来源 artifact 才允许进入草稿准备。本地 run-local-source-chain 仅跑 build replica，GITHUB_ENV 的四个白名单构建变量在步骤间传递，临时签名 APK 明确禁止交付。自测入口 compare-independent-builds.mjs --self-test 与 sign-source-artifacts.mjs --self-test。共用上游或 runner 环境失陷仍是信任边界；真实双构建结果必须单独取得。

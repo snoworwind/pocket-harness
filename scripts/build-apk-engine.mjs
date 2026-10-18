@@ -57,15 +57,15 @@ export function assembleApk(options, runner = spawnSync) {
   const assetSnapshot = join(assetDir, 'snapshot.tar.xz')
   const fingerprint = join(assetDir, 'snapshot.sha256')
   const intermediates = join(resolvedApkDir, 'app', 'build', 'intermediates', 'assets')
-  const debugOutput = join(resolvedApkDir, 'app', 'build', 'outputs', 'apk', 'debug')
-  const builtApk = join(debugOutput, 'app-debug.apk')
+  const releaseOutput = join(resolvedApkDir, 'app', 'build', 'outputs', 'apk', 'release')
+  const builtApk = join(releaseOutput, 'app-release.apk')
   const deliveredApk = join(resolvedOutputDir, artifactName)
 
   mkdirSync(assetDir, { recursive: true })
   mkdirSync(resolvedOutputDir, { recursive: true })
   // Never let a successful no-op/incremental Gradle invocation reuse an older APK.
   // Release mode preserves unrelated intermediates, but the terminal APK output is always fresh.
-  rmSync(debugOutput, { recursive: true, force: true })
+  rmSync(releaseOutput, { recursive: true, force: true })
   if (clean) {
     rmSync(intermediates, { recursive: true, force: true })
   }
@@ -83,7 +83,7 @@ export function assembleApk(options, runner = spawnSync) {
   execute(process.execPath, [fingerprintGate, '--require'], { cwd: SCRIPT_DIR }, runner)
 
   const gradle = gradleCommand ?? (process.platform === 'win32' ? 'gradlew.bat' : './gradlew')
-  const gradleArgs = [':app:assembleDebug', '--no-daemon', `-PversionNameSuffix=${suffix}`]
+  const gradleArgs = [':app:assembleRelease', '--no-daemon', `-PversionNameSuffix=${suffix}`]
   log(`Gradle: ${gradle} ${gradleArgs.join(' ')}`)
   execute(gradle, gradleArgs, { cwd: resolvedApkDir, shell: process.platform === 'win32' }, runner)
 
@@ -94,13 +94,13 @@ export function assembleApk(options, runner = spawnSync) {
 }
 
 /** Validate the exact output scope used by a caller (directory or files). */
-export function verifyApks({ directories = [], files = [], signatureGate = join(SCRIPT_DIR, 'check-apk-signatures.mjs'), selfTest = true, log = console.log }, runner = spawnSync) {
+export function verifyApks({ directories = [], files = [], signatureGate = join(SCRIPT_DIR, 'check-apk-signatures.mjs'), certificateSha256File, selfTest = true, log = console.log }, runner = spawnSync) {
   log('验证最终输出 APK 的 v1/v2/v3 签名…')
   if (selfTest) execute(process.execPath, [signatureGate, '--self-test'], { cwd: SCRIPT_DIR }, runner)
   const targets = [...directories.flatMap((directory) => ['--dir', resolve(directory)]),
     ...files.flatMap((file) => ['--apk', resolve(file)])]
   if (!targets.length) throw new Error('signature verification requires at least one directory or APK')
-  execute(process.execPath, [signatureGate, ...targets], { cwd: SCRIPT_DIR }, runner)
+  execute(process.execPath, [signatureGate, ...targets, ...(certificateSha256File ? ['--certificate-sha256', resolve(certificateSha256File)] : [])], { cwd: SCRIPT_DIR }, runner)
 }
 
 export function parseArgs(argv) {

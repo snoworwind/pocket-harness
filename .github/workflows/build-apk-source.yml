@@ -9,11 +9,22 @@ permissions:
 
 jobs:
   build-arm64:
+    strategy:
+      fail-fast: false
+      matrix:
+        replica: [primary, reference]
     runs-on: ubuntu-latest
     timeout-minutes: 180
     env:
       DSH_APK_DIR: ${{ github.workspace }}
     steps:
+      - name: Require the maintained source branch
+        env:
+          SOURCE_REF: ${{ github.ref }}
+        shell: bash
+        run: |
+          test "$SOURCE_REF" = refs/heads/main
+
       - name: Checkout project source without Git LFS runtime archives
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -96,10 +107,25 @@ jobs:
           printf '%s\n' "$apksigner_bin" > .deploy-tmp/source-build/apksigner-path.txt
           echo "apksigner: $apksigner_bin"
           "$apksigner_bin" version
-          # 自证（坑 203）：先用这把 keystore 签一个探针包、再把它读回来，验证「apksigner 能读出期望
-          # 指纹」这条判据本身可用。放在构建**前**，是为了让工具/keystore 的问题在 2 分钟内暴露，
-          # 而不是等 30 分钟的打包跑完才在末尾判红（前两轮各因此烧掉一小时，且产物被丢弃）。
-          expected_signing_certificate='1dde9d980f62b715f29c20b421063f1d3d796085adf7de7e9907dd16d845bcbd'
+          # Builders never receive the production key. Each replica signs with a throwaway key.
+          signing_dir="$RUNNER_TEMP/pocket-build-signing"
+          mkdir -p "$signing_dir"
+          chmod 700 "$signing_dir"
+          build_password=$(openssl rand -hex 24)
+          echo "::add-mask::$build_password"
+          rm -f "$signing_dir/build.p12"
+          keytool -genkeypair -alias pocketharness -keystore "$signing_dir/build.p12" -storetype PKCS12 \
+            -storepass "$build_password" -keypass "$build_password" -keyalg RSA -keysize 2048 -validity 2 \
+            -dname 'CN=Pocket Harness build replica' -noprompt
+          keytool -exportcert -alias pocketharness -keystore "$signing_dir/build.p12" -storepass "$build_password" \
+            | sha256sum | cut -d' ' -f1 > .deploy-tmp/source-build/build-signing-certificate-sha256.txt
+          export POCKET_SIGNING_KEYSTORE_PATH="$signing_dir/build.p12"
+          export POCKET_SIGNING_KEYSTORE_PASSWORD="$build_password"
+          export POCKET_BUILD_CERTIFICATE_FILE="$GITHUB_WORKSPACE/.deploy-tmp/source-build/build-signing-certificate-sha256.txt"
+          echo "POCKET_SIGNING_KEYSTORE_PATH=$POCKET_SIGNING_KEYSTORE_PATH" >> "$GITHUB_ENV"
+          echo "POCKET_SIGNING_KEYSTORE_PASSWORD=$build_password" >> "$GITHUB_ENV"
+          echo "POCKET_BUILD_CERTIFICATE_FILE=$POCKET_BUILD_CERTIFICATE_FILE" >> "$GITHUB_ENV"
+          expected_signing_certificate=$(cat "$POCKET_BUILD_CERTIFICATE_FILE")
           mkdir -p .deploy-tmp/source-build/signing-self-test
           python3 - <<'PY'
           import zipfile
@@ -108,14 +134,15 @@ jobs:
           PY
           self_test_apk=.deploy-tmp/source-build/signing-self-test/probe.apk
           "$apksigner_bin" sign --min-sdk-version 26 \
-            --ks keystore/debug.keystore --ks-pass pass:android \
-            --ks-key-alias androiddebugkey --out "$self_test_apk" \
+            --ks "$signing_dir/build.p12" --ks-type PKCS12 \
+            --ks-pass "pass:$POCKET_SIGNING_KEYSTORE_PASSWORD" \
+            --ks-key-alias pocketharness --out "$self_test_apk" \
             .deploy-tmp/source-build/signing-self-test/probe.zip
           # 探针包的 manifest 是纯文本，apksigner 无法自行判定 minSdk，必须显式给（真实 APK 不需要）。
           probe_output=$("$apksigner_bin" verify --print-certs --verbose --min-sdk-version 26 "$self_test_apk" 2>&1 || true)
           probe_normalized=$(printf '%s' "$probe_output" | tr 'A-F' 'a-f' | tr -d ':')
           if ! printf '%s' "$probe_normalized" | grep -q "$expected_signing_certificate"; then
-            echo "::error::签名自证失败：用仓库 keystore 签出的探针包读不到期望指纹 $expected_signing_certificate"
+            echo "::error::签名自证失败：来源签名与固定证书指纹不匹配"
             echo "--- apksigner sign/verify 原始输出开始 ---"
             printf '%s\n' "$probe_output"
             echo "--- apksigner 原始输出结束 ---"
@@ -604,6 +631,43 @@ jobs:
             .deploy-tmp/engine-deploy \
             .deploy-tmp/arm64-base/base-usr.tar.xz
 
+      - name: Install Linux asset cross-build tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu debootstrap debian-archive-keyring qemu-user-static binfmt-support xz-utils
+          sudo update-binfmts --enable qemu-aarch64
+
+      - name: Prepare pinned Debian archive trust keys for Linux assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          keydir="$GITHUB_WORKSPACE/.deploy-tmp/linux-keyring"
+          homedir="$keydir/gnupg"
+          mkdir -p "$homedir"
+          chmod 700 "$homedir"
+          archive_sha=$(node -p 'require("./scripts/source-build/linux-inputs.json").debianArchiveKey13Sha256')
+          archive_fingerprint=$(node -p 'require("./scripts/source-build/linux-inputs.json").debianArchiveKey13Fingerprint')
+          release_sha=$(node -p 'require("./scripts/source-build/linux-inputs.json").debianReleaseKey13Sha256')
+          release_fingerprint=$(node -p 'require("./scripts/source-build/linux-inputs.json").debianReleaseKey13Fingerprint')
+          curl --fail --location --retry 3 https://ftp-master.debian.org/keys/archive-key-13.asc -o "$keydir/archive-key-13.asc"
+          curl --fail --location --retry 3 https://ftp-master.debian.org/keys/release-13.asc -o "$keydir/release-13.asc"
+          printf '%s  %s\n%s  %s\n' "$archive_sha" "$keydir/archive-key-13.asc" "$release_sha" "$keydir/release-13.asc" | sha256sum --check --strict
+          gpg --batch --quiet --homedir "$homedir" --import /usr/share/keyrings/debian-archive-keyring.gpg "$keydir/archive-key-13.asc" "$keydir/release-13.asc"
+          fingerprints=$(gpg --batch --homedir "$homedir" --with-colons --list-keys | awk -F: '$1 == "fpr" { print $10 }')
+          grep -Fx "$archive_fingerprint" <<<"$fingerprints"
+          grep -Fx "$release_fingerprint" <<<"$fingerprints"
+          gpg --batch --quiet --homedir "$homedir" --export > "$keydir/debian-archive-keyring.gpg"
+          test -s "$keydir/debian-archive-keyring.gpg"
+
+      - name: Build source-owned offline ARM64 Linux assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          ndk=$(node -p 'require("./scripts/source-build/linux-inputs.json").ndk')
+          NDK="$GITHUB_WORKSPACE/.deploy-tmp/source-build/ndk/android-ndk-$ndk" DEBIAN_KEYRING="$GITHUB_WORKSPACE/.deploy-tmp/linux-keyring/debian-archive-keyring.gpg" bash scripts/source-build/build-linux-assets.sh
+
       - name: Build runtime snapshot from verified inputs
         shell: bash
         run: |
@@ -673,6 +737,11 @@ jobs:
             .deploy-tmp/snapshot-013/arm64/stage/root/usr/lib/node_modules/@deepseek-ai/dsh \
             .deploy-tmp/engine-overlay/source-build-manifest.json \
             .deploy-tmp/source-build/pnpm-package-materialization.json
+          node scripts/source-build/prepare-linux-snapshot-bundle.mjs --self-test \
+            .deploy-tmp/linux-build/assets .deploy-tmp/linux-build/provenance
+          node scripts/source-build/prepare-linux-snapshot-bundle.mjs \
+            .deploy-tmp/linux-build/assets .deploy-tmp/linux-build/provenance \
+            .deploy-tmp/snapshot-013/arm64/stage/root
           snapshot_archive="$GITHUB_WORKSPACE/.deploy-tmp/snapshot-013/arm64/snapshot.tar.xz"
           snapshot_repacked="$GITHUB_WORKSPACE/.deploy-tmp/snapshot-013/arm64/snapshot.source-built.tar.xz"
           (
@@ -689,19 +758,6 @@ jobs:
             .deploy-tmp/snapshot-013/arm64/stage/root/usr/lib/node_modules/@deepseek-ai/dsh \
             .deploy-tmp/source-build/post-snapshot-native-runtime-check.json
           node scripts/source-build/check-dsh-source-snapshot.mjs "$snapshot_archive"
-
-      - name: Verify the repository debug signing keystore
-        shell: bash
-        run: |
-          set -euo pipefail
-          # 固定签名（坑 202）：本链曾现场生成一次性证书，等于重新引入 e65818a 修掉的缺陷
-          # ——每次构建新密钥，产物既装不上已有安装，两次构建的包也互相覆盖不了。
-          # 项目规范（gotchas 坑 10 / DEPENDENCIES.md / design.md）是
-          # 「CI 与本地同一把 keystore/debug.keystore」，来源链同样走这一把：
-          # 产物可 install -r -t 覆盖、签名可复现，与正式产物的区别只在 -source 版本后缀与 artifact 名。
-          # 这里只查「在场」；证书指纹的判据放在产出侧（用 apksigner，输出不随语言/JDK 版本变），
-          # 因为 keytool -list -v 的文本既会本地化、新版 JDK 上还可能直接抛异常。
-          test -f keystore/debug.keystore
 
       - name: 单元测试门禁前置（:app:testDebugUnitTest 全量）
         shell: bash
@@ -819,17 +875,16 @@ jobs:
           [ "${#apks[@]}" -gt 0 ] || { echo "::error::source build has no final APKs"; exit 1; }
           args=()
           for apk in "${apks[@]}"; do args+=(--apk "$apk"); done
-          node scripts/check-apk-signatures.mjs "${args[@]}" --apksigner "$(cat .deploy-tmp/source-build/apksigner-path.txt)" --keystore keystore/debug.keystore
+          node scripts/check-apk-signatures.mjs "${args[@]}" --apksigner "$(cat .deploy-tmp/source-build/apksigner-path.txt)" --certificate-sha256 "$POCKET_BUILD_CERTIFICATE_FILE"
           node --input-type=module <<'NODE'
-          import { writeFileSync } from 'node:fs'
-          import { readKeystoreCertificate } from './scripts/check-apk-signatures.mjs'
-          writeFileSync('.deploy-tmp/source-build/signing-certificate-sha256.txt', readKeystoreCertificate('keystore/debug.keystore') + '\n')
+          import { copyFileSync } from 'node:fs'
+          copyFileSync(process.env.POCKET_BUILD_CERTIFICATE_FILE, '.deploy-tmp/source-build/signing-certificate-sha256.txt')
           NODE
 
-      - name: Upload APK and provenance
+      - name: Upload intermediate APK and provenance
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: dsh-mobile-apk-arm64-source-${{ github.sha }}
+          name: pocket-harness-arm64-build-${{ matrix.replica }}-${{ github.sha }}
           path: |
             out/v*/*.apk
             .deploy-tmp/arm64-base/base-usr.tar.xz.provenance.json
@@ -857,6 +912,8 @@ jobs:
             .deploy-tmp/source-build/gradle-artifacts-sha256.txt
             .deploy-tmp/source-build/signing-certificate-sha256.txt
             .deploy-tmp/source-build/package-manager-versions.txt
+            .deploy-tmp/source-build/linux-bundle-injection.json
+            .deploy-tmp/linux-build/provenance/**
             .deploy-tmp/source-build/pnpm-deploy-build-policy.json
             .deploy-tmp/source-build/pnpm-deploy-runtime-closure.json
             .deploy-tmp/source-build/pnpm-deploy-runtime-closure.lock.yaml
@@ -868,6 +925,164 @@ jobs:
             .deploy-tmp/source-build/post-snapshot-runtime-dependency-check.json
             .deploy-tmp/source-build/source-engine-snapshot-check.json
             .deploy-tmp/source-build/snapshot-normalization.json
+            .deploy-tmp/source-build/pnpm-package-materialization.json
+            .deploy-tmp/source-build/engine-patch-copy-reconciliation.json
+            scripts/patches/tests/fixtures/manifest.json
+            scripts/patches/tests/fixtures/*-0.2.0-rc.2/**
+          if-no-files-found: error
+          # Only explicitly listed evidence files below .deploy-tmp are uploaded.
+          include-hidden-files: true
+          retention-days: 30
+
+  verify-arm64:
+    needs: build-arm64
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with: { node-version: '24' }
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with: { python-version: '3.12' }
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: pocket-harness-arm64-build-primary-${{ github.sha }}
+          path: .
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: pocket-harness-arm64-build-reference-${{ github.sha }}
+          path: .deploy-tmp/independent-reference
+      - name: Verify independent ARM64 builds from actual APK bytes
+        run: node scripts/source-build/compare-independent-builds.mjs
+      - name: Upload verified APK and provenance
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: pocket-harness-arm64-verified-${{ github.sha }}
+          path: |
+            out/v*/*.apk
+            .deploy-tmp/arm64-base/base-usr.tar.xz.provenance.json
+            .deploy-tmp/source-build/termux-packages-provenance.json
+            .deploy-tmp/engine-overlay/source-build-manifest.json
+            .deploy-tmp/source-build/apk-sha256.txt
+            .deploy-tmp/source-build/engine-overlay-sha256.txt
+            .deploy-tmp/source-build/runtime-tarballs-sha256.txt
+            .deploy-tmp/source-build/plugin-lock-sha256.txt
+            .deploy-tmp/source-build/plugin-lock-resolution.json
+            .deploy-tmp/source-build/marketplace-metadata-delta.json
+            .deploy-tmp/source-build/project-source-commit.txt
+            .deploy-tmp/source-build/component-source-provenance.json
+            .deploy-tmp/source-build/project-component-provenance.json
+            .deploy-tmp/source-build/marketplace-source-provenance.json
+            .deploy-tmp/source-build/marketplace-patch-adapter.json
+            .deploy-tmp/source-build/source-build-policy.json
+            .deploy-tmp/source-build/effective-engine-overlay.json
+            .deploy-tmp/source-build/harness-vendor-overrides.json
+            .deploy-tmp/source-build/harness-vendor-lock-reconciliation.json
+            .deploy-tmp/source-build/harness-pnpm-lock.original.yaml
+            .deploy-tmp/source-build/harness-build-script-exclusion.json
+            .deploy-tmp/source-build/harness-root-package.json.original
+            .deploy-tmp/source-build/android-build-inputs-sha256.txt
+            .deploy-tmp/source-build/gradle-artifacts-sha256.txt
+            .deploy-tmp/source-build/signing-certificate-sha256.txt
+            .deploy-tmp/source-build/package-manager-versions.txt
+            .deploy-tmp/source-build/linux-bundle-injection.json
+            .deploy-tmp/linux-build/provenance/**
+            .deploy-tmp/source-build/pnpm-deploy-build-policy.json
+            .deploy-tmp/source-build/pnpm-deploy-runtime-closure.json
+            .deploy-tmp/source-build/pnpm-deploy-runtime-closure.lock.yaml
+            .deploy-tmp/source-build/android-native-runtime-packages.json
+            .deploy-tmp/source-build/node-pty-android-build.json
+            .deploy-tmp/source-build/ndk-archive-sha1.txt
+            .deploy-tmp/source-build/post-snapshot-native-runtime-check.json
+            .deploy-tmp/source-build/harness-web-preview-exclusion.json
+            .deploy-tmp/source-build/post-snapshot-runtime-dependency-check.json
+            .deploy-tmp/source-build/source-engine-snapshot-check.json
+            .deploy-tmp/source-build/snapshot-normalization.json
+            .deploy-tmp/source-build/independent-rebuild-verification.json
+            .deploy-tmp/source-build/pnpm-package-materialization.json
+            .deploy-tmp/source-build/engine-patch-copy-reconciliation.json
+            scripts/patches/tests/fixtures/manifest.json
+            scripts/patches/tests/fixtures/*-0.2.0-rc.2/**
+          if-no-files-found: error
+          # Only explicitly listed evidence files below .deploy-tmp are uploaded.
+          include-hidden-files: true
+          retention-days: 30
+
+  sign-arm64:
+    needs: verify-arm64
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with: { node-version: '24' }
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: pocket-harness-arm64-verified-${{ github.sha }}
+          path: .
+      - name: Sign final ARM64 source APK in an isolated job
+        env:
+          POCKET_SIGNING_KEYSTORE_BASE64: ${{ secrets.POCKET_SIGNING_KEYSTORE_BASE64 }}
+          POCKET_SIGNING_KEYSTORE_PASSWORD: ${{ secrets.POCKET_SIGNING_KEYSTORE_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          signer=$(find "$ANDROID_HOME/build-tools" -mindepth 2 -maxdepth 2 -name apksigner -type f | sort -V | tail -n 1)
+          test -n "$signer"
+          export APKSIGNER="$signer"
+          node scripts/source-build/sign-source-artifacts.mjs
+      - name: Upload APK and provenance
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: pocket-harness-arm64-source-${{ github.sha }}
+          path: |
+            out/v*/*.apk
+            .deploy-tmp/arm64-base/base-usr.tar.xz.provenance.json
+            .deploy-tmp/source-build/termux-packages-provenance.json
+            .deploy-tmp/engine-overlay/source-build-manifest.json
+            .deploy-tmp/source-build/apk-sha256.txt
+            .deploy-tmp/source-build/engine-overlay-sha256.txt
+            .deploy-tmp/source-build/runtime-tarballs-sha256.txt
+            .deploy-tmp/source-build/plugin-lock-sha256.txt
+            .deploy-tmp/source-build/plugin-lock-resolution.json
+            .deploy-tmp/source-build/marketplace-metadata-delta.json
+            .deploy-tmp/source-build/project-source-commit.txt
+            .deploy-tmp/source-build/component-source-provenance.json
+            .deploy-tmp/source-build/project-component-provenance.json
+            .deploy-tmp/source-build/marketplace-source-provenance.json
+            .deploy-tmp/source-build/marketplace-patch-adapter.json
+            .deploy-tmp/source-build/source-build-policy.json
+            .deploy-tmp/source-build/effective-engine-overlay.json
+            .deploy-tmp/source-build/harness-vendor-overrides.json
+            .deploy-tmp/source-build/harness-vendor-lock-reconciliation.json
+            .deploy-tmp/source-build/harness-pnpm-lock.original.yaml
+            .deploy-tmp/source-build/harness-build-script-exclusion.json
+            .deploy-tmp/source-build/harness-root-package.json.original
+            .deploy-tmp/source-build/android-build-inputs-sha256.txt
+            .deploy-tmp/source-build/gradle-artifacts-sha256.txt
+            .deploy-tmp/source-build/signing-certificate-sha256.txt
+            .deploy-tmp/source-build/package-manager-versions.txt
+            .deploy-tmp/source-build/linux-bundle-injection.json
+            .deploy-tmp/linux-build/provenance/**
+            .deploy-tmp/source-build/pnpm-deploy-build-policy.json
+            .deploy-tmp/source-build/pnpm-deploy-runtime-closure.json
+            .deploy-tmp/source-build/pnpm-deploy-runtime-closure.lock.yaml
+            .deploy-tmp/source-build/android-native-runtime-packages.json
+            .deploy-tmp/source-build/node-pty-android-build.json
+            .deploy-tmp/source-build/ndk-archive-sha1.txt
+            .deploy-tmp/source-build/post-snapshot-native-runtime-check.json
+            .deploy-tmp/source-build/harness-web-preview-exclusion.json
+            .deploy-tmp/source-build/post-snapshot-runtime-dependency-check.json
+            .deploy-tmp/source-build/source-engine-snapshot-check.json
+            .deploy-tmp/source-build/snapshot-normalization.json
+            .deploy-tmp/source-build/independent-rebuild-verification.json
             .deploy-tmp/source-build/pnpm-package-materialization.json
             .deploy-tmp/source-build/engine-patch-copy-reconciliation.json
             scripts/patches/tests/fixtures/manifest.json

@@ -4,7 +4,7 @@ import { execFileSync, spawnSync } from 'node:child_process'
 import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
-import { committedWorkflow, prepareSourceWorkspace, sourceCommit } from './local-source-workspace.mjs'
+import { assertMaintainedSource, committedWorkflow, prepareSourceWorkspace, sourceCommit } from './local-source-workspace.mjs'
 import { resolveSourceRepository } from './record-project-components.mjs'
 
 function fixture(fn) {
@@ -14,7 +14,7 @@ function fixture(fn) {
   mkdirSync(join(source, 'scripts/snapshot-config'), { recursive: true })
   mkdirSync(join(source, '.github/workflows'), { recursive: true })
   const git = (...args) => execFileSync('git', ['-C', source, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim()
-  git('init', '-q')
+  git('init', '-q', '-b', 'main')
   git('config', 'user.name', 'Fixture')
   git('config', 'user.email', 'fixture@example.invalid')
   git('remote', 'add', 'origin', 'https://github.com/example/independent-shell.git')
@@ -29,6 +29,16 @@ function fixture(fn) {
 }
 
 const linux = { skip: process.platform !== 'linux' }
+test('only an attached main checkout authorizes real source builds and resumes', () => fixture(({ source, git, commit }) => {
+  git('branch', '-M', 'main')
+  assert.doesNotThrow(() => assertMaintainedSource(source))
+  git('checkout', '-qb', 'codex/candidate')
+  assert.throws(() => assertMaintainedSource(source), /仅允许 main/)
+  git('checkout', '--detach', commit)
+  assert.throws(() => assertMaintainedSource(source), /仅允许 main/)
+  git('checkout', 'main')
+  assert.doesNotThrow(() => assertMaintainedSource(source))
+}))
 test('source identity survives a remote-free isolated checkout and rejects an unfrozen identity', () => fixture(({ root, source, commit }) => {
   const identity = resolveSourceRepository(source, {})
   const workspace = prepareSourceWorkspace(source, commit, join(root, 'identity-build'))
@@ -151,7 +161,7 @@ test('resume rejects nested host write-root aliases but retains internal and And
   mkdirSync(join(workspace, '.deploy-tmp/source-build/bootstrap-extracted/usr/bin'), { recursive: true })
   symlinkSync('/data/data/com.termux/files/usr/bin/sh', join(workspace, '.deploy-tmp/source-build/bootstrap-extracted/usr/bin/sh'))
   mkdirSync(join(workspace, '.deploy-tmp/snapshot-013/arm64/stage/root/usr/bin'), { recursive: true })
-  symlinkSync('/data/user/0/com.dsharnessmobile.shell/files/usr/libexec/vim/vim', join(workspace, '.deploy-tmp/snapshot-013/arm64/stage/root/usr/bin/vim'))
+  symlinkSync('/data/user/0/com.snoworwind.pocketharness/files/usr/libexec/vim/vim', join(workspace, '.deploy-tmp/snapshot-013/arm64/stage/root/usr/bin/vim'))
   symlinkSync('vim', join(workspace, '.deploy-tmp/snapshot-013/arm64/stage/root/usr/bin/rvim'))
   mkdirSync(join(workspace, '.deploy-tmp/engine-deploy/node_modules/.pnpm/pkg/node_modules/pkg'), { recursive: true })
   symlinkSync('.pnpm/pkg/node_modules/pkg', join(workspace, '.deploy-tmp/engine-deploy/node_modules/pkg'))
@@ -238,6 +248,9 @@ test('actual local runner routes cwd and build environment into isolation and ke
     '      - name: Checkout pinned fixture source', '        shell: bash', '        run: |',
     '          test "$PWD" = "$GITHUB_WORKSPACE"',
     '          test "$DSH_APK_DIR" = "$GITHUB_WORKSPACE"',
+    '          test -d "$RUNNER_TEMP"',
+    '          test -f "$GITHUB_ENV"',
+    '          printf "npm_config_cache=%s/cache\\n" "$RUNNER_TEMP" >> "$GITHUB_ENV"',
     '          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"',
     '          test "$DSH_SOURCE_REPOSITORY" = https://github.com/example/independent-shell',
     '          rm -rf vendor/dshmarketplace-plugin',
@@ -272,6 +285,7 @@ test('actual local runner routes cwd and build environment into isolation and ke
   assert.equal(readFileSync(join(source, 'vendor/dshmarketplace-plugin/extra.txt'), 'utf8'), 'keep')
   assert.equal(readFileSync(join(source, 'scripts/snapshot-config/engine-overlay.json'), 'utf8'), 'local config')
   assert.equal(existsSync(join(source, 'result.txt')), false)
+  assert.match(readFileSync(join(workspace, '.deploy-tmp/local-github-env'), 'utf8'), /npm_config_cache=/)
   const outside = join(root, 'unrelated-policy.json')
   writeFileSync(outside, 'keep unrelated policy')
   rmSync(join(workspace, '.deploy-tmp/source-build/source-build-policy.json'))

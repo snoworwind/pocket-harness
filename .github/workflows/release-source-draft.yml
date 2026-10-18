@@ -24,6 +24,7 @@ jobs:
     needs: branch
     permissions:
       contents: read
+    secrets: inherit
     uses: ./.github/workflows/build-apk-source.yml
 
   prepare:
@@ -39,7 +40,7 @@ jobs:
       - name: Download only this run's source artifact
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
-          name: dsh-mobile-apk-arm64-source-${{ github.sha }}
+          name: pocket-harness-arm64-source-${{ github.sha }}
           path: source-artifact
       - name: Verify identity and package unchanged source artifacts
         run: |
@@ -83,7 +84,7 @@ jobs:
           files = list(root.iterdir())
           if any(p.is_symlink() or not p.is_file() for p in files):
               raise SystemExit('release assets must be regular files')
-          apks = [p.name for p in files if re.fullmatch(r'dsh-mobile-apk-v[\w.+-]+-source-arm64\.apk', p.name)]
+          apks = [p.name for p in files if re.fullmatch(r'pocket-harness-v[\w.+-]+-source-arm64\.apk', p.name)]
           if len(apks) != 1:
               raise SystemExit('expected exactly one source ARM64 APK')
           expected = {apks[0], 'provenance.zip', 'notes.md'}

@@ -7,9 +7,9 @@
 
 ## 1. 这是什么仓
 
-DeepSeek Harness 的**安卓壳应用**（包名 `com.dsharnessmobile.shell`）。
+DeepSeek Harness 的独立安卓应用 **Pocket Harness**（包名 `com.snoworwind.pocketharness`；Kotlin namespace 保持 `com.dsharnessmobile.shell`）。
 
-本项目基于 [dsh-mobile-apk](https://github.com/snoworwind/dsh-mobile-apk) 的 `security/hardening` 分支提交 `cb1c315` 独立建立；首个提交只调整仓库级标识，应用名、applicationId 与 APK 产物前缀的迁移边界见 [项目基线](docs/AGENTS/BASELINE.md)。
+本项目基于 [dsh-mobile-apk](https://github.com/snoworwind/dsh-mobile-apk) 的 `security/hardening` 分支提交 `cb1c315` 独立建立；应用名、applicationId、发布签名与 APK 产物名已迁移，具体边界见 [项目基线](docs/AGENTS/BASELINE.md)。
 
 **职责边界**：只保留安卓平台权能与桥——前台服务 / 看门狗 / WebView（主 + 隔离 BrowserHost）/ SAF 桥 / 快照解压 / UndoGate / Shizuku 特权 transport 与虚拟屏 / 无障碍与 ADB 授权 / 通知中心与通知内应答 / 返回网关 / 审计 / 控制台 / 日志。
 
@@ -33,17 +33,17 @@ DeepSeek Harness 的**安卓壳应用**（包名 `com.dsharnessmobile.shell`）�
 ```powershell
 # 在本仓触发云端来源链（当前 ARM64；草稿发布见 docs/RELEASE.md §5）：
 gh workflow run build-apk-source.yml --repo snoworwind/pocket-harness --ref main
-# Linux / WSL 本地同链，仅构建已提交 HEAD，自动隔离检出：
+# Linux / WSL 本地来源副本，仅 main 已提交 HEAD、自动隔离；交付须云端双构建验证与正式签名：
 node scripts/source-build/run-local-source-chain.mjs
 # 产物与环境详见 docs/AGENTS/build-and-env.md；禁止旧本地/协调仓链出 APK。
 
 # 装机（<serial> 用 adb devices 查；arm64 真机必须用 arm64 产物）
-adb -s <serial> install -r -t out\v<版本>\dsh-mobile-apk-v<版本>-arm64.apk
+adb -s <serial> install -r -t out\v<版本>\pocket-harness-v<版本>-arm64.apk
 ```
 
 **设备**：
-- MuMu 模拟器 `127.0.0.1:16416`（竖屏）、`127.0.0.1:16384`（横屏，真 1600x900）——开发循环主用。
-- 真机 V2425A `10AF2B0GN0001F2`（arm64，1260x2800，SDK 36）——**发布前**补充门禁。
+- MuMu 模拟器 `127.0.0.1:16416`（竖屏）、`127.0.0.1:16384`（横屏，x86_64）可用于通用 UI/脚本开发；**不能安装 ARM64 产品 APK**。
+- ARM64 设备 V2425A `10AF2B0GN0001F2`（1260x2800，SDK 36）用于本应用安装验收；当前暂不可用，发布前必须补充门禁。
 
 **验证脚本**（`scripts/`，必须**逐个单独跑**，每个都重建 WebView target）：
 
@@ -130,7 +130,7 @@ adb -s <serial> install -r -t out\v<版本>\dsh-mobile-apk-v<版本>-arm64.apk
    其余改动（L0 文档、L1 门禁与构建链内部逻辑）**不强制**打包后设备验证，但必须携带该档的替代证据（L1 = `--self-test` + 一条受控负控）。
    **不可省的两条**：① 未做设备验证的改动必须在 PR 描述里**显式标注「未做设备验证」**；② 该改动进入发版候选前必须补验，未补验不得随版本发布。禁止以「等真机」推迟高风险面的验证；真机仍是发布前补充门禁。
 3. **原子化交付 + 分档验证**：一个 PR = 一个逻辑改动，可独立 revert；禁止把「修 bug + 重构 + 顺手优化」混在一个 PR 里。**但「原子 PR」不等于「不验」**——每个 PR 必须携带与其风险类相符的**最廉价充分证据**：L0 文档/注释 → CI 绿即可；L1 门禁/脚本逻辑 → `--self-test` + **一条受控负控**；L2 安全敏感面（快照事务 / 签名 / 门禁自身判据 / 桥协议）→ **即时三层**；L3 UI/UX 与壳侧行为 → **即时模拟器三层**。
-   统一全量测试（双 ABI 全链 + 冷启动矩阵 + 真机补充门禁）前移到**发布计划确定时**执行，且它**只做集成验证、替代不了上面每档的证据**。细则见协调仓 `docs/0.14.8-DELIVERY-PLAN-2026-10-14.md` §3。
+   统一全量测试（ARM64 全链 + 冷启动矩阵 + 真机补充门禁）前移到**发布计划确定时**执行，且它**只做集成验证、替代不了上面每档的证据**。细则见协调仓 `docs/0.14.8-DELIVERY-PLAN-2026-10-14.md` §3。
 4. **默认改动走 PR**（私有仓暂不启用收费分支保护，也不升级套餐；此为用户决定，依靠同一 HEAD 的 CI 复核与可追溯合并流程）：建分支 → 提交（`<type>: <描述>`）→ 推分支 → 开 PR（1-3 标签）→ CI 绿 → 合并 → 删分支。**禁止直接 push `main`**。本仓以 `main` 为长期维护线，首个提交为基线导入；后续改动按 PR 合入，来源链构建与安全加固规则继续适用，详见 `docs/AGENTS/SECURITY-HARDENING.md`。其他例外仅限不改仓库内容的外部动作（Release 资产、issue 评论与开关、标签）。
 5. **子仓副本同步（幽灵缺陷防线）**：改 `dsh-client-ui-responsive` / `dsh-host-web-compat` / `dsh-shell-termux` / `plugins/dsh-android-*` 的源码或 bump 版本后，**必须把源码、`package.json` 与 `lib/` 产物同步进本仓同名目录**（本分支树内副本即权威，不存在需要对端的第二棵树）。漏了 → 构建注入旧副本，**编译通过但功能缺失**。
    - 只同步**镜像清单内的文件**，切勿对 `scripts/` 等目录整体 `/MIR`——会删掉本仓独有的设备脚本（真实事故）。

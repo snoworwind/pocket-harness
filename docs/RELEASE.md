@@ -26,7 +26,7 @@
 ## 3. 历史 release/ 目录规范（已退役）
 
     release/
-    ├── v<版本>/apk/dsh-mobile-apk-v<版本>-<abi>.apk   # abi = arm64 | x86_64（双 ABI 必须同时产出；见 §6 改名窗口）
+    ├── v<版本>/apk/pocket-harness-v<版本>-arm64.apk   # 当前独立发行只提供 ARM64
     ├── v<版本>/snapshot/snapshot-<abi>.tar.xz         # 双快照（在线更新/重打包用）
     ├── v<版本>/plugins/*.tgz                          # 3 插件
     ├── v<版本>/MANIFEST.txt                           # sha256 清单
@@ -55,13 +55,13 @@ gh workflow run build-apk.yml --repo snoworwind/pocket-harness --ref main -f dra
 2. 只读准备任务仅下载同次运行 artifact，核对必需证据、来源仓库、提交与 APK 哈希，原字节复制 APK 并压缩证据。
 3. 独立 `contents: write` 任务只下载整理后的同次 artifact、复核哈希并创建草稿；不检出源码、不编译、不重签。
 
-草稿资产为 ARM64 APK、`provenance.zip`、`SHA256SUMS.txt` 与 `notes.md`。tag 为 `hardening-source-<短提交>-<run_id>-<run_attempt>`，避免与主线版本及重跑冲突；不覆盖已有 Release。当前仅 ARM64，沿用历史 debug 签名，公开前必须按 AGENTS 的设备三层验收要求补齐候选证据。自动生成的说明明确标为未做设备验证；公开发布由维护者验收后手动完成。
+草稿资产为 ARM64 APK、`provenance.zip`、`SHA256SUMS.txt` 与 `notes.md`。tag 为 `hardening-source-<短提交>-<run_id>-<run_attempt>`，避免与主线版本及重跑冲突；不覆盖已有 Release。APK 由仓库加密 Secret 中的独立发布密钥签名，最终门禁核对提交的证书 SHA-256 指纹。自动生成的说明明确标为未做设备验证；公开发布由维护者验收后手动完成。
 
 构建或证据核验失败不进入写权限任务。上传失败可能留下部分资产的草稿，不得直接公开；检查该次失败记录后重跑，新 attempt 创建独立草稿。来源证明支撑链路追溯，不等于 APK 字节可复现或设备已验收。
 
 ## 6. 来源链产物命名
 
-APK 由 `scripts/build-apk.mjs` 按 `dsh-mobile-apk-v<versionName><suffix>-<abi>.apk` 命名。当前来源工作流固定 `--abi arm64 --suffix -source`；下载入口与证据清单见 [构建详档](AGENTS/build-and-env.md)。旧在线更新器及其资产候选测试已删除，不再承担命名兼容检查。
+APK 由 `scripts/build-apk.mjs` 按 `pocket-harness-v<versionName><suffix>-arm64.apk` 命名。当前来源工作流固定 `--abi arm64 --suffix -source`；下载入口与证据清单见 [构建详档](AGENTS/build-and-env.md)。
 
 ## 7. 第三方许可合规声明（2026-08-23 起，GPL 义务）
 
@@ -72,3 +72,5 @@ APK 由 `scripts/build-apk.mjs` 按 `dsh-mobile-apk-v<versionName><suffix>-<abi>
 - **对二进制的再加工**（A4，全部随本仓库开源）：前缀/编译期路径重写 `scripts/fix-shebang.py`、`scripts/inject-snapshot.py`、`termux-elf-cleaner` 调用与 `scripts/build-snapshot-013.mjs`（shebang/RUNPATH/elf 处理）、快照注入与打包 `scripts/inject-all.py`、`scripts/build-apk.mjs` 及 `scripts/patches/`；
 - **门禁**：`scripts/check-third-party.mjs`（矩阵覆盖 + copyleft 全文在场）由来源链的 APK 打包门禁执行，缺失即拒绝打包；
 - **无额外限制**：上述二进制保持其上游许可，未施加任何附加条款；本工程 dsh 引擎/壳/插件（MIT 系）与 GPL 二进制为进程级聚合，非链接派生，不受传染（详 THIRD_PARTY_NOTICES.md 说明）。
+
+来源草稿的独立验证与隔离正式签名流程见 docs/AGENTS/build-and-env.md 的签名前独立双构建小节；草稿准备拒绝与最终 APK/源码 SHA 不符的重建证明。临时签名副本不是发布资产。

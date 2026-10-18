@@ -38,11 +38,13 @@ const MAX_HTML_BYTES = 120 * 1024;
 /** 归一化 GitHub release JSON -> 页面数据（只保留需要的字段，避免把整包 JSON 塞进 HTML）。 */
 function normalize(json, source) {
   const tag = source === 'seed' ? json?.tag : json?.tag_name;
-  if (typeof tag !== 'string' || !tag.trim()) throw new Error('release data has no valid tag');
   const assets = Array.isArray(json.assets)
     ? json.assets.filter((a) => a && typeof a.name === 'string')
         .map((a) => ({ name: a.name, size: Number(a.size) || 0 }))
     : [];
+  if ((typeof tag !== 'string' || !tag.trim()) && !(source === 'seed' && json?.source === 'pocket-harness' && assets.length === 0)) {
+    throw new Error('release data has no valid tag');
+  }
   return {
     tag,
     publishedAt: (source === 'seed' ? json.publishedAt : json.published_at) || '',
@@ -88,8 +90,9 @@ async function fetchText(url, timeoutMs) {
 
 /** 哈希只从 GitHub 官方 MANIFEST 读取，不能让同一个第三方镜像同时提供 APK 与“校验值”。 */
 async function attachSha256(data) {
+  if (!data.tag) return;
   const wanted = [];
-  for (const abi of ['arm64', 'x86_64']) {
+  for (const abi of ['arm64']) {
     for (const name of apkNameCandidates(data.tag, abi)) {
       if (data.assets.some((a) => a.name === name)) { wanted.push([abi, name]); break; }
     }
@@ -104,7 +107,7 @@ async function attachSha256(data) {
       const sum = sha256FromManifest(text, 'apk/' + name);
       if (sum) data.sha256[abi] = sum;
     }
-    log('sha256 仅取自 GitHub 官方 MANIFEST，命中 ' + Object.keys(data.sha256).length + '/2');
+    log('sha256 仅取自 GitHub 官方 MANIFEST，命中 ' + Object.keys(data.sha256).length + '/1');
   } catch (err) {
     log('GitHub 官方 MANIFEST 不可用：' + err.message);
     log('警告：本次构建不含 sha256（页面会提示到 Releases 自行核对）');
@@ -142,13 +145,13 @@ function render(indexHtml, styles, data, jsonLd) {
  */
 function buildJsonLd(data) {
   const apk = [];
-  for (const abi of ['arm64', 'x86_64']) {
+  for (const abi of ['arm64']) {
     const hit = apkNameCandidates(data.tag, abi).find((n) => data.assets.some((a) => a.name === n));
     if (!hit) continue;
     const meta = data.assets.find((a) => a.name === hit);
     apk.push({
       '@type': 'SoftwareApplication',
-      name: 'dsh-mobile (' + abi + ')',
+      name: 'Pocket Harness (' + abi + ')',
       operatingSystem: 'Android 8.0+',
       applicationCategory: 'DeveloperApplication',
       softwareVersion: data.tag.replace(/^v/, ''),
@@ -157,29 +160,28 @@ function buildJsonLd(data) {
       ...(data.sha256 && data.sha256[abi] ? { sha256: data.sha256[abi] } : {}),
     });
   }
+  const graph = [{
+    '@type': 'WebSite',
+    name: 'Pocket Harness 下载',
+    url: SITE_URL,
+    inLanguage: 'zh-CN',
+  }];
+  if (data.tag) graph.push({
+    '@type': 'SoftwareApplication',
+    name: 'Pocket Harness',
+    alternateName: 'DeepSeek Harness 安卓客户端',
+    description: 'DeepSeek Harness 的 ARM64 安卓客户端，内置完整运行环境。',
+    operatingSystem: 'Android 8.0+',
+    applicationCategory: 'DeveloperApplication',
+    softwareVersion: data.tag.replace(/^v/, ''),
+    datePublished: data.publishedAt || undefined,
+    softwareHelp: SITE_URL,
+    offers: { '@type': 'Offer', price: '0', priceCurrency: 'CNY' },
+  });
+  graph.push(...apk);
   return {
     '@context': 'https://schema.org',
-    '@graph': [
-      {
-        '@type': 'WebSite',
-        name: 'dsh-mobile 下载',
-        url: SITE_URL,
-        inLanguage: 'zh-CN',
-      },
-      {
-        '@type': 'SoftwareApplication',
-        name: 'dsh-mobile',
-        alternateName: 'DeepSeek Harness 安卓客户端',
-        description: 'DeepSeek Harness 的安卓壳应用，内置完整运行环境，支持 arm64 与 x86_64。',
-        operatingSystem: 'Android 8.0+',
-        applicationCategory: 'DeveloperApplication',
-        softwareVersion: data.tag.replace(/^v/, ''),
-        datePublished: data.publishedAt || undefined,
-        softwareHelp: SITE_URL,
-        offers: { '@type': 'Offer', price: '0', priceCurrency: 'CNY' },
-      },
-      ...apk,
-    ],
+    '@graph': graph,
   };
 }
 

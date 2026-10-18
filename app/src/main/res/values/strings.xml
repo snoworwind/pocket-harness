@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-  <string name="app_name">DeepCode</string>
+  <string name="app_name">Pocket Harness</string>
   <string name="ds_brand_subtitle">内嵌运行时</string>
   <string name="ds_start_engine">启动引擎</string>
   <string name="ds_retry">重试</string>
@@ -60,7 +60,7 @@
   <!-- 0.13.2 ADB 输入通道 IME（ADBKeyboard 协议；引擎 android_ui_input 中文输入通道） -->
   <string name="adb_keyboard_label">DeepSeek ADB 输入通道</string>
   <!-- 0.13.5 W4：设备控制无障碍服务（语义控制面） -->
-  <string name="a11y_service_label">DeepCode 设备控制</string>
+  <string name="a11y_service_label">Pocket Harness 设备控制</string>
   <string name="a11y_service_summary">让 AI 助手以语义方式读取界面并操作控件</string>
   <string name="a11y_service_description">开启后，AI 助手可以读取当前界面的控件（文本/描述/位置）并执行点击、输入、滚动等操作。仅在你主动开启时生效，关闭后立即失效；同时要求会话处于「完全访问」档位。</string>
     <string name="ds_start_port_foreign">本地端口 3080 正被其他程序使用，应用没有停止该程序。请关闭冲突应用后点「重试启动」，或重启设备。[port-foreign]</string>

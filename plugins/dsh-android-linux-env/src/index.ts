@@ -34,6 +34,7 @@ import {
   createLinuxPluginHost, checkLinuxEnvironmentAfterMobileChange, registerLinuxEnvironmentRoutes, cordisScope,
   type LinuxBootstrap,
 } from './linux-environment.js'
+import { createLinuxBootstrapConfig } from './linux-host-asset-io.js'
 
 export const name = 'dsh-android-linux-env'
 export const inject = ['tools', 'webServer', 'androidPrivilege'] as const
@@ -353,6 +354,11 @@ export function apply(ctx: Context, _config: Record<string, unknown> = {}) {
   })
   if (typeof ctx.provide === 'function') {
     ctx.provide('linuxPluginHost', pluginHost)
+    const filesDir = process.env.DSH_FILES_DIR
+    const appVersion = process.env.DSH_APP_VERSION
+    if (filesDir && appVersion && process.env.TERMUX__PREFIX) {
+      ctx.provide('linuxBootstrapConfig', createLinuxBootstrapConfig({ filesDir, appVersion }))
+    }
     ctx.effect(() => () => pluginHost.uninstall())
   }
   if (typeof ctx.inject === 'function') {

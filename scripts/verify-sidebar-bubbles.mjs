@@ -18,13 +18,13 @@ function adb(argv, binary = false) {
   return result.stdout
 }
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms))
-const fingerprint = adb(['shell', 'run-as', 'com.dsharnessmobile.shell', 'ls', 'files/.snapshot-fingerprint']).trim()
-const transaction = spawnSync('adb', ['-s', serial, 'shell', 'run-as', 'com.dsharnessmobile.shell', 'ls', 'files/.snapshot-transaction'], { encoding: 'utf8' })
+const fingerprint = adb(['shell', 'run-as', 'com.snoworwind.pocketharness', 'ls', 'files/.snapshot-fingerprint']).trim()
+const transaction = spawnSync('adb', ['-s', serial, 'shell', 'run-as', 'com.snoworwind.pocketharness', 'ls', 'files/.snapshot-transaction'], { encoding: 'utf8' })
 assert.ok(fingerprint); assert.notEqual(transaction.status, 0, 'snapshot refresh must have finished')
 let port, target, discoveryError
 for (let attempt = 0; attempt < 60 && !target; attempt++) {
   try {
-    const pid = adb(['shell', 'pidof', 'com.dsharnessmobile.shell']).trim()
+    const pid = adb(['shell', 'pidof', 'com.snoworwind.pocketharness']).trim()
     port = adb(['forward', 'tcp:0', 'localabstract:webview_devtools_remote_' + pid]).trim()
     const targets = await fetch('http://127.0.0.1:' + port + '/json/list').then(r => r.json())
     target = targets.find(t => t.type === 'page' && t.url.startsWith('http://127.0.0.1:3080'))

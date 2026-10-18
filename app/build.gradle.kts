@@ -3,12 +3,15 @@ plugins {
   id("org.jetbrains.kotlin.android")
 }
 
+val pocketReleaseSigningAvailable = !providers.environmentVariable("POCKET_SIGNING_KEYSTORE_PATH").orNull.isNullOrBlank() &&
+  !providers.environmentVariable("POCKET_SIGNING_KEYSTORE_PASSWORD").orNull.isNullOrBlank()
+
 android {
   namespace = "com.dsharnessmobile.shell"
   compileSdk = 36
 
   defaultConfig {
-    applicationId = "com.dsharnessmobile.shell"
+    applicationId = "com.snoworwind.pocketharness"
     minSdk = 26
     // targetSdk 34: Android 15+ forbids exec of app-data ELF for targetSdk 35+
     // (the embedded engine, bash, and every child command would need linker64
@@ -42,29 +45,35 @@ android {
   }
 
   signingConfigs {
-    // Fixed debug signing from the repo keystore: CI and local builds must produce
-    // byte-compatible signatures, otherwise users cannot install over previous
-    // releases (INSTALL_FAILED_UPDATE_INCOMPATIBLE). AGP's default debug keystore
-    // lookup (~/.android/debug.keystore) is unreliable on CI runners, so pin it.
-    create("repoDebug") {
-      storeFile = rootProject.file("keystore/debug.keystore")
-      storePassword = "android"
-      keyAlias = "androiddebugkey"
-      keyPassword = "android"
-      // Keep the project signing policy explicit; the final-artifact gate verifies these schemes in every APK.
-      enableV1Signing = true
-      enableV2Signing = true
-      enableV3Signing = true
+    val signingStorePath = providers.environmentVariable("POCKET_SIGNING_KEYSTORE_PATH").orNull
+    val signingStorePassword = providers.environmentVariable("POCKET_SIGNING_KEYSTORE_PASSWORD").orNull
+    if (!signingStorePath.isNullOrBlank() && !signingStorePassword.isNullOrBlank()) {
+      create("pocketRelease") {
+        storeFile = file(signingStorePath)
+        storeType = "PKCS12"
+        storePassword = signingStorePassword
+        keyAlias = "pocketharness"
+        keyPassword = signingStorePassword
+        enableV1Signing = true
+        enableV2Signing = true
+        enableV3Signing = true
+      }
     }
   }
 
   buildTypes {
     release {
       isMinifyEnabled = false
-      signingConfig = signingConfigs.getByName("repoDebug")
+      signingConfig = signingConfigs.findByName("pocketRelease")
     }
     debug {
-      signingConfig = signingConfigs.getByName("repoDebug")
+      // Developer builds use Gradle's local debug key. Distribution APKs are always release-signed.
+      // Keep the all-schemes policy explicit for the debug variant too.
+      signingConfig = signingConfigs.getByName("debug").apply {
+        enableV1Signing = true
+        enableV2Signing = true
+        enableV3Signing = true
+      }
     }
   }
 
@@ -89,7 +98,17 @@ android {
   }
 }
 
-// The runtime snapshot comes from GitHub Releases (large files are not committed); the build fails with fetch guidance when it is missing.
+tasks.configureEach {
+  if (name == "validateSigningRelease") {
+    doFirst {
+      if (!pocketReleaseSigningAvailable) {
+        throw GradleException("Release signing requires POCKET_SIGNING_KEYSTORE_PATH and POCKET_SIGNING_KEYSTORE_PASSWORD")
+      }
+    }
+  }
+}
+
+// The runtime snapshot comes from the source-build pipeline; the build fails with fetch guidance when it is missing.
 tasks.whenTaskAdded {
   if (name == "mergeDebugAssets" || name == "mergeReleaseAssets") {
     doFirst {
@@ -97,7 +116,7 @@ tasks.whenTaskAdded {
       if (!snap.exists()) {
         throw GradleException(
           "缺少运行时快照 assets/snapshot.tar.xz —— " +
-            "从 GitHub Releases 下载 snapshot-x86_64.tar.xz 后放到 app/src/main/assets/snapshot.tar.xz（见 README.md）",
+          "请按 ARM64 来源链生成并放入 app/src/main/assets/snapshot.tar.xz（见 README.md）",
         )
       }
     }

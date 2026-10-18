@@ -6,7 +6,15 @@
   "description": "Bootstrap and settings plugin for the DSH Mobile Debian Linux runtime (experimental internal plugin: shipped in the built-in hard plugin directory, not enabled by default)",
   "exports": {
     ".": "./lib/index.js",
-    "./client": "./client/index.js"
+    "./client": "./lib/client.js"
+  },
+  "dsh": {
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-settings"
+      ],
+      "platform": "web"
+    }
   },
   "files": [
     "lib/",
@@ -15,10 +23,22 @@
     "README.md"
   ],
   "scripts": {
-    "build": "node build.mjs"
+    "build": "node build.mjs && node build-client.mjs"
   },
   "peerDependencies": {
+    "@deepseek-ai/dsh-client-ui-settings": "0.2.0-rc.2",
     "react": ">=18"
+  },
+  "peerDependenciesMeta": {
+    "@deepseek-ai/dsh-client-ui-settings": {
+      "optional": true
+    },
+    "react": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "esbuild": "0.25.12"
   },
   "engines": {
     "node": ">=18"
@@ -31,16 +51,17 @@
     "excludedFromVendor": "test/ (upstream test/client.test.mjs + react-resolver/react-stub hooks depend on a host-provided react peer and POSIX-only cases)",
     "deviations": [
       "exports/main point at ./lib: the snapshot injector carries lib/** plus package.json; this tree is built by build.mjs, not published as-is",
-      "build script added (copies src/ to lib/); no build artifact is committed",
+      "build script added (copies src/ to lib/ and bundles the client entry as lib/client.js); no build artifact is committed",
       "test script dropped: upstream test/ is intentionally not vendored (see excludedFromVendor)",
       "private: true so the vendored copy can never be published",
       "src/asset-bundle.js locally hardened: always authenticate and independently extract archive bytes; never reuse size-only slots or host unpacked trees",
       "src/index.js requires approved manifests for discovery, installation and reinstall; no optional verification bypass"
     ],
     "localPatches": {
+      "README.md": "b6a54ef5116942484304b8ea31da9bf514a22dcb6496ce2cd99aaadc82db8fb2",
       "src/asset-bundle.js": "7e32ce0f57ee0a7f75dfd2d2af6ff61357d63b6c34e4f0dbf7aa23cf4300e416",
       "src/github.js": "7b6369b5910ecb3e8b49f75a4dae3ca60ceac2d4164bf7f05f71c81803aa110c",
-      "src/index.js": "27708c714ba0a102a89a72611443c144a107307686146acc49b9fa4b4c1ba4b2"
+      "src/index.js": "f55df666a7c95d5bdb65b1743f6376a8218dd9701c418490e25af553aeeb93bf"
     }
   }
 }

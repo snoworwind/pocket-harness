@@ -73,13 +73,13 @@ class RootOwnershipTest {
   }
 
   @Test fun `trusted anchor keeps full work-profile UID`() {
-    assertTrue(OwnershipRepair.isTrustedAppDataAnchor("/data/user/10/com.dsharnessmobile.shell", 1_010_241))
+    assertTrue(OwnershipRepair.isTrustedAppDataAnchor("/data/user/10/com.snoworwind.pocketharness", 1_010_241))
     assertFalse(OwnershipRepair.isTrustedAppDataAnchor("/data/user/0/com.dsharnessmobile.shell", 1_010_241))
     assertFalse(OwnershipRepair.isTrustedAppDataAnchor("/data/user/10/another.package", 1_010_241))
   }
 
   @Test fun `helper rejects path escapes and non-positional arguments`() {
-    val good = arrayOf("10241", "/data/user/0/com.dsharnessmobile.shell", "files", "100", "20000")
+    val good = arrayOf("10241", "/data/user/0/com.snoworwind.pocketharness", "files", "100", "20000")
     assertEquals("files", RootRepairMain.parse(good)?.relativeTarget)
     for (path in listOf("../outside", "/outside", "files/../outside", "files//leaf", ".")) {
       assertNull(path, RootRepairMain.parse(good.copyOf().also { it[2] = path }))
@@ -88,7 +88,7 @@ class RootOwnershipTest {
   }
 
   @Test fun `helper rejects unbounded caps deadlines and numeric ambiguity`() {
-    val good = arrayOf("10241", "/data/user/0/com.dsharnessmobile.shell", "files", "100", "20000")
+    val good = arrayOf("10241", "/data/user/0/com.snoworwind.pocketharness", "files", "100", "20000")
     for (cap in listOf("0", "200001", "-1", "+1", "0100")) {
       assertNull(cap, RootRepairMain.parse(good.copyOf().also { it[3] = cap }))
     }
