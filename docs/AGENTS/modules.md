@@ -280,3 +280,5 @@ Android API 面登记见 `docs/AGENTS/ANDROID-API-USAGE.md` §1/§3/§4/§8；�
 - `ConsoleActivity.kt` / `assets/console.html`：控制台黑白灰日夜主题；会话与桥行为保持原有实现。
 
 Linux 资产独立解包器按 plugin/runtime kind 区分链接政策，文件写完后才创建受限链接；runtimePluginConfig 负责宿主返回路径到 manager 写文件接口的适配，包槽位于宿主 plugins 根内。对应联测见 linux-env/test/offline-install-integration.test.mjs。
+
+管理插件 ime-component.ts 统一键盘 IME/广播完整组件名，并规范化 ComponentName 做精确匹配；applicationId 为 com.snoworwind.pocketharness，类仍在 com.dsharnessmobile.shell。

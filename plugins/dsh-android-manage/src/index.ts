@@ -30,10 +30,10 @@ import { parseUiTreeXml, pruneNodes, resolveRef, findActionableAncestor, checkUi
 import { cacheFromV2, decodeV2, isV2Payload, type V2Decoded } from './protocol-v2.js'
 import { detailRecord, pageRows, writeDetailStore } from './detail-store.js'
 import { resolveVirtualDisplayToken, vdTokenMissingText } from './vd-shot.js'
+import { ADB_KEYBOARD_IME, ADB_KEYBOARD_RECEIVER, isInputMethodEnabled } from './ime-component.js'
 
 // Keyboard auth is carried in Intent extras, so the broadcast must never be
 // resolved against other apps that may register the same legacy ADBKeyboard action.
-const ADB_KEYBOARD_RECEIVER = 'com.snoworwind.pocketharness/.AdbKeyboardReceiver'
 
 /**
  * 0.13.8 #183：键盘广播来源校验 nonce 参数（壳侧 AdbKeyboardReceiver 私有文件，
@@ -1989,7 +1989,7 @@ return String(value.text ?? '') + (lines.length > 0 ? '\n' + lines.join('\n') : 
       }
       if (!priv.execAdbShell) return { ok: false, denied: false, text: 'ADB 执行通道未接通' }
       const wantKb = channel !== 'input'
-      const IME_ID = 'com.snoworwind.pocketharness/.AdbKeyboardService'
+      const IME_ID = ADB_KEYBOARD_IME
       if (wantKb) {
         // ADBKeyboard 协议：am broadcast -a ADB_INPUT_TEXT / ADB_CLEAR_TEXT --es msg <文本>。
         // 本应用 0.13.2 起内嵌同协议 IME。F5 修复：ime enable 只入列不生效（广播被静默丢弃）——
@@ -2185,7 +2185,7 @@ return String(value.text ?? '') + (lines.length > 0 ? '\n' + lines.join('\n') : 
     name: 'android_env_prepare',
     description:
       '设备环境一次性准备（现场实测推荐在长流程开始前跑一次）：① 关闭三项系统动画（dump/tap 后界面立即稳定，减少等待）；'
-      + '② 启用内嵌 ADBKeyboard 协议输入法 com.snoworwind.pocketharness/.AdbKeyboardService（中文 IME 汉字化/丢字的治本手段）。'
+      + `② 启用内嵌 ADBKeyboard 协议输入法 ${ADB_KEYBOARD_IME}（中文 IME 汉字化/丢字的治本手段）。`
       + 'restore=true 时恢复动画（输入法不还原）；setImeDefault=true 时把该输入法设为默认（会改变用户全局输入法，谨慎）。'
       + '需 ADB 授权或无障碍通道。',
     parameters: {
@@ -2234,10 +2234,10 @@ return String(value.text ?? '') + (lines.length > 0 ? '\n' + lines.join('\n') : 
         }
       }
       if (ime) {
-        const IME_ID = 'com.snoworwind.pocketharness/.AdbKeyboardService'
+        const IME_ID = ADB_KEYBOARD_IME
         const en = await priv.execAdbShell(`ime enable ${IME_ID}`)
-        const list = await priv.execAdbShell(`ime list -s | grep -c dsharnessmobile`)
-        const enabled = list.ok && Number.parseInt(list.stdout.trim(), 10) > 0
+        const list = await priv.execAdbShell('ime list -s')
+        const enabled = list.ok && isInputMethodEnabled(list.stdout, IME_ID)
         if (!enabled) {
           notDone.push('输入法未启用（请在「设置 → 系统 → 语言与输入法」里手动启用「DSH 设备键盘」后重试'
             + (list.stdout.trim() ? `；ime list 返回 ${list.stdout.trim().slice(0, 80)}` : '') + '）')
