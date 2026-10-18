@@ -45,10 +45,10 @@
     "vendor/dsh-linux-runtime/README.md": "66eff69403664f1aa1986f86a6099625223bd8990fc34af3eed98e4ee050bc51",
     "vendor/dsh-linux-runtime/lib/index.js": "4cbe776c5079e445e47cd3949f907d304659573a3d448b629a1c1de0630109bc",
     "vendor/dsh-linux-runtime/modules/asset-installer.js": "036774735e016d605cecf91093384371903129ef15b17c7dd8927f9acdc8d7e1",
-    "vendor/dsh-linux-runtime/modules/manager.js": "9f99adf016e616cf74922303c8b3b8e215ac0ff39314c41fd3f541cad17c01f9",
+    "vendor/dsh-linux-runtime/modules/manager.js": "7f8ae325411ac0671f2d25859edb2cbdbcd890bf1df76eb772fe8b29ae3f4251",
     "vendor/dsh-linux-runtime/modules/manifest.js": "1722dd47005c62fad20ec22ddb710bbff72f4a1bc5fdbee7199bb73e31185971",
     "vendor/dsh-linux-runtime/package.json": "1d65abf96889a13f9bfce9266f44839c1957ffc5bc6691fa047cb6061041c476",
-    "vendor/dsh-linux-runtime/test/manager.test.mjs": "52509972cff823834a990e9e94dcc16f8bb0aa319483ebdd26ddb4cc7cc8b18e",
+    "vendor/dsh-linux-runtime/test/manager.test.mjs": "0ca1a8c85019d801e6d204caa649e0c860f2de83fa6dfc446b9c28a9cf8b65ed",
     "plugins/dsh-linux-bootstrap/package.json": "45ee4c2737ff4defccab1cb27ff19671dc347d1503356eb1f8d8524b288deec6",
     "plugins/dsh-linux-bootstrap/client/index.js": "747de10f2ce2545ed9b8b63f0261a5fc656b0b9417af5895536731781daaf072",
     "plugins/dsh-linux-bootstrap/src/asset-bundle.js": "7e32ce0f57ee0a7f75dfd2d2af6ff61357d63b6c34e4f0dbf7aa23cf4300e416",
@@ -66,11 +66,11 @@
   "localPatches": {
     "vendor/dsh-linux-runtime/modules/manager.js": {
       "upstreamSha256": "e7da654488bc9b26d500b2316e16c145a7239d0e8f052621bf3fc220ccad86d3",
-      "reason": "Bound captured stdout and stderr, force-kill timed-out process groups after a grace period, and require a successful bounded Node launch probe before publishing the active runtime."
+      "reason": "Bound captured stdout and stderr, force-kill timed-out process groups after a grace period, and require a successful bounded Node launch probe before publishing the active runtime. Preserve the audited execution-gate and transaction fixes with their negative regressions."
     },
     "vendor/dsh-linux-runtime/test/manager.test.mjs": {
       "upstreamSha256": "4549fefea91b30dfceefab3a2a0418270da4f5ce7c5ecb9b4264081ec2607c02",
-      "reason": "Add negative coverage for rejected runtime smoke probes and bounded subprocess output and termination; allow the SIGTERM handler to start before timeout signaling so Linux CI observes the intended forced process-group kill."
+      "reason": "Add negative coverage for rejected runtime smoke probes and bounded subprocess output and termination; allow the SIGTERM handler to start before timeout signaling so Linux CI observes the intended forced process-group kill. Preserve the audited execution-gate and transaction fixes with their negative regressions."
     },
     "vendor/dsh-linux-runtime/README.md": {
       "upstreamSha256": "91a18de24c9ceb4f5aba6ce7b28d0e769ae26e1178d529d14e139b437214b187",

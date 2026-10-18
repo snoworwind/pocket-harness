@@ -2434,3 +2434,5 @@ app/src/main/java/com/dsharnessmobile/shell/LogSanitizer.kt
 - [B02] 漂移：`历史 BRIDGE-API 副本（当前契约见§6 K04）` 说聚合入口「`--list` 现数，当前 17 项」，源码 `scripts/check-release-gates.mjs:28`（`GATES` 数组）是 27 项（同仓 `docs/AGENTS/build-and-env.md:48` 写的是 27 项，两份文档自相矛盾）。
 - [B02] 漂移：5 个门禁脚本的两仓副本行尾不同（协调仓 CRLF、apk 仓 LF），`cmp` 字节不等、归一化后内容一致：`scripts/check-boot-budget.mjs`、`scripts/check-browser-syntax-floor.mjs`、`scripts/check-build-parallel-cap.mjs`、`scripts/check-snapshot-builder-output.mjs`、`scripts/check-tool-output-schema.mjs`；当时镜像门禁只按「仅行尾差异」告警放行——「逐字节镜像」在行尾层并不成立（**2026-10-15：镜像层已整体移除，本项随之失效**）。
 - [B02] 漂移：`scripts/check-code-map.mjs` 只在 apk 仓存在（协调仓 `scripts/` 无此文件），且原先未被列进 `MIRROR_TOP` → 当时这条门禁自身没有镜像守护（**2026-10-15：`MIRROR_TOP` 与整个镜像层已按用户决定移除，本项随之失效**）。
+
+Linux runtime gate：共享计数归零即唤醒管理等待者；pendingExclusive 先于等待登记，后来的 execute 不得越过排队 install/uninstall/dispose。反例位于 vendor/dsh-linux-runtime/test/manager.test.mjs。
