@@ -2587,3 +2587,8 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 修法：认证后的 TCP channel 保持 nonblocking，relayChannelInput / relayChannelOutput 分别注册独立 selector，直接 channel.read/write；保留未认证连接限制、relay 凭据、私有 socket 的 SO_PEERCRED UID 校验及 60 秒活动/写入停滞预算。主 WebView、HTTP 探活与 mux 共用修复后的通道。JVM 回归在上传半边保持打开时接收响应，再验证后续上传；设备负控后端延迟 200ms 响应，确保上传已经等待，拒绝旧实现的抢跑假绿。
 
 证据：`.deploy-tmp/engine-relay-fix-gradle.log` 完整 Kotlin 单测和 androidTest 编译成功；EngineTransportPolicyTest 5 项、0 失败。`.deploy-tmp/engine-relay-fix-preload.log` Linux 私有 socket 正例、外部占端口负控及无关 HTTP 服务正例通过（2 项、0 skip）。代码地图与 Kotlin 注释门禁通过。Android 原始实现核对 android14-release 的 SocketAdaptor.java / Channels.java，来源为 android.googlesource.com/platform/libcore。未做设备验证：WSL adb devices 为空，16416/16384 均 Connection refused；CDP、ADB 用户体验层和延迟响应设备负控未执行，不能记为三层验收通过。修复必须由来源链新 APK 装机后补验。
+
+396. **独立检出不能依赖原仓远端，固定哈希输入不能被换行转换（2026-10-18）**
+
+现象：本地来源链的组件 provenance 找不到 origin；Windows 夹具门禁报多处摘要不符；独立根导入后的维护提示报 bad object。真因：隔离检出有意不带远端，但编排器没有冻结原仓身份；Git autocrlf 改写 registry 和夹具；push.before 可能已不在新历史中。修法：统一传 DSH_SOURCE_REPOSITORY，固定字节输入全树 -text，维护输入检测对缺失 base 扫描当前树；预检移除 upstream/main 合并前提。反证：无冻结身份的隔离仓拒绝解析；缺失 base 仍触发维护检查；有效无关 diff 不触发；预检无效 URL/版本/摘要均拒绝。Windows 宿主用例 2 通过、13 个 Linux 专属跳过，夹具恢复 Git 字节后通过；L1 构建链修改未做设备验证，Linux 用例须在 CI/Linux 执行。
+补充复验：WSL Linux / Node 24 的隔离构建与维护输入 15 项全过，0 跳过；保留缺失身份和缺失历史负控。

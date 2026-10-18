@@ -1,5 +1,11 @@
 # build-and-env.md — 构建与验证命令 + 环境流程
 
+## 独立检出与固定字节（2026-10-18）
+
+本地来源链在原仓解析来源坐标，冻结为 `DSH_SOURCE_REPOSITORY` 传入所有隔离阶段；隔离检出保持无远端。预检只验证 workflow 固定输入及树内合同，不要求配置或合并 upstream。registry 与补丁夹具全树用 `-text` 保留固定哈希字节，不能重封哈希来容忍 Windows 换行转换。维护文档提示在 push base 不可达时扫描当前受跟踪输入，仍保持提示 job。
+
+验证入口：`node scripts/source-build/preflight-source-chain.mjs --self-test`（真实输入与三个负控）、`node --test scripts/source-build/local-source-workspace.test.mjs scripts/tests/maintenance-inputs.test.mjs`（来源冻结与缺失 base 负控）、`node scripts/check-patch-fixtures.mjs`。本项属 L1，未做设备验证；Linux 专属用例在 Linux/CI 补跑。
+
 第二轮来源链加固：preinstall 从审计 Git 提交重建；pnpm/Canvas 固定官方 SHA-512，缓存每次解包前重验；deb 复用同时验签名索引 SHA-256 与体积；Gradle 固定发行 SHA-256；最终快照与源码包重放补丁后的实际载荷逐字节比较。自检与受控负控入口 `node --test scripts/source-build/security-r2.test.mjs`，来源 workflow 与预检均执行。完整新来源链及设备验收边界见 [修复账本](SECURITY-REMEDIATION-2026-10-17-R2.md)。
 
 本地运行最新 workflow 还需提供 CI 环境别名：RUNNER_TEMP 指向本轮专用临时目录，GITHUB_ENV 指向该目录内的环境文件，并显式设置 npm_config_cache 为其中 dsh-npm-cache（本地运行器不消费 GITHUB_ENV 更新）。隔离检出没有 origin，须从原工作树的 resolveSourceRepository 导出 DSH_SOURCE_REPOSITORY，不得写成另一个仓库坐标。缺项会分别在缓存初始化或组件来源记录处明确失败；不应跳过这些步骤续跑。

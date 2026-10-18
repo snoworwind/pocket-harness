@@ -239,14 +239,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if [ -z "$BASE_SHA" ] || [[ "$BASE_SHA" =~ ^0+$ ]]; then
-            changed=$(git ls-files)
-          else
-            changed=$(git diff --name-only "$BASE_SHA" "$GITHUB_SHA")
-          fi
-          if printf '%s\n' "$changed" | grep -Eq '^(app/build.gradle.kts|build.gradle.kts|gradle/wrapper/gradle-wrapper.properties|scripts/patches/registry.json|scripts/check-maintenance-docs.mjs|scripts/tests/maintenance-docs.test.mjs|docs/AGENTS/(DEPENDENCIES|RUNTIME-PATCHES).md)$'; then
-            echo 'changed=true' >> "$GITHUB_OUTPUT"
-          fi
+          node --test scripts/tests/maintenance-inputs.test.mjs
+          node scripts/maintenance-inputs.mjs "$BASE_SHA" "$GITHUB_SHA" >> "$GITHUB_OUTPUT"
       - name: 检查生成块与生成器反证
         if: steps.inputs.outputs.changed == 'true'
         run: |
