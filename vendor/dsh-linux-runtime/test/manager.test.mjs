@@ -312,6 +312,54 @@ test('a runtime that fails the launch smoke probe cannot replace the active inst
   assert.equal(second.manager.status().instanceId, installed.instanceId);
 });
 
+test('old-instance cleanup failure preserves the committed runtime across manager restart', async () => {
+  const dataDir = tempDir();
+  const fixture = makeManifest();
+  const { manager } = makeManager(fixture, { dataDir });
+  const before = await manager.install(fixture.manifest);
+  manager._removePreviousInstance = async () => { throw new Error('controlled old-instance cleanup failure'); };
+  const after = await manager.reinstall(fixture.manifest);
+  assert.notEqual(after.instanceId, before.instanceId);
+  assert.equal(after.healthy, true);
+  assert.match(after.cleanupWarning, /controlled old-instance/);
+  const restarted = makeManager(fixture, { dataDir }).manager;
+  assert.equal(restarted.status().healthy, true);
+  assert.equal(restarted.status().instanceId, after.instanceId);
+  assert.equal(existsSync(path.join(dataDir, 'instances', before.instanceId)), true);
+  assert.equal((await restarted.execute({ command: 'echo usable' })).exitCode, 0);
+});
+
+test('throwing state observers cannot destroy committed instances or starve later observers', async () => {
+  const fixture = makeManifest();
+  const { manager } = makeManager(fixture, { dataDir: tempDir() });
+  const observed = [];
+  manager.on('change', () => { throw new Error('observer failed'); });
+  manager.on('change', state => observed.push(state));
+  let once = 0;
+  manager.events.once('change', () => { once++; throw new Error('once failed'); });
+  await manager.install(fixture.manifest);
+  const after = await manager.reinstall(fixture.manifest);
+  assert.equal(after.healthy, true);
+  assert.equal(observed.length, 2);
+  assert.equal(once, 1);
+  assert.equal(manager.status().instanceId, after.instanceId);
+});
+
+test('active-pointer write failure retains the previous pointer and removes only the staged instance', async () => {
+  const dataDir = tempDir();
+  const fixture = makeManifest();
+  const { manager } = makeManager(fixture, { dataDir });
+  const before = await manager.install(fixture.manifest);
+  const pointer = await readFile(path.join(dataDir, 'active.json'), 'utf8');
+  manager._writeActive = async () => { throw new Error('controlled pointer write failure'); };
+  await assert.rejects(manager.reinstall(fixture.manifest), /controlled pointer/);
+  assert.equal(await readFile(path.join(dataDir, 'active.json'), 'utf8'), pointer);
+  assert.equal(manager.status().instanceId, before.instanceId);
+  assert.equal(manager.status().healthy, true);
+  const { readdir } = await import('node:fs/promises');
+  assert.deepEqual(await readdir(path.join(dataDir, 'instances')), [before.instanceId]);
+});
+
 test('shared glibc Node is downloaded once and reused across releases', async () => {
   const dataDir = tempDir();
   const first = makeManifest({ version: '1.0.0' });
