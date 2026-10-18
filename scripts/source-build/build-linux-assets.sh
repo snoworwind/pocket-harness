@@ -19,6 +19,8 @@ RUST_VERSION=$(node -p 'require("./scripts/source-build/linux-inputs.json").rust
 DEBIAN_SNAPSHOT=$(node -p 'require("./scripts/source-build/linux-inputs.json").debianSnapshot')
 DEBIAN_SHA=$(node -p 'require("./scripts/source-build/linux-inputs.json").debianInReleaseSha256')
 : "${NDK:?NDK must identify the verified Android NDK directory}"
+: "${DEBIAN_KEYRING:?DEBIAN_KEYRING must identify the pinned Debian archive keyring}"
+test -s "$DEBIAN_KEYRING"
 TC="$NDK/toolchains/llvm/prebuilt/linux-x86_64"
 test -x "$TC/bin/aarch64-linux-android24-clang"
 export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$TC/bin/aarch64-linux-android24-clang"
@@ -43,13 +45,13 @@ tar --sort=name --mtime="@$EPOCH" --owner=0 --group=0 --numeric-owner -cJf "$STA
 
 curl --fail --location --retry 3 "$DEBIAN_SNAPSHOT/dists/trixie/InRelease" -o "$WORK/input/debian-InRelease"
 printf '%s  %s\n' "$DEBIAN_SHA" "$WORK/input/debian-InRelease" | sha256sum --check --strict
-gpgv --keyring /usr/share/keyrings/debian-archive-keyring.gpg "$WORK/input/debian-InRelease"
+gpgv --keyring "$DEBIAN_KEYRING" "$WORK/input/debian-InRelease"
 # Never recursively clean a leftover host bind mount or a redirected directory.
 [[ "$(realpath -m "$ROOTFS")" == "$ROOTFS" ]] || exit 1
 if mountpoint -q "$ROOTFS/dev" || mountpoint -q "$ROOTFS/proc"; then echo 'Previous rootfs contains mounts; refuse cleanup' >&2; exit 1; fi
 sudo rm -rf -- "$ROOTFS"
 sudo debootstrap --arch=arm64 --foreign --variant=minbase --components=main \
-  --keyring=/usr/share/keyrings/debian-archive-keyring.gpg \
+  --keyring="$DEBIAN_KEYRING" \
   --include=apt,bash,ca-certificates,debian-archive-keyring,libstdc++6 trixie "$ROOTFS" "$DEBIAN_SNAPSHOT"
 sudo install -m755 /usr/bin/qemu-aarch64-static "$ROOTFS/usr/bin/qemu-aarch64-static"
 sudo mkdir -p "$ROOTFS/dev" "$ROOTFS/proc"

@@ -29,6 +29,8 @@ jobs:
           CARGO_TARGET_DIR="$RUNNER_TEMP/linux-host-target" CARGO_PROFILE_DEV_CODEGEN_UNITS=1 rustup run "$rust" cargo test --locked --jobs 8 --manifest-path vendor/bionilux/Cargo.toml
       - name: Runtime manager and manifest regressions
         run: node --test vendor/dsh-linux-runtime/test/*.test.mjs
+      - name: Linux asset packager and license collection regressions
+        run: python3 -m unittest discover -s scripts/source-build -p 'test_*linux*.py' -v
   build:
     if: github.event_name == 'workflow_dispatch'
     needs: validate
@@ -55,10 +57,31 @@ jobs:
           curl --fail --location --retry 3 "https://dl.google.com/android/repository/android-ndk-$ndk-linux.zip" -o .deploy-tmp/linux-ndk/ndk.zip
           printf '%s  %s\n' "$checksum" '.deploy-tmp/linux-ndk/ndk.zip' | sha1sum --check --strict
           unzip -q .deploy-tmp/linux-ndk/ndk.zip -d .deploy-tmp/linux-ndk
+      - name: Add pinned official Debian 13 archive signing keys
+        shell: bash
+        run: |
+          set -euo pipefail
+          keydir="$GITHUB_WORKSPACE/.deploy-tmp/linux-keyring"
+          homedir="$keydir/gnupg"
+          mkdir -p "$homedir"
+          chmod 700 "$homedir"
+          archive_sha=$(node -p 'require("./scripts/source-build/linux-inputs.json").debianArchiveKey13Sha256')
+          archive_fingerprint=$(node -p 'require("./scripts/source-build/linux-inputs.json").debianArchiveKey13Fingerprint')
+          release_sha=$(node -p 'require("./scripts/source-build/linux-inputs.json").debianReleaseKey13Sha256')
+          release_fingerprint=$(node -p 'require("./scripts/source-build/linux-inputs.json").debianReleaseKey13Fingerprint')
+          curl --fail --location --retry 3 https://ftp-master.debian.org/keys/archive-key-13.asc -o "$keydir/archive-key-13.asc"
+          curl --fail --location --retry 3 https://ftp-master.debian.org/keys/release-13.asc -o "$keydir/release-13.asc"
+          printf '%s  %s\n%s  %s\n' "$archive_sha" "$keydir/archive-key-13.asc" "$release_sha" "$keydir/release-13.asc" | sha256sum --check --strict
+          gpg --batch --quiet --homedir "$homedir" --import /usr/share/keyrings/debian-archive-keyring.gpg "$keydir/archive-key-13.asc" "$keydir/release-13.asc"
+          fingerprints=$(gpg --batch --homedir "$homedir" --with-colons --list-keys | awk -F: '$1 == "fpr" { print $10 }')
+          grep -Fx "$archive_fingerprint" <<<"$fingerprints"
+          grep -Fx "$release_fingerprint" <<<"$fingerprints"
+          gpg --batch --quiet --homedir "$homedir" --export > "$keydir/debian-archive-keyring.gpg"
+          test -s "$keydir/debian-archive-keyring.gpg"
       - name: Build source-owned offline ARM64 Linux assets
         run: |
           ndk=$(node -p 'require("./scripts/source-build/linux-inputs.json").ndk')
-          NDK="$GITHUB_WORKSPACE/.deploy-tmp/linux-ndk/android-ndk-$ndk" bash scripts/source-build/build-linux-assets.sh
+          NDK="$GITHUB_WORKSPACE/.deploy-tmp/linux-ndk/android-ndk-$ndk" DEBIAN_KEYRING="$GITHUB_WORKSPACE/.deploy-tmp/linux-keyring/debian-archive-keyring.gpg" bash scripts/source-build/build-linux-assets.sh
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: pocket-harness-linux-arm64-${{ github.sha }}

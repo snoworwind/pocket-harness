@@ -2600,3 +2600,4 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 400. **Cargo 许可收集不能扫描 metadata 中所有包（2026-10-18）**
 
 现象：ARM64 Linux 资产 run 39093355168 编译完 Bionilux 后，在许可收集阶段因 `r-efi 6.0.0` 没有 LICENSE 文件而失败。真因：collector 遍历 Cargo metadata 的全部 `packages`，其中还包含当前目标未构建的 UEFI 依赖；Cargo 清单包集合不等于 Android ARM64 目标闭包。修法：调用 `cargo metadata --filter-platform aarch64-linux-android`，从 resolve root 只遍历 normal/build 边，忽略 dev 边；收集根目录许可文件及嵌套 LICENSES/LICENCES，并保留相对路径；任何可达包缺少许可仍失败关闭。反证：`test_collect_linux_licenses.py` 覆盖过滤后未达的 r-efi、dev-only 包、normal 依赖缺失许可与实际目标依赖许可。复验：该测试集通过；仍须 dispatch 完整资产构建，CI 单测不替代真实产物证据。
+401. **Debian Trixie InRelease 三重签名会被旧 runner keyring 的未知签名正确阻断**：runner 自带 keyring 可验证旧 Bookworm 自动密钥，却不含 Trixie 自动归档 key 与 stable release key；`gpgv` 因此返回非零，尽管其中一个旧 key 的签名有效。不得忽略未知签名或只接受任一签名；从 Debian ftp-master 下载 Trixie 官方公钥，分别验证固定 SHA-256 与 primary fingerprint，再与现有 keyring 合并，供 InRelease 和 debootstrap 共用。真实失败 run 39102854750；完整重跑待记录。
