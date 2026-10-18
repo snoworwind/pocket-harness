@@ -48,3 +48,38 @@
 - 本地 Android SDK 36.0.0 `apksigner verify --verbose --print-certs --min-sdk-version 18` 通过，v1/v2/v3 均为 true，唯一签名者证书 SHA-256 为 `914a519b9a338ea6c43669eef9bbeb9f0f62b1c94094e317eea943da08496e6d`，与仓库 pin 和 artifact 证书报告一致。API 18 参数沿用 `check-apk-signatures.mjs`，避免默认 minSdk 26 报告省略 v1。
 - `independent-rebuild-verification.json` 的 `independentRebuildMatched=true`、`normalizationVersion=3`；本地调用 `inspectApk` 从下载的最终 APK 重新读取并归一化，摘要为 `bc6740dcf49f92222a03df6b674320f6ca8918f641ef9628f55ea6ffec0eea16`，与 proof、`snapshot-normalization.json` 一致。本地复核、签名日志和 run 最终状态保存在 `.deploy-tmp/source-final-39123305361/`。
 - **未做设备验证**：本轮再次实际查询 WSL Android SDK 的 `adb devices -l`，列表仍为空；CDP、ADB 自主任务、横竖屏、升级安装和实际 ARM64 原生执行均未验收。本次仅关闭来源双构建与产物复核待项，设备验收仍阻断发布；未创建 Release、未公开发布。
+
+## 项目分区复审 A01–A14 修复（2026-10-18）
+
+用户要求修复 [项目分区复审](PROJECT-AUDIT-2026-10-18.md) 记录的全部问题。原报告保留发现时事实；本节的「验证」只代表代码层与宿主反例，**未重建 APK、未做设备验证**（本机无在线 ARM64 设备与 Android SDK），进入发版候选前仍须按 §2.1 补来源链新包的三层验收。
+
+| 编号 | 实现 | 代码层/宿主证据 | 边界 |
+|---|---|---|---|
+| A01 | 原生 3080 连接统一经 `EngineTransport.attachAdmission` 附 `X-DSH-Relay`；`EngineAuth.attach` 复用它，控制轮询与来件投递补上该共享入口 | `EngineTransport.attachAdmission` + 两处调用点契约测试；既有 relay 三态准入单测 | 未跑设备 relay 负控；须新包验证 pending/result/来件的有/无/错凭据 |
+| A02 | 原生 `vdInfo` 应答与每条控制应答 `caps` 回传 `screenScope`；插件 `screenScope()` 读 caps、`refreshScreenScope()` 在拒绝时经 `vdInfo` 补探，不再读 retired XML | bridge 164 项通过；新增 retired XML 忽略、caps 撤销、冷启动读回、仍拒绝不放宽、shell 拒绝自愈 5 例 | `DSH_SCREEN_SCOPE_TEST` 仍是测试专用；设备跨进程授权/撤销待验 |
+| A03 | sender UID 改由 `BroadcastReceiver.getSentFromUid()` 取得并传入策略；删除 `Intent` 反射 | 调用点契约测试（接收器取值、服务签名、旧反射消失） | 无 IME 设备证据；SDK 34+ 真机待验 |
+| A04 | `targetRecord()`：显式 target 优先且不得回退 selected；启动/取证/输入探针统一 | 调用点契约测试；`launchApp` 二次范围复核 | 虚拟屏运行态需设备验证 |
+| A05 | `launchApp`/`launchSettingsProbe`/`sendBackProbe` 在派发前复核 `ScreenScopePrefs`，`am start` 前再读一次 | 同上；范围拒绝体为 `screen-out-of-scope` | 设备上范围切换时序待验 |
+| A06 | file-open 三个 POST handler 改 `StringDecoder` 流式解码，上限按字节计 | 新增中文 1+2 字节分块、claim/complete 分块、三档字节上限 413；旧实现红 | 未起真实 HTTP server |
+| A07 | content 响应处理 backpressure（pause/drain）、断连销毁源流；fd 所有权移交流并统一 close 收尾 | 慢消费者峰值 ≤256 KiB、断连/自然结束/读错误/未移交四条 fd 基线用例；删除兜底关闭即红 | 无真实 socket keep-alive；不覆盖「不 drain 也不断开」的连接超时 |
+| A08 | live 行边界改在字节缓冲上定位，偏移按实际消费字节推进 | 纯函数 `liveConsumableBytes` 中文/半行/多行用例 + 源码断言 | 需设备实跑 OverlayService 重放 |
+| A09 | 未映射步骤继承前一个具名阶段；计划与选择抽成纯函数；Kotlin 单测门禁归 apk | 4 项：`--from/--only apk` 含最终复验、旧规则负控、真实 CLI dry-run | 未跑真实长链 |
+| A10 | 重打包改 `--no-recursion` 显式成员，并在写 gzip 前断言成员唯一/集合相等 | 重打包成员唯一、幂等、内容与键序不变；旧递归实现红 | 未在真实 engine tarball 上跑 |
+| A11 | marker schema 2 登记工作树源码字节摘要；续跑比对；有限白名单只放构建预期写入 | 未白名单改写/新增源文件拒绝、恢复后可续跑、白名单路径可变化 | 旧 schema 目录需重建；白名单需随构建链改动维护 |
+| A12 | 下载页识别来源 tag/资产/`SHA256SUMS.txt`；页面不再把来源资产叫历史命名，校验链接指向实际文件 | webpages 45 项通过（含来源草稿构建、页面渲染、旧命名兼容、负例） | Pages 仍手动部署；未部署验证 |
+| A13 | 事务 snippet 载入时仅 CRLF→LF；自验不放宽 | CRLF 检出升级成功且事务段无 CR；裸 CR 负例拒绝且不写回；旧 runner 红 | Windows 实机工作树复验待做 |
+| A14 | mobile-owned 四条存在性断言统一 `sourceIncludes()`（先剥注释）；注册块扫描同样剥注释 | `--self-test` 三态与注释注册负例；本机 28 路由 PASS（SKIP=1） | `--require` 需上游 checkout；未在本机常驻 |
+
+本机实际运行（2026-10-18，Node v20.18.0 / v24.21.0）：
+
+- `plugins/dsh-android-bridge`：164 项，164 通过（含新增 A02 5 例）。
+- `plugins/dsh-android-file-open`：35 项，32 通过、3 项原有 Linux-only 跳过、0 失败。
+- `webpages/tests/*.test.mjs`（Node 24）：45 项全部通过。
+- `scripts/patches/tests/*.test.mjs`：63 项全部通过。
+- `scripts/source-build/{run-local-source-chain,normalize-snapshot,local-source-workspace}.test.mjs`：41 项，27 通过、14 项平台跳过、0 失败。
+- `node scripts/check-api-route-auth.mjs --self-test`：exit 0（SKIP=1，上游树不在场）。
+- Kotlin：`.deploy-tmp/android-sdk`（platform 36 + build-tools 35/36，仅本地验证用）下 `./gradlew :app:testDebugUnitTest --no-daemon` **BUILD SUCCESSFUL**；122 个测试类 / **1320 项全部通过**（基线由 1310 升到 1320，新增 `Audit20261018CallSiteTest` 6 项、`OverlayLiveOffsetTest` 4 项）；`check-kotlin-test-count.mjs` PASS（SKIP=0，逐类不低于基线、结果新鲜、无失败）。
+- 聚合 `node scripts/check-release-gates.mjs --run` 本机 PASS（已执行 32/32 发布段，SKIP=21；快照/上游树缺席项按设计 SKIP）。`check-code-map`、`check-bridge-symmetry`、`check-control-ops`、`check-op-registry-parity`、`check-kotlin-comments`、`check-manifest-hardening` 等均 PASS。
+- `check-plugin-tests.mjs` 在本机 11 个单元中 9 个 PASS；2 个失败均为 macOS 环境限制（`dsh-android-linux-env` 的 `tar --sort=name`、`dsh-host-web-compat` 的 `/var`→`/private/var` realpath 断言），与本次改动无关，按既有环境豁免处理。
+
+未执行：CDP、ADB、ARM64 装机、来源双构建、真实长链、Pages 部署。本轮也**未推送分支/未开 PR**（远端操作被用户拒绝），因此 PR Gate 与云端 CI 结论为空；上述任何一项都不得由源码/宿主绿替代，发布前必须补齐。

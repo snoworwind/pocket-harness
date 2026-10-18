@@ -16,7 +16,7 @@
 
 第二轮修复：`setScreenScope` 扩大范围、`setRootConsent(true)`、`setRootGranted(true)`、`unlockRestrictedSettings` 必须经过原生确认及 Android 系统锁屏凭据认证；页面参数和同源身份不构成用户在场证明。取消、超时、非前台或未设凭据拒绝；撤销不要求认证。屏幕范围、root 同意/开关和 su 探测状态仅在壳进程内有效，重启需重新确认。方法签名未变，设备边界见 [修复账本](SECURITY-REMEDIATION-2026-10-17-R2.md)。
 
-3080 中继分配后端/流槽位前要求进程随机 relay cookie 或 `X-DSH-Relay`；WebView、原生 HTTP、mux 均接入。此准入不替代引擎会话鉴权；public privilege/status 只读缓存，不主动排特权队列。
+3080 中继分配后端/流槽位前要求进程随机 relay cookie 或 `X-DSH-Relay`；WebView、原生 HTTP、mux 均接入。原生连接统一走 `EngineAuth.attach`（精确引擎源约束）→ `EngineTransport.attachAdmission`（附头）；控制轮询与来件投递在 A01 修复前正是漏了这一层，表现为连接在转发前被关闭。此准入不替代引擎会话鉴权；public privilege/status 只读缓存，不主动排特权队列。
 
 主 WebView 只直接注入 `__dshNativeBridge.invoke(capability, bridge, method, arguments)`；`androidBridge` 与 `dshBackBridge` 是保留原同步 ABI 的 JavaScript facade，不再直接 addJavascriptInterface。MainFrameBridge 为每实例生成随机 nonce，先认证再解析参数，仅分派已登记的 `@JavascriptInterface` 方法，并核对实参数量和类型；返回 `{ok,value,void}` JSON，facade 保留同步值、null 与 void，拒绝回包抛出错误。Activity 销毁时 `close` 撤销 transport。
 
@@ -195,7 +195,7 @@ JS interface count is checked from source by `scripts/check-bridge-symmetry.mjs`
 | 页面 → 壳 | `browserHostStatus/show/hide/reload/bounds/viewport/close/identity` | AndroidBridge → MainActivity → `BrowserHost` | Files 右栏的可信页面把 CSS stage bounds 与视口预设传给壳；第二 WebView 只覆盖该 stage（letterbox rect，不做 CSS 缩放），不挂 JavaScript bridge。`browserHostBounds` 可见挂载1000ms续租、4000ms过期隐藏；hidden/detach停止续租，普通几何消息仍去重。 |
 | 页面 → 壳 | `vdisplayStatus/create/destroy/launchSettingsProbe/backProbe/bounds` | AndroidBridge → MainActivity → `VdisplayController`/`VdisplayHost` | 建屏/销毁/`am start --display` 探针/`input -d` 回退探针/viewer stage 几何。`virtual-1` 建成前一律 `screen-not-ready`，绝不映射 display 0。 |
 | 页面 → 壳 | `dshBackBridge.setAvailable/getBackAvailable` | BackGateBridge（独立 @JavascriptInterface 对象） | 注入层回传页内层栈可用性；URL 由 Activity 决策，`getBackAvailable` 为只读事实。 |
-| 引擎 → 壳 | 插件仍读已停用的 `dsh_screen_scope.xml` | `androidPrivilege.screenScope/screenAccess` | 当前存在断链：原生范围已为进程内存态，插件旧文件读值不能代表用户当前授权；无障碍执行点仍读原生真源复查。修复要求见 [项目审计 A02](PROJECT-AUDIT-2026-10-18.md#a02-p1-屏幕范围真源迁移后插件仍读旧文件)。 |
+| 引擎 → 壳 | 屏幕范围读回（A02 修复后） | `caps.screenScope` + `vdInfo.data.scope` → bridge `screenScope()`/`refreshScreenScope()` | 原生授权只在进程内存；插件产品链路不再读 `shared_prefs/dsh_screen_scope.xml`（同 uid 可写且原生已不维护）。caps 随每条控制应答下发；冷启动或范围拒绝时插件经 `vdInfo` 补探一次（neverA11y）。测试专用 `DSH_SCREEN_SCOPE_TEST` 仍保留，不构成产品真源。 |
 | 引擎 → 壳 | `android_vdisplay_input` → `vdInput` | bridge `controlExec` → `VdisplayOps` → `VdisplayController.input` | `real-only` 下 bridge 与壳执行点均返回稳定 `screen-out-of-scope`，壳在 Shizuku `input -d` 前复核；显式 target 优先于 selected，不能重定向输入。`virtual-only`/`all` 允许已登记虚拟目标。 |
 | 壳 ↔ 引擎 ↔ 页面 | file-incoming queue / claim / content / complete / clean | FileIncoming → dsh-android-file-open → ui-responsive | 五条 exact 路由全部受保护；队列状态只给 opaque entry metadata；成功导航后 claim 得进程内 ticket，再经同源 content 读取字节并交给上游 composer 形成未发送 generic file attachment。路径不进入页面或模型，重启不恢复草稿。 |
 | 壳 ↔ 引擎 | 通知应答流 `$events`（streamId=`dsh-notify-responder`） | NotifyBridge ↔ MuxClient | 与悬浮球事件流独立；waterfall 投放通知、cancel 撤通知、`$events/result` 投递回答。 |

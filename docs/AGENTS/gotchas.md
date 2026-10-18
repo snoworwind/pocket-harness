@@ -2685,3 +2685,54 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 422. **Linux 启动依赖缺失与前后端服务混用（2026-10-18）**
 
     现象：android-linux-env failed to import，bootstrap 等待 linuxPluginHost/linuxBootstrapConfig；安全模式页面仍报 linuxBootstrap pending。真因：插件新增静态 XZ/TAR 导入，但注入器只复制 lib 与包清单，未把第三方依赖带入快照；浏览器插件又把仅存在于引擎 Cordis 的 linuxBootstrap 声明为必需注入。修法：overlay 登记锁文件中的完整解包闭包与许可；浏览器只依赖 slots，通过现有鉴权 HTTP 路由读写，保留 confirmed 确认参数与失败信息。复验：依赖闭包正控及删除 streamx 负控、真实客户端模块激活及 HTTP 503 负控通过；来源与 vendoring 哈希同步。设备三层验收尚未完成，不能据此宣称 APK 已验收。N1/F3 原生绑定提示是既有兼容回退。
+423. **原生控制轮询与来件投递漏了 relay 准入头（A01，2026-10-18）**
+
+    现象：控制队列（a11y/browser/vdisplay/shell）与分享来件在真机上整体静默；不是 401，日志里也没有引擎侧拒绝。真因：3080 relay 在把连接转发到应用私有 Unix socket **之前**只检查 HTTP 头（`X-DSH-Relay` 或 `dsh-relay` cookie），而 `ControlPoller.post` 只带 Content-Type、`FileIncoming.deliverOnce` 只带 `X-DSH-Control-Token`；后两者都发生在转发之后，不能替代准入。WebView 的 CookieManager 也不会替原生连接附头。修法：在 `EngineTransport` 增加唯一的 `attachAdmission()`，`EngineAuth.confineConnection` 复用它；控制轮询与来件投递改经 `EngineAuth.attach(context, conn)`（同时保留各自原本的令牌/cookie 鉴权）。复验：relay 三态准入单测 + 两处调用点契约测试；设备上的有/无/错凭据负控必须由来源链新包补做。
+
+424. **屏幕范围授权在原生内存，插件再读旧 XML 会永久误拒（A02，2026-10-18）**
+
+    现象：用户在原生确认 `all`/`real-only` 后，模型仍被判 `virtual-only` 并拒绝真实屏；升级设备长期读旧值。真因：`ScreenScopePrefs` 已迁到进程内 `@Volatile`（同 uid 可写的 prefs 文件不再是授权真源），但 bridge 插件 `currentScreenScope()` 仍读 retired `shared_prefs/dsh_screen_scope.xml`，而原生从不写它。修法：原生在 `vdInfo` 应答的 `data.scope` 和每条控制应答的 `caps.screenScope` 回传当前范围（经 relay+令牌+本进程认证）；插件 `screenScope()` 优先读 caps，`refreshScreenScope()` 在冷启动或「因范围被拒」时经 neverA11y 的 `vdInfo` 补探一次，仍拒绝则维持 fail-closed。插件不再读任何 prefs 文件；`DSH_SCREEN_SCOPE_TEST` 仅测试用。复验：bridge 新增 5 例（retired XML 写 all 仍忽略、caps 撤销、冷启动读回、仍拒绝不放宽、shell 拒绝自愈），全量 164 通过。
+
+425. **`getSentFromUid()` 属于 BroadcastReceiver，不属于 Intent（A03，2026-10-18）**
+
+    现象：IME 活跃时，SDK 34+ 上无 nonce 的标准 `ADB_INPUT_TEXT`/`ADB_CLEAR_TEXT` 广播被误拒；带 nonce 的插件路径正常。真因：旧实现反射 `Intent.getMethod("getSentFromUid")`，该类根本没有此方法，异常被吞成 null，于是 root/adb UID 白名单恒不命中。修法：由 `AdbKeyboardReceiver.onReceive` 在接收器实例上调用平台 API 取发送者 UID，显式传入 `isTrustedSender(context, intent, senderUid)`；身份不可得时仍只认 nonce（fail-closed）。复验：调用点契约测试断言接收器取值、服务签名与旧反射消失；真机 IME 待验。
+
+426. **虚拟屏启动的显式目标被 selected 遮住，且最后派发点不复核范围（A04/A05，2026-10-18）**
+
+    现象：已建 virtual-1 后显式请求不存在/过期的 virtual-2，会在 virtual-1 上启动（静默换屏）；虚拟屏存活、范围切到 real-only 后，直达 carrier 的启动请求仍能写入被排除的屏。真因：`selectedRecord() ?: recordOf(target)` 让 selected 永远优先；两个启动函数解析 display 后直接 `am start`/探针，没有复核 `ScreenScopePrefs`（插件侧拒绝不是最后判据，REAL_ONLY 明确不含 virtual-N）。修法：统一 `targetRecord(target)`（显式优先且不回退，缺省才取 selected）；`launchApp`/`launchSettingsProbe`/`sendBackProbe` 在派发前走 `scopeDenial()`，`launchApp` 在 `am start` 前再读一次（解析组件期间可能被改窄）。复验：调用点契约测试；无效目标不产生屏幕副作用、范围切换时序待设备验。
+
+427. **HTTP 分块逐块 `toString()` 会拆坏中文路径（A06，2026-10-18）**
+
+    现象：分享中文文件名后，JSON 能解析但入队查不到文件；日志里路径出现 `���`。真因：三个 POST handler 对每个 TCP chunk 单独 `buf.toString()` 再拼接，UTF-8 多字节字符跨 chunk 时被替换；body 上限还按 UTF-16 字符数计。修法：改用 `StringDecoder('utf8')` 按流解码并在 `end` flush，上限按累计字节计（16 KiB / 4096 / 2048 语义不变）。复验：把「中」三字节拆成 1+2 两个 data 事件仍得到原路径；三档字节上限各有一条 413；旧实现红。
+
+428. **附件下载无视背压与断连，fd 还可能在销毁路径漏关（A07，2026-10-18）**
+
+    现象：慢客户端下载 200 MiB 附件时，整个文件被排进响应缓冲；断连后源流继续读。真因：`data` 回调无条件 `res.write`，不处理 `false`/`drain`，响应 `close`/`error` 不销毁源流。修法：`write === false` 时 `pause()`、`drain` 后 `resume()`；响应关闭/错误时 `stream.destroy()`；fd 所有权在 `createReadStream({ fd })` 成功后交给流（autoClose 默认 true），自然结束/读错误/断连都由流关闭描述符并等 `'close'` 收尾，`finally` 只在尚未移交时兜底关闭。**别再用 `autoClose:false` 再手工 `closeSync`**：Node 20 的 `destroy()` 会关描述符，close 事件后二次 close 会误关复用的 fd（本机实测 EBADF）。复验：慢消费者峰值 ≤256 KiB；断连/自然结束/读错误/未移交四条路径直接 `fstat` 断言源 fd 已关且 fd 计数回基线；删除 finally 兜底即红。
+
+429. **live 流把字符下标当字节偏移，事件被重复消费（A08，2026-10-18）**
+
+    现象：含中文的 tool_call 之后，同一 tool_result/turn_end 被处理多次，可能错误清除忙态/待答卡。真因：`String.lastIndexOf('\n')` 返回字符下标，却被加到 `RandomAccessFile` 的字节偏移；中文行字符数小于字节数，偏移推进不足，下一次 drain 重读旧尾段（审计用 200 个「中」复现同一结果六次）。修法：在字节缓冲上找最后一个 `0x0A`（UTF-8 多字节序列不含该字节），按实际消费字节推进；只解码已消费前缀。复验：`liveConsumableBytes` 的中文整行/半行/多行用例 + 源码断言；设备 overlay 重放待验。
+
+430. **本地来源链 `--from apk` 漏掉最终复验（A09，2026-10-18）**
+
+    现象：`--from apk` / `--only apk` 续跑看起来成功，但构建后的快照语义归一化与 APK 文件复验没有执行。真因：未映射步骤一律归 `misc`（阶段索引 -1），`from apk` 过滤时被判为「早于 apk」；文件头注释却写「跟随上一阶段」。修法：未映射步骤继承前一个具名阶段（首个具名阶段之前仍 misc）；计划/选择抽成 `planSteps`/`selectPlanned` 纯函数；Kotlin 单测门禁归 apk（`--to snapshot` 不跑它）。复验：`--from/--only apk` 均含最终复验、旧规则负控、真实 CLI dry-run；未跑真实长链。
+
+431. **重打包 tar 默认递归目录，成员重复（A10，2026-10-18）**
+
+    现象：canonical 后 `package/lib/deep/index.js` 在归档里出现三次、`deep` 目录两次，体积与解包工作增长。真因：`sortedEntryList` 已递归枚举目录与文件，却又传给仍递归目录的 `tar -cf`。修法：`tar -cf ... --no-recursion` 显式成员打包，写 gzip 前用 `assertPackedMembers` 校验每个路径恰好一次且集合等于清单。复验：成员唯一/幂等/键序不变；旧递归实现红；未在真实 engine tarball 上跑。
+
+432. **本地来源续跑不绑定工作树源码字节（A11，2026-10-18）**
+
+    现象：在隔离检出的工作树里改写 `app/src/main/probe.kt` 后再 `prepareSourceWorkspace`，仍返回 accepted:true、sameHead:true——「只构建已提交 HEAD」对本地续跑不成立。真因：续跑只验证 marker/HEAD/路径安全，不看已跟踪文件内容或未跟踪源文件。修法：marker schema 2 登记工作树源码字节摘要（已跟踪文件按当前字节、未跟踪且未忽略的文件一并纳入，计数也进摘要）；续跑重算比对；用**有限白名单**放行构建预期写入（`.deploy-tmp/`、`out/`、插件 lockfile、overlay 配置、补丁夹具、marketplace 组件等），白名单不得覆盖 `app/src`/`scripts/source-build`。旧 schema 目录须重建。复验：改写/新增源文件拒绝、恢复后可续跑、白名单路径可变化；未跑真实长链。
+
+433. **下载页按旧命名推导资产，接不上来源草稿（A12，2026-10-18）**
+
+    现象：来源草稿的真实资产 `pocket-harness-v0.14.7-source-arm64.apk` 传入 `pickAsset` 返回 null；页面仍找 `MANIFEST.txt`，而草稿提供 `SHA256SUMS.txt`，tag 是 `hardening-source-*`。真因：`pickAsset` 只由 tag 推导普通命名，`build.mjs` 固定取 MANIFEST。修法：从 `release-source-draft.yml` 与 `prepare-source-release.py` 提取唯一合同（tag 前缀、来源 APK 形态、SHA256SUMS 格式），`pickAsset` 普通命名优先、来源命名兜底且限 arm64；`build.mjs` 按合同取校验文件并注入 `sha256`/`checksumFile`/`checksumUrl`；页面不再把来源资产叫「历史资产名」，校验链接指向实际文件。复验：webpages 45 项（含来源草稿构建与页面渲染、旧命名兼容、负例）；Pages 仍手动部署，未上线验证。
+
+434. **Windows CRLF 检出让 Safe Mode 补丁升级自验必红（A13，2026-10-18）**
+
+    现象：Git 索引是 LF、Windows 工作树按 CRLF 检出时，升级旧 S2/S4 的两个测试失败，runner 安全拒绝写出。真因：runner 原样插入 `undo-safe-transaction-snippet.mjs`，而事务段自验显式拒绝 CR。修法：载入该 snippet 时只把 CRLF 规范为 LF（`\r\n → \n`），裸 CR 不吞、自验不放宽。复验：CRLF 检出升级成功且事务段无 CR；注入裸 CR 的负例仍 exit 1、报「施加后自验失败」且不写回；旧 runner 红。Windows 实机工作树待复验。
+
+435. **mobile-owned 路由门禁的存在性断言没剥注释（A14，2026-10-18）**
+
+    现象：受保护 `/api` 路由的 guard 被注释后，`check-api-route-auth.mjs` 仍 PASS。真因：该文件上游段已用 `stripSourceComments()` 且带自检，但扫本仓 28 条路由的 mobile-owned 段仍对原始文本做注册表达式、endpoint、guard、公开响应 marker 四条裸 `includes`。修法：新增 `sourceIncludes()`（先剥注释再 includes），四条断言与注册块扫描统一使用；`--self-test` 增 mobile-owned active/comment-only/missing 三态与注释注册负例。复验：自检三态成立；本机 28 路由 PASS（上游树缺席 SKIP=1）；`--require` 需上游 checkout。
