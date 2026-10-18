@@ -8,6 +8,8 @@
 
 ## 当前入口
 
+- 2026-10-19：Android `dsh-shell-termux` 的 `workspace-write`/`read-only` **没有路径级执行边界**；bash 以 app UID 直接运行，`spec.sandboxPolicy` 未被读取，`enforcement: partial` 不阻断、不触发审批、也不进入模型面。这是“模型可通过 bash 访问其他文件夹”的直接根因。详见 [dsh-shell-termux 沙箱边界审计](SHELL-TERMUX-SANDBOX-AUDIT-2026-10-19.md)。**未修复、未构建 APK、未做设备验证。**
+
 - 2026-10-18 在 main `187246a` 上的分区复审发现原生 relay 准入遗漏、屏幕范围内存/旧 XML 断链、路由门禁注释假绿，以及文件/虚拟屏/来源续跑等问题，见 [项目分区复审](PROJECT-AUDIT-2026-10-18.md)。**A01–A14 已在源码层修复**，实现、宿主反例与新增测试见 [修复账本](AUDIT-REMEDIATION-2026-10-18.md) 的「项目分区复审 A01–A14」一节。本轮未重建 APK、未做设备验证（无在线 ARM64 设备与 Android SDK）；L2/L3 面进入发版候选前仍须来源链新包的三层验收。与下方此前综合审查的 A01–A10 是不同编号集合。
 
 - 2026-10-18 综合审查的问题现按用户授权修复，当前进度见 [修复账本](AUDIT-REMEDIATION-2026-10-18.md)；[原审查报告](COMPREHENSIVE-AUDIT-2026-10-18.md) 保留发现时事实。实现、宿主反例与设备证据分别记账；**未做设备验证**。
