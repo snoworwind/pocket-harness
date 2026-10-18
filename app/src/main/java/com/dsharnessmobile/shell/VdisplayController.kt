@@ -181,6 +181,33 @@ object VdisplayController {
   private fun selectedRecord(): Record? = synchronized(lock) { records[selectedAlias] }
 
   /**
+   * 解析一次操作的虚拟屏目标（A04，2026-10-18 审计）。
+   *
+   * 显式 target **优先且不得回退**：旧实现在启动/取证路径写成
+   * `selectedRecord() ?: recordOf(target)`，只要已有选中屏就永远不解析显式 target——
+   * 已创建 virtual-1 后显式请求过期/不存在的 virtual-2，会在 virtual-1 上执行
+   * （静默换屏），而不是报 screen-not-ready。只有缺省（target == null）时才取 selected。
+   */
+  private fun targetRecord(target: String?): Record? =
+    if (target != null) recordOf(target) else selectedRecord()
+
+  /**
+   * 启动/取证类 op 的**最后执行点**范围复核（A05，2026-10-18 审计）。
+   *
+   * 为什么插件侧检查不够：`ScreenScopePrefs` 是进程内授权真源，范围可在运行中被用户改窄；
+   * 已鉴权的直达 carrier 调用不经过插件，REAL_ONLY 也明确不包含 virtual-N。
+   * 返回 null = 放行；否则是结构化拒绝体（且调用方必须在任何副作用之前返回）。
+   */
+  private fun scopeDenial(appContext: Context, record: Record): JSONObject? {
+    val scope = ScreenScopePrefs.current(appContext)
+    if (scope.allows(record.alias)) return null
+    return JSONObject()
+      .put("ok", false).put("code", "screen-out-of-scope").put("reason", "screen-out-of-scope")
+      .put("scope", scope.wire).put("screenId", record.alias).put("displayId", record.displayId)
+      .put("guidance", "当前屏幕范围为 ${scope.wire}，拒绝在 ${record.alias} 上启动内容。")
+  }
+
+  /**
    * Realtime display registry: every DisplayManager display with a stable product alias.
    *
    * `real` is the physical default display (id 0). Owned virtual displays get `virtual-N` aliases;
@@ -257,6 +284,10 @@ object VdisplayController {
       .put("generation", synchronized(lock) { generation })
       .put("screens", screens(context))
       .put("selected", selected ?: JSONObject.NULL)
+      // A02（2026-10-18 审计）：屏幕范围是**进程内存**里的用户授权，插件不得再读已停用的
+      // shared_prefs/dsh_screen_scope.xml。所有 vdInfo 应答都带回当前原生真源，插件据此
+      // 刷新缓存；这是经控制队列（relay + 令牌 + 本进程）认证的读回渠道，不是可写文件。
+      .put("scope", ScreenScopePrefs.current(appContext).wire)
       .put("ownerSessionId", ownerSessionId ?: "")
       .put("viewers", viewerStatus())
     val first = active.firstOrNull { it.alias == selected } ?: active.firstOrNull()
@@ -543,9 +574,11 @@ object VdisplayController {
    */
   fun sendBackProbe(context: Context, args: JSONObject? = null): JSONObject {
     val target = args?.optString("target", "").orEmpty().ifBlank { null }
-    val record = selectedRecord() ?: recordOf(target)
+    // A04：显式 target 优先；A05：派发前复核当前范围（本函数也是直达 carrier 的执行点）。
+    val record = targetRecord(target)
       ?: return status(context.applicationContext).put("ok", false).put("code", "screen-not-ready")
         .put("guidance", "虚拟屏幕尚未创建，无法测试跨屏输入。")
+    scopeDenial(context.applicationContext, record)?.let { return it }
     val id = record.displayId
     val result = ShizukuTransport.runController(
       context.applicationContext,
@@ -568,9 +601,11 @@ object VdisplayController {
   fun launchSettingsProbe(context: Context, args: JSONObject? = null): JSONObject {
     requireOwner("vdLaunch", args?.optString("session", "")?.takeIf { it.isNotBlank() })?.let { return it }
     val target = args?.optString("target", "").orEmpty().ifBlank { null }
-    val record = selectedRecord() ?: recordOf(target)
+    // A04：显式 target 优先（不得被 selected 遮住）；A05：最后派发点复核当前原生范围。
+    val record = targetRecord(target)
       ?: return status(context.applicationContext).put("ok", false).put("code", "screen-not-ready")
         .put("guidance", "虚拟屏幕尚未创建，无法拉起测试应用。")
+    scopeDenial(context.applicationContext, record)?.let { return it }
     val id = record.displayId
     val result = ShizukuTransport.runController(
       context.applicationContext,
@@ -682,9 +717,11 @@ object VdisplayController {
       return JSONObject().put("ok", false).put("code", "invalid-package")
         .put("guidance", "包名不合法：$pkg（须为 Android 包名文法，如 com.example.app）。")
     }
-    val record = selectedRecord() ?: recordOf(target)
+    // A04：显式 target 优先（不得被 selected 遮住）；A05：任何拉起副作用之前复核当前原生范围。
+    val record = targetRecord(target)
       ?: return status(appContext).put("ok", false).put("code", "screen-not-ready")
         .put("guidance", "虚拟屏幕尚未创建，无法在其上拉起应用；可先 android_vdisplay_create。")
+    scopeDenial(appContext, record)?.let { return it }
     val id = record.displayId
     // 拉起路径（0.14.0 模拟器逐条实测，**四条路只有最后一条成立**）：
     //
@@ -711,6 +748,9 @@ object VdisplayController {
         .put("displayId", id).put("screenId", record.alias)
         .put("guidance", "无法解析 " + pkg + " 的启动组件（可能未安装或无 launcher 入口）：" + component)
     }
+    // A05：真正派发拉起之前再读一次进程内授权——解析组件这段时间里用户可能已把范围改窄；
+    // 第二次读取免费（无 IO），保证「切换后无副作用」而不是依赖解析前的旧值。
+    scopeDenial(appContext, record)?.let { return it }
     val result = ShizukuTransport.runController(
       appContext,
       arrayOf("am", "start", "--display", id.toString(), "-n", component),

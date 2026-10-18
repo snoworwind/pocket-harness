@@ -19,6 +19,21 @@ object EngineTransport {
   private val admissionToken = java.util.UUID.randomUUID().toString() + java.util.UUID.randomUUID().toString()
   fun admissionCookie(): String = "dsh-relay=$admissionToken"
 
+  /**
+   * 给原生 3080 连接附中继准入凭据。
+   *
+   * 为什么必须是**共享入口**：relay 在把连接转发到应用私有 Unix socket 之前只检查 HTTP 头，
+   * 不合格即关闭（控制令牌、引擎 cookie 都发生在转发之后）。漏附头的原生连接不是「鉴权失败」，
+   * 而是**连引擎都到不了**；控制轮询与来件投递曾因此整体静默（2026-10-18 审计 A01）。
+   *
+   * 只负责凭据本身；精确 origin 约束由调用方经 [EngineAuth.attach] 保证——那里同样调用本方法，
+   * 两条路径共用同一枚进程随机令牌。
+   */
+  internal fun attachAdmission(connection: java.net.HttpURLConnection) {
+    requireOwnedPort()
+    connection.setRequestProperty("X-DSH-Relay", admissionToken)
+  }
+
   internal fun admissionAuthorized(header: String, token: String): Boolean =
     header.split("\r\n").drop(1).any { line ->
       val name = line.substringBefore(':').lowercase()

@@ -134,13 +134,19 @@ class AdbKeyboardService : InputMethodService() {
     }
 
     /**
-     * 来源校验（0.13.8 #183，详见 AdbKeyboardReceiver 类注释）：
+     * 来源校验（0.13.8 #183；A03 修正 API 归属）：
      * 34+ uid 白名单（root/adb shell）或有效 auth nonce（引擎路径）。
      * `MessageDigest.isEqual` 常量时间比较，防逐字节试探。
+     *
+     * [senderUid] 必须由 **BroadcastReceiver 实例**在 `onReceive` 调用栈上取得后传入：
+     * `getSentFromUid()` 属于 `BroadcastReceiver`，不属于 `Intent`。2026-10-18 审计 A03 的旧实现
+     * 在 `Intent` 上反射取该方法，异常被吞成 null，于是 SDK 34+ 的 root/adb 白名单**恒不命中**，
+     * IME 活跃时无 nonce 的标准 ADB_INPUT_TEXT/CLEAR 全被误拒。
+     * 身份不可验证时仍 fail-closed：只认 nonce，两者都没有即拒绝。
      */
-    fun isTrustedSender(context: Context, intent: Intent): Boolean {
-      if (android.os.Build.VERSION.SDK_INT >= 34) {
-        sentFromUid(intent)?.let { uid -> if (uid == 0 || uid == 2000) return true }
+    fun isTrustedSender(context: Context, intent: Intent, senderUid: Int?): Boolean {
+      if (android.os.Build.VERSION.SDK_INT >= 34 && senderUid != null && (senderUid == 0 || senderUid == 2000)) {
+        return true
       }
       val given = intent.getStringExtra(EXTRA_AUTH) ?: return false
       val secret = try {
@@ -151,16 +157,6 @@ class AdbKeyboardService : InputMethodService() {
       return java.security.MessageDigest.isEqual(
         given.toByteArray(Charsets.UTF_8), secret.toByteArray(Charsets.UTF_8),
       )
-    }
-
-    /**
-     * API 34+ 的 Intent.getSentFromUid（反射调用——本机 SDK 平台 jar 实测缺该符号，
-     * 编译期不可见；运行时 34+ 设备必有该方法，缺失/异常一律返回 null 走 nonce 分支）。
-     */
-    private fun sentFromUid(intent: Intent): Int? = try {
-      Intent::class.java.getMethod("getSentFromUid").invoke(intent) as? Int
-    } catch (_: Throwable) {
-      null
     }
 
     private const val NONCE_FILE_NAME = "adb-keyboard-nonce"

@@ -203,6 +203,9 @@ class ControlPoller(
       connection.connectTimeout = CONNECT_TIMEOUT_MS
       connection.readTimeout = READ_TIMEOUT_MS
       connection.setRequestProperty("Content-Type", "application/json; charset=utf-8")
+      // A01：控制承载者是原生连接，不会继承 WebView 的 relay cookie。缺这枚头时 relay 在转发前
+      // 直接关闭连接，a11y/browser/vdisplay/shell 队列整体不可达（不是 401，也没有可读错误）。
+      EngineAuth.attach(context, connection)
       OutputStreamWriter(connection.outputStream, Charsets.UTF_8).use { it.write(body.toString()) }
       val code = connection.responseCode
       if (code !in 200..299) {
