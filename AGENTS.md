@@ -139,6 +139,8 @@ adb -s <serial> install -r -t out\v<版本>\pocket-harness-v<版本>-arm64.apk
 7. **禁 emoji**：提交信息、PR 标题/描述、文档、标签一律不用。
 8. **工作区卫生**：`.deploy-tmp` 只增不减会拖垮开发机（实测 2026-10-14 达 34.8 GB / 313,393 文件，是开发机第一大空间消耗，文件数本身就在拖慢目录遍历类工具）。每完成一轮交付，在协调仓根跑 `node scripts/clean-deploy-tmp.mjs`（默认 dry-run，`--apply` 执行）。判定口径与保留清单见该脚本头注释；**注册的 git worktree 与近 3 天内活动过的目录一律保留**。
 9. **APK 只能从源码构建（本仓 `main`）**：本仓任何 APK 都**必须**由来源链产出（云端 `build-apk-source.yml`，本地 `node scripts/source-build/run-local-source-chain.mjs`），**禁止**用 `build-apk-013.ps1` / `build-release.ps1` 等本地或协调仓链产出、归集或发布 APK。判据、当前缺口与发布链状态见 `docs/AGENTS/SECURITY-HARDENING.md`。
+10. **禁止强制推送**：不得对任何远端分支使用 `git push --force`、`--force-with-lease`、`--force-if-includes`、`--mirror`、`+<ref>` 或任何等价方式改写/删除远端引用。分支一旦推送，只能用追加提交更新；需要修正时提交新 commit，或新建分支/PR。合并后按流程删除已合并分支不在此限，但禁止删除后重建分支来覆盖历史。
+11. **Git 历史只追加，不得覆盖或改写**：已推送/共享的提交历史绝对不可改写；本仓默认连本地提交也按只追加处理。禁止使用 `commit --amend`、`rebase`、`reset --hard` 等操作改写历史，禁止改写后继续使用同一分支；禁止 `filter-branch`、`filter-repo`、替换/删除远端 ref 来改写历史（合并后按流程删除已合并分支不在此限）。修正一律新增提交。PR 合并一律使用 merge commit，保留分支提交链；禁止 squash/rebase 合并。`main` 只接受通过 PR 追加的提交。
 
 ---
 
