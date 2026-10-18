@@ -14,6 +14,8 @@
 
 - 第二轮 376–392 已进入源码修复；以 [修复账本](SECURITY-REMEDIATION-2026-10-17-R2.md) 为当前状态。设备实测按用户决定暂缓，基本修复完成后统一执行；期间保留 **未做设备验证** 状态，不能据此发布。
 
+- 2026-10-19：浏览器在无 `MULTI_PROFILE` 的设备上不再整块拒绝。用户显式启用兼容模式后使用进程级 Default cookie jar（`profileIsolation=shared`，loopback 仍拒，UI 明示共享），以可用性换隔离；每会话隔离与“不回 Default”的旧口径只对显式兼容模式例外。**未做设备验证**，需真机验证面板提示、第三站点导航与 `browser_*`。详见 [坑 437](gotchas.md)。
+- 2026-10-19：Linux 环境在设备上不可用的直接根因已定位并修复（源码层）——`@dsh-android/dsh-android-linux-env` 的 `xz-decompress`/`tar-stream` 原先只在引擎树，profile 路径解析不到，插件 import 失败导致路由与 bootstrap 服务全缺席。注入器现把运行时依赖闭包复制进插件自己的 `node_modules/`，`check-inject-completeness` 新增 C1/C2 可达性判据与负控；详见 [坑 436](gotchas.md)。**未做设备验证**，仍需来源链新 APK 的 engine.log 与面板/`linux_bash` 验收。同一轮修复了引擎重启后 reinstall/uninstall 必失败（持久化 pinned manifest 摘要、卸载时重新激活取 manager，见 [坑 438](gotchas.md)）。
 - Linux ARM64 离线资产链现已接入 APK 来源 workflow：同一提交从源码构建资产、校验来源 commit / 清单 sidecar / 每个资产摘要和长度，再嵌入 ARM64 Termux 快照；离线 bootstrap 已注册、编译客户端 bundle，并由 `linux-env` 提供已签名快照内资产和原始清单摘要。runtime manager 另有 Node 启动探测、有限输出与超时终止。当前本地单测和自检通过，仍待来源 APK 云端全链证明生成资产与 APK 同提交、APK 产物门禁成功；设备验收按用户要求暂缓，基本工作完成后统一进行。未经来源链及设备验收不得宣称 Linux 功能可发布。
 
 

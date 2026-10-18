@@ -49,7 +49,7 @@ class BrowserHostCommandWiringTest {
     assertBefore(command, "raw.length > 20_480", "JSONObject(raw)")
     assertBefore(command, "validUiId(session, 2048)", "workspaceFor(session)")
     assertBefore(command, "browser-tab-id-invalid", "workspaceFor(session)")
-    assertTrue(command.contains("""setOf("open", "back", "forward", "reload", "select", "close", "status", "tabs")"""))
+    assertTrue(command.contains("""setOf("open", "back", "forward", "reload", "select", "close", "status", "tabs", "compat")"""))
     assertTrue(command.contains("browser-command-invalid") && command.contains("browser-command-unknown"))
     assertBefore(command, "browser-ui-tab-conflict", "currentWorkspace = workspace")
     assertBefore(command, "browser-ui-tab-mismatch", "currentWorkspace = workspace")
@@ -86,9 +86,11 @@ class BrowserHostCommandWiringTest {
     assertTrue(create.contains("sessionProfile.blockedRequestReason(url)"))
     assertTrue(create.contains("handler.cancel()"))
     val profile = source("BrowserHostProfile.kt")
-    assertTrue(profile.contains("if (isAssigned) BrowserHostNavigationPolicy.normalize("))
-    assertTrue(profile.contains("if (isAssigned) BrowserHostNavigationPolicy.blockedRequestReason("))
-    assertTrue(profile.contains("isolatedProfile = true"))
+    assertTrue(profile.contains("if (isReady) BrowserHostNavigationPolicy.normalize("))
+    assertTrue(profile.contains("if (isReady) BrowserHostNavigationPolicy.blockedRequestReason("))
+    assertTrue(profile.contains("isolatedProfile = isAssigned"))
+    assertTrue("兼容模式必须由显式开关进入", profile.contains("if (!compatibility) throw Failure(\"browser-profile-unsupported\")"))
+    assertTrue(profile.contains("BrowserSharedFallback.attach(browser)"))
     assertTrue(profile.contains("else \"browser-profile-not-ready\""))
     val attach = body("BrowserHostProfile.kt", "fun attach(")
     assertBefore(attach, "WebViewCompat.setProfile(browser, name)", "WebViewCompat.getProfile(browser)")
@@ -211,5 +213,20 @@ class BrowserHostCommandWiringTest {
     assertTrue(clear.contains("own.cookieManager.flush(); completed()"))
     val drop = body("BrowserHost.kt", "private fun dropWorkspace(")
     assertBefore(drop, "browser.destroy()", "workspace.profile.dispose()")
+  }
+
+  @Test
+  fun compatibilityModeIsExplicitAndOnlyTheFallbackOwnsTheSharedJar() {
+    val profile = source("BrowserHostProfile.kt")
+    assertTrue("无 profile 且未显式启用兼容时必须继续拒绝",
+      profile.contains("if (!compatibility) throw Failure(\"browser-profile-unsupported\")"))
+    assertTrue(profile.contains("attachCompatibility(browser)"))
+    assertFalse("隔离档自身不得直接取进程级 CookieManager", profile.contains("CookieManager.getInstance("))
+    assertTrue("共享 jar 只在显式兼容实现里出现",
+      source("BrowserSharedFallback.kt").contains("CookieManager.getInstance()"))
+    val host = source("BrowserHost.kt")
+    assertTrue(host.contains("\"compat\""))
+    assertTrue(host.contains("BrowserSharedFallback.setEnabled(activity, enabled)"))
+    assertTrue(host.contains("if (!BrowserHostProfile.supported() && !sessionProfile.compatibility)"))
   }
 }

@@ -10,13 +10,18 @@
 //      必须与源包逐字一致（缺一个即 FAIL；多出源包没有的 lib 文件也 FAIL——那是残留/幽灵面）。
 //   B. 相对导入可解析：tar 内该包每个 lib/**.js 里的 './x.js' / '../y.js' import 都必须能在同一包内找到
 //      （直击 ERR_MODULE_NOT_FOUND 类缺陷）。
-//   C. 装配 profile（inject-all 的 PROFILES：web + headless）都要满足 A/B——单 profile 通过即拒。
+//   C. 运行时依赖可解析：package.json 的 dependencies 闭包必须出现在该包自己的 node_modules/ 下，
+//      且 lib/**.js 的 bare import 必须能从「注入后的 profile 路径」解析。为什么必须查这一条：
+//      187246a 把 xz-decompress/tar-stream 只放进引擎 overlay，而插件住在 profile 树；
+//      Node 从 profile 路径不会回落到 `usr/lib/node_modules`，设备上整个 linux-env 无法 import。
+//   D. 装配 profile（inject-all 的 PROFILES：web + headless）都要满足 A/B/C——单 profile 通过即拒。
 //
 // 用法：node scripts/check-inject-completeness.mjs <injected.tar.xz> [--profiles web,headless]
 // 退出码：0 = 通过；1 = 成员缺失/导入悬空/残留；2 = 用法或 tar 不可读。
 import { existsSync, readFileSync, readdirSync, statSync, mkdtempSync, rmSync } from 'node:fs'
 import { TAR } from './lib/shell.mjs'
 import { execFileSync } from 'node:child_process'
+import { builtinModules } from 'node:module'
 import { tmpdir } from 'node:os'
 import { dirname, join, posix } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -74,7 +79,7 @@ for (const profile of PROFILES) {
     const src = sourceMembers(dir)
     if (!src.name) continue
     const base = 'home/.dsh/profiles/' + profile + '/node_modules/' + src.name
-    extractArgs.push(base + '/package.json', base + '/lib')
+    extractArgs.push(base + '/package.json', base + '/lib', base + '/node_modules')
   }
 }
 try {
@@ -124,6 +129,67 @@ for (const profile of PROFILES) {
       console.log('WARN  ' + profile + ' ' + src.name + '：' + sourceMissing.size
         + ' 条导入目标源包自身也不含（源码侧现象，非注入缺陷）: ' + [...sourceMissing].slice(0, 2).join('; '))
     }
+
+    // C1. 运行时依赖闭包（package.json dependencies）必须在注入后的包内可见。
+    // 这是 187246a 的假绿根因：xz-decompress/tar-stream 只在引擎树，profile 树解析不到。
+    const depProblems = []
+    const visitedDeps = new Set()
+    const manifestOf = (base) => JSON.parse(readFileSync(join(scratch, base, 'package.json'), 'utf8'))
+    const skipDep = (name, spec) => name.startsWith('@dsh-android/') || name.startsWith('@deepseek-ai/')
+      || ['file:', 'link:', 'workspace:'].some((prefix) => spec.startsWith(prefix))
+    // inject-all copies the closure flat into the plugin's own node_modules; Node resolves a
+    // dependency of tar-stream from tar-stream/node_modules first, then the plugin's node_modules.
+    const depBaseOf = (ownerBase, dep) => {
+      const nested = ownerBase + '/node_modules/' + dep
+      if (entries.has(nested + '/package.json')) return nested
+      const flat = pkgBase + '/node_modules/' + dep
+      return entries.has(flat + '/package.json') ? flat : undefined
+    }
+    const visitDeps = (ownerBase, ownerName) => {
+      const owner = manifestOf(ownerBase)
+      for (const [dep, spec] of Object.entries(owner.dependencies ?? {})) {
+        if (skipDep(dep, spec)) continue
+        const depBase = depBaseOf(ownerBase, dep)
+        const key = (depBase ?? ownerBase) + '|' + dep
+        if (visitedDeps.has(key)) continue
+        visitedDeps.add(key)
+        if (depBase === undefined) { depProblems.push(ownerName + ' -> ' + dep); continue }
+        visitDeps(depBase, dep)
+      }
+    }
+    visitDeps(pkgBase, src.name)
+    check(profile + ' 运行时依赖闭包可解析: ' + src.name, depProblems.length === 0,
+      '缺 ' + depProblems.length + ' 项: [' + depProblems.slice(0, 5).join(', ') + ']')
+
+    // C2. bare import 必须能从注入后的 profile 路径解析（相对源包 lib 与包内 node_modules）。
+    const builtins = new Set(builtinModules)
+    // Client bundles are served to the WebView and their externals (React et al.) come from the
+    // web-app shell, not from Node's resolution tree; only server-side files are checked here.
+    const CLIENT_EXTERNALS = new Set(['react', 'react-dom', 'react/jsx-runtime', 'react/jsx-dev-runtime'])
+    const unresolvedBare = new Set()
+    for (const member of present) {
+      if (!member.startsWith('lib/') || !member.endsWith('.js')) continue
+      if (member === 'lib/client.js' || member.startsWith('lib/types/')) continue
+      let text = ''
+      try { text = readFileSync(join(scratch, pkgBase, member), 'utf8') } catch { continue }
+      for (const line of text.split('\n')) {
+        const trimmed = line.trim()
+        if (trimmed.startsWith('//') || trimmed.startsWith('*') || trimmed.startsWith('/*')) continue
+        for (const m of trimmed.matchAll(/(?:from\s*|import\s*\(\s*|require\s*\(\s*)['"]([^'"]+)['"]/g)) {
+          const spec = m[1]
+          if (!spec || spec.startsWith('.') || spec.startsWith('/') || spec.startsWith('#')
+            || spec.startsWith('node:') || spec.includes(':')) continue
+          const name = spec.startsWith('@') ? spec.split('/').slice(0, 2).join('/') : spec.split('/')[0]
+          if (name.startsWith('@dsh-android/') || name.startsWith('@deepseek-ai/') || builtins.has(name)
+            || CLIENT_EXTERNALS.has(name)) continue
+          if (entries.has(pkgBase + '/node_modules/' + name + '/package.json')) continue
+          if (entries.has('home/.dsh/profiles/' + profile + '/node_modules/' + name + '/package.json')) continue
+          unresolvedBare.add(member + ' -> ' + spec)
+        }
+      }
+    }
+    check(profile + ' bare import 可解析: ' + src.name, unresolvedBare.size === 0,
+      '悬空 ' + unresolvedBare.size + ' 条: [' + [...unresolvedBare].slice(0, 5).join(', ') + ']')
   }
 }
 rmSync(scratch, { recursive: true, force: true })
@@ -133,4 +199,4 @@ if (failures.length > 0) {
   console.error('CHECK-INJECT-COMPLETENESS FAILED（' + failures.length + ' 项）：' + failures.slice(0, 6).join('；'))
   process.exit(1)
 }
-console.log('CHECK-INJECT-COMPLETENESS PASSED（' + checkedPkgs + ' 包 × ' + PROFILES.length + ' profile：成员集合一致 + 相对导入无悬空）')
+console.log('CHECK-INJECT-COMPLETENESS PASSED（' + checkedPkgs + ' 包 × ' + PROFILES.length + ' profile：成员集合一致 + 相对导入无悬空 + 运行时依赖闭包/bare import 可解析）')

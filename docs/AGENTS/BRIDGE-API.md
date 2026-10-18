@@ -46,11 +46,11 @@ Shizuku v4以追加configuration()回读完整app UID/anchor，AIDL旧transactio
 
 ### 2.2 窄browserHostCommand与Session/tab归属
 
-browserHostCommand(payloadJson)由MainActivity转交Activity拥有的BrowserHost.command；payload须受长度/词汇/session/uiTabId/tabId约束，action仅status/tabs/open/select/close/back/forward/reload。它不是任意JS、shell或controlExec通道。status/tabs不创建renderer、不抢UI舞台，返回available/profileAvailable/profileReason/session/ownerSessionId/tabs/activeTabId/tabId及每页真实导航状态。
+browserHostCommand(payloadJson)由MainActivity转交Activity拥有的BrowserHost.command；payload须受长度/词汇/session/uiTabId/tabId约束，action仅status/tabs/open/select/close/back/forward/reload/compat。`compat` 是**用户显式**开关（`{enabled:true|false}`），只用于 WebView provider 不支持 MULTI_PROFILE 的设备；它重建全部 workspace，使旧隔离决定不残留。它不是任意JS、shell或controlExec通道。status/tabs不创建renderer、不抢UI舞台，返回available/profileAvailable/profileReason/session/ownerSessionId/tabs/activeTabId/tabId及每页真实导航状态。
 
 模型controlOp捕获自己的Session/tab（包括modelTabId）供后续main-thread片段/异步回调，校验同一workspace/tab/view/generation，不依赖当时UI焦点。UI bounds/viewport/identity必须指定自己的Session/nativeTab/GUI occurrence，暂切上下文后恢复前台；陈旧hide/HMR detach不能盖掉邻页。identity、viewport、error、refs均per-tab。主状态旧入口为兼容面，不是0.14.3多Session查询真源。
 
-BrowserHostProfile在新WebView任何settings、JS、load、attach-root前setProfile并getProfile确认非Default；失败或不支持MULTI_PROFILE即明确拒绝，不回Default。仅验证隔离后允许HTTP/LAN/loopback；3080受保护引擎origin默认仍拒，非profile调用仍拒loopback，匿名engine访问构造开关默认false。file/content/javascript/data/userinfo/未指定/link-local/metadata继续拒、TLS不override；profile拥有cookie/worker策略。limited profile clear不承诺彻底擦除IndexedDB/CacheStorage/worker注册。官方MIT UI、自定义真实tab-menu与native adapter不暴露主桥凭据。
+BrowserHostProfile在新WebView任何settings、JS、load、attach-root前setProfile并getProfile确认非Default；**默认**失败或不支持MULTI_PROFILE即明确拒绝，不回Default。例外是用户已在面板显式启用兼容模式（SharedPreferences `dsh_browser/compatibility`）：此时新建普通WebView、使用进程级Default CookieManager，status/profileIsolation 返回 `shared`，UI 明示“与应用共享 Cookie”；兼容模式仍不获得 `isolatedProfile=true`，因此 loopback/3080 受保护 origin 继续拒绝，file/content/javascript/data/userinfo/未指定/link-local/metadata继续拒、TLS不override。仅隔离profile拥有cookie/worker策略；兼容模式不提供每会话隔离，也不承诺清除共享jar。limited profile clear不承诺彻底擦除IndexedDB/CacheStorage/worker注册。官方MIT UI、自定义真实tab-menu与native adapter不暴露主桥凭据。
 
 Windows identity的native UA/JS platform/UA-CH分别选择Windows NT/Win32/Windows，UA-CH Chromium版本取实际应用UA优先；metadata不支持或设置失败如实返回未应用，不能声称桌面站点实测通过。
 

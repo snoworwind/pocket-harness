@@ -16,12 +16,19 @@ import java.util.concurrent.atomic.AtomicInteger
 internal class BrowserHostProfile(
   sessionKey: String,
   private val allowAnonymousEngineAccess: Boolean = false,
+  /** User-approved compatibility mode. Never inferred: the panel enables it explicitly. */
+  val compatibility: Boolean = false,
 ) {
   val name: String = nameForSession(sessionKey)
   private var profile: Profile? = null
   @Volatile private var active = false
+  @Volatile private var shared = false
   val serviceWorkerBlockedRequests = AtomicInteger(0)
+  /** True only for a verified nonDefault profile; compatibility mode deliberately stays false. */
   val isAssigned: Boolean get() = active && profile != null
+  /** A WebView may be created and navigated (isolated profile or explicit compatibility). */
+  val isReady: Boolean get() = active
+  val isCompatibility: Boolean get() = active && shared
 
   class Failure(val reason: String, cause: Throwable? = null) : IllegalStateException(reason, cause)
 
@@ -42,9 +49,27 @@ internal class BrowserHostProfile(
     )
   }
 
+  /** Explicit compatibility path; separate so the isolated attach order stays auditable. */
+  private fun attachCompatibility(browser: WebView) {
+    try {
+      BrowserSharedFallback.attach(browser)
+      profile = null
+      shared = true
+      active = true
+    } catch (failure: Throwable) {
+      active = false
+      shared = false
+      throw Failure("browser-profile-shared-fallback-failed", failure)
+    }
+  }
+
   /** Must be the first operation on a newly constructed browser WebView, before even settings. */
   fun attach(browser: WebView) {
-    if (!supported()) throw Failure("browser-profile-unsupported")
+    if (!supported()) {
+      if (!compatibility) throw Failure("browser-profile-unsupported")
+      attachCompatibility(browser)
+      return
+    }
     val assigned = try {
       WebViewCompat.setProfile(browser, name)
       WebViewCompat.getProfile(browser).also {
@@ -56,6 +81,7 @@ internal class BrowserHostProfile(
     } catch (failure: Throwable) { throw Failure("browser-profile-assignment-failed", failure) }
     // Even a provider policy failure leaves this view unusable, never a Default fallback.
     profile = assigned
+    shared = false
     active = false
     try {
       val workers = assigned.serviceWorkerController
@@ -83,17 +109,28 @@ internal class BrowserHostProfile(
     }
   }
 
-  fun normalize(raw: String?): String? = if (isAssigned) BrowserHostNavigationPolicy.normalize(
-    raw, isolatedProfile = true, allowAnonymousEngineAccess = allowAnonymousEngineAccess,
+  /**
+   * Compatibility mode still denies loopback: it is never an isolated profile, even though
+   * it can browse public HTTP(S). This is the guard that keeps the shared engine cookie jar
+   * out of reach of a browser page.
+   */
+  fun normalize(raw: String?): String? = if (isReady) BrowserHostNavigationPolicy.normalize(
+    raw, isolatedProfile = isAssigned, allowAnonymousEngineAccess = allowAnonymousEngineAccess,
   ) else null
 
-  fun blockedRequestReason(raw: String?): String? = if (isAssigned) BrowserHostNavigationPolicy.blockedRequestReason(
-    raw, isolatedProfile = true, allowAnonymousEngineAccess = allowAnonymousEngineAccess,
+  fun blockedRequestReason(raw: String?): String? = if (isReady) BrowserHostNavigationPolicy.blockedRequestReason(
+    raw, isolatedProfile = isAssigned, allowAnonymousEngineAccess = allowAnonymousEngineAccess,
   ) else "browser-profile-not-ready"
 
   /** Stop workers after the session's views are destroyed; retain its own login data for reuse. */
   fun dispose() {
     active = false
+    if (shared) {
+      // Never clear or flush the process-wide jar: it also carries the engine session.
+      shared = false
+      BrowserSharedFallback.dispose()
+      return
+    }
     val own = profile ?: return
     check(own.name == name && own.name != Profile.DEFAULT_PROFILE_NAME)
     own.serviceWorkerController.serviceWorkerWebSettings.blockNetworkLoads = true
@@ -111,6 +148,9 @@ internal class BrowserHostProfile(
    */
   fun clearCookieAndWebStorageData(completed: () -> Unit) {
     check(!active) { "dispose the session before clearing its data" }
+    // Compatibility mode shares the process jar; clearing it would sign the engine out.
+    // Report completion without touching global state (this method has no UI caller today).
+    if (shared) { completed(); return }
     val own = profile ?: run { completed(); return }
     check(own.name == name && own.name != Profile.DEFAULT_PROFILE_NAME)
     own.webStorage.deleteAllData()

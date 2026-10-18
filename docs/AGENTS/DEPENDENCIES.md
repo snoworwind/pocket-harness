@@ -48,7 +48,7 @@
 |---|---|
 | dev.rikka.shizuku:api/provider | 强类型UserService/API与bootstrap；ShizukuTransport/ShizukuUserService/VdisplayController。源码POM登记口径为MIT，不沿用旧文的Apache-2.0误记；aar notices仍须按实际分发核实。 |
 | androidx.activity:activity-ktx | ComponentActivity、ActivityResult；同文件legacy ConfigTransfer未挂载，但DirectoryPickerController的SAF注册仍被MainActivity使用。 |
-| androidx.webkit:webkit | BrowserHost document-start/UA-CH；0.14.3 BrowserHostProfile需要MULTI_PROFILE、set/getProfile、profile cookie/webStorage/geolocation/serviceWorker API。必须运行时feature gate并在load/settings前验证nonDefault，不能fallback Default。 |
+| androidx.webkit:webkit | BrowserHost document-start/UA-CH；0.14.3 BrowserHostProfile需要MULTI_PROFILE、set/getProfile、profile cookie/webStorage/geolocation/serviceWorker API。必须运行时feature gate并在load/settings前验证nonDefault；默认不能fallback Default。唯一例外是用户在面板显式启用的兼容模式（`BrowserSharedFallback`，进程级Default jar，status=shared，loopback仍拒），见 BRIDGE-API §2.2 与坑 437。 |
 | androidx.core:core-ktx | FileProvider、NotificationCompat、insets与WindowCompat等。 |
 | androidx.dynamicanimation:dynamicanimation | 声明保留；贴边spring已退役，不能当现行悬浮球行为。 |
 | org.apache.commons:commons-compress | 快照tar/xz流式解压、symlink/权限/xattr路径；noCompress xz保留原字节流。 |

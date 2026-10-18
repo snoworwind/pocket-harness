@@ -492,3 +492,86 @@ test('confirmed HTTP mutations satisfy the real bootstrap contract',async()=>{
   assert.equal(pluginHost.activations.length,2)
  }finally{await rm(filesDir,{recursive:true,force:true})}
 })
+
+// ── 引擎重启后的 reinstall / uninstall（0.5.0 状态持久化缺口） ─────────────
+//
+// 真实进程重启后：SOURCE_MANIFEST_SHA256 是 Symbol，落盘 JSON 丢失；manager 也是 null。
+// 旧实现因此 reinstall 恒报「not approved」，uninstall 恒报「did not provide a runtime manager」。
+// 这里用同一 filesDir 建第二个 bootstrap 实例模拟重启，不复用第一个实例的内存状态。
+
+test('reinstall survives an engine restart by persisting the approved manifest digest', async () => {
+  const filesDir = await tempFilesDir()
+  try {
+    const asset = await stageBundle(filesDir)
+    const manifest = makeManifest({ asset })
+    const approvedSha256 = 'a'.repeat(64)
+    let hostApproved = approvedSha256
+    const manifestProvider = async () => ({ manifest, releaseTag: TAG, sha256: approvedSha256 })
+    const config = createLinuxBootstrapConfig({ filesDir, appVersion: '0.15.0' })
+    const firstHost = makePluginHost()
+    const first = createBootstrap({
+      ...config,
+      manifestProvider,
+      verifyManifest: async (_manifest, source) => source.sourceSha256 === hostApproved,
+      pluginHost: firstHost,
+    })
+    await first.ready
+    await installConfirmed(first)
+    assert.equal((await first.status()).installed, true)
+
+    // Restart: the host has not read its signed bundle manifest yet, so its live approved
+    // digest is empty. The persisted digest from install must carry the reinstall.
+    hostApproved = ''
+    const secondHost = makePluginHost()
+    const second = createBootstrap({
+      ...config,
+      manifestProvider,
+      verifyManifest: async (_manifest, source) => source.sourceSha256 === hostApproved,
+      pluginHost: secondHost,
+    })
+    await second.ready
+    await second.reinstall({ confirmed: true, activate: true })
+    assert.equal((await second.status()).installed, true)
+    assert.equal(secondHost.activations.length, 1)
+  } finally { await rm(filesDir, { recursive: true, force: true }) }
+})
+
+test('uninstall survives an engine restart by reactivating the persisted plugin directory', async () => {
+  const filesDir = await tempFilesDir()
+  try {
+    const asset = await stageBundle(filesDir)
+    const manifest = makeManifest({ asset })
+    const config = createLinuxBootstrapConfig({ filesDir, appVersion: '0.15.0' })
+    const firstHost = makePluginHost()
+    const first = createBootstrap({
+      ...config,
+      manifestProvider: async () => ({ manifest, releaseTag: TAG, sha256: 'a'.repeat(64) }),
+      verifyManifest: async () => true,
+      pluginHost: firstHost,
+    })
+    await first.ready
+    await installConfirmed(first)
+
+    let uninstalls = 0
+    const secondHost = {
+      activations: [],
+      install: async (options) => {
+        secondHost.activations.push(options)
+        return { manager: { install: async () => {}, uninstall: async () => { uninstalls += 1 } } }
+      },
+      uninstall: async () => {},
+      isInjected: async () => ({ injected: true, active: true }),
+    }
+    const second = createBootstrap({
+      ...config,
+      manifestProvider: async () => ({ manifest, releaseTag: TAG, sha256: 'a'.repeat(64) }),
+      verifyManifest: async () => true,
+      pluginHost: secondHost,
+    })
+    await second.ready
+    await second.uninstall({ confirmed: true })
+    assert.equal(secondHost.activations.length, 1, 'restart uninstall must re-activate the persisted plugin')
+    assert.equal(uninstalls, 1, 'manager must remove its runtime data')
+    assert.equal((await second.status()).installed, false)
+  } finally { await rm(filesDir, { recursive: true, force: true }) }
+})

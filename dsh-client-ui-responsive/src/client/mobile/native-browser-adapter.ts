@@ -18,6 +18,9 @@ export interface NativeBrowserControlState {
   readonly reason: string
   readonly profileAvailable: boolean
   readonly profileReason: string
+  readonly compatAvailable: boolean
+  readonly compatEnabled: boolean
+  readonly profileIsolation: string
   readonly identityId: string
   readonly viewportWidth: number
   readonly viewportHeight: number
@@ -32,6 +35,7 @@ export interface NativeBrowserControlsInjected {
   setBrowserIdentity(tabId: TabId, desktop: boolean): void
   setBrowserViewport(tabId: TabId, width: number, height: number): void
   refreshBrowserStatus(tabId: TabId): void
+  setBrowserCompat(tabId: TabId, enabled: boolean): void
   closeBrowserTab(tabId: TabId): void
 }
 
@@ -56,6 +60,12 @@ export class NativeBrowserSession {
   refresh(): NativeBrowserSnapshot {
     if (!this.disposed) this.accept(nativeBrowserCommand(this.session, 'tabs'))
     return this.snapshot
+  }
+
+  /** Explicit user opt-in/opt-out for providers without MULTI_PROFILE. */
+  setCompat(tabId: TabId, enabled: boolean): void {
+    if (this.disposed) return
+    this.accept(nativeBrowserCommand(this.session, 'compat', { uiTabId: tabId, enabled }))
   }
 
   /** Framework keyed source, stable before the BrowserBody commits its container. */
@@ -236,7 +246,11 @@ export class NativeBrowserSession {
     return { nativeTabId: this.nativeTabId(uiTabId), available: this.snapshot.available,
       reason: this.snapshot.reason || tab?.reason || '',
       profileAvailable: this.snapshot.ok ? tab?.profileAvailable ?? this.snapshot.profileAvailable : this.snapshot.profileAvailable,
-      profileReason: this.snapshot.ok ? tab?.profileReason ?? this.snapshot.profileReason : this.snapshot.profileReason, identityId: tab?.identityId ?? '',
+      profileReason: this.snapshot.ok ? tab?.profileReason ?? this.snapshot.profileReason : this.snapshot.profileReason,
+      compatAvailable: this.snapshot.ok ? tab?.compatAvailable ?? this.snapshot.compatAvailable : this.snapshot.compatAvailable,
+      compatEnabled: this.snapshot.ok ? tab?.compatEnabled ?? this.snapshot.compatEnabled : this.snapshot.compatEnabled,
+      profileIsolation: this.snapshot.ok ? tab?.profileIsolation ?? this.snapshot.profileIsolation : this.snapshot.profileIsolation,
+      identityId: tab?.identityId ?? '',
       viewportWidth: tab?.viewportWidth ?? 0, viewportHeight: tab?.viewportHeight ?? 0 }
   }
 
@@ -263,7 +277,7 @@ class NativeBrowserFrame implements BrowserFrame {
       ready: () => {
         const snapshot = owner.getSnapshot()
         const tab = owner.nativeTab(options.tabId)
-        return snapshot.ok && snapshot.available && tab?.profileAvailable === true && this.source.getSnapshot().target !== undefined
+        return snapshot.ok && snapshot.available && this.source.getSnapshot().target !== undefined
       } })
     this.unsubscribe = owner.subscribe(() => { this.synchronize() })
   }
@@ -284,7 +298,8 @@ class NativeBrowserFrame implements BrowserFrame {
       : parseBrowserAddress(native.url, window.location.origin)
     const target = parsed?.ok === true ? { ...parsed.target, title: native?.title || parsed.target.title } : undefined
     const reason = !snapshot.ok || !snapshot.available ? snapshot.reason
-      : native?.profileAvailable === false ? native.profileReason || 'browser-profile-unavailable'
+      : native?.profileAvailable === false && native.profileIsolation !== 'shared'
+        ? native.profileReason || 'browser-profile-unavailable'
       : native?.loadState === 'error' || native?.loadState === 'failed' ? native.reason || 'browser-load-failed' : undefined
     const next: BrowserFrameState = { target, address: target === undefined ? 'empty' : 'observed',
       loading: native?.loadState === 'loading' || native?.loadState === 'navigating',

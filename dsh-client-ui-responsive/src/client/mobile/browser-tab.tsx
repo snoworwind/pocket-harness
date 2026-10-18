@@ -56,7 +56,7 @@ function parseResolution(value: string): { width: number; height: number } | und
 
 /** Reuse the official address/start/restore UI; native controls occupy their own non-stage row. */
 export function BrowserTab(props: AndroidBrowserBodyProps): ReactNode {
-  const { useTabInfo, useNativeBrowserState, setBrowserVisible, setBrowserIdentity, setBrowserViewport, refreshBrowserStatus, t } = props
+  const { useTabInfo, useNativeBrowserState, setBrowserVisible, setBrowserIdentity, setBrowserViewport, refreshBrowserStatus, setBrowserCompat, t } = props
   const { tab } = useTabInfo()
   const state = useNativeBrowserState(tab.id)
   const current = state !== undefined && state.viewportWidth > 0 && state.viewportHeight > 0
@@ -81,12 +81,20 @@ export function BrowserTab(props: AndroidBrowserBodyProps): ReactNode {
     {state?.available === false && <div className={css.status} role="status">
       {t('native.unavailable', { reason: state.reason })}
       <button type="button" onClick={() => { refreshBrowserStatus(tab.id) }}>{t('native.retry')}</button>
+      {state?.compatAvailable === true && state?.compatEnabled !== true && <button type="button" onClick={() => { setBrowserCompat(tab.id, true) }}>
+        {t('native.compat.enable')}
+      </button>}
     </div>}
     {state?.available === true && state.reason !== '' && <div className={css.status} role="status">
       {t('native.operation.failed', { reason: state.reason })}
     </div>}
     {state?.available === true && state.profileAvailable === false && <div className={css.status} role="status">
-      {t('native.profile.unavailable', { reason: state.profileReason })}
+      {state?.profileIsolation === 'shared'
+        ? t('native.profile.shared')
+        : t('native.profile.unavailable', { reason: state.profileReason })}
+      {state?.profileIsolation === 'shared' && <button type="button" onClick={() => { setBrowserCompat(tab.id, false) }}>
+        {t('native.compat.disable')}
+      </button>}
     </div>}
     <div className={css.official}><BrowserBody {...props} /></div>
     <form className={css.controls} onSubmit={submit}>

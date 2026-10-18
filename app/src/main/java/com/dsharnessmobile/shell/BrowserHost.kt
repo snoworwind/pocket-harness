@@ -91,11 +91,36 @@ internal class BrowserHost(
     private val ORPHAN_REFS = HashSet<String>()
   }
 
+  /**
+   * Compatibility is a user decision, not a capability guess. It is read live so a panel
+   * toggle takes effect for workspaces created afterwards.
+   */
+  private fun compatibilityMode(): Boolean = BrowserSharedFallback.enabled(activity)
+
+  private fun isolationAvailable(workspace: Workspace?): Boolean {
+    val supported = BrowserHostProfile.supported()
+    if (workspace == null) return supported || (!supported && compatibilityMode())
+    if (workspace.profileError.isNotEmpty()) return false
+    return supported || workspace.profile.compatibility
+  }
+
+  /** `""` means usable; compatibility names the shared-jar downgrade explicitly. */
+  private fun profileReason(workspace: Workspace?): String {
+    val reason = workspace?.profileError.orEmpty()
+    if (reason.isNotEmpty()) return reason
+    if (workspace?.profile?.isAssigned == true) return ""
+    if (!BrowserHostProfile.supported()) {
+      return if (workspace?.profile?.compatibility == true) "browser-profile-shared-fallback"
+      else "browser-profile-unsupported"
+    }
+    return "browser-profile-not-ready"
+  }
+
   /** Complete per-session native authority; polling never changes selected workspace or visibility. */
   private fun tabSummaries(workspace: Workspace = requireWorkspace()): JSONArray {
     val density = dshWebView.resources.displayMetrics.density.coerceAtLeast(0.5f)
     val profileAvailable = workspace.profile.isAssigned && workspace.profileError.isEmpty()
-    val profileReason = workspace.profileError.ifEmpty { if (profileAvailable) "" else "browser-profile-not-ready" }
+    val reason = profileReason(workspace)
     val out = JSONArray()
     for (tab in workspace.tabs.values) {
       out.put(JSONObject()
@@ -107,7 +132,14 @@ internal class BrowserHost(
         .put("identityId", tab.identityId)
         .put("viewportWidth", tab.requestedViewport?.width ?: (dshWebView.width / density).toInt())
         .put("viewportHeight", tab.requestedViewport?.height ?: (dshWebView.height / density).toInt())
-        .put("profileAvailable", profileAvailable).put("profileReason", profileReason)
+        .put("profileAvailable", profileAvailable).put("profileReason", reason)
+        .put("compatAvailable", !BrowserHostProfile.supported())
+        .put("compatEnabled", !BrowserHostProfile.supported() && workspace.profile.compatibility)
+        .put("profileIsolation", when {
+          profileAvailable -> "isolated"
+          !BrowserHostProfile.supported() && workspace.profile.compatibility -> "shared"
+          else -> "unavailable"
+        })
         .put("reason", tab.reason).put("active", tab.id == workspace.activeTabId))
     }
     return out
@@ -184,7 +216,7 @@ internal class BrowserHost(
    * 独立可见性。成本是每个**有活动页面的**会话各持一个 WebView —— 这正是浏览器该有的语义。
    */
   private inner class Workspace(val sessionKey: String) {
-    val profile = BrowserHostProfile(sessionKey, allowAnonymousEngineAccess)
+    val profile = BrowserHostProfile(sessionKey, allowAnonymousEngineAccess, compatibilityMode())
     var profileError = ""
     /** 本会话的标签页，插入序即 UI 顺序；锚点固定为 [ROOT_TAB_ID]。 */
     val tabs = LinkedHashMap<String, Tab>()
@@ -394,8 +426,11 @@ internal class BrowserHost(
     val session = args.opt("session") as? String ?: ""
     if (!validUiId(session, 2048)) return@onMain commandUnavailable(session, "browser-session-invalid")
     val action = args.opt("action") as? String ?: ""
-    if (action !in setOf("open", "back", "forward", "reload", "select", "close", "status", "tabs")) {
+    if (action !in setOf("open", "back", "forward", "reload", "select", "close", "status", "tabs", "compat")) {
       return@onMain commandUnavailable(session, "browser-command-unknown")
+    }
+    if (action == "compat") {
+      return@onMain setCompatibility(session, args.optBoolean("enabled", false)).toString()
     }
     for (key in listOf("tabId", "uiTabId")) {
       if (args.has(key) && !validUiId(args.opt(key) as? String ?: "", 256)) {
@@ -468,17 +503,34 @@ internal class BrowserHost(
     .put("ok", false).put("available", false).put("session", session)
     .put("profileAvailable", false).put("profileReason", reason).put("reason", reason).toString()
 
+  /**
+   * Explicit user choice for providers without MULTI_PROFILE. Rebuild every workspace so
+   * old failed tabs cannot retain the previous isolation decision; nothing is inferred.
+   */
+  private fun setCompatibility(session: String, enabled: Boolean): JSONObject {
+    BrowserSharedFallback.setEnabled(activity, enabled)
+    for (workspace in workspaces.values.toList()) dropWorkspace(workspace)
+    workspaces.clear()
+    currentWorkspace = null
+    viewerSessionId = null
+    lastError = ""
+    val workspace = workspaceFor(session)
+    currentWorkspace = workspace
+    return status()
+  }
+
   private fun nativeReply(workspace: Workspace, tab: Tab? = null, reason: String = ""): JSONObject {
-    val supported = BrowserHostProfile.supported()
-    val available = supported && workspace.profileError.isEmpty()
+    val available = isolationAvailable(workspace)
     val isolated = available && workspace.profile.isAssigned
-    val profileReason = workspace.profileError.ifEmpty {
-      if (!supported) "browser-profile-unsupported" else if (!isolated) "browser-profile-not-ready" else ""
-    }
+    val reasonText = profileReason(workspace)
     return JSONObject().put("ok", available && reason.isEmpty()).put("available", available)
       .put("session", workspace.sessionKey).put("ownerSessionId", workspace.sessionKey)
-      .put("profileAvailable", isolated).put("profileReason", profileReason)
-      .put("reason", reason.ifEmpty { if (!available) profileReason else tab?.reason.orEmpty() })
+      .put("profileAvailable", isolated).put("profileReason", reasonText)
+      .put("compatAvailable", !BrowserHostProfile.supported())
+      .put("compatEnabled", !BrowserHostProfile.supported() && workspace.profile.compatibility)
+      .put("profileIsolation", if (isolated) "isolated"
+        else if (!BrowserHostProfile.supported() && workspace.profile.compatibility) "shared" else "unavailable")
+      .put("reason", reason.ifEmpty { if (!available) reasonText else tab?.reason.orEmpty() })
       .put("tabs", tabSummaries(workspace)).put("activeTabId", workspace.activeTabId ?: "")
       .apply { tab?.let { put("tabId", it.id) } }
   }
@@ -834,12 +886,12 @@ internal class BrowserHost(
     val existing = tab.view
     val workspace = requireWorkspace()
     if (existing != null) {
-      if (workspace.profileError.isEmpty() && workspace.profile.isAssigned) return existing
-      lastError = workspace.profileError.ifEmpty { "browser-profile-not-ready" }
+      if (workspace.profileError.isEmpty() && workspace.profile.isReady) return existing
+      lastError = profileReason(workspace)
       return null
     }
     val sessionProfile = workspace.profile
-    if (!BrowserHostProfile.supported()) {
+    if (!BrowserHostProfile.supported() && !sessionProfile.compatibility) {
       workspace.profileError = "browser-profile-unsupported"
       lastError = workspace.profileError
       tab.loadState = "error"
@@ -1196,16 +1248,32 @@ internal class BrowserHost(
 
   private fun status(): JSONObject {
     val density = dshWebView.resources.displayMetrics.density.coerceAtLeast(0.5f)
-    val isolationAvailable = BrowserHostProfile.supported() && currentWorkspace?.profileError.isNullOrEmpty()
+    val supported = BrowserHostProfile.supported()
+    val workspace = currentWorkspace
+    val available = isolationAvailable(workspace)
+    val isolated = workspace?.profile?.isAssigned == true && available
+    val shared = (workspace?.profile?.compatibility == true && !supported) || (workspace == null && !supported && compatibilityMode())
+    val reasonText = if (workspace != null) profileReason(workspace) else when {
+      supported -> "browser-profile-not-ready"
+      compatibilityMode() -> "browser-profile-shared-fallback"
+      else -> "browser-profile-unsupported"
+    }
     return JSONObject()
-      .put("ok", isolationAvailable)
-      .put("available", isolationAvailable)
-      .put("profileAvailable", isolationAvailable && currentWorkspace?.profile?.isAssigned == true)
-      .put("profileReason", currentWorkspace?.profileError.orEmpty().ifEmpty { if (currentWorkspace?.profile?.isAssigned == true) "" else if (isolationAvailable) "browser-profile-not-ready" else "browser-profile-unsupported" })
-      .put("session", currentWorkspace?.sessionKey ?: "")
-      .put("multiProfileSupported", BrowserHostProfile.supported())
-      .put("profileIsolation", if (currentWorkspace?.profile?.isAssigned == true) "isolated" else if (isolationAvailable) "not-created" else "unavailable")
-      .put("profileName", currentWorkspace?.profile?.takeIf { it.isAssigned }?.name ?: "")
+      .put("ok", available)
+      .put("available", available)
+      .put("profileAvailable", isolated)
+      .put("profileReason", reasonText)
+      .put("session", workspace?.sessionKey ?: "")
+      .put("multiProfileSupported", supported)
+      .put("compatAvailable", !supported)
+      .put("compatEnabled", !supported && (workspace?.profile?.compatibility == true || (workspace == null && compatibilityMode())))
+      .put("profileIsolation", when {
+        isolated -> "isolated"
+        shared -> "shared"
+        supported -> "not-created"
+        else -> "unavailable"
+      })
+      .put("profileName", workspace?.profile?.takeIf { it.isAssigned }?.name ?: "")
       .put("created", view != null)
       .put("visible", view?.visibility == View.VISIBLE)
       .put("url", url)
@@ -1232,7 +1300,7 @@ internal class BrowserHost(
       // 请求级过滤计数（审查 S-4）：非 0 表示本页有子资源被拒（模型/面板据此知道「页面少了东西」）。
       .put("blockedRequests", activeTab()?.blockedRequests?.get() ?: 0)
       .put("serviceWorkerBlockedRequests", currentWorkspace?.profile?.serviceWorkerBlockedRequests?.get() ?: 0)
-      .put("reason", activeTab()?.reason?.takeIf { it.isNotEmpty() } ?: lastError.ifEmpty { if (!isolationAvailable) currentWorkspace?.profileError?.takeIf { it.isNotEmpty() } ?: "browser-profile-unsupported" else "" })
+      .put("reason", activeTab()?.reason?.takeIf { it.isNotEmpty() } ?: lastError.ifEmpty { if (!available) reasonText else "" })
   }
 
   private fun rejected(reason: String): String = status().put("ok", false).put("reason", reason).toString()
@@ -1295,15 +1363,26 @@ a{display:inline-block;margin-top:16px;padding:10px 20px;border-radius:8px;backg
     val documentStart = WebViewShim.supports(WebViewFeature.DOCUMENT_START_SCRIPT)
     val uaCh = WebViewShim.supports(WebViewFeature.USER_AGENT_METADATA)
     val multiProfile = BrowserHostProfile.supported()
-    val isolationAvailable = multiProfile && currentWorkspace?.profileError.isNullOrEmpty()
+    val compat = compatibilityMode()
+    val workspace = currentWorkspace
+    val available = isolationAvailable(workspace)
+    val shared = (workspace?.profile?.compatibility == true && !multiProfile) || (workspace == null && !multiProfile && compat)
+    val reasonText = if (workspace != null) profileReason(workspace) else when {
+      multiProfile -> "browser-profile-not-ready"
+      compat -> "browser-profile-shared-fallback"
+      else -> "browser-profile-unsupported"
+    }
     return JSONObject()
-      .put("ok", isolationAvailable)
-      .put("available", isolationAvailable)
+      .put("ok", available)
+      .put("available", available)
       .put("multiProfileSupported", multiProfile)
-      .put("profileIsolationRequired", true)
-      .put("defaultProfileFallback", false)
+      .put("profileIsolationRequired", !shared)
+      .put("defaultProfileFallback", shared)
+      .put("compatAvailable", !multiProfile)
+      .put("compatEnabled", shared)
+      .put("profileIsolation", if (workspace?.profile?.isAssigned == true) "isolated" else if (shared) "shared" else "unavailable")
       .put("completeBrowsingDataClearAvailable", false)
-      .put("reason", if (isolationAvailable) "" else currentWorkspace?.profileError?.takeIf { it.isNotEmpty() } ?: "browser-profile-unsupported")
+      .put("reason", if (available) "" else reasonText)
       .put("webviewMajor", major)
       .put("webviewVersion", versionText)
       .put("uaChAvailable", uaCh)
@@ -1315,7 +1394,7 @@ a{display:inline-block;margin-top:16px;padding:10px 20px;border-radius:8px;backg
       .put("screenHeight", metrics.heightPixels)
       .put("densityDpi", metrics.densityDpi)
       .put("rendererProcesses", 0)
-      .put("browserWebViewAvailable", isolationAvailable)
+      .put("browserWebViewAvailable", available)
       .put("cdpEnabled", false)
       .put("viewportId", requestedViewport?.id ?: "device")
       .put("surface", "browser")

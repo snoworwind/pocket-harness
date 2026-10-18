@@ -280,4 +280,4 @@ bootstrap 的 package-lock.json 与 package.json 一样属于逐字节来源输�
 
 ### Linux 插件启动依赖（2026-10-18）
 
-插件注入只携带 lib 与 package.json，不携带开发机 node_modules。解包依赖闭包登记在 engine-overlay.json 的 vendorTop 与许可清单；回归命令：`node --test scripts/source-build/linux-plugin-dependencies.test.mjs plugins/dsh-linux-bootstrap/test/client-http.test.mjs`。浏览器 bootstrap 只注入 slots，通过既有鉴权 HTTP 路由调用引擎服务；不得跨进程注入 linuxBootstrap。
+插件注入只携带 lib、package.json 与其**自身**的运行时依赖闭包 `node_modules/**`（不再只登记 engine-overlay.json 的 vendorTop——那只落在引擎树，profile 路径解析不到；见坑 436）。`inject-all.py` 从每个插件 `package.json.dependencies` 收集传递闭包并平铺复制到该包内，`check-inject-completeness.mjs` 的 C1/C2 从注入后 tar 校验闭包与 bare import 可达性。回归命令：`python3 -m unittest scripts/source-build/test_inject_all.py` + `node scripts/check-inject-completeness.mjs <注入后 tar>`；overlay 登记与许可清单仍须保留。浏览器 bootstrap 只注入 slots，通过既有鉴权 HTTP 路由调用引擎服务；不得跨进程注入 linuxBootstrap。
