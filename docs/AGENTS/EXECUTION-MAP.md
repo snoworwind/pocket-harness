@@ -113,7 +113,7 @@ sequenceDiagram
 
 - 悬浮球/光环/面板/报告栏：`app/src/main/java/com/dsharnessmobile/shell/OverlayService.kt:155`（`onCreate` 建三窗口）；
 - 通知中心与通知内应答：`NotifyCenter` → `NotifyStore`（偏移消费）→ `NotifyDecisionQueue`（耐久队列）→ `MuxClient`（`/api/remote.mux`）；
-- BrowserHost捕获Session/tab，UI舞台focus与modelTab分开；新WebView先验证nonDefault profile且无bridge，当前锚点见§6 K08。
+- BrowserHost捕获Session/tab，UI舞台focus与modelTab分开；新WebView先验证nonDefault profile且无bridge；无 MULTI_PROFILE 时只有用户显式 compat 才建普通无桥 WebView（共享 jar、loopback 仍拒），当前锚点见§6 K08。
 - 虚拟屏：`VdisplayController` + `VdisplayHost`（viewer Surface）+ `VdisplayFloat`（浮窗），特权走 `ShizukuTransport`。
 
 ### 阶段 4：后台维护（低频）
@@ -170,7 +170,7 @@ Linux 发现补充（P04，坑 373）：bootstrap `index.js` 串行发现 → `g
 | 高 | K08 | `workspaces`/`currentWorkspace` 跨线程读写，且 `onMain` 只有 finally 没有 catch | `app/src/main/java/com/dsharnessmobile/shell/BrowserHost.kt:187-192`、`app/src/main/java/com/dsharnessmobile/shell/BrowserHost.kt:821`、`app/src/main/java/com/dsharnessmobile/shell/BrowserHost.kt:1661-1673` | 主线程 CME 一次即进程闪退（模型开页与侧栏展开同时发生）；`workspaces` 无上限无 TTL，每个新会话多一个常驻 WebView | 未修（评审 S-8/R1/R2） |
 | 高 | K08 | 浏览器 op 在控制队列线程上自旋等导航：错误页路径必等满 10s 且仍回 `ok` | `app/src/main/java/com/dsharnessmobile/shell/BrowserHost.kt:1087`、`app/src/main/java/com/dsharnessmobile/shell/BrowserHost.kt:1101-1107` | 一次 `browser_open` 占住整条设备控制队列 10s，无障碍与特权命令全排队 | 未修（S-7/F-6） |
 | 高 | K08 | 浏览器截图只写不删、`health` 恒 `ok`、失败原因串上一轮 `lastError` | `app/src/main/java/com/dsharnessmobile/shell/BrowserHost.kt:1565`、`app/src/main/java/com/dsharnessmobile/shell/BrowserHost.kt:1581`、`app/src/main/java/com/dsharnessmobile/shell/BrowserHost.kt:1589` | 长任务磁盘累积（全页 PNG）；截图失败原因误导 | 未修（S-6/F-7） |
-| 高 | K08 | 浏览器会话存储隔离与清理范围 | `app/src/main/java/com/dsharnessmobile/shell/BrowserHostProfile.kt` | 当前每会话绑定非 Default profile；不支持或绑定失败拒绝创建。清理仅覆盖 Cookie/WebStorage/地理授权，不承诺完整清除 IndexedDB/CacheStorage/worker 注册 | Cookie 隔离源码已修；完整数据清理仍有限制，设备层未验收 |
+| 高 | K08 | 浏览器会话存储隔离与清理范围 | `app/src/main/java/com/dsharnessmobile/shell/BrowserHostProfile.kt` | 当前每会话绑定非 Default profile；不支持/绑定失败**默认**拒绝创建，用户显式启用兼容模式时改用共享 Default jar（不提供每会话隔离，loopback 仍拒）。清理仅覆盖 Cookie/WebStorage/地理授权，不承诺完整清除 IndexedDB/CacheStorage/worker 注册 | Cookie 隔离源码已修；完整数据清理仍有限制，设备层未验收 |
 | 高 | K06 | 双引号内的动态命令替换曾绕过屏幕范围门 | `app/src/main/java/com/dsharnessmobile/shell/ShellOps.kt`、`plugins/dsh-android-bridge/src/screen-scope.ts` | 引号内动态展开、命令合成与不透明执行器可能改变实际命令/目标屏 | 已修：动态屏幕目标 fail-closed；两侧统一检查不透明执行器，跨语言 fixture 增加反证 |
 | 高 | K06 | 路径脚本与错误显示参数认证可绕过范围门 | `ShellOps.scopeCommandText/hasUncertifiedSelector`、`screen-scope.ts` 同名函数 | 脚本不可见、引用目标被抹掉、注释/重定向捐出参数、Android CLI 别名与位置差异 | 源码已修；两插件编译通过；按用户要求仅做编译和静态检查，设备层未验收。见坑 313/314 |
 | 高 | K06 | 外部文件导入可借应用权限读取私有文件或内部 Provider | `FileIncoming.kt:40-100`、`FileIncoming.kt:163-190`、`FileIncoming.kt:417-439` | exported Activity 接收攻击者指定的 URI，旧白名单含整个应用私有根且 content 来源无授权门 | 源码已修：共享存储路径与持有 FD 双检；content 要求外部 UID 与系统读授权；输出排他创建，分享参数类型化解析。WSL Kotlin 编译通过；未运行测试或设备验收，见坑 321 |
