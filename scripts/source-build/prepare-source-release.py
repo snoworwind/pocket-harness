@@ -27,7 +27,7 @@ def prepare(source, output, env):
         raise ValueError('artifact symlink is not allowed')
     # The upload list is the authority for required evidence. Hidden files must survive transfer.
     workflow = (Path(__file__).resolve().parents[2] / '.github/workflows/build-apk-source.yml').read_text()
-    upload = workflow.split('      - name: Upload APK and provenance\n', 1)[1]
+    upload = workflow.rsplit('      - name: Upload APK and provenance\n', 1)[1]
     paths = upload.split('          path: |\n', 1)[1].split('          if-no-files-found:', 1)[0]
     for pattern in (line.strip() for line in paths.splitlines() if line.strip()):
         # upload-artifact globs include directory contents recursively. pathlib.glob's
@@ -49,6 +49,10 @@ def prepare(source, output, env):
     if len(apks) != 1 or not re.fullmatch(r'dsh-mobile-apk-v[\w.+-]+-source-arm64\.apk', apks[0].name):
         raise ValueError('expected exactly one source ARM64 APK')
     apk = apks[0]
+    proof = json.loads((evidence / 'independent-rebuild-verification.json').read_text())
+    if (proof.get('independentRebuildMatched') is not True or proof.get('normalizationVersion') != 3
+            or proof.get('sourceCommit') != sha or proof.get('signedApkSha256') != digest(apk)):
+        raise ValueError('independent rebuild proof does not bind the final APK')
     expected = f'{digest(apk)}  {apk.relative_to(source).as_posix()}'
     if expected not in (evidence / 'apk-sha256.txt').read_text().splitlines():
         raise ValueError('APK hash mismatch')

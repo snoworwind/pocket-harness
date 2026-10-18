@@ -285,7 +285,11 @@ export function collectEntries(root) {
  * 无法回答「差在哪」，而那个答案恰恰决定它是真差异、还是规则清单又漏了一类。
  */
 export function normalizeSnapshot(root) {
-  const entries = collectEntries(root)
+  return normalizeSnapshotEntries(collectEntries(root))
+}
+
+/** Trusted archive readers may supply streamed raw hashes without materializing files. */
+export function normalizeSnapshotEntries(entries) {
   const ruleCounts = new Map()
   const skipped = []
   const manifest = []
@@ -303,6 +307,7 @@ export function normalizeSnapshot(root) {
     for (const rule of RULES) {
       if (!rule.match(entry.path)) continue
       if (text === undefined) {
+        if (entry.body === undefined) throw new Error(`${entry.path}: normalization requires original text bytes`)
         // Lossy UTF-8 decoding must never collapse different bytes to the same digest.
         text = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(entry.body)
       }
@@ -315,7 +320,9 @@ export function normalizeSnapshot(root) {
     if (touched && Buffer.from(text, 'utf8').includes(0)) {
       throw new Error(`${entry.path}: 被文本规则命中但内容是二进制——规则清单有误`)
     }
-    manifest.push(`${entry.path}\0${touched ? 'normalized' : 'raw'}\0${entry.mode.toString(8)}\0${sha256(touched ? text : entry.body)}`)
+    const digest = touched ? sha256(text) : entry.body !== undefined ? sha256(entry.body) : entry.rawSha256
+    if (!/^[0-9a-f]{64}$/.test(digest ?? '')) throw new Error(`${entry.path}: missing raw byte digest`)
+    manifest.push(`${entry.path}\0${touched ? 'normalized' : 'raw'}\0${entry.mode.toString(8)}\0${digest}`)
   }
   manifest.sort()
   return {

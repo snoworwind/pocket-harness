@@ -12,6 +12,10 @@ permissions:
 
 jobs:
   build-arm64:
+    strategy:
+      fail-fast: false
+      matrix:
+        replica: [primary, reference]
     runs-on: ubuntu-latest
     timeout-minutes: 180
     env:
@@ -833,7 +837,7 @@ jobs:
       - name: Upload APK and provenance
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: dsh-mobile-apk-arm64-unsigned-${{ github.sha }}
+          name: dsh-mobile-apk-arm64-unsigned-${{ matrix.replica }}-${{ github.sha }}
           path: |
             out/v*/*.apk
             .deploy-tmp/arm64-base/base-usr.tar.xz.provenance.json
@@ -881,8 +885,81 @@ jobs:
           include-hidden-files: true
           retention-days: 30
 
-  sign-arm64:
+  verify-arm64:
     needs: build-arm64
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with: { node-version: '24' }
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with: { python-version: '3.12' }
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: dsh-mobile-apk-arm64-unsigned-primary-${{ github.sha }}
+          path: .
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: dsh-mobile-apk-arm64-unsigned-reference-${{ github.sha }}
+          path: .deploy-tmp/independent-reference
+      - name: Verify independent ARM64 builds from actual APK bytes
+        run: node scripts/source-build/compare-independent-builds.mjs
+      - name: Upload APK and provenance
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: dsh-mobile-apk-arm64-verified-${{ github.sha }}
+          path: |
+            out/v*/*.apk
+            .deploy-tmp/arm64-base/base-usr.tar.xz.provenance.json
+            .deploy-tmp/source-build/termux-packages-provenance.json
+            .deploy-tmp/engine-overlay/source-build-manifest.json
+            .deploy-tmp/source-build/apk-sha256.txt
+            .deploy-tmp/source-build/engine-overlay-sha256.txt
+            .deploy-tmp/source-build/runtime-tarballs-sha256.txt
+            .deploy-tmp/source-build/plugin-lock-sha256.txt
+            .deploy-tmp/source-build/plugin-lock-resolution.json
+            .deploy-tmp/source-build/marketplace-metadata-delta.json
+            .deploy-tmp/source-build/project-source-commit.txt
+            .deploy-tmp/source-build/component-source-provenance.json
+            .deploy-tmp/source-build/project-component-provenance.json
+            .deploy-tmp/source-build/marketplace-source-provenance.json
+            .deploy-tmp/source-build/marketplace-patch-adapter.json
+            .deploy-tmp/source-build/source-build-policy.json
+            .deploy-tmp/source-build/effective-engine-overlay.json
+            .deploy-tmp/source-build/harness-vendor-overrides.json
+            .deploy-tmp/source-build/harness-vendor-lock-reconciliation.json
+            .deploy-tmp/source-build/harness-pnpm-lock.original.yaml
+            .deploy-tmp/source-build/harness-build-script-exclusion.json
+            .deploy-tmp/source-build/harness-root-package.json.original
+            .deploy-tmp/source-build/android-build-inputs-sha256.txt
+            .deploy-tmp/source-build/gradle-artifacts-sha256.txt
+            .deploy-tmp/source-build/signing-certificate-sha256.txt
+            .deploy-tmp/source-build/package-manager-versions.txt
+            .deploy-tmp/source-build/pnpm-deploy-build-policy.json
+            .deploy-tmp/source-build/pnpm-deploy-runtime-closure.json
+            .deploy-tmp/source-build/pnpm-deploy-runtime-closure.lock.yaml
+            .deploy-tmp/source-build/android-native-runtime-packages.json
+            .deploy-tmp/source-build/node-pty-android-build.json
+            .deploy-tmp/source-build/ndk-archive-sha1.txt
+            .deploy-tmp/source-build/post-snapshot-native-runtime-check.json
+            .deploy-tmp/source-build/harness-web-preview-exclusion.json
+            .deploy-tmp/source-build/post-snapshot-runtime-dependency-check.json
+            .deploy-tmp/source-build/source-engine-snapshot-check.json
+            .deploy-tmp/source-build/snapshot-normalization.json
+            .deploy-tmp/source-build/independent-rebuild-verification.json
+            .deploy-tmp/source-build/pnpm-package-materialization.json
+            .deploy-tmp/source-build/engine-patch-copy-reconciliation.json
+            scripts/patches/tests/fixtures/manifest.json
+            scripts/patches/tests/fixtures/*-0.2.0-rc.2/**
+          if-no-files-found: error
+          # Only explicitly listed evidence files below .deploy-tmp are uploaded.
+          include-hidden-files: true
+          retention-days: 30
+
+  sign-arm64:
+    needs: verify-arm64
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
@@ -897,7 +974,7 @@ jobs:
           java-version: '17'
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
-          name: dsh-mobile-apk-arm64-unsigned-${{ github.sha }}
+          name: dsh-mobile-apk-arm64-verified-${{ github.sha }}
           path: .
       - name: Sign final ARM64 source APK in an isolated job
         env:
@@ -952,6 +1029,7 @@ jobs:
             .deploy-tmp/source-build/post-snapshot-runtime-dependency-check.json
             .deploy-tmp/source-build/source-engine-snapshot-check.json
             .deploy-tmp/source-build/snapshot-normalization.json
+            .deploy-tmp/source-build/independent-rebuild-verification.json
             .deploy-tmp/source-build/pnpm-package-materialization.json
             .deploy-tmp/source-build/engine-patch-copy-reconciliation.json
             scripts/patches/tests/fixtures/manifest.json

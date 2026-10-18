@@ -23,6 +23,7 @@ export function finalApks(root) {
 
 export function signSourceArtifacts(root = process.cwd()) {
   const files = finalApks(root)
+  const proof = verifyRebuildProof(root, files[0], process.env.GITHUB_SHA)
   const key = prepareSigning(root)
   const tool = process.env.APKSIGNER || readFileSync(join(root, '.deploy-tmp/source-build/apksigner-path.txt'), 'utf8').trim()
   for (const file of files) {
@@ -35,8 +36,19 @@ export function signSourceArtifacts(root = process.cwd()) {
   }
   const reports = join(root, '.deploy-tmp/source-build')
   writeFileSync(join(reports, 'signing-certificate-sha256.txt'), SIGNING_CERTIFICATE + '\n')
+  proof.signedApkSha256 = createHash('sha256').update(readFileSync(files[0])).digest('hex')
+  writeFileSync(join(reports, 'independent-rebuild-verification.json'), JSON.stringify(proof, null, 2) + '\n')
   writeFileSync(join(reports, 'apk-sha256.txt'), files.map(file => createHash('sha256').update(readFileSync(file)).digest('hex') + '  ' + file.slice(root.length + 1).replaceAll('\\', '/')).join('\n') + '\n')
   console.log('Final ARM64 source APK signed and verified with the private Pocket Harness identity')
+}
+
+export function verifyRebuildProof(root, apk, commit) {
+  const proof = JSON.parse(readFileSync(join(root, '.deploy-tmp/source-build/independent-rebuild-verification.json'), 'utf8'))
+  if (proof.independentRebuildMatched !== true || proof.normalizationVersion !== 3 || !/^[0-9a-f]{40}$/.test(commit ?? '') || proof.sourceCommit !== commit
+    || proof.primaryUnsignedApkSha256 !== createHash('sha256').update(readFileSync(apk)).digest('hex')) {
+    throw new Error('final signing requires independent proof for these exact APK bytes and source commit')
+  }
+  return proof
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) signSourceArtifacts()

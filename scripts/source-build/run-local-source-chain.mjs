@@ -39,6 +39,10 @@ if (flag('--build-workspace') && (!value('--build-workspace') || value('--build-
   console.error('--build-workspace 需要指定独立的目录路径')
   process.exit(2)
 }
+if (flag('--reference-artifact') && (!value('--reference-artifact') || value('--reference-artifact').startsWith('--'))) {
+  console.error('--reference-artifact 需要包含独立构建 out/ 的目录路径')
+  process.exit(2)
+}
 
 /** 步骤名 → 阶段。未列出的步骤按「跟随前一个阶段」处理。 */
 const STAGES = [
@@ -53,6 +57,7 @@ const STAGES = [
   { key: 'snapshot', label: '构建运行时快照', match: /^Build runtime snapshot/ },
   { key: 'sign', label: 'keystore 自检', match: /^Verify the repository debug signing keystore/ },
   { key: 'apk', label: '门禁 + 注入 + 打包 ARM64 APK', match: /^Build ARM64 APK/ },
+  { key: 'verify-build', label: '独立重建对账', match: /^Verify independent ARM64 builds/ },
   { key: 'final-sign', label: '最终 ARM64 私有签名', match: /^Sign final ARM64 source APK/ },
 ]
 const SKIP_STEP = /^(Set up job|Checkout project source|Prepare build tools|Run actions\/setup-|Install archive and signature tools|Upload APK and provenance|Post )/
@@ -124,11 +129,13 @@ function parseSteps() {
 
 const steps = parseSteps()
 const planned = []
+let currentStage = 'verify'
 for (const step of steps) {
   if (SKIP_STEP.test(step.name ?? '')) continue
   if (!step.run) continue
   const stage = STAGES.find((s) => s.match.test(step.name ?? ''))
-  planned.push({ name: step.name ?? '(未命名)', stage: stage?.key ?? 'misc', shell: step.shell, run: step.run.trimEnd() })
+  if (stage) currentStage = stage.key
+  planned.push({ name: step.name ?? '(未命名)', stage: currentStage, shell: step.shell, run: step.run.trimEnd() })
 }
 
 if (flag('--list')) {
@@ -221,6 +228,7 @@ const baseEnv = {
   ...process.env,
   // Resolve before entering the remote-free checkout; all phases share this identity.
   DSH_SOURCE_REPOSITORY: resolveSourceRepository(ROOT),
+  ...(value('--reference-artifact') ? { DSH_REFERENCE_ARTIFACT_DIR: resolve(value('--reference-artifact')) } : {}),
   ANDROID_HOME,
   ANDROID_SDK_ROOT: ANDROID_HOME,
   DSH_APK_DIR: buildRoot,
@@ -270,4 +278,6 @@ for (const [i, item] of selected.entries()) {
 }
 
 if (failed) process.exit(1)
-console.log(`\n本地来源链跑完（产出的 APK 在 ${join(buildRoot, 'out', 'v*')} 下）。`)
+console.log(selected.some(item => item.stage === 'final-sign')
+  ? `\n本地来源链跑完（独立验证及私有签名产物在 ${join(buildRoot, 'out', 'v*')} 下）。`
+  : `\n所选阶段完成（${join(buildRoot, 'out', 'v*')}）；尚未完成独立验证及私有签名，不是交付产物。`)

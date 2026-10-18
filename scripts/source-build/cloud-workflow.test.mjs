@@ -58,3 +58,15 @@ test('the private key is unavailable to dependency builds and final signing uses
   assert.match(signer, /sign-source-artifacts\.mjs/)
   assert.doesNotMatch(signer, /npm (?:ci|install)|gradlew|gradle |corepack|pnpm /)
 })
+
+test('two fresh build runners are compared from APK bytes before a signature can be issued', () => {
+  const source = read('build-apk-source.yml')
+  assert.match(source, /replica: \[primary, reference\]/)
+  const verifier = source.split('\n  verify-arm64:')[1].split('\n  sign-arm64:')[0]
+  assert.match(verifier, /needs: build-arm64/)
+  assert.match(verifier, /unsigned-primary-/)
+  assert.match(verifier, /unsigned-reference-/)
+  assert.match(verifier, /compare-independent-builds\.mjs/)
+  assert.match(source.split('\n  sign-arm64:')[1], /needs: verify-arm64/)
+  assert.doesNotMatch(verifier, /secrets\./)
+})

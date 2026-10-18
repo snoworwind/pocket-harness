@@ -1,5 +1,13 @@
 # build-and-env.md — 构建与验证命令 + 环境流程
 
+## 独立重建阻断（2026-10-18）
+
+云端来源链的 primary/reference 在两台全新 runner 从同一 SHA 构建；无密钥的 verify job 从实际 APK 逐条读取 ZIP/tar，不解压不执行载荷，比较 DEX/资源等原字节及快照 v3 语义摘要。只排除 ZIP/JAR 签名表示与已有 v3 归一化规则；snapshot.sha256 和 Hard manifest 的 fingerprint 必须分别绑定实际 tar。签名 job 只接收已验证 artifact，签名前核对原 APK 字节与源码 SHA，签名后再绑定最终 APK 哈希。任意缺证或差异都阻断，不回落单构建。
+
+本地先对同一已提交 HEAD 分别在两个独立目录运行 `--to apk`，再在主构建续跑时提供 `--reference-artifact <参考目录> --from verify-build`。阶段标签现在真实继承前一阶段，防止续跑漏掉 Kotlin 单测和快照摘要；只完成构建阶段的 APK 是测试签名中间产物。验证入口：`node --test scripts/source-build/compare-independent-builds.test.mjs scripts/source-build/sign-source-artifacts.test.mjs scripts/source-build/normalize-snapshot.test.mjs`，及 Python 发布准备回归。
+
+宿主反证通过不代表实际两轮 APK 已构建成功；首次双构建、独立比较与 ARM64 设备证据仍待取得。此防线处理单构建目录证据同时篡改，不抵抗控制两台 builder 的共同依赖或源码/校验器本身失陷。
+
 ## 独立检出与固定字节（2026-10-18）
 
 本地来源链在原仓解析来源坐标，冻结为 `DSH_SOURCE_REPOSITORY` 传入所有隔离阶段；隔离检出保持无远端。预检只验证 workflow 固定输入及树内合同，不要求配置或合并 upstream。registry 与补丁夹具全树用 `-text` 保留固定哈希字节，不能重封哈希来容忍 Windows 换行转换。维护文档提示在 push base 不可达时扫描当前受跟踪输入，仍保持提示 job。
