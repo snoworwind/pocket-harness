@@ -5,6 +5,10 @@ is deliberately small: it discovers releases, verifies the runtime package befor
 staging it, and exposes status/actions to the mobile settings client. Its version
 is independent of the DSH Mobile app version.
 
+In this repository the bootstrap is currently vendored source only; it is not in
+the APK injector set, and its settings section is not available in the app. Offline
+asset delivery and runtime activation remain unfinished integration work.
+
 Both plugins in this system are **our own experimental internal plugins**:
 
 * They ship in the built-in (hard) plugin directory, but they are **not enabled

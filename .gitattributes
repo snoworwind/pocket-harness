@@ -14,6 +14,17 @@ scripts/patches/registry.json -text
 vendor/bionilux/** -text
 vendor/dsh-linux-runtime/** -text
 scripts/source-build/build-linux-assets.sh text eol=lf
+# Generated cross-language fixtures are compared as exact canonical LF bytes.
+app/src/test/resources/screen-scope/*.json -text
+app/src/test/resources/protocol-v2/*.json -text
+plugins/dsh-android-manage/test/fixtures/protocol-v2/*.json -text
+gradlew text eol=lf
+# Host source is used both as exact provenance input and by source-body regressions.
+dsh-host-web-compat/lib/*.js text eol=lf
+# Bootstrap source bytes are pinned before packaging; host line-ending conversion changes those hashes.
+plugins/dsh-linux-bootstrap/package.json -text
+plugins/dsh-linux-bootstrap/client/*.js -text
+plugins/dsh-linux-bootstrap/src/*.js -text
 # 旧 LFS 底座（base/*.tar.xz）未导入：来源链明确禁止读取，本仓不启用 LFS。
 
 # 第三方通告随 APK 分发，禁用行尾转换（防 autocrlf 幻影 diff 复发）

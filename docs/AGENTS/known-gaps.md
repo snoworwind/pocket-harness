@@ -7,6 +7,10 @@
 
 - 第二轮 376–392 已进入源码修复；以 [修复账本](SECURITY-REMEDIATION-2026-10-17-R2.md) 为当前状态。**未做设备验证**，不构成验收关闭；Linux 发布 API 返回 404，无已批准真实资产，安装失败关闭；完整新来源链和设备证据待补。下方「只登记」段保留发现时历史。
 
+- Linux ARM64 离线资产链的唯一真实构建 run [39093355168](https://github.com/snoworwind/pocket-harness/actions/runs/39093355168) 在许可收集阶段失败；扫描 Cargo 全量 packages 时遇到 Android 目标不构建的 `r-efi`，没有生成或上传资产。当前修复改为 `--filter-platform aarch64-linux-android` 加 resolve root 的 normal/build 依赖遍历，并保留可达包缺许可证时的失败关闭；完整 dispatch 仍待运行。APK 仍未接入这批资产。
+
+- 上一条修复后的真实资产复跑 [39102854750](https://github.com/snoworwind/pocket-harness/actions/runs/39102854750) 再次失败：runner 的 Debian keyring 缺少 Debian 13 Trixie 当前自动签名密钥和 stable release key，严格验签拒绝 InRelease；未产出资产。工作流正在改为按 Debian 官方公钥 SHA-256 与 primary fingerprint 固定密钥并与系统 keyring 合并；需待完整资产复跑成功后关闭此缺口。APK 仍未接入。
+
 - 本轮安全团队审计修复四类边界，见 [SECURITY-AUDIT-2026-10-17.md](SECURITY-AUDIT-2026-10-17.md) 与坑 372–375。**未做设备验证**：WSL ADB 无设备且两个模拟器端口拒绝连接；没有本轮来源 APK/CDP/ADB 自主任务证据。L2/L3 三层仍阻塞验收及发布；普通 web 重定向的手势兼容需设备复核。宿主回归不得代替这项缺口。
 
 - 包管理器别名/清数据漏检与子帧特权下载路由已按源码边界收紧，见 [gotchas.md](gotchas.md) 坑 343、344。代码及服务队列反证完成；**未做设备验证**。尤其是 `shouldOverrideUrlLoading` 的 WebView 子 frame/真实 gesture 事实，须等设备在线后核验，不能用 JVM 判据替代。

@@ -82,3 +82,7 @@ class PackageLinuxAssetsTest(unittest.TestCase):
         with patch.object(module, 'ROOT', self.root):
             with self.assertRaisesRegex(ValueError, 'dedicated build directory'):
                 module.package_assets(self.root / 'outside', 1)
+
+
+if __name__ == '__main__':
+    unittest.main()

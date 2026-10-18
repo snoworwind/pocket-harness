@@ -2,11 +2,11 @@
 
 ## ARM64 Linux 离线资产来源（2026-10-18）
 
-`build-linux-assets.yml` 是只读、无秘密的内部资产链，不构建 APK、不创建 Release；手动 `gh workflow run build-linux-assets.yml --repo snoworwind/pocket-harness --ref main`。Bionilux 与运行时插件源码已导入 `vendor/bionilux` / `vendor/dsh-linux-runtime`，原来源提交见 SOURCE/输入清单，仅保留出处，不在构建时访问该旧仓。`check-linux-sources.mjs --self-test` 校验完整文件集、字节摘要及同体积投毒/额外编译输入负控。
+`build-linux-assets.yml` 是只读、无秘密的内部资产链，不构建 APK、不创建 Release；手动 `gh workflow run build-linux-assets.yml --repo snoworwind/pocket-harness --ref main`。Bionilux 与运行时插件源码已导入 `vendor/bionilux` / `vendor/dsh-linux-runtime`；实际打包的 bootstrap 九个输入也登记于 `linux-source-manifest.json` 的独立来源提交与摘要。`check-linux-sources.mjs --self-test` 校验 vendor 文件及 bootstrap 实际打包文件的字节摘要、记录的本地文档偏差，以及同体积投毒/额外编译输入负控。Debian 13 自动签名密钥与 stable key 从 ftp-master 官方地址下载，分别按 SHA-256 和 primary fingerprint 固定，再与 runner 现有 keyring 合并；禁止因 runner keyring 旧而忽略未知签名。
 
-构建使用固定 Rust、官方 NDK、官方 Node ARM64 SHA-256、Debian 固定快照 InRelease SHA-256 与官方签名；下载参数在 linux-inputs.json。Debian dpkg 包版本/源包版本与 deb 摘要、源码归档随 provenance 提供。归档内保留 Debian copyright、Node LICENSE 及原生依赖许可清单；对外分发前仍需按 GPL 合规详档核对对应源码资产，不能只凭构建成功宣布发行合规。
+构建计划使用固定 Rust、官方 NDK、官方 Node ARM64 SHA-256、Debian 固定快照 InRelease SHA-256 与官方签名；下载参数在 linux-inputs.json。Cargo 许可清单只收集 `aarch64-linux-android` 过滤后，从当前 crate 根沿 normal/build 边可达的包；dev 依赖和其他目标不纳入。Debian dpkg 包版本/源包版本与 deb 摘要、源码归档计划随 provenance 提供。归档内计划保留 Debian copyright、Node LICENSE 及原生依赖许可清单；对外分发前仍需按 GPL 合规详档核对对应源码资产，不能只凭构建成功宣布发行合规。
 
-ARM64 工厂资产含 launcher/preload、Debian rootfs、glibc Node、插件归档与本地版本清单；清单 URL 是稳定的资产身份，后续离线适配不得据此联网。rootfs 由官方签名包组装，在 QEMU 执行 bash/apt 与 Node 版本正控，导出前转换内部相对链接、清空初始日志与机器身份；用户日后在 Linux 中主动 apt 更新是独立行为。路径解析和遗留挂载检查先于清理，构建目录限定 .deploy-tmp/linux-build。L1 源码资产改动未做设备验证，尚未接入 APK，不代表 Linux 设备功能已验收。
+资产构建目前没有成功运行记录：原 run 39093355168 因错误扫描 `r-efi` 失败；修复许可闭包后，run 39102854750 又证明 runner 自带 keyring 不含 Debian 13 Trixie 当前归档签名密钥，严格验签拒绝了 InRelease，仍未产出资产。keyring 已改为下载并校验官方密钥后复跑，必须等完整 workflow 上传成功，才能把“计划产物”改成实测事实。rootfs/QEMU、Node 后续步骤此前未执行。即使资产链通过，仍未接入 APK，也不代表 Linux 设备功能已验收。
 
 ## 独立检出与固定字节（2026-10-18）
 

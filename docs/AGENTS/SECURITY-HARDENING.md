@@ -27,7 +27,7 @@
 
 **发布面（2026-10-17 用户更新决定）**：允许手动来源构建成功后自动创建 ARM64 预发布草稿，禁止自动公开；入口、权限隔离与资产要求以 [RELEASE.md §5](../RELEASE.md#5-来源链预发布草稿2026-10-17-按用户决定) 为准。旧 `release.yml` 和手工发布脚本不恢复，公开前须完成候选设备验收。
 
-**「独立」的含义（避免歧义）**：本仓的构建、验证都不需要 kelai141 名下任何仓库——来源链只取 `deepseek-ai/deepseek-harness`、Termux 官方签名仓、npm registry 与 Android SDK；**跨树镜像纪律已整体退役**（2026-10-15）：`check-patch-mirror.mjs` 只保留 registry↔IMPLS 自洽面，`check-release-gates.mjs` 的「两树同版」断言删除，`scripts/patches/**` 与各子仓副本在本仓内即权威，不再有「先合本仓镜像 PR、再合协调仓权威源 PR」这条要求。手工发布脚本（`upload-release.mjs` / `sync-release-notes.mjs`）与 `.github/workflows/release.yml` 均已删除；新草稿入口仅走来源链；残留的本地/协调仓链脚本（`build-apk-013.ps1` / `build-release.ps1`）禁止作为构建入口；`build-snapshot-013.mjs` 仍由来源链内部调用，不得独立运行它绕过来源校验。仍然保留、且**不构成依赖**的只有归属与出处类内容：`LICENSE` 的版权声明、各 `package.json` 的 `repository` 字段、README 的来源链接，以及 `gotchas.md` / `changelog-archive.md` 的历史条目——这些记录的是事实来源，**不得改写成「我们的」**。
+**「独立」的含义（避免歧义）**：本仓的构建、验证都不需要 kelai141 名下任何仓库——来源链只取 `deepseek-ai/deepseek-harness`、Termux 官方签名仓、npm registry 与 Android SDK。Linux launcher/runtime/bootstrap 源码由本仓按来源提交导入并在树内哈希校验；其上游出处与许可必须保留，构建时不访问旧仓。**跨树镜像纪律已整体退役**（2026-10-15）：`check-patch-mirror.mjs` 只保留 registry↔IMPLS 自洽面，`check-release-gates.mjs` 的「两树同版」断言删除，`scripts/patches/**` 与各子仓副本在本仓内即权威，不再有「先合本仓镜像 PR、再合协调仓权威源 PR」这条要求。手工发布脚本（`upload-release.mjs` / `sync-release-notes.mjs`）与 `.github/workflows/release.yml` 均已删除；新草稿入口仅走来源链；残留的本地/协调仓链脚本（`build-apk-013.ps1` / `build-release.ps1`）禁止作为构建入口；`build-snapshot-013.mjs` 仍由来源链内部调用，不得独立运行它绕过来源校验。保留的许可声明、仓库字段、README 来源说明及历史记录描述事实来源，不得改写成「我们的」。
 
 ## 维护方式
 
