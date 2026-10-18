@@ -1,5 +1,13 @@
 # build-and-env.md — 构建与验证命令 + 环境流程
 
+## ARM64 Linux 离线资产来源（2026-10-18）
+
+`build-linux-assets.yml` 是只读、无秘密的内部资产链，不构建 APK、不创建 Release；手动 `gh workflow run build-linux-assets.yml --repo snoworwind/pocket-harness --ref main`。Bionilux 与运行时插件源码已导入 `vendor/bionilux` / `vendor/dsh-linux-runtime`，原来源提交见 SOURCE/输入清单，仅保留出处，不在构建时访问该旧仓。`check-linux-sources.mjs --self-test` 校验完整文件集、字节摘要及同体积投毒/额外编译输入负控。
+
+构建使用固定 Rust、官方 NDK、官方 Node ARM64 SHA-256、Debian 固定快照 InRelease SHA-256 与官方签名；下载参数在 linux-inputs.json。Debian dpkg 包版本/源包版本与 deb 摘要、源码归档随 provenance 提供。归档内保留 Debian copyright、Node LICENSE 及原生依赖许可清单；对外分发前仍需按 GPL 合规详档核对对应源码资产，不能只凭构建成功宣布发行合规。
+
+ARM64 工厂资产含 launcher/preload、Debian rootfs、glibc Node、插件归档与本地版本清单；清单 URL 是稳定的资产身份，后续离线适配不得据此联网。rootfs 由官方签名包组装，在 QEMU 执行 bash/apt 与 Node 版本正控，导出前转换内部相对链接、清空初始日志与机器身份；用户日后在 Linux 中主动 apt 更新是独立行为。路径解析和遗留挂载检查先于清理，构建目录限定 .deploy-tmp/linux-build。L1 源码资产改动未做设备验证，尚未接入 APK，不代表 Linux 设备功能已验收。
+
 ## 独立检出与固定字节（2026-10-18）
 
 本地来源链在原仓解析来源坐标，冻结为 `DSH_SOURCE_REPOSITORY` 传入所有隔离阶段；隔离检出保持无远端。预检只验证 workflow 固定输入及树内合同，不要求配置或合并 upstream。registry 与补丁夹具全树用 `-text` 保留固定哈希字节，不能重封哈希来容忍 Windows 换行转换。维护文档提示在 push base 不可达时扫描当前受跟踪输入，仍保持提示 job。

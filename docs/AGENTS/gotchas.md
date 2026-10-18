@@ -2592,3 +2592,7 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 
 现象：本地来源链的组件 provenance 找不到 origin；Windows 夹具门禁报多处摘要不符；独立根导入后的维护提示报 bad object。真因：隔离检出有意不带远端，但编排器没有冻结原仓身份；Git autocrlf 改写 registry 和夹具；push.before 可能已不在新历史中。修法：统一传 DSH_SOURCE_REPOSITORY，固定字节输入全树 -text，维护输入检测对缺失 base 扫描当前树；预检移除 upstream/main 合并前提。反证：无冻结身份的隔离仓拒绝解析；缺失 base 仍触发维护检查；有效无关 diff 不触发；预检无效 URL/版本/摘要均拒绝。Windows 宿主用例 2 通过、13 个 Linux 专属跳过，夹具恢复 Git 字节后通过；L1 构建链修改未做设备验证，Linux 用例须在 CI/Linux 执行。
 补充复验：WSL Linux / Node 24 的隔离构建与维护输入 15 项全过，0 跳过；保留缺失身份和缺失历史负控。
+
+399. **离线 Linux 工厂资产必须有独立来源链，不能把私有 Release 当匿名下载渠道（2026-10-18）**
+
+现象：旧 Linux 发布 API 无资产，空批准 pin 永远拒绝；私有仓的 Release 也不能供手机匿名取件。真因：运行时资产分发与私有项目身份没有收口，单改 URL 不能恢复功能。修法按用户选择先建立只读 ARM64 离线资产来源链：原生 launcher/preload 和插件使用本仓固定原始 Git 字节，Debian/Node 使用真实官方签名/摘要输入，产出本地清单与 provenance，后续随 APK 内置。源码完整集合、同体积投毒和额外编译输入负控通过，管理器 15 项与打包 3 项通过；官方 Debian InRelease/Node 归档摘要已在线核实。当前改动只构建内部资产，未接入产品运行时；真实 ARM64 资产构建由只读 workflow 验证，未做设备验证，不能把夹具当 Linux 可用性证明。另在导入时直接读原仓 Git blob，避免 Windows autocrlf 改写 JavaScript 原始字节。

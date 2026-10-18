@@ -38,3 +38,7 @@ out/
 
 # gh CLI 在 CWD 下落的设备状态（我这边只读调用产生，非仓库内容）
 .local/
+
+# Vendored runtime JavaScript is source, not a generated plugin build directory.
+!vendor/dsh-linux-runtime/lib/
+!vendor/dsh-linux-runtime/lib/*.js

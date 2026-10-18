@@ -1,0 +1,5 @@
+{
+  "repository": "https://github.com/kelai141/dsh-bionilux",
+  "commit": "4865754bd9e3e030e62a60793b418a6a0f643b14",
+  "role": "Vendored Bionilux launcher and glibc preload source; no runtime checkout dependency"
+}

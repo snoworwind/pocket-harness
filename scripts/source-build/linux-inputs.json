@@ -1,0 +1,11 @@
+{
+  "rust": "1.90.0",
+  "node": "24.22.0",
+  "nodeSha256": "fef00bb4d36e1c50104a9775a10359beee98f162b4104dd12472c75065c6a143",
+  "debianSnapshot": "https://snapshot.debian.org/archive/debian/20261016T000000Z",
+  "debianInReleaseSha256": "0584fba32e13e0ab8285fb16c27adea1ec03a73669c18702821094fd6ca86675",
+  "ndk": "r30",
+  "ndkSha1": "5107f898313790e449e87eee2183d9a20602dee9",
+  "runtimeVersion": "0.5.0",
+  "minimumAppVersion": "0.14.0"
+}

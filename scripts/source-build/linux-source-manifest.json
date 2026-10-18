@@ -1,0 +1,30 @@
+{
+  "sourceRepository": "https://github.com/kelai141/dsh-bionilux",
+  "sourceCommit": "4865754bd9e3e030e62a60793b418a6a0f643b14",
+  "files": {
+    "vendor/bionilux/Cargo.lock": "9c29a38fdf9b777e953424ce3e4e4adff4e8293ae82435ea43c693238fc730c7",
+    "vendor/bionilux/Cargo.toml": "ee1fd047a1459a873518cdab392ee393342c8dec90c7cf25a20dc28323d0f762",
+    "vendor/bionilux/LICENSE": "e9f4502fb52418dcd3e320d8d15e1bd7b43094ec3f2fdd5c33dd88f5a2ba85d9",
+    "vendor/bionilux/SOURCE.json": "95299d144f940dbcbe66c994276c2e796d4fe3e1055ee29e7844e63bc7ad7365",
+    "vendor/bionilux/scripts/prepare-rootfs.sh": "3de09edf3aeeb31cfdf7cba5cb2de4fc91758bc5ea37b19294b64cb1573c92f3",
+    "vendor/bionilux/src/analyzer/elf.rs": "d040eb75e64d3d10a892c7730afd980b73057bc1bcdc1fb6edb37decf0e67562",
+    "vendor/bionilux/src/analyzer/mod.rs": "fb46815d79f679a9cb4760f954ce86948fb0225f7e53133ac5a7ec090582acfe",
+    "vendor/bionilux/src/debug.rs": "67aa794fe894a5275c982f01e235deb0fd4cd657f89701f660980d0b8ea6652e",
+    "vendor/bionilux/src/launcher/config.rs": "9eb9451d020a44281547e08b60e1f223814eeb15e148fdbf4bf7477d00066184",
+    "vendor/bionilux/src/launcher/env.rs": "cae019e9250f4073145f2f99d1d25e7c981abdd315a2123ecd5e3478665aea27",
+    "vendor/bionilux/src/launcher/exec.rs": "0515bbb157ba486342bb9bb5d76533fa08e3b8164dc348a0091a769b9189cf01",
+    "vendor/bionilux/src/launcher/mod.rs": "b466cd9e6a338dfb17a494fea79d56280c1efc870bcf26f759f8d4752a28f71f",
+    "vendor/bionilux/src/launcher/resolve.rs": "3728160952c6e4fd566aba8fe0167db7311247c59d8f70dac1c9efc01c560e55",
+    "vendor/bionilux/src/launcher/rootfs.rs": "bac13a04957bedd3925a8c5c330f1cf22881b386af96e15cc37fd7da1ceeef7e",
+    "vendor/bionilux/src/main.rs": "57f1483a9a255719af882f6e21b380e23957f48864021f2342648bd13af3bdf2",
+    "vendor/bionilux/src/preload/hooks.c": "79fd840efe3d6b36ba24c845e3a49e34918209a01f48e3a70a08986dca41ec3e",
+    "vendor/dsh-linux-runtime/LICENSE": "e9f4502fb52418dcd3e320d8d15e1bd7b43094ec3f2fdd5c33dd88f5a2ba85d9",
+    "vendor/dsh-linux-runtime/README.md": "91a18de24c9ceb4f5aba6ce7b28d0e769ae26e1178d529d14e139b437214b187",
+    "vendor/dsh-linux-runtime/lib/index.js": "4cbe776c5079e445e47cd3949f907d304659573a3d448b629a1c1de0630109bc",
+    "vendor/dsh-linux-runtime/modules/asset-installer.js": "036774735e016d605cecf91093384371903129ef15b17c7dd8927f9acdc8d7e1",
+    "vendor/dsh-linux-runtime/modules/manager.js": "e7da654488bc9b26d500b2316e16c145a7239d0e8f052621bf3fc220ccad86d3",
+    "vendor/dsh-linux-runtime/modules/manifest.js": "1722dd47005c62fad20ec22ddb710bbff72f4a1bc5fdbee7199bb73e31185971",
+    "vendor/dsh-linux-runtime/package.json": "1d65abf96889a13f9bfce9266f44839c1957ffc5bc6691fa047cb6061041c476",
+    "vendor/dsh-linux-runtime/test/manager.test.mjs": "4549fefea91b30dfceefab3a2a0418270da4f5ce7c5ecb9b4264081ec2607c02"
+  }
+}

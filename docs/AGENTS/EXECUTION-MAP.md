@@ -1,5 +1,7 @@
 # EXECUTION-MAP.md — 执行地图（查点表 / 运行顺序 / 耦合 / 流程图）
 
+K11 离线 Linux 资产：`build-linux-assets.yml` → `check-linux-sources.mjs`（完整源码集合与摘要）→ `build-linux-assets.sh`（受限目录、固定输入、ARM64 编译与 QEMU 正控）→ `package-linux-assets.py`（插件/Node 归档及本地清单）→ 私有 Actions artifact。该资产链无 APK/Release 写权限；导入源码目前不在 profile 注入集，运行时接线须另行携带设备风险档证据。
+
 独立检出补充（K11 构建链）：本地编排器先从原仓冻结 `DSH_SOURCE_REPOSITORY`，所有隔离阶段使用相同身份，无须为隔离目录添加远端。`scripts/source-build/local-source-workspace.test.mjs` 覆盖遗漏身份的失败与显式冻结的成功；`scripts/maintenance-inputs.mjs` 在旧 push base 不可达时扫描当前树，`scripts/tests/maintenance-inputs.test.mjs` 覆盖缺失/有效 base 和无关变更。
 
 第二轮查点增量：K10 通知动作改为 `NotifyConfirmActivity` → 系统凭据认证 → 一次性许可 → `NotifyActionReceiver`，不再由通知 PendingIntent 直接应答；K04/特权入口的敏感桥经 `MainActivity.confirmPrivilegedChange`，用户授权状态不从 prefs 恢复。EngineTransport.admit 先完成有界头部认证再创建后端；来源快照门禁先从源码包重建参考树，依次重放补丁、chrome87 转换、shebang 转换，再核对每个第一方包及 pnpm 副本的实际载荷。来源、证据和未验边界统一见 [修复账本](SECURITY-REMEDIATION-2026-10-17-R2.md)。
