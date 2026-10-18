@@ -2669,3 +2669,7 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 418. **插件 scope 退出须回收自建 manager，但不能让保留 handle 的卸载变成空操作（2026-10-18）**
 
 现象：runtime scope 注销工具后，已运行命令仍可跨越插件替换；简单 dispose 又会让 bootstrap 保存的旧 handle 在 uninstall 时直接返回、残留数据。真因：scope 与 manager 生命周期未绑定，disposed 同时拦了本应允许的清理。修法：scope 异步等待自建 manager.dispose，外部 manager 维持宿主所有权；disposed 继续拒绝执行/安装，但允许幂等卸载。反证覆盖持有命令的 scope 退出、外部 manager 不被误回收、旧 handle 真卸载，以及生产 Cordis 联测中的回收完成；来源 lib/module/test pin 同步。输入变化后取消旧来源 run39112321118，不复用其构建证据；未做设备验证。
+
+419. **bootstrap package-lock 也是逐字节来源输入，必须禁止 autocrlf（2026-10-18）**
+
+现象：分支切换后 package-lock 变成 CRLF，严格来源门禁报摘要不符，而 Git 语义 diff 为空。真因：既有 -text 只登记了 package.json、mjs、src 和 README，漏掉同样被 source manifest 哈希覆盖的 lock。修法：对 bootstrap/package-lock.json 也设 -text；不改变 Git blob、lock 解析或批准摘要。实际临时 Git autocrlf checkout 正控保持摘要，删除该属性的负控必改变摘要且仅换行不同；来源 self-test 在 POSIX 原样通过。
