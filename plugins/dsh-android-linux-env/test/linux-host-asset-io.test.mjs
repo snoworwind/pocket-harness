@@ -413,7 +413,7 @@ test('the config neither enables nor installs anything on its own', async () => 
   try {
     const config = createLinuxBootstrapConfig({ filesDir, appVersion: '0.15.0' })
     assert.equal(config.dataDir, linuxEnvironmentRoot(filesDir))
-    assert.equal(String(config.stagingDirectory), join(linuxEnvironmentRoot(filesDir), STAGING_DIR, 'runtime-plugin'))
+    assert.equal(String(config.stagingDirectory), join(linuxEnvironmentRoot(filesDir), 'plugins', 'linux-runtime'))
     // bootstrap 的包槽位**不得**是宿主暂存目录，否则它会删掉宿主保留的归档与解包树。
     assert.notEqual(String(config.stagingDirectory), linuxEnvironmentRoot(filesDir) + '/' + STAGING_DIR)
     assert.equal(Object.keys(config).includes('enable'), false)

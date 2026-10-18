@@ -2438,3 +2438,5 @@ app/src/main/java/com/dsharnessmobile/shell/LogSanitizer.kt
 Linux runtime gate：共享计数归零即唤醒管理等待者；pendingExclusive 先于等待登记，后来的 execute 不得越过排队 install/uninstall/dispose。反例位于 vendor/dsh-linux-runtime/test/manager.test.mjs。
 
 Linux runtime 安装提交点为 _writeActive 成功返回；此后旧实例清理不进入删除新实例的回滚域，失败通过 cleanupWarning 返回。change 观察者按 rawListeners 独立调用并保留 once 语义。
+
+离线 Linux 安装链：createLinuxBootstrapConfig 的包槽为 linux-environment/plugins/linux-runtime，位于真实 pluginHost 根内；runtimePluginConfig.downloadAsset 把已验证宿主归档复制到 manager 指定的新文件，extractArchive 转发 kind。plugin 包无链接；node/backend/rootfs 延迟落链接，根成员只接受一次零大小目录。生产跨层回归：plugins/dsh-android-linux-env/test/offline-install-integration.test.mjs（原生执行器夹具，不代替 ARM64 设备）。
