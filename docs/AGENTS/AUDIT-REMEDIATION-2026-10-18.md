@@ -33,4 +33,4 @@
 
 - 最终 main HEAD `d4aa9fcc50ea2b4fc0ab249929b5b3d3bb695613` 的来源双构建 run [39113529859](https://github.com/snoworwind/pocket-harness/actions/runs/39113529859) 未通过：两个 replica 都在 APK 构建的 `check-engine-overlay` 适配器处失败，日志先显示 `Free space left: 83 MB`，随后 `check-dsh-source-snapshot.mjs` 在复制解包后的 engine 到 `/tmp/.../reference` 时 `ENOSPC`。这不是业务判据失败，也不是源码修复回退；该 run 不能作为最终候选证据。
 - 新增 `scripts/source-build/reclaim-build-disk.mjs`：在快照封包和 post-snapshot 检查后删除不再被后续步骤读取的 source-only 树，保留 `snapshot-013/.../stage`、`engine-overlay`、`source-build` 报告和 `linux-build/provenance`；每目标校验真实路径位于 `.deploy-tmp`，拒绝 symlink、挂载中的 rootfs 和特殊文件，清理后低于 4 GiB 即失败。`cloud-workflow.test.mjs` 增加调用位置回归和“删掉调用必须判红”的负控。
-- 本机证据：WSL Linux 下 `reclaim-build-disk.mjs --self-test` 通过（正控、symlink escape、`--check-only`、空间下限四项）；`node --test scripts/source-build/*.test.mjs` 为 **120/120，零失败、零跳过**（`source-tests-current.log`）。Linux 全量来源测试已取得；新的 main 双构建仍待运行，不能提前记为 PASS。设备侧仍未验收。
+- 本机证据：WSL Linux 下 `reclaim-build-disk.mjs --self-test` 通过（正控、symlink escape、`--check-only`、空间下限四项）；`node --test scripts/source-build/*.test.mjs` 为 **120/120，零失败、零跳过**（`source-tests-final.log`）。Linux 全量来源测试已取得；新的 main 双构建仍待运行，不能提前记为 PASS。设备侧仍未验收。
