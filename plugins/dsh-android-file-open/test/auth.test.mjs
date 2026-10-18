@@ -13,6 +13,8 @@ import assert from 'node:assert/strict'
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, readdirSync, symlinkSync, realpathSync, rmSync, renameSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { Writable } from 'node:stream'
+import { once } from 'node:events'
 
 const TOKEN = 'test-token-0123456789'
 process.env.DSH_CONTROL_TOKEN_TEST = '1'
@@ -128,37 +130,157 @@ async function boot(ctx) {
   await new Promise((resolve) => setTimeout(resolve, 40))
 }
 
-function fakeReq({ method = 'POST', headers = {}, body, url = '' } = {}) {
+function fakeReq({ method = 'POST', headers = {}, body, url = '', chunks } = {}) {
   const handlers = {}
-  return {
+  const req = {
     method,
     headers,
     url,
     on(event, cb) { (handlers[event] ??= []).push(cb) },
-    emit() {
-      const payload = Buffer.from(JSON.stringify(body ?? {}))
+    /** A06：按调用方给定边界逐块投递 data 事件（真实 TCP 分块的最小替身）。 */
+    push(chunk) {
+      const payload = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)
       for (const cb of handlers.data ?? []) cb(payload)
+    },
+    finish() {
       for (const cb of handlers.end ?? []) cb()
+    },
+    emit() {
+      const payloads = chunks ?? [Buffer.from(JSON.stringify(body ?? {}))]
+      for (const payload of payloads) req.push(payload)
+      req.finish()
     },
     destroy() {},
   }
+  return req
 }
 
-async function call(ctx, path, { method = 'POST', headers = {}, body, url = path, onHeaders } = {}) {
-  const route = ctx.routes.get(path)
-  assert.ok(route, 'route must be registered: ' + path)
-  const req = fakeReq({ method, headers, body, url })
+/** 通用假响应：保留既有的 code/body/headers 断言面，并实现 handler 需要的 close/error/drain 事件。 */
+function makeRes(onHeaders) {
   const chunks = []
+  const listeners = new Map()
+  const add = (event, cb) => {
+    const list = listeners.get(event) ?? []
+    list.push(cb)
+    listeners.set(event, list)
+  }
+  const remove = (event, cb) => {
+    const list = listeners.get(event)
+    if (list === undefined) return
+    const i = list.indexOf(cb)
+    if (i >= 0) list.splice(i, 1)
+  }
+  const emit = (event, ...args) => {
+    for (const cb of [...(listeners.get(event) ?? [])]) cb(...args)
+  }
   const res = {
-    code: 0, body: undefined, headers: {},
+    code: 0, body: undefined, headers: {}, destroyed: false,
     writeHead(code, h) { this.code = code; this.headers = h ?? {}; onHeaders?.(code) },
     write(chunk) { chunks.push(Buffer.from(chunk)); return true },
-    end(b) { this.body = b ?? (chunks.length === 0 ? '' : Buffer.concat(chunks)) },
+    end(b) { this.body = b ?? (chunks.length === 0 ? '' : Buffer.concat(chunks)); emit('finish') },
+    on(event, cb) { add(event, cb); return this },
+    once(event, cb) {
+      const wrapper = (...args) => { remove(event, wrapper); cb(...args) }
+      add(event, wrapper)
+      return this
+    },
+    off(event, cb) { remove(event, cb); return this },
+    emit(event, ...args) { emit(event, ...args); return true },
   }
+  return res
+}
+
+async function call(ctx, path, { method = 'POST', headers = {}, body, url = path, onHeaders, chunks, response } = {}) {
+  const route = ctx.routes.get(path)
+  assert.ok(route, 'route must be registered: ' + path)
+  const req = fakeReq({ method, headers, body, url, chunks })
+  const res = response ?? makeRes(onHeaders)
   const done = route.handler(req, res)
-  if (body !== undefined) req.emit()
+  if (body !== undefined || chunks !== undefined) req.emit()
   await done
   return res
+}
+
+/** 找到多字节字符在 JSON Buffer 内的起点，返回其 UTF-8 序列内部的切点（切在 1 字节之后）。 */
+function splitInside(buffer, char) {
+  const at = buffer.indexOf(Buffer.from(char))
+  assert.notEqual(at, -1, '夹具必须包含多字节字符：' + char)
+  return at + 1
+}
+
+/**
+ * A07 慢消费者替身：16 KiB 高水位 + 延迟回调，write 返回 false 后只有真正排空才会 drain。
+ * peakBuffered 记录插件交给响应层的最大在途字节数；旧实现忽略 false 时会逼近整个文件。
+ */
+function slowResponse({ highWaterMark = 16 * 1024, delayMs = 2 } = {}) {
+  const res = new Writable({
+    highWaterMark,
+    write(_chunk, _encoding, callback) { setTimeout(callback, delayMs) },
+  })
+  res.code = 0
+  res.headers = {}
+  res.received = 0
+  res.peakBuffered = 0
+  res.writeHead = function (code, headers) { this.code = code; this.headers = headers ?? {} }
+  const write = Writable.prototype.write
+  res.write = function (chunk, encoding, callback) {
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)
+    res.received += buffer.length
+    const accepted = write.call(this, buffer, encoding, callback)
+    res.peakBuffered = Math.max(res.peakBuffered, this.writableLength)
+    return accepted
+  }
+  return res
+}
+
+/** 走真实队列：投递 → 列出 → claim，返回 content 路由的短时 ticket。 */
+async function deliverAndClaim(ctx, probe, name) {
+  const delivered = await call(ctx, ROUTES.list, { headers: legit(), body: { path: probe } })
+  assert.equal(delivered.code, 200)
+  const listed = JSON.parse((await call(ctx, ROUTES.list, { method: 'GET', headers: legit() })).body)
+  const item = name === undefined ? listed.items[0] : listed.items.find((candidate) => candidate.name === name)
+  assert.ok(item, '队列中必须有待认领项')
+  const claim = await call(ctx, ROUTES.claim, {
+    headers: legit(), body: { entryId: item.entryId, sessionId: 'session-abcdef12-3456' },
+  })
+  assert.equal(claim.code, 200)
+  return JSON.parse(claim.body).ticket
+}
+
+/** 进程 fd 目录：Linux/Android 用 /proc/self/fd，macOS 用 /dev/fd；都不可用时返回 undefined。 */
+function fdDirectory() {
+  if (existsSync('/proc/self/fd')) return '/proc/self/fd'
+  if (existsSync('/dev/fd')) return '/dev/fd'
+  return undefined
+}
+
+function fdCount() {
+  const dir = fdDirectory()
+  return dir === undefined ? undefined : readdirSync(dir).length
+}
+
+/** 等待 fd 数回到基线（容忍同文件其它异步操作造成的短暂抖动），超时即断言失败。 */
+async function expectFdBaseline(baseline, message) {
+  if (baseline === undefined) return
+  const deadline = Date.now() + 1000
+  while (fdCount() !== baseline && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 10))
+  }
+  assert.equal(fdCount(), baseline, message)
+}
+
+/** 用真实 OS 状态断言某个已记录 fd 已关闭：fstat 应返回 EBADF。 */
+function assertFdClosed(fd, message) {
+  assert.throws(() => fs.fstatSync(fd), (error) => error.code === 'EBADF', message)
+}
+
+/** 给可能挂起的 handler 一个失败窗口，避免回归时整个测试进程一直等下去。 */
+function withTimeout(promise, ms, message) {
+  let timer
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(message)), ms)
+  })
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer))
 }
 
 const legit = () => ({ host: HOST, [CONTROL_TOKEN_HEADER]: TOKEN })
@@ -286,6 +408,306 @@ test('content rejects an outside descriptor after parent replacement at open', {
     fs.openSync = originalOpen
     syncBuiltinESMExports()
     rmSync(foreign, { recursive: true, force: true })
+  }
+})
+
+// A06：TCP chunk 不保证 UTF-8 字符完整。以下用例把「中」的三字节拆到两个 data 事件，
+// 逐块 toString 的旧实现会把路径解成替换符，入队/认领/完成都会偏离原始中文输入。
+test('A06：file-incoming 分块投递时「中」跨 data 事件不损坏入队路径', async () => {
+  const ws = freshWorkspace()
+  const probe = join(ws, '中文.txt')
+  writeFileSync(probe, 'CJK')
+  const { ctx } = makeCtx()
+  await boot(ctx)
+  const body = Buffer.from(JSON.stringify({ path: probe }))
+  const split = splitInside(body, '中')
+  const delivered = await call(ctx, ROUTES.list, {
+    method: 'POST',
+    headers: legit(),
+    chunks: [body.subarray(0, split), body.subarray(split)],
+  })
+  assert.equal(delivered.code, 200)
+  assert.equal(JSON.parse(delivered.body).ok, true, '合法中文路径不得因跨块解码被判为不存在')
+  const queueFiles = readdirSync(join(ws, '.sessions')).filter((f) => f.endsWith('.json'))
+  assert.equal(queueFiles.length, 1)
+  const record = JSON.parse(readFileSync(join(ws, '.sessions', queueFiles[0]), 'utf8'))
+  assert.equal(record.path, realpathSync(probe), '入队路径必须与原始中文路径完全一致')
+  assert.equal(record.name, '中文.txt')
+  assert.equal(record.path.includes('\uFFFD'), false, '解码结果不得含替换符')
+  const listed = JSON.parse((await call(ctx, ROUTES.list, { method: 'GET', headers: legit() })).body)
+  assert.equal(listed.items[0].name, '中文.txt')
+})
+
+test('A06：claim 分块解码不损坏中文 entryId，认领仍能命中队列记录', async () => {
+  const ws = freshWorkspace()
+  const probe = join(ws, 'claim.txt')
+  writeFileSync(probe, 'claim')
+  const sessionsDir = join(ws, '.sessions')
+  mkdirSync(sessionsDir, { recursive: true })
+  // 队列 id 由持久层写入，不保证只含 ASCII；中文 id 能让旧实现必然 404。
+  writeFileSync(join(sessionsDir, 'cjk.json'), JSON.stringify({
+    id: '中文条目', ts: new Date().toISOString(), path: probe, forcedNewSession: true,
+    state: 'received', name: 'claim.txt', bytes: 5,
+  }))
+  const { ctx } = makeCtx()
+  await boot(ctx)
+  const body = Buffer.from(JSON.stringify({ entryId: '中文条目', sessionId: 'session-abcdef12-3456' }))
+  const split = splitInside(body, '中')
+  const claimed = await call(ctx, ROUTES.claim, {
+    method: 'POST',
+    headers: legit(),
+    chunks: [body.subarray(0, split), body.subarray(split)],
+  })
+  assert.equal(claimed.code, 200, '分块解码损坏 id 会退化为 404')
+  const payload = JSON.parse(claimed.body)
+  assert.equal(payload.entryId, '中文条目')
+  assert.equal(typeof payload.ticket, 'string')
+  assert.equal(existsSync(join(sessionsDir, 'cjk.json')), false, '认领成功必须消费队列记录')
+})
+
+test('A06：complete 分块解码后仍能完成草稿（多字节字符跨块）', async () => {
+  const ws = freshWorkspace()
+  const probe = join(ws, 'complete.txt')
+  writeFileSync(probe, 'x')
+  const { ctx } = makeCtx()
+  await boot(ctx)
+  const ticket = await deliverAndClaim(ctx, probe)
+  const body = Buffer.from(JSON.stringify({ ticket, outcome: 'draft-ready', note: '中文备注' }))
+  const split = splitInside(body, '中')
+  const completed = await call(ctx, ROUTES.complete, {
+    headers: legit(),
+    chunks: [body.subarray(0, split), body.subarray(split)],
+  })
+  assert.equal(completed.code, 200)
+  assert.equal(JSON.parse(completed.body).state, 'draft-ready')
+})
+
+test('A06：三个 POST handler 的 body 上限按 UTF-8 字节计（字符数未超也会 413）', async () => {
+  const ws = freshWorkspace()
+  const { ctx } = makeCtx()
+  await boot(ctx)
+  // 每例构造「字节数超限、字符数远低于上限」的 body：只按字符累计的旧实现不会 413。
+  // 4096 字节上限即审计给出的 4096→4097 反例；16 KiB 与 2048 保持各自现有语义。
+  const cases = [
+    { route: ROUTES.list, limit: 16 * 1024, error: 'body too large' },
+    { route: ROUTES.claim, limit: 4096, error: 'claim body too large' },
+    { route: ROUTES.complete, limit: 2048, error: 'completion body too large' },
+  ]
+  for (const item of cases) {
+    const bytes = item.limit + 1
+    const multibyte = Math.floor(bytes / 3)
+    const padding = bytes - multibyte * 3
+    const body = Buffer.concat([Buffer.from('中'.repeat(multibyte)), Buffer.from('a'.repeat(padding))])
+    assert.equal(body.length, bytes)
+    assert.ok(multibyte + padding <= item.limit, '夹具的字符数不得超过上限（否则负例不能区分字符/字节计数）')
+    const res = await call(ctx, item.route, {
+      method: 'POST',
+      headers: legit(),
+      chunks: [body.subarray(0, 1000), body.subarray(1000)],
+    })
+    assert.equal(res.code, 413, item.route + ' 必须在 ' + bytes + ' 字节时拒绝')
+    assert.equal(JSON.parse(res.body).error, item.error)
+  }
+})
+
+test('A07：慢消费者下 content 正确处理背压，峰值缓冲远小于文件', async () => {
+  const ws = freshWorkspace()
+  const FILE_BYTES = 4 * 1024 * 1024
+  const probe = join(ws, 'slow.bin')
+  writeFileSync(probe, Buffer.alloc(FILE_BYTES, 0x61))
+  const { ctx } = makeCtx()
+  await boot(ctx)
+  const ticket = await deliverAndClaim(ctx, probe)
+  const res = slowResponse({ highWaterMark: 16 * 1024, delayMs: 2 })
+  const finished = once(res, 'finish')
+  const done = call(ctx, ROUTES.content, {
+    method: 'GET',
+    headers: legit(),
+    response: res,
+    url: ROUTES.content + '?ticket=' + encodeURIComponent(ticket),
+  })
+  await done
+  await finished
+  assert.equal(res.received, FILE_BYTES, '慢消费者最终必须收到完整文件')
+  assert.ok(res.peakBuffered < FILE_BYTES / 4, '峰值在途字节必须远小于文件（旧实现会整文件入缓冲）')
+  assert.ok(
+    res.peakBuffered <= 256 * 1024,
+    '峰值应被 64 KiB 读块与 drain 限制在数百 KiB 内，实际=' + res.peakBuffered,
+  )
+})
+
+test('A07：客户端断连会销毁源读流、停止读取并关闭 fd', async () => {
+  const ws = freshWorkspace()
+  const FILE_BYTES = 4 * 1024 * 1024
+  const probe = join(ws, 'disconnect.bin')
+  writeFileSync(probe, Buffer.alloc(FILE_BYTES, 0x62))
+  const { ctx } = makeCtx()
+  await boot(ctx)
+  const ticket = await deliverAndClaim(ctx, probe)
+  // content handler 在模块加载时导入 createReadStream/openSync；syncBuiltinESMExports 让替身生效。
+  const originalCreateReadStream = fs.createReadStream
+  const originalOpenSync = fs.openSync
+  const streams = []
+  const opened = []
+  fs.createReadStream = function (...args) {
+    const stream = originalCreateReadStream.apply(this, args)
+    streams.push(stream)
+    return stream
+  }
+  fs.openSync = function (...args) {
+    const fd = originalOpenSync.apply(this, args)
+    opened.push(fd)
+    return fd
+  }
+  syncBuiltinESMExports()
+  try {
+    const baseline = fdCount()
+    const res = slowResponse({ delayMs: 25 })
+    const done = call(ctx, ROUTES.content, {
+      method: 'GET',
+      headers: legit(),
+      response: res,
+      url: ROUTES.content + '?ticket=' + encodeURIComponent(ticket),
+    })
+    const started = Date.now()
+    while (res.received === 0) {
+      if (Date.now() - started > 2000) throw new Error('未在限定时间内收到首个数据块')
+      await new Promise((resolve) => setTimeout(resolve, 5))
+    }
+    res.destroy()
+    await withTimeout(done, 5000, '断连后 content handler 必须收尾')
+    assert.equal(opened.length, 1, 'content 必须只打开一个源 fd')
+    // close 事件后由流按 autoClose 关闭描述符；fstat 与 fd 计数都直接看 OS 状态，不做推断。
+    assertFdClosed(opened[0], '断连后源 fd 必须已关闭')
+    await expectFdBaseline(baseline, '断连后 fd 数必须回到基线')
+    assert.equal(streams.length, 1, 'content 必须从工作区打开一个源读流')
+    const stream = streams[0]
+    assert.equal(stream.destroyed, true, '客户端断连后必须销毁源读流')
+    const readAtClose = stream.bytesRead
+    assert.ok(readAtClose < FILE_BYTES, '断连时不应已读完整文件')
+    await new Promise((resolve) => setTimeout(resolve, 80))
+    assert.equal(stream.bytesRead, readAtClose, '销毁后不得继续读取源文件')
+  } finally {
+    fs.createReadStream = originalCreateReadStream
+    fs.openSync = originalOpenSync
+    syncBuiltinESMExports()
+  }
+})
+
+test('A07：自然结束时源 fd 关闭且 fd 数回到基线', async () => {
+  const ws = freshWorkspace()
+  const FILE_BYTES = 512 * 1024
+  const probe = join(ws, 'natural-end.bin')
+  writeFileSync(probe, Buffer.alloc(FILE_BYTES, 0x63))
+  const { ctx } = makeCtx()
+  await boot(ctx)
+  const ticket = await deliverAndClaim(ctx, probe)
+  const originalOpenSync = fs.openSync
+  const opened = []
+  fs.openSync = function (...args) {
+    const fd = originalOpenSync.apply(this, args)
+    opened.push(fd)
+    return fd
+  }
+  syncBuiltinESMExports()
+  try {
+    const baseline = fdCount()
+    const content = await withTimeout(call(ctx, ROUTES.content, {
+      method: 'GET',
+      headers: legit(),
+      url: ROUTES.content + '?ticket=' + encodeURIComponent(ticket),
+    }), 5000, '自然结束时 content handler 必须收尾')
+    assert.equal(content.code, 200)
+    assert.equal(Buffer.from(content.body).length, FILE_BYTES, '自然结束必须完整发送文件')
+    assert.equal(opened.length, 1, 'content 必须只打开一个源 fd')
+    assertFdClosed(opened[0], '自然结束后源 fd 必须已关闭')
+    await expectFdBaseline(baseline, '自然结束后 fd 数必须回到基线')
+  } finally {
+    fs.openSync = originalOpenSync
+    syncBuiltinESMExports()
+  }
+})
+
+test('A07：源流读错误后仍关闭 fd 并结束响应', async () => {
+  const ws = freshWorkspace()
+  const probe = join(ws, 'read-error.bin')
+  writeFileSync(probe, Buffer.alloc(1024 * 1024, 0x64))
+  const { ctx } = makeCtx()
+  await boot(ctx)
+  const ticket = await deliverAndClaim(ctx, probe)
+  const originalCreateReadStream = fs.createReadStream
+  const originalOpenSync = fs.openSync
+  const streams = []
+  const opened = []
+  fs.createReadStream = function (...args) {
+    const stream = originalCreateReadStream.apply(this, args)
+    streams.push(stream)
+    // 下一 tick 注入读错误：此时 handler 已挂好 error/close 监听。
+    process.nextTick(() => {
+      if (!stream.destroyed) stream.destroy(new Error('injected read error'))
+    })
+    return stream
+  }
+  fs.openSync = function (...args) {
+    const fd = originalOpenSync.apply(this, args)
+    opened.push(fd)
+    return fd
+  }
+  syncBuiltinESMExports()
+  try {
+    const baseline = fdCount()
+    const content = await withTimeout(call(ctx, ROUTES.content, {
+      method: 'GET',
+      headers: legit(),
+      url: ROUTES.content + '?ticket=' + encodeURIComponent(ticket),
+    }), 5000, '读错误后 content handler 必须收尾')
+    assert.equal(content.code, 200, '已发出的 200 头不因后续读错误改写')
+    assert.equal(streams.length, 1)
+    assert.equal(streams[0].destroyed, true, '读错误必须销毁源流')
+    assert.equal(opened.length, 1)
+    assertFdClosed(opened[0], '读错误后源 fd 必须已关闭')
+    await expectFdBaseline(baseline, '读错误后 fd 数必须回到基线')
+  } finally {
+    fs.createReadStream = originalCreateReadStream
+    fs.openSync = originalOpenSync
+    syncBuiltinESMExports()
+  }
+})
+
+test('A07：createReadStream 抛错（fd 未移交）时 finally 仍关闭 fd', async () => {
+  const ws = freshWorkspace()
+  const probe = join(ws, 'create-failure.bin')
+  writeFileSync(probe, Buffer.alloc(64 * 1024, 0x65))
+  const { ctx } = makeCtx()
+  await boot(ctx)
+  const ticket = await deliverAndClaim(ctx, probe)
+  const originalCreateReadStream = fs.createReadStream
+  const originalOpenSync = fs.openSync
+  const opened = []
+  fs.createReadStream = function () { throw new Error('injected create failure') }
+  fs.openSync = function (...args) {
+    const fd = originalOpenSync.apply(this, args)
+    opened.push(fd)
+    return fd
+  }
+  syncBuiltinESMExports()
+  try {
+    const baseline = fdCount()
+    await assert.rejects(
+      withTimeout(call(ctx, ROUTES.content, {
+        method: 'GET',
+        headers: legit(),
+        url: ROUTES.content + '?ticket=' + encodeURIComponent(ticket),
+      }), 5000, 'createReadStream 抛错后 handler 必须立即拒绝'),
+      /injected create failure/,
+    )
+    assert.equal(opened.length, 1, 'admission 已打开源 fd')
+    assertFdClosed(opened[0], 'fd 未移交时失败必须由 finally 关闭')
+    await expectFdBaseline(baseline, 'fd 未移交时失败后 fd 数必须回到基线')
+  } finally {
+    fs.createReadStream = originalCreateReadStream
+    fs.openSync = originalOpenSync
+    syncBuiltinESMExports()
   }
 })
 

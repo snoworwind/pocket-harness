@@ -74,6 +74,31 @@ export const SITE_URL = (ENV.DSH_SITE_URL || ('https://' + OWNER.toLowerCase() +
  */
 export const PROBE_FILE = 'MANIFEST.txt';
 
+/**
+ * 来源链发行合同（唯一真源：`.github/workflows/release-source-draft.yml` 与
+ * `scripts/source-build/prepare-source-release.py`，网页测试逐字比对，禁止凭规则臆造）。
+ *
+ *   tag        hardening-source-<短提交>-<run_id>-<run_attempt>
+ *   APK        pocket-harness-v<版本>-source-arm64.apk
+ *   校验文件   SHA256SUMS.txt（每行「sha256 + 两个空格 + 文件名」，文件名不带目录）
+ *
+ * 来源 tag 不含版本号，资产名才带版本，因此不能像普通 release 那样由 tag 推导资产名；
+ * 只能按生产脚本实际写出的形态在资产清单里匹配。
+ */
+export const SOURCE_RELEASE_TAG_PREFIX = 'hardening-source-';
+export const SOURCE_CHECKSUM_FILE = 'SHA256SUMS.txt';
+export const SOURCE_APK_RE = /^pocket-harness-v[\w.+-]+-source-arm64\.apk$/i;
+
+/** 是否为来源链草稿 tag（生产 tag 前缀，见 release-source-draft.yml）。 */
+export function isSourceReleaseTag(tag) {
+  return String(tag || '').startsWith(SOURCE_RELEASE_TAG_PREFIX);
+}
+
+/** 是否为来源链 ARM64 APK 名（生产文件名形态，见 prepare-source-release.py）。 */
+export function isSourceApkName(name, abi) {
+  return abi === 'arm64' && SOURCE_APK_RE.test(String(name || ''));
+}
+
 /** 健康检查 URL（与版本无关的稳定小文件）。 */
 export function probeUrl(template) {
   const t = typeof template === 'string' ? { prefix: template } : template;
@@ -117,6 +142,11 @@ export function pickAsset(tag, abi, assets) {
     const hit = byName.get(candidate.toLowerCase());
     if (hit) return hit;
   }
+  // 来源链草稿：tag 是 hardening-source-*，版本只在资产名里（pocket-harness-v<ver>-source-arm64.apk），
+  // 无法由 tag 推导。只认生产脚本实际写出的来源 ARM64 形态；普通命名永远优先。
+  for (const asset of assets) {
+    if (asset && isSourceApkName(asset.name, abi)) return asset;
+  }
   return null;
 }
 
@@ -127,9 +157,25 @@ export function assetUrl(template, tag, assetName) {
   return t.prefix + OWNER + '/' + REPO + '/releases/download/' + tag + '/' + assetName;
 }
 
-/** MANIFEST.txt 的 URL（含 sha256 清单）。 */
+/** 普通 release 的 MANIFEST.txt URL（旧口径；含 sha256 清单）。 */
 export function manifestUrl(template, tag) {
   return assetUrl(template, tag, 'MANIFEST.txt');
+}
+
+/**
+ * 当前 release 实际提供的校验文件名。
+ * 普通 release 是 MANIFEST.txt；来源链草稿是 SHA256SUMS.txt（每条目只写文件名，不写 apk/ 前缀）。
+ * assetName 可选：来源资产在场时即使 tag 形态变化也按来源校验文件处理。
+ */
+export function checksumFileName(tag, assetName) {
+  return isSourceReleaseTag(tag) || (assetName && isSourceApkName(assetName, 'arm64'))
+    ? SOURCE_CHECKSUM_FILE
+    : 'MANIFEST.txt';
+}
+
+/** 当前 release 校验文件的 URL（与下载资产走同一批镜像前缀）。 */
+export function checksumUrl(template, tag, assetName) {
+  return assetUrl(template, tag, checksumFileName(tag, assetName));
 }
 
 // 字符串探测用正则。注意两处易错点：
@@ -247,6 +293,20 @@ export function sha256FromManifest(text, relPath) {
   for (const line of text.split('\n')) {
     const parts = line.trim().split(/\s+/);
     if (parts.length >= 2 && parts[1] === relPath && /^[0-9a-f]{64}$/.test(parts[0])) return parts[0];
+  }
+  return null;
+}
+
+/**
+ * 从来源链 SHA256SUMS.txt 取某文件的 sha256（构建期用；失败返回 null）。
+ * 生产格式（prepare-source-release.py）：`<sha256>  <文件名>`，恰好两个空格，文件名不带目录。
+ */
+export function sha256FromSums(text, fileName) {
+  if (typeof text !== 'string' || typeof fileName !== 'string' || fileName === '') return null;
+  const wanted = fileName.split(/[\\/]/).pop();
+  for (const line of text.split(/\r?\n/)) {
+    const match = /^([0-9a-f]{64})\s{2}([^\s/\\]+)\s*$/.exec(line.trim());
+    if (match && match[2] === wanted) return match[1];
   }
   return null;
 }

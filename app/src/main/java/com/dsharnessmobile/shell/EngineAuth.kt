@@ -225,7 +225,8 @@ object EngineAuth {
     }
     // Apply even before initContext or when no cookie exists: POST payloads are sensitive too.
     conn.instanceFollowRedirects = false
-    conn.setRequestProperty("X-DSH-Relay", EngineTransport.admissionCookie().substringAfter('='))
+    // 中继准入头与 cookie 走同一约束入口（A01）：漏头会在转发前被 relay 直接关闭。
+    EngineTransport.attachAdmission(conn)
   }
 
   /**

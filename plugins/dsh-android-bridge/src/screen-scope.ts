@@ -1,5 +1,3 @@
-import { readFileSync } from 'node:fs'
-
 /** User-owned, stable screen aliases exposed to model-facing Android tools. */
 export type ScreenId = string
 export type UserScreenScope = 'virtual-only' | 'real-only' | 'all'
@@ -21,8 +19,6 @@ export function virtualScreenOrdinal(screenId: string | undefined): number | nul
 export function isVirtualScreenId(screenId: string | undefined): boolean {
   return virtualScreenOrdinal(screenId) !== null
 }
-
-const SHELL_SCREEN_SCOPE_PREFS_DEFAULT = '/data/user/0/com.snoworwind.pocketharness/shared_prefs/dsh_screen_scope.xml'
 
 /** Result returned before a tool reads pixels, a UI tree, or dispatches an input action. */
 export type ScreenAccessDecision =
@@ -764,33 +760,27 @@ export function normalizeScreenScope(value: unknown): UserScreenScope {
   return value === 'virtual-only' || value === 'real-only' || value === 'all' ? value : DEFAULT_SCREEN_SCOPE
 }
 
-/** Parse the native ScreenScopePrefs XML without allowing an engine plugin to write that preference. */
-export function parseScreenScopePrefsXml(xml: string): UserScreenScope {
-  const match = /<string\s+name="scope">([^<]*)<\/string>/.exec(xml)
-  return normalizeScreenScope(match?.[1])
-}
-
-function scopePrefsPath(env: NodeJS.ProcessEnv): string | undefined {
-  if (env.DSH_SCREEN_SCOPE_PREFS_PATH) return env.DSH_SCREEN_SCOPE_PREFS_PATH
-  if (env.TERMUX__PREFIX && env.DSH_HOME) return SHELL_SCREEN_SCOPE_PREFS_DEFAULT
-  return undefined
-}
-
 /**
- * Read the native preference afresh for each device operation. Test-only environment input is
- * intentionally gated, so a stale generic environment value cannot override the shell preference.
+ * 测试专用范围源（A02，2026-10-18 审计）。
+ *
+ * 产品链路**不得**再读 `shared_prefs/dsh_screen_scope.xml`：原生授权已迁到进程内存，
+ * 且同 uid 的引擎进程可写任何应用私有文件，文件从来不是授权真源。真正的产品渠道是
+ * 控制队列应答里的 `caps.screenScope` 与 `vdInfo.data.scope`（见 index.ts 的
+ * `screenScope()` / `refreshScreenScope()`）。
+ *
+ * 这里只保留显式的测试开关（`DSH_SCREEN_SCOPE_TEST=1`）；未开启时一律返回 fail-closed
+ * 默认值，不允许普通环境变量冒充当授权。
  */
 export function currentScreenScope(env: NodeJS.ProcessEnv = process.env): UserScreenScope {
   if (env.DSH_SCREEN_SCOPE_TEST === '1' || env.DSH_SCREEN_SCOPE_TEST === 'true') {
     return normalizeScreenScope(env.DSH_SCREEN_SCOPE)
   }
-  const path = scopePrefsPath(env)
-  if (path === undefined) return DEFAULT_SCREEN_SCOPE
-  try {
-    return parseScreenScopePrefsXml(readFileSync(path, 'utf8'))
-  } catch {
-    return DEFAULT_SCREEN_SCOPE
-  }
+  return DEFAULT_SCREEN_SCOPE
+}
+
+/** 测试开关是否生效（供服务面决定是否需要走原生读回）。 */
+export function testScreenScopeActive(env: NodeJS.ProcessEnv = process.env): boolean {
+  return env.DSH_SCREEN_SCOPE_TEST === '1' || env.DSH_SCREEN_SCOPE_TEST === 'true'
 }
 
 /**

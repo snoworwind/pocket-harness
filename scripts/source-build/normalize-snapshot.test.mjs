@@ -7,12 +7,15 @@
 //      也一并抹平，那它就从防线变成了后门。
 import assert from 'node:assert/strict'
 import { execFileSync, spawnSync } from 'node:child_process'
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { pathToFileURL } from 'node:url'
+import { gunzipSync } from 'node:zlib'
 import test from 'node:test'
 
 import {
+  assertPackedMembers,
   blankTimestampLine,
   canonicalizePackedManifest,
   canonicalJson,
@@ -169,6 +172,71 @@ test('B：重打包保留 package/ 前缀（消费方按 --strip-components=1 �
     }
   } finally {
     one.cleanup()
+  }
+})
+
+test('A10：显式成员 + --no-recursion 重打包，每个路径恰好一次且内容不变', async () => {
+  const manifest = '{"name":"deep-probe","version":"1.0.0","dependencies":{"b":"1","a":"2"},"exports":{"node":"./safe.cjs","default":"./other.cjs"}}\n'
+  const files = {
+    'package/package.json': manifest,
+    'package/safe.cjs': 'module.exports = "safe"\n',
+    'package/other.cjs': 'module.exports = "other"\n',
+    'package/lib/index.js': 'exports.lib = true\n',
+    'package/lib/deep/index.js': 'exports.deep = true\n',
+  }
+  const source = makeTarball(files)
+  const legacyCopyDir = mkdtempSync(join(tmpdir(), 'dsh-legacy-pack-'))
+  const legacyTgz = join(legacyCopyDir, 'legacy.tgz')
+  const extract = mkdtempSync(join(tmpdir(), 'dsh-a10-out-'))
+  const normalizeMember = (entry) => entry.replace(/\/+$/, '')
+  const membersOf = (tgz) => execFileSync('tar', ['-tzf', tgz], { encoding: 'utf8' })
+    .trim().split('\n').filter(Boolean).map(normalizeMember)
+  try {
+    // 待打包清单 = 输入 tarball 的成员集合（去掉 tar 自动补的根目录 `package/`；
+    // 生产的 entries 只列 package 下的条目，不含根目录本身）。
+    const expected = membersOf(source.tgz).filter((entry) => entry !== 'package').sort()
+    copyFileSync(source.tgz, legacyTgz)
+
+    // ① 先在临时副本上复现旧实现：仅去掉 --no-recursion 与新的落盘断言，其余代码原样。
+    const original = readFileSync(join(import.meta.dirname, 'normalize-snapshot.mjs'), 'utf8')
+    const legacySource = original
+      .replace("'--no-recursion', ", '')
+      .replace(/^\s*assertPackedMembers\(archive, entries, name\)\n/m, '')
+    assert.notEqual(legacySource, original, '负控构造失败：旧实现的 tar/断言锚点已变化，请同步本测试')
+    const legacyModule = join(legacyCopyDir, 'normalize-snapshot-legacy.mjs')
+    writeFileSync(legacyModule, legacySource)
+    const legacy = await import(pathToFileURL(legacyModule).href)
+    legacy.canonicalizePackedManifest(legacyTgz, 'legacy')
+    const legacyMembers = membersOf(legacyTgz)
+    const legacyDeepFile = legacyMembers.filter((entry) => entry === 'package/lib/deep/index.js').length
+    const legacyDeepDirectory = legacyMembers.filter((entry) => entry === 'package/lib/deep').length
+    assert.ok(legacyDeepFile > 1, `旧实现本应重复收入文件，实测 ${legacyDeepFile} 次：${legacyTgz}`)
+    assert.ok(legacyDeepDirectory > 1, `旧实现本应重复收入目录，实测 ${legacyDeepDirectory} 次：${legacyTgz}`)
+    // 生产落盘断言本身必须能拒绝旧归档，而不是只在测试里数成员。
+    const legacyArchive = join(legacyCopyDir, 'legacy.tar')
+    writeFileSync(legacyArchive, gunzipSync(readFileSync(legacyTgz)))
+    assert.throws(() => assertPackedMembers(legacyArchive, ['package/package.json'], 'legacy'), /重复成员/)
+
+    // ② 修复后的生产实现：唯一性、成员集合与 entries 精确相等。
+    canonicalizePackedManifest(source.tgz, 'fixed')
+    const fixedMembers = membersOf(source.tgz)
+    assert.equal(new Set(fixedMembers).size, fixedMembers.length, `重打包出现重复成员：${fixedMembers.join(', ')}`)
+    for (const entry of expected) {
+      assert.equal(fixedMembers.filter((member) => member === entry).length, 1, `${entry} 必须恰好出现一次`)
+    }
+    assert.deepEqual(fixedMembers.slice().sort(), expected)
+
+    // ③ 内容仍正确：package.json 条件导出顺序保留，依赖映射按规范排序。
+    execFileSync('tar', ['-xzf', source.tgz, '-C', extract])
+    assert.equal(readFileSync(join(extract, 'package/lib/deep/index.js'), 'utf8'), files['package/lib/deep/index.js'])
+    const repacked = JSON.parse(readFileSync(join(extract, 'package/package.json'), 'utf8'))
+    assert.deepEqual(repacked, JSON.parse(manifest))
+    assert.deepEqual(Object.keys(repacked.exports), ['node', 'default'], '条件导出键序有语义，不得被重排')
+    assert.deepEqual(Object.keys(repacked.dependencies), ['a', 'b'], '依赖映射键序无语义，按规范排序')
+  } finally {
+    source.cleanup()
+    rmSync(legacyCopyDir, { recursive: true, force: true })
+    rmSync(extract, { recursive: true, force: true })
   }
 })
 

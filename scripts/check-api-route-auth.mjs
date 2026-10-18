@@ -150,8 +150,12 @@ for (const route of routes) {
   const registration = typeof route.registration === 'string' ? route.registration : ''
   const registrationText = read(registrationSource)
   const endpointText = read(endpointSource)
-  check(id + ' 注册表达式在场', registration !== '' && registrationText.includes(registration))
-  check(id + ' endpoint 常量/字面量在场', endpointText.includes(path))
+  // A14：mobile-owned 的四条存在性断言也必须先剥注释。注释掉的注册表达式、endpoint、
+  // guard、公开响应 marker 都只是文本，裸 includes 会把它们判成在场（历史实锤的上游假绿）。
+  // 扫描注册块同样用剥注释文本：注释里的 register(...) 不是可执行路由。
+  const registrationCheckText = stripSourceComments(registrationText)
+  check(id + ' 注册表达式在场', sourceIncludes(registrationText, registration))
+  check(id + ' endpoint 常量/字面量在场', sourceIncludes(endpointText, path))
 
   if (route.access === 'protected') {
     const marker = typeof route.authMarker === 'string' ? route.authMarker : ''
@@ -160,19 +164,19 @@ for (const route of routes) {
     // includes——同文件里删掉某条 guard、只要别处还提一句 marker 就绿（已实测复现）。
     // 注册块在 registrationSource（register() 所在文件；endpointSource 可能是 client/contract 面）。
     // authMarker = 来源注释/函数名的文件级证据；authCallMarker = 注册块内的**调用形态**证据。
-    const regs = routeRegistrations(registrationText)
-    const hit = regs.find((r) => r.literalPath === path) ?? regs.find((r) => r.head.includes(registration))
+    const regs = routeRegistrations(registrationCheckText)
+    const hit = regs.find((r) => r.literalPath === path) ?? regs.find((r) => sourceIncludes(r.head, registration))
     if (hit === undefined) {
       check(id + ' 受保护路由的 guard 在注册块内', false, '未在 ' + registrationSource + ' 定位到该注册的容器块')
     } else {
       check(id + ' 受保护路由的 guard 在注册块内',
-        marker !== '' && callMarker !== '' && hit.head.includes(callMarker),
+        marker !== '' && callMarker !== '' && sourceIncludes(hit.head, callMarker),
         (callMarker === '' ? '缺 authCallMarker 声明' : '调用形态不在注册块内: ' + callMarker))
     }
   } else if (route.access === 'public') {
     const marker = typeof route.publicResponseMarker === 'string' ? route.publicResponseMarker : ''
     const rationale = typeof route.rationale === 'string' ? route.rationale.trim() : ''
-    check(id + ' 公开路由有窄响应 marker', marker !== '' && registrationText.includes(marker))
+    check(id + ' 公开路由有窄响应 marker', sourceIncludes(registrationText, marker))
     check(id + ' 公开路由有审阅理由', rationale.length >= 30)
   } else {
     check(id + ' access 明确为 protected 或 public', false, String(route.access))
@@ -297,6 +301,14 @@ function stripSourceComments(source) {
     index += 1
   }
   return out
+}
+
+/**
+ * 存在性断言统一入口：先剥注释再 includes。
+ * 上游段与 mobile-owned 段共用这一判据——注释掉的 guard/marker 从未执行，不能算在场。
+ */
+function sourceIncludes(source, needle) {
+  return typeof needle === 'string' && needle !== '' && stripSourceComments(String(source ?? '')).includes(needle)
 }
 
 /** openIndex 处 { 或 ( 起配平组的文本（跳过字符串）；未配平返回 null。 */
@@ -715,6 +727,17 @@ if (selfTest) {
   check('self-test(上游): profile 顶层禁用行解析（缩进 0 + 同块 disabled: true）',
     profileDisabledRowIds("- id: a\n  disabled: true\n- insert:\n    - id: b\n      disabled: true\n- id: c\n  disabled: false\n").size === 1
       && profileDisabledRowIds("- id: a\n  disabled: true\n- insert:\n    - id: b\n      disabled: true\n- id: c\n  disabled: false\n").has('a'))
+  // A14：mobile-owned 四条存在性断言与上游段共用 sourceIncludes（先剥注释再 includes）。
+  // 三态必须同时成立：真实调用 PASS、注释掉 FAIL、整段缺失 FAIL；任何一态退化成裸 includes 都会红。
+  const mobileFixture = "register({ kind: 'exact', path: '/api/mobile-fixture', handler: (req) => { if (!authorize(req)) return } })"
+  const mobileCommented = mobileFixture.replace('if (!authorize(req)) return', '// if (!authorize(req)) return')
+  const mobileMissing = mobileFixture.replace('if (!authorize(req)) return', 'return')
+  check('self-test(mobile-owned): guard 存在性断言三态（active PASS / comment-only FAIL / 缺失 FAIL）',
+    sourceIncludes(mobileFixture, '!authorize(req)')
+      && !sourceIncludes(mobileCommented, '!authorize(req)')
+      && !sourceIncludes(mobileMissing, '!authorize(req)'))
+  check('self-test(mobile-owned): 注释掉的注册表达式不算在场',
+    sourceIncludes(mobileFixture, 'register({') && !sourceIncludes(mobileFixture.replace('register(', '// register('), 'register({'))
 }
 
 console.log('SKIP=' + skips)

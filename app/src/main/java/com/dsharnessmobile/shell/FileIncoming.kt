@@ -377,6 +377,9 @@ object FileIncoming {
       conn.readTimeout = 5000
       // 共享控制令牌（壳侧生成、写 dsh-adb.xml；引擎侧同一枚）——缺它一律 401。
       conn.setRequestProperty("X-DSH-Control-Token", DeviceControlService.token(context))
+      // A01：该 exact 路由的 401 发生在 relay 转发**之后**；原生连接还须先过 relay 准入，
+      // 否则连接在解析 JSON 之前就被关闭，表现为「分享进来永远收不到」。
+      EngineAuth.attach(context, conn)
       conn.outputStream.use { it.write(org.json.JSONObject().put("path", path).toString().toByteArray()) }
       val code = conn.responseCode
       val ok = if (code in 200..299) {

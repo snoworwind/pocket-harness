@@ -80,7 +80,14 @@ internal object ControlCarrier {
       context = app,
       handler = { op, args -> handle(op, args) },
       // 两条通道的能力事实（0.14.0 §6）：a11y = 无障碍服务在场；shizuku = 特权 shell 通道就绪。
-      capsExtra = { JSONObject().put("a11y", a11y != null).put("shizuku", shizukuReady(app)) },
+      // A02：caps 同时回传用户屏幕范围（进程内存真源）。插件侧每次控制应答都会刷新缓存，
+      // 冷启动另有 vdInfo.scope 读回；不得再从同 uid 可写的 retired XML 推断授权。
+      capsExtra = {
+        JSONObject()
+          .put("a11y", a11y != null)
+          .put("shizuku", shizukuReady(app))
+          .put("screenScope", ScreenScopePrefs.current(app).wire)
+      },
       heartbeat = { if (a11y != null) DeviceControlService.heartbeat(app) },
     )
     poller = created

@@ -556,7 +556,11 @@ const IMPLS = {
       if (start < 0 || end < 0 || safeStart < 0) {
         throw new Error('undo-safe-transaction 锚点缺失：safeModeSet / preflight 边界已变')
       }
+      // Git 索引是 LF，但 Windows 工作树可能按 CRLF 检出本片段。事务段的自验合同明确要求 LF
+      //（safeModeTransactionIsLf），所以这里在载入时把 CRLF 规范为 LF；只规范 CRLF，不吞掉真正的
+      // 裸 CR——后者仍会被自验拒绝，不能放宽合同掩盖差异。
       const transaction = readFileSync(join(HERE, 'data', 'undo-safe-transaction-snippet.mjs'), 'utf8')
+        .replace(/\r\n/g, '\n')
       let next = s.slice(0, start) + transaction + '\n' + s.slice(end)
       const defaultDirHelper = `function hasConfiguredAutoDir() {
   try {

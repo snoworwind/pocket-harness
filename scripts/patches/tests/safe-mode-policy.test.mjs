@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { tmpdir } from 'node:os'
@@ -183,6 +183,60 @@ test('S2 gate upgrades old S4 cores that lack trusted factory-bundle isolation',
     assert.match(upgraded, /factory-bundle filter \(S5\)/)
     assert.match(upgraded, /safeModeSelectFactoryBundles\(cfg, pkg, pkgRaw, hardManifest\.factoryBundles\)/)
     assert.equal(run('--check').status, 0)
+  } finally {
+    rmSync(temp, { recursive: true, force: true })
+  }
+})
+
+test('S2 upgrade accepts a CRLF checkout of the transaction snippet and still rejects a real CR', () => {
+  const temp = mkdtempSync(join(tmpdir(), 'safe-mode-s2-crlf-'))
+  try {
+    // 复制生产 patch runner 到临时目录，只把输入片段改成 Windows 工作树常见的 CRLF 检出；
+    // 不改仓库文件，也不依赖 core.autocrlf 之类的全局设置。
+    const patchesDir = join(temp, 'patches')
+    cpSync(join(HERE, '..'), patchesDir, {
+      recursive: true,
+      filter: (source) => source !== join(HERE, '..', 'tests'),
+    })
+    const snippetPath = join(patchesDir, 'data', 'undo-safe-transaction-snippet.mjs')
+    const lfSnippet = readFileSync(snippetPath, 'utf8')
+    writeFileSync(snippetPath, lfSnippet.replace(/\n/g, '\r\n'))
+
+    // 模拟 Windows 工作树：vendor core 与输入片段都按 CRLF 检出。
+    // 先归一到 LF 再整体转 CRLF，避免仓库里原本的混合行尾影响复现口径。
+    const current = readFileSync(vendorCores[0], 'utf8').replace(/\r\n/g, '\n').replace(/\n/g, '\r\n')
+    const legacy = current
+      .replace('with CAS recovery failover, web-store resolver and factory-bundle filter (S5).', 'with CAS recovery failover and web-store resolver (S4).')
+      .replace('safeModeSelectFactoryBundles(cfg, pkg, pkgRaw, hardManifest.factoryBundles)', 'safeModeSelectFactoryBundlesLegacy(cfg, pkg, pkgRaw, hardManifest.factoryBundles)')
+      .replace('async function safeModeBundlePatchSha(packageRoot, declared)', 'async function safeModeBundlePatchShaLegacy(packageRoot, declared)')
+    const vendor = join(temp, 'vendor')
+    const core = join(vendor, 'dsh-undo-savepoint/lib/core.mjs')
+    mkdirSync(dirname(core), { recursive: true })
+    writeFileSync(core, legacy)
+
+    const runner = join(patchesDir, 'apply-patches.mjs')
+    const run = (mode) => spawnSync(process.execPath, [runner, vendor, mode, '--only', 'undo-safe-transaction-S2'], { encoding: 'utf8' })
+    assert.equal(run('--check').status, 1, '旧 S4 core 必须先被 S2 门禁拒绝')
+    const applied = run('--apply')
+    assert.equal(applied.status, 0, applied.stdout + applied.stderr)
+    const upgraded = readFileSync(core, 'utf8')
+    const start = upgraded.indexOf('// dsh-mobile safe mode transaction (S2)')
+    const end = upgraded.indexOf('// ── 跨机一致性预检', start)
+    assert.ok(start >= 0 && end > start, '升级后必须仍能定位事务段')
+    assert.doesNotMatch(upgraded.slice(start, end), /\r/, 'CRLF 检出的片段必须在写回前规范为 LF')
+    assert.equal(run('--check').status, 0, 'CRLF 输入升级后自验必须通过')
+
+    // 负例：真正的裸 CR（不是 CRLF）不允许被规范化吞掉，自验必须拒绝且不写回。
+    writeFileSync(core, legacy)
+    const loneCr = lfSnippet.replace(/\n/g, '\r\n').replace(
+      'async function safeModeOwnershipManifest(filesRoot) {\r\n',
+      'async function safeModeOwnershipManifest(filesRoot) {\r',
+    )
+    writeFileSync(snippetPath, loneCr)
+    const rejected = run('--apply')
+    assert.equal(rejected.status, 1, '含裸 CR 的片段必须被自验拒绝')
+    assert.match(rejected.stderr, /施加后自验失败/)
+    assert.deepEqual(readFileSync(core, 'utf8'), legacy, '自验失败不得写回目标文件')
   } finally {
     rmSync(temp, { recursive: true, force: true })
   }

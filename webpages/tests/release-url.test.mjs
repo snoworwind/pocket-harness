@@ -23,14 +23,26 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  MIRROR_TEMPLATES, OWNER, RELEASES_URL, REPO, SUPPORTED_ABIS,
-  apkNameCandidates, assetUrl, canonicalApkName, classifyAbi, manifestUrl, pickAsset, sha256FromManifest,
+  MIRROR_TEMPLATES, OWNER, RELEASES_URL, REPO, SOURCE_APK_RE, SOURCE_CHECKSUM_FILE, SOURCE_RELEASE_TAG_PREFIX,
+  SUPPORTED_ABIS, apkNameCandidates, assetUrl, canonicalApkName, checksumFileName, checksumUrl, classifyAbi,
+  isSourceApkName, isSourceReleaseTag, manifestUrl, pickAsset, sha256FromManifest, sha256FromSums,
 } from '../src/assets/release.js';
 
 const WEB = fileURLToPath(new URL('../', import.meta.url));
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const readRepo = (f) => fs.readFileSync(path.join(repoRoot, f), 'utf8');
+
+// 来源发布合同的真实样例（docs/RELEASE.md §5 记录的云端草稿与 prepare-source-release.py 的实际输出）：
+// tag 不含版本，版本只在资产名里；校验文件是 SHA256SUMS.txt。测试直接拿这组真实命名喂生产函数。
+const SOURCE_TAG = 'hardening-source-bb8176a9ca99-39050643684-1';
+const SOURCE_APK = 'pocket-harness-v0.14.7-source-arm64.apk';
+const SOURCE_ASSETS = [
+  { name: SOURCE_APK, size: 161215810 },
+  { name: 'provenance.zip', size: 2837504 },
+  { name: 'SHA256SUMS.txt', size: 256 },
+  { name: 'notes.md', size: 512 },
+];
 
 // ── 与发布链绑定 ────────────────────────────────────────────────────────────
 
@@ -106,6 +118,75 @@ test('pickAsset 对空/畸形资产清单返回 null 而不抛错', () => {
   assert.equal(pickAsset('v0.14.7', 'arm64', []), null);
   assert.equal(pickAsset('v0.14.7', 'arm64', null), null);
   assert.equal(pickAsset('v0.14.7', 'riscv64', [{ name: 'x' }]), null);
+});
+
+// ── 来源链发行合同（A12）────────────────────────────────────────────────────
+
+test('来源链 tag/资产/校验文件合同与生产脚本逐字一致', () => {
+  // 不能用页面侧的猜测当合同：直接读实际创建草稿的 workflow 与产出资产的 Python 脚本。
+  const workflow = readRepo('.github/workflows/release-source-draft.yml');
+  assert.ok(workflow.includes('tag="hardening-source-${SOURCE_SHA:0:12}-${RUN_ID}-${RUN_ATTEMPT}"'),
+    '来源 tag 形态变了：先改 release-source-draft.yml 再把新合同同步到 release.js');
+  assert.equal(SOURCE_RELEASE_TAG_PREFIX, 'hardening-source-');
+  const prepare = readRepo('scripts/source-build/prepare-source-release.py');
+  assert.ok(prepare.includes('pocket-harness-v[\\w.+-]+-source-arm64\\.apk'),
+    '来源 APK 命名变了：先改 prepare-source-release.py 再同步 release.js');
+  assert.ok(prepare.includes("'SHA256SUMS.txt'"), '来源校验文件不是 SHA256SUMS.txt：页面不能继续找 MANIFEST.txt');
+  assert.equal(SOURCE_CHECKSUM_FILE, 'SHA256SUMS.txt');
+  assert.ok(SOURCE_APK_RE.test(SOURCE_APK), '生产样例 APK 名未命中来源资产合同');
+  assert.equal(isSourceReleaseTag(SOURCE_TAG), true);
+  assert.equal(isSourceReleaseTag('v0.14.7'), false);
+});
+
+test('pickAsset 直接识别来源链真实资产列表（tag 不含版本号）', () => {
+  const hit = pickAsset(SOURCE_TAG, 'arm64', SOURCE_ASSETS);
+  assert.ok(hit, '传入真实来源资产列表仍返回 null：下载页会把可用版本显示成“无匹配安装包”');
+  assert.equal(hit.name, SOURCE_APK);
+  assert.equal(isSourceApkName(SOURCE_APK, 'arm64'), true);
+  // 旧命名兼容不能被来源识别破坏。
+  assert.equal(pickAsset('v0.14.7', 'arm64', [{ name: 'pocket-harness-v0.14.7-arm64.apk', size: 1 }]).name,
+    'pocket-harness-v0.14.7-arm64.apk');
+  assert.equal(pickAsset('v0.14.2', 'arm64', [{ name: 'pocket-harness-v0.14.2-arm64-v8a.apk', size: 1 }]).name,
+    'pocket-harness-v0.14.2-arm64-v8a.apk');
+  // 同一清单同时有普通命名与来源命名时，普通发布口径优先，来源资产只作兜底。
+  assert.equal(pickAsset('v0.14.7', 'arm64', [
+    { name: SOURCE_APK, size: 1 },
+    { name: 'pocket-harness-v0.14.7-arm64.apk', size: 2 },
+  ]).name, 'pocket-harness-v0.14.7-arm64.apk');
+});
+
+test('来源链校验文件按实际 SHA256SUMS.txt 选择、拼接并解析', () => {
+  assert.equal(checksumFileName(SOURCE_TAG, SOURCE_APK), SOURCE_CHECKSUM_FILE);
+  assert.equal(checksumFileName('v0.14.7'), 'MANIFEST.txt', '普通 release 仍应使用 MANIFEST.txt');
+  for (const tpl of MIRROR_TEMPLATES) {
+    const url = checksumUrl(tpl, SOURCE_TAG, SOURCE_APK);
+    assert.ok(url.startsWith(tpl.prefix), tpl.id + ' 前缀未生效');
+    assert.ok(url.endsWith('/' + OWNER + '/' + REPO + '/releases/download/' + SOURCE_TAG + '/SHA256SUMS.txt'),
+      tpl.id + ' 未指向来源校验文件');
+  }
+  const text = [
+    'a'.repeat(64) + '  ' + SOURCE_APK,
+    'b'.repeat(64) + '  provenance.zip',
+    'c'.repeat(64) + '  notes.md',
+  ].join('\n');
+  assert.equal(sha256FromSums(text, SOURCE_APK), 'a'.repeat(64));
+  assert.equal(sha256FromSums(text, 'provenance.zip'), 'b'.repeat(64));
+  assert.equal(sha256FromSums(text, 'missing.apk'), null);
+  assert.equal(sha256FromSums('垃圾输入', SOURCE_APK), null);
+  assert.equal(sha256FromSums('', SOURCE_APK), null);
+  // 来源清单只写文件名；带目录的旧 MANIFEST 行不能被误认成来源校验行。
+  assert.equal(sha256FromSums('a'.repeat(64) + '  apk/' + SOURCE_APK, SOURCE_APK), null);
+});
+
+test('来源资产负例：错误 ABI、错误命名、不存在都返回 null', () => {
+  assert.equal(pickAsset(SOURCE_TAG, 'x86_64', SOURCE_ASSETS), null, 'x86_64 设备不得拿到来源 arm64 包');
+  assert.equal(pickAsset(SOURCE_TAG, 'arm64', [
+    { name: 'provenance.zip' }, { name: 'SHA256SUMS.txt' }, { name: 'notes.md' },
+  ]), null, '只有证据文件时不得伪造 APK');
+  assert.equal(pickAsset(SOURCE_TAG, 'arm64', [
+    { name: 'pocket-harness-v0.14.7-source-x86_64.apk' },
+  ]), null, '来源 x86_64 资产不得被 arm64 选中');
+  assert.equal(isSourceApkName('pocket-harness-v0.14.7-source-x86_64.apk', 'arm64'), false);
 });
 
 // ── URL 拼接 ────────────────────────────────────────────────────────────────

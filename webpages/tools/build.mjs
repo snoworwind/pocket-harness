@@ -5,7 +5,8 @@
  * 只做三件事，全部 Node 内置能力，零依赖：
  *   1. 读 src/index.html，把样式与 release 数据**内联**（首屏 1 个请求）；
  *   2. 取最新 release（GitHub API 优先，失败回落 data/releases.json 种子）；
- *   3. 取 MANIFEST.txt 里的 sha256，按 ABI 家族注入，供用户核对。
+ *   3. 取发布校验文件（普通 release 的 MANIFEST.txt 或来源草稿的 SHA256SUMS.txt）里的
+ *      sha256，按 ABI 家族注入，供用户核对。
  *
  * 为什么内联而不是运行时再拉：
  *   - 首屏少 1~2 个 RTT（移动网络下就是 300~800 ms）；
@@ -22,7 +23,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   API_LATEST_URL, LATEST_RELEASE_URL, MIRROR_TEMPLATES, RELEASES_URL, REPO_URL, SITE_URL,
-  apkNameCandidates, assetUrl, sha256FromManifest,
+  SOURCE_CHECKSUM_FILE, assetUrl, checksumFileName, checksumUrl, pickAsset, sha256FromManifest, sha256FromSums,
 } from '../src/assets/release.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -88,28 +89,36 @@ async function fetchText(url, timeoutMs) {
   }
 }
 
-/** 哈希只从 GitHub 官方 MANIFEST 读取，不能让同一个第三方镜像同时提供 APK 与“校验值”。 */
+/**
+ * 哈希只从 GitHub 官方校验文件读取，不能让同一个第三方镜像同时提供 APK 与“校验值”。
+ * 普通 release 读 MANIFEST.txt（路径带 apk/ 前缀）；来源链草稿读 SHA256SUMS.txt（只写文件名）。
+ * 资产选择与校验文件选择共用 release.js 的合同，避免页面能下载而校验值取不到。
+ */
 async function attachSha256(data) {
   if (!data.tag) return;
   const wanted = [];
   for (const abi of ['arm64']) {
-    for (const name of apkNameCandidates(data.tag, abi)) {
-      if (data.assets.some((a) => a.name === name)) { wanted.push([abi, name]); break; }
-    }
+    const asset = pickAsset(data.tag, abi, data.assets);
+    if (asset) wanted.push([abi, asset.name]);
   }
   if (!wanted.length) return;
 
   const official = MIRROR_TEMPLATES.find((tpl) => tpl.kind === 'official');
   if (!official) return;
+  const checksumFile = checksumFileName(data.tag, wanted[0][1]);
+  data.checksumFile = checksumFile;
+  data.checksumUrl = checksumUrl(official, data.tag, wanted[0][1]);
   try {
-    const text = await fetchText(assetUrl(official, data.tag, 'MANIFEST.txt'), 8000);
+    const text = await fetchText(data.checksumUrl, 8000);
     for (const [abi, name] of wanted) {
-      const sum = sha256FromManifest(text, 'apk/' + name);
+      const sum = checksumFile === SOURCE_CHECKSUM_FILE
+        ? sha256FromSums(text, name)
+        : sha256FromManifest(text, 'apk/' + name);
       if (sum) data.sha256[abi] = sum;
     }
-    log('sha256 仅取自 GitHub 官方 MANIFEST，命中 ' + Object.keys(data.sha256).length + '/1');
+    log('sha256 仅取自 GitHub 官方 ' + checksumFile + '，命中 ' + Object.keys(data.sha256).length + '/1');
   } catch (err) {
-    log('GitHub 官方 MANIFEST 不可用：' + err.message);
+    log('GitHub 官方 ' + checksumFile + ' 不可用：' + err.message);
     log('警告：本次构建不含 sha256（页面会提示到 Releases 自行核对）');
   }
 }
@@ -146,17 +155,17 @@ function render(indexHtml, styles, data, jsonLd) {
 function buildJsonLd(data) {
   const apk = [];
   for (const abi of ['arm64']) {
-    const hit = apkNameCandidates(data.tag, abi).find((n) => data.assets.some((a) => a.name === n));
+    // 与下载页共用 pickAsset：来源链资产名由资产清单决定，不能在这里另写一套推导规则。
+    const hit = pickAsset(data.tag, abi, data.assets);
     if (!hit) continue;
-    const meta = data.assets.find((a) => a.name === hit);
     apk.push({
       '@type': 'SoftwareApplication',
       name: 'Pocket Harness (' + abi + ')',
       operatingSystem: 'Android 8.0+',
       applicationCategory: 'DeveloperApplication',
       softwareVersion: data.tag.replace(/^v/, ''),
-      fileSize: String(meta.size),
-      downloadUrl: assetUrl(MIRROR_TEMPLATES[0], data.tag, hit),
+      fileSize: String(hit.size),
+      downloadUrl: assetUrl(MIRROR_TEMPLATES[0], data.tag, hit.name),
       ...(data.sha256 && data.sha256[abi] ? { sha256: data.sha256[abi] } : {}),
     });
   }

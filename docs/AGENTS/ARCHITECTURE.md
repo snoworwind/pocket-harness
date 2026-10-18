@@ -153,7 +153,7 @@
 
 ```
 android_screen_list (metadata only; no screen content)
-   └─ androidPrivilege.screenAccess(screenId)  ← currently reads retired dsh_screen_scope.xml (audit A02)
+   └─ androidPrivilege.screenAccess(screenId)  ← reads caps.screenScope / vdInfo.scope (native memory; A02 fixed)
         ├─ virtual-only / real-only / all user range check
         ├─ virtual-1 not ready (no VirtualDisplay yet) → screen-not-ready, never display 0
         └─ allowed real → gateFor(session) requires danger-full-access
