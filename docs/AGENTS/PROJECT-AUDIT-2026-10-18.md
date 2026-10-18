@@ -1,6 +1,6 @@
 # 项目分区复审（2026-10-18）
 
-审查基线：`187246a4109230bdea371dea635f4f80027c400e`。本轮由主 agent 与三个子 agent 分区检查原生安全/控制、插件/运行时、构建/发布/文档。与 [此前综合审查](COMPREHENSIVE-AUDIT-2026-10-18.md)、[修复账本](AUDIT-REMEDIATION-2026-10-18.md) 和安全审计去重；本报告编号仅在本文有效。
+审查基线：`187246a4109230bdea371dea635f4f80027c400e`。本轮由主 agent 与三个子 agent 分区检查原生安全/控制、插件/运行时、构建/发布/文档；随后对配置迁移、公共仓供应、插件挂载、Safe Console 与验证脚本补查，原生补充复查无新确认缺陷，门禁自检补查新增 A14。与 [此前综合审查](COMPREHENSIVE-AUDIT-2026-10-18.md)、[修复账本](AUDIT-REMEDIATION-2026-10-18.md) 和安全审计去重；本报告编号仅在本文有效。
 
 本轮修正文档，未修复产品实现、未重建插件 lib、未构建 APK、未做设备验证。源码确认与宿主反例不等于 Android 设备复现；不能据此宣布全部模块安全或验收通过。P1 为主要能力阻断，P2 为功能、策略或来源证明缺陷。
 
@@ -21,6 +21,7 @@
 | A11 | P2 | 本地来源续跑允许未提交源码沿用原 HEAD 身份 | WSL 生产函数反例 |
 | A12 | P2 | 下载页不识别来源链资产及校验文件 | 生产 pickAsset 反例；上线前缺口 |
 | A13 | P2 | Windows CRLF 检出使旧 Safe Mode 补丁升级自验失败 | 生产 runner 及单变量诊断 |
+| A14 | P2 | mobile-owned 路由门禁的存在性断言未剥注释 | 生产脚本临时副本三态反例：注释掉的 guard 仍 PASS |
 
 ### A01 P1 原生请求缺少 relay 准入凭据
 
@@ -113,7 +114,15 @@
 - 证据：`repro-s2-crlf.mjs` 使用原 runner 得到 exit 1；仅在诊断副本规范载入 snippet 的 CRLF 后 exit 0。它不是此前“测试函数切片依赖 LF”同一问题，这里是生产 patcher 的输入/输出合同冲突。
 - 修复方向：对该输入固定 LF 和/或在载入时规范生成段；保留 LF 自验，不能放宽自验掩盖差异。此项是宿主构建/修复兼容问题，不是已证明的 Android Safe Mode 漏洞。
 
-## 文档纠正与已有问题
+### A14 P2 mobile-owned 路由门禁的存在性断言未剥注释
+
+- 位置：`scripts/check-api-route-auth.mjs:153`、`:154`、`:168-170`、`:175`；对照 `:270` 的 `stripSourceComments()` 与 `:443-455` 上游段。
+- 同一文件上游段的注释写明「存在性断言一律先剥注释（历史实锤：对注释掉的 guard 做裸 contains 恒真 = 假绿）」，且 `--self-test` 有「剥注释后 guard 存在性断言不再被注释满足」项；但 mobile-owned 段仍用 `read()` 的原始文本做注册表达式、endpoint、guard、公开响应 marker 四条 `includes` 断言。即该收口只落在上游段，没有覆盖扫本仓 28 条路由的那一段。
+- 复现：`addendum-api-comment-repro.mjs` 把生产脚本与 `scripts/lib/shell.mjs` 复制到临时目录，用最小 policy/fixture 让 guard 取 active、`//` 注释、缺失三态：active 与 comment-only 都 exit 0，只有 absent exit 1；comment-only 仍打印「PASS fixture 受保护路由的 guard 在注册块内」。临时副本不改仓库文件，未运行 Android。
+- 影响：受保护 `/api` 路由的 guard 若被注释（调试残留、错误合并），门禁不会拦住；这是 L2 门禁判据的假绿。当前源码的实际 guard 均为真实调用，未发现现存无鉴权路由，因此不扩大为线上越权。
+- 修复方向：mobile-owned 四条存在性断言统一先剥注释，并为 comment-only 形态补 `--self-test` 负例；修复后以 `--require` 跑全档。不能只放宽测试判定来消除红项。
+
+
 
 - 已纠正模块地图中协调仓权威源、已删除 UpdateChecker 的当前导航，及网页 README 的 CORS/ARM64 探测说明。
 - 已纠正执行地图：外部来件的会话实际由客户端 runtime.createSession 创建，插件 ensureSessions 只有定义；不再把死实现写成真实执行链。
@@ -125,12 +134,12 @@
 
 | 分区 | 审查内容 | 限制 |
 |---|---|---|
-| 原生安全/数据 | MainFrameBridge、AndroidBridge、EngineAuth/Transport、Snapshot 系列、UndoGate、Root/Shizuku、PathOpen、Manifest、IME | 静态调用链检查，没有完整设备攻击面验证 |
+| 原生安全/数据 | MainFrameBridge、AndroidBridge、EngineAuth/Transport、Snapshot 系列、UndoGate、Root/Shizuku、PathOpen、Manifest、IME；补查 ConfigTransfer、ReverseMigration、PublicRepoProvision、PluginManagementRepository、SafeConsole/SafeMode、PluginMounts、LinuxAssetIO/Prepare、ConsoleSession | 静态调用链检查，没有完整设备攻击面验证；补查未新增确认缺陷，但不等于这些模块无缺陷 |
 | 控制/生命周期/UI | ControlCarrier/Poller、DeviceControlService、ShellOps、Vdisplay 启动/输入、BrowserHost/Profile/导航、EngineService、通知队列/消费/应答、Overlay live | 大型文件未逐行穷尽；未做视觉或真实多步任务验收 |
 | 插件/运行时 | bridge/manage/browser/file-open、model-capability、Linux bootstrap/env/runtime、Termux/host/UI、marketplace、运行时补丁 | 部分完整测试受依赖或宿主限制；不宣称全部通过 |
-| 来源/发布/文档 | source-build、签名/双构建/隔离/续跑、Gradle、PR Gate、Pages、依赖锁/Action 固定、主要项目文档 | 未运行新的云端构建，全部脚本和文档未逐文件穷尽 |
+| 来源/发布/文档 | source-build、签名/双构建/隔离/续跑、Gradle、PR Gate、Pages、依赖锁/Action 固定、主要项目文档；补查 API 路由门禁判别力 | 未运行新的云端构建，全部脚本和文档未逐文件穷尽 |
 
-本轮独立日志前缀为 native-*、build-docs-*、runtime-*、root-tests.log、overlay-offset-proof.mjs，位于 `.deploy-tmp/audit-2026-10-18/`。同目录还有此前审查的日志，尤其 kotlin-linux.log 的 1310 项不属于本轮重新执行，不能混计。
+本轮独立日志前缀为 native-*、native-addendum.md、build-docs-*、runtime-*、addendum-*、root-tests.log、overlay-offset-proof.mjs，位于 `.deploy-tmp/audit-2026-10-18/`。同目录还有此前审查的日志，尤其 kotlin-linux.log 的 1310 项不属于本轮重新执行，不能混计。
 
 - 构建/Pages 六套 Node 测试：82 项，67 通过、15 平台跳过、0 失败；Action pins 自检和受控负控、10 个 lock 根声明通过。
 - browser/file 组合 16 项：15 通过，file-open 因缺本地 bridge 包失败。model-capability 111 项：103 通过、7 缺包失败、1 HTTP 断言失败；后者与环境 loopback 拒绝一致，但没有取得有效的真实传输验证。Linux bootstrap/runtime 37 项：34 通过、1 因沙箱 loopback EACCES 失败、2 跳过；不把该失败算产品漏洞或通过。
@@ -138,4 +147,4 @@
 - host/patch 组合 121 项初跑 110 通过、10 失败、1 跳过。受控切换可写 TEMP 后 116 通过、4 失败、1 跳过：六项 rename EPERM 被证明是环境限制；剩余两项是 A13、两项是 symlink EPERM，不能记绿。完整命令与日志对应见 runtime-findings.md；不能用旧 ignored lib 或换行问题推断 Android 功能故障。
 - 本轮未执行 Kotlin 编译/单测、CDP、ADB 或 ARM64 装机。系统 java -version 在当前环境未返回，已终止，未据此修改 Java 配置。
 
-修复优先串通 A01/A02，再处理 A04/A05 的执行点约束；文件导入 A06/A07 与 live A08 应各自有行为反例。来源及交付 A09–A13 需要独立 PR 与相应负控。L2/L3 修复须遵守三层验收，宿主探针不能替代最终来源 APK 与设备证据。
+修复优先串通 A01/A02，再处理 A04/A05 的执行点约束；文件导入 A06/A07 与 live A08 应各自有行为反例。来源及交付 A09–A13 需要独立 PR 与相应负控；A14 的门禁修复须以 comment-only 负例自证。L2/L3 修复须遵守三层验收，宿主探针不能替代最终来源 APK 与设备证据。
