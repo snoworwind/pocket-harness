@@ -53,6 +53,7 @@ jobs:
         run: |
           python3 -m unittest discover -s scripts/source-build -p 'test_*.py' -v
           node --test scripts/source-build/*.test.mjs scripts/check-apk-signatures.test.mjs scripts/resolve-version-suffix.test.mjs scripts/tests/main-frame-bridge.test.mjs scripts/tests/engine-private-transport.test.mjs
+          node scripts/source-build/reclaim-build-disk.mjs --self-test
           node scripts/source-build/check-package-lock-roots.mjs
           node scripts/source-build/check-workflow-action-pins.mjs --self-test
       - name: Install archive and signature tools
@@ -757,6 +758,12 @@ jobs:
           node scripts/source-build/check-android-native-runtime-packages.mjs \
             .deploy-tmp/snapshot-013/arm64/stage/root/usr/lib/node_modules/@deepseek-ai/dsh \
             .deploy-tmp/source-build/post-snapshot-native-runtime-check.json
+          # The standard runner has 14 GB of disk. Before the snapshot checker and
+          # APK gate extract another copy of the engine, reclaim source-only trees
+          # that are no longer inputs. Run 39113529859 reached 83 MB free and both
+          # replicas failed with ENOSPC; the staged snapshot, engine-overlay cache,
+          # source-build reports, and Linux provenance are deliberately retained.
+          node scripts/source-build/reclaim-build-disk.mjs --root "$GITHUB_WORKSPACE"
           node scripts/source-build/check-dsh-source-snapshot.mjs "$snapshot_archive"
 
       - name: 单元测试门禁前置（:app:testDebugUnitTest 全量）
