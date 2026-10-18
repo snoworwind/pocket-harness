@@ -93,10 +93,11 @@ export class ExecutionGate {
     this.active = 0;
     this.exclusive = false;
     this.waiters = [];
+    this.pendingExclusive = 0;
   }
 
   get busy() {
-    return this.exclusive || this.active > 0;
+    return this.exclusive || this.active > 0 || this.pendingExclusive > 0;
   }
 
   _wake() {
@@ -106,10 +107,15 @@ export class ExecutionGate {
   }
 
   async acquireExclusive() {
-    while (this.exclusive || this.active > 0) {
-      await new Promise((resolve) => this.waiters.push(resolve));
+    this.pendingExclusive += 1;
+    try {
+      while (this.exclusive || this.active > 0) {
+        await new Promise((resolve) => this.waiters.push(resolve));
+      }
+      this.exclusive = true;
+    } finally {
+      this.pendingExclusive -= 1;
     }
-    this.exclusive = true;
   }
 
   releaseExclusive() {
@@ -118,7 +124,7 @@ export class ExecutionGate {
   }
 
   async acquireShared() {
-    while (this.exclusive) {
+    while (this.exclusive || this.pendingExclusive > 0) {
       await new Promise((resolve) => this.waiters.push(resolve));
     }
     this.active += 1;
@@ -126,7 +132,7 @@ export class ExecutionGate {
 
   releaseShared() {
     this.active -= 1;
-    if (this.active === 0 && this.exclusive) this._wake();
+    if (this.active === 0) this._wake();
   }
 }
 

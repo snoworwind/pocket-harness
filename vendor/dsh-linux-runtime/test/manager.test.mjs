@@ -5,7 +5,7 @@ import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 
-import { createManager, GUEST_PATH_PREFIXES, isGuestPath, spawnCommand } from '../modules/manager.js';
+import { createManager, ExecutionGate, GUEST_PATH_PREFIXES, isGuestPath, spawnCommand } from '../modules/manager.js';
 import { validateManifest, validateAsset, selectRuntime } from '../modules/manifest.js';
 
 const temporaryRoot = path.join(process.cwd(), '.deploy-tmp', `bionilux-runtime-tests-${process.pid}`);
@@ -188,6 +188,37 @@ function tempDir() {
 
 after(async () => {
   await rm(temporaryRoot, { recursive: true, force: true });
+});
+
+test('last shared release wakes an exclusive waiter and queued readers cannot overtake it', { timeout: 1000 }, async () => {
+  const gate = new ExecutionGate();
+  await gate.acquireShared();
+  const order = [];
+  const writer = gate.acquireExclusive().then(() => { order.push('writer'); });
+  const reader = gate.acquireShared().then(() => { order.push('reader'); gate.releaseShared(); });
+  await Promise.resolve();
+  assert.deepEqual(order, []);
+  gate.releaseShared();
+  await writer;
+  assert.deepEqual(order, ['writer']);
+  gate.releaseExclusive();
+  await reader;
+  assert.deepEqual(order, ['writer', 'reader']);
+  assert.equal(gate.busy, false);
+});
+
+test('multiple queued managers finish before newly queued commands', { timeout: 1000 }, async () => {
+  const gate = new ExecutionGate();
+  await gate.acquireShared();
+  const order = [];
+  const writers = [1, 2].map(n => gate.acquireExclusive().then(() => {
+    order.push(n); gate.releaseExclusive();
+  }));
+  const reader = gate.acquireShared().then(() => { order.push('reader'); gate.releaseShared(); });
+  gate.releaseShared();
+  await Promise.all([...writers, reader]);
+  assert.deepEqual(order, [1, 2, 'reader']);
+  assert.equal(gate.active, 0);
 });
 
 test('spawnCommand bounds captured stdout and stderr while continuing to drain both pipes', async () => {
