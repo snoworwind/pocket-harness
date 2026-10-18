@@ -2665,3 +2665,7 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 417. **独立重建必须比较实际载荷，且构建 job 不持有正式私钥（2026-10-18）**
 
 现象：单一可写构建目录可同时改包缓存、清单和快照；旧独立证明草稿仍使用过时名称与 debug 签名接口。真因：同一失败域生成与验证自己的证据。修法：两台全新 runner 各用临时证书产出当前 Pocket Harness release 载荷，第三个无生产 Secret 的 job 直接读 APK/快照并比较完整载荷与受控 v3 语义；最后隔离 job 才读取正式 PKCS12，签前 proof 绑定输入 SHA 与 APK 字节，签后重绑输出，草稿准备再次核对。构建证书只用于中间门禁，交付仍固定仓库生产证书 pin。回归包含 JS/DEX/权限/服务文件差异、路径穿越、条件导出顺序、陈旧证明、错误生产证书与签名 CLI 原子覆盖。新 --self-test 与受控负例通过；真实双构建、来源 APK 和设备层未完成前不能记验收关闭。本地来源入口只跑一份构建副本，支持白名单 GITHUB_ENV 传递且明确标记不能交付。
+
+419. **bootstrap package-lock 也是逐字节来源输入，必须禁止 autocrlf（2026-10-18）**
+
+现象：分支切换后 package-lock 变成 CRLF，严格来源门禁报摘要不符，而 Git 语义 diff 为空。真因：既有 -text 只登记了 package.json、mjs、src 和 README，漏掉同样被 source manifest 哈希覆盖的 lock。修法：对 bootstrap/package-lock.json 也设 -text；不改变 Git blob、lock 解析或批准摘要。实际临时 Git autocrlf checkout 正控保持摘要，删除该属性的负控必改变摘要且仅换行不同；来源 self-test 在 POSIX 原样通过。

@@ -1,10 +1,36 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
+import { devNull, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { verifyLinuxSources } from './check-linux-sources.mjs'
+
+test('reviewed bootstrap lock bytes survive autocrlf checkout; removing the attribute changes its digest', () => {
+  const attributes = readFileSync(new URL('../../.gitattributes', import.meta.url), 'utf8')
+  const bytes = readFileSync(new URL('../../plugins/dsh-linux-bootstrap/package-lock.json', import.meta.url))
+  const hash = value => createHash('sha256').update(value).digest('hex')
+  const env = { ...process.env, GIT_CONFIG_GLOBAL: devNull, GIT_CONFIG_NOSYSTEM: '1' }
+  for (const key of ['GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE', 'GIT_COMMON_DIR', 'GIT_OBJECT_DIRECTORY', 'GIT_ALTERNATE_OBJECT_DIRECTORIES']) delete env[key]
+  for (const negative of [false, true]) {
+    const root = mkdtempSync(join(tmpdir(), 'linux-lock-eol-'))
+    const lock = join(root, 'plugins/dsh-linux-bootstrap/package-lock.json')
+    const git = (...args) => execFileSync('git', ['-C', root, ...args], { env, stdio: 'pipe' })
+    try {
+      git('init', '-q')
+      git('config', 'core.autocrlf', 'true')
+      mkdirSync(join(root, 'plugins/dsh-linux-bootstrap'), { recursive: true })
+      writeFileSync(join(root, '.gitattributes'), negative ? attributes.replace(/^plugins\/dsh-linux-bootstrap\/package-lock\.json -text\r?\n/m, '') : attributes)
+      writeFileSync(lock, bytes)
+      git('add', '.')
+      rmSync(lock)
+      git('checkout-index', '--force', '--all')
+      assert.equal(hash(readFileSync(lock)) === hash(bytes), !negative)
+      assert.equal(readFileSync(lock, 'utf8').replaceAll('\r\n', '\n'), bytes.toString())
+    } finally { rmSync(root, { recursive: true, force: true }) }
+  }
+})
 
 test('reviewed source import rejects equal-size poison and unregistered compiler input', () => {
   const root = mkdtempSync(join(tmpdir(), 'linux-source-pins-'))
