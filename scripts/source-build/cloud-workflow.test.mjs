@@ -5,8 +5,16 @@ import { readFileSync } from 'node:fs'
 const read = name => readFileSync(new URL('../../.github/workflows/' + name, import.meta.url), 'utf8').replaceAll('\r\n', '\n')
 const entry = read('build-apk.yml')
 const expected = "name: build-apk\non:\n  workflow_dispatch:\n    inputs:\n      draft_release:\n        description: '源码构建成功后创建 ARM64 预发布草稿（不会公开）'\n        type: boolean\n        default: false\npermissions:\n  contents: read\njobs:\n  source-build:\n    if: ${{ !inputs.draft_release }}\n    uses: ./.github/workflows/build-apk-source.yml\n  source-draft:\n    if: ${{ inputs.draft_release }}\n    permissions:\n      contents: write\n    uses: ./.github/workflows/release-source-draft.yml"
-const check = text => assert.equal(text.split('\n').filter(line => line.trim() && !line.trimStart().startsWith('#')).join('\n').trim(), expected)
+const check = text => assert.equal(text.split('\n').filter(line => line.trim() && !line.trimStart().startsWith('#')).join('\n').trim(), expected.replace(/(    uses: [^\n]+)/g, '$1\n    secrets: inherit'))
 test('cloud entry routes both modes exclusively through same-commit source workflows', () => check(entry))
+
+test('both wrapper modes fail the contract if signing secrets are not passed', () => {
+  for (const name of ['build-apk-source.yml', 'release-source-draft.yml']) {
+    assert.throws(() => check(entry.replace(`uses: ./.github/workflows/${name}\n    secrets: inherit`, `uses: ./.github/workflows/${name}`)), assert.AssertionError)
+  }
+  const draft = read('release-source-draft.yml').split('  build:')[1].split('  prepare:')[0]
+  assert.match(draft, /secrets: inherit/)
+})
 test('negative control: additional legacy job is rejected', () => {
   assert.throws(() => check(entry + '\n  legacy:\n    runs-on: ubuntu-latest\n'), assert.AssertionError)
 })
