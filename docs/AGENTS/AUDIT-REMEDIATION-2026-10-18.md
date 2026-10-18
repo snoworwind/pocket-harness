@@ -39,4 +39,4 @@
 
 - 修复合并到 `d19e8c3` 后的来源双构建 run [39119416887](https://github.com/snoworwind/pocket-harness/actions/runs/39119416887) 已通过磁盘回收、快照封包、`source snapshot check passed` 和 APK 前段门禁，但在注入后 `check-inject-completeness` 判红：`@dsh-android/linux-bootstrap -> tar 内无该包成员`。真因：`inject-all.py` 的 `build_dsh_replacements` 用目录 basename 当包名，`plugins/dsh-linux-bootstrap` 被写成 `@dsh-android/dsh-linux-bootstrap`，而真实包名与 profile patch 都是 `@dsh-android/linux-bootstrap`。
 - 修法：注入改为从 `package.json.name` 读取包名，只接受单个 `@dsh-android/<name>` 层级；目录名与包名不同时打印审计行。新增 `scripts/source-build/test_inject_all.py`：`dsh-linux-bootstrap -> @dsh-android/linux-bootstrap` 正控、非命名空间与嵌套名负控。
-- 本机证据：WSL Linux `python3 -m unittest discover -s scripts/source-build -p 'test_*.py' -v` 为 **18/18**；新用例在旧实现下会得到 `dsh-linux-bootstrap` 键而失败。新的 main 来源双构建仍待运行；**未做设备验证**。
+- 本机证据：WSL Linux `python3 -m unittest discover -s scripts/source-build -p 'test_*.py' -v` 为 **18/18**；新用例在旧实现下会得到 `dsh-linux-bootstrap` 键而失败。另用最小 tar + 真实 `plugins/dsh-linux-bootstrap` 跑 `inject-all.py` 端到端：`[add] web/headless: @dsh-android/linux-bootstrap (9 files)`，产物只含真实包名命名空间，拒绝目录名命名空间；该回归日志随本轮证据保留。新的 main 来源双构建仍待运行；**未做设备验证**。
