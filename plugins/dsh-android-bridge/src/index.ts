@@ -21,6 +21,8 @@ import { type JsonValue } from '@deepseek-ai/dsh-util-values'
 import { A11Y_OPS, decideControl, type ControlDecision, type ControlOp } from './control-policy.js'
 import {
   currentScreenScope,
+  normalizeScreenScope,
+  testScreenScopeActive,
   decideScreenAccess,
   controlOpNeedsRealScreen,
   realScreenAdbCommandDenied,
@@ -315,6 +317,12 @@ export const A11Y_FRESH_MS = 20_000
  * 取值小于队列取活心跳（20s）——真值一旦变化，下一轮询问即能看到新回执。
  */
 const CAPS_PROBE_TTL_MS = 10_000
+
+/**
+ * 范围读回的最小间隔（A02）：只在「按缓存被判范围拒绝」时补探，窗口内不重复。
+ * caps 随每条控制应答更新，正常相位的补探次数接近 0。
+ */
+const SCREEN_SCOPE_PROBE_TTL_MS = 3_000
 
 export interface ControlGateFacts {
   a11yEnabled: boolean
@@ -625,6 +633,17 @@ export class AndroidPrivilegeService {
   /** 最近一次 Shizuku caps 补探时刻（0.14.1 缺陷 A1；TTL 见 CAPS_PROBE_TTL_MS）。 */
   #capsProbeAt = 0
 
+  /**
+   * 从原生读回的屏幕范围（A02，2026-10-18 审计）。
+   *
+   * 原生授权已迁到壳进程内存；插件产品链路不得再读 retired
+   * `shared_prefs/dsh_screen_scope.xml`（同 uid 可写，且不再被原生维护）。
+   * 真源读回渠道只有两条：每条控制应答的 `caps.screenScope`，以及 `vdInfo.data.scope`。
+   */
+  #screenScope?: UserScreenScope
+  /** 上次为范围打 vdInfo 的时刻（避免连续决策重复占单槽控制队列）。 */
+  #screenScopeProbeAt = 0
+
   readonly #defaultMode?: () => string | undefined
   readonly #sandboxPolicy?: { defaultMode?: string; resolve(r?: { session?: unknown }): { mode?: string } }
   readonly #shellFace?: { resolve?(spec: Record<string, unknown>): Record<string, unknown>; run(spec: Record<string, unknown>): Promise<Record<string, unknown>> }
@@ -718,13 +737,66 @@ export class AndroidPrivilegeService {
   }
 
   /** Native user preference, read live; model code has no write surface for it. */
+  /**
+   * 当前用户屏幕范围（A02）。
+   *
+   * 优先级：显式测试开关（DSH_SCREEN_SCOPE_TEST）> 控制应答带回的原生 caps > 最近一次
+   * 原生读回 > fail-closed 默认虚拟屏。产品链路**不再读任何 prefs 文件**：原生只把授权
+   * 保存在进程内存里，同 uid 可写的 XML 既不是真源、也不会被原生更新。
+   */
   screenScope(): UserScreenScope {
-    return currentScreenScope()
+    if (testScreenScopeActive()) return currentScreenScope()
+    const fromCaps = this.#controlQueue?.stats().caps?.screenScope
+    if (typeof fromCaps === 'string') return normalizeScreenScope(fromCaps)
+    return this.#screenScope ?? currentScreenScope()
+  }
+
+  /**
+   * 向原生真源读回一次范围（A02）。
+   *
+   * 为什么必须有：caps 只随**已执行过的**控制 op 抵达；会话冷启动或「用户刚把范围放宽、
+   * 插件仍按旧值拒绝」时，插件若不主动问一次就永远看不到新授权（这正是 A02 的用户可见
+   * 形态：原生已确认 all/real-only，插件仍判 virtual-only）。读回走 `vdInfo`（neverA11y、
+   * 不需要无障碍、不受档位门约束），应答的 `data.scope` 与 caps 都会带回真源值。
+   *
+   * 纪律：显式测试开关下不联网；TTL 内不重复；失败保留旧值（失败关闭，绝不猜 all）。
+   */
+  async refreshScreenScope(): Promise<UserScreenScope> {
+    if (testScreenScopeActive()) return currentScreenScope()
+    const now = Date.now()
+    if (now - this.#screenScopeProbeAt < SCREEN_SCOPE_PROBE_TTL_MS) return this.screenScope()
+    this.#screenScopeProbeAt = now
+    try {
+      const r = await this.controlExec('vdInfo', {}, 4000)
+      if (r.ok) {
+        const data = (r.data ?? {}) as { scope?: unknown }
+        if (typeof data.scope === 'string') this.#screenScope = normalizeScreenScope(data.scope)
+      }
+    } catch {
+      // 读不到就保持现有值；默认值仍是 fail-closed 的 virtual-only。
+    }
+    return this.screenScope()
   }
 
   /** Fail-closed screen target decision shared by all real/virtual content tool paths. */
   screenAccess(screenId?: string): ScreenAccessDecision {
     return decideScreenAccess(this.screenScope(), screenId)
+  }
+
+  /**
+   * 范围决策 + 「仅因范围被拒」时向原生补探一次（A02 自愈路径）。
+   *
+   * 不在每条放行路径上补探：caps 随控制应答更新，正常相位无需额外往返；拒绝往往是
+   * 「用户刚放宽范围」的唯一可见点，此时补探既修复误拒，又不改变真正越权的拒绝。
+   */
+  private async screenAccessWithRefresh(
+    screenId?: string,
+    virtualDisplayId?: number,
+  ): Promise<ScreenAccessDecision> {
+    const first = decideScreenAccess(this.screenScope(), screenId, { virtualDisplayId })
+    if (first.ok || first.reason !== 'screen-out-of-scope') return first
+    await this.refreshScreenScope()
+    return decideScreenAccess(this.screenScope(), screenId, { virtualDisplayId })
   }
 
   /**
@@ -748,8 +820,13 @@ export class AndroidPrivilegeService {
 
   /** 异步解析版决策（review C11）：虚拟屏经注册表回填动态 displayId 后再判范围/就绪。 */
   async screenAccessResolved(screenId?: string): Promise<ScreenAccessDecision> {
-    const scope = this.screenScope()
-    const base = decideScreenAccess(scope, screenId)
+    let scope = this.screenScope()
+    let base = decideScreenAccess(scope, screenId)
+    // A02：范围拒绝先向原生补探一次——授权刚放宽时 caps 还停在旧值，旧实现会永久误拒。
+    if (!base.ok && base.reason === 'screen-out-of-scope') {
+      scope = await this.refreshScreenScope()
+      base = decideScreenAccess(scope, screenId)
+    }
     if (base.ok || base.reason !== 'screen-not-ready') return base
     return decideScreenAccess(scope, screenId, { virtualDisplayId: await this.resolveScreenDisplayId(base.screenId) })
   }
@@ -832,9 +909,16 @@ export class AndroidPrivilegeService {
    * 命令无目标屏）零额外往返——不为一条本来就不该拦的命令多打一次 vdInfo。
    */
   private async adbCommandScopeDenied(command: string): Promise<string | null> {
-    const scope = this.screenScope()
-    const base = realScreenAdbCommandDenied(scope, command)
+    let scope = this.screenScope()
+    let base = realScreenAdbCommandDenied(scope, command)
     if (base === null) return null
+    // A02：拒绝先向原生补探一次范围（caps 可能停在用户放宽之前）。`all` 下不存在范围拒绝，
+    // 补探无意义；测试开关下 refreshScreenScope 直接返回 env 值，不联网、不占控制队列。
+    if (scope !== 'all') {
+      scope = await this.refreshScreenScope()
+      base = realScreenAdbCommandDenied(scope, command)
+      if (base === null) return null
+    }
     // real-only targets must never be upgraded by the virtual registry; unlike virtual-only,
     // an explicit nonzero/unknown display is itself sufficient reason to deny.
     if (scope === 'real-only') return base
@@ -848,14 +932,14 @@ export class AndroidPrivilegeService {
     //     请求」），发 SF 反查前**必须**等注册表那一跳结束。并发发请求会让后一个立即失败 → token
     //     集合恒空 → 已注册虚拟屏的 token 也被拒（比不修更糟）。
     const registry = await this.registeredVirtualScreens()
-    const byDisplayId = realScreenAdbCommandDenied(this.screenScope(), command, {
+    const byDisplayId = realScreenAdbCommandDenied(scope, command, {
       virtualDisplayIds: registry.ids,
     })
     if (byDisplayId === null) return null
     // displayId 空间不命中：再核对 SurfaceFlinger token（只有这一路需要额外往返与别名集合）。
     if (registry.aliases.length === 0) return byDisplayId
     const sf = await this.#shellSfVirtualDisplayTokens()
-    return realScreenAdbCommandDenied(this.screenScope(), command, {
+    return realScreenAdbCommandDenied(scope, command, {
       virtualDisplayIds: registry.ids,
       virtualAliases: registry.aliases,
       sfVirtualDisplays: sf,
@@ -1155,7 +1239,7 @@ export class AndroidPrivilegeService {
       }
       const decision = virtualDisplayId === undefined
         ? await this.screenAccessResolved(target)
-        : decideScreenAccess(this.screenScope(), target, { virtualDisplayId })
+        : await this.screenAccessWithRefresh(target, virtualDisplayId)
       if (!decision.ok) {
         return {
           ok: false,

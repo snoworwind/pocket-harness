@@ -9,7 +9,6 @@ import {
   controlOpNeedsRealScreen,
   decideScreenAccess,
   normalizeScreenScope,
-  parseScreenScopePrefsXml,
   realScreenAdbCommandDenied,
   screenCommandVerdict,
   adbCommandDisplayIds,
@@ -78,8 +77,6 @@ test('screen scope normalizes native preference values fail-closed', () => {
   assert.equal(normalizeScreenScope('real-only'), 'real-only')
   assert.equal(normalizeScreenScope('all'), 'all')
   assert.equal(normalizeScreenScope('everything'), 'virtual-only')
-  assert.equal(parseScreenScopePrefsXml('<map><string name="scope">real-only</string></map>'), 'real-only')
-  assert.equal(parseScreenScopePrefsXml('<map/>'), 'virtual-only')
 })
 
 test('screen target decision never maps virtual-1 to display 0', () => {
@@ -208,6 +205,111 @@ test('real-only raw shell admits physical targets and fails closed for virtual o
 test('test-only scope source cannot be overridden by an ordinary environment value', () => {
   assert.equal(currentScreenScope({ DSH_SCREEN_SCOPE: 'all' }), 'virtual-only')
   assert.equal(currentScreenScope({ DSH_SCREEN_SCOPE_TEST: '1', DSH_SCREEN_SCOPE: 'all' }), 'all')
+})
+
+// ── A02（2026-10-18 分区复审）：范围真源在原生进程内存，插件只能经认证渠道读回 ─────────────
+//
+// 旧实现读 retired `shared_prefs/dsh_screen_scope.xml`。它既不是原生维护的文件（原生只改
+// @Volatile 内存），又是同 uid 的模型进程可写的——作为授权真源和作为缓存都错。修复后的
+// 产品渠道只有两条：每条控制应答的 `caps.screenScope`，以及 `vdInfo.data.scope`。
+
+test('A02：retired prefs XML 不再是插件范围真源（旧文件写 all 也必须被忽略）', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'dsh-a02-retired-'))
+  const prefs = join(dir, 'dsh_screen_scope.xml')
+  writeFileSync(prefs, '<map><string name="scope">all</string></map>')
+  const savedTest = process.env.DSH_SCREEN_SCOPE_TEST
+  const savedPrefs = process.env.DSH_SCREEN_SCOPE_PREFS_PATH
+  delete process.env.DSH_SCREEN_SCOPE_TEST
+  process.env.DSH_SCREEN_SCOPE_PREFS_PATH = prefs
+  try {
+    assert.equal(currentScreenScope(), 'virtual-only', 'retired XML 写 all 也不得放行真实屏')
+    const queue = new ControlQueue()
+    const svc = service(queue)
+    assert.equal(svc.screenScope(), 'virtual-only', '无 caps/无原生读回时 fail-closed')
+  } finally {
+    if (savedTest === undefined) delete process.env.DSH_SCREEN_SCOPE_TEST
+    else process.env.DSH_SCREEN_SCOPE_TEST = savedTest
+    if (savedPrefs === undefined) delete process.env.DSH_SCREEN_SCOPE_PREFS_PATH
+    else process.env.DSH_SCREEN_SCOPE_PREFS_PATH = savedPrefs
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('A02：caps.screenScope 反映原生当前授权，撤销后下一次应答即收紧', () => {
+  const savedTest = process.env.DSH_SCREEN_SCOPE_TEST
+  delete process.env.DSH_SCREEN_SCOPE_TEST
+  try {
+    const queue = new ControlQueue()
+    const svc = service(queue)
+    queue.noteShell(2, { screenScope: 'all' })
+    assert.equal(svc.screenScope(), 'all')
+    queue.noteShell(2, { screenScope: 'virtual-only' })
+    assert.equal(svc.screenScope(), 'virtual-only')
+  } finally {
+    if (savedTest === undefined) delete process.env.DSH_SCREEN_SCOPE_TEST
+    else process.env.DSH_SCREEN_SCOPE_TEST = savedTest
+  }
+})
+
+test('A02：冷启动无 caps 时经 vdInfo 读回原生 scope；范围拒绝按新授权自愈', async () => {
+  const savedTest = process.env.DSH_SCREEN_SCOPE_TEST
+  delete process.env.DSH_SCREEN_SCOPE_TEST
+  try {
+    const queue = new ControlQueue()
+    const svc = service(queue)
+    assert.equal(svc.screenScope(), 'virtual-only', '尚未读回必须 fail-closed')
+    // 用户已在原生确认 all，但插件还没收到任何 caps：决策必须先补探原生再判拒绝。
+    const decisionPromise = svc.screenAccessResolved('real')
+    const probe = await takeNext(queue)
+    assert.equal(probe?.op, 'vdInfo', 'A02 冷启动必须走 neverA11y 的 vdInfo 读回')
+    queue.settle(probe.reqId, { ok: true, data: { scope: 'all', screens: [], selected: null } })
+    const decision = await decisionPromise
+    assert.deepEqual(decision, { ok: true, screenId: 'real', displayId: 0, scope: 'all' })
+    assert.equal(svc.screenScope(), 'all', '读回值必须缓存在服务面')
+  } finally {
+    if (savedTest === undefined) delete process.env.DSH_SCREEN_SCOPE_TEST
+    else process.env.DSH_SCREEN_SCOPE_TEST = savedTest
+  }
+})
+
+test('A02：原生仍拒绝时补探后维持 screen-out-of-scope（不得因重试放宽）', async () => {
+  const savedTest = process.env.DSH_SCREEN_SCOPE_TEST
+  delete process.env.DSH_SCREEN_SCOPE_TEST
+  try {
+    const queue = new ControlQueue()
+    const svc = service(queue)
+    const decisionPromise = svc.screenAccessResolved('real')
+    const probe = await takeNext(queue)
+    assert.equal(probe?.op, 'vdInfo')
+    queue.settle(probe.reqId, { ok: true, data: { scope: 'virtual-only', screens: [], selected: null } })
+    const decision = await decisionPromise
+    assert.equal(decision.ok, false)
+    if (!decision.ok) assert.equal(decision.reason, 'screen-out-of-scope')
+  } finally {
+    if (savedTest === undefined) delete process.env.DSH_SCREEN_SCOPE_TEST
+    else process.env.DSH_SCREEN_SCOPE_TEST = savedTest
+  }
+})
+
+test('A02：shell 拒绝路径先补探原生；原生放行后同一命令可通过', async () => {
+  const savedTest = process.env.DSH_SCREEN_SCOPE_TEST
+  delete process.env.DSH_SCREEN_SCOPE_TEST
+  try {
+    a11yOnlinePrefs()
+    const queue = new ControlQueue()
+    const svc = service(queue)
+    const out = svc.execAdbShell('input -d 0 tap 10 20', { session: TEST_SESSION })
+    const probe = await takeNext(queue)
+    assert.equal(probe?.op, 'vdInfo', '范围拒绝前必须先向原生复核')
+    queue.settle(probe.reqId, { ok: true, data: { scope: 'all', screens: [], selected: null } })
+    const sh = await takeNext(queue)
+    assert.equal(sh?.op, 'shExec', '原生授权为 all 后同一命令应继续执行')
+    queue.settle(sh.reqId, { ok: true, data: { ok: true, stdout: '' } })
+    assert.equal((await out).ok, true)
+  } finally {
+    if (savedTest === undefined) delete process.env.DSH_SCREEN_SCOPE_TEST
+    else process.env.DSH_SCREEN_SCOPE_TEST = savedTest
+  }
 })
 
 // ── F1（0.14.1 块G）：执行点范围门禁必须按**目标屏**判定，而不是按 op 名一刀切 ──────────────
