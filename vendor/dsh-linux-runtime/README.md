@@ -4,11 +4,11 @@ The **experimental** DSH Mobile Linux capability plugin: it installs,
 health-checks and runs the Debian/glibc environment, and it owns the
 Agent-facing `linux_bash` tool.
 
-This is our own internal plugin. It ships in the built-in (hard) plugin
-directory, but it is **not enabled by default**: presence is not activation.
-Nothing here activates itself, and publishing a new Linux release never turns it
-on. Only an explicit, user-confirmed install (through the bootstrap plugin's
-settings section) enables the runtime.
+In this repository this package is currently vendored as a source/build input
+only. It is not in the APK injector set and is not installed on devices. The
+asset builder packages it for a future offline integration; that integration is
+not complete. In the upstream system it ships in the built-in (hard) plugin
+directory, but is **not enabled by default**: presence is not activation.
 
 ## What this package owns
 
@@ -20,9 +20,10 @@ settings section) enables the runtime.
 | Guest environment | Derived, host-clean environment (see below) |
 | Agent tool | `linux_bash`, registered only while the runtime is healthy |
 
-Bionilux, the Debian minimal rootfs and the Node.js package are **release
-assets**, downloaded and checksum-verified by the bootstrap plugin. They are not
-code in this package, and they are never committed to Git or stored in Git LFS.
+Bionilux, the Debian minimal rootfs and the Node.js package are built by this
+repository's separate internal asset workflow. They are not yet delivered to
+the APK or runtime plugin; the earlier upstream release-download flow is not
+available to this private project.
 
 ## Shared glibc Node.js
 

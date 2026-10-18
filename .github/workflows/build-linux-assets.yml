@@ -5,6 +5,7 @@ on:
     paths:
       - 'vendor/bionilux/**'
       - 'vendor/dsh-linux-runtime/**'
+      - 'plugins/dsh-linux-bootstrap/**'
       - 'scripts/source-build/*linux*'
       - '.github/workflows/build-linux-assets.yml'
 permissions:

@@ -17,10 +17,26 @@ export function verifyLinuxSources(root, manifest) {
     }
     walk(join(root, directory))
   }
+  for (const source of manifest.additionalSources ?? []) {
+    for (const [relativePath, expected] of Object.entries(source.files ?? {})) {
+      if (!relativePath.startsWith(source.directory + '/')) throw new Error('additional Linux source path escapes its declared directory')
+      const file = join(root, relativePath)
+      const stat = lstatSync(file)
+      if (stat.isSymbolicLink() || !stat.isFile()) throw new Error('additional Linux source is not a regular file: ' + relativePath)
+      const digest = createHash('sha256').update(readFileSync(file)).digest('hex')
+      if (digest !== expected) throw new Error('Linux source digest mismatch: ' + relativePath)
+      actual.push(relativePath)
+    }
+  }
   if (JSON.stringify(actual.sort()) !== JSON.stringify(Object.keys(manifest.files).sort())) throw new Error('Linux source file set differs from reviewed import')
   for (const file of actual) {
     const bytes = readFileSync(join(root, file))
     if (createHash('sha256').update(bytes).digest('hex') !== manifest.files[file]) throw new Error('Linux source digest mismatch: ' + file)
+  }
+  for (const [file, patch] of Object.entries(manifest.localPatches ?? {})) {
+    if (!manifest.files[file] || !/^[0-9a-f]{64}$/.test(patch.upstreamSha256 ?? '') || !patch.reason?.trim()) {
+      throw new Error('Linux local source patch is not fully recorded: ' + file)
+    }
   }
   return actual.length
 }

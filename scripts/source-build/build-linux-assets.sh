@@ -29,7 +29,7 @@ export CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1
 export RUSTFLAGS='-C link-arg=-Wl,--threads=1'
 rustup toolchain install "$RUST_VERSION" --profile minimal --target aarch64-linux-android
 rustup run "$RUST_VERSION" cargo build --release --locked --jobs "$THREADS" --target aarch64-linux-android --manifest-path vendor/bionilux/Cargo.toml
-rustup run "$RUST_VERSION" cargo metadata --locked --format-version=1 --manifest-path vendor/bionilux/Cargo.toml > "$WORK/provenance/cargo-metadata.json"
+rustup run "$RUST_VERSION" cargo metadata --locked --format-version=1 --filter-platform aarch64-linux-android --manifest-path vendor/bionilux/Cargo.toml > "$WORK/provenance/cargo-metadata.json"
 python3 scripts/source-build/collect-linux-licenses.py "$WORK/provenance/cargo-metadata.json" "$WORK/backend/share/licenses"
 mkdir -p "$WORK/backend/bin" "$WORK/backend/lib" "$WORK/backend/scripts"
 install -m755 "$CARGO_TARGET_DIR/aarch64-linux-android/release/bionilux" "$WORK/backend/bin/bionilux"

@@ -2595,4 +2595,8 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 
 399. **离线 Linux 工厂资产必须有独立来源链，不能把私有 Release 当匿名下载渠道（2026-10-18）**
 
-现象：旧 Linux 发布 API 无资产，空批准 pin 永远拒绝；私有仓的 Release 也不能供手机匿名取件。真因：运行时资产分发与私有项目身份没有收口，单改 URL 不能恢复功能。修法按用户选择先建立只读 ARM64 离线资产来源链：原生 launcher/preload 和插件使用本仓固定原始 Git 字节，Debian/Node 使用真实官方签名/摘要输入，产出本地清单与 provenance，后续随 APK 内置。源码完整集合、同体积投毒和额外编译输入负控通过，管理器 15 项与打包 3 项通过；官方 Debian InRelease/Node 归档摘要已在线核实。当前改动只构建内部资产，未接入产品运行时；真实 ARM64 资产构建由只读 workflow 验证，未做设备验证，不能把夹具当 Linux 可用性证明。另在导入时直接读原仓 Git blob，避免 Windows autocrlf 改写 JavaScript 原始字节。
+现象：旧 Linux 发布 API 无资产，空批准 pin 永远拒绝；私有仓的 Release 也不能供手机匿名取件。真因：运行时资产分发与私有项目身份没有收口，单改 URL 不能恢复功能。修法按用户选择先建立只读 ARM64 离线资产来源链：原生 launcher/preload 和插件使用本仓固定原始 Git 字节，Debian/Node 使用真实官方签名/摘要输入，产出本地清单与 provenance，后续随 APK 内置。源码导入摘要、同体积投毒和额外编译输入负控通过；官方 Debian InRelease/Node 归档摘要已在线核实。真实资产 run 39093355168 在许可收集阶段失败（根因及修法见坑 400），未产出归档，不能声称资产构建已由 workflow 验证。当前也未接入产品运行时；未做设备验证，不能把夹具当 Linux 可用性证明。另在导入时直接读原仓 Git blob，避免 Windows autocrlf 改写 JavaScript 原始字节。
+
+400. **Cargo 许可收集不能扫描 metadata 中所有包（2026-10-18）**
+
+现象：ARM64 Linux 资产 run 39093355168 编译完 Bionilux 后，在许可收集阶段因 `r-efi 6.0.0` 没有 LICENSE 文件而失败。真因：collector 遍历 Cargo metadata 的全部 `packages`，其中还包含当前目标未构建的 UEFI 依赖；Cargo 清单包集合不等于 Android ARM64 目标闭包。修法：调用 `cargo metadata --filter-platform aarch64-linux-android`，从 resolve root 只遍历 normal/build 边，忽略 dev 边；收集根目录许可文件及嵌套 LICENSES/LICENCES，并保留相对路径；任何可达包缺少许可仍失败关闭。反证：`test_collect_linux_licenses.py` 覆盖过滤后未达的 r-efi、dev-only 包、normal 依赖缺失许可与实际目标依赖许可。复验：该测试集通过；仍须 dispatch 完整资产构建，CI 单测不替代真实产物证据。

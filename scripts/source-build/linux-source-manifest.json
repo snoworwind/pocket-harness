@@ -1,6 +1,25 @@
 {
   "sourceRepository": "https://github.com/kelai141/dsh-bionilux",
   "sourceCommit": "4865754bd9e3e030e62a60793b418a6a0f643b14",
+  "additionalSources": [
+    {
+      "directory": "plugins/dsh-linux-bootstrap",
+      "sourceRepository": "https://github.com/kelai141/dsh-bionilux",
+      "sourceCommit": "3f86a853e346b4f2c268fbf6a76216294b5c4382",
+      "sourcePath": "packages/linux-bootstrap",
+      "files": {
+        "plugins/dsh-linux-bootstrap/package.json": "e282c33a9e0226d72644aa620d9ea548e6c2eb44d78c7687bf7d05cde29e9115",
+        "plugins/dsh-linux-bootstrap/client/index.js": "bad0fab23f1e31eff807eea1f7102407d9f86d85030131569d00e50a925376cd",
+        "plugins/dsh-linux-bootstrap/src/asset-bundle.js": "0ca508bf79194bf5942d5b561551ec349e31e19213ae2f32380f1d2ff093d062",
+        "plugins/dsh-linux-bootstrap/src/github.js": "00bd90f85e411e4b0d7573af267e292e930aba5a01de6b7e13dd9ca221bb2a14",
+        "plugins/dsh-linux-bootstrap/src/index.js": "3f45dfa5bfcf81fe4dbf1dba78246c27b1972df569316a91ca1ff058c4618454",
+        "plugins/dsh-linux-bootstrap/src/manifest.js": "0f92f25c3b0e782a3d26a6a2b1e23f524d892fc96cd2a0cc8d5d359995ed184e",
+        "plugins/dsh-linux-bootstrap/src/routes.js": "c78dae2d3d0e86f09d6c4ca42a4cfd83c850514a39180c1a72e42b3509537161",
+        "plugins/dsh-linux-bootstrap/src/status.js": "2c009e3509fc60a884a7a9967af1f16b8f7ae3578978cf9117eda404c145f99d",
+        "plugins/dsh-linux-bootstrap/src/version.js": "c740fcecf6d25cf58bebffae1de477ac31dc2301bd134d40ad30439493a867d7"
+      }
+    }
+  ],
   "files": {
     "vendor/bionilux/Cargo.lock": "9c29a38fdf9b777e953424ce3e4e4adff4e8293ae82435ea43c693238fc730c7",
     "vendor/bionilux/Cargo.toml": "ee1fd047a1459a873518cdab392ee393342c8dec90c7cf25a20dc28323d0f762",
@@ -19,12 +38,27 @@
     "vendor/bionilux/src/main.rs": "57f1483a9a255719af882f6e21b380e23957f48864021f2342648bd13af3bdf2",
     "vendor/bionilux/src/preload/hooks.c": "79fd840efe3d6b36ba24c845e3a49e34918209a01f48e3a70a08986dca41ec3e",
     "vendor/dsh-linux-runtime/LICENSE": "e9f4502fb52418dcd3e320d8d15e1bd7b43094ec3f2fdd5c33dd88f5a2ba85d9",
-    "vendor/dsh-linux-runtime/README.md": "91a18de24c9ceb4f5aba6ce7b28d0e769ae26e1178d529d14e139b437214b187",
+    "vendor/dsh-linux-runtime/README.md": "721bc0001e960683bf14909e442f973e3882b8d18e783be301aecf6934574890",
     "vendor/dsh-linux-runtime/lib/index.js": "4cbe776c5079e445e47cd3949f907d304659573a3d448b629a1c1de0630109bc",
     "vendor/dsh-linux-runtime/modules/asset-installer.js": "036774735e016d605cecf91093384371903129ef15b17c7dd8927f9acdc8d7e1",
     "vendor/dsh-linux-runtime/modules/manager.js": "e7da654488bc9b26d500b2316e16c145a7239d0e8f052621bf3fc220ccad86d3",
     "vendor/dsh-linux-runtime/modules/manifest.js": "1722dd47005c62fad20ec22ddb710bbff72f4a1bc5fdbee7199bb73e31185971",
     "vendor/dsh-linux-runtime/package.json": "1d65abf96889a13f9bfce9266f44839c1957ffc5bc6691fa047cb6061041c476",
-    "vendor/dsh-linux-runtime/test/manager.test.mjs": "4549fefea91b30dfceefab3a2a0418270da4f5ce7c5ecb9b4264081ec2607c02"
+    "vendor/dsh-linux-runtime/test/manager.test.mjs": "4549fefea91b30dfceefab3a2a0418270da4f5ce7c5ecb9b4264081ec2607c02",
+    "plugins/dsh-linux-bootstrap/package.json": "e282c33a9e0226d72644aa620d9ea548e6c2eb44d78c7687bf7d05cde29e9115",
+    "plugins/dsh-linux-bootstrap/client/index.js": "bad0fab23f1e31eff807eea1f7102407d9f86d85030131569d00e50a925376cd",
+    "plugins/dsh-linux-bootstrap/src/asset-bundle.js": "0ca508bf79194bf5942d5b561551ec349e31e19213ae2f32380f1d2ff093d062",
+    "plugins/dsh-linux-bootstrap/src/github.js": "00bd90f85e411e4b0d7573af267e292e930aba5a01de6b7e13dd9ca221bb2a14",
+    "plugins/dsh-linux-bootstrap/src/index.js": "3f45dfa5bfcf81fe4dbf1dba78246c27b1972df569316a91ca1ff058c4618454",
+    "plugins/dsh-linux-bootstrap/src/manifest.js": "0f92f25c3b0e782a3d26a6a2b1e23f524d892fc96cd2a0cc8d5d359995ed184e",
+    "plugins/dsh-linux-bootstrap/src/routes.js": "c78dae2d3d0e86f09d6c4ca42a4cfd83c850514a39180c1a72e42b3509537161",
+    "plugins/dsh-linux-bootstrap/src/status.js": "2c009e3509fc60a884a7a9967af1f16b8f7ae3578978cf9117eda404c145f99d",
+    "plugins/dsh-linux-bootstrap/src/version.js": "c740fcecf6d25cf58bebffae1de477ac31dc2301bd134d40ad30439493a867d7"
+  },
+  "localPatches": {
+    "vendor/dsh-linux-runtime/README.md": {
+      "upstreamSha256": "91a18de24c9ceb4f5aba6ce7b28d0e769ae26e1178d529d14e139b437214b187",
+      "reason": "Clarify that this private repository only vendors the source/build input; it is not injected into the APK or distributed as release assets."
+    }
   }
 }
