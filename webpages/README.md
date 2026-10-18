@@ -27,12 +27,10 @@ webpages/
 ## 数据流
 
 ```
-push webpages/**  --+
-workflow_dispatch --+--> node tools/build.mjs --> dist/ --> upload-pages-artifact --> deploy-pages
-release published --+
+workflow_dispatch --> node tools/build.mjs --> dist/ --> upload-pages-artifact --> deploy-pages
 ```
 
-Publication refresh uses the `release: published` event after a draft becomes public. Site sources are checked out from the repository's default branch rather than the release tag. Draft creation alone does not refresh the site. Manual dispatch and site-source pushes remain supported.
+部署目前只允许手动触发。站点完成独立品牌、下载方式与 Pages 配置核对后，再恢复自动部署。
 
 ### 线路（镜像）与版本解绑
 
@@ -155,7 +153,7 @@ node webpages/tools/build.mjs                     # 构建到 webpages/dist/
 node webpages/tools/build.mjs --refresh           # 同时刷新 data/releases.json 种子
 ```
 
-部署：`.github/workflows/pages.yml`（push main 的 webpages/**、release 完成、手动 dispatch）。
+部署：`.github/workflows/pages.yml`（暂时仅手动 dispatch；独立品牌、下载方式与 Pages 配置核对后再恢复自动触发）。
 
 ## 验证范围（如实说明）
 
