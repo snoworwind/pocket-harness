@@ -277,3 +277,7 @@ Linux bootstrap 本地安全分叉（2026-10-18）：`check-vendored-linux-boots
 当前云端来源链：两个 build-arm64 replica 从同一提交、全新 runner 各自构建，只有临时签名证书；verify-arm64 不执行产物，只比较实际 APK 条目、hard manifest 与 v3 快照语义；sign-arm64 等验证通过后才读取正式 PKCS12 Secret，使用固定生产证书 pin 验证三签并更新 APK 摘要；最终来源 artifact 才允许进入草稿准备。本地 run-local-source-chain 仅跑 build replica，GITHUB_ENV 的四个白名单构建变量在步骤间传递，临时签名 APK 明确禁止交付。自测入口 compare-independent-builds.mjs --self-test 与 sign-source-artifacts.mjs --self-test。共用上游或 runner 环境失陷仍是信任边界；真实双构建结果必须单独取得。
 
 bootstrap 的 package-lock.json 与 package.json 一样属于逐字节来源输入，.gitattributes 禁止 autocrlf；check-linux-sources --self-test 用实际 Git checkout 和删除属性负控证明这一点，不能按本机 CRLF 字节重封批准摘要。
+
+### Linux 插件启动依赖（2026-10-18）
+
+插件注入只携带 lib 与 package.json，不携带开发机 node_modules。解包依赖闭包登记在 engine-overlay.json 的 vendorTop 与许可清单；回归命令：`node --test scripts/source-build/linux-plugin-dependencies.test.mjs plugins/dsh-linux-bootstrap/test/client-http.test.mjs`。浏览器 bootstrap 只注入 slots，通过既有鉴权 HTTP 路由调用引擎服务；不得跨进程注入 linuxBootstrap。

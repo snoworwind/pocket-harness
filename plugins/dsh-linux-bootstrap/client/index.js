@@ -14,12 +14,8 @@ import React, { useEffect, useState } from 'react'
 import { EXPERIMENTAL_NOTICE, autoUpdateAvailable, describeVersionStatus } from '../src/status.js'
 
 export const name = 'dsh-linux-bootstrap-client'
-// `slots` is declared next to the service the section renders from. The DSH
-// Mobile host gates slot access on the declared injection set, and its own
-// client plugins declare it too (`dsh-client-ui-responsive`: `slots`, `theme`,
-// ...), so a client that calls `ctx.slots` without declaring it can end up
-// with no slot registry at all.
-export const inject = ['slots', 'linuxBootstrap']
+// Only browser-owned services belong in the client injection set.
+export const inject = ['slots']
 
 const h = React.createElement
 
@@ -181,9 +177,34 @@ export function LinuxEnvironmentSection({ linuxBootstrap }) {
   )
 }
 
+// Engine services do not cross into browser Cordis; use authenticated host routes.
+export function createHttpBootstrap(fetchImpl = globalThis.fetch) {
+  const request = async (action, body) => {
+    const response = await fetchImpl(`/api/android/linux-environment/${action}`, {
+      method: action === 'status' ? 'GET' : 'POST',
+      credentials: 'same-origin', cache: 'no-store',
+      ...(body ? { headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) } : {}),
+    })
+    const status = await response.json()
+    if (!response.ok) throw new Error(status.error || `Linux request failed: ${response.status}`)
+    return { ...status, updateAvailable: Boolean(status.availableVersion),
+      pluginReleaseUrls: status.pluginReleaseUrls ?? {
+        bootstrap: status.plugins?.bootstrap?.releaseUrl, runtime: status.plugins?.runtime?.releaseUrl,
+      } }
+  }
+  return {
+    status: () => request('status'),
+    subscribe: () => () => {},
+    checkForUpdates: () => request('check'),
+    install: (body) => request('install', body),
+    reinstall: (body) => request('reinstall', body),
+    uninstall: (body) => request('uninstall', body),
+    setAutoUpdateEnabled: (enabled) => request(enabled ? 'auto-update-on' : 'auto-update-off', { confirmed: true }),
+  }
+}
+
 export function apply(ctx, config = {}) {
-  const linuxBootstrap = ctx.linuxBootstrap
-  if (!linuxBootstrap) throw new Error('The linuxBootstrap service injection is required')
+  const linuxBootstrap = createHttpBootstrap()
   const order = Number.isFinite(config.order) ? config.order : 80
   const Section = (props) => h(LinuxEnvironmentSection, { ...props, linuxBootstrap })
   const register = () => ctx.slots.inject('settings.section', () => ctx.slots.register({

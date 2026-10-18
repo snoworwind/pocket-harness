@@ -1452,7 +1452,7 @@ flowchart TD
 
 #### P04 文件打开、Linux 环境与模型能力插件
 
-Linux 内部插件宿主适配（实验性 internal，默认不启用）：`plugins/dsh-android-linux-env/src/linux-environment.ts` 提供受鉴权的 Linux 生命周期 HTTP 路由和 `linuxPluginHost`；`plugins/dsh-android-linux-env/src/linux-host-asset-io.ts` 提供引擎侧 `linuxAssetIO`。bootstrap 已纳入 APK 注入集，来源链会先重建其 `lib/index.js` 与 `lib/client.js`；Linux 工厂链产出的 ARM64 runtime、Bionilux、Debian rootfs、Node、bootstrap 与 runtime 插件包，在 APK 快照构建前经来源提交、原始 manifest sidecar、URL 命名空间、摘要和体量校验后放入 `usr/share/pocket-harness/linux-assets`。`linux-env` 启动时通过 `linuxBootstrapConfig` 注入该目录、应用版本与信任校验；没有有效 Termux 前缀时不提供配置，缺少资产或校验失败则关闭安装路径、不联网回退。`linuxAssetPrepare` 是独立的壳侧准备路径。runtime 目录必须位于 `$DSH_FILES_DIR/linux-environment/plugins` 内；宿主核对 realpath 后动态 import，等待 Cordis fiber 激活，失败或卸载时 dispose。`linuxPluginHost.isInjected({name?,runtimeId?,directory?})` 只读上报**在场**（平铺或 `<name>/<version>` 布局，拒绝分隔符与外逃符号链接）并作为权威判定：显式查询未命中即不在场（不回落内存已激活目录），手工删除后 `install()` 以不在场失败关闭，新 Release 或新应用版本不会把插件重新写回。当前自检和主机单测通过；来源 APK 与设备链尚待验证，见 [known-gaps.md](known-gaps.md)。
+Linux 客户端启动链：浏览器 Cordis 只等待 slots，面板经鉴权 HTTP 路由调用引擎 linuxBootstrap，服务缺席仅在面板报错；解包依赖闭包由 overlay vendorTop 注入，受 linux-plugin-dependencies 正负控覆盖。Linux 内部插件宿主适配（实验性 internal，默认不启用）：`plugins/dsh-android-linux-env/src/linux-environment.ts` 提供受鉴权的 Linux 生命周期 HTTP 路由和 `linuxPluginHost`；`plugins/dsh-android-linux-env/src/linux-host-asset-io.ts` 提供引擎侧 `linuxAssetIO`。bootstrap 已纳入 APK 注入集，来源链会先重建其 `lib/index.js` 与 `lib/client.js`；Linux 工厂链产出的 ARM64 runtime、Bionilux、Debian rootfs、Node、bootstrap 与 runtime 插件包，在 APK 快照构建前经来源提交、原始 manifest sidecar、URL 命名空间、摘要和体量校验后放入 `usr/share/pocket-harness/linux-assets`。`linux-env` 启动时通过 `linuxBootstrapConfig` 注入该目录、应用版本与信任校验；没有有效 Termux 前缀时不提供配置，缺少资产或校验失败则关闭安装路径、不联网回退。`linuxAssetPrepare` 是独立的壳侧准备路径。runtime 目录必须位于 `$DSH_FILES_DIR/linux-environment/plugins` 内；宿主核对 realpath 后动态 import，等待 Cordis fiber 激活，失败或卸载时 dispose。`linuxPluginHost.isInjected({name?,runtimeId?,directory?})` 只读上报**在场**（平铺或 `<name>/<version>` 布局，拒绝分隔符与外逃符号链接）并作为权威判定：显式查询未命中即不在场（不回落内存已激活目录），手工删除后 `install()` 以不在场失败关闭，新 Release 或新应用版本不会把插件重新写回。当前自检和主机单测通过；来源 APK 与设备链尚待验证，见 [known-gaps.md](known-gaps.md)。
 
 引擎侧 `linuxAssetIO`（2026-10-17 安全修复）：`downloadAsset` 只交回按摘要推导的宿主归档路径；bootstrap 复制归档并验证摘要与长度，然后 `extractArchive` 用 XZ WASM + 流式 tar 重新解码全新 staging，拒绝穿越、重复路径、链接与特殊条目，限制条目数、单文件、总展开量。复核 unpackedSize、包名与入口后原子交换槽位；不读宿主解包树、不按缓存标记或大小复用代码。源码本地分叉在 `dshVendor.localPatches` 与 vendored 门禁登记，保留原上游 commit/hash。完整边界见 BRIDGE-API.md 的 Linux 节。
 
@@ -2100,6 +2100,8 @@ scripts/source-build/sign-source-artifacts.test.mjs
 scripts/source-build/read-apk-snapshot.py
 vendor/dsh-undo-savepoint/test/import-plaintext.test.mjs
 plugins/dsh-linux-bootstrap/test/github-limits.test.mjs
+plugins/dsh-linux-bootstrap/test/client-http.test.mjs
+scripts/source-build/linux-plugin-dependencies.test.mjs
 plugins/dsh-linux-bootstrap/test/github-limits-negative-control.mjs
 app/src/main/java/com/dsharnessmobile/shell/EngineTransport.kt
 app/src/androidTest/java/com/dsharnessmobile/shell/EngineTransportInstrumentedTest.kt

@@ -206,7 +206,7 @@ JS interface count is checked from source by `scripts/check-bridge-symmetry.mjs`
 
 ## Linux 内部插件宿主（实验性 internal，默认不启用）
 
-`dsh-android-linux-env` 提供惰性 Cordis 服务 `linuxPluginHost` 和 `/api/android/linux-environment/*`，不新增 Kotlin 桥方法或默认 Linux 工具。bootstrap 与 runtime 都是**我们自己的实验性内部插件**：随应用放入**内置（hard）插件目录**，但**默认不启用——存在不等于启用**。应用更新或插件新版本发布都不会启用它们，也不会重新启用用户停用的插件。「Linux环境」设置入口由 vendored bootstrap 的客户端条目注册（id `linux-environment`，见 `docs/AGENTS/modules.md`）——那是该分区的**唯一注册方**；壳侧 0.14.x 的同名分区已撤回（list 槽重复 id 会抛错），签名的 `/api/android/linux-environment/*` 路由与 `linuxPluginHost` 作为惰性宿主基础设施保留。只有 bootstrap 真的被启用（`linuxBootstrap` 服务在场）后入口才出现；停用后消失。
+`dsh-android-linux-env` 提供惰性 Cordis 服务 `linuxPluginHost` 和 `/api/android/linux-environment/*`，不新增 Kotlin 桥方法或默认 Linux 工具。bootstrap 与 runtime 都是**我们自己的实验性内部插件**：随应用放入**内置（hard）插件目录**，但**默认不启用——存在不等于启用**。应用更新或插件新版本发布都不会启用它们，也不会重新启用用户停用的插件。「Linux环境」设置入口由 vendored bootstrap 的客户端条目注册（id `linux-environment`，见 `docs/AGENTS/modules.md`）——那是该分区的**唯一注册方**；壳侧 0.14.x 的同名分区已撤回（list 槽重复 id 会抛错），签名的 `/api/android/linux-environment/*` 路由与 `linuxPluginHost` 作为惰性宿主基础设施保留。浏览器面板只注入 `slots`，经现有鉴权 HTTP 路由访问引擎服务；引擎服务缺席时面板显示不可用，不阻断 Web UI 启动。
 
 | HTTP | 路径后缀 | 语义 |
 |---|---|---|
