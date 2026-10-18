@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { runInNewContext } from 'node:vm'
 
-const source = readFileSync(new URL('./check-engine-overlay.mjs', import.meta.url), 'utf8')
+const source = readFileSync(new URL('./check-engine-overlay.mjs', import.meta.url), 'utf8').replaceAll('\r\n', '\n')
 const registry = JSON.parse(readFileSync(new URL('./patches/registry.json', import.meta.url), 'utf8'))
 const patch = registry.patches.find(p => p.id === 'client-registry-scan-C4')
 // Execute the gate's actual metadata and assertion blocks, not a duplicate implementation.

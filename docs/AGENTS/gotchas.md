@@ -2629,3 +2629,7 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 408. **来源 artifact、捕获夹具、生成物和差异注册表需同时更新（2026-10-18）**
 
 现象：新增 Linux provenance 上传项后，发布准备单测缺少对应文件；包名迁移还让捕获记录夹具和生成型 protocol JSON 与来源清单/生成器不符，新增 bootstrap 插件则漏登记退役发布脚本的显式差集。真因：这些门禁各自以工作流上传 globs、捕获哈希、生成器输出和注册表为真源，手改单边不能维持合同。修法：测试搭建阶段按实际上传清单创建 Linux provenance 文件；历史设备证据恢复原字节；protocol 夹具重新由 `gen-protocol-v2-fixture.mjs` 生成；`release-plugin-src-gaps.json` 明确记录 bootstrap 不走退役注入链。验证：发布准备测试需在 Linux/UTF-8 环境运行；patch fixture、protocol v2 与 `check-release-gates.mjs` 已本地通过，PR Linux CI 复验其余环境条件。
+
+409. **源码切片回归须统一换行后再定位函数边界（2026-10-18）**
+
+现象：Windows CRLF 检出在本机与 WSL 同时触发 overlay/file-click 加载期断言失败。真因：测试按 LF 字节查函数尾，尚未执行业务断言。修法：只对被测试源码的内存副本归一化换行，产品字节和安全判据不变。原工作树负例见综合审查 A09；修复后同一 CRLF 工作树重跑两套业务回归，日志 audit-fixes-2026-10-18/test-portability.log。此项仅改测试，未做设备验证。
