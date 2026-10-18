@@ -405,14 +405,14 @@ async function main() {
   // ── P0 前置（不满足 → exit 2：前置不满足不得当缺陷上报，也不得当作通过） ──
   const devices = adb(['devices']).split('\n').filter((l) => l.includes(SERIAL))
   if (devices.length === 0) { record('P0', '设备在线', 'INCONCLUSIVE', SERIAL + ' 不在 adb devices'); process.exit(2) }
-  const fp = run(`run-as com.dsharnessmobile.shell ls files/.snapshot-fingerprint`)
-  const tx = shBoth('run-as com.dsharnessmobile.shell ls files/.snapshot-transaction')
+  const fp = run(`run-as com.snoworwind.pocketharness ls files/.snapshot-fingerprint`)
+  const tx = shBoth('run-as com.snoworwind.pocketharness ls files/.snapshot-transaction')
   if (!fp.includes('.snapshot-fingerprint') || !/No such file/.test(tx)) {
     record('P0', '快照就绪（指纹在场且事务 marker 已消失）', 'INCONCLUSIVE',
       `刷新期间禁跑验收；先等快照完成（marker 探测输出：${tx.trim().slice(0, 120) || '(空)'}）`)
     process.exit(2)
   }
-  run('am start -n com.dsharnessmobile.shell/.MainActivity')
+  run('am start -n com.snoworwind.pocketharness/com.dsharnessmobile.shell.MainActivity')
   await new Promise((r) => setTimeout(r, 2500))
 
   let scope
@@ -552,7 +552,7 @@ async function main() {
   // 会话区滚动、任务文字上屏都会改变真实屏像素——把它判红是本套件自己的缺陷。
   // 真正要守的命题是「虚拟屏操作没有把第三方应用带到真实屏前台」，故改用**前台归属**判据。
   const realTop = topResumedOnDisplay0()
-  const intruder = realTop !== '' && realTop !== 'com.dsharnessmobile.shell'
+  const intruder = realTop !== '' && realTop !== 'com.snoworwind.pocketharness'
   record('P3', '虚拟屏操作未把第三方应用带到真实屏前台', intruder ? 'FAIL' : 'PASS',
     `display 0 前台=${realTop || '未知'}（pixel 参照：${realBefore} B → ${realAfter} B，仅作留证不作判据）`)
 

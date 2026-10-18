@@ -155,11 +155,11 @@ const gate = (file) => join(ROOT, 'scripts', file)
 if (DRY_RUN) {
   log('版本真源: ' + VER_SRC + ' -> versionName=' + VER)
   log('输出目录: ' + OUT)
-  log('产物名: dsh-mobile-apk-v' + VER + SUFFIX + '-' + ABI + '.apk')
+  log('产物名: pocket-harness-v' + VER + SUFFIX + '-' + ABI + '.apk')
   log('注入 dirs(' + pluginDirs.length + '): ' + manifest.dirs.join(', '))
   log('注入 externals(' + externalDirs.length + '): ' + manifest.externals.join(', '))
   log('门禁集(' + GATE_SCRIPTS.length + '): ' + GATE_SCRIPTS.join(' -> '))
-  console.log('DRY_RUN OK version=' + VER + ' apk=dsh-mobile-apk-v' + VER + SUFFIX + '-' + ABI + '.apk')
+  console.log('DRY_RUN OK version=' + VER + ' apk=pocket-harness-v' + VER + SUFFIX + '-' + ABI + '.apk')
   process.exit(0)
 }
 
@@ -372,7 +372,7 @@ try {
   log('许可资产就位')
 
   // ---- 6-8. Shared terminal stage: snapshot/fingerprint + Gradle + copy ----
-  const name = `dsh-mobile-apk-v${VER}${SUFFIX}-${ABI}.apk`
+  const name = `pocket-harness-v${VER}${SUFFIX}-${ABI}.apk`
   log('构建 APK…')
   const finalApk = assembleApk({
     snapshot: snapIn,

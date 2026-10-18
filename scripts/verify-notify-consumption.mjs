@@ -34,7 +34,7 @@ const argOf = (n) => { const i = argv.indexOf('--' + n); return i >= 0 ? argv[i 
 const has = (n) => argv.includes('--' + n)
 const SERIAL = argOf('serial')
 const WAIT_S = Number(argOf('wait') ?? 30)
-const PKG = 'com.dsharnessmobile.shell'
+const PKG = 'com.snoworwind.pocketharness'
 const FILE_REL = 'files/home/.dsh/.notify.ndjson'
 const INJECT_NAME = '.notify-inject'
 const STAMP = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)

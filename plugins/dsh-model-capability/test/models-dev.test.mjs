@@ -272,7 +272,7 @@ test('缓存路径与 diag 同口径：DSH_HOME 缺席时退回壳私有目录',
   try {
     delete process.env.DSH_HOME
     const fallback = modelsDevCachePath(undefined)
-    assert.equal(fallback, '/data/user/0/com.dsharnessmobile.shell/files/home/.dsh/models-dev.json')
+    assert.equal(fallback, '/data/user/0/com.snoworwind.pocketharness/files/home/.dsh/models-dev.json')
   } finally {
     if (saved === undefined) delete process.env.DSH_HOME
     else process.env.DSH_HOME = saved

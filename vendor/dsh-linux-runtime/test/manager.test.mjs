@@ -500,7 +500,7 @@ test('the guest namespace list covers the directories the rootfs owns', () => {
   assert.equal(isGuestPath('/etc'), true);
   assert.equal(isGuestPath('/etc/os-release'), true);
   assert.equal(isGuestPath('/etcetera'), false, 'prefix matching must not leak to similar names');
-  assert.equal(isGuestPath('/data/data/com.dsharnessmobile.shell/files'), false);
+  assert.equal(isGuestPath('/data/data/com.snoworwind.pocketharness/files'), false);
 });
 
 test('execution fails closed when the runtime is absent, and never falls back to the host', async () => {

@@ -468,7 +468,7 @@ foreach ($abi in @('arm64', 'x86_64')) {
         "--snapshot", $snapIn,
         "--apk-dir", $apkDir,
         "--output-dir", $Out,
-        "--artifact-name", "dsh-mobile-apk-v$ver-$abi.apk",
+        "--artifact-name", "pocket-harness-v$ver-$abi.apk",
         "--clean"
     )
     # Windows PowerShell drops an empty native argument during splatting. Omitting an empty
@@ -506,7 +506,7 @@ if ($ExportSnapshots) {
         Copy-Item $snapIn $outSnap -Force
         Set-Content -Path (Join-Path $Out "snapshot-$abi.tar.xz.sha256") -Value ((Get-FileHash $outSnap -Algorithm SHA256).Hash.ToLower()) -NoNewline -Encoding ascii
         Write-Host "快照资产导出: $outSnap"
-        $apkOut = Join-Path $Out ("dsh-mobile-apk-v" + $GradleVer + $Suffix + "-" + $abi + ".apk")
+        $apkOut = Join-Path $Out ("pocket-harness-v" + $GradleVer + $Suffix + "-" + $abi + ".apk")
         if (Test-Path $apkOut) {
             & (Join-Path $PSScriptRoot "check-snapshot-asset.ps1") -ApkPath $apkOut -SnapshotPath $outSnap
             if ($LASTEXITCODE -ne 0) { Deny-Abi $abi "快照资产与 APK 内嵌不一致（拒绝发布组装）"; continue }

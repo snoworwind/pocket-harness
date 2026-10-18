@@ -52,7 +52,6 @@ const STAGES = [
   { key: 'termux', label: '组装并验签 Termux 基座', match: /^Authenticate official Termux bootstrap|^Add Node\.js to the clean Termux base|^Verify signed Termux repository|^Cross-compile node-pty|^Assemble clean Termux base/ },
   { key: 'linux-assets', label: '构建签名校验的离线 ARM64 Linux 资产', match: /^Install Linux asset cross-build tools|^Prepare pinned Debian archive trust keys|^Build source-owned offline ARM64 Linux assets/ },
   { key: 'snapshot', label: '构建运行时快照', match: /^Build runtime snapshot/ },
-  { key: 'sign', label: 'keystore 自检', match: /^Verify the repository debug signing keystore/ },
   { key: 'apk', label: '门禁 + 注入 + 打包 ARM64 APK', match: /^Build ARM64 APK/ },
 ]
 const SKIP_STEP = /^(Set up job|Checkout project source|Prepare build tools|Run actions\/setup-|Install archive and signature tools|Upload APK and provenance|Post )/

@@ -1,5 +1,5 @@
 param([string]$Serial = "10AF2B0GN0001F2", [string]$Package)
-# deploy-embedded.ps1 — embedded-form plugin deploy (run-as com.dsharnessmobile.shell + /data/user/0 paths)
+# deploy-embedded.ps1 — embedded-form plugin deploy (run-as com.snoworwind.pocketharness + /data/user/0 paths)
 $ErrorActionPreference = "Continue"
 $adb = "$env:LOCALAPPDATA\Android\Sdk\platform-tools\adb.exe"
 $root = "D:\coding\dsh-mobile"
@@ -14,8 +14,8 @@ Copy-Item (Join-Path $pkgDir "package.json") $stagePkg -Force
 $remote = "/data/local/tmp/" + $Package
 & $adb -s $Serial shell "rm -rf $remote" 2>$null | Out-Null
 & $adb -s $Serial push $stagePkg "$remote" 2>&1 | Out-Null
-$dst = "/data/user/0/com.dsharnessmobile.shell/files/home/.dsh/profiles/web/node_modules/@dsh-android/" + $Package
+$dst = "/data/user/0/com.snoworwind.pocketharness/files/home/.dsh/profiles/web/node_modules/@dsh-android/" + $Package
 $inner = "mkdir -p " + (Split-Path $dst -Parent) + " && rm -rf $dst && cp -r $remote $dst && chmod -R a+rX $dst && rm -rf $remote && ls $dst/lib"
-& $adb -s $Serial shell "run-as com.dsharnessmobile.shell sh -c '$inner'" 2>&1
+& $adb -s $Serial shell "run-as com.snoworwind.pocketharness sh -c '$inner'" 2>&1
 Remove-Item $stage -Recurse -Force -ErrorAction SilentlyContinue
 Write-Output ("deployed " + $Package)

@@ -125,7 +125,7 @@ try {
   }
   execFileSync(process.execPath, ['scripts/patches/apply-patches.mjs', referenceStage, '--apply', '--scope', 'engine'], { stdio: 'inherit' })
   execFileSync(process.execPath, ['scripts/check-browser-syntax-floor.mjs', '--degrade', '--stage', referenceStage], { stdio: 'inherit' })
-  execFileSync('python3', ['scripts/fix-shebang.py', join(referenceStage, 'usr'), '/data/user/0/com.dsharnessmobile.shell/files/usr'], { stdio: 'inherit' })
+  execFileSync('python3', ['scripts/fix-shebang.py', join(referenceStage, 'usr'), '/data/user/0/com.snoworwind.pocketharness/files/usr'], { stdio: 'inherit' })
   const physicalFiles = collectPhysicalFiles(engineRoot)
   const physicalRelative = physicalFiles.map(file => ({ file, rel: relative(engineRoot, file).split(sep).join('/') }))
   const packageChecks = []

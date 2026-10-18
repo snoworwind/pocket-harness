@@ -46,7 +46,7 @@ def prepare(source, output, env):
     if project['sourceRepository'] != server + '/' + repo:
         raise ValueError('source repository mismatch')
     apks = [p for p in files if p.suffix == '.apk']
-    if len(apks) != 1 or not re.fullmatch(r'dsh-mobile-apk-v[\w.+-]+-source-arm64\.apk', apks[0].name):
+    if len(apks) != 1 or not re.fullmatch(r'pocket-harness-v[\w.+-]+-source-arm64\.apk', apks[0].name):
         raise ValueError('expected exactly one source ARM64 APK')
     apk = apks[0]
     expected = f'{digest(apk)}  {apk.relative_to(source).as_posix()}'
@@ -67,7 +67,7 @@ Commit: {sha}
 Build: {server}/{repo}/actions/runs/{env['GITHUB_RUN_ID']}
 
 Draft prerelease only. Device validation has NOT been performed for this candidate.
-ARM64 only; do not install on x86_64 emulators. Uses the existing debug signing identity.
+ARM64 only; install on ARM64 Android devices. Uses the independent Pocket Harness signing identity.
 Complete device acceptance before making this release public.
 
 APK bytes are copied unchanged from this run's source build. provenance.zip contains

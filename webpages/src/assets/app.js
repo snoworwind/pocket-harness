@@ -236,7 +236,7 @@ function renderUnsupported(classification) {
   el.body.innerHTML =
     '<div class="notice">' +
     '<h3>暂无支持版本</h3>' +
-    '<p>本应用目前只提供 64 位 ARM（arm64）与 64 位 x86（x86_64）安装包。' +
+    '<p>本应用目前只提供 64 位 ARM（arm64）安装包。' +
     '当前设备为 <b>' + esc(shown) + '</b>，暂不受支持。</p>' +
     '</div>' +
     '<a class="btn2" href="' + LATEST_RELEASE_URL + '">查看全部版本</a>';
@@ -347,6 +347,13 @@ function renderError(msg) {
     '<a class="btn2" href="' + VERSION_BROWSER + '">手动下载</a>';
 }
 
+function renderNoRelease() {
+  el.body.innerHTML =
+    '<div class="notice"><h3>尚无独立发行版本</h3>' +
+    '<p>Pocket Harness 的 ARM64 安装包尚未发布，请稍后查看项目 Release。</p></div>' +
+    '<a class="btn2" href="' + LATEST_RELEASE_URL + '">查看项目 Release</a>';
+}
+
 function renderDownload(release, classification) {
   const tag = release.tag;
   const asset = pickAsset(tag, classification.abi, release.assets);
@@ -378,15 +385,13 @@ function renderDownload(release, classification) {
       '<ol class="steps">' +
         '<li>下载后点击安装包；系统若提示未知来源，需允许浏览器安装应用。</li>' +
         '<li>与已安装版本签名一致时可直接覆盖升级，数据保留。</li>' +
-        '<li>两个架构安装包体积相近，无法凭体积区分，请以上方识别结果为准。</li>' +
+        '<li>当前发行仅提供 arm64 安装包。</li>' +
       '</ol>' +
       (hasDigest
         ? '<p class="hash">SHA-256（' + esc(asset.name) + '）<br>' + esc(digest) + '</p>'
         : '<p class="hash">该版本未提供内联校验值，可在 Releases 页面的 MANIFEST.txt 中核对。</p>') +
     '</details>' +
-    (classification.confidence === 'likely'
-      ? '<div class="switchers"><button type="button" id="switch-abi">识别不准？换另一个架构</button></div>'
-      : '');
+    '';
 
   const main = document.getElementById('dl-main');
   const host = document.getElementById('lines-host');
@@ -427,16 +432,6 @@ function renderDownload(release, classification) {
     paintLineSelector(sel, current, lastResults, lastDead);
   });
   host.appendChild(sel);
-
-  const abiBtn = document.getElementById('switch-abi');
-  if (abiBtn) {
-    abiBtn.addEventListener('click', () => {
-      const other = SUPPORTED_ABIS.find((a) => a !== classification.abi);
-      if (pickAsset(tag, other, release.assets)) {
-        renderDownload(release, { abi: other, raw: '手动选择', confidence: 'certain' });
-      }
-    });
-  }
 
   // 实测排序：把最快的线路设为首选（仅当用户尚未手动选过时）
   // 速度按**真实资产**测：小文件 TTFB 与外网大文件吞吐在国内并不同序
@@ -486,7 +481,8 @@ async function main() {
   const inline = inlineData();
   const classification = classifyAbi(await deviceSignals());
   const data = (inline && inline.tag ? inline : null) || (await fallbackFromJson());
-  if (!data || !data.tag) return renderError('版本数据不可用');
+  if (!data) return renderError('版本数据不可用');
+  if (!data.tag) return renderNoRelease();
 
   if (classification.confidence === 'unsupported') return renderUnsupported(classification);
   if (classification.confidence === 'unknown') return renderUnknown(data);

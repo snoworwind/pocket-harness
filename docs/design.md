@@ -98,11 +98,11 @@ EngineService: 前台服务（keep-alive）+ 看门狗；Shizuku 保活增强（
 dsh-mobile-apk/                 ← 独立 git 仓库
 ├── settings.gradle.kts / build.gradle.kts / gradle.properties
 ├── gradle/wrapper/             ← Gradle 8.11.1 wrapper（随仓入库）
-├── keystore/debug.keystore     ← 固定 debug 签名（CI/本地一致，可覆盖安装）
+├── keystore/pocket-harness-cert-sha256.txt ← 发布证书公钥指纹 pin；私钥只存于仓库 Secret
 ├── docs/design.md              ← 本文档
 └── app/
-    ├── build.gradle.kts        ← AGP 8.9.x, Kotlin 2.0.x, minSdk 26, targetSdk 34, compileSdk 36
-    │                            applicationId com.dsharnessmobile.shell, versionCode 18, versionName 0.12.4
+    ├── build.gradle.kts        ← 历史快照为 AGP 8.9.x / Kotlin 2.0.x；当前 applicationId 为
+    │                            com.snoworwind.pocketharness，Kotlin namespace 保留 com.dsharnessmobile.shell
     └── src/main/
         ├── AndroidManifest.xml
         ├── assets/

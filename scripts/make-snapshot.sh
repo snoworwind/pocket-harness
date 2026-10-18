@@ -3,9 +3,9 @@
 set -e
 ROOT="${DSH_SNAPSHOT_ROOT:-/data/data/com.termux/files}"
 # Shell path target for the in-snapshot profile patch (v0.12.3-FX-1: package renamed to
-# com.dsharnessmobile.shell, decoupled from the DSH_SNAPSHOT_ROOT source — the source may still
+# com.snoworwind.pocketharness, decoupled from the DSH_SNAPSHOT_ROOT source — the source may still
 # point at the old package dir, the patch writes the new package path directly).
-SNAP_PKG_ROOT="${DSH_SNAPSHOT_PKG_ROOT:-/data/user/0/com.dsharnessmobile.shell}"
+SNAP_PKG_ROOT="${DSH_SNAPSHOT_PKG_ROOT:-/data/user/0/com.snoworwind.pocketharness}"
 if [ ! -d "$ROOT/usr" ] || [ ! -d "$ROOT/home" ]; then
   echo "snapshot root is incomplete: $ROOT" >&2
   exit 1
@@ -154,7 +154,7 @@ if [ -n "$PATCH_SRC" ] && [ -f "$PATCH_SRC" ]; then
 else
   echo "WARNING: external profile-web.cordis.patch.yml not found; using embedded copy (may drift from the main repo, sync it)"
 fi
-sed -i "s|/data/data/com.termux/files/usr/bin/bash|$SNAP_PKG_ROOT/usr/bin/bash|g; s|/data/data/com.termux/files/usr|$SNAP_PKG_ROOT/usr|g; s|/data/data/com.termux/files/home|$SNAP_PKG_ROOT/home|g; s|com\.dshmobile\.shell|com.dsharnessmobile.shell|g" stage-root/home/.dsh/profiles/*/cordis.patch.yml
+sed -i "s|/data/data/com.termux/files/usr/bin/bash|$SNAP_PKG_ROOT/usr/bin/bash|g; s|/data/data/com.termux/files/usr|$SNAP_PKG_ROOT/usr|g; s|/data/data/com.termux/files/home|$SNAP_PKG_ROOT/home|g; s|com\.dshmobile\.shell|com.snoworwind.pocketharness|g" stage-root/home/.dsh/profiles/*/cordis.patch.yml
 # The Android app domain (untrusted_app/runas_app) forbids link(2) (SELinux domain-level, targetSdk-independent);
 # dsh session logs are published atomically via link()+unlink() → EACCES fails every agent turn.
 # Minimal artifact-level patch: fall back to rename() on link failure (EACCES/EPERM); a single engine process has no concurrent-overwrite risk.

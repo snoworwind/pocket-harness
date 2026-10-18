@@ -983,7 +983,7 @@ export function apply(ctx, config = {}) {
     const dshMobileUndoControlToken = () => {
       const valid = (value) => typeof value === 'string' && value.length >= 8 ? value : undefined;
       const prefsPath = process.env.DSH_ADB_PREFS_PATH
-        ?? ((process.env.TERMUX__PREFIX && process.env.DSH_HOME) ? '/data/user/0/com.dsharnessmobile.shell/shared_prefs/dsh-adb.xml' : undefined);
+        ?? ((process.env.TERMUX__PREFIX && process.env.DSH_HOME) ? '/data/user/0/com.snoworwind.pocketharness/shared_prefs/dsh-adb.xml' : undefined);
       let fromPrefs;
       if (prefsPath) {
         try { fromPrefs = valid(/<string\s+name="controlToken">([^<]*)<\/string>/.exec(readFileSync(prefsPath, 'utf8'))?.[1]); }

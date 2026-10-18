@@ -469,7 +469,7 @@ export const UNLOCK_STATE_FILE = '.capability-unlock.json'
 export const UNLOCK_STATE_VERSION = 1
 
 /** 默认 DSH_HOME（与 index.ts 的既有兜底一致：真机路径）。 */
-const DEFAULT_DSH_HOME = '/data/user/0/com.dsharnessmobile.shell/files/home/.dsh'
+const DEFAULT_DSH_HOME = '/data/user/0/com.snoworwind.pocketharness/files/home/.dsh'
 
 /** 解析状态文件内容；任何异常/结构不符都返回空数组（fail-closed）。 */
 export function parseUnlockedGroups(raw: string): readonly string[] {

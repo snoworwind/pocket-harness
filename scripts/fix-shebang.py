@@ -3,7 +3,7 @@
 
 扫描 usr/bin、usr/libexec 与 usr/lib 下的文本脚本，做两类重写：
 A. 编译期残留的 /data/data/com.termux/files/usr 前缀 → 内嵌应用前缀
-   /data/user/0/com.dsharnessmobile.shell/files/usr（Termux 官方包按旧前缀编译）。
+   /data/user/0/com.snoworwind.pocketharness/files/usr（Termux 官方包按旧前缀编译）。
 B. 裸 `#!/usr/bin/env <cmd>` 形式（issue apk#83：node 包 bin 脚本的标准头）→
    `#!<new_prefix>/usr/bin/env <cmd>`——Android 内核在根文件系统解析 `/usr/bin/env`,
    应用沙箱内不存在该路径,凡经 execve 直启的脚本（如 dsh plugin add → pnpm 拉起
@@ -19,7 +19,7 @@ import sys
 
 def main():
     usr = sys.argv[1]
-    new_prefix = sys.argv[2] if len(sys.argv) > 2 else '/data/user/0/com.dsharnessmobile.shell/files/usr'
+    new_prefix = sys.argv[2] if len(sys.argv) > 2 else '/data/user/0/com.snoworwind.pocketharness/files/usr'
     old_prefix = '/data/data/com.termux/files/usr'
     dirs = [os.path.join(usr, 'bin'), os.path.join(usr, 'libexec'), os.path.join(usr, 'lib')]
     fixed = 0

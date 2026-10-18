@@ -32,7 +32,7 @@ function check(label, ok, detail) {
 const BUILD = join(repoRoot, 'scripts', 'build-snapshot-013.mjs')
 const PROFILE = join(repoRoot, 'scripts', 'profile-web.cordis.patch.yml')
 const WRAPPER_REL = 'libexec/dsh-node'
-const PREFIX = '/data/data/com.dsharnessmobile.shell/files/usr'
+const PREFIX = '/data/data/com.snoworwind.pocketharness/files/usr'
 
 const build = readFileSync(BUILD, 'utf8')
 const profile = readFileSync(PROFILE, 'utf8')

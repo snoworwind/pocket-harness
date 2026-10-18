@@ -13,17 +13,17 @@
         # the Termux App's bash belongs to u0_a423 with 700 perms, so the engine (u0_a461) cross-uid
         # accessSync(X_OK) check always fails (measured "is not executable"). The in-shell
         # usr/bin ships bash/curl/node; wget is now distributed with the snapshot too.
-        bashPath: /data/data/com.dsharnessmobile.shell/files/usr/bin/bash
-        prefix: /data/data/com.dsharnessmobile.shell/files/usr
-        home: /data/data/com.dsharnessmobile.shell/files/home
-        cwd: /data/data/com.dsharnessmobile.shell/files/home
+        bashPath: /data/data/com.snoworwind.pocketharness/files/usr/bin/bash
+        prefix: /data/data/com.snoworwind.pocketharness/files/usr
+        home: /data/data/com.snoworwind.pocketharness/files/home
+        cwd: /data/data/com.snoworwind.pocketharness/files/home
         timeoutMs: 120000
         maxTimeoutMs: 600000
         # 写面栅栏（0.13.0 D21）：默认档位仅工作区与选定共享目录；danger-full-access 为完全访问档位
         # （开放共享存储全域，仍限应用域沙盒）。workspaceRoot/sharedDirs 为全局单一实例，
         # 由 dsh-android-linux-env 插件在设置页动态维护（此处的初始值仅出厂基线）。
         writeMode: workspace-write
-        workspaceRoot: /data/data/com.dsharnessmobile.shell/files/home/.dsh/workspaces
+        workspaceRoot: /data/data/com.snoworwind.pocketharness/files/home/.dsh/workspaces
         sharedDirs: []
     - id: host-web-compat
       name: '@dsh-android/dsh-host-web-compat'
@@ -214,7 +214,7 @@
 # 逆转条件：上游 NodePtcRuntime 自己解析执行世界里的 node（不再缺省取 process.execPath）后，本行可撤。
 - id: ptc-runtime
   config:
-    nodeExecutable: /data/data/com.dsharnessmobile.shell/files/usr/libexec/dsh-node
+    nodeExecutable: /data/data/com.snoworwind.pocketharness/files/usr/libexec/dsh-node
 
 # Office→PDF（0.14.2 追版决策，2026-09-25 实测）——**显式禁用上游 web-app bundle 的 office-to-pdf 行**。
 # rc.1 新增该行（0.1.5 的 web-app bundle 里 office 零命中），它运行时依赖

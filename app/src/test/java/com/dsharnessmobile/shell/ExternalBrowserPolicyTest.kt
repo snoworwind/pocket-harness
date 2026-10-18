@@ -18,7 +18,7 @@ class ExternalBrowserPolicyTest {
   @Test fun gestureDoesNotPermitNativeSchemesOrAmbiguousAddresses() {
     for (url in listOf(
       "intent://launch#Intent;scheme=app;end", "content://private.provider/file",
-      "file:///data/user/0/com.dsharnessmobile.shell/files/engine.log",
+      "file:///data/user/0/com.snoworwind.pocketharness/files/engine.log",
       "custom-app://perform-sensitive-action", "javascript:alert(1)", "data:text/html,test",
       "https://user:secret@example.com/", "https://example.com\\@evil.com/",
       "https://example.com\n", "https://example.com:99999/", "https:///path",

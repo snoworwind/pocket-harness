@@ -5,7 +5,7 @@
 ![DeepSeek Harness](https://img.shields.io/badge/DeepSeek_Harness-blue?style=flat&logo=DeepSeek&logoSize=auto&color=%232D5F9E)
 ![Android](https://img.shields.io/badge/Android-blue?style=flat&logo=Android&logoSize=auto&color=%2397CA00)
 
-> 独立项目，基于 [dsh-mobile-apk](https://github.com/snoworwind/dsh-mobile-apk) 的 `security/hardening` 分支提交 `cb1c315` 建立；运行时仍使用 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)。基线与未迁移标识见 [项目基线](docs/AGENTS/BASELINE.md)。
+> 独立项目 Pocket Harness，基于 [dsh-mobile-apk](https://github.com/snoworwind/dsh-mobile-apk) 的 `security/hardening` 分支提交 `cb1c315` 建立；运行时仍使用 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)。应用身份与迁移边界见 [项目基线](docs/AGENTS/BASELINE.md)。
 
 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 的安卓壳：WebView UI 覆盖
 **内嵌 Termux 运行时快照**（解压即跑，无需 Termux app）、SAF 目录桥、保活前台服务、引擎看门狗、
@@ -13,7 +13,7 @@
 
 > **本项目宗旨：最大程度提高安全性和可验证性。** 范围、实施原则、已接受风险与证据要求见 [安全加固分支宗旨](docs/AGENTS/SECURITY-HARDENING.md)。
 
-当前基线沿用应用名 `DeepCode`（图标文字 DeepSearch）、包名 `com.dsharnessmobile.shell`、
+应用名为 `Pocket Harness`，独立包名为 `com.snoworwind.pocketharness`（Kotlin namespace 保留原值），
 源码版本与 versionCode 见 [构建声明](app/build.gradle.kts)，后缀由构建属性决定；引擎 `@deepseek-ai/dsh` 0.2.0-rc.2（本地开发候选，**未发布**）。应用名、applicationId 与 APK 产物前缀的迁移边界见 [项目基线](docs/AGENTS/BASELINE.md)。
 
 > **插件市场适配警示**：内置市场牵涉大量第三方插件，**绝大多数插件在手机端不一定可用、大概率有 bug**
@@ -79,14 +79,14 @@
 
 ## 下载 / 安装
 
-新仓库尚未发布 APK，也没有可用的 Release。首次发布前会确定产物命名与签名策略；当前构建产物名仍沿用基线的 `dsh-mobile-apk-v<版本>-<abi>.apk`。
+新仓库尚未发布 APK，也没有可用的 Release。来源链只构建 ARM64，产物名为 `pocket-harness-v<版本>-source-arm64.apk`，由私有仓库 Secret 提供的独立发布密钥签名。
 
 ```sh
 adb install -r -t <apk>    # 同签名覆盖安装
 ```
 
 **ABI 必须与设备匹配。** ABI 不匹配会导致引擎启动即崩——node ELF `EM_X86_64` vs `EM_AARCH64`。
-真机选 arm64 包，模拟器选 x86_64 包。
+目前只提供 arm64 包；x86_64 模拟器不受支持。
 
 > **覆盖安装后请等待首次解压完成**（快照指纹翻转），期间勿强杀应用。
 

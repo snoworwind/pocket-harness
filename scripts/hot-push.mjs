@@ -29,7 +29,7 @@ const PLUGIN = argOf('plugin')
 const PKG = argOf('pkg')
 const RESTART = argv.includes('--restart')
 const DRY = argv.includes('--dry-run')
-const APP_ID = argOf('app') ?? 'com.dsharnessmobile.shell'
+const APP_ID = argOf('app') ?? 'com.snoworwind.pocketharness'
 
 if (!SERIAL || !PLUGIN) {
   console.error('用法: node scripts/hot-push.mjs --serial <adb-serial> --plugin <dir> [--pkg @scope/name] [--restart] [--dry-run]')

@@ -1,7 +1,9 @@
 # known-gaps.md — 当前缺口与验收入口
 
 > 本分支宗旨及当前验证边界见 [SECURITY-HARDENING.md](SECURITY-HARDENING.md)。源码有改动不等于新包已验收。
-> 先前加固批次仅编译和静态检查；本次按用户新要求执行 WSL 来源 APK 构建及必要测试、产物门禁。设备验收仍未执行。本分支独立维护与远程交付方式见宗旨文档；发版须另行获得用户授权。
+> 应用身份迁移与 ARM64 离线资产修复仍待云端来源 APK 全链；设备侧实测按用户决定暂缓并统一验收。发版须另行获得用户授权。
+
+- Pocket Harness 独立身份与签名改造已完成代码实现：`applicationId=com.snoworwind.pocketharness`、仅 ARM64 下载与产物、独立 PKCS12 证书 pin。已按用户授权设置 `POCKET_SIGNING_KEYSTORE_BASE64` 与 `POCKET_SIGNING_KEYSTORE_PASSWORD` 仓库 Secrets；仍须运行云端来源 APK 全链。设备侧三层验收按用户安排暂缓，未做设备验证，不得作为发行候选。
 
 ## 当前入口
 

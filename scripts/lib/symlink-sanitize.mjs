@@ -22,7 +22,7 @@
  * ------------------
  *  1. 相对链：保留（设备侧接受树内相对链）。
  *  2. 绝对链指向**本 App**：保留（设备侧按 runtimeCanon 接受）。两种写法都算本 App：
- *     `/data/data/com.dsharnessmobile.shell/...` 与别名 `/data/user/0/com.dsharnessmobile.shell/...`
+ *     `/data/data/com.snoworwind.pocketharness/...` 与别名 `/data/user/0/com.snoworwind.pocketharness/...`
  *     （Android 上 `/data/user/0/<pkg>` 是指向 `/data/data/<pkg>` 的别名；设备侧判据走
  *     `canonicalPath`，两种写法都解析进运行时根，**必须都保留**——实测 `usr/bin/{vi,editor,pager,nc}`
  *     就是 `/data/user/0/...` 写法，按「非 App 前缀即删」处理会误删可用的编辑器入口）。
@@ -43,7 +43,7 @@ import { join, dirname, relative } from 'node:path'
 /** 构建机 Termux 数据根（旧前缀）。 */
 export const OLD_DEVICE_PREFIX = '/data/data/com.termux/files'
 /** 本 App 运行时根（快照内 `usr`/`home` 最终落点）。 */
-export const APP_DEVICE_PREFIX = '/data/data/com.dsharnessmobile.shell/files'
+export const APP_DEVICE_PREFIX = '/data/data/com.snoworwind.pocketharness/files'
 /** 本 App 的别名写法：Android 上 `/data/user/0/<pkg>` 指向 `/data/data/<pkg>`（多用户时为 /data/user/<n>）。 */
 const APP_DEVICE_ALIAS_RE = /^\/data\/user\/\d+\/com\.dsharnessmobile\.shell\//
 

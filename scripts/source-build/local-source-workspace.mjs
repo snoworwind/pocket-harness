@@ -62,7 +62,7 @@ function rejectEscapedWriteRoots(workspace) {
         // Snapshot relocation changes Termux's prefix to the shell app's
         // /data/user/0 prefix. Resolve relative aliases such as rvim -> vim
         // before applying the same narrow runtime exemption.
-        const androidRuntimeLink = ['/data/data/com.termux/files/usr/', '/data/user/0/com.dsharnessmobile.shell/files/usr/']
+        const androidRuntimeLink = ['/data/data/com.termux/files/usr/', '/data/user/0/com.snoworwind.pocketharness/files/usr/']
           .some(prefix => target.startsWith(prefix)) && !existsSync(target)
           && androidStagingRoots.some(root => contains(root, path))
         if (!androidRuntimeLink && !contains(workspace, target)) {

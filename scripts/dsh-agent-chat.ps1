@@ -23,7 +23,7 @@ $ErrorActionPreference = 'Stop'
 $base = "http://127.0.0.1:$Port"
 
 function Get-EngineCookie {
-  $raw = (adb -s $Serial shell "run-as com.dsharnessmobile.shell grep -o 'token=[A-Za-z0-9_-]*' files/engine.log | tail -1" 2>$null) -join "`n"
+  $raw = (adb -s $Serial shell "run-as com.snoworwind.pocketharness grep -o 'token=[A-Za-z0-9_-]*' files/engine.log | tail -1" 2>$null) -join "`n"
   if (-not $raw) { throw "engine.log 中找不到 token（引擎未启动？）" }
   $token = ($raw -replace '(?s).*token=', '').Trim()
   if ($token.Length -lt 16) { throw "token 解析失败（len=$($token.Length)）" }

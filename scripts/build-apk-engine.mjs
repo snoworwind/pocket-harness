@@ -57,15 +57,15 @@ export function assembleApk(options, runner = spawnSync) {
   const assetSnapshot = join(assetDir, 'snapshot.tar.xz')
   const fingerprint = join(assetDir, 'snapshot.sha256')
   const intermediates = join(resolvedApkDir, 'app', 'build', 'intermediates', 'assets')
-  const debugOutput = join(resolvedApkDir, 'app', 'build', 'outputs', 'apk', 'debug')
-  const builtApk = join(debugOutput, 'app-debug.apk')
+  const releaseOutput = join(resolvedApkDir, 'app', 'build', 'outputs', 'apk', 'release')
+  const builtApk = join(releaseOutput, 'app-release.apk')
   const deliveredApk = join(resolvedOutputDir, artifactName)
 
   mkdirSync(assetDir, { recursive: true })
   mkdirSync(resolvedOutputDir, { recursive: true })
   // Never let a successful no-op/incremental Gradle invocation reuse an older APK.
   // Release mode preserves unrelated intermediates, but the terminal APK output is always fresh.
-  rmSync(debugOutput, { recursive: true, force: true })
+  rmSync(releaseOutput, { recursive: true, force: true })
   if (clean) {
     rmSync(intermediates, { recursive: true, force: true })
   }
@@ -83,7 +83,7 @@ export function assembleApk(options, runner = spawnSync) {
   execute(process.execPath, [fingerprintGate, '--require'], { cwd: SCRIPT_DIR }, runner)
 
   const gradle = gradleCommand ?? (process.platform === 'win32' ? 'gradlew.bat' : './gradlew')
-  const gradleArgs = [':app:assembleDebug', '--no-daemon', `-PversionNameSuffix=${suffix}`]
+  const gradleArgs = [':app:assembleRelease', '--no-daemon', `-PversionNameSuffix=${suffix}`]
   log(`Gradle: ${gradle} ${gradleArgs.join(' ')}`)
   execute(gradle, gradleArgs, { cwd: resolvedApkDir, shell: process.platform === 'win32' }, runner)
 

@@ -9,7 +9,7 @@
 //
 // 用法：
 //   node scripts/verify-state-sync.mjs --self-test                 # 无设备：桩驱动，含故意失败样本
-//   node scripts/verify-state-sync.mjs --serial 127.0.0.1:16416 [--pkg com.dsharnessmobile.shell] [--ws <cdp-ws-url>]
+//   node scripts/verify-state-sync.mjs --serial 127.0.0.1:16416 [--pkg com.snoworwind.pocketharness] [--ws <cdp-ws-url>]
 // 退出码：0 = 全部用例 PASS；1 = 有用例 FAIL；2 = 用法/前置不满足。
 import { spawnSync } from 'node:child_process'
 
@@ -17,7 +17,7 @@ const argv = process.argv.slice(2)
 const argOf = (name, def) => { const i = argv.indexOf('--' + name); return i >= 0 ? (argv[i + 1] ?? def) : def }
 const SELF_TEST = argv.includes('--self-test')
 const SERIAL = argOf('serial', '')
-const PKG = argOf('pkg', 'com.dsharnessmobile.shell')
+const PKG = argOf('pkg', 'com.snoworwind.pocketharness')
 const WS = argOf('ws', '')
 /**
  * CDP 转发用的 **host 端口**。

@@ -15,12 +15,12 @@ class RuntimeTreeSelfHealTest {
    * 正向：真机 logcat 的原文必须被识别。
    *
    * 原文取自用户报障附件（小米 25079RPDCC / Android 36 / arm64 / 0.14.2-fx-1）：
-   *   F linker  : CANNOT LINK EXECUTABLE "/data/user/0/com.dsharnessmobile.shell/files/usr/bin/node":
+   *   F linker  : CANNOT LINK EXECUTABLE "/data/user/0/com.snoworwind.pocketharness/files/usr/bin/node":
    *               library "libz.so.1" not found: needed by main executable
    */
   @Test
   fun `real device CANNOT LINK line is detected`() {
-    val real = "F linker  : CANNOT LINK EXECUTABLE \"/data/user/0/com.dsharnessmobile.shell/files/usr/bin/node\": " +
+    val real = "F linker  : CANNOT LINK EXECUTABLE \"/data/user/0/com.snoworwind.pocketharness/files/usr/bin/node\": " +
       "library \"libz.so.1\" not found: needed by main executable"
     assertTrue("真机原文必须被识别", RuntimeTree.snapshotLinkFailure(real))
   }

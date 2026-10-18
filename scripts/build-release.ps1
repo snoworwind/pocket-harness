@@ -205,7 +205,7 @@ foreach ($abi in @(@{n='arm64-v8a'; f=$armSnap}, @{n='x86_64'; f=$x86Snap})) {
     "--snapshot", $abi.f,
     "--apk-dir", (Join-Path $root "dsh-mobile-apk"),
     "--output-dir", $apkDir,
-    "--artifact-name", ("dsh-mobile-apk-v" + $Version + "-" + $abi.n + ".apk"),
+    "--artifact-name", ("pocket-harness-v" + $Version + "-" + $abi.n + ".apk"),
     "--gradle", $gradleCommand
   )
   # Empty native arguments are dropped by Windows PowerShell and would shift the following

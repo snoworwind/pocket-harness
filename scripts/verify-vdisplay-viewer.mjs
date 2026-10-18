@@ -164,7 +164,7 @@ try {
   if (afterHide.state !== 'active') fail('关闭查看器后 display 必须保持 active: ' + JSON.stringify(afterHide))
   const dump = adb(['shell', 'dumpsys', 'display'])
   if (serial !== undefined) {
-    const holdsDisplay = dump.includes('type VIRTUAL') && dump.includes('com.dsharnessmobile.shell')
+    const holdsDisplay = dump.includes('type VIRTUAL') && dump.includes('com.snoworwind.pocketharness')
     if (!holdsDisplay) fail('dumpsys display 中虚拟屏缺席（display 被误销毁）')
   }
   results.closeKeepsDisplay = { state: afterHide.state, displayId: afterHide.displayId, dumpsysVirtual: serial === undefined ? 'skipped' : true }

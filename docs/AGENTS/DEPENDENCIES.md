@@ -9,7 +9,7 @@
 | 工具链 | 声明见下方生成区；发布与开发使用项目 wrapper，不用系统 Gradle 替代。 |
 | Android API / 应用版本 / 依赖声明 | 见下方 Gradle 生成区；任何新增 API 保持 minSdk 守卫。 |
 | Termux基线 | 见下方生成区的 BuildConfig.TERMUX_VERSION 源声明。 |
-| 签名 | repoDebug固定keystore，来源链与正常链使用同一证书；终包签名指纹由真实构建后补，不虚构。 |
+| 签名 | 发布 APK 通过 `POCKET_SIGNING_KEYSTORE_BASE64` / `POCKET_SIGNING_KEYSTORE_PASSWORD` Secret 使用独立 PKCS12 密钥；明文私钥不入库，最终 APK 必须匹配 `keystore/pocket-harness-cert-sha256.txt`。 |
 | lint | checkReleaseBuilds=false / abortOnError=false，不等于功能或安全门禁通过。 |
 
 ## 2. Gradle依赖

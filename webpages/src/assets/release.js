@@ -57,7 +57,7 @@ export const MIRROR_TEMPLATES = [
 ];
 
 /** 受支持的 ABI 家族名。 */
-export const SUPPORTED_ABIS = ['arm64', 'x86_64'];
+export const SUPPORTED_ABIS = ['arm64'];
 
 /** 站点正式地址（canonical / sitemap / JSON-LD 共用；改域名只需改这一处，或用 DSH_SITE_URL 覆盖）。 */
 export const SITE_URL = (ENV.DSH_SITE_URL || ('https://' + OWNER.toLowerCase() + '.github.io/' + REPO)).replace(/\/+$/, '') + '/';
@@ -82,7 +82,7 @@ export function probeUrl(template) {
 }
 
 /** ABI 家族 -> 面向用户的可读名。 */
-export const ABI_LABELS = { arm64: 'arm64（64 位 ARM，绝大多数手机）', x86_64: 'x86_64（64 位 x86，模拟器）' };
+export const ABI_LABELS = { arm64: 'arm64（64 位 ARM）' };
 
 /** 版本号去 v 前缀。 */
 export function stripV(tag) {
@@ -95,9 +95,10 @@ export function stripV(tag) {
  *（arm64 设备在任何情况下都不会拿到 x86_64 包）。
  */
 export function apkNameCandidates(tag, abi) {
+  if (!SUPPORTED_ABIS.includes(abi)) return [];
   const v = stripV(tag);
   const names = abi === 'arm64' ? ['arm64', 'arm64-v8a'] : [abi];
-  return names.map((a) => 'dsh-mobile-apk-v' + v + '-' + a + '.apk');
+  return names.map((a) => 'pocket-harness-v' + v + '-' + a + '.apk');
 }
 
 /** 当前发布口径的资产名（用于门禁与展示，不作为匹配的唯一依据）。 */
@@ -187,11 +188,11 @@ export function classifyAbi(signals) {
       if (bitness === '32') return no(basis, 'armv7');
       return ok('arm64', basis, 'likely');
     }
-    if (arch === 'x86_64' || arch === 'amd64') return ok('x86_64', basis);
+    if (arch === 'x86_64' || arch === 'amd64') return no(basis, 'x86_64');
     if (arch === 'x86') {
-      if (bitness === '64') return ok('x86_64', basis);
+      if (bitness === '64') return no(basis, 'x86_64');
       if (bitness === '32') return no(basis, 'x86');
-      return ok('x86_64', basis, 'likely');
+      return no(basis, 'x86_64');
     }
     if (/^(mips|mips64|riscv32|riscv64|ppc|ppc64|s390|s390x)$/.test(arch)) return no(basis, 'other');
   }
@@ -200,7 +201,7 @@ export function classifyAbi(signals) {
   for (const p of [platform, ua]) {
     if (!p) continue;
     if (RE_ARM64.test(p)) return ok('arm64', p);
-    if (RE_X86_64.test(p)) return ok('x86_64', p);
+    if (RE_X86_64.test(p)) return no(p, 'x86_64');
   }
 
   // 三：只有 32 位线索。这里**不直接判不支持**——"Linux armv8l" 在 arm64 手机上很常见，
@@ -208,7 +209,7 @@ export function classifyAbi(signals) {
   for (const p of [platform, ua]) {
     if (!p) continue;
     if (RE_ARM32.test(p)) return ok('arm64', p, 'likely');
-    if (RE_X86_32.test(p)) return ok('x86_64', p, 'likely');
+    if (RE_X86_32.test(p)) return no(p, 'x86');
     if (RE_OTHER.test(p)) return no(p, 'other');
   }
 

@@ -151,7 +151,7 @@ test('resume rejects nested host write-root aliases but retains internal and And
   mkdirSync(join(workspace, '.deploy-tmp/source-build/bootstrap-extracted/usr/bin'), { recursive: true })
   symlinkSync('/data/data/com.termux/files/usr/bin/sh', join(workspace, '.deploy-tmp/source-build/bootstrap-extracted/usr/bin/sh'))
   mkdirSync(join(workspace, '.deploy-tmp/snapshot-013/arm64/stage/root/usr/bin'), { recursive: true })
-  symlinkSync('/data/user/0/com.dsharnessmobile.shell/files/usr/libexec/vim/vim', join(workspace, '.deploy-tmp/snapshot-013/arm64/stage/root/usr/bin/vim'))
+  symlinkSync('/data/user/0/com.snoworwind.pocketharness/files/usr/libexec/vim/vim', join(workspace, '.deploy-tmp/snapshot-013/arm64/stage/root/usr/bin/vim'))
   symlinkSync('vim', join(workspace, '.deploy-tmp/snapshot-013/arm64/stage/root/usr/bin/rvim'))
   mkdirSync(join(workspace, '.deploy-tmp/engine-deploy/node_modules/.pnpm/pkg/node_modules/pkg'), { recursive: true })
   symlinkSync('.pnpm/pkg/node_modules/pkg', join(workspace, '.deploy-tmp/engine-deploy/node_modules/pkg'))

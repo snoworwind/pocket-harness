@@ -140,7 +140,7 @@ export interface AdbStatus {
 
 /** 审计记录落点：files/audit/audit.ndjson（换行分隔 JSON；DSH_ADB_AUDIT_PATH 可覆盖供测试） */
 function auditDir(): string {
-  return process.env.DSH_ADB_AUDIT_PATH ?? '/data/user/0/com.dsharnessmobile.shell/files/audit'
+  return process.env.DSH_ADB_AUDIT_PATH ?? '/data/user/0/com.snoworwind.pocketharness/files/audit'
 }
 
 function writeAudit(entry: Record<string, unknown>) {
@@ -168,7 +168,7 @@ function writeAudit(entry: Record<string, unknown>) {
  * 端点）不得自改授权布尔（Shizuku：授权由管理器+特权服务器写入，客户端无权自授信）。
  * 桌面/非安卓宿主：文件路径不存在 → readShellAdbState 返回 undefined → 回落 env。
  */
-const SHELL_PREFS_DEFAULT = '/data/user/0/com.dsharnessmobile.shell/shared_prefs/dsh-adb.xml'
+const SHELL_PREFS_DEFAULT = '/data/user/0/com.snoworwind.pocketharness/shared_prefs/dsh-adb.xml'
 
 export interface ShellAdbPrefs {
   allowSwitch: boolean
@@ -1678,7 +1678,7 @@ export function apply(ctx: Context, config: Record<string, unknown> = {}) {
   // 已由壳首启授权）。引擎→壳方向无页面依赖（不依赖 androidBridge/WebView 上下文）——
   // 标记文件路经 files/home/.dsh/.task-done.ndjson，壳读后清空。事件面：assistant/message
   // （agent 完成一轮完整输出）+ assistant/message.interrupted（被打断不弹）。
-  const TASK_DONE_MARKER = (process.env.DSH_HOME ?? '/data/user/0/com.dsharnessmobile.shell/files/home/.dsh') + '/.task-done.ndjson'
+  const TASK_DONE_MARKER = (process.env.DSH_HOME ?? '/data/user/0/com.snoworwind.pocketharness/files/home/.dsh') + '/.task-done.ndjson'
   const appendTaskMarker = (sessionId: unknown, title: string | undefined, text: string) => {
     try {
       const entry = JSON.stringify({ ts: new Date().toISOString(), sessionId: String(sessionId), title: title ?? '', text }) + '\n'
@@ -1691,7 +1691,7 @@ export function apply(ctx: Context, config: Record<string, unknown> = {}) {
   // report（turn/end）与 todo（todo/write）——提问/审批的弹窗由壳侧 NotifyBridge 从
   // `$events` waterfall 直接投放（应答必须走 mux + `$events/result`，不经本文件）。
   // `.task-done.ndjson` 兼容期保留（老壳仍读它）；新壳只读本文件，双读不双发。
-  const NOTIFY_FILE = (process.env.DSH_HOME ?? '/data/user/0/com.dsharnessmobile.shell/files/home/.dsh') + '/.notify.ndjson'
+  const NOTIFY_FILE = (process.env.DSH_HOME ?? '/data/user/0/com.snoworwind.pocketharness/files/home/.dsh') + '/.notify.ndjson'
   const NOTIFY_MAX = 512 * 1024
   let notifyBytes = 0
   try { notifyBytes = statSync(NOTIFY_FILE).size } catch { /* 新文件 */ }
@@ -1717,7 +1717,7 @@ export function apply(ctx: Context, config: Record<string, unknown> = {}) {
     // ── 实时事件流（W7 悬浮球，2026-08-31；PRD-0.13.2 §4.2）──
     // 壳侧 OverlayService 经 FileObserver tail 消费（毫秒级、省电）；文件上限
     // 512KB，超限轮转 .1 一代。条目使用紧凑键：t=epoch ms s=sessionId k=类型。
-    const LIVE_FILE = (process.env.DSH_HOME ?? '/data/user/0/com.dsharnessmobile.shell/files/home/.dsh') + '/.live.ndjson'
+    const LIVE_FILE = (process.env.DSH_HOME ?? '/data/user/0/com.snoworwind.pocketharness/files/home/.dsh') + '/.live.ndjson'
     const LIVE_MAX = 512 * 1024
     let liveBytes = 0
     try { liveBytes = statSync(LIVE_FILE).size } catch { /* 新文件 */ }

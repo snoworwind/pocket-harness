@@ -3,6 +3,7 @@
 > 全部版本历史都堆在这里（AGENTS.md 不再设更新记录表）。**新条目倒序加在表格最上方**。细节写进对应详档，这里只留一行摘要。
 
 | 时间 | 版本 | 更新内容 | 更新者 |
+| 2026-10-18 | **Pocket Harness 独立应用身份与 ARM64 发布身份（未做设备验证）** | applicationId、显示名、Termux 数据目录、通知 action、设备脚本与下载资产统一迁移；发布 APK 从公开调试签名改为 Secret 注入的独立 PKCS12 签名，并以提交的证书指纹固定；下载页移除 x86_64 支持和上游种子 Release。72 项定向回归通过；云端来源构建、仓库 Secret 写入和设备三层验收仍待完成。 | Codex |
 | 2026-10-18 | **Linux ARM64 离线资产接入 APK 来源链（设备待统一补测）** | 在 APK 来源链按相同提交重建 ARM64 Linux 资产，经 sidecar、provenance、固定 URL、SHA-256 与体量校验后注入快照；启用内置 bootstrap/client bundle 与离线 host adapter，并为 runtime 增加启动探测和有界子进程管理。插件单测、自检与构建通过；当前尚待本次云端来源 APK 全链证明，设备侧暂缓后集中验收。发现与复证据见 gotchas 坑 402–403、known-gaps 当前入口。 | Codex |
 | 2026-10-18 | **pocket-harness 首次提交（基线导入，未做设备验证）** | 基于 `snoworwind/dsh-mobile-apk` 的 `security/hardening` 分支提交 `cb1c315` 建立独立私有仓；调整仓库坐标、维护线与来源草稿入口，移除旧 LFS 底座指针和社区/赞助二维码，并重封 vendor-only fixture capture 元数据。其余应用运行时代码和 Android 标识未改；迁移边界见 `BASELINE.md`。 | DSH Agent |
 | 2026-10-17 | **第二轮 17 项安全发现源码修复（设备待验，云端草稿已出）** | 授权改为进程内状态与系统凭据确认，通知动作原生认证，中继先鉴权再分配流槽位；市场安装强制审批、响应体限额、状态路由只读、nonce 校验、路径/注入收紧；来源快照实际载荷绑定、preinstall 重建、缓存/下载摘要与 Gradle pin。Linux 原发布 API 404，空 pin 失败关闭。云端 run 39050643684 从 `bb8176a` 成功创建草稿 Release `hardening-source-bb8176a9ca99-39050643684-1`（draft+prerelease，ARM64 APK+provenance，本机复核哈希一致）；此前 run 39047619605 在来源包 payload pin 处失败，该判据因构建不可复现已撤回并登记为 385 未关闭缺口。设备三层验收未做；测试与边界见 SECURITY-REMEDIATION-2026-10-17-R2.md。 | Codex |
