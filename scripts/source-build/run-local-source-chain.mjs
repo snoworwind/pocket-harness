@@ -22,7 +22,7 @@ import { execFileSync, spawnSync } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
-import { committedWorkflow, prepareSourceWorkspace, sourceCommit } from './local-source-workspace.mjs'
+import { assertMaintainedSource, committedWorkflow, prepareSourceWorkspace, sourceCommit } from './local-source-workspace.mjs'
 import { resolveSourceRepository } from './record-project-components.mjs'
 
 const ROOT = resolve(import.meta.dirname, '..', '..')
@@ -191,6 +191,10 @@ if (flag('--dry-run')) {
   for (const item of selected) console.log(`  将执行 [${item.stage}] ${item.name}`)
   process.exit(0)
 }
+try { assertMaintainedSource(ROOT) } catch (error) {
+  console.error(error.message)
+  process.exit(2)
+}
 preflight()
 
 let buildRoot
@@ -225,6 +229,7 @@ const baseEnv = {
   DSH_APK_DIR: buildRoot,
   GITHUB_WORKSPACE: buildRoot,
   GITHUB_SHA: repoCommit,
+  SOURCE_REF: 'refs/heads/main',
   PATH: `${nodePathPrefix}${join(homedir(), '.local', 'bin')}:${join(ANDROID_HOME, 'build-tools', '36.0.0')}:${join(ANDROID_HOME, 'platform-tools')}:${process.env.PATH}`,
   // pnpm 11 只认自己的前缀：实测 `npm_config_registry` 被忽略、`pnpm_config_registry` 生效
   // （npm 侧仍用 npm_config_registry，两条链各自生效）。

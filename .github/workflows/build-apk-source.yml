@@ -14,6 +14,13 @@ jobs:
     env:
       DSH_APK_DIR: ${{ github.workspace }}
     steps:
+      - name: Require the maintained source branch
+        env:
+          SOURCE_REF: ${{ github.ref }}
+        shell: bash
+        run: |
+          test "$SOURCE_REF" = refs/heads/main
+
       - name: Checkout project source without Git LFS runtime archives
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:

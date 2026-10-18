@@ -2,11 +2,26 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
+import { spawnSync } from 'node:child_process'
 const read = name => readFileSync(new URL('../../.github/workflows/' + name, import.meta.url), 'utf8').replaceAll('\r\n', '\n')
 const entry = read('build-apk.yml')
 const expected = "name: build-apk\non:\n  workflow_dispatch:\n    inputs:\n      draft_release:\n        description: '源码构建成功后创建 ARM64 预发布草稿（不会公开）'\n        type: boolean\n        default: false\npermissions:\n  contents: read\njobs:\n  source-build:\n    if: ${{ !inputs.draft_release }}\n    uses: ./.github/workflows/build-apk-source.yml\n  source-draft:\n    if: ${{ inputs.draft_release }}\n    permissions:\n      contents: write\n    uses: ./.github/workflows/release-source-draft.yml"
 const check = text => assert.equal(text.split('\n').filter(line => line.trim() && !line.trimStart().startsWith('#')).join('\n').trim(), expected.replace(/(    uses: [^\n]+)/g, '$1\n    secrets: inherit'))
 test('cloud entry routes both modes exclusively through same-commit source workflows', () => check(entry))
+
+test('source workflow rejects tags, PR refs and feature branches before checkout or secrets', { skip: process.platform !== 'linux' }, () => {
+  const source = read('build-apk-source.yml')
+  const start = source.indexOf('      - name: Require the maintained source branch')
+  const end = source.indexOf('      - name: Checkout project source', start)
+  assert.ok(start > 0 && end > start)
+  const block = source.slice(start, end)
+  assert.match(block, /SOURCE_REF: \$\{\{ github.ref \}\}/)
+  const run = block.split('        run: |\n')[1].split('\n').map(line => line.replace(/^ {10}/, '')).join('\n')
+  for (const ref of ['refs/heads/main', 'refs/heads/codex/candidate', 'refs/tags/main', 'refs/pull/1/merge', '']) {
+    const result = spawnSync('/bin/bash', ['-e', '-c', run], { env: { ...process.env, SOURCE_REF: ref } })
+    assert.equal(result.status, ref === 'refs/heads/main' ? 0 : 1)
+  }
+})
 
 test('both wrapper modes fail the contract if signing secrets are not passed', () => {
   for (const name of ['build-apk-source.yml', 'release-source-draft.yml']) {
