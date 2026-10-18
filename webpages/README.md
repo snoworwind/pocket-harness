@@ -38,19 +38,13 @@ workflow_dispatch --> node tools/build.mjs --> dist/ --> upload-pages-artifact -
 理由：把靶绑到当前版本资产上，一旦资产改名或该版本发布不完整，检查会整体失效、用户被钉死在默认线路上。
 `probeUrl()` 与 `assetUrl()` 因此是两个独立函数。
 
-**判活与测速是两件事，不可合并**（2026-10-15 实修，见 gotchas 301-305）：
+探测实现以 `src/assets/app.js` 的 `fetchStatus` / `probeMirror` 为准：使用 `fetch(mode:'cors', credentials:'omit')`，不把镜像响应作为脚本执行。
 
-- **判活**用 `<script>` 标签：它对 HTTP 错误状态可靠触发 `onerror`、对 2xx 触发 `onload`，且不受 CORS 限制。
-  代价是**会真正加载响应体**，所以靶必须是小文件（换成 APK 就是 150 MB）。
-- **测速**用 `fetch(mode:'no-cors')` 打**真实资产** URL，到响应头到达即 `abort`（不消耗 150 MB 流量）。
-  为什么不复用判活的耗时：MANIFEST 由 `github.com` 直接回，而 APK 会重定向到
-  `release-assets.githubusercontent.com`，是**另一条链路**，两者首字节延迟不同源。
+- 已知实际 APK 时，对该资产发 `HEAD`，同时读取 HTTP 状态并计时；没有 APK 目标时才对 MANIFEST 发 `GET`，收到响应头后取消响应体。
+- CORS 拒绝或网络异常只能判为「未探测」；可读的 403/404 才判该线路不可用，其他错误保持未知。
+- 计时反映响应头延迟，不能证明下载吞吐；无法读取跨域状态的线路仍可手动选择。
 
-**`fetch(mode:'no-cors')` 绝不能用来判活**：它拿到的是不透明响应，**读不到状态码**——
-403 与 200 在探针眼里完全一样，而 403 回得更快，于是死线每次都被选成"最快线路"。
-
-**已知局限（如实记，勿当已解决）**：测的是 TTFB，不是**吞吐**。静态页在 `no-cors` 下拿不到响应体，
-无法真正测下载速度，因此"首字节快、后续慢"的线路仍可能被排前；用户可手动切换，这是该局限的兜底。
+`no-cors` 的不透明响应不能提供状态码，不能用来判活。历史方案见 gotchas 301-305，不能据此恢复执行镜像脚本。
 排序时 `ms<=0`（可达但没测到速度）一律排到最后，否则 `0` 会被当成最快。
 
 线路选择器是**独立组件**，在"架构未知""该版本无匹配资产"等任何状态下都可用，与实际下载的版本无耦合。
@@ -92,13 +86,13 @@ workflow_dispatch --> node tools/build.mjs --> dist/ --> upload-pages-artifact -
 
 ## 架构识别与"暂无支持版本"
 
-判定优先级与 App 侧 `UpdateChecker.abiFrom` 同源，但**多一档"判不出"**：
+判定入口为 `src/assets/release.js` 的 `classifyAbi`；当前仅支持 ARM64：
 
 | confidence | 触发条件 | 界面行为 |
 |---|---|---|
 | `certain` | `userAgentData` 的 architecture+bitness 等明确信号 | 直接给对应安装包 |
 | `likely` | 只有 32 位字符串线索（如 `Linux armv8l`） | 按主流机型给 arm64，并提示可"换架构" |
-| `unknown` | 毫无线索（桌面浏览器 / reduced UA） | **不猜**，直接列出两个架构供选择 |
+| `unknown` | 毫无线索或桌面浏览器 | 列出当前可用的 ARM64 资产供手动选择 |
 | `unsupported` | 明确 32 位（`architecture=x86,bitness=32`）或异构架构 | 报"暂无支持版本" |
 
 线路选择器在**任何**状态下都可用（含"架构未知""该版本无匹配资产"），并会**停用不可达的线路**：
