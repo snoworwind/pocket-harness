@@ -4,7 +4,7 @@ import { execFileSync, spawnSync } from 'node:child_process'
 import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
-import { committedWorkflow, prepareSourceWorkspace, sourceCommit } from './local-source-workspace.mjs'
+import { assertMaintainedSource, committedWorkflow, prepareSourceWorkspace, sourceCommit } from './local-source-workspace.mjs'
 import { resolveSourceRepository } from './record-project-components.mjs'
 
 function fixture(fn) {
@@ -14,7 +14,7 @@ function fixture(fn) {
   mkdirSync(join(source, 'scripts/snapshot-config'), { recursive: true })
   mkdirSync(join(source, '.github/workflows'), { recursive: true })
   const git = (...args) => execFileSync('git', ['-C', source, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim()
-  git('init', '-q')
+  git('init', '-q', '-b', 'main')
   git('config', 'user.name', 'Fixture')
   git('config', 'user.email', 'fixture@example.invalid')
   git('remote', 'add', 'origin', 'https://github.com/example/independent-shell.git')
@@ -29,6 +29,16 @@ function fixture(fn) {
 }
 
 const linux = { skip: process.platform !== 'linux' }
+test('only an attached main checkout authorizes real source builds and resumes', () => fixture(({ source, git, commit }) => {
+  git('branch', '-M', 'main')
+  assert.doesNotThrow(() => assertMaintainedSource(source))
+  git('checkout', '-qb', 'codex/candidate')
+  assert.throws(() => assertMaintainedSource(source), /仅允许 main/)
+  git('checkout', '--detach', commit)
+  assert.throws(() => assertMaintainedSource(source), /仅允许 main/)
+  git('checkout', 'main')
+  assert.doesNotThrow(() => assertMaintainedSource(source))
+}))
 test('source identity survives a remote-free isolated checkout and rejects an unfrozen identity', () => fixture(({ root, source, commit }) => {
   const identity = resolveSourceRepository(source, {})
   const workspace = prepareSourceWorkspace(source, commit, join(root, 'identity-build'))

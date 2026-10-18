@@ -2649,3 +2649,7 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 413. **复用工作流每层都要传递签名 Secrets（2026-10-18）**
 
 现象：直接来源链可读签名秘密，build-apk 包装入口却在非空断言拒绝。真因：外层 reusable workflow 调用没有 secrets 传递，内层 inherit 不能补回缺失值。修法：普通构建和草稿两条调用都显式 inherit，草稿已有下一层传递保持有效。cloud-workflow.test.mjs 对两个入口分别移除传递，合同必须拒绝；全套自检与受控负例通过。未做设备验证，真实签名仍须 main 来源全链。
+
+414. **来源链的已提交身份不能代替维护分支授权（2026-10-18）**
+
+现象：草稿要求 main，直接来源 workflow 与本地 runner 却接受任意分支 HEAD。真因：隔离检出只绑定 commit，没有绑定维护分支政策。修法：云端第一步检查 github.ref，签名与源码检出前拒绝其他 ref；本地实际执行（含续跑）须 attached main，纯 list/dry-run 可在候选审查。真实临时 Git 的 main/feature/detached 正反例及 shell 的 main/feature/tag/PR/空值反例覆盖。未构建非 main APK，未做设备验证。

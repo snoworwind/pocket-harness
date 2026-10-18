@@ -105,6 +105,13 @@ export function sourceCommit(source) {
   return git(source, 'rev-parse', 'HEAD')
 }
 
+/** Real APK execution is limited to the maintained branch, including resumed runs. */
+export function assertMaintainedSource(source) {
+  let ref
+  try { ref = git(source, 'symbolic-ref', '--quiet', 'HEAD') } catch { /* Detached input is rejected. */ }
+  if (ref !== 'refs/heads/main') throw new Error('APK 来源构建仅允许 main 分支；其他分支只能 --list 或 --dry-run。')
+}
+
 export function committedWorkflow(source, commit) {
   return git(source, 'show', `${commit}:.github/workflows/build-apk-source.yml`)
 }

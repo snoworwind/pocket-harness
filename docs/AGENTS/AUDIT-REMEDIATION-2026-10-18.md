@@ -9,6 +9,7 @@
 | A05 | 最后共享任务退出唤醒等待者；pendingExclusive 阻止后来的命令越过管理操作。补最后退出/双管理者/读者插队反例 | 宿主并发回归，设备待验 |
 | A06 | active.json 提交前失败才回滚新实例；提交后清理错误仅报告 cleanupWarning，观察者逐个隔离。补清理失败/重启回读/观察者异常/指针写失败反例 | 宿主事务回归，设备待验 |
 | A07 | build-apk 的两个复用入口显式 inherit Secrets，补逐条删掉传递的受控负例，并核对草稿内层传递 | 来源构建实际签名待全链；未改 Secrets，未做设备验证 |
-| A01–A04、A10 | 修复中，结果随提交更新 | 尚未取得本轮来源 APK/CDP/ADB 证据 |
+| A10 | 直接云端来源入口在 checkout/签名前拒绝非 main；本地实际执行与续跑也检查 attached main，list/dry-run 仍可审查候选。补分支/tag/PR/detached 反例 | 不在非 main 构建 APK；main 全链待最终集成 |
+| A01–A04 | 修复中，结果随提交更新 | 尚未取得本轮来源 APK/CDP/ADB 证据 |
 
 本机证据目录 `.deploy-tmp/audit-fixes-2026-10-18/`；源码基线、输入和命令以对应 PR 与日志为准。未做设备验证。
