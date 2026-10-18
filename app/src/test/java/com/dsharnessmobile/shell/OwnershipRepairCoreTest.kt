@@ -9,7 +9,7 @@ import java.io.IOException
 /** Deterministic fake-inode tests for external testers. No Android/root/device execution required. */
 class OwnershipRepairCoreTest {
   private val uid = 110_123
-  private val anchor = "/data/user/1/com.dsharnessmobile.shell"
+  private val anchor = "/data/user/1/com.snoworwind.pocketharness"
   private class Clock(var now: Long = 0) : OwnershipRepairCore.NanoClock {
     override fun nanoTime(): Long = now
   }

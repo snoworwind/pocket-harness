@@ -2621,3 +2621,7 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 406. **进程组强杀回归必须等子进程装好信号处理器（2026-10-18）**
 
 现象：Linux CI 的超时回归期望 `SIGKILL`，偶尔却收到 `SIGTERM`，而 Windows 因 POSIX 限制会跳过此测试。真因：20ms 超时可能先于新 Node 子进程启动；进程组里的子进程在注册 SIGTERM handler 前已被终止，测试并未覆盖 handler 忽略 TERM 后的强杀分支。修法：把测试超时提高到 1000ms，使处理器有时间就绪；在 `linux-source-manifest.json` 更新 vendored 测试摘要并记录该本地测试修补。此改动仅提高测试确定性，不改变运行时的终止期限或产品行为；以 Linux CI 复验该分支。
+
+407. **导入新工厂插件或应用身份后同步更新对应测试锚点（2026-10-18）**
+
+现象：PR Kotlin 单测在新增 `linux-bootstrap` 工厂补丁后，`FactoryProfilePatchTest` 的权威工厂条目计数仍按旧数值；应用身份改为 Pocket Harness 后，`OwnershipRepairCoreTest` 的正例 anchor 仍使用旧 applicationId，入口解析自然拒绝。真因：变更同时新增了一个顶层插件声明并收紧了数据目录可信边界，但测试只更新了邻近的身份断言。修法：工厂结构断言按实际 23 个顶层条目加注释头更新为 24 块；OwnershipRepair 正例用新 applicationId，旧 applicationId 留作拒绝负控。PR Linux CI 首次运行 1310 个 Kotlin 用例时发现三项失败用例、归为两类；修复后以该工作流完整回归确认。
