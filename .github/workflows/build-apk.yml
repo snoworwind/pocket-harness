@@ -16,8 +16,10 @@ jobs:
   source-build:
     if: ${{ !inputs.draft_release }}
     uses: ./.github/workflows/build-apk-source.yml
+    secrets: inherit
   source-draft:
     if: ${{ inputs.draft_release }}
     permissions:
       contents: write
     uses: ./.github/workflows/release-source-draft.yml
+    secrets: inherit

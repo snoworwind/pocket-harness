@@ -261,3 +261,5 @@ gh workflow run build-apk-source.yml --repo snoworwind/pocket-harness --ref main
 
 
 Linux bootstrap 本地安全分叉（2026-10-18）：`check-vendored-linux-bootstrap.mjs` 保留 MANIFEST 的上游摘要，用 LOCAL_PATCHES 单列 `src/asset-bundle.js`、`src/index.js` 与 README 的本地摘要，并要求与 `package.json.dshVendor.localPatches` 一致；新增的 package-lock / build scripts / client bundler 作为本仓来源输入独立钉哈希。不能把本地修改改记为上游原样。运行 `node scripts/check-vendored-linux-bootstrap.mjs --self-test` 验证漂移拒绝；构建客户端新增的 `esbuild` 依赖见 DEPENDENCIES.md。
+
+来源签名调用链：build-apk 的 source-build/source-draft 均显式 secrets: inherit，草稿 build 再传给 build-apk-source；只读 token 与写 Release job 的权限边界不变。回归见 cloud-workflow.test.mjs 的逐边删除传递负控。
