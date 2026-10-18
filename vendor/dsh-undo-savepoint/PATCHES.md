@@ -7,6 +7,8 @@
 
 ## 追版历史
 
+本地显示偏差（综合审查 A08）：`undo_list` 使用本地日期分量格式化 ISO 时间，与快照 id 同口径；无效时间原样保留。业务回归 `test/undo-scan-and-time.test.mjs` 在 PR Gate 插件依赖准备后执行，不再仅留作手动检查。
+
 本地安全偏差：`core.mjs` 的 `importSnapshots` 直接向 `readZip(Buffer)` 传递已读取/解密的字节；不再在输入归档旁写 `.dec.tmp` 明文或重新读取路径。上游追版须保留此边界，`test/import-plaintext.test.mjs` 在 Linux 验证覆盖、链接目标保护及正常导入；根因与证据见 `docs/AGENTS/gotchas.md` 坑 374。
 
 - **0.3.8 → 0.4.9（2026-09-26，fx-2 缺陷 E）**。两条安全级动因：
