@@ -48,7 +48,7 @@
     "vendor/dsh-linux-runtime/modules/manager.js": "9f99adf016e616cf74922303c8b3b8e215ac0ff39314c41fd3f541cad17c01f9",
     "vendor/dsh-linux-runtime/modules/manifest.js": "1722dd47005c62fad20ec22ddb710bbff72f4a1bc5fdbee7199bb73e31185971",
     "vendor/dsh-linux-runtime/package.json": "1d65abf96889a13f9bfce9266f44839c1957ffc5bc6691fa047cb6061041c476",
-    "vendor/dsh-linux-runtime/test/manager.test.mjs": "52e1245434cd743bd3fa47dbd5fc25f97b0f4710cf7cfa4582178cff171c08af",
+    "vendor/dsh-linux-runtime/test/manager.test.mjs": "52509972cff823834a990e9e94dcc16f8bb0aa319483ebdd26ddb4cc7cc8b18e",
     "plugins/dsh-linux-bootstrap/package.json": "45ee4c2737ff4defccab1cb27ff19671dc347d1503356eb1f8d8524b288deec6",
     "plugins/dsh-linux-bootstrap/client/index.js": "747de10f2ce2545ed9b8b63f0261a5fc656b0b9417af5895536731781daaf072",
     "plugins/dsh-linux-bootstrap/src/asset-bundle.js": "7e32ce0f57ee0a7f75dfd2d2af6ff61357d63b6c34e4f0dbf7aa23cf4300e416",
@@ -70,7 +70,7 @@
     },
     "vendor/dsh-linux-runtime/test/manager.test.mjs": {
       "upstreamSha256": "4549fefea91b30dfceefab3a2a0418270da4f5ce7c5ecb9b4264081ec2607c02",
-      "reason": "Add negative coverage for rejected runtime smoke probes and bounded subprocess output and termination."
+      "reason": "Add negative coverage for rejected runtime smoke probes and bounded subprocess output and termination; allow the SIGTERM handler to start before timeout signaling so Linux CI observes the intended forced process-group kill."
     },
     "vendor/dsh-linux-runtime/README.md": {
       "upstreamSha256": "91a18de24c9ceb4f5aba6ce7b28d0e769ae26e1178d529d14e139b437214b187",

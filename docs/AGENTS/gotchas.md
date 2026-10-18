@@ -2617,3 +2617,7 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 405. **跨平台来源摘要要针对 Git 字节而不是自动转换后的工作树（2026-10-18）**
 
 现象：Linux 资产 PR 检查在 `plugins/dsh-linux-bootstrap/build.mjs` 报源摘要不匹配；Windows 本地按工作树哈希生成的 manifest 通过，GitHub Linux checkout 却按不同字节失败。真因：bootstrap 构建脚本和 README 未配置 `-text`，Windows `core.autocrlf` 转换后的 CRLF 字节被写入严格的来源清单，Linux runner 取到仓库里的 LF blob。修法：对清单覆盖的根级 `.mjs` 与 `README.md` 固定 `-text`，摘要统一使用 Git blob 原始字节；与发行包身份无关的 vendored runtime 测试夹具恢复原样，避免破坏来源 pin。`node scripts/source-build/check-linux-sources.mjs` 在当前工作树验证 37 个文件通过；PR CI 需复验 Linux checkout。
+
+406. **进程组强杀回归必须等子进程装好信号处理器（2026-10-18）**
+
+现象：Linux CI 的超时回归期望 `SIGKILL`，偶尔却收到 `SIGTERM`，而 Windows 因 POSIX 限制会跳过此测试。真因：20ms 超时可能先于新 Node 子进程启动；进程组里的子进程在注册 SIGTERM handler 前已被终止，测试并未覆盖 handler 忽略 TERM 后的强杀分支。修法：把测试超时提高到 1000ms，使处理器有时间就绪；在 `linux-source-manifest.json` 更新 vendored 测试摘要并记录该本地测试修补。此改动仅提高测试确定性，不改变运行时的终止期限或产品行为；以 Linux CI 复验该分支。

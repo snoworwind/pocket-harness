@@ -209,7 +209,7 @@ test('spawnCommand force-kills the process group when a timed-out child ignores 
   const result = await spawnCommand({
     file: process.execPath,
     args: ['-e', 'process.on("SIGTERM", () => {}); setInterval(() => {}, 1000)'],
-    timeout: 20,
+    timeout: 1000,
   }).promise;
   assert.equal(result.timedOut, true);
   assert.equal(result.exitCode, null);
