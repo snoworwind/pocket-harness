@@ -61,10 +61,24 @@ def parse_args(argv):
 
 
 def build_dsh_replacements(pkg_dirs):
-    """@dsh-android 包名 -> {lib 相对路径 -> bytes} + package.json bytes"""
+    """@dsh-android 包名 -> {lib 相对路径 -> bytes} + package.json bytes
+
+    包名必须取自 package.json，不能取目录名：内置插件的目录可以是
+    `plugins/dsh-linux-bootstrap`，而它真实的包名是
+    `@dsh-android/linux-bootstrap`。按目录名注入会写到另一个命名空间，
+    profile patch 引用的包因此永远缺席（来源链 check-inject-completeness
+    会在 tar 产物上判红）。
+    """
     out = {}
     for d in pkg_dirs:
-        name = os.path.basename(os.path.normpath(d))
+        with open(os.path.join(d, "package.json"), "rb") as f:
+            full_name = _json.load(f)["name"]
+        namespace, _sep, name = full_name.partition("/")
+        if namespace != "@dsh-android" or not name or "/" in name:
+            raise SystemExit(f"invalid @dsh-android package name in {d}: {full_name!r}")
+        directory_name = os.path.basename(os.path.normpath(d))
+        if name != directory_name:
+            print(f"  package identity: {d} -> {full_name} (directory name differs; injecting by package name)")
         files = {}
         lib = os.path.join(d, "lib")
         for root, _dirs, fnames in os.walk(lib):
