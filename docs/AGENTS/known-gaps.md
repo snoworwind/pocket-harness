@@ -4,7 +4,7 @@
 > 应用身份迁移与 ARM64 离线资产修复仍待云端来源 APK 全链；设备侧实测按用户决定暂缓并统一验收。发版须另行获得用户授权。
 
 - Pocket Harness 独立身份与签名改造已完成代码实现：`applicationId=com.snoworwind.pocketharness`、仅 ARM64 下载与产物、独立 PKCS12 证书 pin。已按用户授权设置 `POCKET_SIGNING_KEYSTORE_BASE64` 与 `POCKET_SIGNING_KEYSTORE_PASSWORD` 仓库 Secrets；仍须运行云端来源 APK 全链。设备侧三层验收按用户安排暂缓，未做设备验证，不得作为发行候选。
-- 最终 main HEAD `d4aa9fc` 的来源双构建 run [39113529859](https://github.com/snoworwind/pocket-harness/actions/runs/39113529859) 因标准 14 GB runner 在 APK gate 前耗尽磁盘而失败（`Free space left: 83 MB`，随后 `ENOSPC`）。已加入封包后的 `reclaim-build-disk.mjs` 与位置负控，Linux 来源套件 120/120 通过；尚未取得新 main run 或设备证据，不能记为通过。详见 [修复账本](AUDIT-REMEDIATION-2026-10-18.md) 与 [坑 420](gotchas.md)。
+- 最终 main HEAD `d4aa9fc` 的来源双构建 run [39113529859](https://github.com/snoworwind/pocket-harness/actions/runs/39113529859) 因标准 14 GB runner 在 APK gate 前耗尽磁盘而失败（`Free space left: 83 MB`，随后 `ENOSPC`）。磁盘回收修复合并后，`d19e8c3` 的 run [39119416887](https://github.com/snoworwind/pocket-harness/actions/runs/39119416887) 已通过该处和来源快照检查，但在注入后暴露内置 bootstrap 的包名/目录名错位；已按 `package.json.name` 修正并补 `test_inject_all.py`。Linux 来源套件与 Python 套件通过；尚未取得修复后的新 main run 或设备证据，不能记为通过。详见 [修复账本](AUDIT-REMEDIATION-2026-10-18.md) 与 [坑 420、421](gotchas.md)。
 
 ## 当前入口
 

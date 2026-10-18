@@ -34,3 +34,9 @@
 - 最终 main HEAD `d4aa9fcc50ea2b4fc0ab249929b5b3d3bb695613` 的来源双构建 run [39113529859](https://github.com/snoworwind/pocket-harness/actions/runs/39113529859) 未通过：两个 replica 都在 APK 构建的 `check-engine-overlay` 适配器处失败，日志先显示 `Free space left: 83 MB`，随后 `check-dsh-source-snapshot.mjs` 在复制解包后的 engine 到 `/tmp/.../reference` 时 `ENOSPC`。这不是业务判据失败，也不是源码修复回退；该 run 不能作为最终候选证据。
 - 新增 `scripts/source-build/reclaim-build-disk.mjs`：在快照封包和 post-snapshot 检查后删除不再被后续步骤读取的 source-only 树，保留 `snapshot-013/.../stage`、`engine-overlay`、`source-build` 报告和 `linux-build/provenance`；每目标校验真实路径位于 `.deploy-tmp`，拒绝 symlink、挂载中的 rootfs 和特殊文件，清理后低于 4 GiB 即失败。`cloud-workflow.test.mjs` 增加调用位置回归和“删掉调用必须判红”的负控。
 - 本机证据：WSL Linux 下 `reclaim-build-disk.mjs --self-test` 通过（正控、symlink escape、`--check-only`、空间下限四项）；`node --test scripts/source-build/*.test.mjs` 为 **120/120，零失败、零跳过**（`source-tests-final.log`）。Linux 全量来源测试已取得；新的 main 双构建仍待运行，不能提前记为 PASS。设备侧仍未验收。
+
+## 最终 main 来源链的包身份失败与修复（2026-10-18）
+
+- 修复合并到 `d19e8c3` 后的来源双构建 run [39119416887](https://github.com/snoworwind/pocket-harness/actions/runs/39119416887) 已通过磁盘回收、快照封包、`source snapshot check passed` 和 APK 前段门禁，但在注入后 `check-inject-completeness` 判红：`@dsh-android/linux-bootstrap -> tar 内无该包成员`。真因：`inject-all.py` 的 `build_dsh_replacements` 用目录 basename 当包名，`plugins/dsh-linux-bootstrap` 被写成 `@dsh-android/dsh-linux-bootstrap`，而真实包名与 profile patch 都是 `@dsh-android/linux-bootstrap`。
+- 修法：注入改为从 `package.json.name` 读取包名，只接受单个 `@dsh-android/<name>` 层级；目录名与包名不同时打印审计行。新增 `scripts/source-build/test_inject_all.py`：`dsh-linux-bootstrap -> @dsh-android/linux-bootstrap` 正控、非命名空间与嵌套名负控。
+- 本机证据：WSL Linux `python3 -m unittest discover -s scripts/source-build -p 'test_*.py' -v` 为 **18/18**；新用例在旧实现下会得到 `dsh-linux-bootstrap` 键而失败。另用最小 tar + 真实 `plugins/dsh-linux-bootstrap` 跑 `inject-all.py` 端到端：`[add] web/headless: @dsh-android/linux-bootstrap (9 files)`，产物只含真实包名命名空间，拒绝目录名命名空间；该回归日志随本轮证据保留。新的 main 来源双构建仍待运行；**未做设备验证**。
