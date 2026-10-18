@@ -74,13 +74,15 @@ async function mount(nativeOverrides: Partial<NativeBrowserControlState> = {}, v
       actions: { bindCommands: vi.fn(() => vi.fn()), openResource: vi.fn(), openTab: vi.fn(), close: vi.fn() } },
   }
   const native: NativeBrowserControlState = { nativeTabId: 'native-1', available: true, reason: '',
-    profileAvailable: true, profileReason: '', identityId: 'android-real', viewportWidth: 390, viewportHeight: 844,
+    profileAvailable: true, profileReason: '', compatAvailable: false, compatEnabled: false,
+    profileIsolation: 'isolated', identityId: 'android-real', viewportWidth: 390, viewportHeight: 844,
     ...nativeOverrides }
   const state: BrowserControllerState = { frame: emptyBrowserFrame(), restoreTarget: undefined, addressFailure: undefined, addressRevision: 0 }
   const callbacks = {
     mount: vi.fn(() => vi.fn()), dispose: vi.fn(async () => {}), rebind: vi.fn(), loadUrl: vi.fn(), restore: vi.fn(),
     goBack: vi.fn(), goForward: vi.fn(), reload: vi.fn(), setSandbox: vi.fn(),
-    setBrowserVisible: vi.fn(), setBrowserIdentity: vi.fn(), setBrowserViewport: vi.fn(), refreshBrowserStatus: vi.fn(), closeBrowserTab: vi.fn(),
+    setBrowserVisible: vi.fn(), setBrowserIdentity: vi.fn(), setBrowserViewport: vi.fn(), refreshBrowserStatus: vi.fn(),
+    setBrowserCompat: vi.fn(), closeBrowserTab: vi.fn(),
   }
   const props = {
     ...callbacks, sessionId: SESSION, useTabInfo: () => info, t, actions: store.actions,
@@ -139,6 +141,26 @@ describe('official browser chrome over the Android adapter', () => {
     const view = await mount({ profileAvailable: false, profileReason: 'android-profile-isolation-unsupported' })
     expect(view.host.textContent).toContain('android-profile-isolation-unsupported')
     expect(view.host.textContent).toContain('浏览器身份档不可用')
+  })
+
+  it('offers explicit compatibility browsing when the provider lacks profiles', async () => {
+    const view = await mount({ available: false, reason: 'browser-profile-unsupported', profileAvailable: false,
+      profileReason: 'browser-profile-unsupported', compatAvailable: true, compatEnabled: false })
+    const enable = Array.from(view.host.querySelectorAll('button')).find(button => button.textContent === zh['native.compat.enable'])!
+    expect(enable).toBeDefined()
+    await act(async () => { enable.click() })
+    expect(view.callbacks.setBrowserCompat).toHaveBeenCalledWith(TAB, true)
+  })
+
+  it('keeps compatibility pages usable and labels the shared-cookie downgrade', async () => {
+    const view = await mount({ available: true, profileAvailable: false, profileReason: 'browser-profile-shared-fallback',
+      profileIsolation: 'shared', compatAvailable: true, compatEnabled: true })
+    expect(view.host.textContent).toContain(zh['native.profile.shared'])
+    const pc = Array.from(view.host.querySelectorAll('button')).find(button => button.textContent === zh['native.desktop'])!
+    expect(pc.disabled).toBe(false)
+    const disable = Array.from(view.host.querySelectorAll('button')).find(button => button.textContent === zh['native.compat.disable'])!
+    await act(async () => { disable.click() })
+    expect(view.callbacks.setBrowserCompat).toHaveBeenCalledWith(TAB, false)
   })
 
   it('routes PC profile and viewport actions to the owning UI occurrence', async () => {

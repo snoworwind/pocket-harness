@@ -535,6 +535,7 @@ export function apply(ctx: ClientContext): void {
             setBrowserIdentity: (tabId, desktop) => { native.setIdentity(tabId, desktop) },
             setBrowserViewport: (tabId, width, height) => { native.setViewport(tabId, width, height) },
             refreshBrowserStatus: tabId => { native.refreshStatus(tabId) },
+            setBrowserCompat: (tabId, enabled) => { native.setCompat(tabId, enabled) },
             closeBrowserTab: tabId => { scope.sidebarRight.closeIn(session, tabId) },
           }
           controllers.set(session, controller)
@@ -555,6 +556,7 @@ export function apply(ctx: ClientContext): void {
           setBrowserIdentity: (tabId, desktop) => { native.setIdentity(tabId, desktop) },
           setBrowserViewport: (tabId, width, height) => { native.setViewport(tabId, width, height) },
           refreshBrowserStatus: tabId => { native.refreshStatus(tabId) },
+          setBrowserCompat: (tabId, enabled) => { native.setCompat(tabId, enabled) },
           closeBrowserTab: tabId => { scope.sidebarRight.closeIn(session, tabId) },
         } satisfies NativeBrowserControlsInjected
       },

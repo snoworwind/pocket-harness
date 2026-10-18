@@ -42,6 +42,11 @@ function initialState(autoUpdate) {
     runtimeId: null,
     pluginDirectory: null,
     pinnedManifest: null,
+    // Source-pinned digest of the manifest that approved `pinnedManifest`.
+    // A Symbol on the live object is not JSON; without persisting it, reinstall
+    // after an engine restart re-verifies the pinned manifest with no digest and
+    // always fails the source-pinned trust policy.
+    pinnedManifestSha256: null,
     availableManifest: null,
     latestReleaseVersion: null,
     updateAvailable: false,
@@ -134,6 +139,13 @@ function validateStoredState(value) {
   }
   value.enabled = value.enabled === true
   value.injectionActivated = value.injectionActivated === true
+  // Older state files predate the persisted source digest; a missing value stays
+  // null rather than being guessed. A present value must be a full SHA-256.
+  if (value.pinnedManifestSha256 !== null && value.pinnedManifestSha256 !== undefined
+      && (typeof value.pinnedManifestSha256 !== 'string' || !/^[a-f0-9]{64}$/.test(value.pinnedManifestSha256))) {
+    throw new Error('Linux bootstrap state has an invalid pinned manifest digest')
+  }
+  value.pinnedManifestSha256 = value.pinnedManifestSha256 ?? null
   return value
 }
 
@@ -226,6 +238,13 @@ export function createMobileBootstrap(options = {}) {
     return checked
   }
   const requireApprovedManifest = async (manifest, sourceSha256 = manifest?.[SOURCE_MANIFEST_SHA256]) => {
+    // Reinstall uses the manifest persisted at install time. Its source digest was
+    // approved then and is stored beside it; requiring the live host to re-approve
+    // a pinned copy would fail after every engine restart (the host's approved
+    // digest is only populated by a fresh bundle-manifest read).
+    const reinstallFromPinned = state.installedLinuxVersion !== null
+      && typeof sourceSha256 === 'string' && sourceSha256 === state.pinnedManifestSha256
+    if (reinstallFromPinned) return
     if (typeof verifyManifest !== 'function' || await verifyManifest(manifest, { sourceSha256 }) !== true) {
       throw new Error('Release manifest is not approved by the source-pinned trust policy')
     }
@@ -368,6 +387,9 @@ export function createMobileBootstrap(options = {}) {
       state.installedSystemMobileVersion = mobileVersion
       state.lastAutomaticCheckMobileVersion = automatic ? mobileVersion : state.lastAutomaticCheckMobileVersion
       state.pinnedManifest = publicManifest(manifest)
+      state.pinnedManifestSha256 = typeof manifest[SOURCE_MANIFEST_SHA256] === 'string'
+        ? manifest[SOURCE_MANIFEST_SHA256]
+        : state.pinnedManifestSha256
       state.availableManifest = publicManifest(manifest)
       state.latestReleaseVersion = manifest.version
       state.updateAvailable = false
@@ -491,6 +513,7 @@ export function createMobileBootstrap(options = {}) {
       if (confirmed !== true || activate !== true) throw new Error('reinstall requires confirmed:true and activate:true')
       if (!state.pinnedManifest || !state.installedLinuxVersion) throw new Error('There is no installed Linux runtime to reinstall')
       const manifest = validateManifestShape(state.pinnedManifest)
+      if (typeof state.pinnedManifestSha256 === 'string') manifest[SOURCE_MANIFEST_SHA256] = state.pinnedManifestSha256
       return installRuntime({ manifest, runtimeId: state.runtimeId ?? DEFAULT_RUNTIME_ID, reinstall: true, activate: true })
     })),
     uninstall: ({ confirmed = false } = {}) => ready.then(() => serial(async () => {
@@ -500,8 +523,18 @@ export function createMobileBootstrap(options = {}) {
       emit()
       try {
         if (!manager) {
-          const hostResult = { service: pluginHost.service }
-          manager = await resolveManager({ hostResult, directory: state.pluginDirectory, config: pluginConfig(state.pinnedManifest, state.runtimeId) })
+          // After an engine restart there is no live manager. Re-activate the
+          // verified runtime plugin from its persisted directory so the manager
+          // can remove its own runtime data; `pluginHost.service` never existed.
+          if (!state.pluginDirectory) throw new Error('Installed Linux runtime has no plugin directory to reactivate')
+          const config = pluginConfig(state.pinnedManifest, state.runtimeId)
+          const hostResult = await pluginHost.install({
+            directory: state.pluginDirectory,
+            entry: RUNTIME_ENTRY,
+            config,
+            enable: false,
+          })
+          manager = await resolveManager({ hostResult, directory: state.pluginDirectory, config })
         }
         await manager.uninstall()
         await pluginHost.uninstall({ runtimeId: state.runtimeId, directory: state.pluginDirectory })
@@ -514,6 +547,7 @@ export function createMobileBootstrap(options = {}) {
         state.installedSystemMobileVersion = null
         state.lastAutomaticCheckMobileVersion = null
         state.pinnedManifest = null
+        state.pinnedManifestSha256 = null
         state.runtime = null
         state.updateAvailable = Boolean(state.availableManifest)
         state.updateBlocked = false

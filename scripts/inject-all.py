@@ -35,6 +35,16 @@ PROFILES = ("web", "headless")
 NEGATIVE_CONTROL_PROFILES = ("headless-bad",)
 DSH_ANDROID_NS = "node_modules/@dsh-android/"
 EXT_INCLUDE_FILES = ("package.json", "cordis.patch.yml", "spec.json", "README.md", "README.zh-CN.md", "LICENSE")
+# Runtime dependencies are copied into the injected package's own node_modules.
+# Why this is not optional: the engine tree is a *different* resolution anchor
+# (`usr/lib/node_modules/@deepseek-ai/dsh/node_modules`); a bare import from
+# `home/.dsh/profiles/*/node_modules/@dsh-android/<pkg>/lib` never falls back to
+# it. 187246a put xz-decompress/tar-stream only in the engine overlay, so
+# dsh-android-linux-env failed to import on device while every "is the package
+# somewhere in the snapshot" gate stayed green.
+RUNTIME_DEP_SKIP_PREFIXES = ("@dsh-android/", "@deepseek-ai/")
+RUNTIME_DEP_SPECIAL_PREFIXES = ("file:", "link:", "workspace:")
+MAX_RUNTIME_DEP_BYTES = 8 * 1024 * 1024
 
 
 def parse_args(argv):
@@ -58,6 +68,119 @@ def parse_args(argv):
         else:
             print("未知参数: " + argv[i]); sys.exit(2)
     return src, dst, patch_src, dsh_dirs, ext_dirs, all_profiles
+
+
+def _read_json(path):
+    with open(path, "rb") as f:
+        return _json.load(f)
+
+
+def _node_modules_anchors(start):
+    """Yield `<dir>/node_modules` from start up to the filesystem root (Node's lookup order)."""
+    current = os.path.abspath(start)
+    while True:
+        yield os.path.join(current, "node_modules")
+        parent = os.path.dirname(current)
+        if parent == current:
+            return
+        current = parent
+
+
+def _resolve_runtime_dep(anchor, name):
+    """Resolve one package directory without invoking npm/Node (build-time, offline)."""
+    for modules in _node_modules_anchors(anchor):
+        candidate = os.path.join(modules, *name.split("/"))
+        if os.path.isfile(os.path.join(candidate, "package.json")):
+            return candidate
+    return None
+
+
+def _is_runtime_dep(name, spec):
+    if not isinstance(name, str) or not name or not isinstance(spec, str):
+        return False
+    return not (
+        name.startswith(RUNTIME_DEP_SKIP_PREFIXES)
+        or spec.startswith(RUNTIME_DEP_SPECIAL_PREFIXES)
+    )
+
+
+def collect_runtime_dependencies(pkg_dir):
+    """Copy the package's declared runtime dependency closure under its own node_modules.
+
+    The injected plugin lives at `profiles/<p>/node_modules/@dsh-android/<pkg>`; its
+    bare imports resolve from that directory upward, never from the engine's
+    `usr/lib/node_modules` tree. Copying the closure here makes the injected tree
+    self-contained and independent of the engine's module interception rules.
+
+    Only `dependencies` (not dev/peer) are copied; `@dsh-android/*` siblings are
+    injected separately and `@deepseek-ai/*` peers are provided by the engine.
+    """
+    manifest = _read_json(os.path.join(pkg_dir, "package.json"))
+    files = {}
+    seen = set()
+    total = 0
+
+    def add_package(directory, depth):
+        nonlocal total
+        if depth > 32:
+            raise SystemExit(f"runtime dependency graph is too deep under {pkg_dir}")
+        try:
+            dep_manifest = _read_json(os.path.join(directory, "package.json"))
+        except Exception as error:
+            raise SystemExit(f"runtime dependency manifest is unreadable: {directory}: {error}")
+        name = dep_manifest.get("name")
+        if (not isinstance(name, str) or not name or name.count("/") > 1
+                or ("/" in name and not name.startswith("@")) or name in (".", "..")):
+            raise SystemExit(f"invalid runtime dependency package name: {directory}: {name!r}")
+        if name in seen:
+            return
+        seen.add(name)
+        if os.path.islink(directory):
+            raise SystemExit(f"runtime dependency must not be a symlink: {directory}")
+
+        for root, dirs, fnames in os.walk(directory):
+            # Nested node_modules are part of the closure too; copy them verbatim so
+            # a package's own pinned child cannot be shadowed by a flat sibling.
+            dirs[:] = sorted(d for d in dirs if d != ".bin")
+            for fn in sorted(fnames):
+                if fn.endswith(".map"):
+                    continue
+                full = os.path.join(root, fn)
+                if os.path.islink(full) or not os.path.isfile(full):
+                    raise SystemExit(f"runtime dependency member must be a regular file: {full}")
+                rel = os.path.relpath(full, directory).replace("\\", "/")
+                with open(full, "rb") as f:
+                    data = f.read()
+                total += len(data)
+                if total > MAX_RUNTIME_DEP_BYTES:
+                    raise SystemExit(
+                        f"runtime dependency closure for {pkg_dir} exceeds "
+                        f"{MAX_RUNTIME_DEP_BYTES} bytes; declare a bundling step instead"
+                    )
+                files["node_modules/" + name + "/" + rel] = data
+
+        for child, spec in (dep_manifest.get("dependencies") or {}).items():
+            if not _is_runtime_dep(child, spec):
+                continue
+            child_dir = _resolve_runtime_dep(directory, child)
+            if child_dir is None:
+                raise SystemExit(
+                    f"runtime dependency {child} required by {name} is not installed under "
+                    f"{pkg_dir}; run npm ci before injecting"
+                )
+            add_package(child_dir, depth + 1)
+
+    for name, spec in (manifest.get("dependencies") or {}).items():
+        if not _is_runtime_dep(name, spec):
+            continue
+        dep_dir = _resolve_runtime_dep(pkg_dir, name)
+        if dep_dir is None:
+            raise SystemExit(
+                f"runtime dependency {name} declared by {pkg_dir} is not installed; "
+                "run npm ci before injecting (the engine tree is not a resolution fallback)"
+            )
+        add_package(dep_dir, 0)
+    return files
 
 
 def build_dsh_replacements(pkg_dirs):
@@ -91,6 +214,7 @@ def build_dsh_replacements(pkg_dirs):
                     files["lib/" + rel] = f.read()
         with open(os.path.join(d, "package.json"), "rb") as f:
             files["package.json"] = f.read()
+        files.update(collect_runtime_dependencies(d))
         out[name] = files
     return out
 
@@ -128,7 +252,7 @@ def build_ext_replacements(pkg_dirs):
 
 
 def match_dsh_android(name, dsh_names):
-    """命中返回 (pkg, rel)；lib/*(-.map) 与 package.json 可注入。"""
+    """命中返回 (pkg, rel)；lib/*(-.map)、package.json 与注入的 node_modules 依赖可注入。"""
     parts = name.split("/")
     if len(parts) < 8 or parts[0:2] != ["home", ".dsh"]:
         return None
@@ -141,6 +265,8 @@ def match_dsh_android(name, dsh_names):
         return None
     rel = "/".join(parts[7:])
     if rel.startswith("lib/"):
+        return (pkg, rel) if not rel.endswith(".map") else None
+    if rel.startswith("node_modules/"):
         return (pkg, rel) if not rel.endswith(".map") else None
     return (pkg, rel) if rel == "package.json" else None
 
@@ -341,6 +467,7 @@ def main():
                     ti.mtime = now
                     tout.addfile(ti)
                 for rel, data in sorted(dsh_repl[pkg].items()):
+                    ensure_parent_dirs(base + "/" + rel, now)
                     push(data, base + "/" + rel, now)
                     added_files += 1
                 print(f"  [add] {prof}: @dsh-android/{pkg} ({len(dsh_repl[pkg])} files)")

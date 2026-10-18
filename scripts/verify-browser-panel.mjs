@@ -44,6 +44,15 @@ try {
   await bridge('browserHostClose')
   await sleep(400)
 
+  // 0) 能力预检：无 MULTI_PROFILE 的 provider 需要显式兼容模式，与面板用户的动作一致。
+  let preflight = await status()
+  if (preflight.available !== true) {
+    if (preflight.compatAvailable === true && preflight.compatEnabled !== true) {
+      preflight = await bridge('browserHostCommand', { action: 'compat', session: '__anonymous__', enabled: true })
+    }
+    if (preflight.available !== true) fail('BrowserHost 不可用（隔离/兼容）：' + JSON.stringify(preflight))
+  }
+
   // 1) 关闭即销毁
   const afterClose = await status()
   if (afterClose.created !== false) fail('关闭后 created 应为 false：' + JSON.stringify(afterClose))

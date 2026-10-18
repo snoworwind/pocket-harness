@@ -2,7 +2,7 @@
 import type {} from '../android-bridge.ts'
 
 /** The complete narrow command vocabulary implemented by the Android shell. */
-export type NativeBrowserAction = 'open' | 'back' | 'forward' | 'reload' | 'select' | 'close' | 'status' | 'tabs'
+export type NativeBrowserAction = 'open' | 'back' | 'forward' | 'reload' | 'select' | 'close' | 'status' | 'tabs' | 'compat'
 
 /** One native tab; its id belongs to the named Session, not to global focus. */
 export interface NativeBrowserTab {
@@ -19,6 +19,9 @@ export interface NativeBrowserTab {
   readonly viewportHeight: number
   readonly profileAvailable: boolean
   readonly profileReason: string
+  readonly compatAvailable: boolean
+  readonly compatEnabled: boolean
+  readonly profileIsolation: string
   readonly reason: string
 }
 
@@ -30,6 +33,9 @@ export interface NativeBrowserSnapshot {
   readonly reason: string
   readonly profileAvailable: boolean
   readonly profileReason: string
+  readonly compatAvailable: boolean
+  readonly compatEnabled: boolean
+  readonly profileIsolation: string
   readonly tabs: readonly NativeBrowserTab[]
   readonly authoritativeTabs: boolean
   readonly tabId: string | undefined
@@ -52,6 +58,7 @@ function nonnegative(value: unknown): number {
 /** @param session - requesting Session. @param reason - wire refusal. @returns explicit unavailable state. */
 export function unavailableNativeBrowser(session: string, reason: string): NativeBrowserSnapshot {
   return { ok: false, available: false, session, reason, profileAvailable: false, profileReason: reason,
+    compatAvailable: false, compatEnabled: false, profileIsolation: 'unavailable',
     tabs: [], authoritativeTabs: false, tabId: undefined }
 }
 
@@ -76,6 +83,9 @@ export function parseNativeBrowserSnapshot(raw: string | undefined, session: str
   const profileAvailable = explicitProfile === true
   const profileReason = text(value.profileReason) ?? text(profile?.reason)
     ?? (profileAvailable ? '' : explicitProfile === false ? 'browser-profile-unavailable' : 'browser-profile-state-missing')
+  const compatAvailable = value.compatAvailable === true
+  const compatEnabled = value.compatEnabled === true
+  const profileIsolation = text(value.profileIsolation, 64) ?? (profileAvailable ? 'isolated' : 'unavailable')
   const reason = text(value.reason) || (value.ok === true && value.available === true ? '' : 'browser-unavailable')
   const tabId = identity(value.tabId)
   const rawTabs = Array.isArray(value.tabs) ? value.tabs : tabId === undefined ? [] : [value]
@@ -98,16 +108,21 @@ export function parseNativeBrowserSnapshot(raw: string | undefined, session: str
     const tabProfile = record(tab.profile)
     const explicitProfile = typeof tab.profileAvailable === 'boolean' ? tab.profileAvailable
       : typeof tabProfile?.available === 'boolean' ? tabProfile.available : profileAvailable
+    const tabIsolation = text(tab.profileIsolation, 64) ?? profileIsolation
     tabs.push({ tabId: id, uiTabId, url, title, pageGeneration: nonnegative(tab.pageGeneration),
       loadState: text(tab.loadState, 128) ?? 'unknown', canGoBack: tab.canGoBack === true, canGoForward: tab.canGoForward === true,
       identityId: text(tab.identityId, 256) ?? '', viewportWidth: nonnegative(tab.viewportWidth),
       viewportHeight: nonnegative(tab.viewportHeight), profileAvailable: explicitProfile,
-      profileReason: text(tab.profileReason) ?? text(tabProfile?.reason) ?? profileReason, reason: text(tab.reason) ?? '' })
+      profileReason: text(tab.profileReason) ?? text(tabProfile?.reason) ?? profileReason,
+      compatAvailable: tab.compatAvailable === true || compatAvailable,
+      compatEnabled: tab.compatEnabled === true || compatEnabled, profileIsolation: tabIsolation,
+      reason: text(tab.reason) ?? '' })
     ids.add(id)
     if (uiTabId !== undefined) uiIds.add(uiTabId)
   }
   return { ok: value.ok === true, available: value.available === true, session, reason,
-    profileAvailable, profileReason, tabs, authoritativeTabs: Array.isArray(value.tabs), tabId }
+    profileAvailable, profileReason, compatAvailable, compatEnabled, profileIsolation, tabs,
+    authoritativeTabs: Array.isArray(value.tabs), tabId }
 }
 
 /**
@@ -118,7 +133,7 @@ export function parseNativeBrowserSnapshot(raw: string | undefined, session: str
  * @returns decoded reply; bridge failures are unavailable state, not optimistic UI success.
  */
 export function nativeBrowserCommand(session: string, action: NativeBrowserAction,
-  options: { readonly tabId?: string; readonly uiTabId?: string; readonly url?: string } = {}): NativeBrowserSnapshot {
+  options: { readonly tabId?: string; readonly uiTabId?: string; readonly url?: string; readonly enabled?: boolean } = {}): NativeBrowserSnapshot {
   if (session === '') return unavailableNativeBrowser(session, 'browser-session-missing')
   try {
     const raw = window.androidBridge?.browserHostCommand?.(JSON.stringify({ action, session, ...options }))

@@ -69,8 +69,17 @@ try {
   // 先关闭上一次运行留下的页面，保证初始态断言确定。
   try { await bridge('window.androidBridge.browserHostClose()') } catch { /* no host yet */ }
   await sleep(300)
-  const before = await bridge('window.androidBridge.browserHostStatus()')
-  if (before.available !== true || before.created !== false || before.visible !== false) {
+  let before = await bridge('window.androidBridge.browserHostStatus()')
+  // A provider without MULTI_PROFILE cannot create an isolated WebView. The panel asks the
+  // user first; the device verifier must make the same explicit compatibility choice instead
+  // of treating the documented fail-closed state as a product failure.
+  if (before.available !== true) {
+    if (before.compatAvailable === true && before.compatEnabled !== true) {
+      before = await bridge("window.androidBridge.browserHostCommand(JSON.stringify({ action: 'compat', session: '__anonymous__', enabled: true }))")
+    }
+    if (before.available !== true) fail('BrowserHost unavailable (isolation/compat): ' + JSON.stringify(before))
+  }
+  if (before.created !== false || before.visible !== false) {
     fail('unexpected initial BrowserHost state: ' + JSON.stringify(before))
   }
   const metrics = await evaluate(mainWs, '({ width: innerWidth, height: innerHeight })')

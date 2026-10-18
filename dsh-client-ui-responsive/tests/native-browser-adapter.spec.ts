@@ -66,6 +66,18 @@ describe('native frame ownership and cleanup', () => {
     expect(owner.claim('other-ui', 'native-a')).toBe(false)
     owner.dispose()
   })
+  it('keeps an explicitly shared compatibility page ready without claiming profile isolation', () => {
+    window.androidBridge = { browserHostCommand: vi.fn(() => reply({ profileAvailable: false,
+      profileReason: 'browser-profile-shared-fallback', compatAvailable: true, compatEnabled: true,
+      profileIsolation: 'shared' })) }
+    const owner = new NativeBrowserSession(SESSION)
+    owner.refresh()
+    const page = owner.createPage({ tabId: UI, initial: undefined, persist: vi.fn(), openRequested: vi.fn() })
+    expect(page.frame.getSnapshot().target?.title).toBe('Example')
+    expect(page.frame.getSnapshot().error).toBeUndefined()
+    expect(owner.controlSource(UI).getSnapshot().profileIsolation).toBe('shared')
+    owner.dispose()
+  })
   it('a foreign-session reply never grants a frame, binding or ready profile', () => {
     window.androidBridge = { browserHostCommand: () => reply({ session: 'session-b' }) }
     const owner = new NativeBrowserSession(SESSION)
