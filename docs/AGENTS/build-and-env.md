@@ -267,3 +267,7 @@ Linux bootstrap 本地安全分叉（2026-10-18）：`check-vendored-linux-boots
 来源链分支授权：实际 APK 构建只允许 main。云端第一步检查 github.ref；本地包括 --from/--only/续跑都要求当前 attached main，--list/--dry-run 不构建可用于候选审查。
 
 离线 Linux 资产兼容验收：npm test（plugins/dsh-android-linux-env）包含生产 host/bootstrap/runtime 的禁网联测和真实 GNU tar 根条目、链接负控；需 POSIX tar/xz。该测试只替代原生 ARM64 执行器，不能作为最终 APK 或设备验收。
+
+## 签名前独立双构建
+
+当前云端来源链：两个 build-arm64 replica 从同一提交、全新 runner 各自构建，只有临时签名证书；verify-arm64 不执行产物，只比较实际 APK 条目、hard manifest 与 v3 快照语义；sign-arm64 等验证通过后才读取正式 PKCS12 Secret，使用固定生产证书 pin 验证三签并更新 APK 摘要；最终来源 artifact 才允许进入草稿准备。本地 run-local-source-chain 仅跑 build replica，GITHUB_ENV 的四个白名单构建变量在步骤间传递，临时签名 APK 明确禁止交付。自测入口 compare-independent-builds.mjs --self-test 与 sign-source-artifacts.mjs --self-test。共用上游或 runner 环境失陷仍是信任边界；真实双构建结果必须单独取得。

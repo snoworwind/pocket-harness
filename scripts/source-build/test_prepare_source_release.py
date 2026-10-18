@@ -23,7 +23,7 @@ class ReleasePreparationTest(unittest.TestCase):
         self.env = dict(GITHUB_SHA='a' * 40, GITHUB_REPOSITORY='fixture/fork',
                         GITHUB_REF='refs/heads/main', GITHUB_RUN_ID='123')
         workflow = (SCRIPT.parents[2] / '.github/workflows/build-apk-source.yml').read_text()
-        paths = workflow.split('          path: |\n', 1)[1].split('          if-no-files-found:', 1)[0]
+        paths = workflow.split('      - name: Upload APK and provenance\n', 1)[1].split('          path: |\n', 1)[1].split('          if-no-files-found:', 1)[0]
         for line in paths.splitlines():
             path = line.strip()
             if '*' not in path:
@@ -38,6 +38,9 @@ class ReleasePreparationTest(unittest.TestCase):
             projectCommit=self.env['GITHUB_SHA'], sourceRepository='https://github.com/fixture/fork')))
         self.put(self.base + 'component-source-provenance.json', json.dumps(dict(projectCommit=self.env['GITHUB_SHA'])))
         self.put(self.base + 'apk-sha256.txt', self.apk + '\n' + module.digest(self.root / self.apk) + '  ' + self.apk + '\n')
+        self.put(self.base + 'independent-rebuild-verification.json', json.dumps(dict(
+            independentRebuildMatched=True, normalizationVersion=3, sourceCommit=self.env['GITHUB_SHA'],
+            signedApkSha256=module.digest(self.root / self.apk))))
 
     def put(self, path, text):
         path = self.root / path
@@ -74,6 +77,16 @@ class ReleasePreparationTest(unittest.TestCase):
         (self.root / self.base / 'snapshot-normalization.json').unlink()
         with self.assertRaisesRegex(ValueError, 'missing evidence'):
             self.run_prepare()
+
+    def test_wrong_or_stale_independent_proof_blocks_preparation(self):
+        path = self.base + 'independent-rebuild-verification.json'
+        original = json.loads((self.root / path).read_text())
+        for field, value in [('independentRebuildMatched', False), ('normalizationVersion', 2), ('sourceCommit', 'b' * 40), ('signedApkSha256', '0' * 64)]:
+            self.put(path, json.dumps({**original, field: value}))
+            with self.assertRaisesRegex(ValueError, 'independent rebuild proof'):
+                self.run_prepare()
+            self.assertFalse(self.output.exists())
+        self.put(path, json.dumps(original))
 
     def test_wrong_branch_blocks_preparation(self):
         self.env['GITHUB_REF'] = 'refs/heads/feature/not-main'

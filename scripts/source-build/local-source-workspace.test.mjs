@@ -248,6 +248,9 @@ test('actual local runner routes cwd and build environment into isolation and ke
     '      - name: Checkout pinned fixture source', '        shell: bash', '        run: |',
     '          test "$PWD" = "$GITHUB_WORKSPACE"',
     '          test "$DSH_APK_DIR" = "$GITHUB_WORKSPACE"',
+    '          test -d "$RUNNER_TEMP"',
+    '          test -f "$GITHUB_ENV"',
+    '          printf "npm_config_cache=%s/cache\\n" "$RUNNER_TEMP" >> "$GITHUB_ENV"',
     '          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"',
     '          test "$DSH_SOURCE_REPOSITORY" = https://github.com/example/independent-shell',
     '          rm -rf vendor/dshmarketplace-plugin',
@@ -282,6 +285,7 @@ test('actual local runner routes cwd and build environment into isolation and ke
   assert.equal(readFileSync(join(source, 'vendor/dshmarketplace-plugin/extra.txt'), 'utf8'), 'keep')
   assert.equal(readFileSync(join(source, 'scripts/snapshot-config/engine-overlay.json'), 'utf8'), 'local config')
   assert.equal(existsSync(join(source, 'result.txt')), false)
+  assert.match(readFileSync(join(workspace, '.deploy-tmp/local-github-env'), 'utf8'), /npm_config_cache=/)
   const outside = join(root, 'unrelated-policy.json')
   writeFileSync(outside, 'keep unrelated policy')
   rmSync(join(workspace, '.deploy-tmp/source-build/source-build-policy.json'))

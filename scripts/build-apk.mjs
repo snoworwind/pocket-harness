@@ -389,7 +389,7 @@ try {
   log('门禁：内嵌快照可解压（设备同源 streaming 解码器全量解压）…')
   run('node', [gate('check-snapshot-decode.mjs'), '--tar', join(apkDir, 'app', 'src', 'main', 'assets', 'snapshot.tar.xz'), '--require'])
   run(process.execPath, [gate('check-apk-signatures.mjs'), '--self-test'])
-  verifyApks({ signatureGate: gate('check-apk-signatures.mjs'), directories: [OUT], selfTest: false, log },
+  verifyApks({ signatureGate: gate('check-apk-signatures.mjs'), directories: [OUT], certificateSha256File: process.env.POCKET_BUILD_CERTIFICATE_FILE, selfTest: false, log },
     (cmd, argv, opts) => spawnSync(cmd, argv, { cwd: ROOT, encoding: 'utf8', stdio: 'inherit', ...opts }))
   console.log(`=== 完成（${ABI} ${SUFFIX}）===\nAPK=${join(OUT, name)}`)
 } catch (e) {

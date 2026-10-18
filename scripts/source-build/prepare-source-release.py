@@ -49,6 +49,10 @@ def prepare(source, output, env):
     if len(apks) != 1 or not re.fullmatch(r'pocket-harness-v[\w.+-]+-source-arm64\.apk', apks[0].name):
         raise ValueError('expected exactly one source ARM64 APK')
     apk = apks[0]
+    proof = json.loads((evidence / 'independent-rebuild-verification.json').read_text())
+    if (proof.get('independentRebuildMatched') is not True or proof.get('normalizationVersion') != 3
+            or proof.get('sourceCommit') != sha or proof.get('signedApkSha256') != digest(apk)):
+        raise ValueError('independent rebuild proof does not bind the final APK')
     expected = f'{digest(apk)}  {apk.relative_to(source).as_posix()}'
     if expected not in (evidence / 'apk-sha256.txt').read_text().splitlines():
         raise ValueError('APK hash mismatch')

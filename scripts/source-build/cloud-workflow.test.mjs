@@ -45,8 +45,25 @@ test('source workflow uploads explicitly listed hidden provenance with APK', () 
   assert.match(upload, /^            \.deploy-tmp\/source-build\/project-component-provenance.json$/m)
   assert.match(upload, /^            \.deploy-tmp\/source-build\/apk-sha256.txt$/m)
   assert.match(upload, /^            \.deploy-tmp\/source-build\/linux-bundle-injection.json$/m)
+  assert.match(upload, /^            \.deploy-tmp\/source-build\/independent-rebuild-verification.json$/m)
   assert.match(upload, /^            \.deploy-tmp\/linux-build\/provenance\/\*\*$/m)
   assert.doesNotMatch(upload, /^            \.deploy-tmp\/\*\*$/m)
+})
+
+test('independent builders and verifier never receive production secrets; only the final signer does', () => {
+  const source = read('build-apk-source.yml')
+  const build = source.split('  build-arm64:')[1].split('  verify-arm64:')[0]
+  const verify = source.split('  verify-arm64:')[1].split('  sign-arm64:')[0]
+  const sign = source.split('  sign-arm64:')[1]
+  assert.match(build, /replica: \[primary, reference\]/)
+  assert.match(build, /keytool -genkeypair/)
+  assert.doesNotMatch(build + verify, /secrets\./)
+  assert.match(verify, /needs: build-arm64/)
+  assert.match(verify, /compare-independent-builds\.mjs/)
+  assert.match(sign, /needs: verify-arm64/)
+  assert.match(sign, /secrets\.POCKET_SIGNING_KEYSTORE_PASSWORD/)
+  assert.match(sign, /sign-source-artifacts\.mjs/)
+  assert.doesNotMatch(sign, /npm |gradlew|build-apk\.mjs/)
 })
 
 test('source build overrides the checked-in Windows npm cache before any npm install', () => {
