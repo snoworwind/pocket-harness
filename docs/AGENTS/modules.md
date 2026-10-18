@@ -66,13 +66,13 @@
 
 `app/src/main/assets/`：`snapshot.tar.xz`、`snapshot.sha256`、`undo-emergency.mjs`（急救 CLI，UndoGate 用）、`licenses/`（LICENSES 标准文本 + THIRD_PARTY_NOTICES.md，GPL 合规 A2）、`console.html`、`docs/root-disclaimer.html`（0.14.2-fx-2-root.1：issue #262 免责声明，`LocalDocs` 登记消费）。
 
-### 4.1 引擎侧插件文件（协调仓 `plugins/`，镜像到本仓同名目录）
+### 4.1 引擎侧插件文件（本仓 `plugins/` 为权威副本）
 
-> 本表登记引擎侧插件中本轮新增或职责变化的文件；其余插件文件见协调仓对应 `plugins/*/src/`。
+> 本表登记引擎侧插件中本轮新增或职责变化的文件；其余插件文件见本仓 `plugins/*/src/`。同步边界以 AGENTS.md §4 为准，无需从协调仓覆盖本仓源码。
 
 | 文件 | 职责 | 关键点 |
 |---|---|---|
-| `app/src/main/java/com/dsharnessmobile/shell/LinuxAssetIO.kt` | Linux 环境资产 IO：宿主侧「下载 + 校验 + 安全解包」判据（0.15.0） | 只认 https + 主机白名单 + 本仓 Releases 的 `<tag>/<asset>` 形态；重定向**逐跳**复核（关掉 `instanceFollowRedirects`，自动跟随不校验中间跳）；摘要与**字节数**都验；解包复用 `SnapshotExtractor.extract`（绝对路径/`..`/符号链接逃逸/炸弹上限），落点由壳侧强制在 `DSH_FILES_DIR/linux-environment` 内。刻意**不复用** `UpdateChecker.download`（它走 gh-proxy 镜像链，与本面的「只认本仓直连」相反）。门禁 `environmentVerdict`：根目录 + `linux-bootstrap-state.json` 都在场才允许动作。绝不 shell out。 |
+| `app/src/main/java/com/dsharnessmobile/shell/LinuxAssetIO.kt` | Linux 环境资产 IO：宿主侧「下载 + 校验 + 安全解包」判据（0.15.0） | 只认 https + 主机白名单 + 本仓 Releases 的 `<tag>/<asset>` 形态；重定向**逐跳**复核（关掉 `instanceFollowRedirects`，自动跟随不校验中间跳）；摘要与**字节数**都验；解包复用 `SnapshotExtractor.extract`（绝对路径/`..`/符号链接逃逸/炸弹上限），落点由壳侧强制在 `DSH_FILES_DIR/linux-environment` 内。应用内更新下载器已移除；本面的下载与来源校验由 `LinuxAssetIO` 自身负责。门禁 `environmentVerdict`：根目录 + `linux-bootstrap-state.json` 都在场才允许动作。绝不 shell out。 |
 | `app/src/main/java/com/dsharnessmobile/shell/LinuxAssetPrepare.kt` | Linux 环境资产准备入口（客户端触发，(iii) 形态） | 入参只有 `{url,sha256,size}`，落点按摘要推导，页面指定不了路径；先过环境/来源门再起后台线程（下载不得阻塞 WebView 线程）；下载→校验→解包全过才**原子发布**成 `staging/<sha256>/` 并**保留归档字节**供引擎侧复验；任一步失败只清工作目录、绝不发布半成品。状态经 linuxAssetPrepareStatus() 轮询；预检回执不释放活动 busy，结果绑定代次，工作/调度异常有失败终态。 |
 | `plugins/dsh-android-linux-env/src/linux-environment.ts` | Linux 宿主适配与鉴权路由 | 通过 `linuxPluginHost` 只激活安全落位的 Cordis runtime；APK 来源链经 `linuxBootstrapConfig` 提供快照内离线资产、manifest 原始字节 pin 与应用版本。资产缺失/哈希错误关闭，安装仍需用户确认；本机单测通过，来源 APK 与设备验收待做。 |
 | `vendor/dsh-linux-runtime/modules/manager.js` | Linux runtime 安装、健康检查与命令执行 | 安装在 active 交换前需经 Bionilux 实跑目标 Node `--version`；输出每流限 256 KiB，命令超时先 TERM、宽限后 KILL。Windows 单测不能替代 ARM64 设备验收。 |
@@ -80,7 +80,7 @@
 | `plugins/dsh-linux-bootstrap/` | 内置的实验性 Linux bootstrap（`@dsh-android/linux-bootstrap` 0.5.0，源 `kelai141/dsh-bionilux@3f86a85` `packages/linux-bootstrap`） | 已加入 APK 注入/profile；来源链从受哈希登记源码构建服务端与 `lib/client.js`，并把 bootstrap/runtime/ARM64 rootfs/Node 资产连同逐项 digest 的 manifest 打入 Termux 快照。默认不启用，用户确认后才执行安装/激活。当前缺来源 APK 云端全链与设备验收。 |
 | `plugins/dsh-linux-bootstrap/client/index.js`（`settings.section` 归属） | Linux 环境设置入口挂载点 | bootstrap client bundle 只注入浏览器 `slots`，注册 `linux-environment` 面板，经既有鉴权 HTTP 路由访问引擎 `linuxBootstrap`；服务缺席在面板报错，不阻断整个 Web UI。 |
 | `plugins/dsh-model-capability/src/models-dev.ts`（**0.14.2 P2 新增**） | **来源梯 S3**：models.dev 跨厂商百科，补引擎随包目录（S4）查不到的**长尾模型** | 字段路径**本仓实测**（2026-09-26 真实抓取，非抄自他人实现）：provider map `{ <providerId>: { id, name, models: { <modelId>: <entry> } } }`；`entry.limit.context`→contextWindow（8181/8181 在场）、`entry.limit.output`→maxTokens、`entry.modalities.input[]`→input、`entry.reasoning_options[]`→thinkingLevels（4796/8181 在场）。**`values` 数组只存在于 `effort` 变体**（实测四种条目形态：仅 type / type+values / type+min+max / type+min），裸 `type:'toggle'` 或 `budget_tokens` 不点名任何档位。**只保留上列字段、其余全丢**；落盘前先量尺寸，超 `MODELS_DEV_MAX_BYTES`（8 MiB）拒写。`MODELS_DEV_URL = https://models.dev/api.json`（单请求、无 body、无凭据）、`MODELS_DEV_TTL_MS = 7 天`。**S3 与 S4 逐字段仲裁：分歧字段记为冲突且不写入**（`mergeModelsDev`） |
-| `plugins/dsh-android-vdisplay/src/index.ts`（协调仓同名插件镜像） | 虚拟屏工具面，包含 `android_vdisplay_input` 的严格回执 schema | `callVdOp` 成功回执包含 `state`，输入工具 schema 必须显式声明；壳侧 `vdInput` 正常回执还含 `verb` / `screenId` / `displayId`。web 与 headless profile 共用注入插件目录中的同一 `lib/index.js`，镜像按 §5.1 同步 `src/lib/package.json/test`。 |
+| `plugins/dsh-android-vdisplay/src/index.ts`（本仓权威副本） | 虚拟屏工具面，包含 `android_vdisplay_input` 的严格回执 schema | `callVdOp` 成功回执包含 `state`，输入工具 schema 必须显式声明；壳侧 `vdInput` 正常回执还含 `verb` / `screenId` / `displayId`。web 与 headless profile 共用注入插件目录中的同一 `lib/index.js`，镜像按 §5.1 同步 `src/lib/package.json/test`。 |
 
 **来源梯全貌**（`capability-probe.ts` 文件头明载，0.14.2 P2 起为六级）：
 
@@ -265,7 +265,7 @@
 
 相关壳侧改动：`MuxClient` 新增可选构造参数 `streamId`（默认 `dsh-overlay-events`；注意**尾随 lambda 绑定最后一个形参**，调用点须把 onFrame 写在括号内——`OverlayPanel.startMux()` 已同步）；`EngineService.onCreate` 启动 `NotifyStore` + `NotifyBridge`（通知**独立于悬浮球开关**）；`WatchdogV2.consumeTaskDoneMarkers` 改走 `NotifyStore.legacyFallback`（NT-09 双读不双发，标题回落会话短哈希，不再回落字面量「任务完成」）；`AndroidManifest.xml` 新增 `NotifyActionReceiver`（exported=false + 显式 Intent）。
 
-引擎侧（协调仓 `plugins/dsh-android-bridge`，镜像到本仓同名目录）：`notify-projection.ts`（D13 `reason.kind` 成败判定 / D14 `session/title` 标题来源 / 待办 n-N / 汇报载荷）、`lossless-json.ts`（聚合返回体出口去 undefined——修 `android_privilege_status` 的 not lossless JSON）、`index.ts` 新增 `.notify.ndjson` 写入（`kind: report|todo`）与 `buildPrivilegeStatusPayload`/`buildPrivilegeStatusToolPayload`。
+引擎侧（本仓 `plugins/dsh-android-bridge`）：`notify-projection.ts`（D13 `reason.kind` 成败判定 / D14 `session/title` 标题来源 / 待办 n-N / 汇报载荷）、`lossless-json.ts`（聚合返回体出口去 undefined——修 `android_privilege_status` 的 not lossless JSON）、`index.ts` 新增 `.notify.ndjson` 写入（`kind: report|todo`）与 `buildPrivilegeStatusPayload`/`buildPrivilegeStatusToolPayload`。
 
 Android API 面登记见 `docs/AGENTS/ANDROID-API-USAGE.md` §1/§3/§4/§8；验收条目与设备判据见协调仓 `docs/NEXT-ITERATION-PLAN-2026-09-12.md` §6。
 

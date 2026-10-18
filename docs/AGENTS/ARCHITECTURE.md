@@ -114,7 +114,7 @@
 
 ### 5.1 0.14.3 依赖与线程边界
 
-维护实现与限制的唯一详述见 [Root维护](<dsh-mobile-apk/docs/AGENTS/ROOT-MAINTENANCE.md>)：RootGrant策略不向固定helper暴露任意shell；RootMaintenanceLease先持久化再UID0派发；RootOwnershipJobs共享worker不归某Activity/Service caller所有。ProcIo/ShizukuCaptureIo的本地有界返回与远端确定完成是两件事，不完整capture不发布ready spool。
+维护实现与限制的唯一详述见 [Root维护](ROOT-MAINTENANCE.md)：RootGrant策略不向固定helper暴露任意shell；RootMaintenanceLease先持久化再UID0派发；RootOwnershipJobs共享worker不归某Activity/Service caller所有。ProcIo/ShizukuCaptureIo的本地有界返回与远端确定完成是两件事，不完整capture不发布ready spool。
 
 浏览器UI私有复用官方MIT BrowserBody/Title/controller契约，官方Sidebar指南/标签框架通过注册消费，不拷Electron/Iframe后端。NativeBrowserSession把GUI occurrence绑定native tab，自定义菜单使用真实sidebar.right.tab.menu.item扩展点；HMR/unmount hide而非销毁AI页。BrowserHostProfile按Session隔离cookie/storage/worker，UI geometry focus不替代模型captured Session/tab。Windows UA字符串、JS platform与UA-CH均按目标identity选择；是否实际生效依赖provider能力并在回执如实标注，未设备验证。
 
@@ -153,7 +153,7 @@
 
 ```
 android_screen_list (metadata only; no screen content)
-   └─ androidPrivilege.screenAccess(screenId)  ← reads native dsh_screen_scope.xml every operation
+   └─ androidPrivilege.screenAccess(screenId)  ← currently reads retired dsh_screen_scope.xml (audit A02)
         ├─ virtual-only / real-only / all user range check
         ├─ virtual-1 not ready (no VirtualDisplay yet) → screen-not-ready, never display 0
         └─ allowed real → gateFor(session) requires danger-full-access
@@ -164,6 +164,8 @@ android_screen_list (metadata only; no screen content)
 `VdisplayController` 已能建真实 VirtualDisplay（公开 `PUBLIC|OWN_CONTENT_ONLY|SUPPORTS_TOUCH`）并把
 别名 `virtual-1` 映射到运行时 displayId；viewer Surface 重挂与多屏选择面仍未收口（见 known-gaps.md）。
 本节记录代码施工状态，不表示已通过设备验收。
+
+原生 `ScreenScopePrefs` 已仅使用进程内存，进程重启回落 `virtual-only`；上图插件读取旧 XML 的实现尚未同步到该真源。新安装授权真实屏仍被插件拒绝，属于未修复的跨层断链，见 [项目审计 A02](PROJECT-AUDIT-2026-10-18.md#a02-p1-屏幕范围真源迁移后插件仍读旧文件)。
 
 ## 9. 0.13.5 设备控制面（双通道）
 
