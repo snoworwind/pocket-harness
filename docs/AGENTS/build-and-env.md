@@ -265,3 +265,5 @@ Linux bootstrap 本地安全分叉（2026-10-18）：`check-vendored-linux-boots
 来源签名调用链：build-apk 的 source-build/source-draft 均显式 secrets: inherit，草稿 build 再传给 build-apk-source；只读 token 与写 Release job 的权限边界不变。回归见 cloud-workflow.test.mjs 的逐边删除传递负控。
 
 来源链分支授权：实际 APK 构建只允许 main。云端第一步检查 github.ref；本地包括 --from/--only/续跑都要求当前 attached main，--list/--dry-run 不构建可用于候选审查。
+
+离线 Linux 资产兼容验收：npm test（plugins/dsh-android-linux-env）包含生产 host/bootstrap/runtime 的禁网联测和真实 GNU tar 根条目、链接负控；需 POSIX tar/xz。该测试只替代原生 ARM64 执行器，不能作为最终 APK 或设备验收。

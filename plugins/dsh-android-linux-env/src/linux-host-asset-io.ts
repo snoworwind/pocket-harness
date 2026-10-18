@@ -4,12 +4,12 @@
  * Mutable host unpacked trees and cache markers are never used as executable payload.
  */
 import { createReadStream, createWriteStream } from 'node:fs'
-import { lstat, mkdir, readFile, rename, rm } from 'node:fs/promises'
+import { link, lstat, mkdir, readFile, readdir, realpath, rename, rm, symlink } from 'node:fs/promises'
 import { Readable, Transform } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 import xz from 'xz-decompress'
 import tar from 'tar-stream'
-import { basename, dirname, isAbsolute, join, resolve, sep } from 'node:path'
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { createHash, randomUUID } from 'node:crypto'
 import { LINUX_MANIFEST_DIGEST_FILE } from './linux-release-pins.js'
 
@@ -118,15 +118,29 @@ export function unpackedTreeFor(filesDir: string, sha256: unknown): string | nul
 }
 
 /** Decode verified archive bytes, never the independently mutable host tree. */
-async function extractVerifiedArchive(archivePath: string, destination: string): Promise<void> {
+async function extractVerifiedArchive(archivePath: string, destination: string, kind = 'plugin'): Promise<void> {
   const root = resolve(destination)
+  const rootInfo = await lstat(root)
+  if (!rootInfo.isDirectory() || rootInfo.isSymbolicLink() || (await readdir(root)).length !== 0) {
+    throw new Error('Archive destination must be a fresh empty directory')
+  }
   const seen = new Set<string>()
+  const links: { target: string; source: string; hard: boolean }[] = []
+  const runtime = ['node', 'backend', 'rootfs'].includes(kind)
+  let rootSeen = false
   let entries = 0, declared = 0, decoded = 0
   const extract = tar.extract()
   extract.on('entry', (header, stream, next) => {
     void (async () => {
       if (++entries > 20_000 || !Number.isSafeInteger(header.size) || (header.size ?? 0) < 0) throw new Error('Archive entry limit exceeded')
-      if (header.type !== 'file' && header.type !== 'directory') throw new Error('Archive links and special entries are forbidden')
+      const isLink = header.type === 'symlink' || header.type === 'link'
+      if (header.type !== 'file' && header.type !== 'directory' && !(runtime && isLink)) throw new Error('Archive links and special entries are forbidden')
+      if (header.name.includes('\\') || /^[A-Za-z]:/.test(header.name)) throw new Error('Unsafe archive path')
+      if (header.name === '.' || header.name === './') {
+        if (rootSeen || header.type !== 'directory' || header.size !== 0) throw new Error('Unsafe or duplicate archive root')
+        rootSeen = true
+        stream.resume(); next(); return
+      }
       const name = header.name.replace(/^\.\//, '').replace(/\/$/, '')
       const target = resolveInside(root, name)
       if (target === null || target === root || seen.has(target)) throw new Error('Unsafe or duplicate archive path')
@@ -135,7 +149,18 @@ async function extractVerifiedArchive(archivePath: string, destination: string):
       declared += size
       if (size > 128 * 1024 * 1024 || declared > 512 * 1024 * 1024) throw new Error('Archive payload limit exceeded')
       // Destination is a new bootstrap staging directory; no caller-owned tree is merged.
-      if (header.type === 'directory') {
+      if (isLink) {
+        const value = header.linkname ?? ''
+        if (size !== 0 || !value || value.includes('\u0000') || value.includes('\\') || /^[A-Za-z]:/.test(value)) throw new Error('Unsafe archive link')
+        const hard = header.type === 'link'
+        // Hard links name archive members; absolute symlinks are guest-rooted only for rootfs.
+        if (isAbsolute(value) && (hard || kind !== 'rootfs')) throw new Error('Absolute archive link is forbidden')
+        const source = hard ? resolveInside(root, value.replace(/^\.\//, ''))
+          : isAbsolute(value) ? resolve(root, '.' + value) : resolve(dirname(target), value)
+        if (source === null || (source !== root && !source.startsWith(root + sep))) throw new Error('Archive link escapes extraction root')
+        links.push({ target, source, hard })
+        stream.resume()
+      } else if (header.type === 'directory') {
         if (size !== 0) throw new Error('Directory entry has payload')
         await mkdir(target, { recursive: true })
         stream.resume()
@@ -152,6 +177,26 @@ async function extractVerifiedArchive(archivePath: string, destination: string):
   } })
   const decodedStream = new xz.XzReadableStream(Readable.toWeb(createReadStream(archivePath)) as ReadableStream<Uint8Array>)
   await pipeline(Readable.fromWeb(decodedStream as never), limit, extract)
+  // No links exist while file payloads are written. Never traverse a link as a parent.
+  const safeParents = async (target: string) => {
+    const parts = relative(root, dirname(target)).split(sep).filter(Boolean)
+    let parent = root
+    for (const part of parts) {
+      parent = join(parent, part)
+      await ensureDirectory(parent)
+    }
+  }
+  for (const entry of links.filter(item => item.hard)) {
+    await safeParents(entry.target)
+    const sourceInfo = await lstat(entry.source)
+    const physical = await realpath(entry.source)
+    if (!sourceInfo.isFile() || sourceInfo.isSymbolicLink() || !physical.startsWith(root + sep)) throw new Error('Archive hard link must target an extracted regular file')
+    await link(entry.source, entry.target)
+  }
+  for (const entry of links.filter(item => !item.hard)) {
+    await safeParents(entry.target)
+    await symlink(relative(dirname(entry.target), entry.source) || '.', entry.target)
+  }
 }
 
 /** Bootstrap 的两个 IO 适配器：宿主归档读取与独立解码。 */
@@ -159,7 +204,7 @@ export interface HostAssetIO {
   /** 交回宿主已暂存的归档路径；宿主没准备好就抛错（**不下载**）。 */
   downloadAsset(asset: { sha256?: unknown }, options?: { destination?: string }): Promise<string>
   /** 从 bootstrap 已验证的归档副本解码到新 staging；不使用宿主解包树。 */
-  extractArchive(archivePath: string, destination: string): Promise<void>
+  extractArchive(archivePath: string, destination: string, options?: { kind?: string }): Promise<void>
 }
 
 /**
@@ -235,9 +280,9 @@ export function createHostAssetIO(options: { filesDir: string; bundleDirectory?:
       return archive
     },
 
-    async extractArchive(archivePath: string, destination: string): Promise<void> {
+    async extractArchive(archivePath: string, destination: string, options?: { kind?: string }): Promise<void> {
       await mkdir(destination, { recursive: true })
-      await extractVerifiedArchive(archivePath, destination)
+      await extractVerifiedArchive(archivePath, destination, options?.kind)
     },
   }
 }
@@ -249,7 +294,7 @@ export function createHostAssetIO(options: { filesDir: string; bundleDirectory?:
  * `<stagingDirectory>/<sha256>/` 当成**它自己的包槽位**（先 `rename` 到 `.backup-*`，成功后再
  * 递归删除），若指向宿主暂存的 `<root>/staging/<sha256>/`，它会**删掉宿主保留的归档与解包树**，
  * 而那两样正是引擎侧复验的依据。所以两者必须分开：宿主暂存 `<root>/staging/<sha256>/`，
- * bootstrap 包槽 `<root>/staging/runtime-plugin/<sha256>/`。
+ * bootstrap 包槽 `<root>/plugins/linux-runtime/<sha256>/`（位于真实宿主激活根内）。
  *
  * 注意这里**不含**启用决策：本函数只造配置，启用与否仍由用户显式动作决定（默认不启用）。
  */
@@ -261,6 +306,7 @@ export function createLinuxBootstrapConfig(options: {
   const { filesDir, appVersion } = options
   const bundleDirectory = options.bundleDirectory ?? defaultBundleDirectory()
   const dataDir = linuxEnvironmentRoot(filesDir)
+  const assetIO = createHostAssetIO({ filesDir, bundleDirectory })
   let approvedDigest = ''
   const manifestProvider = async () => {
     if (!bundleDirectory) throw new Error('Bundled Linux assets are unavailable without TERMUX__PREFIX')
@@ -273,8 +319,15 @@ export function createLinuxBootstrapConfig(options: {
     manifestProvider,
     verifyManifest: (_manifest: unknown, source: { sourceSha256?: unknown }) =>
       typeof source?.sourceSha256 === 'string' && source.sourceSha256 === approvedDigest,
-    linuxAssetIO: createHostAssetIO({ filesDir, bundleDirectory }),
+    linuxAssetIO: assetIO,
+    runtimePluginConfig: {
+      downloadAsset: async (asset: { sha256?: unknown }, destination: string) => {
+        const source = await assetIO.downloadAsset(asset)
+        await pipeline(createReadStream(source), createWriteStream(destination, { flags: 'wx', mode: 0o600 }))
+      },
+      extractArchive: assetIO.extractArchive,
+    },
     appVersionProvider: () => appVersion,
-    stagingDirectory: join(dataDir, STAGING_DIR, 'runtime-plugin'),
+    stagingDirectory: join(dataDir, 'plugins', 'linux-runtime'),
   }
 }
