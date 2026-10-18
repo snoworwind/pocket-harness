@@ -132,6 +132,41 @@ function sortedEntryList(base) {
   return out
 }
 
+/** 读取归档成员名并去掉目录尾斜杠——`tar -tf` 对目录输出 `package/lib/`，而 entries 无尾斜杠。 */
+function packedMemberNames(archive, name) {
+  let listing
+  try {
+    listing = execFileSync('tar', ['-tf', archive], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 })
+  } catch (error) {
+    throw new Error(`${name}: 无法读取重打包归档成员：${error.message}`)
+  }
+  return listing.split('\n').filter(Boolean).map((entry) => entry.replace(/\/+$/, ''))
+}
+
+/**
+ * 重打包产物必须是 entries 的**精确集合**：每个路径恰好出现一次。
+ *
+ * 这是 A10 的落盘断言：上游症状是目录被递归收入多次，归档体积解包工作增长，
+ * 且 canonical 归档出现重复成员与硬链解释差异。只在测试里断言不够——生产侧也要
+ * 在写出 gzip 之前拒绝重复/缺项，否则将来换回递归打包会静默复发。
+ */
+export function assertPackedMembers(archive, entries, name = '<tarball>') {
+  const members = packedMemberNames(archive, name)
+  const seen = new Set()
+  for (const member of members) {
+    if (seen.has(member)) throw new Error(`${name}: 重打包归档出现重复成员：${member}`)
+    seen.add(member)
+  }
+  const expected = new Set(entries)
+  if (expected.size !== entries.length) throw new Error(`${name}: 待打包条目自身重复，拒绝继续`)
+  if (seen.size !== expected.size) {
+    throw new Error(`${name}: 重打包归档成员数 ${seen.size} 与清单条目数 ${expected.size} 不一致`)
+  }
+  for (const member of expected) if (!seen.has(member)) throw new Error(`${name}: 重打包归档缺少成员：${member}`)
+  for (const member of seen) if (!expected.has(member)) throw new Error(`${name}: 重打包归档出现清单外成员：${member}`)
+  return members
+}
+
 export function canonicalizePackedManifest(tarball, name = '<tarball>') {
   const work = mkdtempSync(join(tmpdir(), 'dsh-pack-'))
   try {
@@ -144,7 +179,12 @@ export function canonicalizePackedManifest(tarball, name = '<tarball>') {
     writeFileSync(join(stage, 'package.json'), canonicalPackageJson(manifest))
     const entries = sortedEntryList(stage).map((rel) => join('package', rel))
     const archive = join(work, 'repacked.tar')
-    execFileSync('tar', ['-cf', archive, '-C', work, ...entries])
+    // entries 已经递归枚举目录与文件；tar 默认仍会递归目录，同一文件因此被收入多次
+    // （实测 package/lib/deep/index.js 三次、deep 目录两次）。用显式成员 + --no-recursion
+    // 让归档成员集合恰好等于 entries。GNU tar 与 bsdtar(libarchive) 都支持该开关，
+    // 不用 GNU 专有的 --sort/--mtime/--owner，故 CI Linux 与 macOS 本地行为一致。
+    execFileSync('tar', ['-cf', archive, '-C', work, '--no-recursion', ...entries])
+    assertPackedMembers(archive, entries, name)
     writeFileSync(tarball, gzipSync(readFileSync(archive), { level: 9 }))
   } finally {
     rmSync(work, { recursive: true, force: true })

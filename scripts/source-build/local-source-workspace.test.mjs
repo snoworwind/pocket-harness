@@ -46,6 +46,36 @@ test('source identity survives a remote-free isolated checkout and rejects an un
   assert.equal(resolveSourceRepository(workspace, { DSH_SOURCE_REPOSITORY: identity }), 'https://github.com/example/independent-shell')
 }))
 
+test('A11：续跑绑定工作树源码字节，未白名单的改写与新增源文件都拒绝', () => fixture(({ root, source, git }) => {
+  mkdirSync(join(source, 'app/src/main'), { recursive: true })
+  writeFileSync(join(source, 'app/src/main/probe.kt'), '// committed probe\n')
+  git('add', '.')
+  git('commit', '-qm', 'source bytes fixture')
+  const commit = sourceCommit(source)
+  const workspace = prepareSourceWorkspace(source, commit, join(root, 'bytes-build'))
+  const marker = JSON.parse(readFileSync(join(workspace, '.dsh-local-source-workspace.json'), 'utf8'))
+  assert.equal(marker.schema, 2)
+  assert.match(marker.sourceTree.sha256, /^[0-9a-f]{64}$/)
+
+  // 审计反例：工作树里的已提交源文件被改写，仍报同 HEAD；旧实现返回 accepted:true。
+  writeFileSync(join(workspace, 'app/src/main/probe.kt'), '// UNCOMMITTED SOURCE\n')
+  assert.throws(() => prepareSourceWorkspace(source, commit, workspace), /源码字节已偏离/)
+
+  // 正控：恢复为已提交字节后，同一目录必须可以续跑。
+  execFileSync('git', ['-C', workspace, 'checkout', '--', 'app/src/main/probe.kt'])
+  assert.equal(prepareSourceWorkspace(source, commit, workspace), workspace)
+
+  // 预期生成路径：忽略目录内的产物与白名单内的已跟踪配置都可以变化。
+  mkdirSync(join(workspace, '.deploy-tmp/source-build'), { recursive: true })
+  writeFileSync(join(workspace, '.deploy-tmp/source-build/generated.json'), '{"generated":true}\n')
+  writeFileSync(join(workspace, 'scripts/snapshot-config/engine-overlay.json'), '{"generated":true}\n')
+  assert.equal(prepareSourceWorkspace(source, commit, workspace), workspace)
+
+  // 窄口径：新增的未跟踪源文件同样属于对「只构建已提交 HEAD」的偏离，不能放行。
+  writeFileSync(join(workspace, 'app/src/main/Injected.kt'), '// injected\n')
+  assert.throws(() => prepareSourceWorkspace(source, commit, workspace), /源码字节已偏离/)
+}))
+
 test('dirty tracked, untracked and ignored source files survive successful and interrupted destructive steps', linux, () => fixture(({ root, source, commit }) => {
   writeFileSync(join(source, 'vendor/dshmarketplace-plugin/tracked.js'), 'uncommitted marketplace\n')
   writeFileSync(join(source, 'vendor/dshmarketplace-plugin/extra.txt'), 'untracked user data\n')
@@ -151,8 +181,8 @@ test('resume rejects nested host write-root aliases but retains internal and And
     assert.equal(readFileSync(join(outside, 'sentinel'), 'utf8'), 'keep unrelated data')
     rmSync(link)
   }
-  mkdirSync(join(workspace, 'retained-build-data'))
-  symlinkSync('../retained-build-data', join(workspace, '.deploy-tmp/source-build'))
+  mkdirSync(join(workspace, '.deploy-tmp/retained-build-data'))
+  symlinkSync('retained-build-data', join(workspace, '.deploy-tmp/source-build'))
   assert.equal(prepareSourceWorkspace(source, commit, workspace), workspace)
   // These raw Android links are intentionally produced before sanitization.
   // Use the concrete extraction root rather than granting the reports tree an
