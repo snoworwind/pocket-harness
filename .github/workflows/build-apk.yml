@@ -1,0 +1,23 @@
+# 本分支所有云端 APK 构建统一走来源链；不使用 LFS runtime 底座。
+name: build-apk
+
+on:
+  workflow_dispatch:
+    inputs:
+      draft_release:
+        description: '源码构建成功后创建 ARM64 预发布草稿（不会公开）'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  source-build:
+    if: ${{ !inputs.draft_release }}
+    uses: ./.github/workflows/build-apk-source.yml
+  source-draft:
+    if: ${{ inputs.draft_release }}
+    permissions:
+      contents: write
+    uses: ./.github/workflows/release-source-draft.yml

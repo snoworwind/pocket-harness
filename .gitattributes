@@ -1,0 +1,15 @@
+# Official patch bytes are hash-pinned; autocrlf must not rewrite the trust input.
+scripts/patches/upstream/*.patch -text
+# 上游 web 前端打包产物(非本仓库手写代码),不计入 GitHub 语言统计
+# -text：运行时补丁资产必须与快照同路径文件逐字节一致（scripts/check-runtime-assets.mjs），
+# autocrlf 会把 LF 检出成 CRLF → 门禁在别的机器必然假红，且引擎启动时触发多余整文件覆盖。
+app/src/main/assets/patched/*.js linguist-vendored -text
+app/src/main/assets/patched/*.html linguist-vendored -text
+# Anchored patch fixtures mirror upstream package bytes; line-ending conversion breaks patch matching.
+scripts/patches/tests/fixtures/dsh-client-modules-0.2.0-rc.2/lib/index.js -text
+# 旧 LFS 底座（base/*.tar.xz）未导入：来源链明确禁止读取，本仓不启用 LFS。
+
+# 第三方通告随 APK 分发，禁用行尾转换（防 autocrlf 幻影 diff 复发）
+app/src/main/assets/licenses/THIRD_PARTY_NOTICES.md -text
+# 许可原文须保留上游字节与空白，避免固定 SHA-256 被 autocrlf 改写。
+LICENSES/*.txt -text -whitespace

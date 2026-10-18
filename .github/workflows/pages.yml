@@ -1,0 +1,82 @@
+# pages.yml —— 发布页站点：构建 + 部署到 GitHub Pages
+#
+# 定位（刻意做轻）：
+#   只做「读 release 元数据 -> 生成静态站 -> 部署」。**不碰 gradle / 快照 / LFS / 打包链**，
+#   所以它不会因为重链失败而拖死，也不会拖慢重链。整链约 30 秒。
+#
+# 触发：
+#   - release(published): refresh after a draft becomes publicly downloadable
+#   - workflow_dispatch：手动部署
+#
+# 说明：站点内容仍是 dsh-mobile 基线品牌，且本仓为私有仓；在站点完成改名与 Pages
+# 配置前不随 push 自动部署，避免把旧品牌/旧下载坐标发布出去。改名完成后恢复 push 触发。
+#
+# 权限最小化：contents: read 只读源码；pages/id-token 仅部署 job 持有。
+name: pages
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          # Release events point at the tag; site sources live on the default branch.
+          ref: ${{ github.event.repository.default_branch }}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with: { node-version: '24' }
+      # 门禁先行：资产名与发布链绑定，发布链改名即判红（防重演 App 侧坑 172）。
+      # 必须给 glob：node --test 在 Node 24 上**不接受目录**（传目录会按 CJS 解析并报
+      # Cannot find module .../webpages/tests，实测 exit 1）。引号交给 node 自己展开，
+      # 不依赖 shell 的 glob 行为。
+      - name: 资产名与 URL 拼接门禁
+        run: node --test "webpages/tests/*.test.mjs"
+      - name: 构建静态站
+        run: node webpages/tools/build.mjs
+      - name: 站点自检（产物存在 + 占位符已替换 + 体积预算）
+        run: |
+          set -euo pipefail
+          test -s webpages/dist/index.html
+          test -s webpages/dist/assets/app.js
+          test -s webpages/dist/data/releases.json
+          test -f webpages/dist/.nojekyll
+          for token in '__STYLES__' '__RELEASE_DATA__' '__SITE_URL__' '__REPO_URL__' '__RELEASES_URL__' '__LATEST_RELEASE_URL__'; do
+            if grep -q "$token" webpages/dist/index.html; then
+              echo "::error::占位符未替换: $token"
+              exit 1
+            fi
+          done
+          size=$(stat -c%s webpages/dist/index.html)
+          echo "index.html = $size bytes"
+          test "$size" -lt 122880
+      - uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3
+        with:
+          path: webpages/dist
+
+  deploy:
+    needs: [build]
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4

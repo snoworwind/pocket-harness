@@ -1,0 +1,46 @@
+{
+  "name": "@dsh-android/linux-bootstrap",
+  "version": "0.5.0",
+  "private": true,
+  "type": "module",
+  "description": "Bootstrap and settings plugin for the DSH Mobile Debian Linux runtime (experimental internal plugin: shipped in the built-in hard plugin directory, not enabled by default)",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./client/index.js"
+  },
+  "files": [
+    "lib/",
+    "src/",
+    "client/",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "node build.mjs"
+  },
+  "peerDependencies": {
+    "react": ">=18"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dshVendor": {
+    "source": "kelai141/dsh-bionilux",
+    "commit": "3f86a853e346b4f2c268fbf6a76216294b5c4382",
+    "package": "packages/linux-bootstrap",
+    "upstreamVersion": "0.5.0",
+    "excludedFromVendor": "test/ (upstream test/client.test.mjs + react-resolver/react-stub hooks depend on a host-provided react peer and POSIX-only cases)",
+    "deviations": [
+      "exports/main point at ./lib: the snapshot injector carries lib/** plus package.json; this tree is built by build.mjs, not published as-is",
+      "build script added (copies src/ to lib/); no build artifact is committed",
+      "test script dropped: upstream test/ is intentionally not vendored (see excludedFromVendor)",
+      "private: true so the vendored copy can never be published",
+      "src/asset-bundle.js locally hardened: always authenticate and independently extract archive bytes; never reuse size-only slots or host unpacked trees",
+      "src/index.js requires approved manifests for discovery, installation and reinstall; no optional verification bypass"
+    ],
+    "localPatches": {
+      "src/asset-bundle.js": "7e32ce0f57ee0a7f75dfd2d2af6ff61357d63b6c34e4f0dbf7aa23cf4300e416",
+      "src/github.js": "7b6369b5910ecb3e8b49f75a4dae3ca60ceac2d4164bf7f05f71c81803aa110c",
+      "src/index.js": "27708c714ba0a102a89a72611443c144a107307686146acc49b9fa4b4c1ba4b2"
+    }
+  }
+}

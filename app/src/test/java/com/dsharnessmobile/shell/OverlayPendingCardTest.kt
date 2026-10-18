@@ -1,0 +1,152 @@
+package com.dsharnessmobile.shell
+
+import java.io.File
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+/**
+ * 0.14.1 批 2「点了没反应 / 一次点击做错事」的行为回归（纯 JVM，无 Robolectric）。
+ *
+ * 覆盖 P0-2 ~ P0-9 里**可离线判定**的那几条。做法沿用本仓既有的两条路子：
+ *  1. **纯函数判据**（[pagerIndex] / [optionsShownCount] / [optionsHiddenCount] / [approvalArmed]）——语义直接可测；
+ *  2. **源码级判据**——需要 Activity/View 的交互（按钮 enabled、Toast、flashStatus）在 JVM 里跑不起来，
+ *     就断言「调用点与真源表达式在场」（与 `CallSiteContractTest` 同一口径，撤掉修复即红）。
+ *
+ * 设备层证据另走三层验收的 B 轨（真机/模拟器截图 + 审计日志），不在本文件里。
+ */
+class OverlayPendingCardTest {
+
+  private fun source(name: String): String {
+    val candidates = listOf(
+      File("src/main/java/com/dsharnessmobile/shell", name),
+      File("app/src/main/java/com/dsharnessmobile/shell", name),
+    )
+    val f = candidates.firstOrNull { it.isFile }
+      ?: throw AssertionError("找不到壳侧源码 " + name + "（工作目录 = " + File(".").absolutePath + "）")
+    return f.readText()
+  }
+
+  /** 只留代码行（注释里会复述旧实现作为背景，直接对全文断言会被自己的说明判红）。 */
+  private fun codeOnly(src: String): String = src.lineSequence()
+    .filterNot {
+      val t = it.trimStart()
+      t.startsWith("//") || t.startsWith("*") || t.startsWith("/*")
+    }
+    .joinToString("\n")
+
+  // ── P0-7：多问分页的箭头 ─────────────────────────────────────────────────
+
+  @Test
+  fun `上一题必须是 -1 且不回卷`() {
+    // 旧实现：(qPage + 1) % n —— 点「上一题」跳下一题，末页回卷到第 1 页。
+    assertEquals(2, pagerIndex(3, 5, -1))
+    assertEquals(0, pagerIndex(1, 5, -1))
+    // 端点不回卷：第 1 页再点「上一题」仍是第 1 页（按钮在端点禁用，这是二重保险）。
+    assertEquals(0, pagerIndex(0, 5, -1))
+  }
+
+  @Test
+  fun `下一题必须是 +1 且末页不回卷`() {
+    assertEquals(4, pagerIndex(3, 5, +1))
+    assertEquals(4, pagerIndex(4, 5, +1))
+  }
+
+  @Test
+  fun `翻页判据不得再用取模`() {
+    val code = codeOnly(source("OverlayPanel.kt"))
+    assertFalse(
+      "翻页监听里不得再出现 % n（回卷 = 点上一题跳到下一题，P0-7）",
+      code.contains("(qPage + 1) % n"),
+    )
+    assertTrue("两侧箭头必须各自独立可点（左=上一题）", code.contains("pagerIndex(qPage, n, -1)"))
+    assertTrue("两侧箭头必须各自独立可点（右=下一题）", code.contains("pagerIndex(qPage, n, +1)"))
+  }
+
+  // ── P0-8：候选被静默丢弃 ────────────────────────────────────────────────
+
+  @Test
+  fun `折叠只决定先列几项，绝不丢项`() {
+    assertEquals(6, optionsShownCount(9, false))
+    assertEquals(9, optionsShownCount(9, true))
+    assertEquals(3, optionsHiddenCount(9, false))
+    assertEquals(0, optionsHiddenCount(9, true))
+    // 6 项以内没有隐藏项（不出现无意义的「还有 0 项」入口）。
+    assertEquals(0, optionsHiddenCount(6, false))
+    assertEquals(0, optionsHiddenCount(0, false))
+  }
+
+  @Test
+  fun `折叠态必须给出可点的展开入口`() {
+    val code = codeOnly(source("OverlayPanel.kt"))
+    assertFalse("不得再用 coerceAtMost(6) 静默丢项", code.contains("coerceAtMost(6)"))
+    assertTrue("必须明示还剩多少项", code.contains("还有 \$optsHidden 项"))
+    assertTrue("展开入口必须真的可点（写进 qOptsExpanded 并重绘）", code.contains("qOptsExpanded.add(qid)"))
+  }
+
+  // ── P0-9：审批单击即放行 ────────────────────────────────────────────────
+
+  @Test
+  fun `首点只进入待确认，二点才放行`() {
+    // 未臂：任何卡都算未确认。
+    assertFalse(approvalArmed(null, 0L, "ev-1", 1_000L))
+    // 已臂且同卡且在窗口内：确认。
+    assertTrue(approvalArmed("ev-1", 1_000L, "ev-1", 1_500L))
+    // 换卡（另一张审批）：撤臂——陈旧状态绝不能吞掉后来的一次单击。
+    assertFalse(approvalArmed("ev-1", 1_000L, "ev-2", 1_500L))
+    // 超出确认窗口：视为未确认。
+    assertFalse(approvalArmed("ev-1", 1_000L, "ev-1", 1_000L + APPROVAL_ARM_MS))
+    assertFalse(approvalArmed("ev-1", 1_000L, "ev-1", 1_000L + APPROVAL_ARM_MS + 1))
+  }
+
+  @Test
+  fun `审批放行不得再挂单击直通`() {
+    val code = codeOnly(source("OverlayPanel.kt"))
+    assertFalse(
+      "「批准一次」不得直接 respondApproval（P0-9：真实工具执行需要二次确认）",
+      code.contains("pendingChip(\"批准一次\", filled = true, red = false, dp) { respondApproval(a, \"allowed-once\") }"),
+    )
+    assertTrue("待确认态必须有可见标签", code.contains("确认批准（执行）"))
+    assertTrue("待确认态必须能取消", code.contains("pendingChip(\"取消\""))
+    assertTrue("换卡必须撤臂", code.contains("approvalArmedId = null\n    }"))
+  }
+
+  // ── P0-6：停止按钮置灰但可点 ─────────────────────────────────────────────
+
+  @Test
+  fun `停止按钮的禁用必须是真禁用`() {
+    val panel = codeOnly(source("OverlayPanel.kt"))
+    assertTrue("忙态决定可点性（视觉与行为一致）", panel.contains("it.isEnabled = canStop"))
+    assertTrue("禁用时同时不可点", panel.contains("it.isClickable = canStop"))
+    val svc = codeOnly(source("OverlayService.kt"))
+    val stopBody = svc.substringAfter("internal fun requestStop()").substringBefore("\n  }")
+    assertFalse(
+      "requestStop 不得在无轮次时静默 return（用户视角就是「点了没反应」，P0-6）",
+      stopBody.contains("if (!sessionBusy) return\n"),
+    )
+    assertTrue("无轮次时必须给出可见回执", stopBody.contains("flashStatus(\"当前没有正在运行的任务\")"))
+  }
+
+  // ── P0-4：存储授权「点了没反应」 ─────────────────────────────────────────
+
+  @Test
+  fun `授权结果必须可见，且永久拒绝与本次拒绝分开说`() {
+    val code = codeOnly(source("ConfigTransfer.kt"))
+    val launcher = code.substringAfter("storagePermLauncher =")
+    val head = launcher.substring(0, 1_600.coerceAtMost(launcher.length))
+    assertFalse("授权回调不得在无在途 pick 时静默 return", head.contains("if (callback == null) return@registerForActivityResult"))
+    assertTrue("必须给出可见回执", head.contains("toastIfPossible("))
+    assertTrue("永久拒绝必须单独说明", head.contains("不再询问"))
+    assertTrue("chip 必须跟着真实结果刷新", head.contains("refreshGuideMeta()"))
+  }
+
+  @Test
+  fun `两级设置页入口都失败时必须说话`() {
+    val code = codeOnly(source("ConfigTransfer.kt"))
+    val fn = code.substringAfter("fun openAllFilesAccessSettings()").substringBefore("\n  /** 用户可见回执")
+    assertTrue("无入口时不得静默忽略", fn.contains("toastIfPossible("))
+    assertTrue("失败必须留日志", fn.contains("Log.w("))
+  }
+
+}

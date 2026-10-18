@@ -1,0 +1,41 @@
+{
+  "name": "@dsh-android/dsh-android-linux-env",
+  "description": "Toolchain & environment pane: shared dirs, env vars, toolchain status/reset, software mirror and the exportable environment recipe (PRD F1.3/F1.0)",
+  "version": "0.1.2",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib"
+  ],
+  "license": "MIT",
+  "private": true,
+  "scripts": {
+    "build": "tsc -p .",
+    "test": "npm run build && node --test test/env-recipe-schema.test.mjs test/recipe-live.test.mjs test/toolchain-single-table.test.mjs test/runtime-cache-allowlist.test.mjs test/runtime-cache-route.test.mjs test/linux-environment.test.mjs test/linux-host-asset-io.test.mjs"
+  },
+  "dependencies": {
+    "@dsh-android/dsh-android-bridge": "file:../dsh-android-bridge",
+    "@dsh-android/dsh-shell-termux": "file:../../dsh-shell-termux",
+    "tar-stream": "3.1.7",
+    "xz-decompress": "0.2.3"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "4.0.4",
+    "@deepseek-ai/dsh-tools": "^0.2.0-rc.2"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "4.0.4",
+    "@deepseek-ai/dsh-tools": "0.2.0-rc.2",
+    "@types/node": "^24.0.0",
+    "@types/tar-stream": "3.1.4",
+    "typescript": "^5.5.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/kelai141/dsh-mobile.git"
+  }
+}
