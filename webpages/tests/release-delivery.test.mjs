@@ -111,9 +111,10 @@ assert.ok(!html().includes('[object Object]'));
   }
 });
 
-test('publication triggers a default-branch site build rather than a draft build', () => {
+test('site deployment stays manual until independent branding and downloads are ready', () => {
   const workflow = fs.readFileSync(path.join(root, '../.github/workflows/pages.yml'), 'utf8');
-  assert.match(workflow, /\n  release:\s*\n    types: \[published\]/);
+  assert.doesNotMatch(workflow, /\n  release:\s*\n/);
+  assert.match(workflow, /\n  workflow_dispatch:\s*\n/);
+  assert.doesNotMatch(workflow, /\n  push:\s*\n/);
   assert.doesNotMatch(workflow, /\n  workflow_run:/);
-  assert.match(workflow, /ref: \$\{\{ github\.event\.repository\.default_branch \}\}/);
 });
