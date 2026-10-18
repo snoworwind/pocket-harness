@@ -14,6 +14,7 @@
  */
 import { mkdirSync, writeFileSync, appendFileSync, readFileSync, readdirSync, rmSync, existsSync, realpathSync, statSync, createReadStream, openSync, closeSync, fstatSync, constants, lstatSync, unlinkSync } from 'node:fs'
 import { randomBytes } from 'node:crypto'
+import { StringDecoder } from 'node:string_decoder'
 import { join, resolve, sep, basename, dirname } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import { defineTool } from '@deepseek-ai/dsh-tools'
@@ -586,8 +587,13 @@ export function apply(ctx: Context, _config: Record<string, unknown> = {}) {
         }
         // body 上限 + 超时——本地 DoS 防护（无限累加耗尽内存）。
         let body = ''
+        let received = 0
         let settled = false
         const MAX_BODY = 16 * 1024
+        // A06：TCP chunk 不保证 UTF-8 字符完整，逐块 toString 后拼接会把「中」这类
+        // 多字节字符拆成替换符（中文路径入队后查不到文件）。StringDecoder 在流上保留
+        // 未完成的半个字符，只在字符完整时输出；上限同时改为按实际字节累计。
+        const decoder = new StringDecoder('utf8')
         const timeout = setTimeout(() => {
           if (settled) return
           settled = true
@@ -597,8 +603,9 @@ export function apply(ctx: Context, _config: Record<string, unknown> = {}) {
         }, 5000)
         req.on('data', (b: Buffer) => {
           if (settled) return
-          body += b.toString()
-          if (body.length > MAX_BODY) {
+          received += b.length
+          body += decoder.write(b)
+          if (received > MAX_BODY) {
             settled = true
             try { req.destroy() } catch { /* noop */ }
             res.writeHead(413, { 'content-type': 'application/json' })
@@ -609,6 +616,7 @@ export function apply(ctx: Context, _config: Record<string, unknown> = {}) {
           if (settled) return
           settled = true
           clearTimeout(timeout)
+          body += decoder.end()
           try {
             const path = (JSON.parse(body) as { path?: string }).path ?? ''
             const result = enqueueSession(path)
@@ -640,7 +648,10 @@ export function apply(ctx: Context, _config: Record<string, unknown> = {}) {
           return
         }
         let body = ''
+        let received = 0
         let settled = false
+        // A06：同 file-incoming——按流解码，避免多字节字符跨 chunk 被拆坏；上限按字节累计。
+        const decoder = new StringDecoder('utf8')
         const timeout = setTimeout(() => {
           if (settled) return
           settled = true
@@ -650,8 +661,9 @@ export function apply(ctx: Context, _config: Record<string, unknown> = {}) {
         }, 5000)
         req.on('data', (chunk: Buffer) => {
           if (settled) return
-          body += chunk.toString()
-          if (body.length > 4096) {
+          received += chunk.length
+          body += decoder.write(chunk)
+          if (received > 4096) {
             settled = true
             try { req.destroy() } catch { /* request is already terminal */ }
             res.writeHead(413, { 'content-type': 'application/json', 'cache-control': 'no-store' })
@@ -662,6 +674,7 @@ export function apply(ctx: Context, _config: Record<string, unknown> = {}) {
           if (settled) return
           settled = true
           clearTimeout(timeout)
+          body += decoder.end()
           try {
             const payload = JSON.parse(body) as { entryId?: string; sessionId?: string }
             const entryId = typeof payload.entryId === 'string' ? payload.entryId : ''
@@ -722,7 +735,11 @@ export function apply(ctx: Context, _config: Record<string, unknown> = {}) {
         method?: string
         url?: string
         headers?: Record<string, string | string[] | undefined>
-      }, res: IncomingRes & { write(chunk: Buffer): boolean }) => {
+      }, res: IncomingRes & {
+        write(chunk: Buffer): boolean
+        once(event: 'close' | 'error' | 'drain', cb: () => void): void
+        off(event: 'close' | 'error' | 'drain', cb: () => void): void
+      }) => {
         const rejection = authorizeIncomingRoute(req, authOptions())
         if (rejection) { sendRejection(res, rejection); return }
         if (req.method !== 'GET') {
@@ -746,6 +763,9 @@ export function apply(ctx: Context, _config: Record<string, unknown> = {}) {
         }
         let bytes = 0
         let fd: number | undefined
+        // fd 在 createReadStream 成功后交给流持有（autoClose 默认 true）；只有尚未移交
+        // （writeHead/createReadStream 之前失败）时才由 finally 兜底关闭，避免双方各关一次。
+        let streamOwnsFd = false
         try {
           // Pin the object before admission; asynchronous path reopening can follow a replacement.
           fd = openSync(path, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0))
@@ -773,14 +793,69 @@ export function apply(ctx: Context, _config: Record<string, unknown> = {}) {
             'cache-control': 'no-store',
           })
           await new Promise<void>((resolve) => {
-            const stream = createReadStream(path, { fd, autoClose: false })
-            stream.on('data', (chunk: string | Buffer) => { res.write(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)) })
-            stream.on('error', () => { res.end(); resolve() })
-            stream.on('end', () => { res.end(); resolve() })
+            const stream = createReadStream(path, { fd })
+            streamOwnsFd = true
+            let settled = false
+            let aborted = false
+            let drainListener: (() => void) | undefined
+            const endResponse = (): void => {
+              try { res.end() } catch { /* 响应已随断连关闭 */ }
+            }
+            // 流拥有 fd：自然 end、流错误、显式 destroy 三条路径都由 autoClose 关描述符。
+            // 统一等 close 再 resolve，确保在途读已结束且 fd 已释放。
+            const finish = (): void => {
+              if (settled) return
+              settled = true
+              res.off('close', abort)
+              res.off('error', abort)
+              if (drainListener !== undefined) res.off('drain', drainListener)
+              resolve()
+            }
+            stream.once('close', finish)
+            // A07：响应侧 close/error（客户端断连）时销毁源读流，close 事件负责收尾。
+            const abort = (): void => {
+              if (settled || aborted) return
+              aborted = true
+              stream.destroy()
+            }
+            res.once('close', abort)
+            res.once('error', abort)
+            stream.on('data', (chunk: string | Buffer) => {
+              if (settled || aborted) return
+              const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)
+              // A07：write 返回 false 表示响应缓冲已满；暂停源流，等 drain 再恢复，
+              // 慢消费者不得把整个文件排进内存。
+              let accepted: boolean
+              try {
+                accepted = res.write(buffer)
+              } catch {
+                abort()
+                return
+              }
+              if (!accepted) {
+                stream.pause()
+                drainListener = (): void => {
+                  drainListener = undefined
+                  if (!settled && !aborted) stream.resume()
+                }
+                res.once('drain', drainListener)
+              }
+            })
+            stream.on('error', () => {
+              if (settled) return
+              endResponse()
+              // autoClose 默认 true 会销毁并关闭；若实现未自动销毁则显式兜底，仍等 close 收尾。
+              if (!stream.destroyed) stream.destroy()
+            })
+            stream.on('end', () => {
+              if (settled) return
+              endResponse()
+              // autoClose 默认 true 会在 end 后自动 destroy/close；收尾统一由 close 事件负责。
+            })
           })
         } finally {
-          // This handler owns the descriptor on success, stream failure and response exceptions.
-          closeSync(fd!)
+          // 只有 fd 尚未移交给流时（如 writeHead 失败）由本 handler 关闭；移交后绝不二次 close。
+          if (fd !== undefined && !streamOwnsFd) closeSync(fd)
         }
       },
     }))
@@ -802,7 +877,10 @@ export function apply(ctx: Context, _config: Record<string, unknown> = {}) {
           return
         }
         let body = ''
+        let received = 0
         let settled = false
+        // A06：同 claim——按流解码 + 字节上限（2048 字节语义不变）。
+        const decoder = new StringDecoder('utf8')
         const timeout = setTimeout(() => {
           if (settled) return
           settled = true
@@ -812,8 +890,9 @@ export function apply(ctx: Context, _config: Record<string, unknown> = {}) {
         }, 5000)
         req.on('data', (chunk: Buffer) => {
           if (settled) return
-          body += chunk.toString()
-          if (body.length > 2048) {
+          received += chunk.length
+          body += decoder.write(chunk)
+          if (received > 2048) {
             settled = true
             try { req.destroy() } catch { /* request is already terminal */ }
             res.writeHead(413, { 'content-type': 'application/json', 'cache-control': 'no-store' })
@@ -824,6 +903,7 @@ export function apply(ctx: Context, _config: Record<string, unknown> = {}) {
           if (settled) return
           settled = true
           clearTimeout(timeout)
+          body += decoder.end()
           try {
             const payload = JSON.parse(body) as { ticket?: string; outcome?: string }
             const ticket = typeof payload.ticket === 'string' ? payload.ticket : ''
