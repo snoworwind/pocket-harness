@@ -8,15 +8,15 @@
       "sourceCommit": "3f86a853e346b4f2c268fbf6a76216294b5c4382",
       "sourcePath": "packages/linux-bootstrap",
       "files": {
-        "plugins/dsh-linux-bootstrap/package.json": "e282c33a9e0226d72644aa620d9ea548e6c2eb44d78c7687bf7d05cde29e9115",
-        "plugins/dsh-linux-bootstrap/client/index.js": "bad0fab23f1e31eff807eea1f7102407d9f86d85030131569d00e50a925376cd",
-        "plugins/dsh-linux-bootstrap/src/asset-bundle.js": "0ca508bf79194bf5942d5b561551ec349e31e19213ae2f32380f1d2ff093d062",
-        "plugins/dsh-linux-bootstrap/src/github.js": "00bd90f85e411e4b0d7573af267e292e930aba5a01de6b7e13dd9ca221bb2a14",
-        "plugins/dsh-linux-bootstrap/src/index.js": "3f45dfa5bfcf81fe4dbf1dba78246c27b1972df569316a91ca1ff058c4618454",
-        "plugins/dsh-linux-bootstrap/src/manifest.js": "0f92f25c3b0e782a3d26a6a2b1e23f524d892fc96cd2a0cc8d5d359995ed184e",
-        "plugins/dsh-linux-bootstrap/src/routes.js": "c78dae2d3d0e86f09d6c4ca42a4cfd83c850514a39180c1a72e42b3509537161",
-        "plugins/dsh-linux-bootstrap/src/status.js": "2c009e3509fc60a884a7a9967af1f16b8f7ae3578978cf9117eda404c145f99d",
-        "plugins/dsh-linux-bootstrap/src/version.js": "c740fcecf6d25cf58bebffae1de477ac31dc2301bd134d40ad30439493a867d7"
+        "plugins/dsh-linux-bootstrap/package.json": "350dbe6b61e96c4723aec5414a1b7d33fd7ad249852f95908178ad4085dfd0db",
+        "plugins/dsh-linux-bootstrap/client/index.js": "747de10f2ce2545ed9b8b63f0261a5fc656b0b9417af5895536731781daaf072",
+        "plugins/dsh-linux-bootstrap/src/asset-bundle.js": "7e32ce0f57ee0a7f75dfd2d2af6ff61357d63b6c34e4f0dbf7aa23cf4300e416",
+        "plugins/dsh-linux-bootstrap/src/github.js": "7b6369b5910ecb3e8b49f75a4dae3ca60ceac2d4164bf7f05f71c81803aa110c",
+        "plugins/dsh-linux-bootstrap/src/index.js": "27708c714ba0a102a89a72611443c144a107307686146acc49b9fa4b4c1ba4b2",
+        "plugins/dsh-linux-bootstrap/src/manifest.js": "a9b8512e24dfbb1b225c2bc260d3d0496b7e8834ef975d17c69355baf1911067",
+        "plugins/dsh-linux-bootstrap/src/routes.js": "678391176bcd81ba6cbbbab293a4731d07e37e99c51178d7605821eac6aa5bb9",
+        "plugins/dsh-linux-bootstrap/src/status.js": "494238e39094999e44105d1c56ca562f88ce3e65146bd3070806d4c82dd98f7b",
+        "plugins/dsh-linux-bootstrap/src/version.js": "d0131f71b60ff38183070ddd3ef7142a98ae8a2cb54e2a57b725fa2e0d6b3636"
       }
     }
   ],
@@ -45,15 +45,15 @@
     "vendor/dsh-linux-runtime/modules/manifest.js": "1722dd47005c62fad20ec22ddb710bbff72f4a1bc5fdbee7199bb73e31185971",
     "vendor/dsh-linux-runtime/package.json": "1d65abf96889a13f9bfce9266f44839c1957ffc5bc6691fa047cb6061041c476",
     "vendor/dsh-linux-runtime/test/manager.test.mjs": "4549fefea91b30dfceefab3a2a0418270da4f5ce7c5ecb9b4264081ec2607c02",
-    "plugins/dsh-linux-bootstrap/package.json": "e282c33a9e0226d72644aa620d9ea548e6c2eb44d78c7687bf7d05cde29e9115",
-    "plugins/dsh-linux-bootstrap/client/index.js": "bad0fab23f1e31eff807eea1f7102407d9f86d85030131569d00e50a925376cd",
-    "plugins/dsh-linux-bootstrap/src/asset-bundle.js": "0ca508bf79194bf5942d5b561551ec349e31e19213ae2f32380f1d2ff093d062",
-    "plugins/dsh-linux-bootstrap/src/github.js": "00bd90f85e411e4b0d7573af267e292e930aba5a01de6b7e13dd9ca221bb2a14",
-    "plugins/dsh-linux-bootstrap/src/index.js": "3f45dfa5bfcf81fe4dbf1dba78246c27b1972df569316a91ca1ff058c4618454",
-    "plugins/dsh-linux-bootstrap/src/manifest.js": "0f92f25c3b0e782a3d26a6a2b1e23f524d892fc96cd2a0cc8d5d359995ed184e",
-    "plugins/dsh-linux-bootstrap/src/routes.js": "c78dae2d3d0e86f09d6c4ca42a4cfd83c850514a39180c1a72e42b3509537161",
-    "plugins/dsh-linux-bootstrap/src/status.js": "2c009e3509fc60a884a7a9967af1f16b8f7ae3578978cf9117eda404c145f99d",
-    "plugins/dsh-linux-bootstrap/src/version.js": "c740fcecf6d25cf58bebffae1de477ac31dc2301bd134d40ad30439493a867d7"
+    "plugins/dsh-linux-bootstrap/package.json": "350dbe6b61e96c4723aec5414a1b7d33fd7ad249852f95908178ad4085dfd0db",
+    "plugins/dsh-linux-bootstrap/client/index.js": "747de10f2ce2545ed9b8b63f0261a5fc656b0b9417af5895536731781daaf072",
+    "plugins/dsh-linux-bootstrap/src/asset-bundle.js": "7e32ce0f57ee0a7f75dfd2d2af6ff61357d63b6c34e4f0dbf7aa23cf4300e416",
+    "plugins/dsh-linux-bootstrap/src/github.js": "7b6369b5910ecb3e8b49f75a4dae3ca60ceac2d4164bf7f05f71c81803aa110c",
+    "plugins/dsh-linux-bootstrap/src/index.js": "27708c714ba0a102a89a72611443c144a107307686146acc49b9fa4b4c1ba4b2",
+    "plugins/dsh-linux-bootstrap/src/manifest.js": "a9b8512e24dfbb1b225c2bc260d3d0496b7e8834ef975d17c69355baf1911067",
+    "plugins/dsh-linux-bootstrap/src/routes.js": "678391176bcd81ba6cbbbab293a4731d07e37e99c51178d7605821eac6aa5bb9",
+    "plugins/dsh-linux-bootstrap/src/status.js": "494238e39094999e44105d1c56ca562f88ce3e65146bd3070806d4c82dd98f7b",
+    "plugins/dsh-linux-bootstrap/src/version.js": "d0131f71b60ff38183070ddd3ef7142a98ae8a2cb54e2a57b725fa2e0d6b3636"
   },
   "localPatches": {
     "vendor/dsh-linux-runtime/README.md": {
