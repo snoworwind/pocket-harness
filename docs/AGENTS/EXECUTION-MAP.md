@@ -2081,6 +2081,8 @@ node scripts/verify-client-plugin-fail-recovery.mjs --self-test   # 客户端插
 覆盖全域（脚本里定义，构建产物与第三方目录除外）：`app/src/**/*.kt` 与 `AndroidManifest.xml`、`plugins/*/{src,test}/**`、三个子仓 src/lib、`scripts/{check-,verify-,build-,inject-}*` 与 `scripts/patches/**`、`scripts/snapshot-config/**`。
 
 <!-- COVERAGE
+glob: scripts/source-build/*linux*
+.github/workflows/build-linux-assets.yml
 app/src/main/java/com/dsharnessmobile/shell/NotifyConfirmActivity.kt
 plugins/dsh-android-linux-env/src/linux-release-pins.ts
 plugins/dsh-model-capability/src/bounded-response.ts
