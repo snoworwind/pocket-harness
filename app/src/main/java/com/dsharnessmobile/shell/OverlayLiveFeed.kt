@@ -76,11 +76,14 @@ class OverlayLiveFeed(private val svc: OverlayService) {
           raf.seek(readOffset)
           val buf = ByteArray((len - readOffset).toInt().coerceAtMost(LIVE_READ_CAP_BYTES))
           raf.readFully(buf)
-          val text = String(buf, Charsets.UTF_8)
-          val lastNewline = text.lastIndexOf('\n')
-          if (lastNewline < 0) return // 半行：等下次补齐，偏移不动
-          val consumable = text.substring(0, lastNewline)
-          readOffset += lastNewline + 1 // 只推进到已消费边界（非 len）
+          // A08：换行边界必须在**字节缓冲**上找。旧实现先整体解码成 String 再用
+          // `lastIndexOf('\n')` 的**字符下标**推进字节偏移：含中文时字符数小于字节数，
+          // 偏移几乎不前进 → 每次 MODIFY 都重读旧尾段，同一 tool_result/turn_end 被重复消费
+          // （2026-10-18 审计实测 200 个「中」的行让同一 tool_result 处理六次）。
+          val consumableBytes = liveConsumableBytes(buf)
+          if (consumableBytes == 0) return // 半行：等下次补齐，偏移不动
+          val consumable = String(buf, 0, consumableBytes, Charsets.UTF_8)
+          readOffset += consumableBytes
           for (line in consumable.split("\n")) {
             val t = line.trim()
             if (t.isNotEmpty()) lines.add(t)
@@ -181,6 +184,25 @@ class OverlayLiveFeed(private val svc: OverlayService) {
 
   /** 工具参数 JSON → 一行概览（bash=命令 / search=查询 / read·edit=路径；兜底取首个字符串值）。 */
   private fun toolSummary(argsJson: String): String = toolSummaryOf(argsJson)
+}
+
+/**
+ * live 行消费的字节边界（A08）：返回可消费的**字节数**（最后一个换行字节 + 1），没有整行返回 0。
+ *
+ * 为什么单独抽成顶层纯函数：偏移记账的缺陷形态（字符下标当字节偏移）只有直接喂含中文的
+ * 字节缓冲才能断言，而设备上的 `OverlayService` 不可在 JVM 测试里构造。换行是 ASCII 0x0A，
+ * UTF-8 多字节序列的任何字节都不会等于它，因此在字节缓冲上找边界是安全的。
+ *
+ * @param buf - 从 [readOffset] 起读到的字节（可能以半行结尾）。
+ * @param length - 有效字节数（默认整个缓冲；调用方按实际读取长度传入）。
+ * @returns 可整行消费的字节数；0 = 只有半行，偏移必须保持不动。
+ */
+internal fun liveConsumableBytes(buf: ByteArray, length: Int = buf.size): Int {
+  val end = length.coerceIn(0, buf.size)
+  for (i in end - 1 downTo 0) {
+    if (buf[i] == '\n'.code.toByte()) return i + 1
+  }
+  return 0
 }
 
 /**
