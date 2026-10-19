@@ -20,6 +20,7 @@ import { spawnSync } from 'node:child_process'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
+import { isAccessibilityBound } from './lib/android-identity.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const ROOT = resolve(HERE, '..')
@@ -64,7 +65,7 @@ export function topOnDisplay0(activitiesDump) {
 
 /** 无障碍是否开着（用设备事实判，不用 prefs）。 */
 export function a11yBound(accessibilityDump, pkg) {
-  return new RegExp(pkg).test(accessibilityDump) && /Bound services/i.test(accessibilityDump)
+  return isAccessibilityBound(accessibilityDump, pkg)
 }
 
 function selfTest() {
@@ -74,7 +75,7 @@ function selfTest() {
   if (topOnDisplay0(dump) !== 'com.android.settings') { failed++; console.error('SELF-TEST FAIL：display 0 前台解析') }
   if (topOnDisplay0('') !== '') { failed++; console.error('SELF-TEST FAIL：空输入必须为空串') }
   if (topOnDisplay0('    topResumedActivity=ActivityRecord{1 u0 a/.M t1}') !== '') { failed++; console.error('SELF-TEST FAIL：无 Display 锚点不得猜屏') }
-  if (a11yBound('Bound services:{Service[1]\n  com.snoworwind.pocketharness/com.dsharnessmobile.shell.DeviceControlService}', 'dsharnessmobile') !== true) { failed++; console.error('SELF-TEST FAIL：a11y 绑定判定') }
+  if (a11yBound('Bound services:{Service[1]\n  com.snoworwind.pocketharness/com.dsharnessmobile.shell.DeviceControlService}', 'com.snoworwind.pocketharness') !== true) { failed++; console.error('SELF-TEST FAIL：a11y 绑定判定') }
   if (failed > 0) { console.error(`VERIFY-ADB-ONLY-TREE SELF-TEST FAILED（${failed}）`); process.exit(1) }
   console.log('VERIFY-ADB-ONLY-TREE SELF-TEST PASSED（4 例：前台解析 / 空输入 / 无锚点 fail-closed / a11y 绑定）')
 }

@@ -21,6 +21,7 @@ import { mkdirSync, writeFileSync } from 'node:fs'
 import { createHash } from 'node:crypto'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
+import { isAccessibilityBound } from './lib/android-identity.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const ROOT = resolve(HERE, '..')
@@ -452,7 +453,7 @@ async function main() {
   let engine
   try { engine = await engineStatus() } catch (e) { record('P1', '引擎状态面可达', 'INCONCLUSIVE', String(e.message)); engine = undefined }
   const shizukuProc = run('ps -A | grep shizuku_server')
-  const a11yBound = run('dumpsys accessibility | grep -A2 "Bound services"')
+  const a11yBound = run('dumpsys accessibility')
   const serviceRunning = /shizuku_server/.test(shizukuProc)
   if (engine !== undefined) {
     const engineReady = engine?.gates?.shizukuReady === true
@@ -464,7 +465,7 @@ async function main() {
       record('P1', 'Shizuku 状态跨面一致', 'PASS', `引擎=${String(engine?.gates?.shizukuReady)} shell=${String(shell?.state)} 服务=${serviceRunning}`)
     }
     const engineA11y = engine?.gates?.a11yEnabled === true
-    const boundOurs = /dsharnessmobile/.test(a11yBound)
+    const boundOurs = isAccessibilityBound(a11yBound)
     if (!engineA11y && boundOurs) {
       record('P1', '无障碍状态跨面一致', 'FAIL', '引擎面 a11yEnabled=false 但 dumpsys 显示本应用服务已绑定')
     } else {

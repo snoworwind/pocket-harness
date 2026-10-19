@@ -103,7 +103,12 @@ console.log('HOT-PUSH OK（' + files.length + ' 文件 × ' + PROFILE_ROOTS.leng
 
 if (RESTART) {
   console.log('重启应用以让引擎重读快照树…')
-  adb(['shell', 'am force-stop ' + APP_ID])
-  adb(['shell', 'am start -n ' + APP_ID + '/.MainActivity'])
+  for (const command of ['am force-stop ' + APP_ID, 'am start -W -n ' + APP_ID + '/com.dsharnessmobile.shell.MainActivity']) {
+    const result = adb(['shell', command])
+    if (result.status !== 0 || /(?:Error:|Error type \d+|Exception)/i.test((result.stdout || '') + (result.stderr || ''))) {
+      console.error('重启失败：' + (result.stderr || result.stdout || result.error || 'adb unavailable'))
+      process.exit(1)
+    }
+  }
   console.log('已重启（等引擎 LISTEN 后自行验证）')
 }
