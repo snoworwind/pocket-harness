@@ -297,3 +297,7 @@ bootstrap 的 package-lock.json 与 package.json 一样属于逐字节来源输�
 ## PR Gate 变更分类（2026-10-19）
 
 `scripts/ci/classify-changes.mjs` 按 changed paths 输出 `engine/termux/linux/plugins/app/build/gates/apk/docs_only/full`。PR Gate 新增 `changes` job：`apk=true` 才跑 Kotlin 编译；静态扫描、冲突/敏感信息与补丁/门禁检查始终跑。**未知路径、空 diff、workflow/generic source-build 改动一律 `full=true`**，宁可多跑不误跳过。分类器单测 `node --test scripts/ci/classify-changes.test.mjs`。
+
+## Engine 构建复用（2026-10-19）
+
+engine 的 checkout/upstream/overlay/patches/build/deploy 步骤集中到 `scripts/source-build/build-engine.sh`；APK 来源链与本地来源链执行同一脚本（本地链按 `run:` 原样跑，不再依赖被跳过的 `uses:` 步骤）。后续 `build-base` 直接复用该脚本与产物，不另写第二套 engine 构建。

@@ -13,7 +13,7 @@ import { appendFileSync } from 'node:fs'
 import { posix } from 'node:path'
 
 const DOC_RE = /^(?:docs\/|README(?:\.[^/]*)?$|AGENTS\.md$|LICENSE(?:\..*)?$|THIRD_PARTY_NOTICES\.md$|\.github\/ISSUE_TEMPLATE\/)/
-const ENGINE_RE = /^(?:scripts\/contract\.json|scripts\/snapshot-config\/engine-overlay(?:-licenses)?\.json|scripts\/patches\/|scripts\/source-build\/(?:export-dsh-engine|inject-dsh-engine-packages|prepare-harness-vendor-overrides|reconcile-harness-vendor-lock|prune-harness-preview|materialize-dsh-pnpm-packages)\.)/
+const ENGINE_RE = /^(?:scripts\/contract\.json|scripts\/snapshot-config\/engine-overlay(?:-licenses)?\.json|scripts\/patches\/|scripts\/source-build\/(?:export-dsh-engine|inject-dsh-engine-packages|prepare-harness-vendor-overrides|reconcile-harness-vendor-lock|prune-harness-preview|materialize-dsh-pnpm-packages|build-engine)\.)/
 const TERMUX_RE = /^(?:scripts\/snapshot-config\/preinstall\.json|scripts\/source-build\/(?:prepare-termux-bootstrap|prepare-termux-signed-repo|build-node-pty-android)\.|scripts\/contract\.json$)/
 const LINUX_RE = /^(?:scripts\/source-build\/(?:linux-|build-linux-assets|package-linux-assets|collect-linux-licenses|prepare-linux-snapshot-bundle|check-linux-sources)|scripts\/source-build\/linux-inputs\.json|scripts\/source-build\/linux-source-manifest\.json|vendor\/bionilux\/|vendor\/dsh-linux-runtime\/|plugins\/dsh-android-linux-env\/|plugins\/dsh-linux-bootstrap\/|app\/src\/main\/java\/com\/snoworwind\/pocketharness\/LinuxAsset)/
 const PLUGIN_RE = /^(?:plugins\/|dsh-shell-termux\/|dsh-client-ui-responsive\/|dsh-host-web-compat\/|vendor\/dshmarketplace-plugin\/|vendor\/dsh-undo-savepoint\/)/

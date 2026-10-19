@@ -26,6 +26,7 @@ test('plugin changes require plugins and APK, not engine', () => {
 
 test('engine patch changes require engine and APK', () => {
   expect(classifyPaths(['scripts/patches/apply-patches.mjs']), { engine: true, apk: true })
+  expect(classifyPaths(['scripts/source-build/build-engine.sh']), { engine: true, apk: true })
 })
 
 test('engine overlay and preinstall fan out to their downstream components', () => {
