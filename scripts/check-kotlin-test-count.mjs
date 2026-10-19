@@ -54,7 +54,7 @@ const ROOT = dirname(HERE)
  * 而不是猜仓名（仓名可能变，目录结构不会）。
  */
 const APK = existsSync(join(ROOT, 'dsh-mobile-apk', 'app')) ? join(ROOT, 'dsh-mobile-apk') : ROOT
-const TEST_SRC_DIR = join(APK, 'app', 'src', 'test', 'java', 'com', 'dsharnessmobile', 'shell')
+const TEST_SRC_DIR = join(APK, 'app', 'src', 'test', 'java', 'com', 'snoworwind', 'pocketharness')
 const RESULTS_DIR = join(APK, 'app', 'build', 'test-results', 'testDebugUnitTest')
 const BASELINE = join(HERE, 'kotlin-test-baseline.json')
 

@@ -14,7 +14,7 @@
 
 插件授权增量见 `BRIDGE-API.md`：固定动画设置 API 与私有 SurfaceFlinger 查询分离，公共调用不能声明 `internal` 权限。
 
-> 职责：安卓壳源码的权威模块登记（assets 资产、manifest 组件）。**文件数与行数请用命令现数**（`find app/src/main -name '*.kt' | wc -l`、`wc -l <file>`）；本表不维护这些易漂移的数字。「被引用」为名称级 grep（含少量注释提及），调用关系以源码为准。源码根：`app/src/main/java/com/dsharnessmobile/shell/`。
+> 职责：安卓壳源码的权威模块登记（assets 资产、manifest 组件）。**文件数与行数请用命令现数**（`find app/src/main -name '*.kt' | wc -l`、`wc -l <file>`）；本表不维护这些易漂移的数字。「被引用」为名称级 grep（含少量注释提及），调用关系以源码为准。源码根：`app/src/main/java/com/snoworwind/pocketharness/`。
 
 ## 1. 宿主 Activity 及拆分协作类
 
@@ -182,3 +182,5 @@ AI 工具（dsh-android-manage）
 ```
 
 两条通道**等价且无障碍优先**（PRD-0.13.2 §3.3 B3）；授权面在设置页「设备控制授权」：无障碍为主入口，ADB 折叠为高级/脚本面。
+
+Kotlin、AIDL 与安装身份现统一为 com.snoworwind.pocketharness；Shizuku 协议 v5 使旧 descriptor 缓存服务失效。组件升级边界见 NAMESPACE-MIGRATION-2026-10-19.md。

@@ -3,6 +3,7 @@
 > 全部版本历史都堆在这里（AGENTS.md 不再设更新记录表）。**新条目倒序加在表格最上方**。细节写进对应详档，这里只留一行摘要。
 
 | 时间 | 版本 | 更新内容 | 更新者 |
+| 2026-10-19 | **Kotlin namespace 统一迁移（未做设备验证）** | 生产、单测、androidTest 与 AIDL 迁至 `com.snoworwind.pocketharness`，同步组件/Root/插件/门禁及源码地图；Shizuku 协议升至 5，使旧 descriptor 缓存失效；绑定判据支持新同包简写并拒绝旧类。applicationId、签名策略与数据根不变；前后完整检查及升级重新绑定边界见 NAMESPACE-MIGRATION-2026-10-19.md。 | Codex |
 | 2026-10-18 | **综合审查修复与独立签名前重建（未做设备验证）** | A01–A10 的归档/安装接线、并发事务、工作流、时间与验证问题已修；保留旧草稿的 IME 精确组件匹配与独立双构建证明，适配当前身份及 PKCS12 隔离签名。各独立 PR 和最终候选 CI 通过并合入 main；宿主全量、生产离线联测和真实旧 ARM64 归档格式复核通过。真实 main 来源双构建已启动，结果及设备缺口见 AUDIT-REMEDIATION-2026-10-18.md。 | Codex |
 | 2026-10-18 | **Pocket Harness 独立应用身份与 ARM64 发布身份（未做设备验证）** | applicationId、显示名、Termux 数据目录、通知 action、设备脚本与下载资产统一迁移；发布 APK 从公开调试签名改为 Secret 注入的独立 PKCS12 签名，并以提交的证书指纹固定；下载页移除 x86_64 支持和上游种子 Release。72 项定向回归通过；云端来源构建、仓库 Secret 写入和设备三层验收仍待完成。 | Codex |
 | 2026-10-18 | **Linux ARM64 离线资产接入 APK 来源链（设备待统一补测）** | 在 APK 来源链按相同提交重建 ARM64 Linux 资产，经 sidecar、provenance、固定 URL、SHA-256 与体量校验后注入快照；启用内置 bootstrap/client bundle 与离线 host adapter，并为 runtime 增加启动探测和有界子进程管理。插件单测、自检与构建通过；当前尚待本次云端来源 APK 全链证明，设备侧暂缓后集中验收。发现与复证据见 gotchas 坑 402–403、known-gaps 当前入口。 | Codex |

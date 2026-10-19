@@ -246,7 +246,7 @@ async function bannerPhase() {
   console.log(`… 横幅相位冷却 ${cooldown}s（避开平台通知冷却，否则判据不成立）`)
   await sleep(cooldown * 1000)
 
-  sh(`am start -n ${PKG}/com.dsharnessmobile.shell.MainActivity`)
+  sh(`am start -n ${PKG}/com.snoworwind.pocketharness.MainActivity`)
   await sleep(3500)
   const before = postedCount()
   const sent = await askModel('帮我在系统设置里看看「关于手机」这一页有什么内容，完成后只回复一行 DONE。')
@@ -277,7 +277,7 @@ async function bannerPhase() {
   record('P5 后台态报告投递（POSTED 新增）', hit ? 'PASS' : 'INCONCLUSIVE',
     hit ? `已 POSTED；横幅截图 ${bytes} B → banner.png（视觉判读）` : '180 s 内没有新的 report POSTED（模型未完成 / 无凭据）')
   // 收尾：回到应用（后续 phase 需要前台/可见）
-  sh(`am start -n ${PKG}/com.dsharnessmobile.shell.MainActivity`)
+  sh(`am start -n ${PKG}/com.snoworwind.pocketharness.MainActivity`)
   await sleep(2000)
 }
 

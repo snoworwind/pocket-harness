@@ -3,13 +3,13 @@
   "surfaces": [
     {
       "id": "androidBridge",
-      "kotlin": "dsh-mobile-apk/app/src/main/java/com/dsharnessmobile/shell/AndroidBridge.kt",
+      "kotlin": "dsh-mobile-apk/app/src/main/java/com/snoworwind/pocketharness/AndroidBridge.kt",
       "ts": "dsh-client-ui-responsive/src/client/android-bridge.ts",
       "tsBlock": "interface AndroidShellBridge {"
     },
     {
       "id": "backGateBridge",
-      "kotlin": "dsh-mobile-apk/app/src/main/java/com/dsharnessmobile/shell/BackGate.kt",
+      "kotlin": "dsh-mobile-apk/app/src/main/java/com/snoworwind/pocketharness/BackGate.kt",
       "kotlinStart": "class BackGateBridge(",
       "ts": "dsh-client-ui-responsive/src/client/mobile/back-stack.ts",
       "tsInlineBlock": "dshBackBridge?:"
@@ -17,7 +17,7 @@
     {
       "$comment": "G-6（2026-09-25）：ConsoleActivity.ConsoleBridge 的 6 个方法此前不在任何门禁扫描面（本门禁只扫 androidBridge / backGateBridge）。它的消费者是 assets/console.html 里的普通 JS，没有 TS 类型声明，故用 jsCallMarker 从**真实调用点**取面。",
       "id": "consoleBridge",
-      "kotlin": "dsh-mobile-apk/app/src/main/java/com/dsharnessmobile/shell/ConsoleActivity.kt",
+      "kotlin": "dsh-mobile-apk/app/src/main/java/com/snoworwind/pocketharness/ConsoleActivity.kt",
       "kotlinStart": "inner class ConsoleBridge",
       "ts": "dsh-mobile-apk/app/src/main/assets/console.html",
       "jsCallMarker": "window.consoleBridge"

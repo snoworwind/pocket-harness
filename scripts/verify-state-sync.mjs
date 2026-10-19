@@ -163,7 +163,7 @@ export const CASES = [
     id: 'ST-12 a11y-control-channel（系统服务类）',
     st: ['ST-12'],
     source: 'system: settings put secure enabled_accessibility_services',
-    mutate: (adb, on) => adb(['settings', 'put', 'secure', 'enabled_accessibility_services', on ? PKG + '/com.dsharnessmobile.shell.DeviceControlService' : 'null']),
+    mutate: (adb, on) => adb(['settings', 'put', 'secure', 'enabled_accessibility_services', on ? PKG + '/com.snoworwind.pocketharness.DeviceControlService' : 'null']),
     observe: (page) => page.evaluate("(function(){ try { return JSON.parse(window.androidBridge?.a11yStatus?.() ?? '{}').enabled } catch { return null } })()"),
     expect: (on) => on,
     convergeMs: 3000,
@@ -178,7 +178,7 @@ export async function runCase(c, deps, on) {
   const mut = c.mutate(deps.adb, on)
   if (mut && mut.status !== 0) return { id: c.id, ok: false, ms: 0, detail: '真源改写失败: ' + (mut.err || mut.out) }
   if (c.restartApp) {
-    deps.adb(['am', 'start', '-W', '-n', PKG + '/com.dsharnessmobile.shell.MainActivity'])
+    deps.adb(['am', 'start', '-W', '-n', PKG + '/com.snoworwind.pocketharness.MainActivity'])
     // 应用重启后 WebView target 与进程号都会换：由调用方重建 CDP 连接（自检模式无此钩子）。
     if (typeof deps.refreshPage === 'function') { try { await deps.refreshPage() } catch { /* 下一轮重试 */ } }
   }
@@ -270,7 +270,7 @@ await page.evaluate('1').catch((e) => { console.error('CDP 初始化失败：' +
 /** 应用重启/页面重载后由 runCase 调用：丢弃旧连接（下次求值自动重新解析 target）。 */
 const refreshPage = async () => { try { page.close() } catch { /* 已关闭 */ } return page }
 /** 每条用例观测前把 App 拉回前台（§4.1.5 步骤 ② 的「回到 App」）。 */
-const ensureForeground = () => adb(['am', 'start', '-n', PKG + '/com.dsharnessmobile.shell.MainActivity'])
+const ensureForeground = () => adb(['am', 'start', '-n', PKG + '/com.snoworwind.pocketharness.MainActivity'])
 // ── 设备状态快照/还原（队列卫生）：每条用例都收在 off，会把 a11y/权限/偏好留在关闭态并影响后续设备测试 ──
 export function captureExternalState(adb) {
   // appops get 的真实输出**带尾部元数据**，例如：

@@ -102,14 +102,14 @@ dsh-mobile-apk/                 ← 独立 git 仓库
 ├── docs/design.md              ← 本文档
 └── app/
     ├── build.gradle.kts        ← 历史快照为 AGP 8.9.x / Kotlin 2.0.x；当前 applicationId 为
-    │                            com.snoworwind.pocketharness，Kotlin namespace 保留 com.dsharnessmobile.shell
+    │                            com.snoworwind.pocketharness，Kotlin namespace 保留 com.snoworwind.pocketharness
     └── src/main/
         ├── AndroidManifest.xml
         ├── assets/
         │   ├── console.html    ← 内置控制台
         │   ├── patched/        ← 上游 dsh 前端补丁 bundle（linguist-vendored）
         │   └── snapshot.tar.xz ← 运行时快照（Release 分发，不入库；缺失时构建失败并提示）
-        ├── java/com/dsharnessmobile/shell/
+        ├── java/com/snoworwind/pocketharness/
         │   ├── MainActivity.kt / AndroidBridge.kt / ConsoleActivity.kt / ConsoleSession.kt
         │   ├── EngineManager.kt / EngineProbe.kt / EngineService.kt
         │   ├── SnapshotExtractor.kt / UpdateManager.kt / LogCollector.kt / ShizukuSupport.kt

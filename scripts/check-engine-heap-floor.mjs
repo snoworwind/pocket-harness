@@ -31,7 +31,7 @@ const SELF_TEST = process.argv.includes("--self-test")
 const REQUIRE = process.argv.includes("--require")
 let skipped = 0
 
-const KOTLIN_REL = "app/src/main/java/com/dsharnessmobile/shell/EngineManager.kt"
+const KOTLIN_REL = "app/src/main/java/com/snoworwind/pocketharness/EngineManager.kt"
 const WRAPPER_REL = "scripts/build-snapshot-013.mjs"
 
 let failures = 0

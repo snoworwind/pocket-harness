@@ -209,7 +209,7 @@ Harness按固定0.2.0-rc.2源码完成全仓构建；prepare-harness-vendor-over
 
 | 改动面 | 落点 | 约束 |
 |---|---|---|
-| 壳层（桥/服务/看门狗/快照/权限） | 壳内 `app/src/main/java/com/dsharnessmobile/shell/` | 提交在壳子仓库独立 git |
+| 壳层（桥/服务/看门狗/快照/权限） | 壳内 `app/src/main/java/com/snoworwind/pocketharness/` | 提交在壳子仓库独立 git |
 | 快照内容 / assets | 壳内 `app/src/main/assets/` | `snapshot.tar.xz` + `snapshot.sha256` **必须成对换**（坑 18） |
 | 构建链 / 门禁 | 协调根 `scripts/` | 改后跑完整门禁；命令变更须同步本文档 |
 | 安卓能力插件 | 协调根 `plugins/dsh-android-*` | `npm run build` 通过；重装配须「权威 patch 覆盖 + 冷启动」（坑 19） |
@@ -286,4 +286,4 @@ bootstrap 的 package-lock.json 与 package.json 一样属于逐字节来源输�
 
 插件注入只携带 lib、package.json 与其**自身**的运行时依赖闭包 `node_modules/**`（不再只登记 engine-overlay.json 的 vendorTop——那只落在引擎树，profile 路径解析不到；见坑 436）。`inject-all.py` 从每个插件 `package.json.dependencies` 收集传递闭包并平铺复制到该包内，`check-inject-completeness.mjs` 的 C1/C2 从注入后 tar 校验闭包与 bare import 可达性。回归命令：`python3 -m unittest scripts/source-build/test_inject_all.py` + `node scripts/check-inject-completeness.mjs <注入后 tar>`；overlay 登记与许可清单仍须保留。浏览器 bootstrap 只注入 slots，通过既有鉴权 HTTP 路由调用引擎服务；不得跨进程注入 linuxBootstrap。
 
-包名迁移后的开发与验收脚本以 `com.snoworwind.pocketharness/com.dsharnessmobile.shell.MainActivity` 启动，不能从 applicationId 推导类名。回归入口 `node --test scripts/tests/android-identity.test.mjs scripts/verify-screen-scope-matrix.test.mjs` 已接入 PR Gate。软链别名和绑定判据的迁移根因见 gotchas 坑 440。
+包名迁移后的开发与验收脚本以 `com.snoworwind.pocketharness/com.snoworwind.pocketharness.MainActivity` 启动，不能从 applicationId 推导类名。回归入口 `node --test scripts/tests/android-identity.test.mjs scripts/verify-screen-scope-matrix.test.mjs` 已接入 PR Gate。软链别名和绑定判据的迁移根因见 gotchas 坑 440。

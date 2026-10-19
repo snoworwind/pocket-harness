@@ -88,8 +88,8 @@ const LOST_RECEIVER = /Cannot read propert(?:y|ies) of (?:undefined|null) \(read
  */
 const KOTLIN_SOURCE = (() => {
   const candidates = [
-    '../../../app/src/main/java/com/dsharnessmobile/shell/VdisplayController.kt',
-    '../../../dsh-mobile-apk/app/src/main/java/com/dsharnessmobile/shell/VdisplayController.kt',
+    '../../../app/src/main/java/com/snoworwind/pocketharness/VdisplayController.kt',
+    '../../../dsh-mobile-apk/app/src/main/java/com/snoworwind/pocketharness/VdisplayController.kt',
   ]
   for (const rel of candidates) {
     const url = new URL(rel, import.meta.url)

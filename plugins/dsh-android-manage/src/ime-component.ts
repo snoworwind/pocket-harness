@@ -1,6 +1,6 @@
-/** Application identity and Kotlin class namespace deliberately differ. */
-export const ADB_KEYBOARD_IME = 'com.snoworwind.pocketharness/com.dsharnessmobile.shell.AdbKeyboardService'
-export const ADB_KEYBOARD_RECEIVER = 'com.snoworwind.pocketharness/com.dsharnessmobile.shell.AdbKeyboardReceiver'
+/** Installed application and Kotlin classes share the Pocket Harness namespace. */
+export const ADB_KEYBOARD_IME = 'com.snoworwind.pocketharness/com.snoworwind.pocketharness.AdbKeyboardService'
+export const ADB_KEYBOARD_RECEIVER = 'com.snoworwind.pocketharness/com.snoworwind.pocketharness.AdbKeyboardReceiver'
 
 function normalizeComponent(value: string): string | undefined {
   const text = value.trim()

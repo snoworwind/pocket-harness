@@ -3,7 +3,7 @@
     "跨语言屏幕范围判定 fixture（权威源）。",
     "",
     "为什么存在：这条门禁有**两份实现**——引擎侧 plugins/dsh-android-bridge/src/screen-scope.ts",
-    "（调用点第一道）与壳侧 app/src/main/java/com/dsharnessmobile/shell/ShellOps.kt（执行点第二道，",
+    "（调用点第一道）与壳侧 app/src/main/java/com/snoworwind/pocketharness/ShellOps.kt（执行点第二道，",
     "Shizuku 真正下发命令前复查）。两份实现只要有一边漂移，就是「一层放行、另一层拒绝」或更糟",
     "「两层都放行」；而它们在各自仓库里各自单测全绿时，漂移**完全不可见**（审查 N-5 已实测过同族",
     "缺陷：两侧正则『逐字相同』但 JS 的 \\s 含 Unicode 空白、Java 的 \\s 只含 ASCII，并不等价）。",
