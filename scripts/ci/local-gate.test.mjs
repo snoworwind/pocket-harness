@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { extractWorkflowSteps, renderScript, selectSteps } from './local-gate.mjs'
+import { extractWorkflowSteps, renderScript, selectSteps, summarize } from './local-gate.mjs'
 
 const workflowPath = new URL('../../.github/workflows/pr-gate.yml', import.meta.url)
 
@@ -81,4 +81,26 @@ test('the workflow still carries every job the gate expects', () => {
   for (const job of ['docs-hygiene', 'static', 'compile']) {
     assert.ok(text.includes(`\n  ${job}:\n`), `missing job ${job}`)
   }
+})
+
+test('step timestamps come from inside the container', () => {
+  // The host only sees the finished stream, so durations cannot be measured by parsing
+  // after the fact: each marker carries an epoch-ms stamp taken in the container.
+  const steps = [{ job: 'static', name: 'a', run: 'true' }, { job: 'static', name: 'b', run: 'false' }]
+  const script = renderScript(steps)
+  assert.match(script, /::DSH_STEP::0::%s/)
+  assert.match(script, /dsh_rc=\$\?/)
+  const output = [
+    '::DSH_STEP::0::1000', 'true', '::DSH_RC::0::0::1250',
+    '::DSH_STEP::1::1300', 'false', '::DSH_RC::1::1::1900',
+  ].join('\n')
+  const results = summarize(output, steps)
+  assert.deepEqual(results.map((r) => [r.rc, r.durationMs]), [[0, 250], [1, 600]])
+})
+
+test('a step that never reports a status is not counted as green', () => {
+  const steps = [{ job: 'static', name: 'missing', run: 'true' }]
+  const results = summarize('no markers at all', steps)
+  assert.equal(results[0].rc, null)
+  assert.notEqual(results[0].rc, 0)
 })

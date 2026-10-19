@@ -135,13 +135,16 @@ export function selectSteps({ docsOnly = false, apk = true, workflowPath = WORKF
 export function renderScript(steps) {
   const lines = ['set -u', 'cd /workspace', 'echo "local-gate: steps=' + steps.length + '"']
   steps.forEach((step, index) => {
-    lines.push(`printf '\\n::DSH_STEP::${index}\\n'`)
+    // Timestamps are taken inside the container: the host only sees the finished stream,
+    // so parsing it afterwards cannot recover per-step durations.
+    lines.push(`printf '\\n::DSH_STEP::${index}::%s\\n' "$(date +%s%3N)"`)
     // A subshell gives each step its own exit status and keeps `set -e`/`cd` local, which
     // is how `if: always()` behaves in the workflow: a failing step never hides the next.
     lines.push('(')
     lines.push(step.run)
     lines.push(')')
-    lines.push(`printf '::DSH_RC::${index}::%s\\n' "$?"`)
+    lines.push(`dsh_rc=$?`)
+    lines.push(`printf '::DSH_RC::${index}::%s::%s\\n' "$dsh_rc" "$(date +%s%3N)"`)
   })
   return lines.join('\n') + '\n'
 }
@@ -217,22 +220,21 @@ async function runInContainer({ image, script, commit }) {
   return { status, output: Buffer.concat(chunks).toString('utf8') }
 }
 
-function summarize(output, steps) {
+export function summarize(output, steps) {
   const results = steps.map((step, index) => ({ index, job: step.job, name: step.name, rc: null, durationMs: null }))
-  let current = null
-  let started = Date.now()
+  const startedAt = new Map()
   for (const line of output.split('\n')) {
-    const stepMark = /^::DSH_STEP::(\d+)$/.exec(line.trim())
+    const stepMark = /^::DSH_STEP::(\d+)::(\d+)$/.exec(line.trim())
     if (stepMark) {
-      current = results[Number(stepMark[1])]
-      started = Date.now()
+      startedAt.set(Number(stepMark[1]), Number(stepMark[2]))
       continue
     }
-    const rcMark = /^::DSH_RC::(\d+)::(\d+)$/.exec(line.trim())
+    const rcMark = /^::DSH_RC::(\d+)::(\d+)::(\d+)$/.exec(line.trim())
     if (rcMark && results[Number(rcMark[1])]) {
-      results[Number(rcMark[1])].rc = Number(rcMark[2])
-      results[Number(rcMark[1])].durationMs = Date.now() - started
-      current = null
+      const index = Number(rcMark[1])
+      results[index].rc = Number(rcMark[2])
+      const start = startedAt.get(index)
+      results[index].durationMs = start === undefined ? null : Number(rcMark[3]) - start
     }
   }
   return results
