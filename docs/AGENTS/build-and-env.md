@@ -293,3 +293,7 @@ bootstrap 的 package-lock.json 与 package.json 一样属于逐字节来源输�
 包名迁移后的开发与验收脚本以 `com.snoworwind.pocketharness/com.snoworwind.pocketharness.MainActivity` 启动，不能从 applicationId 推导类名。回归入口 `node --test scripts/tests/android-identity.test.mjs scripts/verify-screen-scope-matrix.test.mjs` 已接入 PR Gate。软链别名和绑定判据的迁移根因见 gotchas 坑 440。
 
 引擎 0.2.1-rc.2 来源链原生登记：Sharp 本体/Linux payload 固定 0.35.5，Android 仍使用已核对 loader 的 @img/sharp-wasm32 0.35.3；node-addon-require-builtin Linux payload 增补精确 0.1.9，不接受任意新版本。原始根 manifest 在编译前只读复制，归集缺件仍阻断。失败与复验记录见 ENGINE-UPGRADE-2026-10-19.md。
+
+## PR Gate 变更分类（2026-10-19）
+
+`scripts/ci/classify-changes.mjs` 按 changed paths 输出 `engine/termux/linux/plugins/app/build/gates/apk/docs_only/full`。PR Gate 新增 `changes` job：`apk=true` 才跑 Kotlin 编译；静态扫描、冲突/敏感信息与补丁/门禁检查始终跑。**未知路径、空 diff、workflow/generic source-build 改动一律 `full=true`**，宁可多跑不误跳过。分类器单测 `node --test scripts/ci/classify-changes.test.mjs`。
