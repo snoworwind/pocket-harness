@@ -131,48 +131,59 @@ export function selectSteps({ docsOnly = false, apk = true, workflowPath = WORKF
     .map((step) => ({ job: step.job, name: step.name || '(unnamed)', run: step.run }))
 }
 
+/** Shell-quote a path for the generated script. */
+function shellQuote(value) {
+  return "'" + String(value).replaceAll("'", "'\\''") + "'"
+}
+
 /** Render one bash script that runs every selected step in order, `always()`-style. */
-export function renderScript(steps) {
+export function renderScript(steps, { cwd = '/workspace' } = {}) {
   const lines = [
     'set -u',
-    'cd /workspace',
+    `cd ${shellQuote(cwd)}`,
     'echo "local-gate: steps=' + steps.length + '"',
+    // Portable milliseconds: GNU date understands %3N, BSD (macOS) and Termux date do not,
+    // and this script also runs natively when no container runtime is available.
+    "dsh_now() { node -p 'Date.now()'; }",
     // The evidence must describe the environment it was produced in, even when the
-    // repository has no pinned toolchain policy checked in.
-    `printf '::DSH_ENV::node=%s\\n' "$(node --version)"`,
-    `printf '::DSH_ENV::python=%s\\n' "$(python3 -c 'import platform;print(platform.python_version())')"`,
+    // repository has no pinned toolchain policy checked in. Every probe tolerates absence:
+    // a native run on Windows or Android may lack java, corepack or /etc/os-release.
+    `printf '::DSH_ENV::node=%s\\n' "$(node --version 2>/dev/null)"`,
+    `printf '::DSH_ENV::python=%s\\n' "$(python3 -c 'import platform;print(platform.python_version())' 2>/dev/null)"`,
     `printf '::DSH_ENV::java=%s\\n' "$(java -XshowSettings:properties -version 2>&1 | sed -n 's/.*java.runtime.version = //p' | head -1)"`,
-    `printf '::DSH_ENV::corepack=%s\\n' "$(corepack --version)"`,
-    `printf '::DSH_ENV::os=%s\\n' "$(grep '^VERSION_ID' /etc/os-release | cut -d= -f2 | tr -d '\"')"`,
+    `printf '::DSH_ENV::corepack=%s\\n' "$(corepack --version 2>/dev/null)"`,
+    `printf '::DSH_ENV::os=%s\\n' "$(uname -srm 2>/dev/null)"`,
+    `printf '::DSH_ENV::osRelease=%s\\n' "$(grep '^VERSION_ID' /etc/os-release 2>/dev/null | cut -d= -f2 | tr -d '\"')"`,
   ]
   steps.forEach((step, index) => {
-    // Timestamps are taken inside the container: the host only sees the finished stream,
+    // Timestamps are taken while the step runs: the host only sees the finished stream,
     // so parsing it afterwards cannot recover per-step durations.
-    lines.push(`printf '\\n::DSH_STEP::${index}::%s\\n' "$(date +%s%3N)"`)
+    lines.push(`printf '\\n::DSH_STEP::${index}::%s\\n' "$(dsh_now)"`)
     // A subshell gives each step its own exit status and keeps `set -e`/`cd` local, which
     // is how `if: always()` behaves in the workflow: a failing step never hides the next.
     lines.push('(')
     lines.push(step.run)
     lines.push(')')
     lines.push(`dsh_rc=$?`)
-    lines.push(`printf '::DSH_RC::${index}::%s::%s\\n' "$dsh_rc" "$(date +%s%3N)"`)
+    lines.push(`printf '::DSH_RC::${index}::%s::%s\\n' "$dsh_rc" "$(dsh_now)"`)
   })
   return lines.join('\n') + '\n'
 }
 
 function parseArgs(argv) {
-  const args = { base: 'origin/main', image: DEFAULT_IMAGE, dryRun: false, noKotlin: false, buildImage: false, allowDirty: false, json: false }
+  const args = { base: 'origin/main', image: DEFAULT_IMAGE, mode: 'auto', dryRun: false, noKotlin: false, buildImage: false, allowDirty: false, json: false }
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i]
     if (arg === '--base') args.base = argv[++i]
     else if (arg === '--image') args.image = argv[++i]
+    else if (arg === '--mode') args.mode = argv[++i]
     else if (arg === '--dry-run') args.dryRun = true
     else if (arg === '--no-kotlin') args.noKotlin = true
     else if (arg === '--build-image') args.buildImage = true
     else if (arg === '--allow-dirty') args.allowDirty = true
     else if (arg === '--json') args.json = true
     else if (arg === '--help' || arg === '-h') {
-      console.log('usage: node scripts/ci/local-gate.mjs [--base <ref>] [--image <tag>] [--dry-run] [--no-kotlin] [--build-image] [--allow-dirty] [--json]')
+      console.log('usage: node scripts/ci/local-gate.mjs [--base <ref>] [--mode auto|container|native] [--image <tag>] [--dry-run] [--no-kotlin] [--build-image] [--allow-dirty] [--json]')
       process.exit(0)
     } else fail('unknown argument: ' + arg)
   }
@@ -193,6 +204,77 @@ function spawnSyncDocker(args, { input } = {}) {
   return result
 }
 
+/** Is a working container runtime present? Probed only for `--mode auto`. */
+export function dockerAvailable(probe = () => spawnSync('docker', ['info', '--format', '{{.ServerVersion}}'], { encoding: 'utf8', timeout: 20000 })) {
+  try {
+    const result = probe()
+    return result.status === 0 && Boolean((result.stdout || '').trim())
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Container mode gives the pinned Linux environment; native mode runs the same steps with
+ * the host shell. Native is the fallback for hosts without a container runtime (Windows
+ * without Docker Desktop, Android/Termux), and it cannot run the Kotlin job.
+ */
+export function resolveMode(requested, { docker = dockerAvailable(), platform = process.platform } = {}) {
+  if (requested === 'container') {
+    if (platform === 'android') fail('container mode is unavailable on Android; use --mode native --no-kotlin')
+    return 'container'
+  }
+  if (requested === 'native') return 'native'
+  if (requested !== 'auto') fail('unknown mode: ' + requested)
+  return docker ? 'container' : 'native'
+}
+
+/** Preconditions a selected mode must satisfy. Pure so it can be tested. */
+export function preflightProblems({ mode, platform, hasKotlinSteps, tools }) {
+  const problems = []
+  if (mode === 'native') {
+    if (!tools.bash) problems.push('native mode needs bash (on Windows run inside Git Bash, or use container mode with Docker Desktop)')
+    if (!tools.python) problems.push('native mode needs python3 for the source-replacement gate')
+    if (platform === 'win32' && !tools.bash) problems.push('Windows without Git Bash cannot run native mode; install Docker Desktop and use container mode')
+  }
+  if (hasKotlinSteps) {
+    if (mode === 'native' && !tools.java) problems.push('Kotlin steps need a JDK on the host; use container mode or pass --no-kotlin to skip them explicitly')
+    if (mode === 'native' && !tools.sdk) problems.push('Kotlin steps need ANDROID_HOME/ANDROID_SDK_ROOT (or local.properties sdk.dir); use container mode or pass --no-kotlin to skip them explicitly')
+  }
+  return problems
+}
+
+function commandWorks(command, args) {
+  const result = spawnSync(command, args, { encoding: 'utf8', timeout: 20000 })
+  return result.status === 0
+}
+
+function hostTools() {
+  const sdk = Boolean(process.env.ANDROID_HOME || process.env.ANDROID_SDK_ROOT || existsSync(join(ROOT, 'local.properties')))
+  return {
+    bash: commandWorks('bash', ['-c', 'exit 0']),
+    python: commandWorks('python3', ['--version']),
+    java: commandWorks('java', ['-version']),
+    sdk,
+  }
+}
+
+/** `--mount` instead of `-v`: it survives Windows drive paths and spaces. */
+export function buildContainerArgs({ root, sdkFile, image, commit }) {
+  const toDockerPath = (value) => (process.platform === 'win32' ? String(value).replaceAll('\\', '/') : String(value))
+  return [
+    'run', '--rm', '-i', '--platform', 'linux/amd64',
+    '--mount', `type=bind,source=${toDockerPath(root)},target=/workspace`,
+    '--mount', `type=bind,source=${toDockerPath(sdkFile)},target=/workspace/local.properties,readonly`,
+    '--mount', 'type=volume,source=pocket-harness-gate-gradle,target=/root/.gradle',
+    '--mount', 'type=volume,source=pocket-harness-gate-pnpm,target=/root/.local/share/pnpm',
+    '-e', 'GITHUB_WORKSPACE=/workspace',
+    '-e', 'GITHUB_SHA=' + commit,
+    '-w', '/workspace',
+    image, 'bash', '-s',
+  ]
+}
+
 async function ensureImage(image, rebuild) {
   const inspect = spawnSyncDocker(['image', 'inspect', image])
   if (inspect.status === 0 && !rebuild) return
@@ -206,29 +288,30 @@ async function ensureImage(image, rebuild) {
   }
 }
 
-async function runInContainer({ image, script, commit }) {
-  // A read-only mount pins the SDK path the image provides, so the host's macOS
+function spawnSession(command, args, { cwd, input }) {
+  return new Promise((done) => {
+    const chunks = []
+    const child = spawn(command, args, { cwd, stdio: ['pipe', 'pipe', 'pipe'] })
+    child.stdout.on('data', (chunk) => { chunks.push(chunk) })
+    child.stderr.on('data', (chunk) => { chunks.push(chunk) })
+    child.on('error', (error) => done({ status: 127, output: 'spawn failed: ' + error.message }))
+    child.on('close', (status) => done({ status, output: Buffer.concat(chunks).toString('utf8') }))
+    child.stdin.end(input)
+  })
+}
+
+async function runSession({ mode, image, script, commit }) {
+  if (mode === 'native') return spawnSession('bash', ['-s'], { cwd: ROOT, input: script })
+  // A read-only mount pins the SDK path the image provides, so the host's macOS or Windows
   // local.properties never leaks into the container and no checked-in file is touched.
   const sdkFile = join(mkdtempSync(join(tmpdir(), 'local-gate-sdk-')), 'local.properties')
   writeFileSync(sdkFile, 'sdk.dir=/opt/android-sdk\n')
-  const chunks = []
-  const child = spawn('docker', [
-    'run', '--rm', '-i', '--platform', 'linux/amd64',
-    '-v', ROOT + ':/workspace',
-    '-v', sdkFile + ':/workspace/local.properties:ro',
-    '-v', 'pocket-harness-gate-gradle:/root/.gradle',
-    '-v', 'pocket-harness-gate-pnpm:/root/.local/share/pnpm',
-    '-e', 'GITHUB_WORKSPACE=/workspace',
-    '-e', 'GITHUB_SHA=' + commit,
-    '-w', '/workspace',
-    image, 'bash', '-s',
-  ], { stdio: ['pipe', 'pipe', 'pipe'] })
-  child.stdout.on('data', (chunk) => { chunks.push(chunk) })
-  child.stderr.on('data', (chunk) => { chunks.push(chunk) })
-  child.stdin.end(script)
-  const status = await new Promise((done) => child.on('close', done))
-  rmSync(dirname(sdkFile), { recursive: true, force: true })
-  return { status, output: Buffer.concat(chunks).toString('utf8') }
+  try {
+    return await spawnSession('docker', buildContainerArgs({ root: ROOT, sdkFile, image, commit }),
+      { cwd: ROOT, input: script })
+  } finally {
+    rmSync(dirname(sdkFile), { recursive: true, force: true })
+  }
 }
 
 export function summarizeEnvironment(output) {
@@ -281,19 +364,31 @@ async function main() {
   const apk = args.noKotlin ? false : classification.apk
   const steps = selectSteps({ docsOnly: classification.docs_only, apk })
 
+  const mode = resolveMode(args.mode)
+  const hasKotlinSteps = steps.some((step) => step.job === 'compile')
+  const problems = preflightProblems({ mode, platform: process.platform, hasKotlinSteps, tools: hostTools() })
+  if (problems.length) {
+    fail('cannot run the selected gate on this host:\n- ' + problems.join('\n- '), 2)
+  }
+
   if (args.dryRun) {
-    console.log(JSON.stringify({ commit, tree, base: args.base, changedFiles: files.length, classification, steps: steps.map((s) => ({ job: s.job, name: s.name })) }, null, 2))
+    console.log(JSON.stringify({
+      commit, tree, base: args.base, mode, platform: process.platform, arch: process.arch,
+      changedFiles: files.length, classification,
+      steps: steps.map((s) => ({ job: s.job, name: s.name })),
+    }, null, 2))
     return
   }
 
-  await ensureImage(args.image, args.buildImage)
-  const script = renderScript(steps)
+  if (mode === 'container') await ensureImage(args.image, args.buildImage)
+  const script = renderScript(steps, { cwd: mode === 'native' ? ROOT : '/workspace' })
+  const target = mode === 'container' ? `${args.image} (linux/amd64)` : `native ${process.platform}/${process.arch}`
   console.log(`local-gate: commit ${commit.slice(0, 12)} tree ${tree.slice(0, 12)} base ${args.base}`)
   console.log(`local-gate: classification docs_only=${classification.docs_only} apk=${apk} build=${classification.build} gates=${classification.gates}`)
-  console.log(`local-gate: running ${steps.length} steps in ${args.image} (linux/amd64)\n`)
+  console.log(`local-gate: running ${steps.length} steps in ${target}\n`)
 
   const startedAt = Date.now()
-  const { output } = await runInContainer({ image: args.image, script, commit })
+  const { output } = await runSession({ mode, image: args.image, script, commit })
   const results = summarize(output, steps)
 
   mkdirSync(EVIDENCE_DIR, { recursive: true })
@@ -319,8 +414,10 @@ async function main() {
     dirty: Boolean(dirty),
     changedFiles: files.length,
     classification,
-    image: args.image,
-    platform: 'linux/amd64',
+    mode,
+    image: mode === 'container' ? args.image : null,
+    platform: mode === 'container' ? 'linux/amd64' : process.platform + '/' + process.arch,
+    kotlinIncluded: hasKotlinSteps,
     environment: summarizeEnvironment(output),
     toolchainPolicy: (() => {
       try { return JSON.parse(readFileSync(join(ROOT, 'scripts/source-build/engine-toolchain.json'), 'utf8')) } catch { return null }

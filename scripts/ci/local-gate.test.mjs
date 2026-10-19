@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { extractWorkflowSteps, renderScript, selectSteps, summarize, summarizeEnvironment } from './local-gate.mjs'
+import { buildContainerArgs, extractWorkflowSteps, preflightProblems, renderScript, resolveMode, selectSteps, summarize, summarizeEnvironment } from './local-gate.mjs'
 
 const workflowPath = new URL('../../.github/workflows/pr-gate.yml', import.meta.url)
 
@@ -115,4 +115,40 @@ test('evidence records the environment it ran in', () => {
     'irrelevant line',
   ].join('\n'))
   assert.deepEqual(env, { node: 'v24.21.0', python: '3.12.15', java: '17.0.20+8', corepack: '0.36.0', os: '24.04' })
+})
+
+test('mode falls back to native when no container runtime is present', () => {
+  // Windows without Docker Desktop and Android/Termux have no docker: the gate must still
+  // run the steps it can, instead of failing with a docker error.
+  assert.equal(resolveMode('auto', { docker: true, platform: 'win32' }), 'container')
+  assert.equal(resolveMode('auto', { docker: false, platform: 'android' }), 'native')
+  assert.equal(resolveMode('auto', { docker: false, platform: 'win32' }), 'native')
+  assert.equal(resolveMode('native', { docker: true }), 'native')
+  assert.equal(resolveMode('container', { docker: true, platform: 'linux' }), 'container')
+})
+
+test('native mode fails closed when a selected gate cannot run', () => {
+  const tools = { bash: true, python: true, java: false, sdk: false }
+  // Static-only work is fine natively.
+  assert.deepEqual(preflightProblems({ mode: 'native', platform: 'linux', hasKotlinSteps: false, tools }), [])
+  // Kotlin cannot be silently skipped: the operator must pass --no-kotlin.
+  const kotlin = preflightProblems({ mode: 'native', platform: 'linux', hasKotlinSteps: true, tools })
+  assert.equal(kotlin.length, 2)
+  assert.ok(kotlin.some((line) => line.includes('--no-kotlin')))
+  // Windows without bash gets an explicit route out.
+  const windows = preflightProblems({ mode: 'native', platform: 'win32', hasKotlinSteps: false, tools: { ...tools, bash: false } })
+  assert.ok(windows.some((line) => line.includes('Git Bash')))
+  assert.ok(windows.some((line) => line.includes('Docker Desktop')))
+  // Container mode carries the toolchain itself.
+  assert.deepEqual(preflightProblems({ mode: 'container', platform: 'linux', hasKotlinSteps: true, tools: { ...tools, java: false, sdk: false } }), [])
+})
+
+test('container mounts use --mount so Windows drive paths survive', () => {
+  const args = buildContainerArgs({ root: 'C:/work/repo', sdkFile: 'C:/tmp/local.properties', image: 'img', commit: 'abc' })
+  assert.ok(args.includes('--mount'))
+  assert.equal(args.includes('-v'), false, '-v breaks on Windows paths containing spaces or a drive letter')
+  const mounts = args.filter((arg, index) => args[index - 1] === '--mount')
+  assert.ok(mounts.some((mount) => mount.includes('target=/workspace')))
+  assert.ok(mounts.some((mount) => mount.includes('readonly')), 'the SDK shim must not be writable')
+  assert.deepEqual(args.slice(-3), ['img', 'bash', '-s'])
 })
