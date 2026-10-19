@@ -2774,3 +2774,11 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 444. **bootstrap 依赖升级遗漏来源字节登记，独立资产 CI 正确拒绝（2026-10-19）**
 
     现象：引擎升级 PR 的 Linux validate 在 package.json 摘要处失败。真因：bootstrap 的 Cordis 与真实 lock 已更新，linux-source-manifest 的 additionalSources/files 两份受审映射仍绑定旧字节；仅重建 lib 不会同步来源登记。修法：对这两个已审查的依赖输入同步实际 SHA，localPatches 明记 0.2.1/Cordis 变更原因，保持原始 upstreamSha256、源仓提交与拒绝判据不变。复验：check-linux-sources --self-test 的完整源码正控、同体积投毒/额外输入及行尾负控均通过；失败 run 39221768021 保留，不以重封原上游 hash 洗绿。未做设备验证。
+
+445. **移除上游 manifest 改写时仍须保留来源回执（2026-10-19）**
+
+    现象：新版直接使用官方构建脚本，上传清单仍要求 harness-root-package.json.original。真因：删除旧 manifest 改写块时连带删除了原始输入复制，缺件会令来源归集拒绝。修法：编译前只读复制原始 manifest 并登记 SHA256，不修改上游或放松缺件判据；发现后请求取消来源 run 39222638056，但 run 已因 Sharp 旧版本校验失败；修正合入 main 后重跑。复验：cloud-workflow 正控和缺回执负控通过；未做设备验证。
+
+446. **原生审计版本必须跟随实际来源闭包逐项审查（2026-10-19）**
+
+    现象：来源 run 39222638056 在 node-pty 交叉编译后拒绝 sharp@0.35.5。真因：旧审计固定 0.35.3，本轮部署还新增 builtin Linux 0.1.9；不能用版本通配洗绿。修法：按实际 manifest/loader 核对，仅登记 Sharp 本体/Linux 0.35.5 和 builtin 0.1.9，保留 WASM 0.35.3 与原 ELF/闭包/未知家族拒绝。复验：精确路径正控、新版本与错架构负控通过；实际来源构建需修正后的 main 重跑。ADB 空列表、ABI 未知，CDP/用户层未验收。

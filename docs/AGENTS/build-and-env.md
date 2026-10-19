@@ -291,3 +291,5 @@ bootstrap 的 package-lock.json 与 package.json 一样属于逐字节来源输�
 插件注入只携带 lib、package.json 与其**自身**的运行时依赖闭包 `node_modules/**`（不再只登记 engine-overlay.json 的 vendorTop——那只落在引擎树，profile 路径解析不到；见坑 436）。`inject-all.py` 从每个插件 `package.json.dependencies` 收集传递闭包并平铺复制到该包内，`check-inject-completeness.mjs` 的 C1/C2 从注入后 tar 校验闭包与 bare import 可达性。回归命令：`python3 -m unittest scripts/source-build/test_inject_all.py` + `node scripts/check-inject-completeness.mjs <注入后 tar>`；overlay 登记与许可清单仍须保留。浏览器 bootstrap 只注入 slots，通过既有鉴权 HTTP 路由调用引擎服务；不得跨进程注入 linuxBootstrap。
 
 包名迁移后的开发与验收脚本以 `com.snoworwind.pocketharness/com.snoworwind.pocketharness.MainActivity` 启动，不能从 applicationId 推导类名。回归入口 `node --test scripts/tests/android-identity.test.mjs scripts/verify-screen-scope-matrix.test.mjs` 已接入 PR Gate。软链别名和绑定判据的迁移根因见 gotchas 坑 440。
+
+引擎 0.2.1-rc.2 来源链原生登记：Sharp 本体/Linux payload 固定 0.35.5，Android 仍使用已核对 loader 的 @img/sharp-wasm32 0.35.3；node-addon-require-builtin Linux payload 增补精确 0.1.9，不接受任意新版本。原始根 manifest 在编译前只读复制，归集缺件仍阻断。失败与复验记录见 ENGINE-UPGRADE-2026-10-19.md。

@@ -144,7 +144,7 @@ writeFileSync(reportFile, JSON.stringify({
     ...androidRuntimeDependencies,
     koffiOverride: '3.2.1',
     supportedArchitectures: workspaceConfig.supportedArchitectures,
-    rationale: 'Koffi 3.1.1 has no Android ARM64 binding; upstream Koffi 3.2.1 publishes @koromix/koffi-android-arm64. sharp 0.35.3 uses @img/sharp-wasm32 as its Android-compatible fallback. Both exact upstream packages are included in the pnpm lock and deployment closure.',
+    rationale: 'Koffi 3.1.1 has no Android ARM64 binding; upstream Koffi 3.2.1 publishes @koromix/koffi-android-arm64. sharp 0.35.5 retains @img/sharp-wasm32 0.35.3 as its Android-compatible fallback. Both exact upstream packages are included in the pnpm lock and deployment closure.',
   },
   removedFromManifestSections: removedFrom,
   removedFromImporterSections: removedFromImporter,

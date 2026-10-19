@@ -15,6 +15,8 @@ function checkEngine021Build(source) {
   const start = source.indexOf('          corepack pnpm run build:native-system')
   const end = source.indexOf('          # Audit all overlay-pinned vendor', start)
   assert.ok(start > 0 && end > start)
+  const rootReceipt = source.indexOf('          cp package.json "$GITHUB_WORKSPACE/.deploy-tmp/source-build/harness-root-package.json.original"')
+  assert.ok(rootReceipt > source.indexOf('          cd .deploy-tmp/deepseek-harness') && rootReceipt < start, 'freeze the required raw root manifest before compilation')
   const build = source.slice(start, end)
   const steps = ['run build:native-system', 'exec tsx scripts/compile-referenced-projects.ts host-libraries',
     'exec tsx scripts/compile-referenced-projects.ts client', 'exec tsdown --config-loader native --env.DSH_BUILD_FACE client', 'run build:web', 'git diff --exit-code']
@@ -31,6 +33,7 @@ test('0.2.1 source build follows official artifact stages without rewriting upst
 test('negative controls reject a missing source compiler, stale package manager and obsolete recursive builder', () => {
   const source = read('build-apk-source.yml')
   for (const bad of [source.replace('exec tsx scripts/compile-referenced-projects.ts client', 'exec true'),
+    source.replace('          cp package.json "$GITHUB_WORKSPACE/.deploy-tmp/source-build/harness-root-package.json.original"', '          # root receipt omitted'),
     source.replace('pnpm@11.28.5', 'pnpm@11.7.0'),
     source.replace('          corepack pnpm run build:web', '          corepack pnpm --recursive --if-present run bundle\n          corepack pnpm run build:web')]) {
     assert.throws(() => checkEngine021Build(bad), assert.AssertionError)
