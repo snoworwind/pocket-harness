@@ -362,6 +362,9 @@ test('T1-⑥ 自触发环收敛：连续自身写回后签名稳定，不无限�
   // 用户保存新模型；此后每一轮都由「我方写回自己引发的那个事件」驱动。
   c.save((s) => ({ providers: { ...s.providers, gateway: { ...s.providers.gateway, models: [{ id: REAL_ID }] } } }))
   await waitFor(() => c.state.mutates >= 1, 'first write-back')
+  // Startup, saved projection, fresh signature, then the self-event projection.
+  // Observe the self-event too: a delayed channel must not pass before its turn.
+  await waitFor(() => c.state.describes >= 4, 'self-event projection')
   await flush()
   await flush()
   await flush()
