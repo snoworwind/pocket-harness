@@ -229,6 +229,14 @@ node scripts/check-release-gates.mjs --list  # 现数门禁集合及「仅构建
 
 本文件维护分支宗旨、实施原则和已接受边界；具体缺陷与证据留在对应详档，持续随源码更新。
 
+## 复核轮次：2026-10-19（吸收参考仓 #414 堆上限）
+
+按 [UPSTREAM-TRACKING.md](UPSTREAM-TRACKING.md) 已记录的参考 PR #414，将 V8 老生代堆上限从 1024 提高到 4096MB。由于当前环境无法解析 `github.com`，本轮没有重新读取 PR 源码或确认对应上游 commit；实施范围以此前记录的 PR 标题/说明为准，不将其表述为已完成最新尖端全量检查。
+
+- 壳侧 `EngineManager.engineHeapMb` 与来源快照的 `dsh-node` wrapper 保持同一 `clamp(设备总内存/2, 512, 4096)` 规则；调用方显式 `NODE_OPTIONS` 的优先级、argv 不带 heap flag 的规则均不变。
+- 代码级检查：`node scripts/check-engine-heap-floor.mjs --self-test`（正样本 1 + 负控 8）通过；`node scripts/check-engine-heap-floor.mjs --require` 通过；`node scripts/patches/tests/ptc-node-wrapper-c1.test.mjs` 通过（其跨树镜像分支 `SKIP`，按本仓规则不计证据）；`node scripts/check-code-map.mjs` 通过。JVM 档位断言已更新，但单测**未取得结果**：WSL 返回 `Wsl/E_ACCESSDENIED`，本机 Gradle 调用约 120 秒无输出后中止。
+- **未做设备验证，也未构建来源链 APK**。没有低/中/高内存设备上的 LMK、长任务峰值、后台切换或 CDP/ADB 用户体验证据。高内存设备内存压力保持开放，进入发版候选前须用最终来源包补验；见 [known-gaps.md](known-gaps.md) 本轮条目。
+
 
 ## 复核轮次：2026-10-17（吸收上游 `e3e728b`）
 

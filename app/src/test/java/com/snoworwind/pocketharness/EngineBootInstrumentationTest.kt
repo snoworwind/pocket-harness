@@ -33,12 +33,13 @@ class EngineBootInstrumentationTest {
 
   @Test
   fun engineHeapIsHalfOfDeviceRamClampedIntoFloorAndCap() {
-    // 取值口径 = clamp(总内存/2, 512, 1024)。三条边界都必须可判红：
-    // 小内存设备（含社区反馈那类）不得推出小于下限的值——那正是「堆太小起不来」的成因；
-    // 大内存设备不得无限放大——堆开到数 GB 会被 lmkd 杀掉，也掩盖真实内存缺陷。
-    assertEquals("2GB 设备：一半 1024，恰好触顶", 1024, engineHeapMb(2048))
-    assertEquals("4GB 设备：一半 2048 被上限压到 1024", 1024, engineHeapMb(4096))
-    assertEquals("6GB 设备：同上，上限不随内存增长", 1024, engineHeapMb(6144))
+    // 取值口径 = clamp(总内存/2, 512, 4096)。上游 #414 扩大高内存档位上限；设备压力仍需实机验收。
+    // 小内存设备不得推出小于下限的值；大内存设备只获得自身总内存一半且不超过 4096MB。
+    assertEquals("2GB 设备：一半 1024", 1024, engineHeapMb(2048))
+    assertEquals("4GB 设备：一半 2048", 2048, engineHeapMb(4096))
+    assertEquals("6GB 设备：一半 3072", 3072, engineHeapMb(6144))
+    assertEquals("8GB 设备：一半 4096，恰好触顶", 4096, engineHeapMb(8192))
+    assertEquals("16GB 设备：一半 8192 被上限压到 4096", 4096, engineHeapMb(16384))
     assertEquals("2GB 以下：一半 512 恰好触底", 512, engineHeapMb(1024))
     assertEquals("1.5GB 设备：一半 768 高于下限，保留下限之外的真实推导", 768, engineHeapMb(1536))
     assertEquals("1GB 设备：一半 512 恰好下限", 512, engineHeapMb(1024))
@@ -53,7 +54,7 @@ class EngineBootInstrumentationTest {
     assertEquals("未知内存必须退回下限而不是 0", 512, engineHeapMb(0))
     assertEquals("负值同样退回下限", 512, engineHeapMb(-1))
     assertEquals(512, engineHeapMb(Int.MIN_VALUE))
-    assertEquals("极大值被上限压住，不得溢出成负数", 1024, engineHeapMb(Int.MAX_VALUE))
+    assertEquals("极大值被上限压住，不得溢出成负数", 4096, engineHeapMb(Int.MAX_VALUE))
   }
 
   @Test

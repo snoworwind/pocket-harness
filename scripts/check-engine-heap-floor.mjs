@@ -9,7 +9,7 @@
 // 这种最难查的形态：引擎起来了、`code run` 却仍然 OOM，而两处代码看上去都对。
 //
 // 判据（每条都可判红）：
-//   A. 壳侧两个常量必须存在且为正值（512 / 1024），取值必须走 clamp 而不是裸除法；
+//   A. 壳侧两个常量必须存在且为正值（512 / 4096），取值必须走 clamp 而不是裸除法；
 //   B. 启动器必须在**设备上**按 MemTotal 自适应、且 clamp 到同一区间；
 //   C. A 与 B 的上下限数字必须**逐值相等**（本门禁的核心判据）；
 //   D. 启动器不得覆盖调用方已设置的 NODE_OPTIONS（显式值优先于默认值）；
@@ -118,7 +118,7 @@ export function analyze(kotlinSrc, wrapperSrc) {
 // ── 判别力自检：合成样本必须能判红 ────────────────────────────────────────────
 const GOOD_KOTLIN = [
   "internal const val ENGINE_HEAP_FLOOR_MB: Int = 512",
-  "internal const val ENGINE_HEAP_CAP_MB: Int = 1024",
+  "internal const val ENGINE_HEAP_CAP_MB: Int = 4096",
   "  if (totalRamMb <= 0) return ENGINE_HEAP_FLOOR_MB",
   "  return (totalRamMb / 2).coerceIn(ENGINE_HEAP_FLOOR_MB, ENGINE_HEAP_CAP_MB)",
   "  val args = arrayOf(nodeBin.absolutePath, \"--expose-internals\", dshBin.absolutePath)",
@@ -130,7 +130,7 @@ const GOOD_WRAPPER = [
   "  if [ \"$__dsh_key\" = \"MemTotal:\" ]; then __dsh_mem_kb=$__dsh_val; break; fi",
   "  __dsh_heap=$(( __dsh_mem_kb / 2048 ))",
   "  [ \"$__dsh_heap\" -lt 512 ] && __dsh_heap=512",
-  "  [ \"$__dsh_heap\" -gt 1024 ] && __dsh_heap=1024",
+  "  [ \"$__dsh_heap\" -gt 4096 ] && __dsh_heap=4096",
   "  export NODE_OPTIONS=\"--max-old-space-size=$__dsh_heap\"",
   "fi",
   "export LD_LIBRARY_PATH=\"/x/lib\"",
@@ -162,7 +162,7 @@ function selfTest() {
   expect("负控 C2：启动器除数被改成 1024（只取 1/4）", GOOD_KOTLIN, GOOD_WRAPPER.replace("2048", "1024"), true)
   expect("负控 D1：启动器无条件覆盖 NODE_OPTIONS", GOOD_KOTLIN, GOOD_WRAPPER.replace('if [ -z "$NODE_OPTIONS" ]; then', "if true; then"), true)
   expect("负控 E1：argv 混入堆标志", GOOD_KOTLIN.replace('"--expose-internals"', '"--expose-internals", "--max-old-space-size=256"'), GOOD_WRAPPER, true)
-  expect("负控 C3：壳侧上限被改坏（与启动器分叉）", GOOD_KOTLIN.replace("ENGINE_HEAP_CAP_MB: Int = 1024", "ENGINE_HEAP_CAP_MB: Int = 2048"), GOOD_WRAPPER, true)
+  expect("负控 C3：壳侧上限被改坏（与启动器分叉）", GOOD_KOTLIN.replace("ENGINE_HEAP_CAP_MB: Int = 4096", "ENGINE_HEAP_CAP_MB: Int = 2048"), GOOD_WRAPPER, true)
 
   if (stFail > 0) { console.log("CHECK-ENGINE-HEAP-FLOOR SELF-TEST FAILED（" + stFail + " 项）"); process.exit(1) }
   console.log("CHECK-ENGINE-HEAP-FLOOR SELF-TEST PASSED（正样本 1 + 受控负控 8）")

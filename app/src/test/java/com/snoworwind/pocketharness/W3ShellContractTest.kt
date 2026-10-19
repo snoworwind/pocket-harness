@@ -196,7 +196,7 @@ class W3ShellContractTest {
     )
     assertTrue(
       "必须有上限常量（堆开成多 GB 会被 lmkd 杀掉）",
-      code.contains("internal const val ENGINE_HEAP_CAP_MB: Int = 1024"),
+      code.contains("internal const val ENGINE_HEAP_CAP_MB: Int = 4096"),
     )
     assertTrue(
       "取值必须 clamp 到上下限，不得只做除法（小内存设备会推出危险值）",

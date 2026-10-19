@@ -2364,7 +2364,7 @@ class EngineManager(private val context: Context, private val pickToken: String?
       "UV_THREADPOOL_SIZE" to uvThreadPoolSize(Runtime.getRuntime().availableProcessors()).toString(),
       // 引擎 V8 老生代上限（0.14.8 堆下限）：**此前无人管理**——不设标志时 V8 只按物理内存推导，
       // 小内存设备上推出来的上限可能小到引擎 boot 期就 OOM（社区反馈「JavaScript 堆太小导致启动失败」）。
-      // 这里显式给出自适应值（见 engineHeapMb）：设备总内存的一半、下限 512MB、上限 1024MB。
+      // 这里显式给出自适应值（见 engineHeapMb）：设备总内存的一半、下限 512MB、上限 4096MB。
       // 用 NODE_OPTIONS 而不是 argv，是因为 argv 会**覆盖** NODE_OPTIONS，二者不能同时表达同一件事；
       // 而 NODE_OPTIONS 还顺带覆盖所有经 shellEnv() 派生的子进程（工具子进程 / 控制台 / UndoGate）。
       // 实测口径：--max-old-space-size=N ⇒ heap_size_limit = N + 96MB；引擎最小可用堆约 70MB。
@@ -2498,21 +2498,23 @@ internal fun uvThreadPoolSize(cores: Int): Int = minOf(8, cores.coerceAtLeast(1)
 /** 引擎 V8 老生代上限的**下限**（MB）。低于此值时引擎连 boot 期的模块图都可能堆爆。 */
 internal const val ENGINE_HEAP_FLOOR_MB: Int = 512
 
-/** 引擎 V8 老生代上限的**上限**（MB）。再往上不放：堆开成多 GB 会被 lmkd 杀掉，且掩盖真实内存缺陷。 */
-internal const val ENGINE_HEAP_CAP_MB: Int = 1024
+/** 引擎 V8 老生代上限的**上限**（MB），与参考仓 #414 对齐；设备实际压力仍需分档验收。 */
+internal const val ENGINE_HEAP_CAP_MB: Int = 4096
 
 /**
  * 引擎 V8 老生代上限（MB）= clamp(设备总内存的一半, 下限 [ENGINE_HEAP_FLOOR_MB], 上限 [ENGINE_HEAP_CAP_MB])。
  *
  * 为什么是「一半 + 上下限」而不是沿用 V8 的默认推导：V8 只用物理内存推，**没有任何人管这台设备上
  * 引擎的实际工作集**——小内存设备推出来的上限可能小于引擎 boot 所需（社区反馈的启动失败），
- * 大内存设备又可能推出远超需要的值。显式下限保证「任何设备都够启动」，上限保证不失控。
+ * 大内存设备又可能推出远超需要的值。显式下限保证「任何设备都够启动」，4096MB 上限吸收参考仓
+ * #414 的堆空间扩展，同时将上限绑定设备总内存的一半；内存压力仍需在设备上按档位复核。
  *
  * 实测依据（逐档回读 heap_size_limit，详见 docs/AGENTS/gotchas.md 本轮条目）：
  * - 不设标志：6GB 设备 1120MB、4GB 设备 1075MB、3GB 设备 844MB（纯由物理内存推导）；
  * - 设 --max-old-space-size=N：实际上限恒为 N+96MB（512 到 608、256 到 352、2048 到 2144）；
  * - 引擎最小可用堆约 70MB（64MB 起步在约 21s 内 FATAL heap out of memory）。
- * 故 [512, 1024] 既在最小可用值之上留足量级，又不越过实测的自然推导值太多。
+ * 已实测的 3/4/6GB 档自然推导值分别约 844/1075/1120MB；较大设备新增堆空间来自上游 #414，
+ * 本地源码证据尚不覆盖其实际内存压力，不能据此声称所有设备都适用。
  *
  * 提到顶层是为了可断言——shellEnv() 需要 Context，JVM 单测拿不到；这里只锁「值」这一半，
  * 「注入进 shellEnv()」那一半由 W3ShellContractTest 的源码扫描锁定（与 [uvThreadPoolSize] 同款）。
