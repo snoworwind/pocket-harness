@@ -2806,3 +2806,7 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 453. **本地门禁把步骤清单复制一份就会立刻漂移（2026-10-20）**
 
     现象：要把 PR 门禁搬到本地跑，最自然的写法是新建一份「本地要跑的检查」清单。真因：PR Gate 的 23 个静态步骤与 3 个 Kotlin 步骤会随 workflow 演进；两份清单一旦分叉，本地全绿而远端门禁早已增删，合并判据就变成假的——与坑 448「回归必须跟随实际执行入口」同形。修法有意反其道：`scripts/ci/local-gate.mjs` **不维护清单**，直接解析 `.github/workflows/pr-gate.yml` 的 `run:` 块，按 `docs-hygiene/static/compile` 三个 job 的既有条件挑选；只用一个小型行式读取器（不引 YAML 依赖），并由 `local-gate.test.mjs` 把 2/25/28 三个计数与 compile 的三步名钉死，格式一变就红。另：Android build-tools 的 Linux 包只有 x86-64，gate 镜像必须是 amd64，arm64 容器里 `aidl` 直接跑不起来（会报 Mach-O 或 exec format），这是选架构而非选速度的理由。复验：本地 gate 步骤数与 PyYAML 解析逐条一致（仅差 block scalar 尾部换行），`node --test scripts/ci/local-gate.test.mjs` 5/5；去掉某 job 的 `PR_GATE_MODE` 开关的受控负控令结构用例判红。未做设备验证。
+
+454. **本地门禁不能假设「本地」就是这台 mac（2026-10-20）**
+
+    现象：第一版本地门禁只在本机验证通过，实际依赖三处宿主特性——`docker run -v` 的 POSIX 路径、`date +%s%3N` 的 GNU 扩展、以及 bash 的 `mapfile`。真因：Windows 的盘符路径与含空格路径在 `-v` 下会错位，BSD/macOS 与 Termux 的 `date` 不认 `%N`，macOS 自带 bash 是 3.2 没有 `mapfile`；Android/Termux 则根本没有容器运行时。修法：`--mode auto|container|native`，容器可达优先，否则回退 native；挂载改 `--mount`；计时改 `node -p Date.now()`；native 模式加前置判据（bash >= 4、node >= 22.15、GNU tar、python3、Kotlin 需 JDK 与 SDK），缺件直接失败关闭并列出清单，Kotlin 必须显式 `--no-kotlin` 才跳过。复验：本机 native 实跑 21/25，四条失败全部归因为宿主缺口（bash 3.2 无 mapfile、node 20 无 zstdCompressSync、bsdtar 拒 `--sort=name`），补预检后同一宿主直接给出三条可执行提示；容器模式仍 25/25。未做设备验证。

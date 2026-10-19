@@ -311,7 +311,18 @@ bootstrap 的 package-lock.json 与 package.json 一样属于逐字节来源输�
 
 `node scripts/ci/local-gate.mjs` 是合并判据：**步骤不另维护清单，直接读 `.github/workflows/pr-gate.yml`**，按同一套 job 条件（`docs-hygiene` 恒跑、`static` 除文档改动、`compile` 仅 `apk`）在 gate 镜像里执行同样的 `run:` 块。workflow 增删门禁时本地自动跟随；`local-gate.test.mjs` 用计数钉住这个契约。
 
+- `--mode auto|container|native`（默认 auto：容器运行时可达就用容器，否则回退 native）。三种宿主的能力矩阵：
+
+  | 宿主 | 推荐 | 能跑 Kotlin | 说明 |
+  |---|---|---|---|
+  | macOS / Linux / Windows + Docker | `container` | 是 | 钉住的 Linux 环境，与 CI 同构 |
+  | Windows（无 Docker） | `native` | 否 | 需 Git Bash（bash 5）、node >= 22.15、GNU tar；Kotlin 必须显式 `--no-kotlin` |
+  | Android / Termux | `native` | 否 | 无容器运行时；同上，Kotlin 必须显式跳过 |
+  | macOS 原生 | 不推荐 | 否 | 系统 bash 3.2 无 `mapfile`、node 20 无 `zstdCompressSync`、bsdtar 不认 `--sort=name`；预检会直接拒绝并给出清单 |
+
 - 镜像 `scripts/ci/gate-image/Dockerfile`（tag `pocket-harness-gate:24.04`）钉 node 24.21.0 / python 3.12.15 / JDK 17 / Android SDK 36，首次运行构建约 2.5GB。**必须 linux/amd64**：Google 的 Linux build-tools 只有 x86-64，arm64 镜像里 `aidl` 跑不了；Apple Silicon 上走 Rosetta，与 CI 的 x64 runner 一致。
+- 容器挂载用 `--mount` 而非 `-v`：Windows 的盘符路径与含空格路径只有前者可靠。步骤计时用 `node -p Date.now()` 而非 `date +%s%3N`（BSD 与 Termux 的 date 不支持 `%N`）。
+- **native 模式缺件即失败关闭**：选中 Kotlin 而宿主没有 JDK / Android SDK 时不会静默跳过，必须显式 `--no-kotlin`；证据里记 `mode` / `platform` / `kotlinIncluded`，PR 可据此标注未覆盖的层。
 - 工作树必须干净（证据绑定 HEAD 树），否则 exit 2；`--allow-dirty` 可覆盖但会在证据里记 `dirty: true`。
 - 证据落 `.deploy-tmp/local-gate/<tree12>.json` 与同名 `.log`：commit、tree、base、分类结果、逐步骤 rc/耗时、工具链钉值、verdict。`--dry-run` 只列将跑的步骤。
 - 镜像内的 `/workspace/local.properties` 以只读挂载覆盖为 `sdk.dir=/opt/android-sdk`，宿主的 macOS SDK 路径不会漏进容器，仓库文件也不被改写。

@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { buildContainerArgs, extractWorkflowSteps, preflightProblems, renderScript, resolveMode, selectSteps, summarize, summarizeEnvironment } from './local-gate.mjs'
+import { buildContainerArgs, extractWorkflowSteps, nodeAtLeast, preflightProblems, renderScript, resolveMode, selectSteps, summarize, summarizeEnvironment } from './local-gate.mjs'
 
 const workflowPath = new URL('../../.github/workflows/pr-gate.yml', import.meta.url)
 
@@ -151,4 +151,27 @@ test('container mounts use --mount so Windows drive paths survive', () => {
   assert.ok(mounts.some((mount) => mount.includes('target=/workspace')))
   assert.ok(mounts.some((mount) => mount.includes('readonly')), 'the SDK shim must not be writable')
   assert.deepEqual(args.slice(-3), ['img', 'bash', '-s'])
+})
+
+test('native preflight names the host limitations it measured', () => {
+  // These are the three real failures seen on macOS: bash 3.2 has no mapfile, node 20 has
+  // no zstd zlib API, and bsdtar rejects --sort=name. Each must be reported before the run.
+  const problems = preflightProblems({
+    mode: 'native',
+    platform: 'darwin',
+    hasKotlinSteps: false,
+    tools: { bash: true, bashMajor: 3, node: '20.18.0', python: true, java: false, sdk: false, gnuTar: false },
+  })
+  assert.equal(problems.length, 3)
+  assert.ok(problems.some((line) => line.includes('bash >= 4')))
+  assert.ok(problems.some((line) => line.includes('node >= 22.15')))
+  assert.ok(problems.some((line) => line.includes('GNU tar')))
+})
+
+test('version comparison treats major and minor correctly', () => {
+  assert.equal(nodeAtLeast('22.15.0', [22, 15]), true)
+  assert.equal(nodeAtLeast('22.14.9', [22, 15]), false)
+  assert.equal(nodeAtLeast('24.21.0', [22, 15]), true)
+  assert.equal(nodeAtLeast('20.18.0', [22, 15]), false)
+  assert.equal(nodeAtLeast('v24.21.0', [22, 15]), true)
 })

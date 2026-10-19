@@ -229,11 +229,28 @@ export function resolveMode(requested, { docker = dockerAvailable(), platform = 
   return docker ? 'container' : 'native'
 }
 
-/** Preconditions a selected mode must satisfy. Pure so it can be tested. */
+/**
+ * Preconditions a selected mode must satisfy. Pure so it can be tested.
+ *
+ * Native mode reuses the host shell, so it inherits every host limitation. These are the
+ * ones measured on macOS: bash 3.2 has no `mapfile` (pr-gate step 10), node 20 has no
+ * `zstdCompressSync` (the undo-savepoint test), and bsdtar rejects `--sort=name` (the
+ * linux-env plugin test). Failing here turns three confusing mid-run errors into one
+ * actionable message.
+ */
 export function preflightProblems({ mode, platform, hasKotlinSteps, tools }) {
   const problems = []
   if (mode === 'native') {
-    if (!tools.bash) problems.push('native mode needs bash (on Windows run inside Git Bash, or use container mode with Docker Desktop)')
+    if (!tools.bash) problems.push('native mode needs bash; on Windows run inside Git Bash, or use container mode')
+    if (tools.bashMajor !== undefined && tools.bashMajor < 4) {
+      problems.push(`native mode needs bash >= 4 for mapfile (found ${tools.bashMajor}); macOS ships 3.2 - install a newer bash or use container mode`)
+    }
+    if (tools.node && !nodeAtLeast(tools.node, [22, 15])) {
+      problems.push(`native mode needs node >= 22.15 for zstd zlib APIs (found ${tools.node}); use container mode or upgrade node`)
+    }
+    if (tools.gnuTar === false) {
+      problems.push('native mode needs GNU tar: bsdtar rejects --sort=name used by the linux-env plugin test; use container mode')
+    }
     if (!tools.python) problems.push('native mode needs python3 for the source-replacement gate')
     if (platform === 'win32' && !tools.bash) problems.push('Windows without Git Bash cannot run native mode; install Docker Desktop and use container mode')
   }
@@ -244,6 +261,14 @@ export function preflightProblems({ mode, platform, hasKotlinSteps, tools }) {
   return problems
 }
 
+/** Compare a dotted version string against a minimum. */
+export function nodeAtLeast(version, [major, minor = 0]) {
+  const parts = String(version).replace(/^v/, '').split('.').map(Number)
+  if (!parts.length || Number.isNaN(parts[0])) return false
+  if (parts[0] !== major) return parts[0] > major
+  return (parts[1] ?? 0) >= minor
+}
+
 function commandWorks(command, args) {
   const result = spawnSync(command, args, { encoding: 'utf8', timeout: 20000 })
   return result.status === 0
@@ -251,10 +276,16 @@ function commandWorks(command, args) {
 
 function hostTools() {
   const sdk = Boolean(process.env.ANDROID_HOME || process.env.ANDROID_SDK_ROOT || existsSync(join(ROOT, 'local.properties')))
+  const bashOut = spawnSync('bash', ['--version'], { encoding: 'utf8', timeout: 20000 })
+  const bashMajor = /version (\d+)\./.exec(bashOut.stdout || '')?.[1]
+  const tarOut = spawnSync('tar', ['--version'], { encoding: 'utf8', timeout: 20000 })
   return {
-    bash: commandWorks('bash', ['-c', 'exit 0']),
+    bash: bashOut.status === 0,
+    bashMajor: bashMajor === undefined ? undefined : Number(bashMajor),
+    node: process.versions.node,
     python: commandWorks('python3', ['--version']),
     java: commandWorks('java', ['-version']),
+    gnuTar: /GNU tar/.test(tarOut.stdout || ''),
     sdk,
   }
 }
