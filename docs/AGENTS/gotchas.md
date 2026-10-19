@@ -2798,3 +2798,7 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 450. **pi-ai 类型索引不是模型 wire id，旧夹具掩盖来源快照回归（2026-10-19）**
 
     现象：来源 run 39251430586 在增加实际写回等待后仍超时。真因：pi-ai 1.1.0 将目录 key 改为 chat:<id>，gen-model-catalog 仍以 key 建表而非读取条目 raw.id；真实快照缺少用户保存的原始 id，本地旧夹具却包含它。坑 449 的 timer 竞态属独立问题，并非这次云端失败的充分解释。修法：优先采用声明 id，旧式无类型 key 保持原样；类型 key 缺声明或非法 id 失败关闭，不猜测去前缀；完整目录测试逐组验证歧义，不把历史冲突组数当协议。复验：实际固定 pi-ai 包旧生成器下 T1-⑤/⑥ 均红；新生成器及真实全目录全套复验随 PR 记录，未做设备验证；需最终 main 来源链到签名。
+
+451. **engine base 双副本比对会被 pnpm 生成文件的顺序与内嵌绝对路径打红（2026-10-19）**
+
+    现象：PR #51 在本机用两份独立工作区跑真实 engine 构建（均 exit 0），plan 得到同一 key、capture 均成功，但 compare 失败；强制对齐 buildRun 后两份 treeSha256 仍不同，70476 条里 4 条不同（engine-deploy/package.json、engine-deploy/pnpm-workspace.yaml、reports 两份），tree 的另一处差异来自 engine-deploy 内的绝对路径 file:///workspace/...（package.json 344 处、pnpm-lock.yaml 3349 处、pnpm-workspace.yaml 1 处）。真因：capture 只对 REPORTS 里的 .json 做 rebase 与 canonicalJson 落盘，pnpm 直接写出的部署三件套未归一化，其依赖表、build-allowlist 与 runtime closure 记录的顺序随 pnpm 写入顺序变化，file:// 路径又绑定工作区绝对路径。旧夹具用 fixture 文本代替真实产物，所以单测全绿掩盖了这条。修法未落地（属 PR #51 未决项）：要么对三件套做路径归一化与定序序列化后再计入 tree，要么把它们登记为已知非确定性并从树哈希排除并把该排除写进锁 schema。复验：修后仍需在真实 base 上跑 materialize。未做设备验证；根因与待办见 ENGINE-BASE-2026-10-19.md。

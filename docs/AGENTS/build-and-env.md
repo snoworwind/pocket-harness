@@ -309,3 +309,5 @@ engine 的 checkout/upstream/overlay/patches/build/deploy 步骤集中到 `scrip
 ## Engine base 复用（2026-10-19）
 
 `build-base.yml` 只跑 engine：`engine-base.mjs plan` 固定 key、`build-engine.sh` 构建、双 replica 各自 `capture`，`compare` 对实际输出树逐文件比对后才发 `base-lock.candidate.json` 并写 cache。`build-apk-source.yml` 用同一 key 恢复；命中则 `materialize`，未命中且锁可信时失败关闭，无锁时才从源码构建。`base-lock.json` 是仓内信任根；base 不含 APK、签名密钥或项目插件产物。
+
+实跑状态：PR Gate 与 Kotlin 门禁已绿，但真实双构建的 `compare` 不通过（pnpm 生成文件顺序 + `engine-deploy` 未 rebase 的绝对路径），`materialize` 尚未在真实 base 上验证，且 `engine-toolchain.json` 的 Java 钉值不存在。未决项、根因与复验入口见 [ENGINE-BASE-2026-10-19.md](ENGINE-BASE-2026-10-19.md)。

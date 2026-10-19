@@ -155,3 +155,15 @@
 ## 引擎 0.2.1-rc.2 候选（2026-10-19）
 
 源码适配、真实构建产物及代码验证已实施，最终 main 来源双构建与设备证据按 [升级记录](ENGINE-UPGRADE-2026-10-19.md) 收口。ADB 实际为空，目标 ARM64 设备 ABI 不可读；CDP、ADB 自主任务、横竖屏与覆盖升级未验收。旧 runtime-capture 退为历史，不移植参考仓的设备结论；模型能力插件暂保留至替代设置能力实际验收。
+
+## Engine base 复用未决项（2026-10-19，PR #51）
+
+机制本身与门禁已落地（PR Gate 25 步、Kotlin 122/122 类 / 1322 用例通过），但真实产物链路尚未闭环。详见 [ENGINE-BASE-2026-10-19.md](ENGINE-BASE-2026-10-19.md) 与坑 451。
+
+| 项 | 当前事实 | 必须取得的结论 |
+|---|---|---|
+| Java 钉值 | `engine-toolchain.json` 写 `17.0.20+1`，Temurin 无此标识（实际 `17.0.20+8`），全等比较使 plan 在合规 runner 上也必红 | 改为真实标识或前缀匹配，并在 runner 上跑通 plan |
+| 本地复跑 | `buildRun` 来自 `GITHUB_RUN_ID` 且被 compare 要求两端相等，本地双构建必停在 `replica source identity mismatch` | 提供显式 run 标识或用「同 run 内副本」语义比较 |
+| 生成文件归一化 | `engine-deploy` 三件套未 rebase、未定序，内嵌 `file://` 绝对路径 344/3349/1 处 | 归一化与定序后计入 tree，或登记为已知非确定性并写进锁 schema |
+| materialize | 尚未在真实 base 上验证（compare 从未产出可信 base） | 用真实候选 lock 跑 materialize 并继续一次 engine 复用构建 |
+| 云端 checks | runner 未分配（job `steps: []`，main 同形态），计费/配额问题 | 恢复后由 CI 复跑确认 |
