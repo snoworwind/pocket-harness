@@ -178,7 +178,7 @@ export async function runCase(c, deps, on) {
   const mut = c.mutate(deps.adb, on)
   if (mut && mut.status !== 0) return { id: c.id, ok: false, ms: 0, detail: '真源改写失败: ' + (mut.err || mut.out) }
   if (c.restartApp) {
-    deps.adb(['am', 'start', '-W', '-n', PKG + '/.MainActivity'])
+    deps.adb(['am', 'start', '-W', '-n', PKG + '/com.dsharnessmobile.shell.MainActivity'])
     // 应用重启后 WebView target 与进程号都会换：由调用方重建 CDP 连接（自检模式无此钩子）。
     if (typeof deps.refreshPage === 'function') { try { await deps.refreshPage() } catch { /* 下一轮重试 */ } }
   }
@@ -270,7 +270,7 @@ await page.evaluate('1').catch((e) => { console.error('CDP 初始化失败：' +
 /** 应用重启/页面重载后由 runCase 调用：丢弃旧连接（下次求值自动重新解析 target）。 */
 const refreshPage = async () => { try { page.close() } catch { /* 已关闭 */ } return page }
 /** 每条用例观测前把 App 拉回前台（§4.1.5 步骤 ② 的「回到 App」）。 */
-const ensureForeground = () => adb(['am', 'start', '-n', PKG + '/.MainActivity'])
+const ensureForeground = () => adb(['am', 'start', '-n', PKG + '/com.dsharnessmobile.shell.MainActivity'])
 // ── 设备状态快照/还原（队列卫生）：每条用例都收在 off，会把 a11y/权限/偏好留在关闭态并影响后续设备测试 ──
 export function captureExternalState(adb) {
   // appops get 的真实输出**带尾部元数据**，例如：

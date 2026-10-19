@@ -2373,6 +2373,8 @@ scripts/verify-vdisplay-float.mjs
 scripts/verify-engine-log-copy.mjs
 scripts/verify-screen-scope-matrix.mjs
 scripts/verify-screen-scope-matrix.test.mjs
+scripts/lib/android-identity.mjs
+scripts/tests/android-identity.test.mjs
 scripts/verify-adb-only-tree.mjs
 scripts/verify-notify-consumption.mjs
 scripts/verify-auto-undo.mjs
@@ -2452,3 +2454,5 @@ Linux runtime 安装提交点为 _writeActive 成功返回；此后旧实例清�
 离线 Linux 安装链：createLinuxBootstrapConfig 的包槽为 linux-environment/plugins/linux-runtime，位于真实 pluginHost 根内；runtimePluginConfig.downloadAsset 把已验证宿主归档复制到 manager 指定的新文件，extractArchive 转发 kind。plugin 包无链接；node/backend/rootfs 延迟落链接，根成员只接受一次零大小目录。生产跨层回归：plugins/dsh-android-linux-env/test/offline-install-integration.test.mjs（原生执行器夹具，不代替 ARM64 设备）。
 
 Linux runtime scope 退出：先注销工具/监听，再 await 自建 manager.dispose 终止 in-flight 命令；config.manager 的外部所有权保留。bootstrap 保存的 disposed handle 只可卸载数据，不可执行/安装新任务。真实 Cordis 回收断言见 offline-install-integration.test.mjs。
+
+包名迁移调用链（B03）：热推、性能与设备套件使用新 applicationId 加保留 namespace 的完整 MainActivity 类名；热推和客户端故障恢复遇启动错误时中止。screen-scope-matrix 与 adb-only-tree 共用 `scripts/lib/android-identity.mjs` 精确绑定判据。软链 `/data/user/<n>/` 别名使用新 applicationId，其他绝对链保留规则不变。覆盖账本登记 helper 与回归测试；证据见 gotchas 坑 440。

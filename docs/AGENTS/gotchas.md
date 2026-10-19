@@ -2752,3 +2752,7 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 439. **来源构建注入器重复写入新包目录，双构建比对拒绝（2026-10-19）**
 
     现象：Actions 39147156896 的两次 ARM64 构建完成，verify-arm64 却报 `duplicate or excessive snapshot entries`。失败主 APK 实测 53022 个成员、52978 个唯一路径，44 个重复路径均为新注入包目录。真因：`inject-all.py` 整包追加先手写 base/lib 两个目录却未登记 `seen_dirs`，随后 `ensure_parent_dirs` 再写同一路径；输入已有空包目录也会重复。修法：整包追加统一调用带登记的 `ensure_parent_dirs`，保持读取器的重复成员拒绝与数量上限不变。复验：新增新包/仅目录包两种回归夹具，旧实现两例均红（22 成员对 18 唯一路径），修复后 Python 6 项通过；Linux 比对器自检 4 项通过，执行地图门禁通过。失败产物清点脚本与下载产物位于本地 `.deploy-tmp/ci-snapshot-fix/`。未做设备验证；本轮只改构建归档目录去重，最终候选仍须按发布规范补验。
+
+440. **安装身份与 namespace 分离后，脚本仍推导类名并误认旧应用（2026-10-19）**
+
+    现象：热推、性能、通知、客户端故障恢复及状态同步五个脚本以新包名加 `/.MainActivity` 启动不存在的类；屏幕矩阵按 namespace 子串把旧应用当本应用；软链别名正则仍认旧包。真因：未分别核对安装身份、类名及转义正则。修法：启动改完整 Kotlin 类名，热推与故障恢复启动错误时中止；两套无障碍验收共用精确 Bound services 组件匹配，读取完整 dumpsys；软链别名改新 applicationId，其他绝对链保留规则不变。复验：身份、矩阵与签名定向 35 项通过；旧 HEAD 受控负控失败，日志 `.deploy-tmp/package-identity-fix/negative-control.log`；设备套件既有自检通过。未做设备验证、未构建 APK；未改 Kotlin、Manifest、插件或快照事务策略。设备判据的真实 dumpsys、并装及横竖屏验收仍待在线 ARM64 设备，不宣称三层通过。

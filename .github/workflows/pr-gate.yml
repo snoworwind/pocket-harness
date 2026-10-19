@@ -28,6 +28,9 @@ jobs:
       - name: 主 WebView 顶层原生桥回归
         if: always()
         run: node --test scripts/tests/main-frame-bridge.test.mjs scripts/tests/engine-private-transport.test.mjs
+      - name: Android 安装身份与组件迁移回归
+        if: always()
+        run: node --test scripts/tests/android-identity.test.mjs scripts/verify-screen-scope-matrix.test.mjs
       - name: 撤销存档导入安全回归
         if: always()
         run: node --test vendor/dsh-undo-savepoint/test/import-plaintext.test.mjs plugins/dsh-linux-bootstrap/test/github-limits.test.mjs plugins/dsh-linux-bootstrap/test/client-http.test.mjs

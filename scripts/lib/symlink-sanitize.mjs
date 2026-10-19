@@ -45,7 +45,7 @@ export const OLD_DEVICE_PREFIX = '/data/data/com.termux/files'
 /** 本 App 运行时根（快照内 `usr`/`home` 最终落点）。 */
 export const APP_DEVICE_PREFIX = '/data/data/com.snoworwind.pocketharness/files'
 /** 本 App 的别名写法：Android 上 `/data/user/0/<pkg>` 指向 `/data/data/<pkg>`（多用户时为 /data/user/<n>）。 */
-const APP_DEVICE_ALIAS_RE = /^\/data\/user\/\d+\/com\.dsharnessmobile\.shell\//
+const APP_DEVICE_ALIAS_RE = /^\/data\/user\/\d+\/com\.snoworwind\.pocketharness\//
 
 /** 该绝对目标是否指向本 App（`data/data` 或 `data/user/<n>` 两种写法）。 */
 export function isAppAbsoluteTarget(target) {

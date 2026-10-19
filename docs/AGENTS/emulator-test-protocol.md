@@ -229,3 +229,5 @@ PR 描述里贴**结论表**（每行一条用户动作）：
   虚拟别名；显式 target 必须对应实际注入 display，不能被 selected 屏静默替换。
 
 Settings probes read section labels after excluding injected description and chevron nodes. The visible text of a mobile category row contains both its upstream name and the adaptation's description; matching the whole text against the bare section name misses the phone-control page. This changes only the navigation probe, not the user's settings flow.
+
+包名迁移验收：启动组件使用完整 Kotlin 类名；无障碍设备事实由 `scripts/lib/android-identity.mjs` 精确匹配 Bound services 内的安装包/服务类，禁止按保留 namespace 子串判断。新旧应用并装时只有旧应用绑定必须判未绑定；Enabled services 不替代 Bound services。宿主回归见 `scripts/tests/android-identity.test.mjs`；设备三层未执行时保持未验收。
