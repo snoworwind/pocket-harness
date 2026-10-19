@@ -182,15 +182,15 @@ test('actual output CLI rejects forged source hashes without overwriting the inp
 }))
 
 test('actual source workflow verifies project components without an independent host checkout', { skip: process.platform !== 'linux' }, () => fixture(({ root, commit }) => {
-  const workflow = readFileSync(resolve(import.meta.dirname, '../../.github/workflows/build-apk-source.yml'), 'utf8').replaceAll('\r\n', '\n')
-  const start = workflow.indexOf('      - name: Checkout pinned component sources\n')
-  const end = workflow.indexOf('          marketplace_tarball=', start)
+  const workflow = readFileSync(resolve(import.meta.dirname, 'build-engine.sh'), 'utf8').replaceAll('\r\n', '\n')
+  const start = workflow.indexOf('mkdir -p .deploy-tmp/component-sources')
+  const end = workflow.indexOf('marketplace_tarball=', start)
   assert.ok(start > 0 && end > start)
   const block = workflow.slice(start, end)
   assert.equal(block.includes('git clone'), false)
   assert.equal(workflow.includes('component-sources/host-web-compat'), false)
   assert.equal(workflow.includes('2de902729e01eb3619aa50bdfa164c5231948848'), false)
-  const script = block.slice(block.indexOf('        run: |\n') + '        run: |\n'.length).split('\n').map(line => line.startsWith('          ') ? line.slice(10) : line).join('\n')
+  const script = block
   const result = spawnSync('/bin/bash', ['-e', '-c', script], { cwd: root, env: { ...process.env, GITHUB_SHA: commit }, encoding: 'utf8', timeout: 10000 })
   assert.equal(result.status, 0, result.stderr + result.stdout)
   const report = JSON.parse(readFileSync(join(root, '.deploy-tmp/source-build/project-component-provenance.json'), 'utf8'))
