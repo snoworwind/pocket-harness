@@ -2300,6 +2300,7 @@ glob:plugins/dsh-android-file-open/test/*.mjs
 glob:plugins/dsh-android-linux-env/test/*.mjs
 glob:plugins/dsh-android-model-capability/test/*.mjs
 glob:plugins/dsh-model-capability/test/*.mjs
+plugins/dsh-model-capability/test/fixtures/delay-message-channel.mjs
 dsh-client-ui-responsive/src/index.ts
 dsh-client-ui-responsive/src/css-modules.d.ts
 dsh-client-ui-responsive/src/react-dom.d.ts
