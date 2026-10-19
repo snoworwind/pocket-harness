@@ -173,9 +173,9 @@
 
 | 补丁/文件 | 真实目标与职责 | 登记 / 回归状态 |
 |---|---|---|
-| [ptc-android-native-A1](../../scripts/patches/ptc-android-native-A1.mjs) | 0.2.1-rc.2 的 lib/index.js、process.js、persistent-process.js；一次/持久两条启动路径共享可信 linker 前缀，NODE_OPTIONS 仅宿主 heap，两个模型环境为空原型 | registry/runner 三目标及 exact verifier 同步；15 项行为/反证通过，实际源码构建夹具在场；设备未验。 |
+| [ptc-android-native-A1](../../scripts/patches/ptc-android-native-A1.mjs) | 0.2.1-rc.2 的 lib/index.js、process.js、persistent-process.js；一次/持久两条启动路径共享可信 linker 前缀，NODE_OPTIONS 仅宿主 heap，两个模型环境为空原型 | registry/runner 三目标及 exact verifier 同步；16 项行为/反证通过（含 apply-patches 三文件写回），实际源码构建夹具在场；设备未验。 |
 | [pi-upstream-streaming-020](../../scripts/patches/pi-upstream-streaming-020.mjs) | pi-ai@1.1.0 六个 dist/api JS 恢复官方 pnpm patch | [官方副本](../../scripts/patches/upstream/pi-ai-1.1.0.patch) SHA-256 66eaf960054f10441b93ac3857114e96c1901f6d183713e2f21437b007111644；完整 plan 先验证后缓存写，严格上下文/幂等；G2 requires streaming020。 |
-| ptc-argv-L1 | host heap参数移出argv，经本次NODE_OPTIONS；A1重整launch前缀，不能只保留L1并假称Android已可启动 | registry仍在场，A1 requires L1；旧fixture通过不能证明target0.2双文件通过。 |
+| ptc-argv-L1 | host heap参数移出argv，经本次NODE_OPTIONS；A1重整launch前缀，不能只保留L1并假称Android已可启动 | registry仍在场，A1 requires L1；旧fixture通过不能证明target0.2三文件通过；`apply-patches` 必须写回 index/process/persistent 三文件。 |
 | terminal-inspector-android-D1 | dsh-subprocess-local的runner-launch-B2zsQ1Dz（按targetDiscovery发现版本bundle）；createProcessInspector把android归入既有Linux分支，其它平台throw不放宽 | registry在场；版本重锚/最终bundle核实由父构建完成，不推断0.2已验收。 |
 | atomic-stale-lock-F4 | dsh-atomic-write | registry自0.1.7-rc.2已移入retired：上游原生takeOverExitedLock吸收孤儿锁语义；0.14.3仍不施加，历史§7.1行不是当前登记。 |
 
