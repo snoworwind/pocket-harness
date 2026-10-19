@@ -3,7 +3,7 @@
 //
 // 为什么需要（0.14.1 设备实测缺陷 B4 的直接根因）：
 //   「会读设备屏的 op」有**两份**清单——引擎 `plugins/dsh-android-bridge/src/screen-scope.ts` 的
-//   `REAL_SCREEN_CONTROL_OPS` 与壳侧 `app/src/main/java/com/dsharnessmobile/shell/DeviceControlService.kt`
+//   `REAL_SCREEN_CONTROL_OPS` 与壳侧 `app/src/main/java/com/snoworwind/pocketharness/DeviceControlService.kt`
 //   的 `REAL_SCREEN_OPS`。两份不一致时没有任何一层为不一致负责：
 //   壳侧曾把 `state`/`webSnapshot`/`webAction` 也算成真实屏 op（那是 `A11Y_OPS` 后端能力清单的陈旧拷贝），
 //   而这三条都不带 `screenId` ⇒ 默认 real ⇒ 在缺省范围 virtual-only 下被壳侧范围门拦死。
@@ -28,8 +28,8 @@ function locate(name) {
   const candidates = name === 'engine'
     ? [join(APK_ROOT, 'plugins', 'dsh-android-bridge', 'src', 'screen-scope.ts'),
        join(APK_ROOT, '..', 'plugins', 'dsh-android-bridge', 'src', 'screen-scope.ts')]
-    : [join(APK_ROOT, 'app', 'src', 'main', 'java', 'com', 'dsharnessmobile', 'shell', 'DeviceControlService.kt'),
-       join(APK_ROOT, 'dsh-mobile-apk', 'app', 'src', 'main', 'java', 'com', 'dsharnessmobile', 'shell', 'DeviceControlService.kt')]
+    : [join(APK_ROOT, 'app', 'src', 'main', 'java', 'com', 'snoworwind', 'pocketharness', 'DeviceControlService.kt'),
+       join(APK_ROOT, 'dsh-mobile-apk', 'app', 'src', 'main', 'java', 'com', 'snoworwind', 'pocketharness', 'DeviceControlService.kt')]
   for (const c of candidates) if (existsSync(c)) return c
   throw new Error(`找不到${name === 'engine' ? '引擎' : '壳侧'}清单源文件：` + candidates.join(' | '))
 }

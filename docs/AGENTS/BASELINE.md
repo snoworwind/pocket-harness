@@ -25,7 +25,7 @@
 | 标识 | 当前值 | 迁移说明 |
 |---|---|---|
 | `applicationId` | `com.snoworwind.pocketharness` | 独立安装身份；与旧 `com.dsharnessmobile.shell` 并排安装，不覆盖升级、不自动迁移数据 |
-| Kotlin `namespace` | `com.dsharnessmobile.shell` | 保留类与 AIDL 的现有命名空间，降低无关源码迁移风险 |
+| Kotlin `namespace` | `com.snoworwind.pocketharness` | 2026-10-19 按用户决定统一迁移类、AIDL 与源码目录；升级和验证边界见 [迁移记录](NAMESPACE-MIGRATION-2026-10-19.md) |
 | 应用显示名 | `Pocket Harness`（无障碍服务名、控制台标题同源） | `UserCopy.APP_NAME`、`strings.xml`、控制台标题、管理页已同步；ARM64 设备三层验收仍待集中执行，当前 MuMu x86_64 不能安装产品 APK |
 | APK 产物前缀 | `pocket-harness-v<版本>-arm64.apk` | 发布链、下载页、来源 artifact 与 Python 发布准备已统一为 ARM64 独立命名 |
 | 发布签名 | `POCKET_SIGNING_KEYSTORE_BASE64` 与 `POCKET_SIGNING_KEYSTORE_PASSWORD` 仓库 Secret | 私钥不入库；发布 APK 校验提交的证书 SHA-256 指纹 |

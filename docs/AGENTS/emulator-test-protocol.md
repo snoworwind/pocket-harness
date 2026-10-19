@@ -88,12 +88,12 @@ adb devices -l
 
 # 1. 快照就绪：唯一完成标志 = 指纹在场且 marker 已消失；刷新期间禁跑（假失败）
 #    指纹与 marker 都在 filesDir 根（context.filesDir），不在 files/home/ 下
-adb -s <serial> exec-out run-as com.dsharnessmobile.shell ls -l files/.snapshot-fingerprint
-adb -s <serial> exec-out run-as com.dsharnessmobile.shell ls -l files/.snapshot-transaction   # 报 No such file 才是刷新已完成
+adb -s <serial> exec-out run-as com.snoworwind.pocketharness ls -l files/.snapshot-fingerprint
+adb -s <serial> exec-out run-as com.snoworwind.pocketharness ls -l files/.snapshot-transaction   # 报 No such file 才是刷新已完成
 
 # 2. 应用在前台（后台会被 CDP 目标解析拒绝）
 adb -s <serial> shell input keyevent 3
-adb -s <serial> shell am start -n com.dsharnessmobile.shell/.MainActivity
+adb -s <serial> shell am start -n com.snoworwind.pocketharness/.MainActivity
 
 # 3. 无障碍通道在线（需要 a11y 面的用例才查；重启后需重设，见坑 46）
 adb -s <serial> shell dumpsys accessibility | grep -A2 "Bound services"
@@ -104,9 +104,9 @@ adb -s <serial> shell dumpsys accessibility | grep -A2 "Bound services"
 - **uid-mode appop 残留**覆盖包级 op，会让状态同步用例稳定判红（实测现场：`appops get --uid <pkg>` 里出现 `Uid mode: allow`，与套件修改的包级 op 不一致）。清理：
 
 ```bash
-adb -s <s> shell appops get --uid com.dsharnessmobile.shell            # 先看有没有 uid 模式残留
-adb -s <s> shell appops set --uid com.dsharnessmobile.shell <OP> default   # 清掉那条 uid 覆盖
-adb -s <s> shell appops reset com.dsharnessmobile.shell                 # 兜底：清该包全部 op 覆盖
+adb -s <s> shell appops get --uid com.snoworwind.pocketharness            # 先看有没有 uid 模式残留
+adb -s <s> shell appops set --uid com.snoworwind.pocketharness <OP> default   # 清掉那条 uid 覆盖
+adb -s <s> shell appops reset com.snoworwind.pocketharness                 # 兜底：清该包全部 op 覆盖
 ```
 - **prefs 僵尸 a11y 标记**（坑 46）：`am force-stop` 后 `enabled_accessibility_services` 不回写，需重设并确认 `Bound services` 非空；
 - **应用被切到后台**：CDP `fetch failed` 多半是它，不是缺陷。
@@ -230,4 +230,4 @@ PR 描述里贴**结论表**（每行一条用户动作）：
 
 Settings probes read section labels after excluding injected description and chevron nodes. The visible text of a mobile category row contains both its upstream name and the adaptation's description; matching the whole text against the bare section name misses the phone-control page. This changes only the navigation probe, not the user's settings flow.
 
-包名迁移验收：启动组件使用完整 Kotlin 类名；无障碍设备事实由 `scripts/lib/android-identity.mjs` 精确匹配 Bound services 内的安装包/服务类，禁止按保留 namespace 子串判断。新旧应用并装时只有旧应用绑定必须判未绑定；Enabled services 不替代 Bound services。宿主回归见 `scripts/tests/android-identity.test.mjs`；设备三层未执行时保持未验收。
+包名迁移验收：启动组件使用完整 Kotlin 类名；无障碍设备事实由 `scripts/lib/android-identity.mjs` 精确匹配 Bound services 内的安装包/服务类，禁止按统一 namespace 子串判断。新旧应用并装时只有旧应用绑定必须判未绑定；Enabled services 不替代 Bound services。宿主回归见 `scripts/tests/android-identity.test.mjs`；设备三层未执行时保持未验收。

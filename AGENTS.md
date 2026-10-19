@@ -7,7 +7,7 @@
 
 ## 1. 这是什么仓
 
-DeepSeek Harness 的独立安卓应用 **Pocket Harness**（包名 `com.snoworwind.pocketharness`；Kotlin namespace 保持 `com.dsharnessmobile.shell`）。
+DeepSeek Harness 的独立安卓应用 **Pocket Harness**（包名与 Kotlin namespace 均为 `com.snoworwind.pocketharness`）。
 
 本项目基于 [dsh-mobile-apk](https://github.com/snoworwind/dsh-mobile-apk) 的 `security/hardening` 分支提交 `cb1c315` 独立建立；应用名、applicationId、发布签名与 APK 产物名已迁移，具体边界见 [项目基线](docs/AGENTS/BASELINE.md)。
 

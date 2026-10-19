@@ -22,79 +22,79 @@
     {
       "id": "immersive-mode",
       "holder": "壳侧（ShellState / AndroidBridge）",
-      "writePath": "dsh-mobile-apk/app/src/main/java/com/dsharnessmobile/shell/ShellState.kt:setImmersiveMode",
+      "writePath": "dsh-mobile-apk/app/src/main/java/com/snoworwind/pocketharness/ShellState.kt:setImmersiveMode",
       "sourceOfTruth": "壳偏好 dsh_settings/immersive_mode",
       "syncPath": "页面以壳侧读面 getImmersiveMode() 为唯一初值，不再用 localStorage 自证（ST-10）",
       "evidence": {
         "kind": "grep",
-        "file": "dsh-mobile-apk/app/src/main/java/com/dsharnessmobile/shell/AndroidBridge.kt",
+        "file": "dsh-mobile-apk/app/src/main/java/com/snoworwind/pocketharness/AndroidBridge.kt",
         "pattern": "fun getImmersiveMode"
       }
     },
     {
       "id": "overlay-enabled",
       "holder": "壳侧（OverlayController / OverlayService）",
-      "writePath": "dsh-mobile-apk/app/src/main/java/com/dsharnessmobile/shell/OverlayController.kt",
+      "writePath": "dsh-mobile-apk/app/src/main/java/com/snoworwind/pocketharness/OverlayController.kt",
       "sourceOfTruth": "SYSTEM_ALERT_WINDOW 系统权限 + 服务实例在场 + 壳偏好",
       "syncPath": "isEnabled = 偏好 && canDrawOverlays && 服务在场（ST-02 三真值合取）；页面只读该判定值",
       "evidence": {
         "kind": "grep",
-        "file": "dsh-mobile-apk/app/src/main/java/com/dsharnessmobile/shell/OverlayController.kt",
+        "file": "dsh-mobile-apk/app/src/main/java/com/snoworwind/pocketharness/OverlayController.kt",
         "pattern": "canDrawOverlays"
       }
     },
     {
       "id": "all-files-access",
       "holder": "壳侧（AndroidBridge + prefs）",
-      "writePath": "dsh-mobile-apk/app/src/main/java/com/dsharnessmobile/shell/AndroidBridge.kt:hasAllFilesAccess/requestAllFilesAccess",
+      "writePath": "dsh-mobile-apk/app/src/main/java/com/snoworwind/pocketharness/AndroidBridge.kt:hasAllFilesAccess/requestAllFilesAccess",
       "sourceOfTruth": "Environment.isExternalStorageManager()（系统事实）",
       "syncPath": "getter 每次现读系统事实（0.14.0：ADB 退役后不再有 syncFullAccess 壳内缓存与回前台收敛）",
       "evidence": {
         "kind": "grep",
-        "file": "dsh-mobile-apk/app/src/main/java/com/dsharnessmobile/shell/AndroidBridge.kt",
+        "file": "dsh-mobile-apk/app/src/main/java/com/snoworwind/pocketharness/AndroidBridge.kt",
         "pattern": "isExternalStorageManager"
       }
     },
     {
       "id": "a11y-control-channel",
       "holder": "壳侧（DeviceControlService）+ 插件 dsh-android-manage",
-      "writePath": "dsh-mobile-apk/app/src/main/java/com/dsharnessmobile/shell/DeviceControlService.kt",
+      "writePath": "dsh-mobile-apk/app/src/main/java/com/snoworwind/pocketharness/DeviceControlService.kt",
       "sourceOfTruth": "AccessibilityManager 服务在线 + 控制队列轮询心跳",
       "syncPath": "桥 a11yStatus() 实时读（含队列心跳），不缓存偏好（坑 46 僵尸 a11yEnabled 的根因）",
       "evidence": {
         "kind": "grep",
-        "file": "dsh-mobile-apk/app/src/main/java/com/dsharnessmobile/shell/AndroidBridge.kt",
+        "file": "dsh-mobile-apk/app/src/main/java/com/snoworwind/pocketharness/AndroidBridge.kt",
         "pattern": "fun a11yStatus"
       }
     },
     {
       "id": "shizuku-privileged-channel",
       "holder": "壳侧（ShizukuTransport / ShizukuUserService）+ 插件 dsh-android-bridge",
-      "writePath": "dsh-mobile-apk/app/src/main/java/com/dsharnessmobile/shell/ShizukuTransport.kt",
+      "writePath": "dsh-mobile-apk/app/src/main/java/com/snoworwind/pocketharness/ShizukuTransport.kt",
       "sourceOfTruth": "Shizuku API binder 可达（官方 Shizuku 或分支兼容实现，如 Stellar——0.14.8 起官方包名不再是能力判据，管理器包名只用于引导）+ UserService 绑定（live；授权只由管理器写，应用不自授）",
       "syncPath": "控制队列 caps.shizuku 实时上报（ControlCarrier，5s TTL）；引擎侧 shizukuReady() 现读 caps，不做启动期快照（0.14.0：内置 adb 三条门随 AdbState 退役）",
       "evidence": {
         "kind": "grep",
-        "file": "dsh-mobile-apk/app/src/main/java/com/dsharnessmobile/shell/ControlCarrier.kt",
+        "file": "dsh-mobile-apk/app/src/main/java/com/snoworwind/pocketharness/ControlCarrier.kt",
         "pattern": "shizuku"
       }
     },
     {
       "id": "pick-token",
       "holder": "壳侧（EngineAuth / AndroidBridge）",
-      "writePath": "dsh-mobile-apk/app/src/main/java/com/dsharnessmobile/shell/EngineAuth.kt",
+      "writePath": "dsh-mobile-apk/app/src/main/java/com/snoworwind/pocketharness/EngineAuth.kt",
       "sourceOfTruth": "壳侧一次性 pick token",
       "syncPath": "桥 getPickToken() 每次现读（不跨引擎重启缓存 token，否则静默拒绝）",
       "evidence": {
         "kind": "grep",
-        "file": "dsh-mobile-apk/app/src/main/java/com/dsharnessmobile/shell/AndroidBridge.kt",
+        "file": "dsh-mobile-apk/app/src/main/java/com/snoworwind/pocketharness/AndroidBridge.kt",
         "pattern": "fun getPickToken"
       }
     },
     {
       "id": "dev-log-enabled",
       "holder": "壳侧（AndroidBridge + prefs）+ 壳侧 LogCollector",
-      "writePath": "dsh-mobile-apk/app/src/main/java/com/dsharnessmobile/shell/AndroidBridge.kt:setDevLogEnabled",
+      "writePath": "dsh-mobile-apk/app/src/main/java/com/snoworwind/pocketharness/AndroidBridge.kt:setDevLogEnabled",
       "sourceOfTruth": "壳偏好 + 日志目录是否真在写（事实值）",
       "syncPath": "getDevLogEnabled() 目前返回偏好——事实值缺口已登记在 scripts/bridge-symmetry-baseline.json 的 preferenceGetters",
       "evidence": {
@@ -116,12 +116,12 @@
     {
       "id": "notify-ready-gate",
       "holder": "壳侧（EngineStartFlow / OverlayService 通知应答流）",
-      "writePath": "dsh-mobile-apk/app/src/main/java/com/dsharnessmobile/shell/EngineStartFlow.kt",
+      "writePath": "dsh-mobile-apk/app/src/main/java/com/snoworwind/pocketharness/EngineStartFlow.kt",
       "sourceOfTruth": "引擎进程存活 + WS 就绪（其 cookie 依赖 WebView 侧刷新）——纯动作广播冷启动时宿主 UI 未拉起 ⇒ ready 永不来（坑 93）",
       "syncPath": "未就绪不投递：墙钟预算内轮询，宿主 UI 拉起（am start）后 ready 立刻到来并补投（实测 76ms）；预算常量单一来源 ENGINE_BOOT_BUDGET_MS",
       "evidence": {
         "kind": "grep",
-        "file": "dsh-mobile-apk/app/src/main/java/com/dsharnessmobile/shell/EngineStartFlow.kt",
+        "file": "dsh-mobile-apk/app/src/main/java/com/snoworwind/pocketharness/EngineStartFlow.kt",
         "pattern": "ENGINE_BOOT_BUDGET_MS"
       }
     }

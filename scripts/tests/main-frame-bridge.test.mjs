@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs'
 import test from 'node:test'
 import vm from 'node:vm'
 
-const source = readFileSync(new URL('../../app/src/main/java/com/dsharnessmobile/shell/MainFrameBridge.kt', import.meta.url), 'utf8')
+const source = readFileSync(new URL('../../app/src/main/java/com/snoworwind/pocketharness/MainFrameBridge.kt', import.meta.url), 'utf8')
 const match = source.match(/internal\s+val\s+BOOTSTRAP_TEMPLATE\s*=\s*"""([\s\S]*?)"""\.trimIndent\(\)/)
 assert.ok(match, 'extract the production Kotlin bootstrap, not a test-only copy')
 const origin = 'http://127.0.0.1:3080'

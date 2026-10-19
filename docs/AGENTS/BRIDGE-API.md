@@ -190,7 +190,7 @@ JS interface count is checked from source by `scripts/check-bridge-symmetry.mjs`
 |---|---|---|---|
 | 壳 → 引擎 | 带浏览器 Cookie 的原生 HTTP 请求 | `EngineAuth.attach` 两个入口 | 读取凭据前校验精确引擎源并关闭自动重定向；3xx 由调用方读取原始状态，未初始化/无 Cookie 时也施加连接约束。见坑 316。 |
 | 引擎 → 壳 | `execAdbShell/execAdbLine` → `shExec` 屏幕范围门 | bridge `screen-scope.ts` → `ShellOps` | 两侧还原静态 shell 参数，排除注释与重定向落点，并按 Android CLI 的实际参数拼写与位置核对显示目标；受限范围拒绝路径脚本、不可判定包装及多显示器窗口接口。细节与反例见坑 313/314；完整设备验收待完成。 |
-| 引擎 → 壳 | ADBKeyboard 输入/清空广播 | manage → `AdbKeyboardReceiver` | 发送与重试均通过 `am broadcast -n com.dsharnessmobile.shell/.AdbKeyboardReceiver` 显式限定目标，auth nonce 不进入隐式广播。见坑 312。 |
+| 引擎 → 壳 | ADBKeyboard 输入/清空广播 | manage → `AdbKeyboardReceiver` | 发送与重试均通过 `am broadcast -n com.snoworwind.pocketharness/.AdbKeyboardReceiver` 显式限定目标，auth nonce 不进入隐式广播。见坑 312。 |
 | 页面 → 壳 | `getScreenScope()` / `setScreenScope(scope)` | AndroidBridge → MainActivity → `ScreenScopePrefs` | 用户设置唯一写面；wire 值仅 `virtual-only`、`real-only`、`all`，未知值回落 `virtual-only`。模型工具没有 setter。设置页落在开发者选项「屏幕与 Shizuku 控制」。 |
 | 页面 → 壳 | `browserHostStatus/show/hide/reload/bounds/viewport/close/identity` | AndroidBridge → MainActivity → `BrowserHost` | Files 右栏的可信页面把 CSS stage bounds 与视口预设传给壳；第二 WebView 只覆盖该 stage（letterbox rect，不做 CSS 缩放），不挂 JavaScript bridge。`browserHostBounds` 可见挂载1000ms续租、4000ms过期隐藏；hidden/detach停止续租，普通几何消息仍去重。 |
 | 页面 → 壳 | `vdisplayStatus/create/destroy/launchSettingsProbe/backProbe/bounds` | AndroidBridge → MainActivity → `VdisplayController`/`VdisplayHost` | 建屏/销毁/`am start --display` 探针/`input -d` 回退探针/viewer stage 几何。`virtual-1` 建成前一律 `screen-not-ready`，绝不映射 display 0。 |
@@ -233,7 +233,7 @@ bootstrap 调用 `linuxPluginHost.install({directory,entry='lib/index.js',config
 | `linuxAssetPrepare(specJson)` | 入参只有资产清单 `{url, sha256, size}`；**落点由壳侧按摘要推导**（`staging/<sha256>/`），页面无法指定目标路径。立即返回 `{ok, phase}`；不解析清单或来源不合规时当场拒绝。 |
 | `linuxAssetPrepareStatus()` | 读取阶段与失败原因（`phase`/`code`/`detail`/`stagedPath`/`bytes`）。 |
 
-壳侧判据（实现见 `app/src/main/java/com/dsharnessmobile/shell/LinuxAssetIO.kt` 与 `LinuxAssetPrepare.kt`）：只接受 https + 主机白名单（`github.com` / GitHub 资产 CDN）且路径必须是**本仓** Releases 的 `<tag>/<asset>`；重定向**逐跳**复核（不用 `instanceFollowRedirects` 的自动跟随）；`SHA-256` 与**字节数**都要与清单一致；解包复用既有 `SnapshotExtractor`（绝对路径/`..`/符号链接逃逸/解压炸弹上限都在那里）；解包目标与下载目标都由壳侧强制落在 `DSH_FILES_DIR/linux-environment` 内。**除非 Linux 环境在场**（根目录 + bootstrap 状态文件 `linux-bootstrap-state.json`）一律拒绝，故它不是通用下载器。只有全部通过才原子发布成 `staging/<sha256>/`，并把**归档字节留在原地**供引擎侧复验。
+壳侧判据（实现见 `app/src/main/java/com/snoworwind/pocketharness/LinuxAssetIO.kt` 与 `LinuxAssetPrepare.kt`）：只接受 https + 主机白名单（`github.com` / GitHub 资产 CDN）且路径必须是**本仓** Releases 的 `<tag>/<asset>`；重定向**逐跳**复核（不用 `instanceFollowRedirects` 的自动跟随）；`SHA-256` 与**字节数**都要与清单一致；解包复用既有 `SnapshotExtractor`（绝对路径/`..`/符号链接逃逸/解压炸弹上限都在那里）；解包目标与下载目标都由壳侧强制落在 `DSH_FILES_DIR/linux-environment` 内。**除非 Linux 环境在场**（根目录 + bootstrap 状态文件 `linux-bootstrap-state.json`）一律拒绝，故它不是通用下载器。只有全部通过才原子发布成 `staging/<sha256>/`，并把**归档字节留在原地**供引擎侧复验。
 
 **职责边界（2026-10-17 安全修复）**：Kotlin 负责下载与宿主暂存；bootstrap 每次复制归档并复核 SHA-256/字节数，引擎适配器用固定版本 `xz-decompress` 与 `tar-stream` 在进程内重新解码到全新 staging，再核对 unpackedSize、包名与入口。宿主 `unpacked/` 和缓存标记不作为代码来源，不再按总字节数复用槽位；无已准备归档时失败关闭、不自行下载。预检失败只返回本次错误，不修改活动准备任务的状态；活动任务独占 busy，结果绑定代次，执行器或工作体异常也收敛到 failed。HTTP 层在收到明确确认后向真实 bootstrap 传 confirmed（安装/重装另带 activate），不绕过其执行边界确认。
 
@@ -241,3 +241,5 @@ bootstrap 调用 `linuxPluginHost.install({directory,entry='lib/index.js',config
 
 页面状态由 `normalizeLinuxStatus` 映射，同时接受 Bionilux 定稿字段与此前提案字段；其中两条插件 `releaseUrl` 来自 bootstrap 状态（`pluginReleaseUrls` 或 `plugins.*.releaseUrl`），不拼接默认最新版本。Linux rootfs 是 glibc 运行支持，不是安全沙箱；guest root 不等于 Android root；Termux/Bionic Bash 与 Debian/glibc Linux Bash 分开展示，共享 glibc Node 不替换原有 Termux Node。已安装但 runtime 被手工移除时，页面显式显示「自动更新已停用」并要求重新放回并启用，而不是静默停更。内部 bootstrap 成品接线及真实安装验收状态见 `known-gaps.md`。
 
+
+当前 Shizuku 协议为 v5：namespace 与 AIDL descriptor 已统一迁移，服务 version 随协议增加以淘汰旧缓存；v4 引入的 configuration() 与全部 transaction 编号保持不变。升级与验证边界见 NAMESPACE-MIGRATION-2026-10-19.md。

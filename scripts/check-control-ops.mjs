@@ -56,7 +56,7 @@ const exempt = (op, face) => {
 }
 
 // ── 树定位 ──────────────────────────────────────────────────────────────────
-const SHELL_MARK = join('app', 'src', 'main', 'java', 'com', 'dsharnessmobile', 'shell', 'DeviceControlService.kt')
+const SHELL_MARK = join('app', 'src', 'main', 'java', 'com', 'snoworwind', 'pocketharness', 'DeviceControlService.kt')
 const PLUGIN_MARK = join('plugins', 'dsh-android-bridge', 'src', 'control-policy.ts')
 const treeFor = (override, mark, label) => {
   const candidates = override ? [override] : [ROOT, join(ROOT, 'dsh-mobile-apk')]
@@ -114,7 +114,7 @@ const shellHandle = new Set([...handleBlock.matchAll(/^\s*"([A-Za-z]+)"\s*->/gm)
 if (shellHandle.size === 0) failParse('handle 的 when 分支')
 
 // 2) 壳侧 SUPPORTED_OPS
-const proto = readOrDie(join(SHELL_ROOT, 'app', 'src', 'main', 'java', 'com', 'dsharnessmobile', 'shell', 'ControlProtocolV2.kt'))
+const proto = readOrDie(join(SHELL_ROOT, 'app', 'src', 'main', 'java', 'com', 'snoworwind', 'pocketharness', 'ControlProtocolV2.kt'))
 const supportedBlock = arrayBlock(proto, 'val SUPPORTED_OPS', 'listOf(', ')')
 if (supportedBlock === null) failParse('ControlProtocolV2.SUPPORTED_OPS')
 const shellSupported = new Set(quoted(supportedBlock))
@@ -140,7 +140,7 @@ const routeOps = new Set(quoted(routeBlock))
 // 这一面此前**完全没被门禁覆盖**，后果不是「拒绝服务」而是**误导性错误**：
 // browserTabs（= browser_list_tabs）漏登记时，op 落进 a11y 分支，模型收到「需要无障碍服务支持」
 // ——它与无障碍毫无关系，于是模型去开无障碍。同类漏登记必须由门禁挡住。
-const carrier = readOrDie(join(SHELL_ROOT, 'app', 'src', 'main', 'java', 'com', 'dsharnessmobile', 'shell', 'ControlCarrier.kt'))
+const carrier = readOrDie(join(SHELL_ROOT, 'app', 'src', 'main', 'java', 'com', 'snoworwind', 'pocketharness', 'ControlCarrier.kt'))
 const carrierOps = new Set()
 for (const symbol of ['BROWSER_OPS', 'VD_OPS', 'SHELL_OPS']) {
   const block = arrayBlock(carrier, 'val ' + symbol, 'setOf(', ')')

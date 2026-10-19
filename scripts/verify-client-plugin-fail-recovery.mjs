@@ -465,7 +465,7 @@ async function engineAlive() {
 async function restartApp() {
   sh('am force-stop ' + PKG)
   await sleep(1500)
-  const launch = spawnSync('adb', ['-s', SERIAL, 'shell', 'am start -W -n ' + PKG + '/com.dsharnessmobile.shell.MainActivity'], { encoding: 'utf8' })
+  const launch = spawnSync('adb', ['-s', SERIAL, 'shell', 'am start -W -n ' + PKG + '/com.snoworwind.pocketharness.MainActivity'], { encoding: 'utf8' })
   if (launch.status !== 0 || /(?:Error:|Error type \d+|Exception)/i.test((launch.stdout || '') + (launch.stderr || ''))) {
     throw new Error('应用重启失败：' + (launch.stderr || launch.stdout || launch.error || 'adb unavailable'))
   }
@@ -544,7 +544,7 @@ async function main() {
 
   // ── P2 重启应用（latch 与一次性预算都是本进程状态，必须整进程重启）──
   await restartApp()
-  record('P2 应用已重启', 'PASS', 'am force-stop + am start -n ' + PKG + '/com.dsharnessmobile.shell.MainActivity')
+  record('P2 应用已重启', 'PASS', 'am force-stop + am start -n ' + PKG + '/com.snoworwind.pocketharness.MainActivity')
 
   // ── P3 判据 1：页面发布契约行 ──
   const t0 = Date.now()

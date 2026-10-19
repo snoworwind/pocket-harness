@@ -212,7 +212,7 @@ try {
     || canvasBytes[5] !== 1 || canvasBytes.readUInt16LE(18) !== 183) {
     throw new Error('Canvas Android module is not an AArch64 ELF file')
   }
-  const launcher = readFileSync('app/src/main/java/com/dsharnessmobile/shell/EngineManager.kt', 'utf8')
+  const launcher = readFileSync('app/src/main/java/com/snoworwind/pocketharness/EngineManager.kt', 'utf8')
   if (!launcher.includes('"--expose-internals"')) {
     throw new Error('the Android engine no longer exposes Node internals for the JavaScript loader fallback')
   }

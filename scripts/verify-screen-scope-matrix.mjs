@@ -413,7 +413,7 @@ async function main() {
       `刷新期间禁跑验收；先等快照完成（marker 探测输出：${tx.trim().slice(0, 120) || '(空)'}）`)
     process.exit(2)
   }
-  run('am start -n com.snoworwind.pocketharness/com.dsharnessmobile.shell.MainActivity')
+  run('am start -n com.snoworwind.pocketharness/com.snoworwind.pocketharness.MainActivity')
   await new Promise((r) => setTimeout(r, 2500))
 
   let scope

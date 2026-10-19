@@ -127,7 +127,7 @@ if (p1Ok) {
   const shellParser = (() => {
     // 布局无关：协调仓根用 dsh-mobile-apk/...；apk 自包含根落到同名相对路径。
     // 本文件下方的 resolveRepoPath 定义在更后面，故此处就地解析（避免 TDZ）。
-    const rel = 'dsh-mobile-apk/app/src/main/java/com/dsharnessmobile/shell/LogCollector.kt'
+    const rel = 'dsh-mobile-apk/app/src/main/java/com/snoworwind/pocketharness/LogCollector.kt'
     const cands = [rel, rel.slice('dsh-mobile-apk/'.length)]
     const hit = cands.find((c) => existsSync(join(ROOT, c)))
     return hit ? readFileSync(join(ROOT, hit), 'utf8') : null

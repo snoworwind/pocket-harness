@@ -4,7 +4,7 @@
 
 ## 1. 机制（EngineManager.kt）
 
-- **路径速查**：解压根为filesDir（usr/home），目标包根由EngineManager.applyRuntimePatches构造；见 [源码入口](<dsh-mobile-apk/app/src/main/java/com/dsharnessmobile/shell/EngineManager.kt#L1025-L1065>)。
+- **路径速查**：解压根为filesDir（usr/home），目标包根由EngineManager.applyRuntimePatches构造；见 [源码入口](<dsh-mobile-apk/app/src/main/java/com/snoworwind/pocketharness/EngineManager.kt#L1025-L1065>)。
 - **触发时机**：每次startEngine真正spawn前调用applyRuntimePatches；快照刷新后重新比对，幂等。
 - **覆盖式全量替换**：applyAssetPatch读取完整asset并整文件写入目标，不是delta/行级补丁。
 - **内容指纹判定**：目标存在且contentEquals资产才跳过；固定marker不能替代字节对账，历史旧marker曾掩盖新资产。

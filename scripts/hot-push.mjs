@@ -103,7 +103,7 @@ console.log('HOT-PUSH OK（' + files.length + ' 文件 × ' + PROFILE_ROOTS.leng
 
 if (RESTART) {
   console.log('重启应用以让引擎重读快照树…')
-  for (const command of ['am force-stop ' + APP_ID, 'am start -W -n ' + APP_ID + '/com.dsharnessmobile.shell.MainActivity']) {
+  for (const command of ['am force-stop ' + APP_ID, 'am start -W -n ' + APP_ID + '/com.snoworwind.pocketharness.MainActivity']) {
     const result = adb(['shell', command])
     if (result.status !== 0 || /(?:Error:|Error type \d+|Exception)/i.test((result.stdout || '') + (result.stderr || ''))) {
       console.error('重启失败：' + (result.stderr || result.stdout || result.error || 'adb unavailable'))

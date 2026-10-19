@@ -7,7 +7,7 @@ val pocketReleaseSigningAvailable = !providers.environmentVariable("POCKET_SIGNI
   !providers.environmentVariable("POCKET_SIGNING_KEYSTORE_PASSWORD").orNull.isNullOrBlank()
 
 android {
-  namespace = "com.dsharnessmobile.shell"
+  namespace = "com.snoworwind.pocketharness"
   compileSdk = 36
 
   defaultConfig {

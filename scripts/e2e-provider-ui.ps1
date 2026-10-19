@@ -71,7 +71,7 @@ function ConvertFrom-SecureApiKey([System.Security.SecureString]$value) {
 Write-Output "== 1. 前置：应用置前台（要求从聊天页开始；若停在设置/表单里请先手动 BACK 或重开应用）=="
 adb -s $Serial shell input keyevent 3 | Out-Null
 Start-Sleep -Milliseconds 700
-adb -s $Serial shell am start -n com.snoworwind.pocketharness/com.dsharnessmobile.shell.MainActivity | Out-Null
+adb -s $Serial shell am start -n com.snoworwind.pocketharness/com.snoworwind.pocketharness.MainActivity | Out-Null
 Start-Sleep -Seconds 3
 Shot "start"
 

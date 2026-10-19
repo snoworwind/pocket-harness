@@ -192,7 +192,7 @@ if (manifest) {
     const protectedOnly = actions.length > 0 && actions.every((a) => PROTECTED_SYSTEM_ACTIONS.has(a))
     if (protectedOnly && entry?.guard !== 'source-check') continue
     if (kind === 'receiver') {
-      const cls = join(MAIN, 'java', 'com', 'dsharnessmobile', 'shell', name.replace(/^\./, '') + '.kt')
+      const cls = join(MAIN, 'java', 'com', 'snoworwind', 'pocketharness', name.replace(/^\./, '') + '.kt')
       const src = read(cls)
       if (src !== null && hasTrustedSenderCall(src)) continue
       unguarded.push(name + '（无 android:permission，且源码无 isTrustedSender 调用）')
@@ -265,7 +265,7 @@ if (nscText !== null) {
   check('反向对照：base=false + 回环 domain=true（0.14.0 语义）不被本判据误伤',
     !(legacyBase === 'true' && legacyPer.length > 0))
   // 跨层不变式的接线（实现与真实函数调用在 JVM 测试里，这里只守「测试没被删」）。
-  const xlayer = join(MAIN, '..', 'test', 'java', 'com', 'dsharnessmobile', 'shell', 'BrowserHostCleartextConsistencyTest.kt')
+  const xlayer = join(MAIN, '..', 'test', 'java', 'com', 'snoworwind', 'pocketharness', 'BrowserHostCleartextConsistencyTest.kt')
   const xlayerText = read(xlayer)
   check('跨层明文一致性测试在场（准入面放行 http ⇔ NSC 撑开明文）', xlayerText !== null)
   if (xlayerText !== null) {

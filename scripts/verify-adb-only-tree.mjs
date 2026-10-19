@@ -75,7 +75,7 @@ function selfTest() {
   if (topOnDisplay0(dump) !== 'com.android.settings') { failed++; console.error('SELF-TEST FAIL：display 0 前台解析') }
   if (topOnDisplay0('') !== '') { failed++; console.error('SELF-TEST FAIL：空输入必须为空串') }
   if (topOnDisplay0('    topResumedActivity=ActivityRecord{1 u0 a/.M t1}') !== '') { failed++; console.error('SELF-TEST FAIL：无 Display 锚点不得猜屏') }
-  if (a11yBound('Bound services:{Service[1]\n  com.snoworwind.pocketharness/com.dsharnessmobile.shell.DeviceControlService}', 'com.snoworwind.pocketharness') !== true) { failed++; console.error('SELF-TEST FAIL：a11y 绑定判定') }
+  if (a11yBound('Bound services:{Service[1]\n  com.snoworwind.pocketharness/com.snoworwind.pocketharness.DeviceControlService}', 'com.snoworwind.pocketharness') !== true) { failed++; console.error('SELF-TEST FAIL：a11y 绑定判定') }
   if (failed > 0) { console.error(`VERIFY-ADB-ONLY-TREE SELF-TEST FAILED（${failed}）`); process.exit(1) }
   console.log('VERIFY-ADB-ONLY-TREE SELF-TEST PASSED（4 例：前台解析 / 空输入 / 无锚点 fail-closed / a11y 绑定）')
 }
@@ -166,7 +166,7 @@ async function main() {
   if (!fp.includes('.snapshot-fingerprint') || !/No such file/.test(tx)) {
     record('快照就绪', 'INCONCLUSIVE', '刷新期间禁跑验收'); process.exit(2)
   }
-  sh('am start -n com.snoworwind.pocketharness/com.dsharnessmobile.shell.MainActivity')
+  sh('am start -n com.snoworwind.pocketharness/com.snoworwind.pocketharness.MainActivity')
   await new Promise((r) => setTimeout(r, 2500))
   const a11y = a11yBound(sh('dumpsys accessibility'), 'com.snoworwind.pocketharness')
   if (a11y) {

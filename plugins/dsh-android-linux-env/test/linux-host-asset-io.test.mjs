@@ -389,7 +389,7 @@ test('refuses when a rebuild is needed and the retained archive no longer matche
 test('the JS staging derivation agrees with the Kotlin publisher verbatim', async () => {
   // 从**本文件位置**解析仓根：测试的 cwd 由 runner 决定，不能用相对 cwd 的路径。
   const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..')
-  const shell = join(repoRoot, 'app', 'src', 'main', 'java', 'com', 'dsharnessmobile', 'shell')
+  const shell = join(repoRoot, 'app', 'src', 'main', 'java', 'com', 'snoworwind', 'pocketharness')
   const kotlinIo = await readFile(join(shell, 'LinuxAssetIO.kt'), 'utf8')
   const kotlinPrepare = await readFile(join(shell, 'LinuxAssetPrepare.kt'), 'utf8')
 
