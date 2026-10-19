@@ -78,6 +78,18 @@ test('verifyLock accepts the exact lock and rejects key drift', () => {
   }
 })
 
+test('engine-only locks do not require unrelated component inputs', () => {
+  const root = fixture()
+  try {
+    const full = lockFor(root)
+    const lock = { schema: SCHEMA, components: { engine: { ...full.components.engine, toolchain: TOOLCHAIN } } }
+    rmSync(join(root, 'vendor/bionilux'), { recursive: true })
+    assert.deepEqual(verifyLock(root, lock), { engine: computeComponentKeys(root, TOOLCHAIN, ['engine']).engine })
+    assert.throws(() => verifyLock(root, { schema: 1, components: {} }), /components missing/)
+    assert.throws(() => verifyLock(root, { schema: 1, components: { unknown: {} } }), /unknown component/)
+  } finally { rmSync(root, { recursive: true, force: true }) }
+})
+
 test('verifyManifest binds lock, manifest, and every output byte', () => {
   const root = fixture()
   try {

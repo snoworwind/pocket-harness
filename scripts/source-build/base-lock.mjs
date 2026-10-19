@@ -7,7 +7,7 @@
  * This file is intentionally workflow-agnostic. Stage 2 wires it into build-base.yml.
  */
 import { createHash } from 'node:crypto'
-import { existsSync, lstatSync, readFileSync, readdirSync, readlinkSync } from 'node:fs'
+import { existsSync, lstatSync, readFileSync, readdirSync, readlinkSync, realpathSync } from 'node:fs'
 import { join, resolve, sep } from 'node:path'
 
 export const SCHEMA = 1
@@ -21,6 +21,9 @@ export const COMPONENTS = Object.freeze({
     'scripts/snapshot-config/engine-overlay-licenses.json',
     'scripts/patches',
     'scripts/source-build/build-engine.sh',
+    'scripts/source-build/engine-base.mjs',
+    'scripts/source-build/base-archive.py',
+    'scripts/source-build/engine-toolchain.json',
     'scripts/source-build/export-dsh-engine.mjs',
     'scripts/source-build/inject-dsh-engine-packages.mjs',
     'scripts/source-build/prepare-harness-vendor-overrides.py',
@@ -29,6 +32,10 @@ export const COMPONENTS = Object.freeze({
     'scripts/source-build/materialize-dsh-pnpm-packages.mjs',
     'scripts/source-build/prepare-pnpm-deploy-policy.py',
     'scripts/source-build/prepare-pnpm-deploy-runtime-closure.mjs',
+    'scripts/source-build/normalize-snapshot.mjs',
+    'scripts/source-build/check-dsh-runtime-dependencies.mjs',
+    'scripts/source-build/prepare-marketplace-metadata.mjs',
+    'vendor/dshmarketplace-plugin/package.json',
   ],
   termux: [
     'scripts/contract.json',
@@ -95,10 +102,12 @@ export function hashInputs(root, paths) {
 }
 
 /** Compute all component keys. Toolchain must be supplied by CI for stable keys. */
-export function computeComponentKeys(root, toolchain = {}) {
+export function computeComponentKeys(root, toolchain = {}, components = Object.keys(COMPONENTS)) {
   const meta = canonicalJson({ schema: SCHEMA, toolchain })
   const keys = {}
-  for (const [component, paths] of Object.entries(COMPONENTS)) {
+  for (const component of components) {
+    if (!Object.hasOwn(COMPONENTS, component)) fail('unknown component: ' + component)
+    const paths = COMPONENTS[component]
     const inputs = hashInputs(root, paths)
     keys[component] = hashComponents([component, meta, inputs.sha256])
   }
@@ -118,9 +127,11 @@ export function keyName(component, hex) {
 /** Validate lock shape and recompute keys; any drift fails closed. */
 export function verifyLock(root, lock, toolchain = {}) {
   if (!lock || lock.schema !== SCHEMA) fail('unsupported lock schema')
-  if (!lock.components || typeof lock.components !== 'object') fail('lock.components missing')
-  const keys = computeComponentKeys(root, toolchain)
-  for (const component of Object.keys(COMPONENTS)) {
+  if (!lock.components || typeof lock.components !== 'object' || Array.isArray(lock.components) || !Object.keys(lock.components).length) fail('lock.components missing')
+  const components = Object.keys(lock.components)
+  const keys = Object.fromEntries(components.map(component => [component,
+    computeComponentKeys(root, lock.components[component]?.toolchain ?? toolchain, [component])[component]]))
+  for (const component of components) {
     const entry = lock.components[component]
     if (!entry) fail('lock missing component: ' + component)
     if (entry.key !== keyName(component, keys[component])) fail(component + ' key drifted; update base-lock.json')
@@ -130,7 +141,7 @@ export function verifyLock(root, lock, toolchain = {}) {
 }
 
 function safeOutputPath(root, relPath) {
-  if (typeof relPath !== 'string' || !relPath || relPath.startsWith('/') || relPath.split('/').includes('..')) {
+  if (typeof relPath !== 'string' || !relPath || /[\\:]/.test(relPath) || relPath.startsWith('/') || relPath.split('/').some(part => !part || part === '.' || part === '..')) {
     fail('unsafe manifest output path: ' + String(relPath))
   }
   const target = resolve(root, relPath)
@@ -149,12 +160,22 @@ export function verifyManifest(root, lock, component, manifestPath, artifactDir)
   if (manifest.schema !== SCHEMA) fail('unsupported manifest schema')
   if (manifest.component !== component) fail('manifest component mismatch')
   if (manifest.key !== entry.key) fail('manifest key mismatch')
-  if (!Array.isArray(manifest.outputs)) fail('manifest outputs missing')
+  if (entry.toolchain && canonicalJson(manifest.toolchain) !== canonicalJson(entry.toolchain)) fail('manifest toolchain mismatch')
+  if (entry.sourceCommit && manifest.sourceCommit !== entry.sourceCommit) fail('manifest source commit mismatch')
+  if (entry.buildRun && manifest.buildRun !== entry.buildRun) fail('manifest build run mismatch')
+  if (!Array.isArray(manifest.outputs) || !manifest.outputs.length) fail('manifest outputs missing')
+  const artifactRoot = realpathSync(artifactDir)
+  const seen = new Set()
   for (const output of manifest.outputs) {
+    if (seen.has(output.path)) fail('duplicate manifest output: ' + output.path)
+    seen.add(output.path)
+    if (!Number.isSafeInteger(output.size) || output.size < 0 || !/^[a-f0-9]{64}$/.test(output.sha256 ?? '')) fail('invalid manifest output metadata')
     const target = safeOutputPath(resolve(artifactDir), output.path)
     if (!existsSync(target)) fail('manifest output missing: ' + output.path)
     const info = lstatSync(target)
     if (!info.isFile()) fail('manifest output is not a file: ' + output.path)
+    const physical = realpathSync(target)
+    if (!physical.startsWith(artifactRoot + sep)) fail('manifest output escaped artifact dir: ' + output.path)
     if (info.size !== output.size) fail('manifest output size mismatch: ' + output.path)
     if (hashFile(target) !== output.sha256) fail('manifest output sha256 mismatch: ' + output.path)
   }

@@ -305,3 +305,7 @@ engine 的 checkout/upstream/overlay/patches/build/deploy 步骤集中到 `scrip
 ### pi-ai 目录身份（2026-10-19）
 
 `gen-model-catalog.mjs` 读取厂商条目声明的 `id`，不能把 pi-ai 1.1 的 `chat:<id>` 索引当成模型 id。构建后用真实生成目录跑插件测试；最小夹具不能代替这一层。根因及负控见 `gotchas.md` 坑 450。
+
+## Engine base 复用（2026-10-19）
+
+`build-base.yml` 只跑 engine：`engine-base.mjs plan` 固定 key、`build-engine.sh` 构建、双 replica 各自 `capture`，`compare` 对实际输出树逐文件比对后才发 `base-lock.candidate.json` 并写 cache。`build-apk-source.yml` 用同一 key 恢复；命中则 `materialize`，未命中且锁可信时失败关闭，无锁时才从源码构建。`base-lock.json` 是仓内信任根；base 不含 APK、签名密钥或项目插件产物。

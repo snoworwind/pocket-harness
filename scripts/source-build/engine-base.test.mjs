@@ -1,0 +1,116 @@
+import test from 'node:test'
+import assert from 'node:assert/strict'
+import { execFileSync } from 'node:child_process'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync, existsSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { dirname, join } from 'node:path'
+import { COMPONENTS } from './base-lock.mjs'
+import { capture, checkPayload, makePlan, materialize, publishCandidate, rebase, requireMain, verifyTrusted } from './engine-base.mjs'
+
+const runtime = { node: '24.21.0', pnpm: '11.28.5', deploymentPnpm: '12.2.0', localDevelopment: true }
+const env = { GITHUB_RUN_ID: 'local-test-1' }
+const gitEnv = { ...process.env, GIT_AUTHOR_DATE: '2026-01-01T00:00:00Z', GIT_COMMITTER_DATE: '2026-01-01T00:00:00Z' }
+const git = (root, ...args) => execFileSync('git', ['-C', root, ...args], { env: gitEnv, stdio: 'pipe' }).toString().trim()
+function write(root, path, body = 'fixture\n') { mkdirSync(dirname(join(root, path)), { recursive: true }); writeFileSync(join(root, path), body) }
+function fixture(fn) {
+  const root = mkdtempSync(join(tmpdir(), 'engine-base-test-'))
+  try {
+    for (const path of COMPONENTS.engine) {
+      if (/\.(mjs|sh|py|json)$/.test(path)) write(root, path, path + '\n')
+      else write(root, path + '/fixture.txt')
+    }
+    write(root, '.gitignore', '.deploy-tmp/\n')
+    git(root, 'init', '-q', '--initial-branch=main')
+    git(root, 'config', 'user.name', 'Fixture'); git(root, 'config', 'user.email', 'fixture@example.invalid')
+    git(root, 'add', '.'); git(root, 'commit', '-qm', 'fixture')
+    return fn(root)
+  } finally { rmSync(root, { recursive: true, force: true }) }
+}
+
+function built(root) {
+  write(root, '.deploy-tmp/engine-deploy/lib/bin.js', 'export const built = true\n')
+  write(root, '.deploy-tmp/engine-deploy/node_modules/.modules.yaml', root)
+  write(root, '.deploy-tmp/engine-overlay/source-build-manifest.json', '{}')
+  write(root, '.deploy-tmp/deepseek-harness/lib/built.js', 'export const built = true\n')
+  write(root, '.deploy-tmp/deepseek-harness/node_modules/ignored.js', root)
+  write(root, '.deploy-tmp/deepseek-harness/.git/config', root)
+  write(root, 'vendor/dshmarketplace-plugin/lib/index.js')
+  write(root, '.deploy-tmp/component-sources/dshmarketplace-plugin-0.1.7.tgz')
+  const reports = ['engine-overlay.original.json', 'effective-engine-overlay.json', 'source-build-policy.json',
+    'harness-vendor-overrides.json', 'harness-vendor-lock-reconciliation.json', 'harness-build-script-exclusion.json',
+    'pnpm-deploy-build-policy.json', 'pnpm-deploy-runtime-closure.json', 'first-party-deploy-injection.json',
+    'marketplace-metadata-delta.json', 'harness-web-preview-exclusion.json']
+  for (const name of reports) write(root, '.deploy-tmp/source-build/' + name, JSON.stringify({ workspace: root + '/source' }))
+  for (const name of ['engine-overlay.original.json', 'effective-engine-overlay.json']) write(root, '.deploy-tmp/source-build/' + name, '{"engineVersion":"fixture"}\n')
+  for (const name of ['harness-pnpm-lock.original.yaml', 'harness-root-package.json.original', 'pnpm-deploy-runtime-closure.lock.yaml']) write(root, '.deploy-tmp/source-build/' + name)
+  write(root, '.deploy-tmp/source-build/package-manager-versions.txt', '11.28.5\ndeployment pnpm: 12.2.0\n')
+}
+
+test('main/commit guards reject feature branches and PR contexts', () => fixture(root => {
+  assert.equal(requireMain(root, env), git(root, 'rev-parse', 'HEAD'))
+  assert.throws(() => requireMain(root, { GITHUB_ACTIONS: 'true', GITHUB_REF: 'refs/pull/1/merge' }), /main workflow/)
+  git(root, 'switch', '-qc', 'feature')
+  assert.throws(() => makePlan(root, runtime, env), /attached main/)
+}))
+
+test('content key ignores unrelated commits but rejects modified build inputs', () => fixture(root => {
+  const first = makePlan(root, runtime, env)
+  write(root, 'notes.md'); git(root, 'add', 'notes.md'); git(root, 'commit', '-qm', 'docs')
+  const second = makePlan(root, runtime, env)
+  assert.equal(second.key, first.key)
+  assert.notEqual(second.sourceCommit, first.sourceCommit)
+  write(root, 'scripts/source-build/build-engine.sh', 'changed\n')
+  assert.throws(() => makePlan(root, runtime, env))
+}))
+
+test('receipt rebasing only changes exact workspace paths', () => {
+  assert.deepEqual(rebase({ x: ['/old/a', '/older/a', 'file:///old/a'] }, '/old', '${WORKSPACE}'),
+    { x: ['${WORKSPACE}/a', '/older/a', 'file://${WORKSPACE}/a'] })
+})
+
+test('actual archive comparison binds trees and refuses changed output bytes', { skip: process.platform !== 'linux' }, () => fixture(a => fixture(b => {
+  const plan = makePlan(a, runtime, env)
+  built(a); built(b)
+  const primary = join(a, '.deploy-tmp/artifact'), reference = join(b, '.deploy-tmp/artifact')
+  const first = capture(a, plan, primary, plan.buildRun, 'primary', env)
+  const second = capture(b, plan, reference, plan.buildRun, 'reference', env)
+  assert.equal(first.treeSha256, second.treeSha256)
+  assert.equal(checkPayload(primary, first), true)
+  const out = join(a, '.deploy-tmp/candidate')
+  const entry = publishCandidate(a, plan, primary, reference, out, env)
+  assert.equal(entry.key, plan.key)
+  assert.ok(existsSync(join(out, 'base-lock.candidate.json')))
+  const lock = JSON.parse(readFileSync(join(out, 'base-lock.candidate.json'), 'utf8'))
+  assert.equal(verifyTrusted(a, lock, out).key, plan.key)
+  assert.throws(() => verifyTrusted(a, { ...lock, components: { engine: { ...entry, key: 'engine-v1-wrong' } } }, out), /key drifted/)
+  const file = join(reference, second.outputs[0].path)
+  const bytes = readFileSync(file); bytes[bytes.length - 1] ^= 1; writeFileSync(file, bytes)
+  assert.throws(() => publishCandidate(a, plan, primary, reference, join(a, '.deploy-tmp/poisoned'), env), /sha256 mismatch/)
+})))
+
+test('independent output drift fails instead of publishing a candidate', { skip: process.platform !== 'linux' }, () => fixture(a => fixture(b => {
+  const plan = makePlan(a, runtime, env)
+  built(a); built(b)
+  write(b, '.deploy-tmp/engine-deploy/lib/bin.js', 'changed output\n')
+  const primary = join(a, '.deploy-tmp/artifact'), reference = join(b, '.deploy-tmp/artifact')
+  capture(a, plan, primary, plan.buildRun, 'primary', env)
+  capture(b, plan, reference, plan.buildRun, 'reference', env)
+  assert.throws(() => publishCandidate(a, plan, primary, reference, join(a, '.deploy-tmp/candidate'), env), /output trees differ/)
+})))
+
+test('materialize restores only a trusted payload', { skip: process.platform !== 'linux' }, () => fixture(a => fixture(b => {
+  const plan = makePlan(a, runtime, env)
+  built(a); built(b)
+  const primary = join(a, '.deploy-tmp/artifact'), reference = join(b, '.deploy-tmp/artifact')
+  capture(a, plan, primary, plan.buildRun, 'primary', env)
+  capture(b, plan, reference, plan.buildRun, 'reference', env)
+  const out = join(a, '.deploy-tmp/candidate')
+  const entry = publishCandidate(a, plan, primary, reference, out, env)
+  writeFileSync(join(a, 'base-lock.json'), JSON.stringify({ schema: 1, components: { engine: entry } }))
+  materialize(a, out, env)
+  assert.ok(existsSync(join(a, '.deploy-tmp/engine-deploy/lib/bin.js')))
+  assert.ok(existsSync(join(a, '.deploy-tmp/source-build/source-build-policy.json')))
+  assert.ok(existsSync(join(a, 'vendor/dshmarketplace-plugin/lib/index.js')))
+  writeFileSync(join(a, 'base-lock.json'), JSON.stringify({ schema: 1, components: { engine: { ...entry, key: 'engine-v1-wrong' } } }))
+  assert.throws(() => materialize(a, out, env), /key drifted/)
+})))
