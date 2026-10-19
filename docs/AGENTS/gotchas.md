@@ -2762,3 +2762,15 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 441. **namespace 全迁移不能只改 package：AIDL 缓存与组件简写同时改变（2026-10-19）**
 
     现象：只替换 Kotlin package 会留下旧目录/门禁锚点、Root 入口和插件组件；即使编译通过，Shizuku 旧 descriptor 缓存与系统同包简写仍可能使设备链路断开。真因：安装身份、类名、Binder descriptor 和系统持久组件各自演进。修法：四组源码目录与所有调用/定位引用同步迁移；Shizuku 协议升至 5；IME/无障碍同时认新完整名与简写、拒绝旧类。身份回归新增目录/声明一致性、旧路径/旧 AIDL 反例及服务缓存失效约束。前后完整检查、环境纠正与设备未验收边界见 NAMESPACE-MIGRATION-2026-10-19.md，不以宿主通过代替升级安装验收。
+
+442. **引擎换版不能只换版本号：包管理器和构建图也会变（2026-10-19）**
+
+    现象：0.2.1 已改 pnpm 11.28.5 和官方分步 builder；旧 Corepack 在 VM 内加载 pnpm 失败，Node 22 native TS loader 拒绝 tsdown.config.ts，旧 recursive bundle 因实际循环依赖被新版 pnpm 拒绝。真因：原来源链把旧脚本结构与工具版本当成长期不变量。修法：固定 Corepack，Node 24 带匹配头文件；使用官方 native/Host libraries/Client compiler/Client bundle/Web 阶段，不改根 manifest。复验：官方源码全 blob 核对，345 包实际源码构建导出；来源 Node 129 与 Python 21 项通过，缺 compiler/旧包管理器/旧 builder 负控判红。完整记录见 ENGINE-UPGRADE-2026-10-19.md；未做设备验证。
+
+443. **PTC 新增持久 worker 后，只重锚一次执行会留下第二条 Android 失败路径（2026-10-19）**
+
+    现象：0.2.1 的一次执行已适配，但 PersistentKernel 自己解析 executable、构造 argv 并 spawn；它和 persistent-process.js 都不经过旧 A1 双目标。真因：把包入口当成单一执行路径，并遗漏新增 companion。修法：A1 改为三产物完整 plan，持久路径同样执行可信 linker 前缀、宿主 heap 与原生白名单；两 child 清模型环境；每条 enforcing argv 与精确 spawn 数同时验证。复验：15 项真实构建产物行为/反证，含受限 confine 拒绝、取消、秘密清理、缺 companion 和第三 spawn；24/24 补丁真实命中。设备为空，未声称 Android 运行通过。
+
+444. **bootstrap 依赖升级遗漏来源字节登记，独立资产 CI 正确拒绝（2026-10-19）**
+
+    现象：引擎升级 PR 的 Linux validate 在 package.json 摘要处失败。真因：bootstrap 的 Cordis 与真实 lock 已更新，linux-source-manifest 的 additionalSources/files 两份受审映射仍绑定旧字节；仅重建 lib 不会同步来源登记。修法：对这两个已审查的依赖输入同步实际 SHA，localPatches 明记 0.2.1/Cordis 变更原因，保持原始 upstreamSha256、源仓提交与拒绝判据不变。复验：check-linux-sources --self-test 的完整源码正控、同体积投毒/额外输入及行尾负控均通过；失败 run 39221768021 保留，不以重封原上游 hash 洗绿。未做设备验证。

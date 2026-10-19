@@ -9,6 +9,34 @@ const expected = "name: build-apk\non:\n  workflow_dispatch:\n    inputs:\n     
 const check = text => assert.equal(text.split('\n').filter(line => line.trim() && !line.trimStart().startsWith('#')).join('\n').trim(), expected.replace(/(    uses: [^\n]+)/g, '$1\n    secrets: inherit'))
 test('cloud entry routes both modes exclusively through same-commit source workflows', () => check(entry))
 
+function checkEngine021Build(source) {
+  assert.match(source, /packageManager!=="pnpm@11\.28\.5"/)
+  assert.match(source, /npm install -g corepack@0\.36\.0 --ignore-scripts/)
+  const start = source.indexOf('          corepack pnpm run build:native-system')
+  const end = source.indexOf('          # Audit all overlay-pinned vendor', start)
+  assert.ok(start > 0 && end > start)
+  const build = source.slice(start, end)
+  const steps = ['run build:native-system', 'exec tsx scripts/compile-referenced-projects.ts host-libraries',
+    'exec tsx scripts/compile-referenced-projects.ts client', 'exec tsdown --config-loader native --env.DSH_BUILD_FACE client', 'run build:web', 'git diff --exit-code']
+  let previous = -1
+  for (const step of steps) {
+    const position = build.indexOf(step)
+    assert.ok(position > previous, 'required official artifact step/order: ' + step)
+    previous = position
+  }
+  assert.doesNotMatch(source.slice(source.indexOf('          cd .deploy-tmp/deepseek-harness'), end), /fs\.writeFileSync\(path, temporary\)|corepack pnpm --recursive --if-present run bundle|corepack pnpm run build\n/)
+}
+
+test('0.2.1 source build follows official artifact stages without rewriting upstream manifests', () => checkEngine021Build(read('build-apk-source.yml')))
+test('negative controls reject a missing source compiler, stale package manager and obsolete recursive builder', () => {
+  const source = read('build-apk-source.yml')
+  for (const bad of [source.replace('exec tsx scripts/compile-referenced-projects.ts client', 'exec true'),
+    source.replace('pnpm@11.28.5', 'pnpm@11.7.0'),
+    source.replace('          corepack pnpm run build:web', '          corepack pnpm --recursive --if-present run bundle\n          corepack pnpm run build:web')]) {
+    assert.throws(() => checkEngine021Build(bad), assert.AssertionError)
+  }
+})
+
 test('source workflow rejects tags, PR refs and feature branches before checkout or secrets', { skip: process.platform !== 'linux' }, () => {
   const source = read('build-apk-source.yml')
   const start = source.indexOf('      - name: Require the maintained source branch')

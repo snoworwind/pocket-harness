@@ -14,15 +14,15 @@
 
 ## 2. 文件逐项登记
 
-第二轮未改变本节历史 APK 资产；新增市场补丁属于构建期 vendor 变换，实测字节与登记见 §7.1，不得把本节历史资产表当作本轮 APK 证据。
+本节登记当前树内覆盖资产；2026-10-19 从本轮官方 0.2.1-rc.2 源码产物经过完整补丁链重出。来源与代码行为证据见 [升级记录](ENGINE-UPGRADE-2026-10-19.md)，最终 APK 同源性与设备验收尚不能由本表证明。
 
-目标根为快照内usr/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai；下表尺寸来自明确历史批次。注册入口现在为applyRuntimePatches，旧注册行号不再作为当前锚点。
+目标根为快照内 usr/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai；下表尺寸为当前树实测，注册入口为 applyRuntimePatches。
 
 | asset 文件（字节） | 目标快照路径（注册行） | 状态 | 作用 / 来源线索 |
 |---|---|---|---|
-| attachment-local-index.js（**47,937**，2026-09-24 按 0.1.7-rc.1 快照重建） | dsh-attachment-local/lib/index.js（applyRuntimePatches） | 生效 | 0.13.7 重出（引擎 0.1.5-rc.1）+ 0.14.2 随引擎 0.1.7-rc.1 换代重建（§7.4）+ 0.14.0 review C1：**与构建期 `attach-durable-F2` 逐字节同源**（F2 已扩为三件套：祖先 fsync 守卫 + 两处 link(2)→rename 回退 + unlink ENOENT 容忍）；内含图片归一化 2048 降采样上限（`DEFAULT_NORMALIZED_IMAGE_MAX_DIMENSION = 2048`）。补丁判定走内容指纹而非内嵌标记 |
-| session-persistence-jsonl-index.js（**145,247**，2026-09-24 按 0.1.7-rc.1 快照重建） | dsh-session-persistence-jsonl/lib/index.js（applyRuntimePatches） | 生效 | 0.13.7 重出 + 0.13.8-b 追加 F5/F7（与构建期同源）+ 0.14.2 随引擎 0.1.7-rc.1 换代重建（§7.4）：两处 link(2) 站点带 EACCES/EPERM/ENOTSUP → rename 回退，发布独占语义由模块级 `dshMobileClaimExclusive/ReleaseClaim` 恢复（O_EXCL 占位 + 失败回收）。**0.14.0 review C1 实锤**：v0.14.0-preview 资产曾是「内联占位 + helper 占位」双占位坏版本（恒 EEXIST 恒 false，旧会话迁移永久失败并留 0 字节毒文件）——修复 = F7 补丁增加 v1→v2 收敛分支 + 本资产从快照重出 + 门禁升级为逐字节比对。行为回归 `scripts/patches/tests/{spj-migration-link-f5,publish-exclusive-reclaim}.test.mjs`（后者支持 `--asset` 直测资产本体） |
-| fs-local-index.js（**47,793**，2026-09-26 由出厂态 fixture 经补丁链重建：F8 + B） | dsh-fs-local/lib/index.js（applyRuntimePatches） | 生效 | **0.14.1 重新入册**（apk issue #246）：`writeFileAtomic` 的 `createIfAbsent` 发布站点是全包唯一的 `link(2)` 调用，且该分支失败即抛、无任何回退 → Android 应用域恒拒 hardlink ⇒ 真机上 `write` 工具建不了任何新文件（覆盖已存在文件走 `rename`，正常）。与构建期 `fs-local-link-F8` 逐字节同源。**本资产是 0.13.3 退役资产的重新入册**——当年退役理由「上游 0.1.2-rc.1 已原生覆盖 rename 回退」对 `createIfAbsent` 站点不成立（0.1.5-rc.1 实测：全文仅此一处 `link` 调用，`EACCES`/`EPERM`/`ENOTSUP` 无任何处理）。补丁判定走内容指纹而非内嵌标记。行为回归 `scripts/patches/tests/fs-local-link-f8.test.mjs`（支持 `--asset` 直测资产本体） | **0.14.2 追加 `fs-local-digest-guard-B`**（版本守卫摘要 CAS 兜底）：资产必须同时含 F8+B 两个 marker，否则引擎启动时会把 B 覆盖回「只有 F8」的旧字节 ⇒ 真机上 B 等于没修（实测踩到：旧资产 43,405 B 与当时快照逐字节一致，门禁因快照陈旧而不响）。重建方式 = 取出厂态 fixture 按 registry 顺序施加该文件全部 engine 补丁（产物 47,793 B），**禁止手改**；门禁见 §7.5 |
+| attachment-local-index.js（**47,937**） | dsh-attachment-local/lib/index.js（applyRuntimePatches） | 生效 | 本轮源码产物 + attach-durable-F2；祖先 fsync、link→rename 回退与 ENOENT 容忍；字节与本轮已施加补丁产物相同。 |
+| session-persistence-jsonl-index.js（**149,673**） | dsh-session-persistence-jsonl/lib/index.js（applyRuntimePatches） | 生效 | 本轮源码产物 + F5/F7，保留 O_EXCL 独占占位及失败回收；`publish-exclusive-reclaim --asset` 实测通过。历史双占位缺陷见 §7.4。 |
+| fs-local-index.js（**47,826**） | dsh-fs-local/lib/index.js（applyRuntimePatches） | 生效 | 本轮源码产物 + F8/B，独占创建的 Android link 回退与摘要守卫；`fs-local-link-f8 --asset` 实测通过。 |
 
 已退役资产（不在 `assets/patched/`，`applyAssetPatch` 注册行同步移除，勿再引用）：`primitives-index.js`、`fs-local-index.js`（0.13.3 批退役，d377abc——link(2) 回退族改由构建期补丁承担；**0.14.1 已重新入册，见 §2 的 fs-local-index.js 行与 §7.1 的 `fs-local-link-F8`**——退役时该回退并未真正落到构建期补丁，`createIfAbsent` 站点成了覆盖空洞）；`web-frontend-index.html`（0.13.7fx-1 退役，§8）；`llm-deepseek-index.js`（rc.2 起遗留死资产，随重出批删除）。
 
@@ -105,7 +105,7 @@
 | `pi-toolcall-G2` | engine | `usr/lib/node_modules/@deepseek-ai/dsh/node_modules/@earendil-works/pi-ai/dist/api/openai-completions.js` |
 | `fs-local-digest-guard-B` | engine | `usr/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-fs-local/lib/index.js` |
 | `ptc-argv-L1` | engine | `usr/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-ptc-runtime-node/lib/index.js` |
-| `ptc-android-native-A1` | engine | `usr/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-ptc-runtime-node/lib/index.js`<br>`usr/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-ptc-runtime-node/lib/process.js` |
+| `ptc-android-native-A1` | engine | `usr/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-ptc-runtime-node/lib/index.js`<br>`usr/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-ptc-runtime-node/lib/process.js`<br>`usr/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-ptc-runtime-node/lib/persistent-process.js` |
 | `file-upload-restart-R1` | engine | `usr/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-client-file-upload/lib/index.js` |
 
 已退役登记：`market-A`、`market-C`、`atomic-stale-lock-F4`。历史章节保留退役前语义；活动状态以本表和 registry 为准。
@@ -173,8 +173,8 @@
 
 | 补丁/文件 | 真实目标与职责 | 登记 / 回归状态 |
 |---|---|---|
-| [ptc-android-native-A1](<dsh-mobile-apk/scripts/patches/ptc-android-native-A1.mjs>) | dsh-ptc-runtime-node@0.2.0-rc.2的host lib/index.js及child lib/process.js；Android trusted linker64→TERMUX__PREFIX/bin/node前缀，heap仅本次NODE_OPTIONS，host/child精确native allowlist，model JS env仍null-prototype空对象 | registry/apply-patches已接A1并requires L1；exact双文件verifier及additionalTargets/targetMarkers在场。source-copy fixture与 [A1测试](<dsh-mobile-apk/scripts/patches/tests/ptc-android-native-A1.test.mjs>) 已写、未运行。 |
-| [pi-upstream-streaming-020](<dsh-mobile-apk/scripts/patches/pi-upstream-streaming-020.mjs>) | raw pi-ai@0.87.1覆盖会丢官方pnpm patch；精确恢复anthropic-messages、bedrock-converse-stream、mistral-conversations、openai-completions、openai-responses-shared、pi-messages六个dist/api JS | [官方patch副本](<dsh-mobile-apk/scripts/patches/upstream/pi-ai-0.87.1.patch>)固定SHA b9bcce474fb2ac44633dff0fa722816a5bff5451b4575d5874035ea14ba70a4f，完整六文件plan先验证后缓存写，严格上下文、幂等、无fuzzy。G2 requires streaming020。 |
+| [ptc-android-native-A1](../../scripts/patches/ptc-android-native-A1.mjs) | 0.2.1-rc.2 的 lib/index.js、process.js、persistent-process.js；一次/持久两条启动路径共享可信 linker 前缀，NODE_OPTIONS 仅宿主 heap，两个模型环境为空原型 | registry/runner 三目标及 exact verifier 同步；15 项行为/反证通过，实际源码构建夹具在场；设备未验。 |
+| [pi-upstream-streaming-020](../../scripts/patches/pi-upstream-streaming-020.mjs) | pi-ai@1.1.0 六个 dist/api JS 恢复官方 pnpm patch | [官方副本](../../scripts/patches/upstream/pi-ai-1.1.0.patch) SHA-256 66eaf960054f10441b93ac3857114e96c1901f6d183713e2f21437b007111644；完整 plan 先验证后缓存写，严格上下文/幂等；G2 requires streaming020。 |
 | ptc-argv-L1 | host heap参数移出argv，经本次NODE_OPTIONS；A1重整launch前缀，不能只保留L1并假称Android已可启动 | registry仍在场，A1 requires L1；旧fixture通过不能证明target0.2双文件通过。 |
 | terminal-inspector-android-D1 | dsh-subprocess-local的runner-launch-B2zsQ1Dz（按targetDiscovery发现版本bundle）；createProcessInspector把android归入既有Linux分支，其它平台throw不放宽 | registry在场；版本重锚/最终bundle核实由父构建完成，不推断0.2已验收。 |
 | atomic-stale-lock-F4 | dsh-atomic-write | registry自0.1.7-rc.2已移入retired：上游原生takeOverExitedLock吸收孤儿锁语义；0.14.3仍不施加，历史§7.1行不是当前登记。 |

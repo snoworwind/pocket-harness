@@ -214,7 +214,10 @@
 # 逆转条件：上游 NodePtcRuntime 自己解析执行世界里的 node（不再缺省取 process.execPath）后，本行可撤。
 - id: ptc-runtime
   config:
-    nodeExecutable: /data/data/com.snoworwind.pocketharness/files/usr/libexec/dsh-node
+    # 0.2.1 launch union: use the Android snapshot wrapper with Node-script bootstrap.
+    launch:
+      kind: node-script
+      executable: /data/data/com.snoworwind.pocketharness/files/usr/libexec/dsh-node
 
 # Office→PDF（0.14.2 追版决策，2026-09-25 实测）——**显式禁用上游 web-app bundle 的 office-to-pdf 行**。
 # rc.1 新增该行（0.1.5 的 web-app bundle 里 office 零命中），它运行时依赖

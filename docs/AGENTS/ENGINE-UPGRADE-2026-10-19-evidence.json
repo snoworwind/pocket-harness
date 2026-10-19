@@ -1,0 +1,98 @@
+{
+  "recordedAt": "2026-10-19T08:14:04.821Z",
+  "upstream": {
+    "version": "0.2.1-rc.2",
+    "commit": "687f282e8625c6b8d11ff58211a90524be2e4317",
+    "packageCount": 345,
+    "packageManager": "pnpm@11.28.5",
+    "lockfileSha256": "4637cca3b89c4c8d5a147321710e597aa62ec2444a3772ab542be5690893dfe4"
+  },
+  "environment": {
+    "host": "Windows / WSL Ubuntu",
+    "sourceNode": "24.15.0",
+    "corepack": "0.36.0",
+    "deploymentPnpm": "12.2.0",
+    "localUiNode": "v26.5.0",
+    "java": "17"
+  },
+  "inputSha256": {
+    ".github/workflows/build-apk-source.yml": "d661567a4a876bd1f534716e9d0e897d9711b001ea06d2c78f801aa7c08c5f41",
+    "app/build.gradle.kts": "f60d191fb584060bfe2802b4bbe45b6295436bd242de819a10c06ad48d14ff96",
+    "scripts/contract.json": "5d4e215b43867034a2c46a162db0f3f7c22186b394992fac1a249655b2c65bd9",
+    "scripts/profile-web.cordis.patch.yml": "f28c4932841b4acc0aabfc648676bc1b09fa20bb672e04abbe997db2acc996e3",
+    "scripts/snapshot-config/engine-overlay.json": "412c665ba42ceb8486545901ee28cbcfed54d3fdad0c80b641a7046e6e5ce2f4",
+    "scripts/snapshot-config/engine-overlay-licenses.json": "976b15c3dfd817898deb050ef36aada157ea09adf75e3d8894f54b52c56aca67",
+    "scripts/patches/registry.json": "ed6f2eaa8c39bf0cb4dfd759faef2fbcfb0998f05d40afd7b63b01e1f56628df",
+    "scripts/patches/apply-patches.mjs": "fec274b82bcde1678e870a1f18a88b3f011cbbdc2cbcef57659c03c065b430e4",
+    "scripts/patches/ptc-android-native-A1.mjs": "c47efbdfb59a37a3a9de5404c945bbd1fe9fc533808d4567a648382892228ce5",
+    "scripts/patches/pi-upstream-streaming-020.mjs": "0df56aa911fedbb0dd7df8ab3c745d7cc972633bd5b4f811d0e9c72c09f3506d",
+    "scripts/patches/mimo-thinking-toggle-056.mjs": "64857bd4f07ab1f9f4db48c6f3c811ce775b66051c1261c11058c21c3cea8c85",
+    "scripts/patches/upstream/pi-ai-1.1.0.patch": "66eaf960054f10441b93ac3857114e96c1901f6d183713e2f21437b007111644",
+    "scripts/patches/tests/fixtures/manifest.json": "d6e4970c9574859f63a5cb03481d79c89534c6b1f20d27d805e86729f42fe610",
+    "dsh-shell-termux/package.json": "9d6aac527d383a36f1f4dcd67942a67bfb1939b352916a20bbb4906c7b154935",
+    "dsh-shell-termux/package-lock.json": "1c0ecc457e92b631ded583fa301b6cb2228d42411aba7f8052e80063974cb181",
+    "dsh-client-ui-responsive/package.json": "dac02ada18e6c296f8d01954d9fceae263aa53015e1f7436af91466816d8f8f8",
+    "dsh-client-ui-responsive/package-lock.json": "2aa86f8d0aa6071cd15aeb3876080782343626d77357a2ac6b117a65197294a2",
+    "dsh-host-web-compat/package.json": "d0c5a09ffc52b4bad4a4cded2f25ddba3a72fd94516d91ff9566d07a23f4643d",
+    "plugins/dsh-android-bridge/package.json": "69bab028165bdc8b337acb45ad8952fd8fe0a29e3a8691260a7ee9356c5c216f",
+    "plugins/dsh-android-bridge/package-lock.json": "56c4f69dd9e334842a106630a2fbbdfed5ef4bed3bda6de3381e5d1047341f54",
+    "plugins/dsh-android-manage/package.json": "fa01a433abe4864cd3c54d71122ab98a58aafc9e9f57e7e1fefcabbc2f1eb3e6",
+    "plugins/dsh-android-manage/package-lock.json": "d5d2ca7e763bd85b97eeca5c30b408fbbdaa51f759b28e26773996e3fd0d4349",
+    "plugins/dsh-android-linux-env/package.json": "c2b7ac991019497fa76f666e2467deaf899f75398dd786ad259546cf2301f508",
+    "plugins/dsh-android-linux-env/package-lock.json": "075be47eec36fdab163f7e32bbbcda27eab93a33694496e8b41bcf7cbce727a0",
+    "plugins/dsh-linux-bootstrap/package.json": "ae019a921c7c8d2500a06fc6f08d1bb8b200d6c80a5c84d08e790646462fa74b",
+    "plugins/dsh-linux-bootstrap/package-lock.json": "417fb47e9de9d5d9bcf9688bbee3b19769ffd7eefcb4e83337ef757af0cfd58f",
+    "plugins/dsh-android-file-open/package.json": "b9606a2c76bb438eb78a4701e948e73db2cfae2c80c209bbd8918eeaf7250d8c",
+    "plugins/dsh-android-file-open/package-lock.json": "22fb3377cf55a3997bce3b0adc9a2714ea7bfa3b779349708814ec9852ab6e0f",
+    "plugins/dsh-model-capability/package.json": "dd8aecd50e4f4e1a9f09b25db272d98e448b9529b79f8248519a48d5e5d22bb9",
+    "plugins/dsh-model-capability/package-lock.json": "83d189be382477af6c02dba500958c8a9b332af158311feaf54ae00ec443638d",
+    "plugins/dsh-android-browser/package.json": "230dd7c6832c7177a48e332eb20de89ebc4c49cdc388473daa367acd75e443c9",
+    "plugins/dsh-android-browser/package-lock.json": "b11a49a641c20ae2a51c620ada4aa7f65b795745602afa6fadb88f6e08f90dc4",
+    "plugins/dsh-android-vdisplay/package.json": "6b656bceb128025b8e63d9fdcb3fcd659021309feda7210f791e0b963eb7b929",
+    "plugins/dsh-android-vdisplay/package-lock.json": "6272e985cf297f99abd300df10e1cc35942c4030960f7a92285756e34b5e61fa",
+    "scripts/source-build/linux-source-manifest.json": "206895504c1e26359be69affa3f5dae42e6268ee0a3ddc9b760638b121d3a64d"
+  },
+  "runtimeAssets": {
+    "attachment-local-index.js": {
+      "bytes": 47937,
+      "sha256": "7ffe07dc8bed38a858f85c7f6df1fa41214cc16c634afbd989e07bf60cb31dbd"
+    },
+    "fs-local-index.js": {
+      "bytes": 47826,
+      "sha256": "4b1daab4763d47c0936886e23767f485a5aee54cc66ecbcf0588f047de6f5408"
+    },
+    "session-persistence-jsonl-index.js": {
+      "bytes": 149673,
+      "sha256": "b9ac5744c96a35c881ccc0d1b70850b012245dc54f07f2e543ad3632784a0981"
+    }
+  },
+  "results": {
+    "sourceBuild": "passed; tracked upstream unchanged",
+    "sourceExport": "passed",
+    "sourceDeployment": "passed; temporary upstream inputs restored",
+    "enginePatchAnchors": "24/24 applied",
+    "patchRegressionsLinux": "68/68; no skips",
+    "uiThreads": "752/752",
+    "sourceNodeTestsLinux": "129/129; no skips",
+    "sourcePythonTests": "21/21",
+    "linuxEnvironmentTests": "71/71",
+    "kotlin": {
+      "suites": 122,
+      "failures": 0,
+      "skipped": 0,
+      "errors": 0,
+      "tests": 1322
+    },
+    "device": "blocked: adb devices empty; target ARM64 device not found; ABI unknown",
+    "windowsPluginGate": "failed: Linux filesystem semantics and Node 26 default-fork localStorage environment; not counted as pass",
+    "runtimeDependencyLinks": {
+      "packages": 345,
+      "requiredLinks": 2435,
+      "missing": 0
+    },
+    "linuxSourcePins": "Bootstrap package/lock reviewed local deltas registered in both maps; upstream digests and tamper checks retained"
+  },
+  "localLogDirectory": ".deploy-tmp/engine-021rc2/",
+  "implementationCommit": "ea3c58b",
+  "pullRequest": "https://github.com/snoworwind/pocket-harness/pull/40"
+}
