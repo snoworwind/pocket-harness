@@ -11,6 +11,35 @@ permissions:
   contents: read
 
 jobs:
+  changes:
+    name: 变更范围分类
+    runs-on: ubuntu-latest
+    outputs:
+      engine: ${{ steps.classify.outputs.engine }}
+      termux: ${{ steps.classify.outputs.termux }}
+      linux: ${{ steps.classify.outputs.linux }}
+      plugins: ${{ steps.classify.outputs.plugins }}
+      app: ${{ steps.classify.outputs.app }}
+      build: ${{ steps.classify.outputs.build }}
+      gates: ${{ steps.classify.outputs.gates }}
+      apk: ${{ steps.classify.outputs.apk }}
+      docs_only: ${{ steps.classify.outputs.docs_only }}
+      full: ${{ steps.classify.outputs.full }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with: { node-version: '24' }
+      # Fail-safe: empty/unknown diffs classify as full, so a broken diff never skips build checks.
+      - name: 分类变更范围
+        id: classify
+        env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD: ${{ github.sha }}
+        run: node scripts/ci/classify-changes.mjs --base "$BASE" --head "$HEAD" --github-output
+
   static:
     name: 冲突标记与敏感信息扫描
     runs-on: ubuntu-latest
@@ -180,6 +209,9 @@ jobs:
 
   compile:
     name: Kotlin 编译门禁
+    needs: changes
+    # Docs-only / gate-only changes do not need Kotlin compilation. Any code change maps to apk=true.
+    if: needs.changes.outputs.apk == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
