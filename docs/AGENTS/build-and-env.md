@@ -307,6 +307,18 @@ bootstrap 的 package-lock.json 与 package.json 一样属于逐字节来源输�
 
 分类器单测 `node --test scripts/ci/classify-changes.test.mjs`（含「Kotlin 不读 workflow/source-build」不变量）。
 
+## 本地门禁（2026-10-20，CI 休眠期间即合并判据）
+
+`node scripts/ci/local-gate.mjs` 是合并判据：**步骤不另维护清单，直接读 `.github/workflows/pr-gate.yml`**，按同一套 job 条件（`docs-hygiene` 恒跑、`static` 除文档改动、`compile` 仅 `apk`）在 gate 镜像里执行同样的 `run:` 块。workflow 增删门禁时本地自动跟随；`local-gate.test.mjs` 用计数钉住这个契约。
+
+- 镜像 `scripts/ci/gate-image/Dockerfile`（tag `pocket-harness-gate:24.04`）钉 node 24.21.0 / python 3.12.15 / JDK 17 / Android SDK 36，首次运行构建约 2.5GB。**必须 linux/amd64**：Google 的 Linux build-tools 只有 x86-64，arm64 镜像里 `aidl` 跑不了；Apple Silicon 上走 Rosetta，与 CI 的 x64 runner 一致。
+- 工作树必须干净（证据绑定 HEAD 树），否则 exit 2；`--allow-dirty` 可覆盖但会在证据里记 `dirty: true`。
+- 证据落 `.deploy-tmp/local-gate/<tree12>.json` 与同名 `.log`：commit、tree、base、分类结果、逐步骤 rc/耗时、工具链钉值、verdict。`--dry-run` 只列将跑的步骤。
+- 镜像内的 `/workspace/local.properties` 以只读挂载覆盖为 `sdk.dir=/opt/android-sdk`，宿主的 macOS SDK 路径不会漏进容器，仓库文件也不被改写。
+- Gradle 与 pnpm 缓存用命名卷 `pocket-harness-gate-gradle` / `pocket-harness-gate-pnpm` 复用，热跑显著快于冷跑。
+
+**CI 休眠开关**：`pr-gate.yml` 的每个 job 都带 `vars.PR_GATE_MODE == 'on'`。仓库变量未设置时全部 job 跳过，PR 上只显示 skipped，不产生红色噪声；配额恢复后把变量设为 `on` 即恢复托管流水线，无需改文件。休眠期间合并条件按 `AGENTS.md` 铁律 4 改为「本地门禁绿（同一 HEAD 树）或 CI 绿」。
+
 ## Engine 构建复用（2026-10-19）
 
 engine 的 checkout/upstream/overlay/patches/build/deploy 步骤集中到 `scripts/source-build/build-engine.sh`；APK 来源链与本地来源链执行同一脚本（本地链按 `run:` 原样跑，不再依赖被跳过的 `uses:` 步骤）。后续 `build-base` 直接复用该脚本与产物，不另写第二套 engine 构建。

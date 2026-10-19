@@ -21,6 +21,10 @@ concurrency:
 jobs:
   changes:
     name: 变更范围分类
+    # Dormant by default: runner allocation is unavailable, and the merge gate is
+    # `node scripts/ci/local-gate.mjs`. Set the repository variable PR_GATE_MODE=on to
+    # re-enable the hosted pipeline without editing this file.
+    if: vars.PR_GATE_MODE == 'on'
     runs-on: ubuntu-latest
     outputs:
       engine: ${{ steps.classify.outputs.engine }}
@@ -53,6 +57,7 @@ jobs:
   # skipped when nothing but documentation changed.
   docs-hygiene:
     name: 冲突标记与敏感信息扫描
+    if: vars.PR_GATE_MODE == 'on'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -80,7 +85,7 @@ jobs:
     # contracts that a documentation change cannot alter. Fail-safe direction is preserved
     # by `always()`: an empty classification (e.g. the `changes` job failed) is not
     # `docs_only`, so the full gate still runs.
-    if: always() && needs.changes.outputs.docs_only != 'true'
+    if: always() && vars.PR_GATE_MODE == 'on' && needs.changes.outputs.docs_only != 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -97,7 +102,7 @@ jobs:
       # so a later edit cannot silently reintroduce the per-push cost or drop the coverage.
       - name: PR Gate 分层结构回归
         if: always()
-        run: node --test scripts/ci/pr-gate-workflow.test.mjs scripts/ci/classify-changes.test.mjs
+        run: node --test scripts/ci/pr-gate-workflow.test.mjs scripts/ci/classify-changes.test.mjs scripts/ci/local-gate.test.mjs
       - name: 主 WebView 顶层原生桥回归
         if: always()
         run: node --test scripts/tests/main-frame-bridge.test.mjs scripts/tests/engine-private-transport.test.mjs
@@ -243,7 +248,7 @@ jobs:
     # skip the compile job; app/gradle/engine/termux/linux/plugin changes still run it.
     # Fail-safe: only an explicit `false` skips compilation. If classification produced no
     # output (the `changes` job failed), run the compile gate rather than silently passing.
-    if: always() && needs.changes.outputs.apk != 'false'
+    if: always() && vars.PR_GATE_MODE == 'on' && needs.changes.outputs.apk != 'false'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -291,6 +296,7 @@ jobs:
 
   maintenance:
     name: 维护文档一致性（提示）
+    if: vars.PR_GATE_MODE == 'on'
     runs-on: ubuntu-latest
     continue-on-error: true
     steps:

@@ -18,6 +18,16 @@ function jobBody(name) {
   return next < 0 ? rest : rest.slice(0, next + 1)
 }
 
+test('the hosted pipeline is dormant unless the repository variable enables it', () => {
+  // The local gate is the merge gate while runner allocation is unavailable. Every job
+  // must carry the switch, otherwise a partially-enabled workflow produces misleading red
+  // checks on PRs that nobody can act on.
+  const jobs = ['changes', 'docs-hygiene', 'static', 'compile', 'maintenance']
+  for (const job of jobs) {
+    assert.match(jobBody(job), /vars\.PR_GATE_MODE == 'on'/, `job ${job} ignores PR_GATE_MODE`)
+  }
+})
+
 test('PR Gate runs on pull requests only', () => {
   const trigger = workflow.slice(workflow.indexOf('\non:'), workflow.indexOf('\npermissions:'))
   assert.match(trigger, /^ {2}pull_request:/m)
@@ -49,5 +59,5 @@ test('conflict and secret scanning stay out of the skippable job', () => {
 
 test('Kotlin compile is skipped only for an explicit false classification', () => {
   // Fail-safe: a missing classification (the changes job failed) must run the gate, not skip it.
-  assert.match(jobBody('compile'), /always\(\) && needs\.changes\.outputs\.apk != 'false'/)
+  assert.match(jobBody('compile'), /always\(\) && vars\.PR_GATE_MODE == 'on' && needs\.changes\.outputs\.apk != 'false'/)
 })
