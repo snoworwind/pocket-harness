@@ -94,5 +94,55 @@
   },
   "localLogDirectory": ".deploy-tmp/engine-021rc2/",
   "implementationCommit": "ea3c58b",
-  "pullRequest": "https://github.com/snoworwind/pocket-harness/pull/40"
+  "pullRequest": "https://github.com/snoworwind/pocket-harness/pull/40",
+  "sourceFollowup": {
+    "commit": "8466ee84672e61feaa17678b0186e235b1a0179c",
+    "mergeCommit": "c640eb06ae884948dfeb140e275b3460570f249f",
+    "pr": "https://github.com/snoworwind/pocket-harness/pull/41",
+    "ci": "https://github.com/snoworwind/pocket-harness/actions/runs/39224991735",
+    "sourceNodeTests": {
+      "passed": 129,
+      "failed": 0,
+      "skipped": 0
+    },
+    "nativeInventory": {
+      "reviewed": 26,
+      "unreviewed": 0
+    },
+    "inputSha256": {
+      ".github/workflows/build-apk-source.yml": "8a2570630e1f490cdd85557604bbaa2210e699bbe01a7d3883433023a9a77313",
+      "scripts/source-build/cloud-workflow.test.mjs": "71ad1906573cbe0020774b02ef9dbebd3ba9100db2099e5e3efd4792f51561d4",
+      "scripts/source-build/check-android-native-runtime-packages.mjs": "e9d0f2b01f0507d3f88999696c51cbb9cfa1af888d0acc9c60b9a15bb2c828e3",
+      "scripts/source-build/check-android-native-runtime-packages.test.mjs": "4d2a0406f172cba5768b944fd69d3c6bde174986d8c053b21cc6fef0a65bad55",
+      "scripts/source-build/prepare-pnpm-deploy-runtime-closure.mjs": "0c550a695dac6ace6ea06e27dfa80b24555d387c4be2b50c2e01418388d4c1b6"
+    },
+    "supersededRun": {
+      "id": 39222638056,
+      "conclusion": "failure",
+      "reason": "sharp@0.35.5 rejected by stale 0.35.3 identity; root manifest receipt also missing on review"
+    }
+  },
+  "deviceRecheck": {
+    "at": "2026-10-19T16:30:42+08:00",
+    "surface": "Windows official adb 37.0.1-15733141",
+    "devices": [],
+    "serial": "10AF2B0GN0001F2",
+    "abi": null,
+    "emulators": "127.0.0.1:16416 and :16384 refused connection",
+    "log": ".deploy-tmp/engine-021rc2/windows-adb-devices.log",
+    "acceptance": "NOT_ACCEPTED"
+  },
+  "cloudCandidate": {
+    "commit": "c640eb06ae884948dfeb140e275b3460570f249f",
+    "run": "https://github.com/snoworwind/pocket-harness/actions/runs/39225525469",
+    "mainCI": "https://github.com/snoworwind/pocket-harness/actions/runs/39225515581",
+    "result": "NOT_COLLECTED: user requested completion without waiting for APK build",
+    "apkComparison": "NOT_CONFIRMED",
+    "productionSignature": "NOT_CONFIRMED",
+    "deviceAcceptance": "NOT_ACCEPTED"
+  },
+  "cleanup": {
+    "entry": "scripts/clean-deploy-tmp.mjs",
+    "result": "entry absent; no substitute deletion; current evidence retained"
+  }
 }

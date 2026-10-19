@@ -56,3 +56,12 @@ PR #40 已以 merge commit a2f573b9d92ed7e0cc79a277d2a150b9204f82fa 合入，同
 实际调用 WSL Android SDK 的 `adb devices -l` 返回空列表；指定 `10AF2B0GN0001F2` 读取 `ro.product.cpu.abilist` 返回 `device not found`。因此 ABI 未知，CDP、ADB 真人操作、自主多步任务、横竖屏与覆盖升级均未验收。未使用旧 x86_64 包代验，未热推。
 
 本次 APK 仅可在 PR 同一 HEAD CI 通过并以 merge commit 合入 main 后，由 main 来源链双构建、比对、隔离签名产生。最终候选仍须新 APK 重新安装并完成三层验收；设备缺口补齐前不得公开发布或称升级已通过设备验收。
+
+## 本轮交付收口
+
+- 升级 PR：[40](https://github.com/snoworwind/pocket-harness/pull/40)，最终 HEAD `44cb6f010393b46144f1e101cd91c9a01db2c668` 的 [CI](https://github.com/snoworwind/pocket-harness/actions/runs/39222110903) 通过，以 merge commit 合入。
+- 来源修复 PR：[41](https://github.com/snoworwind/pocket-harness/pull/41)，HEAD `8466ee84672e61feaa17678b0186e235b1a0179c` 的 [CI](https://github.com/snoworwind/pocket-harness/actions/runs/39224991735) 通过，以 `c640eb06ae884948dfeb140e275b3460570f249f` 合入；两条已合并分支均删除。
+- 候选源码固定为 `c640eb06ae884948dfeb140e275b3460570f249f`，[main CI](https://github.com/snoworwind/pocket-harness/actions/runs/39225515581) 通过。[ARM64 双来源构建 39225525469](https://github.com/snoworwind/pocket-harness/actions/runs/39225525469) 已启动。本轮按用户要求不等待构建结果，不声明 APK、双构建比对或最终签名已通过；最终结论以该 run 实际结果为准。
+- Windows 官方 ADB 37.0.1 于北京时间 16:30:42 查询为空，两个 MuMu 端口连接被拒绝，ARM64 serial 读取 ABI 失败。代码层证据已落盘，CDP 层与 ADB 用户层为未验收。没有热推、装机或公开发布。
+- 补充证据仅更新文档，不改变候选源码输入；原有输入哈希保留，来源修复输入另记在 `ENGINE-UPGRADE-2026-10-19-evidence.json` 的 `sourceFollowup`，不把旧证据重新绑定到新输入。
+- 工作区清理入口 `scripts/clean-deploy-tmp.mjs` 在本仓及已检查协调仓路径缺失，未执行替代删除；本轮活动目录及证据保留。后续构建结果、最终 APK 摘要与设备补验仍须单独记录。
