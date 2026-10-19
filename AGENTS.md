@@ -103,6 +103,7 @@ adb -s <serial> install -r -t out\v<版本>\pocket-harness-v<版本>-arm64.apk
 |---|---|
 | fx2 阶段计划 / 开发候选与验收交接 | `docs/HANDOFF-0.14.5-FX-2-PLAN-2026-10-09.md` / `docs/HANDOFF-0.14.5-FX-2-DEVELOPMENT-2026-10-09.md` |
 | **项目基线 / 未迁移标识** | `docs/AGENTS/BASELINE.md` |
+| **Linux 环境调查 / 保留决策（2026-10-19）** | `docs/linux-env-findings/README.md`（原始报告、源码复核、两轮实机、迁移/保留决策） |
 | **坑位（历史实锤，权威）** | `docs/AGENTS/gotchas.md`（递增编号，允许空缺；grep 关键词） |
 | 模块职责 / 函数位置 | `docs/AGENTS/modules.md` |
 | 架构 / 依赖方向 | `docs/AGENTS/ARCHITECTURE.md` |
