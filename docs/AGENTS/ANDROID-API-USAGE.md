@@ -1,6 +1,8 @@
 # ANDROID-API-USAGE.md — android.* 使用面分组登记
 
-> 职责：壳源码 android/androidx 平台 API 的按域分组清单与 API 等级约束。统计口径：`grep "^import android"` 当场实测（2026-09-14，0.14.0-preview 发布后的工作区）——android.* 导入行 327 处、去重 116 类，分布于 53/65 个源文件（12 个零 android 导入：ApkArtifactCheck / BrowserHostNavigationPolicy / ControlPoller / ControlProtocolV2 / EngineProbe / FactoryProfilePatch / LiveProbe / ProcIo / SnapshotFileMode / SnapshotFs / SnapshotTransaction / SnapshotUserData，纯 java.net/java.io/java.security）；androidx 导入 28 处、去重 15 类。源码根 `app/src/main/java/com/dsharnessmobile/shell/`。
+> 职责：壳源码 android/androidx 平台 API 的按域分组清单与 API 等级约束。统计口径：`grep "^import android"` 当场实测（2026-09-14，0.14.0-preview 发布后的工作区）——android.* 导入行 327 处、去重 116 类，分布于 53/65 个源文件（12 个零 android 导入：ApkArtifactCheck / BrowserHostNavigationPolicy / ControlPoller / ControlProtocolV2 / EngineProbe / FactoryProfilePatch / LiveProbe / ProcIo / SnapshotFileMode / SnapshotFs / SnapshotTransaction / SnapshotUserData，纯 java.net/java.io/java.security）；androidx 导入 28 处、去重 15 类。源码根 `app/src/main/java/com/snoworwind/pocketharness/`。
+
+上述导入数量和下表分组是标注日期的历史统计，不代表当前文件/类总数；源码入口已随 namespace 迁移更新，当前迁移与验证状态见 [迁移记录](NAMESPACE-MIGRATION-2026-10-19.md)。
 
 ## 1. 按域分组（116 类去重口径）
 

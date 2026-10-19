@@ -43,7 +43,14 @@
 
 ## 5. 来源链预发布草稿（2026-10-17 按用户决定）
 
-本仓允许手动触发来源构建，成功后自动创建 **draft + prerelease**；不会自动公开，不恢复旧 LFS 发布链。
+本仓支持两种手动入口，均只接受 `main`：
+
+| 入口 | 结果 |
+|---|---|
+| `build-apk-source.yml`，或 `build-apk.yml` 默认 `draft_release=false` | 执行 ARM64 来源双构建、比对和隔离签名，上传 Actions artifact；不创建 Release |
+| `release-source-draft.yml`，或 `build-apk.yml` 显式 `draft_release=true` | 复用同一来源构建，成功核验后创建 **draft + prerelease**；不会自动公开 |
+
+只构建使用 `gh workflow run build-apk-source.yml --repo snoworwind/pocket-harness --ref main`。需要草稿时使用：
 
 ```bash
 gh workflow run build-apk.yml --repo snoworwind/pocket-harness --ref main -f draft_release=true

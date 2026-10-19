@@ -102,7 +102,7 @@ dsh-mobile-apk/                 ← 独立 git 仓库
 ├── docs/design.md              ← 本文档
 └── app/
     ├── build.gradle.kts        ← 历史快照为 AGP 8.9.x / Kotlin 2.0.x；当前 applicationId 为
-    │                            com.snoworwind.pocketharness，Kotlin namespace 保留 com.snoworwind.pocketharness
+    │                            applicationId 与 Kotlin namespace 均为 com.snoworwind.pocketharness
     └── src/main/
         ├── AndroidManifest.xml
         ├── assets/

@@ -1,6 +1,6 @@
 # Root 策略与固定属主维护（0.14.3，PR #308）
 
-> 源码交接，不是验收报告。当前版本声明为 0.14.3 / versionCode 45，尚未构建本轮双 ABI APK；没有本轮 APK/hash/测试通过证据。用户当前停止点为 #308 按正常 GitHub CI/review 合并、完整 0.14.3 同步、双 ABI 测试包交付；外部测试保持未执行，不作为等待合并的占位阻塞。发布未授权。
+> 本文最初记录 0.14.3 / PR #308 的源码交接，不是验收报告；该轮没有 APK/hash/设备验收通过证据，历史双 ABI 交付安排不作为当前操作指南。当前源码位置已随 namespace 迁移更新；现行构建入口见 [构建详档](build-and-env.md)，升级限制与验证范围见 [迁移记录](NAMESPACE-MIGRATION-2026-10-19.md)。
 
 ## 1. 模型执行与应用维护分开
 
@@ -10,7 +10,7 @@
 
 ## 2. 耐久租约：先记账，后真正 UID0 派发
 
-[RootMaintenanceLease](<dsh-mobile-apk/app/src/main/java/com/dsharnessmobile/shell/RootMaintenanceLease.kt#L56-L105>) 使用私有 SharedPreferences 同步 commit epoch、startedAt、operation；不能取得启动 epoch 或不能持久化即拒绝派发。su 命令/helper 与 Shizuku 实际 uid0 的每个操作在派发前建立租约。Shizuku RpcLease 在持久化之后再次检查实际 UID 与有效 consent；pull/push 每个 chunk 均在本地准备完毕后、RPC 紧前重新检查，而非只检查传输开始。
+[RootMaintenanceLease](<../../app/src/main/java/com/snoworwind/pocketharness/RootMaintenanceLease.kt#L56-L105>) 使用私有 SharedPreferences 同步 commit epoch、startedAt、operation；不能取得启动 epoch 或不能持久化即拒绝派发。su 命令/helper 与 Shizuku 实际 uid0 的每个操作在派发前建立租约。Shizuku RpcLease 在持久化之后再次检查实际 UID 与有效 consent；pull/push 每个 chunk 均在本地准备完毕后、RPC 紧前重新检查，而非只检查传输开始。
 
 租约仅由原始 owner caller 在得到确定完成回执后 finish；普通异常、exit/drain 超时、readError、cleanupIncomplete、Binder 完成未知及清租约 commit 失败均转 UNKNOWN。杀 su 客户端、父进程退出、关闭本地管道或本地 reader 结束，都不能证明特权后代停止。UNKNOWN 阻止新受控 RPC/命令、维护和启动前读取快照事务，不自动重试副作用。
 
@@ -32,7 +32,7 @@ symlink 不跟随；root-origin regular hardlink、foreign owner、跨 device、
 
 ## 4. I/O、栅栏与共享维护状态
 
-[RootExecutionFence](<dsh-mobile-apk/app/src/main/java/com/dsharnessmobile/shell/RootExecutionFence.kt#L18-L34>) 每次接收 Context 并在锁前/锁内检查耐久租约；公平 ReentrantReadWriteLock 的读锁使用零毫秒 timed tryLock，尊重排队写者，不用会插队的裸 tryLock。维护取写锁，命令取读锁；忙时不排无限等待。
+[RootExecutionFence](<../../app/src/main/java/com/snoworwind/pocketharness/RootExecutionFence.kt#L18-L34>) 每次接收 Context 并在锁前/锁内检查耐久租约；公平 ReentrantReadWriteLock 的读锁使用零毫秒 timed tryLock，尊重排队写者，不用会插队的裸 tryLock。维护取写锁，命令取读锁；忙时不排无限等待。
 
 ProcIo 的 destroy/各 stream close 都在独立 daemon cleanup worker，waiter 只按共同 cleanup 预算 join；read/close 不在输出内存锁内。返回 text/flags 是有界不可变部分快照，晚到 reader 不能改已返回结果；readError 不当 EOF。ShizukuCaptureIo 使用执行 UID 拥有的0700目录（root 在本应用 cache，shell 在自身目录），随机名、CREATE_NEW/NOFOLLOW_LINKS 创建 .part；不覆盖已存在输出路径。writer/flush/close 真结束且 exit、drain、cleanup、读取与 cap 均完整后才无覆盖发布；不完整返回 spoolReady=false、空路径与不可变 inline/size，不能作为可取的 ready spool。
 
