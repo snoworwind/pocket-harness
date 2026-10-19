@@ -24,7 +24,7 @@
 
 | 优先级 | 上游更新 | 本仓静态判断 | 处置与重新评估条件 |
 |---|---|---|---|
-| 已吸收（2026-10-19） | [#414 堆上限 1024→4096](https://github.com/kelai141/dsh-mobile-apk/pull/414) | 壳侧和快照启动器上限均由 1024 提至 4096MB；仍按设备总内存一半计算并保留 512MB 下限 | 双源契约、Kotlin 档位断言、wrapper 测试与门禁已同步；设备内存压力未验，见 [SECURITY-HARDENING.md](SECURITY-HARDENING.md) 本轮记录与 [known-gaps.md](known-gaps.md) |
+| 已吸收（2026-10-19） | [#414 堆上限 1024→4096](https://github.com/kelai141/dsh-mobile-apk/pull/414)，源提交 `15d83fa74ceae282e3abc02d94256c271d3bb4d4`，上游合并提交 `f2df6fa0d2a3b70f171f2a28ed3f020dcad5997a` | 双源上限提升至 4096MB；并修复 1024 上限等于 V8 自然上限标志造成的自适应退化，新增自然标志真源及防退化门禁 | JVM 机型档断言、wrapper 反例和 11 条门禁负控已同步；设备内存压力未验，见 [SECURITY-HARDENING.md](SECURITY-HARDENING.md) 与 [known-gaps.md](known-gaps.md) |
 | P1 | [#420 ADB 键盘投递与来源校验](https://github.com/kelai141/dsh-mobile-apk/pull/420) | manage 已显式指定接收组件；`AdbKeyboardReceiver.kt` 已在接收器上调用 `getSentFromUid()`。接收器仍无处理结果码回传 | 只评估剩余回执、绑定重试与接收器分工；适配本仓 namespace、鉴权和失败语义，防双提交与假成功 |
 | P1 | [#403 虚拟屏比例与弹层遮挡](https://github.com/kelai141/dsh-mobile-apk/pull/403) | 本仓未检出上游新增的 `data-dsh-popover-open` 信号；这不单独证明设备必现遮挡 | 建议先复现，再定点移植布局/原生层可见性修复；与同 PR 的引擎升级拆分评估 |
 | P2 | [#416 离线插件管理与启动即时反馈](https://github.com/kelai141/dsh-mobile-apk/pull/416) | `EngineStartFlow.kt` 中 Starting 反馈仍位于探测之后；`PluginManagementPage.kt` 未检出离线管理实现 | 建议独立实现；复核 soft/hard 边界、配置原子写入及回读，避免破坏本仓恢复与授权策略 |
@@ -37,4 +37,4 @@
 
 ## 2026-10-19 吸收记录
 
-本轮按 #414 把 `ENGINE_HEAP_CAP_MB` 与快照 `dsh-node` wrapper 上限从 1024 调至 4096MB，保留 `clamp(设备总内存/2, 512, 4096)`。同步 JVM 边界断言、wrapper 回归和双源一致性门禁自检。上游仓库本轮无法从当前环境解析 GitHub，故无法确认该 PR 的源提交或把检查游标推进到新尖端；本次只按此前已记录的 PR 说明实施，不代表完成 2026-10-19 的上游全量更新检查。设备内存压力仍待按设备档位复核。
+本轮经 GitHub API 核对 #414 已合并：源提交 `15d83fa74ceae282e3abc02d94256c271d3bb4d4`，上游合并提交 `f2df6fa0d2a3b70f171f2a28ed3f020dcad5997a`。此前检查游标 `18439f1b8cb96f7d4d9b8508bdb02aa2695143a3` 仍是上游 `main` 当前尖端，故不前移。吸收不只提升上限：原上限 1024 恰等于重现 V8 自然 1120MB 堆上限的标志值，导致常见设备 `totalRam/2` 恒被截断；本仓新增自然标志真源、cap/区间宽度门禁、双源同为 1024 的反证，以及现实内存档 JVM 断言。设备内存压力仍待设备复核。

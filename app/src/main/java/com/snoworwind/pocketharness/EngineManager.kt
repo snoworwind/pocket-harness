@@ -2365,6 +2365,7 @@ class EngineManager(private val context: Context, private val pickToken: String?
       // 引擎 V8 老生代上限（0.14.8 堆下限）：**此前无人管理**——不设标志时 V8 只按物理内存推导，
       // 小内存设备上推出来的上限可能小到引擎 boot 期就 OOM（社区反馈「JavaScript 堆太小导致启动失败」）。
       // 这里显式给出自适应值（见 engineHeapMb）：设备总内存的一半、下限 512MB、上限 4096MB。
+      // 上限取 1024 会让「一半内存」分支在所有真实设备上被截断（0.14.8 缺陷），见下方自然标志档。
       // 用 NODE_OPTIONS 而不是 argv，是因为 argv 会**覆盖** NODE_OPTIONS，二者不能同时表达同一件事；
       // 而 NODE_OPTIONS 还顺带覆盖所有经 shellEnv() 派生的子进程（工具子进程 / 控制台 / UndoGate）。
       // 实测口径：--max-old-space-size=N ⇒ heap_size_limit = N + 96MB；引擎最小可用堆约 70MB。
@@ -2498,23 +2499,37 @@ internal fun uvThreadPoolSize(cores: Int): Int = minOf(8, cores.coerceAtLeast(1)
 /** 引擎 V8 老生代上限的**下限**（MB）。低于此值时引擎连 boot 期的模块图都可能堆爆。 */
 internal const val ENGINE_HEAP_FLOOR_MB: Int = 512
 
-/** 引擎 V8 老生代上限的**上限**（MB），与参考仓 #414 对齐；设备实际压力仍需分档验收。 */
+/**
+ * 引擎 V8 老生代上限的**上限**（MB）。
+ *
+ * 此值必须显著大于 [ENGINE_HEAP_NATURAL_MAX_FLAG_MB]（1024）。原上限 1024 恰等于重现 V8 自然推导
+ * 最大值需要的标志值，导致 `totalRam/2` 在常见真机档位上恒被截断、函数退化为常量 1024。
+ * 4096 让一半内存分支在 4GB 及以上设备真正生效（4GB→2048、6GB→3072、≥8GB→4096）。
+ * 老生代上限是天花板而非预分配；lmkd 按真实 RSS 压力回收。设备级压力仍须实测。
+ */
 internal const val ENGINE_HEAP_CAP_MB: Int = 4096
+
+/**
+ * 重现 V8 自然推导最大上限所需的 `--max-old-space-size` 标志值（MB）。
+ * V8 自然上限实测约 1120MB，标志 N 对应 heap_size_limit N+96MB，因此 N=1024。
+ * 门禁以此为唯一真源，确保显式上限不会向下覆盖自然推导值并抵消自适应分支。
+ */
+internal const val ENGINE_HEAP_NATURAL_MAX_FLAG_MB: Int = 1024
 
 /**
  * 引擎 V8 老生代上限（MB）= clamp(设备总内存的一半, 下限 [ENGINE_HEAP_FLOOR_MB], 上限 [ENGINE_HEAP_CAP_MB])。
  *
  * 为什么是「一半 + 上下限」而不是沿用 V8 的默认推导：V8 只用物理内存推，**没有任何人管这台设备上
  * 引擎的实际工作集**——小内存设备推出来的上限可能小于引擎 boot 所需（社区反馈的启动失败），
- * 大内存设备又可能推出远超需要的值。显式下限保证「任何设备都够启动」，4096MB 上限吸收参考仓
- * #414 的堆空间扩展，同时将上限绑定设备总内存的一半；内存压力仍需在设备上按档位复核。
+ * 大内存设备又可能推出远超需要的值。显式下限保证「任何设备都够启动」，4096MB 上限让常见真机
+ * 档位的一半内存分支可达；老生代上限是天花板而非预分配，内存压力仍需在设备上按档位复核。
  *
  * 实测依据（逐档回读 heap_size_limit，详见 docs/AGENTS/gotchas.md 本轮条目）：
  * - 不设标志：6GB 设备 1120MB、4GB 设备 1075MB、3GB 设备 844MB（纯由物理内存推导）；
  * - 设 --max-old-space-size=N：实际上限恒为 N+96MB（512 到 608、256 到 352、2048 到 2144）；
  * - 引擎最小可用堆约 70MB（64MB 起步在约 21s 内 FATAL heap out of memory）。
- * 已实测的 3/4/6GB 档自然推导值分别约 844/1075/1120MB；较大设备新增堆空间来自上游 #414，
- * 本地源码证据尚不覆盖其实际内存压力，不能据此声称所有设备都适用。
+ * 已实测的 3/4/6GB 档自然推导值分别约 844/1075/1120MB；上限 1024 对应 heap_size_limit 1120MB，
+ * 会在所有常见设备上把自适应值钳成自然上限。见 [ENGINE_HEAP_NATURAL_MAX_FLAG_MB]。
  *
  * 提到顶层是为了可断言——shellEnv() 需要 Context，JVM 单测拿不到；这里只锁「值」这一半，
  * 「注入进 shellEnv()」那一半由 W3ShellContractTest 的源码扫描锁定（与 [uvThreadPoolSize] 同款）。

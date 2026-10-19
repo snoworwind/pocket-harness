@@ -87,6 +87,9 @@ check('wrapper 按设备 MemTotal 自适应算堆（clamp 到 512-4096MB）',
     /__dsh_mem_kb \/ 2048/.test(wrapperBlock) &&
     wrapperBlock.includes('[ "$__dsh_heap" -lt 512 ]') &&
     wrapperBlock.includes('[ "$__dsh_heap" -gt 4096 ]'))
+check('wrapper 上限不得退化成 1024（否则 MemTotal/2 自适应分支在真机上恒被截断）',
+  !wrapperBlock.includes('[ "$__dsh_heap" -gt 1024 ]') &&
+    !/__dsh_heap=1024\b/.test(wrapperBlock))
 check('wrapper 导出的堆标志落在 exec 之前（否则对本次进程无效）',
   wrapperBlock.indexOf('export NODE_OPTIONS=') >= 0 &&
     wrapperBlock.indexOf('export NODE_OPTIONS=') < wrapperBlock.indexOf('exec /system/bin/linker64'))

@@ -807,6 +807,7 @@ try {
       // 自适应在**设备上**算而不是构建期写死：MemTotal 只有运行时才准确。
       // 语义 = clamp(MemTotal/2, 512, 4096)MB，与壳侧 EngineManager.engineHeapMb 同口径
       // （两处必须同值；任何一方改了，另一方由门禁 check-engine-heap-floor.mjs 判红）。
+      // ⚠️ 上限 1024 会让 /2 分支在所有真机上被截断（0.14.8 缺陷）；不能只检查两侧数字相等。
       // 仅在 NODE_OPTIONS **未被调用方设置**时才填：调用方显式给的值（例如 PTC 的
       // maxOldGenerationSizeMb、用户自定义 --max-old-space-size）必须优先，不得被启动器覆盖。
       // 纯 sh 读 /proc/meminfo，不依赖 sed/awk/busybox 子命令（缺工具也不至于副作用）。

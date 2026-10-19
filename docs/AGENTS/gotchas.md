@@ -2413,7 +2413,9 @@ JVM 边界测试在 `EngineBootInstrumentationTest`（取值与 clamp 边界、�
 启动器算术在设备上用合成 MemTotal 逐档对照 Kotlin 口径，12 档（256MB 到 16GB）**逐值一致、0 处不符**；显式预设 `NODE_OPTIONS` 时启动器确实不覆盖。
 **未覆盖（不记通过）**：未在真机（arm64 / Enforcing）验证；未验证「堆下限真的让某台小内存设备从起不来变成起得来」（手头模拟器均 ≥3GB，自然推导值本就高于下限）——该因果只能由反馈设备的复现来确认，本轮给出的是「下限已被显式兜住」与「诊断面能看见堆 OOM」两条。
 
-**首轮为何把堆上限设为 1024MB**：当时基于 `lmkd` 风险与 3/4/6GB 设备实测自然推导值，先把范围收在 512–1024MB，避免堆开过大掩盖内存缺陷。该上限已于 2026-10-19 按参考仓 #414 提升为 4096MB，壳侧与快照 wrapper 仍按设备总内存的一半计算；此次调整尚无真实设备的内存压力证据，不能沿用首轮实测推导为新范围背书。详见 [UPSTREAM-TRACKING.md](UPSTREAM-TRACKING.md) 与 [SECURITY-HARDENING.md](SECURITY-HARDENING.md) 2026-10-19 复核。
+**2026-10-19 吸收参考仓 #414 后的修正**（源提交 `15d83fa74ceae282e3abc02d94256c271d3bb4d4`）：首轮的 `ENGINE_HEAP_CAP_MB=1024` 恰等于复现 V8 自然推导 `heap_size_limit≈1120MB` 所需的 `--max-old-space-size=1024` 标志值（实测 N→N+96MB）。所以所有 ≥2GB 设备的 `totalRam/2` 都被截成 1024，下限仅在 <1GB 才可能到达；函数表面自适应，真实设备结果却恒为自然上限。原先“堆开成多 GB 会被 lmkd 杀掉”的判断不成立：V8 老生代上限是天花板而非预分配，`lmkd` 按进程真实 RSS 回收；但本仓仍要求设备观察长任务峰值和系统回收，不能以机制说明代替验收。
+
+修法：上限与快照 wrapper 同步提升为 4096，保持 `clamp(totalRam/2, 512, 4096)`；增加 `ENGINE_HEAP_NATURAL_MAX_FLAG_MB=1024` 唯一真源。门禁 F 要求 cap 严格大于自然标志值且区间宽度至少 1024MB；负控覆盖双源一致但都为 1024 的原缺陷形态。`EngineBootInstrumentationTest` 新增 1/2/3/4/6GB 现实档不退化为恒定上限的断言。设备级压力证据仍开放，详见 [SECURITY-HARDENING.md](SECURITY-HARDENING.md) 与 [known-gaps.md](known-gaps.md)。
 **同轮踩到的两个既存问题（都不是本次改动引入，一并如实登记）**：
 ① `ptc-node-wrapper-c1.test.mjs` 的「带可执行位」判据把 `writeFileSync(...)` 与 `{ mode: 0o755 }` 之间的窗口写死为 400 字符——wrapper 内容一长（本次加了堆下限段）就**假红**。已把窗口放宽到 2000 并补三条锁新行为的判据（未设时才填、自适应 clamp、落在 `exec` 之前）。教训：这类「窗口长度」是恒定量，本质是在断言「实现必须短」，与真正要守的语义（同一个 `writeFileSync` 落了 755）无关。
 ② `combo-probe-p1.test.mjs` 的「重复 phase 记录聚合到固定阶段行」判据把行数上界**写死成常量 `<= 2`**，实际是在断言「这段洪水必须在 2 个窗口（500ms）内跑完」——而窗口本身是 250ms（`dshMobileComboProbePhaseWindowMs`），16 轮 × 25ms 的 sleep 加上每轮构造的真实开销必然落在多个窗口里（本机实测稳定 3 行：窗口起点 531.6 / 798.4 / 1086.4ms，共约 1.1s）。机器一慢或构造一变重就假红；且**纯净 `origin/main` 上同样判红**（用 detached worktree 复现确认），是 `check-patch-test-manifest.mjs` 的未声明失败来源，会随机卡住本地全链构建。

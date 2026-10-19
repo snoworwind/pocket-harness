@@ -33,18 +33,33 @@ class EngineBootInstrumentationTest {
 
   @Test
   fun engineHeapIsHalfOfDeviceRamClampedIntoFloorAndCap() {
-    // 取值口径 = clamp(总内存/2, 512, 4096)。上游 #414 扩大高内存档位上限；设备压力仍需实机验收。
-    // 小内存设备不得推出小于下限的值；大内存设备只获得自身总内存一半且不超过 4096MB。
-    assertEquals("2GB 设备：一半 1024", 1024, engineHeapMb(2048))
-    assertEquals("4GB 设备：一半 2048", 2048, engineHeapMb(4096))
-    assertEquals("6GB 设备：一半 3072", 3072, engineHeapMb(6144))
-    assertEquals("8GB 设备：一半 4096，恰好触顶", 4096, engineHeapMb(8192))
-    assertEquals("16GB 设备：一半 8192 被上限压到 4096", 4096, engineHeapMb(16384))
+    // 取值口径 = clamp(总内存/2, 512, 4096)。真实设备档位必须确实落在可变区间，不能全被端点吃掉。
+    assertEquals("2GB 设备：一半 1024 落在区间内部", 1024, engineHeapMb(2048))
+    assertEquals("4GB 设备：一半 2048 真正生效", 2048, engineHeapMb(4096))
+    assertEquals("6GB 设备：一半 3072 真正生效", 3072, engineHeapMb(6144))
+    assertEquals("8GB 设备：一半 4096 恰好触顶", 4096, engineHeapMb(8192))
+    assertEquals("16GB 设备：被上限压到 4096", 4096, engineHeapMb(16384))
     assertEquals("2GB 以下：一半 512 恰好触底", 512, engineHeapMb(1024))
     assertEquals("1.5GB 设备：一半 768 高于下限，保留下限之外的真实推导", 768, engineHeapMb(1536))
     assertEquals("1GB 设备：一半 512 恰好下限", 512, engineHeapMb(1024))
     assertEquals("512MB 设备：一半 256 被下限抬起（这是本缺陷的核心判据）", 512, engineHeapMb(512))
     assertEquals("256MB 设备：同样抬到下限而不是推算出 128", 512, engineHeapMb(256))
+  }
+
+  @Test
+  fun engineHeapCapDoesNotFlattenTheHalfOfRamBranchOnRealDevices() {
+    assertTrue(
+      "上限必须严格大于自然标志档，否则会向下覆盖 V8 自然推导",
+      ENGINE_HEAP_CAP_MB > ENGINE_HEAP_NATURAL_MAX_FLAG_MB,
+    )
+    // 1/2/3/4/6GB 是现实设备内存档；每档结果都必须不是恒定上限值。
+    for (ram in listOf(1024, 2048, 3072, 4096, 6144)) {
+      val heap = engineHeapMb(ram)
+      assertTrue("${ram}MB 档位被上限截断为常量 $heap", heap != ENGINE_HEAP_CAP_MB)
+      assertTrue("${ram}MB 档位不能低于下限", heap >= ENGINE_HEAP_FLOOR_MB)
+    }
+    assertEquals("4GB 设备必须拿到 2048，而不是被截成 1024", 2048, engineHeapMb(4096))
+    assertEquals("6GB 设备必须拿到 3072，而不是被截成 1024", 3072, engineHeapMb(6144))
   }
 
   @Test
@@ -62,6 +77,7 @@ class EngineBootInstrumentationTest {
     // 注入给 node 的必须是**合法可解析**的标志，且任何输入都不得产出小于下限的标志。
     assertEquals("--max-old-space-size=512", heapOptionFrom(512))
     assertEquals("--max-old-space-size=1024", heapOptionFrom(1024))
+    assertEquals("--max-old-space-size=4096", heapOptionFrom(4096))
     assertEquals("低于下限的输入被抬回下限", "--max-old-space-size=512", heapOptionFrom(64))
     assertEquals("正是实测会 FATAL 的那一档，绝不允许被注入", "--max-old-space-size=512", heapOptionFrom(32))
     assertEquals("0 同样按下限处理（绝不产出 0MB 这种必然 FATAL 的标志）", "--max-old-space-size=512", heapOptionFrom(0))
