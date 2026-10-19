@@ -460,12 +460,9 @@ def main():
         for prof in target_profiles:
             for pkg in sorted(dsh_names - seen_dsh.get(prof, set())):
                 base = f"home/.dsh/profiles/{prof}/node_modules/@dsh-android/{pkg}"
-                for dirpath in [base, base + "/lib"]:
-                    ti = tarfile.TarInfo(dirpath)
-                    ti.type = tarfile.DIRTYPE
-                    ti.mode = 0o700
-                    ti.mtime = now
-                    tout.addfile(ti)
+                # Use the same directory ledger as file fills, including when
+                # the input already contains an empty package/lib directory.
+                ensure_parent_dirs(base + "/lib/index.js", now)
                 for rel, data in sorted(dsh_repl[pkg].items()):
                     ensure_parent_dirs(base + "/" + rel, now)
                     push(data, base + "/" + rel, now)

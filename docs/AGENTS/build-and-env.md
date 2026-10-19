@@ -1,5 +1,9 @@
 # build-and-env.md — 构建与验证命令 + 环境流程
 
+## 双构建比对拒绝重复成员（2026-10-19）
+
+`verify-arm64` 在 `read-apk-snapshot.py` 报 `duplicate or excessive snapshot entries` 时，先分别清点 tar 成员数与重复路径，不要放宽读取器。已确认的注入器重复目录原因与修法见 [坑 439](gotchas.md)；回归命令为 `python -m unittest discover -s scripts/source-build -p test_inject_all.py`，比对器自检为 `node scripts/source-build/compare-independent-builds.mjs --self-test`（Linux）。
+
 ## ARM64 Linux 离线资产来源（2026-10-18）
 
 `build-linux-assets.yml` 是只读、无秘密的独立资产检查链，不构建 APK、不创建 Release；手动 `gh workflow run build-linux-assets.yml --repo snoworwind/pocket-harness --ref main`。APK 来源 workflow 另在同一来源提交中重跑该资产构建，并把经过验证的资产嵌入 Termux 快照，不依赖短期 Actions artifact。Bionilux 与运行时插件源码已导入 `vendor/bionilux` / `vendor/dsh-linux-runtime`；实际打包的 bootstrap 输入也登记于 `linux-source-manifest.json` 的独立来源提交与摘要。`check-linux-sources.mjs --self-test` 校验 vendor 文件及 bootstrap 实际打包文件的字节摘要、记录的本地文档偏差，以及同体积投毒/额外编译输入负控。Debian 13 自动签名密钥与 stable key 从 ftp-master 官方地址下载，分别按 SHA-256 和 primary fingerprint 固定，再与 runner 现有 keyring 合并；禁止因 runner keyring 旧而忽略未知签名。

@@ -1,8 +1,11 @@
 import importlib.util
+import io
 import json
+import tarfile
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
 SPEC = importlib.util.spec_from_file_location('inject_all', ROOT / 'scripts' / 'inject-all.py')
@@ -11,6 +14,35 @@ SPEC.loader.exec_module(inject_all)
 
 
 class InjectAllPackageIdentityTest(unittest.TestCase):
+    def test_new_and_directory_only_packages_have_unique_archive_members(self):
+        for directory_only in (False, True):
+            with self.subTest(directory_only=directory_only), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                plugin = self.make_package(root, 'probe', '@dsh-android/probe')
+                source, output = root / 'source.tar.xz', root / 'output.tar.xz'
+                config = root / 'patch.yml'
+                config.write_text('plugins: {}\n', encoding='utf-8')
+                with tarfile.open(source, 'w:xz') as archive:
+                    for profile in inject_all.PROFILES:
+                        if directory_only:
+                            member = tarfile.TarInfo(f'home/.dsh/profiles/{profile}/node_modules/@dsh-android/probe/lib')
+                            member.type = tarfile.DIRTYPE
+                            archive.addfile(member)
+                    member = tarfile.TarInfo('usr/bin/keep')
+                    member.size = 4
+                    archive.addfile(member, io.BytesIO(b'keep'))
+                argv = ['inject-all.py', str(source), str(output), str(config), '--dsh-android', str(plugin)]
+                with patch.object(inject_all.sys, 'argv', argv), patch.dict(inject_all.os.environ, {'DSH_INJECT_PRESET': '0'}):
+                    inject_all.main()
+                with tarfile.open(output, 'r:xz') as archive:
+                    names = archive.getnames()
+                    self.assertEqual(len(names), len(set(names)), 'duplicate tar members block independent APK verification')
+                    self.assertEqual(archive.extractfile('usr/bin/keep').read(), b'keep')
+                    for profile in inject_all.PROFILES:
+                        base = f'home/.dsh/profiles/{profile}/node_modules/@dsh-android/probe'
+                        self.assertEqual(archive.extractfile(base + '/lib/index.js').read(), (plugin / 'lib/index.js').read_bytes())
+                        self.assertIn(base + '/package.json', names)
+
     def make_package(self, root: Path, directory: str, package_name: str) -> Path:
         package = root / directory
         (package / 'lib').mkdir(parents=True)
