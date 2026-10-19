@@ -235,7 +235,7 @@ node scripts/check-release-gates.mjs --list  # 现数门禁集合及「仅构建
 
 - 根因补充：原上限 1024 恰等于 V8 自然 `heap_size_limit≈1120MB` 对应的 `--max-old-space-size` 值（标志值 +96MB），所以常见设备上 `totalRam/2` 恒被截成 1024，自适应分支退化成常量。新增 `ENGINE_HEAP_NATURAL_MAX_FLAG_MB` 唯一真源、上限须严格高于它及区间宽度至少 1024MB 的门禁 F；自检新增三条负控，其中一条以双源同为 1024 直接复现原缺陷。JVM 断言检查 1/2/3/4/6GB 档不被上限压成常量。
 - `--max-old-space-size` 是 V8 老生代天花板，并非预分配；上限增大本身不等于 RSS 立刻增加，`lmkd` 仍基于真实内存压力处理。但不能据机制推论宣称无风险，实际设备的长任务峰值和系统回收仍待观察。
-- 代码级检查：`node scripts/check-engine-heap-floor.mjs --self-test`（正样本 1 + 负控 11）、`node scripts/check-engine-heap-floor.mjs --require`、`node scripts/patches/tests/ptc-node-wrapper-c1.test.mjs`、`node scripts/check-code-map.mjs` 均通过；wrapper 测试中的跨树分支 `SKIP` 不计为证据。JVM 档位断言已更新，但本机单测**未取得结果**：WSL 返回 `Wsl/E_ACCESSDENIED`，本机 Gradle 调用约 120 秒无输出后中止；PR CI 的 Kotlin 编译后来通过，敏感信息扫描当时仍 pending。
+- 代码级检查：`node scripts/check-engine-heap-floor.mjs --self-test`（正样本 1 + 负控 11）、`node scripts/check-engine-heap-floor.mjs --require`、`node scripts/patches/tests/ptc-node-wrapper-c1.test.mjs`、`node scripts/check-code-map.mjs` 均通过；wrapper 测试中的跨树分支 `SKIP` 不计为证据。JVM 档位断言已更新；本机单测未取得结果（WSL 返回 `Wsl/E_ACCESSDENIED`，本机 Gradle 调用约 120 秒无输出后中止），但 PR #38 的 CI Kotlin 编译/单测门禁通过。敏感信息扫描和维护文档检查也通过；PR 以 merge commit `ff2261b80b5d573afaef6e46abfa6f8c69feca5e` 合入。
 - **未做设备验证，也未构建来源链 APK**。没有低/中/高内存设备上的 LMK、长任务峰值、后台切换或 CDP/ADB 用户体验证据。高内存设备内存压力保持开放，进入发版候选前须用最终来源包补验；见 [known-gaps.md](known-gaps.md) 本轮条目。
 
 
