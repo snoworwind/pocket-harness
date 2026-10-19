@@ -2794,3 +2794,7 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 449. **异步写回收敛测试不能以固定 timer 代表完成（2026-10-19）**
 
     现象：来源 run 39243648972 两路在 T1-⑥ 报零次写回，本地同样并行模式 194/194 通过。测试真因：40ms timer 到期不保证 MessageChannel 首读基线及 setImmediate 写回检查点已执行，旧判据把未完成与不收敛混为一谈；云端失败的具体调度顺序未留证。修法：先限时等待实际 describe 与首次 mutate，再保留三轮等待及精确一次写回断言，不更改插件实现、不重试失败测试。复验：Linux 全套 195/195，新增缺写回负控必超时拒绝；受控 preload 延迟 MessageChannel 180ms，旧用例 exit 1（mutates=0/describes=0）、新用例 exit 0（mutates=1/describes=4），注入器见 plugins/dsh-model-capability/test/fixtures/delay-message-channel.mjs，命令为 node --import ./test/fixtures/delay-message-channel.mjs --test --test-name-pattern="T1-⑥" test/t1-poll-cost.test.mjs；完整来源链仍需验证，未做设备验证。
+
+450. **pi-ai 类型索引不是模型 wire id，旧夹具掩盖来源快照回归（2026-10-19）**
+
+    现象：来源 run 39251430586 在增加实际写回等待后仍超时。真因：pi-ai 1.1.0 将目录 key 改为 chat:<id>，gen-model-catalog 仍以 key 建表而非读取条目 raw.id；真实快照缺少用户保存的原始 id，本地旧夹具却包含它。坑 449 的 timer 竞态属独立问题，并非这次云端失败的充分解释。修法：优先采用声明 id，旧式无类型 key 保持原样；类型 key 缺声明或非法 id 失败关闭，不猜测去前缀；完整目录测试逐组验证歧义，不把历史冲突组数当协议。复验：实际固定 pi-ai 包旧生成器下 T1-⑤/⑥ 均红；新生成器及真实全目录全套复验随 PR 记录，未做设备验证；需最终 main 来源链到签名。

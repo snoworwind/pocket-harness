@@ -2458,3 +2458,5 @@ Linux runtime scope 退出：先注销工具/监听，再 await 自建 manager.d
 包名迁移调用链（B03）：热推、性能与设备套件使用新 applicationId 加统一 namespace 的完整 MainActivity 类名；热推和客户端故障恢复遇启动错误时中止。screen-scope-matrix 与 adb-only-tree 共用 `scripts/lib/android-identity.mjs` 精确绑定判据。软链 `/data/user/<n>/` 别名使用新 applicationId，其他绝对链保留规则不变。覆盖账本登记 helper 与回归测试；证据见 gotchas 坑 440。
 
 namespace 迁移：生产、测试、instrumentation、AIDL 与上述源码锚点统一使用 com/snoworwind/pocketharness；ShizukuUserServiceBridge.PROTOCOL_VERSION=5 经 UserServiceArgs.version 触发旧服务淘汰，RootAccess 的 app_process 入口与 IME 组件同步迁移。绑定回读支持新同包简写，旧 namespace 仅作为拒绝反例。前后完整检查与升级边界见 NAMESPACE-MIGRATION-2026-10-19.md。
+
+模型目录生成（B01）：pi-ai 厂商 JSON 的类型索引 → 条目声明 id → compact 能力 → 按真实 id 分组 → 插件 lookupCatalog。旧无类型目录保持 key 原样；类型索引缺声明或非法 id 拒绝。`scripts/source-build/model-catalog-identity.test.mjs` 覆盖身份正控与负控；实际出货目录仍跑全量冲突和写回用例，见 gotchas 坑 450。

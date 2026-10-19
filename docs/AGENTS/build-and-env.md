@@ -301,3 +301,7 @@ bootstrap 的 package-lock.json 与 package.json 一样属于逐字节来源输�
 ## Engine 构建复用（2026-10-19）
 
 engine 的 checkout/upstream/overlay/patches/build/deploy 步骤集中到 `scripts/source-build/build-engine.sh`；APK 来源链与本地来源链执行同一脚本（本地链按 `run:` 原样跑，不再依赖被跳过的 `uses:` 步骤）。后续 `build-base` 直接复用该脚本与产物，不另写第二套 engine 构建。
+
+### pi-ai 目录身份（2026-10-19）
+
+`gen-model-catalog.mjs` 读取厂商条目声明的 `id`，不能把 pi-ai 1.1 的 `chat:<id>` 索引当成模型 id。构建后用真实生成目录跑插件测试；最小夹具不能代替这一层。根因及负控见 `gotchas.md` 坑 450。
