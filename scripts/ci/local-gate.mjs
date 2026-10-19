@@ -199,7 +199,7 @@ async function runInContainer({ image, script, commit }) {
   writeFileSync(sdkFile, 'sdk.dir=/opt/android-sdk\n')
   const chunks = []
   const child = spawn('docker', [
-    'run', '--rm', '--platform', 'linux/amd64',
+    'run', '--rm', '-i', '--platform', 'linux/amd64',
     '-v', ROOT + ':/workspace',
     '-v', sdkFile + ':/workspace/local.properties:ro',
     '-v', 'pocket-harness-gate-gradle:/root/.gradle',
