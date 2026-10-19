@@ -102,6 +102,8 @@
 
 设备验收尚未执行：没有在 Android 上验收离线 manifest/资产读取、Linux 安装、更新、重装、卸载或工具执行。本轮先完成基本代码、自检与来源 APK 构建；随后统一执行设备侧验收。这些内部插件保持默认不启用，APK 更新不得自行启用它们；真实用户流程仍需设备验收。
 
+**2026-10-19 真机调查更正**：已有一轮真机证据（vivo V2425A / Android 16），结论是**当前实现不可用**：本 ROM 的 `/data/data` 是 `tmpfs noexec`，glibc loader 无法被内核 `execve`；W5（外部 loader）已实测失败，bionilux 本身不是 glibc→bionic 转换层。插件可加载但运行时不能启动，安装链也未闭环。本轮决定**暂不移除**该功能（移除涉及构建链、来源资产、插件/厂商、Kotlin 桥、工作流、门禁与文档，设备不在线时风险高），保留为实验性、不宣称可用、不再投入实现。完整证据、真因、保留决策与将来重启的路线门见 [`docs/linux-env-findings/README.md`](../linux-env-findings/README.md)。
+
 ### 0.15.0 追加：宿主侧准备与来源内离线接线（设备验收待做）
 
 已落地并有反证：`LinuxAssetIO`（来源面/落点面/摘要+体量/解包面判据，复用 `SnapshotExtractor` 与 `SnapshotBundledAsset`）与 `LinuxAssetPrepare`（客户端触发入口，`@JavascriptInterface` `linuxAssetPrepare`/`linuxAssetPrepareStatus`）。五条负控（穿越、符号链接逃逸、炸弹、摘要不符、字节数不符）在 Kotlin 侧各有真实用例，且失败一律不发布产物。
