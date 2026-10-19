@@ -294,9 +294,18 @@ bootstrap 的 package-lock.json 与 package.json 一样属于逐字节来源输�
 
 引擎 0.2.1-rc.2 来源链原生登记：Sharp 本体/Linux payload 固定 0.35.5，Android 仍使用已核对 loader 的 @img/sharp-wasm32 0.35.3；node-addon-require-builtin Linux payload 增补精确 0.1.9，不接受任意新版本。原始根 manifest 在编译前只读复制，归集缺件仍阻断。失败与复验记录见 ENGINE-UPGRADE-2026-10-19.md。
 
-## PR Gate 变更分类（2026-10-19）
+## PR Gate 变更分类（2026-10-19，2026-10-20 收紧口径）
 
-`scripts/ci/classify-changes.mjs` 按 changed paths 输出 `engine/termux/linux/plugins/app/build/gates/apk/docs_only/full`。PR Gate 新增 `changes` job：`apk=true` 才跑 Kotlin 编译；静态扫描、冲突/敏感信息与补丁/门禁检查始终跑。**未知路径、空 diff、workflow/generic source-build 改动一律 `full=true`**，宁可多跑不误跳过。分类器单测 `node --test scripts/ci/classify-changes.test.mjs`。
+`scripts/ci/classify-changes.mjs` 按 changed paths 输出 `engine/termux/linux/plugins/app/build/gates/apk/docs_only/full`。PR Gate 的 `changes` job 用它决定跑哪些 job。
+
+分层口径（私有仓，改动一律走 PR，合并提交的树已被同一 HEAD 的 PR run 验证过）：
+
+- `apk=true` 才跑 Kotlin 编译。**`apk` 的含义是「该改动可能改变 Kotlin 测试观察到的内容」，不是「碰到了构建系统」**：`.github/**`、`scripts/ci/**`、通用 `scripts/source-build/**` 只置 `build`，不再置 `apk`。这条收窄由 `classify-changes.test.mjs` 的不变量用例守住——Kotlin 源码一旦 `File()` 读取这三棵树，测试立即判红，逼分类器同步改回。
+- `docs_only=true` 时跳过整个 `static` job（24 步全是代码/构建契约，文档改动不可能改变它们）；冲突标记与敏感信息扫描独立成 `docs-hygiene` job 始终运行，且把扫描面扩到 `docs` 与 `.github`。
+- **未知路径、空 diff 仍 fail-safe 到 `full`**，宁可多跑不误跳过；`static` 用 `if: always() && ...`，分类 job 失败（输出为空）时仍按全量跑。Kotlin 编译同样只在分类**明确为 `false`** 时跳过（`always() && apk != 'false'`），分类失败时照跑而不是静默跳过。
+- 触发面只有 `pull_request`：删掉了 `push: branches: [main]`，合并提交不再把同一棵树重验一遍（直接 push main 已被铁律 4 禁止）。并发组 `pr-gate-<PR号>` 开启 `cancel-in-progress`，连续 push 不再叠加跑完。
+
+分类器单测 `node --test scripts/ci/classify-changes.test.mjs`（含「Kotlin 不读 workflow/source-build」不变量）。
 
 ## Engine 构建复用（2026-10-19）
 

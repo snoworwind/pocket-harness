@@ -4,11 +4,19 @@ name: PR Gate
 
 on:
   pull_request:
-  push:
-    branches: [main]
+  # No `push: main` trigger: this is a private repo where every change lands through a PR,
+  # so the merge commit's tree was already validated by the PR run of the same HEAD. A
+  # post-merge duplicate run only spends minutes on a tree that cannot differ. Direct
+  # pushes to main are forbidden (AGENTS.md 铁律 4), and the release/build workflows are
+  # dispatched explicitly rather than by push.
 
 permissions:
   contents: read
+
+# Superseded pushes to the same PR cancel their predecessors instead of running twice.
+concurrency:
+  group: pr-gate-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   changes:
@@ -40,8 +48,39 @@ jobs:
           HEAD: ${{ github.sha }}
         run: node scripts/ci/classify-changes.mjs --base "$BASE" --head "$HEAD" --github-output
 
-  static:
+  # Cheap hygiene that must also cover documentation-only PRs: a secret can land in a doc
+  # change just as easily as in code. Everything heavier lives in `static`, which is
+  # skipped when nothing but documentation changed.
+  docs-hygiene:
     name: 冲突标记与敏感信息扫描
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: 冲突标记检查
+        run: |
+          if grep -rEn '^(<<<<<<< |>>>>>>> )' app/src .github --include='*.kt' --include='*.java' --include='*.xml' --include='*.html' --include='*.js' --include='*.yml' --include='*.yaml'; then
+            echo "::error::检测到未解决的 merge conflict 标记"
+            exit 1
+          fi
+          echo "无冲突标记"
+      - name: 敏感信息扫描
+        run: |
+          if grep -rEn '(sk-[A-Za-z0-9]{16,}|ghp_[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16}|xox[baprs]-[A-Za-z0-9-]{10,})' docs app/src scripts .github 2>/dev/null; then
+            echo "::error::检测到疑似密钥/令牌"
+            exit 1
+          fi
+          echo "无敏感信息"
+
+  static:
+    name: 静态门禁与源码回归
+    needs: changes
+    # Docs-only PRs skip this job: every step below validates code or build-system
+    # contracts that a documentation change cannot alter. Fail-safe direction is preserved
+    # by `always()`: an empty classification (e.g. the `changes` job failed) is not
+    # `docs_only`, so the full gate still runs.
+    if: always() && needs.changes.outputs.docs_only != 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -54,6 +93,11 @@ jobs:
       - name: APK 组装、版本与签名回归
         if: always()
         run: node --test scripts/check-apk-signatures.test.mjs scripts/resolve-version-suffix.test.mjs scripts/build-apk-engine.test.mjs scripts/check-third-party.test.mjs
+      # Locks the PR Gate layering decisions (no push trigger, docs-only skip, hygiene split)
+      # so a later edit cannot silently reintroduce the per-push cost or drop the coverage.
+      - name: PR Gate 分层结构回归
+        if: always()
+        run: node --test scripts/ci/pr-gate-workflow.test.mjs scripts/ci/classify-changes.test.mjs
       - name: 主 WebView 顶层原生桥回归
         if: always()
         run: node --test scripts/tests/main-frame-bridge.test.mjs scripts/tests/engine-private-transport.test.mjs
@@ -63,22 +107,6 @@ jobs:
       - name: 撤销存档导入安全回归
         if: always()
         run: node --test vendor/dsh-undo-savepoint/test/import-plaintext.test.mjs plugins/dsh-linux-bootstrap/test/github-limits.test.mjs plugins/dsh-linux-bootstrap/test/client-http.test.mjs
-      - name: 冲突标记检查
-        if: always()
-        run: |
-          if grep -rEn '^(<<<<<<< |>>>>>>> )' app/src --include='*.kt' --include='*.java' --include='*.xml' --include='*.html' --include='*.js' --include='*.yml' --include='*.yaml'; then
-            echo "::error::检测到未解决的 merge conflict 标记"
-            exit 1
-          fi
-          echo "无冲突标记"
-      - name: 敏感信息扫描
-        if: always()
-        run: |
-          if grep -rEn '(sk-[A-Za-z0-9]{16,}|ghp_[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16}|xox[baprs]-[A-Za-z0-9-]{10,})' app/src scripts 2>/dev/null; then
-            echo "::error::检测到疑似密钥/令牌"
-            exit 1
-          fi
-          echo "无敏感信息"
       - name: 来源审计源码替换回归
         if: always()
         run: |
@@ -210,8 +238,12 @@ jobs:
   compile:
     name: Kotlin 编译门禁
     needs: changes
-    # Docs-only / gate-only changes do not need Kotlin compilation. Any code change maps to apk=true.
-    if: needs.changes.outputs.apk == 'true'
+    # `apk` means "this change can alter what the Kotlin tests observe", not "the build
+    # system was touched". Docs, workflow-only and generic source-build changes therefore
+    # skip the compile job; app/gradle/engine/termux/linux/plugin changes still run it.
+    # Fail-safe: only an explicit `false` skips compilation. If classification produced no
+    # output (the `changes` job failed), run the compile gate rather than silently passing.
+    if: always() && needs.changes.outputs.apk != 'false'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4

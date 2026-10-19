@@ -2798,3 +2798,7 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 450. **pi-ai 类型索引不是模型 wire id，旧夹具掩盖来源快照回归（2026-10-19）**
 
     现象：来源 run 39251430586 在增加实际写回等待后仍超时。真因：pi-ai 1.1.0 将目录 key 改为 chat:<id>，gen-model-catalog 仍以 key 建表而非读取条目 raw.id；真实快照缺少用户保存的原始 id，本地旧夹具却包含它。坑 449 的 timer 竞态属独立问题，并非这次云端失败的充分解释。修法：优先采用声明 id，旧式无类型 key 保持原样；类型 key 缺声明或非法 id 失败关闭，不猜测去前缀；完整目录测试逐组验证歧义，不把历史冲突组数当协议。复验：实际固定 pi-ai 包旧生成器下 T1-⑤/⑥ 均红；新生成器及真实全目录全套复验随 PR 记录，未做设备验证；需最终 main 来源链到签名。
+
+452. **收窄 CI 分层时，Kotlin 对 scripts/ 的隐式读取是唯一会静默漏检的依赖（2026-10-20）**
+
+    现象：PR Gate 对每次 push 都跑全套（24 个静态步骤 + Kotlin 编译），一个只改 workflow 的 PR 也要付约 7 分钟 Kotlin 编译。初步判断「workflow 不影响 Kotlin」是对的，但直接按目录一刀切会漏：`app/src/test` 实际 `File()` 读取 5 个 scripts 路径（`scripts/build-snapshot-013.mjs`、`scripts/patches/apply-patches.mjs`、`scripts/patches/data/undo-safe-filter-helper-snippet.mjs`、`scripts/patches/tests/fixtures/safe-mode-policy.yml`、`scripts/profile-web.cordis.patch.yml`），其中 `scripts/patches/**` 由 engine 规则覆盖、其余由 app 规则覆盖，所以只有 `.github/**`、`scripts/ci/**`、通用 `scripts/source-build/**` 可以安全地不置 `apk`。真因：这些依赖是**间接**的（测试读文件），编译通过与否看不出来，一旦漏判就是「改了脚本但 Kotlin 门禁没跑」的静默降级。修法：分类器只对上述三棵树去掉 `apk`，同时补一条不变量用例——扫描 `app/src/test` 与 `app/src/main` 的 `File("...")` 字面量，命中 `.github/`、`scripts/source-build/`、`scripts/ci/` 即判红，逼分类器跟着改。复验：`node --test scripts/ci/classify-changes.test.mjs` 13/13；把 `build` 重新置回 `apk` 的受控负控令该用例判红，恢复即绿。未做设备验证。
