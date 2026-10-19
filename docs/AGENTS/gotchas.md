@@ -2793,4 +2793,4 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 
 449. **异步写回收敛测试不能以固定 timer 代表完成（2026-10-19）**
 
-    现象：来源 run 39243648972 两路在 T1-⑥ 报零次写回，本地同样并行模式 194/194 通过。测试真因：40ms timer 到期不保证 MessageChannel 首读基线及 setImmediate 写回检查点已执行，旧判据把未完成与不收敛混为一谈；云端失败的具体调度顺序未留证。修法：先限时等待实际 describe 与首次 mutate，再保留三轮等待及精确一次写回断言，不更改插件实现、不重试失败测试。复验：Linux 全套 195/195，新增缺写回负控必超时拒绝；完整来源链仍需验证，未做设备验证。
+    现象：来源 run 39243648972 两路在 T1-⑥ 报零次写回，本地同样并行模式 194/194 通过。测试真因：40ms timer 到期不保证 MessageChannel 首读基线及 setImmediate 写回检查点已执行，旧判据把未完成与不收敛混为一谈；云端失败的具体调度顺序未留证。修法：先限时等待实际 describe 与首次 mutate，再保留三轮等待及精确一次写回断言，不更改插件实现、不重试失败测试。复验：Linux 全套 195/195，新增缺写回负控必超时拒绝；受控 preload 延迟 MessageChannel 180ms，旧用例 exit 1（mutates=0/describes=0）、新用例 exit 0（mutates=1/describes=4），注入器见 plugins/dsh-model-capability/test/fixtures/delay-message-channel.mjs，命令为 node --import ./test/fixtures/delay-message-channel.mjs --test --test-name-pattern="T1-⑥" test/t1-poll-cost.test.mjs；完整来源链仍需验证，未做设备验证。
