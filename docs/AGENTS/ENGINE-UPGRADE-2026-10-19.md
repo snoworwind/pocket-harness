@@ -2,6 +2,8 @@
 
 2026-10-19 北京时间 14:43 启动本次一次性升级。应用源码版本推进到 0.14.8 / versionCode 52；当前为开发候选，未发布、未做设备验证。PR、最终来源构建和设备结果在取得后补记，不以本页源码结果宣称 APK 已验收。
 
+实现 PR：[pocket-harness #40](https://github.com/snoworwind/pocket-harness/pull/40)，实现提交 `ea3c58b`；[该 PR 的同一 HEAD CI](https://github.com/snoworwind/pocket-harness/pull/40/checks) 是合并前复核入口。本次本机固定输入与结果摘要见 [机器证据](ENGINE-UPGRADE-2026-10-19-evidence.json)。
+
 ## 来源与处置
 
 | 项 | 本次事实 |
@@ -33,6 +35,7 @@
 |---|---|
 | 官方 frozen install + native/Host/Client/Web 构建、export | 成功；345 个源码包，官方受跟踪源码未变；不是 APK |
 | 实际生产部署闭包 | 官方 pnpm 12.2.0 deploy 成功；Android/ARM64 optional 输入与 Sharp WASM 闭包进入部署树；临时 manifest/lock/workspace 改动均已恢复，官方受跟踪源码干净；不是 APK |
+| `check-dsh-runtime-dependencies`（实际部署树） | 345 个包、2,435 条必需依赖链接全部可达且未逃出运行时树 |
 | `probe-engine-anchors --fixtures --source-manifest …` | 从本轮实际 tarball 捕获 47 个文件；当前 24 条引擎补丁全部 applied；夹具门禁通过 |
 | `check-patch-test-manifest`（WSL） | 30 文件，68/68 通过，0 跳过、0 已知失败；包含 PTC 15 项及其持久路径反证 |
 | UI `vitest run --pool=threads` | 50 文件，752/752 通过 |

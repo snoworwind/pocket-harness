@@ -83,7 +83,14 @@
       "tests": 1322
     },
     "device": "blocked: adb devices empty; target ARM64 device not found; ABI unknown",
-    "windowsPluginGate": "failed: Linux filesystem semantics and Node 26 default-fork localStorage environment; not counted as pass"
+    "windowsPluginGate": "failed: Linux filesystem semantics and Node 26 default-fork localStorage environment; not counted as pass",
+    "runtimeDependencyLinks": {
+      "packages": 345,
+      "requiredLinks": 2435,
+      "missing": 0
+    }
   },
-  "localLogDirectory": ".deploy-tmp/engine-021rc2/"
+  "localLogDirectory": ".deploy-tmp/engine-021rc2/",
+  "implementationCommit": "ea3c58b",
+  "pullRequest": "https://github.com/snoworwind/pocket-harness/pull/40"
 }
