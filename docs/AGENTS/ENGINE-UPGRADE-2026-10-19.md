@@ -36,6 +36,7 @@
 | 官方 frozen install + native/Host/Client/Web 构建、export | 成功；345 个源码包，官方受跟踪源码未变；不是 APK |
 | 实际生产部署闭包 | 官方 pnpm 12.2.0 deploy 成功；Android/ARM64 optional 输入与 Sharp WASM 闭包进入部署树；临时 manifest/lock/workspace 改动均已恢复，官方受跟踪源码干净；不是 APK |
 | `check-dsh-runtime-dependencies`（实际部署树） | 345 个包、2,435 条必需依赖链接全部可达且未逃出运行时树 |
+| `check-linux-sources --self-test` | bootstrap 的 Cordis/实际 lock 变更登记在两份来源 hash 映射；原始 upstreamSha256 未改，完整源码登记与同体积投毒/额外输入负控通过。此前 CI 39221768021 的旧摘要拒绝是有效阻断，修复登记后重跑同一最终 HEAD |
 | `probe-engine-anchors --fixtures --source-manifest …` | 从本轮实际 tarball 捕获 47 个文件；当前 24 条引擎补丁全部 applied；夹具门禁通过 |
 | `check-patch-test-manifest`（WSL） | 30 文件，68/68 通过，0 跳过、0 已知失败；包含 PTC 15 项及其持久路径反证 |
 | UI `vitest run --pool=threads` | 50 文件，752/752 通过 |

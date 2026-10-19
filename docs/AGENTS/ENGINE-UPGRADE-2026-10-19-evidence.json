@@ -49,7 +49,8 @@
     "plugins/dsh-android-browser/package.json": "230dd7c6832c7177a48e332eb20de89ebc4c49cdc388473daa367acd75e443c9",
     "plugins/dsh-android-browser/package-lock.json": "b11a49a641c20ae2a51c620ada4aa7f65b795745602afa6fadb88f6e08f90dc4",
     "plugins/dsh-android-vdisplay/package.json": "6b656bceb128025b8e63d9fdcb3fcd659021309feda7210f791e0b963eb7b929",
-    "plugins/dsh-android-vdisplay/package-lock.json": "6272e985cf297f99abd300df10e1cc35942c4030960f7a92285756e34b5e61fa"
+    "plugins/dsh-android-vdisplay/package-lock.json": "6272e985cf297f99abd300df10e1cc35942c4030960f7a92285756e34b5e61fa",
+    "scripts/source-build/linux-source-manifest.json": "206895504c1e26359be69affa3f5dae42e6268ee0a3ddc9b760638b121d3a64d"
   },
   "runtimeAssets": {
     "attachment-local-index.js": {
@@ -88,7 +89,8 @@
       "packages": 345,
       "requiredLinks": 2435,
       "missing": 0
-    }
+    },
+    "linuxSourcePins": "Bootstrap package/lock reviewed local deltas registered in both maps; upstream digests and tamper checks retained"
   },
   "localLogDirectory": ".deploy-tmp/engine-021rc2/",
   "implementationCommit": "ea3c58b",

@@ -8,7 +8,7 @@
       "sourceCommit": "3f86a853e346b4f2c268fbf6a76216294b5c4382",
       "sourcePath": "packages/linux-bootstrap",
       "files": {
-        "plugins/dsh-linux-bootstrap/package.json": "e4aba4404692c1a57bbdc7275902d6a1ddb9e4fee6711f58311e66c96f5b317d",
+        "plugins/dsh-linux-bootstrap/package.json": "ae019a921c7c8d2500a06fc6f08d1bb8b200d6c80a5c84d08e790646462fa74b",
         "plugins/dsh-linux-bootstrap/client/index.js": "4576301803d5eda59b76dfff62c7a2cd67cd05d65a25c58df12f3769e3f382cc",
         "plugins/dsh-linux-bootstrap/src/asset-bundle.js": "7e32ce0f57ee0a7f75dfd2d2af6ff61357d63b6c34e4f0dbf7aa23cf4300e416",
         "plugins/dsh-linux-bootstrap/src/github.js": "7b6369b5910ecb3e8b49f75a4dae3ca60ceac2d4164bf7f05f71c81803aa110c",
@@ -17,7 +17,7 @@
         "plugins/dsh-linux-bootstrap/src/routes.js": "678391176bcd81ba6cbbbab293a4731d07e37e99c51178d7605821eac6aa5bb9",
         "plugins/dsh-linux-bootstrap/src/status.js": "494238e39094999e44105d1c56ca562f88ce3e65146bd3070806d4c82dd98f7b",
         "plugins/dsh-linux-bootstrap/src/version.js": "d0131f71b60ff38183070ddd3ef7142a98ae8a2cb54e2a57b725fa2e0d6b3636",
-        "plugins/dsh-linux-bootstrap/package-lock.json": "d8c2983dfda560e62c38cf1ed58a31d5b8cccafa3b722284b41ea69bd592d4e4",
+        "plugins/dsh-linux-bootstrap/package-lock.json": "417fb47e9de9d5d9bcf9688bbee3b19769ffd7eefcb4e83337ef757af0cfd58f",
         "plugins/dsh-linux-bootstrap/build.mjs": "5f416603bd54c216ef30bc2e9211c38373b2b967e92fb2e7ccb72e332e5b03bc",
         "plugins/dsh-linux-bootstrap/build-client.mjs": "43e1a6469c3244ccd6baad3b13ced28dc379f843d6e902670315af0b8ad64c20",
         "plugins/dsh-linux-bootstrap/README.md": "b6a54ef5116942484304b8ea31da9bf514a22dcb6496ce2cd99aaadc82db8fb2"
@@ -49,7 +49,7 @@
     "vendor/dsh-linux-runtime/modules/manifest.js": "1722dd47005c62fad20ec22ddb710bbff72f4a1bc5fdbee7199bb73e31185971",
     "vendor/dsh-linux-runtime/package.json": "1d65abf96889a13f9bfce9266f44839c1957ffc5bc6691fa047cb6061041c476",
     "vendor/dsh-linux-runtime/test/manager.test.mjs": "00a9bd003f7ee35437aba275895bca06d140967cea8ed35efa024e23d4728adb",
-    "plugins/dsh-linux-bootstrap/package.json": "e4aba4404692c1a57bbdc7275902d6a1ddb9e4fee6711f58311e66c96f5b317d",
+    "plugins/dsh-linux-bootstrap/package.json": "ae019a921c7c8d2500a06fc6f08d1bb8b200d6c80a5c84d08e790646462fa74b",
     "plugins/dsh-linux-bootstrap/client/index.js": "4576301803d5eda59b76dfff62c7a2cd67cd05d65a25c58df12f3769e3f382cc",
     "plugins/dsh-linux-bootstrap/src/asset-bundle.js": "7e32ce0f57ee0a7f75dfd2d2af6ff61357d63b6c34e4f0dbf7aa23cf4300e416",
     "plugins/dsh-linux-bootstrap/src/github.js": "7b6369b5910ecb3e8b49f75a4dae3ca60ceac2d4164bf7f05f71c81803aa110c",
@@ -58,7 +58,7 @@
     "plugins/dsh-linux-bootstrap/src/routes.js": "678391176bcd81ba6cbbbab293a4731d07e37e99c51178d7605821eac6aa5bb9",
     "plugins/dsh-linux-bootstrap/src/status.js": "494238e39094999e44105d1c56ca562f88ce3e65146bd3070806d4c82dd98f7b",
     "plugins/dsh-linux-bootstrap/src/version.js": "d0131f71b60ff38183070ddd3ef7142a98ae8a2cb54e2a57b725fa2e0d6b3636",
-    "plugins/dsh-linux-bootstrap/package-lock.json": "d8c2983dfda560e62c38cf1ed58a31d5b8cccafa3b722284b41ea69bd592d4e4",
+    "plugins/dsh-linux-bootstrap/package-lock.json": "417fb47e9de9d5d9bcf9688bbee3b19769ffd7eefcb4e83337ef757af0cfd58f",
     "plugins/dsh-linux-bootstrap/build.mjs": "5f416603bd54c216ef30bc2e9211c38373b2b967e92fb2e7ccb72e332e5b03bc",
     "plugins/dsh-linux-bootstrap/build-client.mjs": "43e1a6469c3244ccd6baad3b13ced28dc379f843d6e902670315af0b8ad64c20",
     "plugins/dsh-linux-bootstrap/README.md": "b6a54ef5116942484304b8ea31da9bf514a22dcb6496ce2cd99aaadc82db8fb2"
@@ -82,7 +82,7 @@
     },
     "plugins/dsh-linux-bootstrap/package.json": {
       "upstreamSha256": "350dbe6b61e96c4723aec5414a1b7d33fd7ad249852f95908178ad4085dfd0db",
-      "reason": "Register the built-in client bundle and exact esbuild build dependency for APK injection."
+      "reason": "Register the built-in client bundle and exact esbuild build dependency for APK injection. Upgrade the built-in bootstrap Cordis declaration to 4.0.5 and resolve its actual lock graph for official Harness 0.2.1-rc.2; no runtime source or source-import trust check is changed."
     },
     "plugins/dsh-linux-bootstrap/src/index.js": {
       "upstreamSha256": "27708c714ba0a102a89a72611443c144a107307686146acc49b9fa4b4c1ba4b2",
@@ -90,7 +90,7 @@
     },
     "plugins/dsh-linux-bootstrap/package-lock.json": {
       "upstreamSha256": "0000000000000000000000000000000000000000000000000000000000000000",
-      "reason": "Add source-owned deterministic packaging/build input for the internal Linux bootstrap client."
+      "reason": "Add source-owned deterministic packaging/build input for the internal Linux bootstrap client. Upgrade the built-in bootstrap Cordis declaration to 4.0.5 and resolve its actual lock graph for official Harness 0.2.1-rc.2; no runtime source or source-import trust check is changed."
     },
     "plugins/dsh-linux-bootstrap/build.mjs": {
       "upstreamSha256": "0000000000000000000000000000000000000000000000000000000000000000",
