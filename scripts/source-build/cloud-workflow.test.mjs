@@ -9,6 +9,7 @@ const expected = "name: build-apk\non:\n  workflow_dispatch:\n    inputs:\n     
 const check = text => assert.equal(text.split('\n').filter(line => line.trim() && !line.trimStart().startsWith('#')).join('\n').trim(), expected.replace(/(    uses: [^\n]+)/g, '$1\n    secrets: inherit'))
 test('cloud entry routes both modes exclusively through same-commit source workflows', () => check(entry))
 
+const engine = () => readFileSync(new URL('./build-engine.sh', import.meta.url), 'utf8').replaceAll('\r\n', '\n').split('\n').map(line => '          ' + line).join('\n')
 function checkEngine021Build(source) {
   assert.match(source, /packageManager!=="pnpm@11\.28\.5"/)
   assert.match(source, /npm install -g corepack@0\.36\.0 --ignore-scripts/)
@@ -29,9 +30,9 @@ function checkEngine021Build(source) {
   assert.doesNotMatch(source.slice(source.indexOf('          cd .deploy-tmp/deepseek-harness'), end), /fs\.writeFileSync\(path, temporary\)|corepack pnpm --recursive --if-present run bundle|corepack pnpm run build\n/)
 }
 
-test('0.2.1 source build follows official artifact stages without rewriting upstream manifests', () => checkEngine021Build(read('build-apk-source.yml')))
+test('0.2.1 source build follows official artifact stages without rewriting upstream manifests', () => checkEngine021Build(engine()))
 test('negative controls reject a missing source compiler, stale package manager and obsolete recursive builder', () => {
-  const source = read('build-apk-source.yml')
+  const source = engine()
   for (const bad of [source.replace('exec tsx scripts/compile-referenced-projects.ts client', 'exec true'),
     source.replace('          cp package.json "$GITHUB_WORKSPACE/.deploy-tmp/source-build/harness-root-package.json.original"', '          # root receipt omitted'),
     source.replace('pnpm@11.28.5', 'pnpm@11.7.0'),

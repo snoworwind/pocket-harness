@@ -20,6 +20,7 @@ export const COMPONENTS = Object.freeze({
     'scripts/snapshot-config/engine-overlay.json',
     'scripts/snapshot-config/engine-overlay-licenses.json',
     'scripts/patches',
+    'scripts/source-build/build-engine.sh',
     'scripts/source-build/export-dsh-engine.mjs',
     'scripts/source-build/inject-dsh-engine-packages.mjs',
     'scripts/source-build/prepare-harness-vendor-overrides.py',

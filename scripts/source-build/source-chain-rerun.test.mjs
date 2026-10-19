@@ -8,6 +8,7 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, wr
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 const ROOT = resolve(import.meta.dirname, '../..')
+const engine = readFileSync(join(ROOT, 'scripts/source-build/build-engine.sh'), 'utf8').replaceAll('\r\n', '\n')
 const yaml = readFileSync(join(ROOT, '.github/workflows/build-apk-source.yml'), 'utf8').replaceAll('\r\n', '\n')
 function step(name, workflow = yaml) {
   const start = workflow.indexOf('      - name: ' + name + '\n')
@@ -144,7 +145,7 @@ test('source reset restores inputs but preserves ignored dependencies', linux, (
   writeFileSync(join(source, 'source.txt'), 'pinned'); git('add', '.'); git('commit', '-qm', 'fixture')
   writeFileSync(join(source, 'source.txt'), 'interrupted override'); writeFileSync(join(source, 'untracked.txt'), 'remove')
   mkdirSync(join(source, 'node_modules')); writeFileSync(join(source, 'node_modules/sentinel'), 'keep')
-  const checkout = step('Checkout pinned DeepSeek Harness source')
+  const checkout = engine
   const reset = checkout.slice(checkout.indexOf('test "$(realpath'), checkout.indexOf('\ngit -C .deploy-tmp/deepseek-harness checkout --detach'))
   const r = bash(reset, root)
   assert.equal(r.status, 0, r.stderr)
@@ -161,7 +162,7 @@ test('fresh no-checkout source clone with HEAD but empty index skips reset', lin
   git('read-tree', '--empty'); rmSync(join(source, 'source.txt'))
   assert.notEqual(git('rev-parse', '--verify', 'HEAD').toString().trim(), '')
   assert.equal(git('ls-files').toString(), '')
-  const checkout = step('Checkout pinned DeepSeek Harness source')
+  const checkout = engine
   const reset = checkout.slice(checkout.indexOf('test "$(realpath'), checkout.indexOf('\ngit -C .deploy-tmp/deepseek-harness checkout --detach'))
   const r = bash(reset, root)
   assert.equal(r.status, 0, r.stderr)
@@ -169,7 +170,7 @@ test('fresh no-checkout source clone with HEAD but empty index skips reset', lin
   assert.equal(git('ls-files').toString(), '')
 }))
 test('deploy cleanup is scoped and rejects empty workspace and linked parent', linux, () => fixture(root => {
-  const harness = step('Build and pack DeepSeek Harness from source')
+  const harness = engine
   const cleanup = harness.slice(harness.indexOf('test -n "$GITHUB_WORKSPACE"'), harness.indexOf('\ncorepack pnpm@12.2.0 --pm-on-fail=ignore --filter'))
   mkdirSync(join(root, '.deploy-tmp/engine-deploy'), { recursive: true })
   writeFileSync(join(root, '.deploy-tmp/sibling'), 'keep')

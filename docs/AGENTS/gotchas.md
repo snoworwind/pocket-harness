@@ -2786,3 +2786,7 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 447. **A1 计划三文件、apply-patches 只写两文件：canonical verifier 判 incomplete（2026-10-19）**
 
     现象：build-apk-source run 39225525469 的两条 ARM64 步骤 24 都报 `Error: incomplete canonical engine patch: ptc-android-native-A1`（`scripts/source-build/reconcile-engine-patch-copies.mjs:94`）。真因：0.2.1-rc.2 的 A1 `planPatch` 已扩为 `lib/index.js`、`lib/process.js`、`lib/persistent-process.js` 三文件，`apply-patches.mjs` 的 PTC `additionalFiles` 仍只列前两文件；`apply` 虽把第三文件缓存进 `IMPL_state`，`saveImpl` 只落 primary + `additionalFiles`，于是 persistent companion 从未写回，verifier 检完整文件集时判红。修法：PTC `additionalFiles` 补 `lib/persistent-process.js`；`check` 同时加载并校验 persistent 的 marker、清环境与幂等；回归新增真实 `apply-patches` 三文件写回用例（先施加 `ptc-argv-L1` 前置）。复验：修复前该用例在 `lib/persistent-process.js must be patched` 处红，修复后 16/16 通过；`reconcile-engine-patch-copies` 6 项、`check-patch-mirror`、`check-maintenance-docs` 均通过；未做设备验证，需重跑来源链到 `sign-arm64`。
+
+448. **共享 engine 脚本抽取后，回归必须跟随实际执行入口（2026-10-19）**
+
+    现象：PR #48 的来源回归五项失败。真因：测试仍从 workflow 已移走的内联步骤提取 shell，未覆盖新共享脚本。修法：官方构建顺序、组件来源及重跑清理测试读取 build-engine.sh 的实际字节，保留缺编译器、缺回执、错包管理器、符号链接逃逸等负控。复验：WSL Linux 三套 41/41，通过且无 skip；未做设备验证；完整来源链另行验证。
