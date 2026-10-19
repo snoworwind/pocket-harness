@@ -149,7 +149,12 @@ export function capture(root, plan, artifact, buildRun, replica, env = process.e
   const expected = committedInputs(root, plan.toolchain)
   if (expected.key !== plan.key || expected.inputs.sha256 !== plan.inputs.sha256) fail('producer plan drifted')
   const modified = git(root, 'diff', '--name-only', 'HEAD', '--', ...COMPONENTS.engine).split('\n').filter(Boolean)
-  if (modified.some(path => path !== 'scripts/snapshot-config/engine-overlay.json' && path !== 'vendor/dshmarketplace-plugin/package.json')) fail('engine inputs changed during build')
+  const allowed = new Set([
+    'scripts/snapshot-config/engine-overlay.json',
+    'vendor/dshmarketplace-plugin/package.json',
+    'vendor/dshmarketplace-plugin/PATCHES.md',
+  ])
+  if (modified.some(path => !allowed.has(path))) fail('engine inputs changed during build: ' + modified.join(', '))
   const versions = readFileSync(join(root, '.deploy-tmp/source-build/package-manager-versions.txt'), 'utf8').trim()
   if (versions !== `${plan.toolchain.pnpm}\ndeployment pnpm: ${plan.toolchain.deploymentPnpm}`) fail('package-manager receipt differs from plan')
   if (existsSync(artifact) && readdirSync(artifact).length) fail('artifact directory must be empty')

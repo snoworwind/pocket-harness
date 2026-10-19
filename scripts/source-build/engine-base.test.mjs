@@ -19,6 +19,8 @@ function fixture(fn) {
       if (/\.(mjs|sh|py|json)$/.test(path)) write(root, path, path + '\n')
       else write(root, path + '/fixture.txt')
     }
+    // build-engine.sh extracts the pinned marketplace tarball, which deletes this receipt.
+    write(root, 'vendor/dshmarketplace-plugin/PATCHES.md')
     write(root, '.gitignore', '.deploy-tmp/\n')
     git(root, 'init', '-q', '--initial-branch=main')
     git(root, 'config', 'user.name', 'Fixture'); git(root, 'config', 'user.email', 'fixture@example.invalid')
@@ -113,4 +115,15 @@ test('materialize restores only a trusted payload', { skip: process.platform !==
   assert.ok(existsSync(join(a, 'vendor/dshmarketplace-plugin/lib/index.js')))
   writeFileSync(join(a, 'base-lock.json'), JSON.stringify({ schema: 1, components: { engine: { ...entry, key: 'engine-v1-wrong' } } }))
   assert.throws(() => materialize(a, out, env), /key drifted/)
+})))
+
+test('capture permits the reviewed marketplace receipt deletion but rejects other engine drift', { skip: process.platform !== 'linux' }, () => fixture(a => fixture(b => {
+  const plan = makePlan(a, runtime, env)
+  built(a); built(b)
+  rmSync(join(a, 'vendor/dshmarketplace-plugin/PATCHES.md'))
+  rmSync(join(b, 'vendor/dshmarketplace-plugin/PATCHES.md'))
+  capture(a, plan, join(a, '.deploy-tmp/artifact'), plan.buildRun, 'primary', env)
+  capture(b, plan, join(b, '.deploy-tmp/artifact'), plan.buildRun, 'reference', env)
+  write(a, 'scripts/patches/fixture.txt', 'unreviewed change\n')
+  assert.throws(() => capture(a, plan, join(a, '.deploy-tmp/poisoned'), plan.buildRun, 'primary', env), /engine inputs changed during build/)
 })))
