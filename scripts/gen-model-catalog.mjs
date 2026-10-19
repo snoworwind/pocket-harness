@@ -86,8 +86,14 @@ for (const file of readdirSync(dataDir).filter((f) => f.endsWith('.json')).sort(
   files++
   for (const [api, group] of Object.entries(catalog)) {
     if (!group || typeof group !== 'object') continue
-    for (const [id, raw] of Object.entries(group)) {
+    for (const [catalogKey, raw] of Object.entries(group)) {
       if (!raw || typeof raw !== 'object') continue
+      // pi-ai 1.1 indexes entries by type:id; the declared wire model ID is raw.id.
+      // Older catalogs used the wire ID as their key. Never strip a prefix by guessing.
+      const id = Object.hasOwn(raw, 'id') ? raw.id : catalogKey
+      if (typeof id !== 'string' || !id.trim() || (raw.id === undefined && /^(chat|embedding|image|audio):/.test(catalogKey))) {
+        throw new Error(`invalid model identity in ${file}: ${catalogKey}`)
+      }
       const entry = compact({ ...raw, api: raw.api ?? api }, providerId)
       if (!models[id]) models[id] = []
       // 同 provider 同 api 重复时保留最后一个（后写覆盖，与目录语义一致）
