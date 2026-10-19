@@ -133,7 +133,18 @@ export function selectSteps({ docsOnly = false, apk = true, workflowPath = WORKF
 
 /** Render one bash script that runs every selected step in order, `always()`-style. */
 export function renderScript(steps) {
-  const lines = ['set -u', 'cd /workspace', 'echo "local-gate: steps=' + steps.length + '"']
+  const lines = [
+    'set -u',
+    'cd /workspace',
+    'echo "local-gate: steps=' + steps.length + '"',
+    // The evidence must describe the environment it was produced in, even when the
+    // repository has no pinned toolchain policy checked in.
+    `printf '::DSH_ENV::node=%s\\n' "$(node --version)"`,
+    `printf '::DSH_ENV::python=%s\\n' "$(python3 -c 'import platform;print(platform.python_version())')"`,
+    `printf '::DSH_ENV::java=%s\\n' "$(java -XshowSettings:properties -version 2>&1 | sed -n 's/.*java.runtime.version = //p' | head -1)"`,
+    `printf '::DSH_ENV::corepack=%s\\n' "$(corepack --version)"`,
+    `printf '::DSH_ENV::os=%s\\n' "$(grep '^VERSION_ID' /etc/os-release | cut -d= -f2 | tr -d '\"')"`,
+  ]
   steps.forEach((step, index) => {
     // Timestamps are taken inside the container: the host only sees the finished stream,
     // so parsing it afterwards cannot recover per-step durations.
@@ -220,6 +231,15 @@ async function runInContainer({ image, script, commit }) {
   return { status, output: Buffer.concat(chunks).toString('utf8') }
 }
 
+export function summarizeEnvironment(output) {
+  const env = {}
+  for (const line of output.split('\n')) {
+    const mark = /^::DSH_ENV::([a-z]+)=(.*)$/.exec(line.trim())
+    if (mark) env[mark[1]] = mark[2]
+  }
+  return env
+}
+
 export function summarize(output, steps) {
   const results = steps.map((step, index) => ({ index, job: step.job, name: step.name, rc: null, durationMs: null }))
   const startedAt = new Map()
@@ -301,7 +321,8 @@ async function main() {
     classification,
     image: args.image,
     platform: 'linux/amd64',
-    toolchain: (() => {
+    environment: summarizeEnvironment(output),
+    toolchainPolicy: (() => {
       try { return JSON.parse(readFileSync(join(ROOT, 'scripts/source-build/engine-toolchain.json'), 'utf8')) } catch { return null }
     })(),
     steps: results,

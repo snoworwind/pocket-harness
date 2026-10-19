@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { extractWorkflowSteps, renderScript, selectSteps, summarize } from './local-gate.mjs'
+import { extractWorkflowSteps, renderScript, selectSteps, summarize, summarizeEnvironment } from './local-gate.mjs'
 
 const workflowPath = new URL('../../.github/workflows/pr-gate.yml', import.meta.url)
 
@@ -103,4 +103,16 @@ test('a step that never reports a status is not counted as green', () => {
   const results = summarize('no markers at all', steps)
   assert.equal(results[0].rc, null)
   assert.notEqual(results[0].rc, 0)
+})
+
+test('evidence records the environment it ran in', () => {
+  const env = summarizeEnvironment([
+    '::DSH_ENV::node=v24.21.0',
+    '::DSH_ENV::python=3.12.15',
+    '::DSH_ENV::java=17.0.20+8',
+    '::DSH_ENV::corepack=0.36.0',
+    '::DSH_ENV::os=24.04',
+    'irrelevant line',
+  ].join('\n'))
+  assert.deepEqual(env, { node: 'v24.21.0', python: '3.12.15', java: '17.0.20+8', corepack: '0.36.0', os: '24.04' })
 })
