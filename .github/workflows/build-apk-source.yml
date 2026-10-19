@@ -247,6 +247,7 @@ jobs:
           # The official 0.2.1 builder now has a dedicated Desktop step. Build
           # Android's native/Host/Client/Web artifacts through its public helpers;
           # no tracked upstream source or package manifest is rewritten.
+          cp package.json "$GITHUB_WORKSPACE/.deploy-tmp/source-build/harness-root-package.json.original"
           corepack pnpm run build:native-system
           corepack pnpm exec tsx scripts/compile-referenced-projects.ts host-libraries
           corepack pnpm exec tsx scripts/compile-referenced-projects.ts client
@@ -258,6 +259,7 @@ jobs:
           const cp = require('node:child_process')
           fs.writeFileSync(process.env.GITHUB_WORKSPACE + '/.deploy-tmp/source-build/harness-build-script-exclusion.json', JSON.stringify({
             sourceCommit: cp.execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
+            originalManifestSha256: require('node:crypto').createHash('sha256').update(fs.readFileSync('package.json')).digest('hex'),
             upstreamSourcesModified: false,
             omitted: ['Desktop Electron packaging', 'aggregate upstream test/script typechecks'],
             built: ['native host addon', 'Host package compilation and bundles', 'Client package compilation and bundles', 'package-local bundles', 'Web frontend'],

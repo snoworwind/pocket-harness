@@ -51,6 +51,8 @@ Windows 全量 plugin gate 曾报 Linux 文件删除 ENOTEMPTY 及 Node 26 默�
 
 ## 设备与最终候选
 
+PR #40 已以 merge commit a2f573b9d92ed7e0cc79a277d2a150b9204f82fa 合入，同一 HEAD 的 PR CI 与 main CI 通过。首次 main 来源构建 39222638056 因原生校验仍绑定 Sharp 0.35.3 而失败；复核还发现原始根 manifest 回执未生成。取消请求时 run 已失败，没有把该 run 作为最终候选。后续修复只读复制原始 package.json 并记录 SHA256，保留上传缺件阻断，新增缺回执负控；修正合入后重新触发 main 来源链。
+
 实际调用 WSL Android SDK 的 `adb devices -l` 返回空列表；指定 `10AF2B0GN0001F2` 读取 `ro.product.cpu.abilist` 返回 `device not found`。因此 ABI 未知，CDP、ADB 真人操作、自主多步任务、横竖屏与覆盖升级均未验收。未使用旧 x86_64 包代验，未热推。
 
 本次 APK 仅可在 PR 同一 HEAD CI 通过并以 merge commit 合入 main 后，由 main 来源链双构建、比对、隔离签名产生。最终候选仍须新 APK 重新安装并完成三层验收；设备缺口补齐前不得公开发布或称升级已通过设备验收。
