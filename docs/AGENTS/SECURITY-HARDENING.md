@@ -229,6 +229,15 @@ node scripts/check-release-gates.mjs --list  # 现数门禁集合及「仅构建
 
 本文件维护分支宗旨、实施原则和已接受边界；具体缺陷与证据留在对应详档，持续随源码更新。
 
+## 复核轮次：2026-10-19（吸收参考仓 #414 堆上限）
+
+按 [UPSTREAM-TRACKING.md](UPSTREAM-TRACKING.md) 的参考 PR #414 实施；GitHub API 恢复后确认源提交 `15d83fa74ceae282e3abc02d94256c271d3bb4d4`、上游合并提交 `f2df6fa0d2a3b70f171f2a28ed3f020dcad5997a`。当前 `main` 尖端仍为检查游标 `18439f1b8cb96f7d4d9b8508bdb02aa2695143a3`。
+
+- 根因补充：原上限 1024 恰等于 V8 自然 `heap_size_limit≈1120MB` 对应的 `--max-old-space-size` 值（标志值 +96MB），所以常见设备上 `totalRam/2` 恒被截成 1024，自适应分支退化成常量。新增 `ENGINE_HEAP_NATURAL_MAX_FLAG_MB` 唯一真源、上限须严格高于它及区间宽度至少 1024MB 的门禁 F；自检新增三条负控，其中一条以双源同为 1024 直接复现原缺陷。JVM 断言检查 1/2/3/4/6GB 档不被上限压成常量。
+- `--max-old-space-size` 是 V8 老生代天花板，并非预分配；上限增大本身不等于 RSS 立刻增加，`lmkd` 仍基于真实内存压力处理。但不能据机制推论宣称无风险，实际设备的长任务峰值和系统回收仍待观察。
+- 代码级检查：`node scripts/check-engine-heap-floor.mjs --self-test`（正样本 1 + 负控 11）、`node scripts/check-engine-heap-floor.mjs --require`、`node scripts/patches/tests/ptc-node-wrapper-c1.test.mjs`、`node scripts/check-code-map.mjs` 均通过；wrapper 测试中的跨树分支 `SKIP` 不计为证据。JVM 档位断言已更新，但本机单测**未取得结果**：WSL 返回 `Wsl/E_ACCESSDENIED`，本机 Gradle 调用约 120 秒无输出后中止；PR CI 的 Kotlin 编译后来通过，敏感信息扫描当时仍 pending。
+- **未做设备验证，也未构建来源链 APK**。没有低/中/高内存设备上的 LMK、长任务峰值、后台切换或 CDP/ADB 用户体验证据。高内存设备内存压力保持开放，进入发版候选前须用最终来源包补验；见 [known-gaps.md](known-gaps.md) 本轮条目。
+
 
 ## 复核轮次：2026-10-17（吸收上游 `e3e728b`）
 

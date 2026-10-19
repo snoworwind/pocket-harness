@@ -195,8 +195,12 @@ class W3ShellContractTest {
       code.contains("internal const val ENGINE_HEAP_FLOOR_MB: Int = 512"),
     )
     assertTrue(
-      "必须有上限常量（堆开成多 GB 会被 lmkd 杀掉）",
-      code.contains("internal const val ENGINE_HEAP_CAP_MB: Int = 1024"),
+      "上限必须高于 V8 自然标志档，防止自适应分支退化成常量",
+      code.contains("internal const val ENGINE_HEAP_CAP_MB: Int = 4096"),
+    )
+    assertTrue(
+      "必须声明 V8 自然标志档，作为上限防退化判据的唯一真源",
+      code.contains("internal const val ENGINE_HEAP_NATURAL_MAX_FLAG_MB: Int = 1024"),
     )
     assertTrue(
       "取值必须 clamp 到上下限，不得只做除法（小内存设备会推出危险值）",
