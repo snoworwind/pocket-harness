@@ -13,8 +13,10 @@
 
 > **本项目宗旨：最大程度提高安全性和可验证性。** 范围、实施原则、已接受风险与证据要求见 [安全加固分支宗旨](docs/AGENTS/SECURITY-HARDENING.md)。
 
-应用名为 `Pocket Harness`，独立包名为 `com.snoworwind.pocketharness`（Kotlin namespace 保留原值），
+应用名为 `Pocket Harness`，applicationId 与 Kotlin namespace 均为 `com.snoworwind.pocketharness`，
 源码版本与 versionCode 见 [构建声明](app/build.gradle.kts)，后缀由构建属性决定；引擎 `@deepseek-ai/dsh` 0.2.0-rc.2（本地开发候选，**未发布**）。应用名、applicationId 与 APK 产物前缀的迁移边界见 [项目基线](docs/AGENTS/BASELINE.md)。
+
+namespace 迁移后的升级限制、前后检查及来源构建进展见 [迁移记录](docs/AGENTS/NAMESPACE-MIGRATION-2026-10-19.md)。
 
 > **插件市场适配警示**：内置市场牵涉大量第三方插件，**绝大多数插件在手机端不一定可用、大概率有 bug**
 > （移动端与桌面端在 WebView 内核/文件系统/权限模型/运行环境差异大）；移动端适配是长期工程，

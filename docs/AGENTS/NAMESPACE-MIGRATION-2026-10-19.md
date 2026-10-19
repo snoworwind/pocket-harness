@@ -43,4 +43,11 @@
 
 ## 设备与产物边界
 
-迁移前实际查询 WSL SDK 的 `adb devices -l` 为空。未运行设备三层验收、横竖屏、自主任务、覆盖升级、真实 IME/无障碍重新绑定或 Shizuku 重连；未构建 APK。源码检查、Manifest/AIDL 生成和编译通过不能替代这些证据；未验收，不得作为发版候选通过。
+迁移前实际查询 WSL SDK 的 `adb devices -l` 为空。未运行设备三层验收、横竖屏、自主任务、覆盖升级、真实 IME/无障碍重新绑定或 Shizuku 重连；本地未构建 APK，云端来源构建的派发状态见下节。源码检查、Manifest/AIDL 生成和编译通过不能替代设备证据；未验收，不得作为发版候选通过。
+
+## 合并后复核与来源构建派发
+
+- [PR #35](https://github.com/snoworwind/pocket-harness/pull/35) 已合入 `main`，合并提交 `9ed8eec3b98dde1c18e3d6a4e08abb81db531456`，其源码树与已验证的迁移提交一致。
+- 合并后 [PR Gate 39192934730](https://github.com/snoworwind/pocket-harness/actions/runs/39192934730) 全部通过；再次定向检查 25 项通过。来源派发预检验证登记补丁 16/16、市场固定产物哈希与补丁后镜像逐字节一致、来源链回归及代码地图，全部通过。日志为本地 `.deploy-tmp/namespace-migration/final-source-preflight.log`。
+- 已对同一提交触发一次 [ARM64 来源构建 39193234498](https://github.com/snoworwind/pocket-harness/actions/runs/39193234498)。2026-10-19 本次文档检查时，primary/reference 均在执行 Harness 源码构建步骤；尚无本轮 APK、独立重建比对或正式签名成功结论，最终状态以该 run 为准。
+- 本次入口为 `build-apk-source.yml`，不会创建 Release 草稿或公开发布；与草稿入口的区别见 [交付政策 §5](../RELEASE.md#5-来源链预发布草稿2026-10-17-按用户决定)。后续文档提交不属于这次绑定 `9ed8eec` 的构建输入。
