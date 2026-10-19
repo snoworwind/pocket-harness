@@ -49,9 +49,7 @@ jobs:
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/dsh-npm-cache"
           echo "npm_config_cache=$RUNNER_TEMP/dsh-npm-cache" >> "$GITHUB_ENV"
-      - name: Install fixed Corepack for engine base key
-        shell: bash
-        run: npm install -g corepack@0.36.0 --ignore-scripts --no-audit --no-fund
+          npm install -g corepack@0.36.0 --ignore-scripts --no-audit --no-fund
       - name: Verify pinned source replacement before the expensive build
         run: |
           python3 -m unittest discover -s scripts/source-build -p 'test_*.py' -v
