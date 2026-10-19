@@ -1,12 +1,14 @@
 /** Regressions against the published 0.2.1-rc.2 runtime library. No child processes, devices, network, or runtime probes. */
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
-import { posix } from 'node:path'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { dirname, join, posix } from 'node:path'
+import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { runInNewContext } from 'node:vm'
 import test from 'node:test'
 import {
-  ANDROID_ENV_NAMES, LAUNCH_HELPER_JS, PERSISTENT_MARKER, assertChildClearing, assertPolicyGate,
+  ANDROID_ENV_NAMES, ENV_MARKER, LAUNCH_HELPER_JS, PERSISTENT_MARKER, assertChildClearing, assertPolicyGate,
   patchEnvironment, patchRuntimeIndex, planPatch,
 } from '../ptc-android-native-A1.mjs'
 
@@ -309,4 +311,28 @@ test('old published artifact is rejected by the version preflight; both compiled
   const rebuilt = patchRuntimeIndex(patchEnvironment(reworded))
   assert.equal(rebuilt, index)
   assertPolicyGate(rebuilt)
+})
+test('apply-patches writes the persistent companion, not just index and process', () => {
+  const NODE = process.argv0 && posix.isAbsolute(process.argv0) ? process.argv0 : process.execPath
+  const scratch = mkdtempSync(join(tmpdir(), 'ptc-apply-'))
+  try {
+    const runtime = 'usr/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-ptc-runtime-node'
+    const root = join(scratch, runtime)
+    for (const name of ['package.json', 'lib/index.js', 'lib/process.js', 'lib/persistent-process.js']) {
+      const target = join(root, name)
+      mkdirSync(dirname(target), { recursive: true })
+      writeFileSync(target, read(name).replace(/\r\n/g, '\n'))
+    }
+    const runner = fileURLToPath(new URL('../apply-patches.mjs', import.meta.url))
+    const apply = only => spawnSync(NODE, [runner, scratch, '--apply', '--scope', 'engine', '--only', only], { encoding: 'utf8' })
+    const prerequisite = apply('ptc-argv-L1')
+    assert.equal(prerequisite.status, 0, (prerequisite.stderr || prerequisite.stdout || '').trim())
+    const applied = apply('ptc-android-native-A1')
+    assert.equal(applied.status, 0, (applied.stderr || applied.stdout || '').trim())
+    for (const name of ['lib/index.js', 'lib/process.js', 'lib/persistent-process.js']) {
+      assert.ok(readFileSync(join(root, name), 'utf8').includes(ENV_MARKER), name + ' must be patched')
+    }
+  } finally {
+    rmSync(scratch, { recursive: true, force: true })
+  }
 })

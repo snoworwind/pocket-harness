@@ -197,14 +197,22 @@ const IMPLS = {
   // Host and child must share the same Android native startup allowlist. A1 never changes policy.
   'ptc-android-native-A1': {
     file: 'usr/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-ptc-runtime-node/lib/index.js',
-    additionalFiles: ['usr/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-ptc-runtime-node/lib/process.js'],
+    additionalFiles: [
+      'usr/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-ptc-runtime-node/lib/process.js',
+      'usr/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-ptc-runtime-node/lib/persistent-process.js',
+    ],
     scope: 'engine',
     check: (s) => {
+      const runtime = 'usr/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-ptc-runtime-node'
       if (!s.includes(PTC_ENV_MARKER) || !s.includes(PTC_LAUNCH_MARKER)) return false
-      const child = loadImpl('usr/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-ptc-runtime-node/lib/process.js', CURRENT_STAGE_ROOT)
-      if (!child.includes(PTC_ENV_MARKER)) return false
+      const child = loadImpl(runtime + '/lib/process.js', CURRENT_STAGE_ROOT)
+      const persistent = loadImpl(runtime + '/lib/persistent-process.js', CURRENT_STAGE_ROOT)
+      if (!child.includes(PTC_ENV_MARKER) || !persistent.includes(PTC_ENV_MARKER)) return false
       assertChildClearing(child)
-      return patchRuntimeIndex(patchEnvironment(s)) === s && patchEnvironment(child) === child
+      assertChildClearing(persistent)
+      return patchRuntimeIndex(patchEnvironment(s)) === s
+        && patchEnvironment(child) === child
+        && patchEnvironment(persistent) === persistent
     },
     apply: (s) => {
       const runtime = 'usr/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-ptc-runtime-node'
