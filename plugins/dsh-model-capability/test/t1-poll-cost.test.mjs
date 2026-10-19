@@ -137,6 +137,21 @@ function makeCtx(providers) {
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 40))
 
+
+// MessageChannel delivery and setImmediate checkpoints can run after an expired
+// 40ms timer on a busy runner. Wait for the required fact before testing convergence.
+async function waitFor(predicate, label, timeoutMs = 5000) {
+  const deadline = performance.now() + timeoutMs
+  while (!predicate()) {
+    assert.ok(performance.now() < deadline, 'timed out waiting for ' + label)
+    await new Promise(resolve => setTimeout(resolve, 10))
+  }
+}
+
+test('event checkpoint rejects a missing write instead of accepting a timeout', async () => {
+  await assert.rejects(waitFor(() => false, 'negative control', 20), /timed out waiting/)
+})
+
 const EV = 'settings/document-updated'
 
 // ── ① 零定时器：不存在任何周期/延迟装置 ────────────────────────────────────────
@@ -333,7 +348,7 @@ test('T1-⑥ 自触发环收敛：连续自身写回后签名稳定，不无限�
   })
   apply(c.ctx, {})
   t.after(() => c.dispose())
-  await flush()
+  await waitFor(() => c.state.describes >= 1, 'startup baseline')
 
   // 模拟上游：我方 mutate 后上游会再发一次 document-updated（同一 ns）。
   // 在 mutate 里回灌事件，制造「写回 -> 事件 -> 再写回」的自触发环候选。
@@ -346,6 +361,10 @@ test('T1-⑥ 自触发环收敛：连续自身写回后签名稳定，不无限�
 
   // 用户保存新模型；此后每一轮都由「我方写回自己引发的那个事件」驱动。
   c.save((s) => ({ providers: { ...s.providers, gateway: { ...s.providers.gateway, models: [{ id: REAL_ID }] } } }))
+  await waitFor(() => c.state.mutates >= 1, 'first write-back')
+  // Startup, saved projection, fresh signature, then the self-event projection.
+  // Observe the self-event too: a delayed channel must not pass before its turn.
+  await waitFor(() => c.state.describes >= 4, 'self-event projection')
   await flush()
   await flush()
   await flush()
