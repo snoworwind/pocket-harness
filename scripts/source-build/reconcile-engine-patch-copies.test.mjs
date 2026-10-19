@@ -34,8 +34,8 @@ test('MiMo canonical verifier accepts both patched files and rejects a partial p
     const inputs = [
       [dshRel + '/lib/index.js', readFileSync(versionedFixture('dsh-llm-pi-ai', 'lib', 'index.js'), 'utf8').replaceAll('\r\n', '\n')],
       [piRel + '/dist/api/openai-completions.js', readFileSync(versionedFixture('pi-ai', 'dist', 'api', 'openai-completions.js'), 'utf8').replaceAll('\r\n', '\n')],
-      [dshRel + '/package.json', JSON.stringify({ version: '0.2.0-rc.2' })],
-      [piRel + '/package.json', JSON.stringify({ version: '0.87.1' })],
+      [dshRel + '/package.json', JSON.stringify({ version: '0.2.1-rc.2' })],
+      [piRel + '/package.json', JSON.stringify({ version: '1.1.0' })],
     ]
     for (const [rel, text] of inputs) {
       const path = join(engine, rel)

@@ -29,11 +29,11 @@ const hereLine = 'const HERE = dirname(fileURLToPath(import.meta.url))'
 //
 // ① HERE 指回 scripts/patches——生成文件按 import.meta.url 推路径会指向错误目录。
 // ② 相对 import 说明符改写成指向 scripts/patches 的绝对 file URL——静态 ESM 说明符按
-//    **文件自身位置**解析，不认 HERE。上游 0.2.0-rc.2 起共享执行器静态引入三个同伴模块
+//    **文件自身位置**解析，不认 HERE。上游 0.2.1-rc.2 起共享执行器静态引入三个同伴模块
 //    （ptc-android-native-A1 / pi-upstream-streaming-020 / resolve-engine-patch-target），
 //    不改写则生成副本在 import 期就 ERR_MODULE_NOT_FOUND（实锤 2026-10-02：本地预检与
 //    工作流 505 行同点判红，来源审计链自 0.1.7-rc.2 之后没人跑过，故未被发现）。
-//    同伴模块各自用 import.meta.url 推导仓库根与 upstream/ 数据目录（pi-ai-0.87.1.patch），
+//    同伴模块各自用 import.meta.url 推导仓库根与 upstream/ 数据目录（pi-ai-1.1.0.patch），
 //    所以**不能**把它们复制到生成目录旁边——只能把说明符指回它们的真实位置。
 //
 // 0.1.7 之前这里还有第三处改写：market-A 的市场补丁在源码构建产物上要接受另一种

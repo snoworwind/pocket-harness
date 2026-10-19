@@ -12,7 +12,7 @@ import { canonicalizePackedManifest } from './normalize-snapshot.mjs'
 
 const repo = resolve(process.argv[2] ?? '')
 const cache = resolve(process.argv[3] ?? '')
-const expectedCommit = '639ed015397290b3745d163aafe02ffee4aa3f84'
+const expectedCommit = '687f282e8625c6b8d11ff58211a90524be2e4317'
 const overlayPath = resolve('scripts/snapshot-config/engine-overlay.json')
 if (!process.argv[2] || !process.argv[3]) {
   console.error('usage: node scripts/source-build/export-dsh-engine.mjs <dsh-source-root> <overlay-cache>')
@@ -25,9 +25,9 @@ if (commit !== expectedCommit) throw new Error(`unexpected DeepSeek Harness comm
 
 const overlay = JSON.parse(readFileSync(overlayPath, 'utf8'))
 const sourcePackage = JSON.parse(readFileSync(join(repo, 'package.json'), 'utf8'))
-if (sourcePackage.version !== '0.2.0-rc.2' || sourcePackage.packageManager !== 'pnpm@11.7.0'
-  || overlay.engineVersion !== '0.2.0-rc.2' || overlay.rootPackage?.version !== '0.2.0-rc.2') {
-  throw new Error('source export requires official 0.2.0-rc.2 source/overlay and pnpm 11.7.0')
+if (sourcePackage.version !== '0.2.1-rc.2' || sourcePackage.packageManager !== 'pnpm@11.28.5'
+  || overlay.engineVersion !== '0.2.1-rc.2' || overlay.rootPackage?.version !== '0.2.1-rc.2') {
+  throw new Error('source export requires official 0.2.1-rc.2 source/overlay and pnpm 11.28.5')
 }
 const lockfilePath = join(repo, 'pnpm-lock.yaml')
 if (!existsSync(lockfilePath)) throw new Error('pinned Harness source is missing pnpm-lock.yaml')
@@ -43,7 +43,7 @@ wanted.set(overlay.rootPackage.name, overlay.rootPackage.version)
 // 断言口径是「overlay 是否钉了这个包」，不是「本次导出是否打包了它」。两者必须分开：
 // 生产侧 prepare-harness-vendor-overrides.py 解析每个受审包的 pin 时取 `packages`
 // **或** `vendorTop`，而 @deepseek-ai/cosmokit 合法地只出现在 vendorTop（1.8.5）——
-// 旧口径只查 packages，于是 0.2.0-rc.2 首次把 cosmokit 纳入审计即在此判红，而这条链
+// 旧口径只查 packages，于是 0.2.1-rc.2 首次把 cosmokit 纳入审计即在此判红，而这条链
 // 自那以后没人跑过。只有 `wanted`（packages + rootPackage）会被打包；vendorTop 成员由
 // 运行时树自己的 vendor 路径装机，从不经本缓存。
 const overlayPins = new Set([...wanted.keys(), ...Object.keys(overlay.vendorTop ?? {})])

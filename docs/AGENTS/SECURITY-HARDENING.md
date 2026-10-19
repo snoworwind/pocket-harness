@@ -29,6 +29,10 @@
 
 **「独立」的含义（避免歧义）**：本仓的构建、验证都不需要 kelai141 名下任何仓库——来源链只取 `deepseek-ai/deepseek-harness`、Termux 官方签名仓、npm registry 与 Android SDK。Linux launcher/runtime/bootstrap 源码由本仓按来源提交导入并在树内哈希校验；其上游出处与许可必须保留，构建时不访问旧仓。**跨树镜像纪律已整体退役**（2026-10-15）：`check-patch-mirror.mjs` 只保留 registry↔IMPLS 自洽面，`check-release-gates.mjs` 的「两树同版」断言删除，`scripts/patches/**` 与各子仓副本在本仓内即权威，不再有「先合本仓镜像 PR、再合协调仓权威源 PR」这条要求。手工发布脚本（`upload-release.mjs` / `sync-release-notes.mjs`）与 `.github/workflows/release.yml` 均已删除；新草稿入口仅走来源链；残留的本地/协调仓链脚本（`build-apk-013.ps1` / `build-release.ps1`）禁止作为构建入口；`build-snapshot-013.mjs` 仍由来源链内部调用，不得独立运行它绕过来源校验。保留的许可声明、仓库字段、README 来源说明及历史记录描述事实来源，不得改写成「我们的」。
 
+## 引擎吸收：2026-10-19
+
+固定官方 0.2.1-rc.2，按源码构建并重核插件、路由、补丁和依赖闭包；两条 PTC 执行路径的授权与环境边界均保留。完整来源/反证、PR 与最终来源链状态统一在 [升级记录](ENGINE-UPGRADE-2026-10-19.md)。这是含 L2/L3 的开发候选，未做设备验证；设备缺席不写成通过，公开发布仍被最终候选三层验收阻断。
+
 ## 维护方式
 
 2026-10-18 用户决定：仓库保持私有，暂不使用收费分支保护，不升级套餐。继续通过 PR 交付，合并前复核同一提交的 CI；Actions 已强制 SHA 固定，默认 token 只读且不允许工作流代批 PR。上述控制不能替代远端分支保护，不将其登记为已启用。当前仅构建 ARM64，设备证据不可得时如实保持未验收。

@@ -12,7 +12,7 @@ K11 离线 Linux 资产：`build-linux-assets.yml` → `check-linux-sources.mjs`
 > 2. 手里是**文件或函数** → 查 §2 主表的「关键文件」列，或 §6 分块详解里的小节；
 > 3. 想**先通读一遍** → §1 全局运行顺序（阶段 0-4 + 时序图）→ §2 主表 → §4 耦合矩阵。
 >
-> **当前源码登记**：v0.14.5基线 + 0.14.5-fx-1本地实施（详见下方实施补充）；上游官方639ed015（0.2.0-rc.2），新模块/fixtures与当前锚点见§6/§7；旧cc0c921/coord1f9852d审查条目仅历史溯源，非本轮运行证据。
+> **当前源码登记**：应用 0.14.8 开发候选；官方引擎 687f282e / 0.2.1-rc.2；本轮来源、代码证据和设备缺口见 ENGINE-UPGRADE-2026-10-19.md。旧版本轮次仅作历史溯源。
 > 锚点格式 `path:line`，路径一律**相对 apk 仓根**；插件与三个子仓（`plugins/*`、`dsh-client-ui-responsive`、`dsh-host-web-compat`、`dsh-shell-termux`）在本分支以树内副本为权威，跨树镜像约束已退役（AGENTS.md §4.6），行号以本仓副本为准。
 >
 > **锚点会漂**：改了代码就跑 `node scripts/check-code-map.mjs`——它守「覆盖完整、锚点有效、编号一致」（详见 §7）。
@@ -567,7 +567,7 @@ Linux 发现补充（P04，坑 373）：bootstrap `index.js` 串行发现 → `g
 | B01 | 树内副本即权威 | 2026-10-15 起 `scripts/patches/**`、`build-apk-013.ps1`、`build-snapshot-013.mjs`、`inject-all.py` 等**不再做双仓逐字节比对**：本分支只从源码构建、不依赖协调仓，原「单边演进即拒」纪律随镜像层一并移除；补丁面只由本仓自洽判据守 | scripts/check-patch-mirror.mjs:56-72 |
 | B01 | 发布链 build-release.ps1 | 复用同一门禁集与指纹对账，输入走设备侧 make-snapshot.sh 产出的 snapshot/snapshot-*.tar.xz | scripts/build-release.ps1:56-61,89-114,147 |
 | B01 | CI 与云端构建链 | 云端 build-apk.mjs 与本地链门禁集差集必须为 0。0.14.5：原先并列的 apk 仓独立快照 workflow `build-snapshot.yml`（走 inject-snapshot.py 三包注入、无引擎 overlay/补丁/语法降级）已删除，快照构建入口收敛为单一链 | scripts/check-release-gates.mjs:191-212 |
-| B01 | 来源审计 ARM64 构建 | 官方639ed015/0.2.0-rc.2源码构建CLI/Web/第一方包；Cordis按目标官方源码、不回退旧版本；bootstrap/InRelease/deb认证、native来源审计与overlay pin恢复。PTC与MiMo多文件 exact verifier及全部pnpm同包副本同步；MiMo复用已登记planner并要求before==after，部分补丁和未知verifier仍拒绝；最终snapshot检查复用同一判据，普通post-apply复用runner --check | .github/workflows/build-apk-source.yml:134,scripts/patches/registry.json:211,scripts/patches/apply-patches.mjs:122,scripts/source-build/reconcile-engine-patch-copies.mjs:80,scripts/source-build/check-dsh-source-snapshot.mjs:25 |
+| B01 | 来源审计 ARM64 构建 | 官方687f282e/0.2.1-rc.2源码构建CLI/Web/第一方包；Cordis按目标官方源码、不回退旧版本；bootstrap/InRelease/deb认证、native来源审计与overlay pin恢复。PTC与MiMo多文件 exact verifier及全部pnpm同包副本同步；MiMo复用已登记planner并要求before==after，部分补丁和未知verifier仍拒绝；最终snapshot检查复用同一判据，普通post-apply复用runner --check | .github/workflows/build-apk-source.yml:134,scripts/patches/registry.json:211,scripts/patches/apply-patches.mjs:122,scripts/source-build/reconcile-engine-patch-copies.mjs:80,scripts/source-build/check-dsh-source-snapshot.mjs:25 |
 | B01 | 来源草稿资产边界 | 写权限任务先拒绝额外/缺失/链接/非普通资产，要求哈希清单与实际上传集合一一对应，再核验字节，最后调用 gh 创建草稿；真实 shell 负控见坑 371 | .github/workflows/release-source-draft.yml:83,scripts/source-build/test_prepare_source_release.py:74 |
 | B02 | B01 | 门禁集由两条编排器逐项调用；聚合入口断言本地链与云端链门禁集差集为 0，并锁发布链必须走 --run | scripts/check-release-gates.mjs:135 |
 | B02 | B03 | 冷启动预算的真数据只能来自设备产物，--require-real 由设备验收承担，构建机与 CI 只计 SKIP | scripts/check-boot-budget.mjs:671 |
@@ -1670,8 +1670,8 @@ flowchart TD
 
 #### B01 构建链与快照注入
 
-- **0.14.3当前**：官方639ed015/0.2.0-rc.2、pi-ai0.87.1；PTC A1 host/child及官方streaming020六provider在registry/runner，G2 requires streaming020、A1 requires L1。source reconcile展开additionalTargets、exact verifier后同步同包pnpm物理副本，最终source snapshot复用。普通snapshot post-apply已统一runner --check复核companion/exact verifier（streaming描述marker不当产物literal）；新runtime assets、组件lib/镜像与双ABI tester构建/hash仍待父任务，不填造测量。见 [补丁台账](<dsh-mobile-apk/docs/AGENTS/RUNTIME-PATCHES.md>)。
-- 以下旧来源链锚点仅为历史流程；当前官方0.2源码pin/无旧Cordis回退以 [构建环境](<dsh-mobile-apk/docs/AGENTS/build-and-env.md>) 为准。本委派没跑任何脚本。
+- **当前来源链**：官方 0.2.1-rc.2 → native addon → 官方 host-libraries → Client compiler → 根 Client bundle → Web → 固定源码导出 → 临时部署闭包 → pnpm deploy → 恢复源码 → 快照/补丁/注入/双构建/隔离签名。PTC A1 的 planPatch 同时验证 index/process/persistent-process，patchRuntimeIndex 与 patchPersistentLaunch 分别处理两条 launch；固定 spawn 数、enforcing argv 与 companion 门均不得绕过。回归账本：PTC 15 项、cloud-workflow 的缺编译器/旧包管理器/旧 builder 负控；设备缺口见 [升级记录](ENGINE-UPGRADE-2026-10-19.md)。
+- 以下旧来源链锚点仅作历史回查；当前固定源码与允许入口见 [构建环境](build-and-env.md)，本轮实际验证见升级记录。
 
 
 - **一句话**：把「一次打包命令」变成可发布的 APK：先在 WSL 内从基座建出注入前的运行时快照，再逐 ABI 注入插件与补丁、过完整门禁集、写快照指纹并 gradle 出包，任一 ABI 被拒即整链非 0。
@@ -1779,7 +1779,7 @@ flowchart TD
 
 归一化调用链：`export-dsh-engine.mjs` → `canonicalizePackedManifest` → `canonicalPackageJson`（保留条件导出及扩展字段内部顺序）→ 固定 gzip 头；来源 workflow 产出侧 → `collectEntries`（权限、目录入账，特殊类型拒绝）→ `normalizeSnapshot` → 未命中规则按原 Buffer 哈希，命中规则严格解码 → 同一 package 规则及精确 pnpm 规则 → v3 摘要。覆盖账本：`scripts/source-build/normalize-snapshot.test.mjs` 的二进制、特殊字段、顺序、真实 Node 加载、Unix 执行权限及 CLI 负控；边界见 `gotchas.md` 坑 337、338。
 
-**ARM64 来源审计变体**：`.github/workflows/build-apk-source.yml` 是独立的 `workflow_dispatch` 入口。它从固定 Harness commit 构建 CLI、递归 bundle 与 Web UI；部署前临时把 overlay 清单中的第一方工作区包加入实际部署目标 `apps/cli` 的 production dependencies，并同步更新锁文件 `apps/cli` importer 后 pnpm deploy，以纳入这些包及其生产依赖闭包；deploy 完成即恢复上游 `apps/cli/package.json` 与锁文件，并把临时输入哈希和包清单附入 provenance。第一方 tarball 构建产物写入 deploy 树中对应符号链接的物理包目录，保留 pnpm 依赖目录与虚拟 store 链接；快照生成后把第一方包顶层 payload 物化为普通文件目录，并令 `.pnpm` store 中相同 payload 通过相对链接回指顶层文件，为顶层包合并包内和 `.pnpm` 同级的依赖链接并保留 Node 搜索优先级，之后重打包并更新快照 SHA-256。注入后、快照构建后分别由 `scripts/source-build/check-dsh-runtime-dependencies.mjs` 按 Node 的 `node_modules` 祖先查找规则验证必需依赖的 `package.json` 在运行时树中可达，并保存路径报告；该检查确认 pnpm 包依赖在运行时树内；APK 源码构建在打包步骤临时用 source-build 适配器把既有 overlay 门禁调用路由至 `source-build/check-dsh-source-snapshot.mjs`，从最终压缩快照核验固定来源包版本与 tarball 哈希、依赖链接、引擎补丁标记及内置预设载体（载体清单在 `scripts/source-build/preset-carriers.mjs`，与权威 overlay 门禁的 CARRIERS 同源，其单测读权威源文本双向比对以防重锚后脱钩）；原件由退出 trap 恢复，原件/适配器/检查器哈希记入策略 provenance，普通构建仍走 `check-engine-overlay.mjs`。同一打包步骤在跑门禁前用 `restore-overlay-pins.mjs` 按策略报告记下的清单把构建期摘除的第一方 overlay 钉并回 `engine-overlay.json`（摘除是为了让快照构建器不可回拉上游发布版 tarball 覆盖源码产物；而 `check-contract.mjs` 第 7 节按这份清单定运行时版本并判 profile 引擎包 insert 行同版），还原记录进策略 provenance，退出 trap 随后覆盖回原文件。Termux 官方 bootstrap 以固定 SHA-256 校验后生成 `usr` 基座，并将源码部署树清单写入 provenance；再从 bootstrap 读取 Termux 密钥验证 `InRelease` 和包索引列出的每个 `.deb`。profile 文件由上游 `profile.ts` 模板初始化。壳插件从项目源构建，host-web-compat 对照本次项目提交内的 JavaScript 源码，marketplace 用**固定 npm 发布产物**（`dshmarketplace-plugin-0.1.7.tgz`，sha256 钉在 workflow 里；不再从组件源码树重建——我们的镜像与 market-* 补丁都按发布字节定义，重建会用不同工具链产出不同字节、把补丁锚空，见坑 205）；此变体把旧 LFS 基座独有且未挂载的四个遗留包排除，名单与理由随策略清单附出。此流程不启用 LFS、不读取 `base/base-usr-*` 或 `base-dsh`，通过本地只读 HTTP 镜像把验签后的索引与 deb 交给既有快照构建器，最后出 ARM64 APK 与来源清单/哈希。当前构建副本只用临时证书；云端独立验证两个 runner 的 APK/快照后，隔离签名 job 才读取正式 PKCS12，并以仓库固定生产证书 pin 复核三签。实现分别位于 `scripts/source-build/prepare-termux-bootstrap.py`、`prepare-termux-signed-repo.py`、`seed-dsh-profiles.mjs`、`export-dsh-engine.mjs`、`inject-dsh-engine-packages.mjs`、`check-dsh-runtime-dependencies.mjs`、`materialize-dsh-pnpm-packages.mjs`、`check-dsh-source-snapshot.mjs`、`check-dsh-source-snapshot-gate.mjs`、`prepare-pnpm-deploy-runtime-closure.mjs`。Android 运行时闭包还锁定 Koffi 3.2.1、启用 Android/ARM64 目标并加入 Sharp WASM 后备；`check-android-native-runtime-packages.mjs` 核验 AArch64 ELF、WASM 可解析路径与包 payload 哈希。
+**ARM64 来源审计变体**：`.github/workflows/build-apk-source.yml` 是独立的 `workflow_dispatch` 入口。它从固定 Harness commit 通过官方 Host/Client 编译、根 workspace bundle 与 Web 步骤构建 CLI/UI；部署前临时把 overlay 清单中的第一方工作区包加入实际部署目标 `apps/cli` 的 production dependencies，并同步更新锁文件 `apps/cli` importer 后 pnpm deploy，以纳入这些包及其生产依赖闭包；deploy 完成即恢复上游 `apps/cli/package.json` 与锁文件，并把临时输入哈希和包清单附入 provenance。第一方 tarball 构建产物写入 deploy 树中对应符号链接的物理包目录，保留 pnpm 依赖目录与虚拟 store 链接；快照生成后把第一方包顶层 payload 物化为普通文件目录，并令 `.pnpm` store 中相同 payload 通过相对链接回指顶层文件，为顶层包合并包内和 `.pnpm` 同级的依赖链接并保留 Node 搜索优先级，之后重打包并更新快照 SHA-256。注入后、快照构建后分别由 `scripts/source-build/check-dsh-runtime-dependencies.mjs` 按 Node 的 `node_modules` 祖先查找规则验证必需依赖的 `package.json` 在运行时树中可达，并保存路径报告；该检查确认 pnpm 包依赖在运行时树内；APK 源码构建在打包步骤临时用 source-build 适配器把既有 overlay 门禁调用路由至 `source-build/check-dsh-source-snapshot.mjs`，从最终压缩快照核验固定来源包版本与 tarball 哈希、依赖链接、引擎补丁标记及内置预设载体（载体清单在 `scripts/source-build/preset-carriers.mjs`，与权威 overlay 门禁的 CARRIERS 同源，其单测读权威源文本双向比对以防重锚后脱钩）；原件由退出 trap 恢复，原件/适配器/检查器哈希记入策略 provenance，普通构建仍走 `check-engine-overlay.mjs`。同一打包步骤在跑门禁前用 `restore-overlay-pins.mjs` 按策略报告记下的清单把构建期摘除的第一方 overlay 钉并回 `engine-overlay.json`（摘除是为了让快照构建器不可回拉上游发布版 tarball 覆盖源码产物；而 `check-contract.mjs` 第 7 节按这份清单定运行时版本并判 profile 引擎包 insert 行同版），还原记录进策略 provenance，退出 trap 随后覆盖回原文件。Termux 官方 bootstrap 以固定 SHA-256 校验后生成 `usr` 基座，并将源码部署树清单写入 provenance；再从 bootstrap 读取 Termux 密钥验证 `InRelease` 和包索引列出的每个 `.deb`。profile 文件由上游 `profile.ts` 模板初始化。壳插件从项目源构建，host-web-compat 对照本次项目提交内的 JavaScript 源码，marketplace 用**固定 npm 发布产物**（`dshmarketplace-plugin-0.1.7.tgz`，sha256 钉在 workflow 里；不再从组件源码树重建——我们的镜像与 market-* 补丁都按发布字节定义，重建会用不同工具链产出不同字节、把补丁锚空，见坑 205）；此变体把旧 LFS 基座独有且未挂载的四个遗留包排除，名单与理由随策略清单附出。此流程不启用 LFS、不读取 `base/base-usr-*` 或 `base-dsh`，通过本地只读 HTTP 镜像把验签后的索引与 deb 交给既有快照构建器，最后出 ARM64 APK 与来源清单/哈希。当前构建副本只用临时证书；云端独立验证两个 runner 的 APK/快照后，隔离签名 job 才读取正式 PKCS12，并以仓库固定生产证书 pin 复核三签。实现分别位于 `scripts/source-build/prepare-termux-bootstrap.py`、`prepare-termux-signed-repo.py`、`seed-dsh-profiles.mjs`、`export-dsh-engine.mjs`、`inject-dsh-engine-packages.mjs`、`check-dsh-runtime-dependencies.mjs`、`materialize-dsh-pnpm-packages.mjs`、`check-dsh-source-snapshot.mjs`、`check-dsh-source-snapshot-gate.mjs`、`prepare-pnpm-deploy-runtime-closure.mjs`。Android 运行时闭包还锁定 Koffi 3.2.1、启用 Android/ARM64 目标并加入 Sharp WASM 后备；`check-android-native-runtime-packages.mjs` 核验 AArch64 ELF、WASM 可解析路径与包 payload 哈希。
 
 ```mermaid
 flowchart LR
@@ -2144,7 +2144,7 @@ scripts/build-apk-engine.test.mjs
 scripts/patches/data/undo-safe-transaction-snippet.mjs
 scripts/patches/data/registry-scan-c4.mjs
 scripts/patches/data/client-index-loader-barrier.mjs
-scripts/patches/upstream/pi-ai-0.87.1.patch
+scripts/patches/upstream/pi-ai-1.1.0.patch
 glob:dsh-client-ui-responsive/src/client/mobile/upstream-browser/**
 app/src/main/java/com/snoworwind/pocketharness/MainActivity.kt
 app/src/main/java/com/snoworwind/pocketharness/UserCopy.kt
@@ -2301,7 +2301,6 @@ glob:plugins/dsh-android-linux-env/test/*.mjs
 glob:plugins/dsh-android-model-capability/test/*.mjs
 glob:plugins/dsh-model-capability/test/*.mjs
 dsh-client-ui-responsive/src/index.ts
-dsh-client-ui-responsive/src/invariant.ts
 dsh-client-ui-responsive/src/css-modules.d.ts
 dsh-client-ui-responsive/src/react-dom.d.ts
 dsh-client-ui-responsive/src/client/snapshot-panels-observer.ts

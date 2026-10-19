@@ -1,5 +1,9 @@
 # build-and-env.md — 构建与验证命令 + 环境流程
 
+## 0.2.1 引擎来源链
+
+目标、工具链、实际构建输入和环境错误见 [升级记录](ENGINE-UPGRADE-2026-10-19.md)。源码阶段用官方 native → Host libraries → Client compiler → Client workspace bundle → Web 顺序；根 workspace bundle 已覆盖 package-local 配置，不能再追加旧 recursive bundle（新版 pnpm 拒绝实际循环依赖）。固定 Corepack 0.36.0；本地 Node 24 必须带匹配开发头文件。APK 仍仅由 main 的隔离来源链产出。
+
 ## 双构建比对拒绝重复成员（2026-10-19）
 
 `verify-arm64` 在 `read-apk-snapshot.py` 报 `duplicate or excessive snapshot entries` 时，先分别清点 tar 成员数与重复路径，不要放宽读取器。已确认的注入器重复目录原因与修法见 [坑 439](gotchas.md)；回归命令为 `python -m unittest discover -s scripts/source-build -p test_inject_all.py`，比对器自检为 `node scripts/source-build/compare-independent-builds.mjs --self-test`（Linux）。
@@ -139,7 +143,7 @@ available for offline mode`，22s 即 break），且该行把 gradle 输出重�
 
 **APK 根目录传递约定**：云端 workflow 与本地来源链都显式传 `DSH_APK_DIR`；`check-runtime-assets.mjs` 必须优先使用该绝对根目录，不能仅凭 `ROOT/dsh-mobile-apk` 猜测协调仓布局。`--require` 仍严格要求该根下 `app/src/main/assets/patched`、快照和 registry 在场；缺件不得 SKIP 或自动生成。 `build-apk-013.ps1` 同样保留前置布局自检测得到的 `$apkDir`，不得在版本解析后重新硬编码 `Root\dsh-mobile-apk`。 发布链临时文件也不得假设 `$env:TEMP` 在所有 PowerShell runner 上存在；跨平台脚本使用 `[IO.Path]::GetTempPath()`。
 
-**来源审计构建（ARM64）**：固定官方Harness 639ed015397290b3745d163aafe02ffee4aa3f84 / 0.2.0-rc.2，workflow检查packageManager pnpm11.7.0及Node范围 ^22.19.0 || >=24.0.0（来源runner使用Node24）。不启用LFS、不读旧base快照；第一方产物由固定源码构建并记录manifest/commit/hash。Electron桌面bundle不属于Android CLI部署闭包，构建脚本临时排除并留provenance；Cordis依赖按本次官方源码，不回退旧版源码伪装新pin。Termux bootstrap固定SHA认证、官方InRelease验签与逐deb哈希仍执行；node-pty源码/NDK与上游原生二进制输入分别披露，不声称全部本地编译。固定debug签名与apksigner自证沿用，真实APK/hash/provenance待构建后记录；source后缀与artifact名不代表另一签名。
+**来源审计构建（ARM64）**：固定官方目标身份见 `scripts/contract.json` 与 [升级记录](ENGINE-UPGRADE-2026-10-19.md)。不启用 LFS、不读旧 base 快照；第一方由固定源码构建并记录 manifest/commit/hash。Desktop Electron 不属 Android CLI 闭包；使用官方独立编译步骤，无需重写根 manifest。Termux bootstrap 固定 SHA、InRelease 验签及逐 deb 哈希仍执行，native 输入继续分别披露。
 
 **同工作区复跑**：两处源码 clone 可复用，但固定 commit 的 fetch/detach/assert 仍执行；bootstrap 与 NDK 只在固定哈希命中时复用，损坏/半包重下，解包前校验不省略。Harness 阶段从本次 `GITHUB_SHA` 恢复权威 overlay，先复位专用源码 checkout（保留 ignored 依赖），deploy 只清理验证过的专用目标。`source-chain-rerun.test.mjs` 使用本 workflow 的实际守卫和本地假输入覆盖 cache-hit/miss、下载中断、坏字节拒绝解包、依赖保留与清理边界；CI 与本地预检均调用。来源链两次完整运行的证据不得由局部守卫测试代替。
 
@@ -147,11 +151,11 @@ available for offline mode`，22s 即 break），且该行把 gradle 输出重�
 
 **内置插件包名来源**：`inject-all.py` 的 @dsh-android 注入必须以 `package.json.name` 为键，不能用插件目录 basename。`plugins/dsh-linux-bootstrap` 的真实包名是 `@dsh-android/linux-bootstrap`，目录名与包名不同；按目录名注入会写到 `@dsh-android/dsh-linux-bootstrap`，而 profile patch 引用真实包名，产物会在 `check-inject-completeness` 判红（run 39119416887 实测）。回归入口 `scripts/source-build/test_inject_all.py`，覆盖目录名/包名不同的正控和非命名空间、嵌套包名负控。该修正不改变插件目录布局或 profile patch。
 
-**旧综合预检（不作为本分支必经入口）**：`node scripts/source-build/preflight-source-chain.mjs` 仍要求 fetch 并追平 `upstream/main`，与本分支独立维护口径不符，不应为通过它强制合并上游。当前应执行来源工作流的输入测试、锁根检查及相关静态门禁。以下为旧脚本行为说明：远程 `build-apk-source` 一次 60-90 分钟，而近期判红的几类问题（市场补丁锚点失配、期望补丁集过期、与上游脱钩）**都能在本地提前复现**。预检覆盖五面：① 是否落后 `upstream/main`（合并会换掉链的输入，坑 204/204 都出在合并之后）② 登记表补丁对仓库镜像自洽（`apply-patches --check`）③ 市场插件链按 workflow 里钉的 URL+sha256 取发布产物、解包、打补丁，再与 `vendor/dshmarketplace-plugin/` 逐字节比对 ④ 来源链单测 ⑤ `check-code-map`。版本与哈希都从 workflow 读，不在脚本里重复钉。`--no-network` 可跳过取件与 `git fetch`（此时发布产物必须已在 `.deploy-tmp/component-sources/` 缓存里）。
+**来源预检**：`node scripts/source-build/preflight-source-chain.mjs` 当前验证独立仓固定输入和树内合同，不要求 upstream remote 或合并其他仓。先跑 `--self-test` 的真实输入/受控负控；真实预检还校验市场发布字节与补丁、来源单测及地图。缓存缺件时 `--no-network` 明确失败，不伪造通过。
 
 来源流程的 marketplace 用**固定 npm 发布产物**：`curl` 拉 `dshmarketplace-plugin-0.1.7.tgz` → `sha256sum --check` 对照钉在 workflow 里的哈希 → 解包进 `vendor/dshmarketplace-plugin`（**不再从其 `src/` 重建**，也不参与插件源码构建循环）。理由：仓库镜像与全部 market-* 补丁都按发布字节定义（`vendor/dshmarketplace-plugin/PATCHES.md`），重建会用不同工具链产出不同字节并把补丁锚空（0.1.5 时代就是这样，见坑 205；此前靠适配器里一段源码构建专用改写兜着，已随 0.1.7 退役）。随后运行 `node scripts/source-build/apply-source-marketplace-patches.mjs vendor --apply`：这一步**不修改共享补丁器**，适配器只把生成副本的 `HERE` 指回 `scripts/patches`，然后按原参数执行；共享 runner、生成 runner、registry、适配器自身及补丁后产物的哈希写入 `marketplace-patch-adapter.json`。锚点整体失配不需要适配器兜底——共享执行器对「check 为假且 apply 零改动」本就判红并拒报 ALL OK。已登记的移动端补丁（包括 `/api/dshmarketplace/*` 鉴权）先施加到解包产物，随后 API 路由门禁才能检查最终注入文件。artifact 的 `marketplace-source-provenance.json` 记录发布 tarball URL 与哈希、包版本、补丁 registry/实现哈希及补丁后 lib 哈希。
 
-Harness按固定0.2.0-rc.2源码完成全仓构建；prepare-harness-vendor-overrides保留来源登记接口但不再把五个旧Cordis源码覆盖新官方目标。reconcile-harness-vendor-lock只接受目标pin约束，不以旧importer规则掩盖依赖漂移；来源报告必须记录实际版本/lock。工作区链接仍禁止递归copytree跟随复制。
+Harness 与 vendor 源码均跟随当前官方目标；`prepare-harness-vendor-overrides` 审计源码而不覆盖为旧 Cordis。`reconcile-harness-vendor-lock` 按目标 pin 核实实际 lock；工作区链接仍禁止递归 copytree 跟随复制。
 
 来源构建还会从本仓九个带 `package-lock.json` 的插件/组件目录执行 `npm ci`。`check-package-lock-roots.mjs` 在 PR 与来源构建的早期步骤核对各目录 `package.json` 与锁文件根声明中的名称、版本及四类依赖，发现镜像后的旧声明就立即报错，避免完成 Harness 和 Termux 构建后才在插件安装阶段失败（坑 196）。锁文件更新后还应对受影响目录运行 `npm ci --dry-run --ignore-scripts --no-audit --no-fund`，因为根声明一致不能证明整份依赖图有效。
 

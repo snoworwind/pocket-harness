@@ -190,7 +190,9 @@
       "summary": "每个同步 flush 按名称单次索引 Loader 条目，错误回调后失效；nearestPackage 已解析的 manifest 在 resolveMeta 内复用。保留同步构造错误、启动 settle 顺序及运行期/HMR即时语义",
       "provenance": "2026-10-06 MuMu 0.14.5 受控细分：client 构造 flush 193 次 Loader 遍历、38021 行；typert 初始 flush 193 次 qualifies、24181 行。独立CPU样本证实反复遍历热点；C4总体预算仍须无诊断冷启动复测，不以局部耗时改善认绿。",
       "marker": "dsh-mobile registry scan C4",
-      "requiredMarkers": ["dsh-mobile gateway client source G1"]
+      "requiredMarkers": [
+        "dsh-mobile gateway client source G1"
+      ]
     },
     {
       "id": "client-index-loader-barrier-G2",
@@ -328,17 +330,19 @@
       "target": "usr/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-ptc-runtime-node/lib/index.js",
       "scope": "engine",
       "summary": "Android PTC linker64 argv 前缀与 host/child native 环境一致；保留既有有效 full-access 门与受限 fail-closed",
-      "provenance": "0.14.3 / official0.2.0-rc.2 source639ed015: Android environment tombstones + polluted linker execPath; native adaptation only, not a sandbox provider",
+      "provenance": "Official 0.2.1-rc.2 source 687f282e: Android per-call and persistent launch prefixes, owned heap options, native startup allowlist and empty model environment; confinement remains fail-closed",
       "marker": "dsh-mobile PTC Android linker prefix (A1)",
       "requires": [
         "ptc-argv-L1"
       ],
       "additionalTargets": [
-        "usr/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-ptc-runtime-node/lib/process.js"
+        "usr/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-ptc-runtime-node/lib/process.js",
+        "usr/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-ptc-runtime-node/lib/persistent-process.js"
       ],
       "verifier": "ptc-android-native-A1",
       "targetMarkers": {
-        "usr/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-ptc-runtime-node/lib/process.js": "dsh-mobile PTC Android native environment (A1)"
+        "usr/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-ptc-runtime-node/lib/process.js": "dsh-mobile PTC Android native environment (A1)",
+        "usr/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-ptc-runtime-node/lib/persistent-process.js": "dsh-mobile PTC Android native environment (A1)"
       }
     },
     {

@@ -79,8 +79,17 @@ test('stale sessions, missing tabs, cross-pane targets, floats and collapsed pan
   assert.equal(f.controller.reorderIn('s', 'c', 'a'), false)
 })
 
-test('the captured Android source build accepts exactly one anchor and commits the same native action', () => {
-  const mobile = readFileSync(versionedFixture('dsh-client-ui-sidebar-right-mobile', 'lib', 'client.js'), 'utf8')
+test('the alternate compiler shape accepts exactly one anchor and commits the same native action', () => {
+  // Synthetic syntax coverage only. The current real source-built artifact is
+  // exercised above; a previous engine's device capture cannot certify this one.
+  const mobile = `class MobileController {
+      focus(tabId2) {
+        var _a2;
+        const { sessionId, actions } = this.require();
+        if (((_a2 = this.mountedSurface()) == null ? void 0 : _a2.layout.tabs[tabId2]) === void 0) return;
+        actions.focusTab(sessionId, tabId2);
+      }
+}`
   const result = patchSidebarReorder(mobile)
   assert.ok(hasSidebarReorder(result)); assert.equal(patchSidebarReorder(result), result)
   new Script(result)

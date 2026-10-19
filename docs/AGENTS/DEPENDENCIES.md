@@ -15,7 +15,7 @@
 ## 2. Gradle依赖
 
 <!-- generated:gradle-declarations:start -->
-当前源码声明：versionName `0.14.7` / versionCode `51`；suffix 来自 Gradle 属性。此处不证明 APK 产物或验收状态。
+当前源码声明：versionName `0.14.8` / versionCode `52`；suffix 来自 Gradle 属性。此处不证明 APK 产物或验收状态。
 
 | 配置 | 声明 |
 |---|---|
@@ -63,13 +63,13 @@
 
 org.json、ProcessBuilder、HttpURLConnection、java.nio.file、java.util.concurrent是平台/标准库；Root维护使用android.system.Os的held-FD/no-follow操作，不引重复JNI依赖。ProcIo独立cleanup workers不阻塞waiter，返回不可变partial；耐久lease用Context私有SharedPreferences commit与boot-id/BOOT_COUNT，未知epoch拒绝。手写MuxClient WebSocket握手/帧协议依赖Socket、SHA-1、Base64，不因浏览器迁移另引网络库。
 
-ShizukuSupport/ShizukuProbe仍反射探活，授权只能由用户在Shizuku中授予；原生应用su授权与AI root consent是独立门。多用户采用完整UID。UserService协议v4与应用版本绑定，升级/存活服务需要确认configuration，旧服务不能冒充已配置。
+ShizukuSupport/ShizukuProbe仍反射探活，授权只能由用户在Shizuku中授予；原生应用su授权与AI root consent是独立门。多用户采用完整UID。UserService协议v5与应用版本绑定，升级/存活服务需要确认configuration，旧服务不能冒充已配置。
 
 ## 4. 引擎、npm与许可的第二依赖面
 
-当前源码适配目标为官方 dsh-v0.2.0-rc.2 / commit 639ed015397290b3745d163aafe02ffee4aa3f84（预发布，不称stable）。overlay root/第一方包0.2.0-rc.2、pi-ai0.87.1、Cordis4.0.4及官方Lexical0.49.0家族是源码输入；APK内实际版本待终包核实。自包含来源链和协调仓共同管理快照npm/Termux闭包，不是“APK仓不管理”。旧Cordis回退源码逻辑不能继续套在新目标上。
+当前源码适配目标与固定工具链见 [本轮引擎升级记录](ENGINE-UPGRADE-2026-10-19.md)；overlay 以官方 0.2.1-rc.2 源码 manifest 为准，Cordis 不回退旧源码。快照 npm/Termux 闭包由本仓自包含来源链管理，最终 APK 内版本和许可证仍须核实。
 
-raw npm overlay不会自动保留官方pnpm patch。六provider pi-upstream-streaming-020需固定官方patch SHA并精确上下文；Android PTC A1需host/child双目标和副本同步。具体补丁、目标与构建钩子状态见 [运行时补丁台账](RUNTIME-PATCHES.md)。
+raw npm overlay 不自动保留官方 pnpm patch。六 provider streaming 补丁仍按固定 SHA 与精确上下文施加；Android PTC A1 现覆盖一次/持久两条宿主 spawn 和两个子进程入口，全部 companion 与 pnpm 副本同步，见 [运行时补丁台账](RUNTIME-PATCHES.md)。
 
 官方浏览器UI仅私有MIT复用BrowserBody/Title/controller契约，保留SOURCE清单/LICENSE，不导入官方feature插件运行时公开API或Electron/Iframe实现；Sidebar指南与tab框架通过注册消费。组件源码/manifest的目标依赖不等于lib已重建或镜像已完成。GPL/第三方notice按快照dpkg与aar/npm各自范围核实，dpkg门禁不覆盖aar；合规状态必须核对当前候选的最终 license artifact。
 
