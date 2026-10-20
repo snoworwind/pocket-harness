@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { COMPONENTS } from './base-lock.mjs'
 import { capture, checkPayload, makePlan, materialize, publishCandidate, rebase, requireMain, verifyTrusted } from './engine-base.mjs'
+import { checkDshRuntimeDependencies } from './check-dsh-runtime-dependencies.mjs'
 
 const runtime = { node: '24.21.0', pnpm: '11.28.5', deploymentPnpm: '12.2.0', localDevelopment: true }
 const env = { GITHUB_RUN_ID: 'local-test-1' }
@@ -29,8 +30,16 @@ function fixture(fn) {
   } finally { rmSync(root, { recursive: true, force: true }) }
 }
 
-function built(root) {
+function built(root, order = 'canonical') {
   write(root, '.deploy-tmp/engine-deploy/lib/bin.js', 'export const built = true\n')
+  const packageJson = order === 'reversed'
+    ? '{"dependencies":{"z-dep":"1","a-dep":"2"},"name":"engine-deploy"}\n'
+    : '{"name":"engine-deploy","dependencies":{"a-dep":"2","z-dep":"1"}}\n'
+  const workspaceYaml = order === 'reversed'
+    ? 'patchedDependencies:\n  "z@1": "patches/z.patch"\n  "a@1": "patches/a.patch"\nallowBuilds:\n  "z": true\n  "a": false\n'
+    : 'allowBuilds:\n  "a": false\n  "z": true\npatchedDependencies:\n  "a@1": "patches/a.patch"\n  "z@1": "patches/z.patch"\n'
+  write(root, '.deploy-tmp/engine-deploy/package.json', packageJson)
+  write(root, '.deploy-tmp/engine-deploy/pnpm-workspace.yaml', workspaceYaml)
   write(root, '.deploy-tmp/engine-deploy/node_modules/.modules.yaml', root)
   write(root, '.deploy-tmp/engine-overlay/source-build-manifest.json', '{}')
   write(root, '.deploy-tmp/deepseek-harness/lib/built.js', 'export const built = true\n')
@@ -72,7 +81,7 @@ test('receipt rebasing only changes exact workspace paths', () => {
 
 test('actual archive comparison binds trees and refuses changed output bytes', { skip: process.platform !== 'linux' }, () => fixture(a => fixture(b => {
   const plan = makePlan(a, runtime, env)
-  built(a); built(b)
+  built(a); built(b, 'reversed')
   const primary = join(a, '.deploy-tmp/artifact'), reference = join(b, '.deploy-tmp/artifact')
   const first = capture(a, plan, primary, plan.buildRun, 'primary', env)
   const second = capture(b, plan, reference, plan.buildRun, 'reference', env)
@@ -89,6 +98,52 @@ test('actual archive comparison binds trees and refuses changed output bytes', {
   const bytes = readFileSync(file); bytes[bytes.length - 1] ^= 1; writeFileSync(file, bytes)
   assert.throws(() => publishCandidate(a, plan, primary, reference, join(a, '.deploy-tmp/poisoned'), env), /sha256 mismatch/)
 })))
+
+test('runtime dependency report order is stable while missing links remain a hard failure', () => {
+  const root = mkdtempSync(join(tmpdir(), 'runtime-deps-order-'))
+  const scope = join(root, 'node_modules', '@deepseek-ai')
+  const writePackage = (path, manifest) => {
+    mkdirSync(dirname(path), { recursive: true })
+    writeFileSync(path, JSON.stringify(manifest) + '\n')
+  }
+  try {
+    writePackage(join(root, 'package.json'), { name: 'engine', version: '1.0.0' })
+    for (let i = 0; i < 264; i++) {
+      const name = `filler-${String(i).padStart(3, '0')}`
+      writePackage(join(scope, name, 'package.json'), { name: `@deepseek-ai/${name}`, version: '1.0.0' })
+    }
+    for (const leaf of ['a-dep', 'z-dep']) {
+      writePackage(join(root, 'node_modules', leaf, 'package.json'), { name: leaf, version: '1.0.0' })
+    }
+    for (const importer of ['z-importer', 'a-importer']) {
+      writePackage(join(scope, importer, 'package.json'), {
+        name: `@deepseek-ai/${importer}`,
+        version: '1.0.0',
+        dependencies: { 'z-dep': '1.0.0', 'a-dep': '1.0.0' },
+      })
+    }
+    const report = checkDshRuntimeDependencies(root)
+    assert.deepEqual(report.resolvedDependencies.map(({ importer, dependency }) => [importer, dependency]), [
+      ['@deepseek-ai/a-importer', 'a-dep'],
+      ['@deepseek-ai/a-importer', 'z-dep'],
+      ['@deepseek-ai/z-importer', 'a-dep'],
+      ['@deepseek-ai/z-importer', 'z-dep'],
+    ])
+
+    writePackage(join(scope, 'a-importer', 'package.json'), {
+      name: '@deepseek-ai/a-importer', version: '1.0.0', dependencies: { missing: '1.0.0' },
+    })
+    const originalError = console.error
+    console.error = () => {}
+    try {
+      assert.throws(() => checkDshRuntimeDependencies(root), /dependency presence failed/)
+    } finally {
+      console.error = originalError
+    }
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
 
 test('independent output drift fails instead of publishing a candidate', { skip: process.platform !== 'linux' }, () => fixture(a => fixture(b => {
   const plan = makePlan(a, runtime, env)

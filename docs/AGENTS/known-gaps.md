@@ -162,11 +162,11 @@
 
 | 项 | 当前事实 | 必须取得的结论 |
 |---|---|---|
-| Java 钉值 | **已于 2026-10-20 修复**：`engine-toolchain.json` 与两条 workflow 的 setup-java 输入改为真实存在的 `17.0.20+8`；另为来源链加了「无 `base-lock.json` 时跳过 plan」的守卫 | 在 runner 上跑通 plan（待首次 build-base 验证） |
+| Java 钉值 | **已于 2026-10-20 修复并由 runner 验证**：`engine-toolchain.json` 与两条 workflow 的 setup-java 输入改为真实存在的 `17.0.20+8`；build-base run 39354019902 的 plan 成功 | 已通过；双构建 compare 的独立阻塞见下行及 [ENGINE-BASE-2026-10-19.md](ENGINE-BASE-2026-10-19.md) |
 | 本地复跑 | `buildRun` 来自 `GITHUB_RUN_ID` 且被 compare 要求两端相等，本地双构建必停在 `replica source identity mismatch` | 提供显式 run 标识或用「同 run 内副本」语义比较 |
-| 生成文件归一化 | `engine-deploy` 三件套未 rebase、未定序，内嵌 `file://` 绝对路径 344/3349/1 处 | 归一化与定序后计入 tree，或登记为已知非确定性并写进锁 schema |
+| 生成文件归一化 | 首次云端 compare 在两个映射键序与两份 2435 条回执数组顺序上判红；当前 PR 只规范根 `package.json` / `pnpm-workspace.yaml` 的无序映射并固定回执顺序，绝对 `file://` 路径保持原字节 | 新 main compare 必须证明整个 tree 相同；若路径造成差异，继续窄化修复，不能排除文件或放宽 compare |
 | materialize | 尚未在真实 base 上验证（compare 从未产出可信 base） | 用真实候选 lock 跑 materialize 并继续一次 engine 复用构建 |
-| 云端 checks | runner 未分配（job `steps: []`，main 同形态），计费/配额问题 | 恢复后由 CI 复跑确认 |
+| 云端 checks | 首次 hosted run 39354019902 的 resolve 与两个 replica 均真实运行并成功，compare 因 tree 不同判红；本地 Linux PR 门禁 28/28 通过 | 修复 PR 合入后重跑 hosted 双构建 compare |
 ## 发布状态（2026-10-20）
 
 仓库已公开，但**尚未对外发布 APK**：三个 `hardening-source-*` 预发布已转为草稿，对外不可见（未认证 API 返回 0 条）。对外发布需先完成设备三层验收，再由维护者手动把草稿转正；当前 ARM64 真机不可用，故该项保持未完成。

@@ -1,8 +1,8 @@
-# Engine base 复用：实现、实跑证据与未决问题（2026-10-19）
+# Engine base 复用：实现、实跑证据与收口状态（2026-10-19）
 
-本文件记录 `build-base.yml` / `engine-base.mjs` 这套 engine base 复用机制在 PR #51（head `7ca0cae`）上的实现边界、本机真实构建产物的验证结果，以及**尚未解决的问题**。
+本文件记录 `build-base.yml` / `engine-base.mjs` 这套 engine base 复用机制在 PR #51（head `7ca0cae`）上的实现边界、PR #51 合并后的首次云端双构建结果，以及 `base-lock.json` 的收口步骤与当前证据。
 
-一句话结论：**PR Gate 与 Kotlin 门禁全绿；engine base 的 plan/capture 在真实产物上可用，但 compare 在真实产物上不通过，materialize 也因此尚未取得可信产物。合并前必须处理本文件 §3 的全部条目。**
+当前状态：PR #51 已合并；`17.0.20+8` Java pin 与无 lock 时跳过 plan 已于 2026-10-20 落地。第一次真实云端 run 39354019902 的 resolve 与两个 build 成功，compare 因输出树差异判红。当前 PR 修复 capture 的两处顺序不确定性；通过 PR 后必须在新 main 上重跑双构建、取得可信 candidate、真实 materialize，再以独立 PR 提交 lock。该顺序未完成前不得宣称 engine base 已启用。
 
 ---
 
@@ -12,11 +12,13 @@
 |---|---|---|
 | plan | `engine-base.mjs plan` | 只允许已提交的 main、engine 输入无未提交改动；固定工具链后算出 `engine-v1-<hash>` key |
 | build | `build-engine.sh` | 与 APK 来源链共用同一脚本，不另写第二套 |
-| capture | `engine-base.mjs capture` | 校验 run/replica 身份与 plan 未漂移；只允许白名单内的构建期改动；产出 tree receipt + tar.zst |
+| capture | `engine-base.mjs capture` | 校验 run/replica 身份与 plan 未漂移；只允许白名单内的构建期改动；复制后仅规范化 `engine-deploy/package.json` 与 `engine-deploy/pnpm-workspace.yaml` 的无序映射，再产出 tree receipt + tar.zst |
 | compare | `engine-base.mjs compare` | 两份 manifest 必须同源、同 run、同 key；**实际输出树逐文件（sha256）一致**才写候选 lock |
 | materialize | `engine-base.mjs materialize` | 先从 `base-lock.json` 验 key 与 manifest，再解包并与 tree receipt 逐条比对，最后落到工作区 |
 
 设计意图是对的：base 不含 APK、签名密钥或项目插件产物；锁可信但缓存缺失时失败关闭。
+
+依赖闭包回执在 `check-dsh-runtime-dependencies.mjs` 出口按 `(importer, dependency)` 排序；`first-party-deploy-injection.json` 和被其并入的 `source-build-policy.json` 因此不受文件系统枚举顺序影响。JSON canonicalizer 保留 `exports` / `imports` 的条件顺序；YAML canonicalizer 遇到序列或未识别形态即失败，不扩大归一化范围。
 
 ---
 
@@ -54,13 +56,17 @@
 
 证据保留在本机 `.deploy-tmp/verify-pr51-evidence/`（`RESULTS.md`、两份构建日志、差异文件原件、容器定义与各阶段脚本）。该目录不进仓库。
 
+### 2.3 main 云端双构建（run 39354019902）
+
+2026-10-20 的首次云端 run 在 `2bcea5a` 上完成 resolve（22s）及 primary/reference 构建；compare 随后以 `engine-base: independent engine output trees differ` 失败。job 日志确认失败发生在逐文件 tree 比对，不是 runner 未分配、工具链漂移或 source identity 校验；该 run 未执行 candidate/cache 上传，不能用于 `materialize` 或生成锁。Artifacts 页面列出两份 648 MB replica 与 plan，但它们不构成可信 base。
+
 ---
 
 ## 3. 未决问题（合并前必须处理）
 
 ### 3.1 `engine-toolchain.json` 的 Java 钉值不存在
 
-**2026-10-20 已修复**：钉值改为真实存在的 `17.0.20+8`，两条 workflow 的 setup-java 输入同步；并为来源链加了「无 `base-lock.json` 时跳过 plan」守卫，避免在无可恢复 base 时因工具链漂移打断 APK 构建。原文如下。
+**已修复（2026-10-20）**：钉值改为真实存在的 `17.0.20+8`，两条 workflow 的 setup-java 输入同步；并为来源链加了「无 `base-lock.json` 时跳过 plan」守卫，避免在无可恢复 base 时因工具链漂移打断 APK 构建。build-base run 39354019902 的 plan 成功，实际确认该修复已生效。原因记录如下。
 
 `java: "17.0.20+1"` 不是 Temurin 的可用标识：Adoptium 的 API 对 `jdk-17.0.20+1` 返回 404，GitHub Releases 实际只有 `jdk-17.0.20+8`，其 `java.runtime.version` 为 `17.0.20+8`。`toolchain()` 对非 local 模式做全等比较，因此 `plan` 在任何满足本策略的 runner 上都会以 `runtime does not match fixed engine toolchain policy` 失败。
 
@@ -81,15 +87,15 @@
 
 后果有两层：同路径双副本也可能因顺序不同而比较失败（§2.2 实测）；路径一变（另一构建目录、恢复后重跑、缓存跨 run 复用）内嵌路径就会与锁里的树不一致，`materialize` 的逐条比对必然失败。
 
-处理方向：对这三件套做路径归一化与定序序列化后再计入 tree，或把它们登记为「已知非确定性」并从树哈希中排除（并把该排除写进锁的 schema，避免静默放宽）。
+修复方向已收窄为不排除任何文件、也不改写路径语义：capture 仅对根 `package.json` 使用既有受限 JSON canonicalizer，对根 `pnpm-workspace.yaml` 使用既有严格块映射 canonicalizer；runtime dependency report 在生成端排序。当前 PR 的回归用例把 JSON/YAML 映射键反序并断言两份真实 capture tree 相同，同时保留 YAML 序列判红与缺依赖判红。报告中的绝对 `file://` 工作区路径仍保持原字节；云端两个 replica 使用相同 GitHub workspace 路径，修复后的新 main compare 是此构建环境下的最终证据。本地跨目录双构建仍受此边界影响，且本地 `buildRun` identity 另见 §3.2。
 
 ### 3.4 `materialize` 尚未在真实产物上验证
 
 因为 §3.2/§3.3，compare 至今没有产出过可信 base，`materialize` 只跑过单元测试夹具。修完前两条后必须在真实 base 上验证「materialize → build-engine 复用」这条链，否则 base 复用只是纸面承诺。
 
-### 3.5 云端 checks 不可用
+### 3.5 云端 checks 状态
 
-PR #51 的 checks 失败形态是 runner 未分配：job 列表全部 `steps: []`（零步骤），`main` 的 `7183386` 同形态失败，而更早的 run 有完整步骤且成功。这是计费/配额问题，换开发机不解决；恢复前「CI 全绿」这一项无法取得。
+PR #51 的 runner 未分配问题已随公开仓恢复 CI 而消失：PR #51 的静态门禁 28 步全绿。run 39354019902 的两个 build job 也实际运行并成功；当前阻塞只剩本文件 3.3 记载的 compare 差异，后续以修复合并后的新 run 复核。
 
 ### 3.6 发布衔接顺序
 

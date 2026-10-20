@@ -9,6 +9,7 @@ const within = (root, candidate) => {
   const rel = relative(root, candidate)
   return rel === '' || (rel !== '..' && !rel.startsWith(`..${sep}`) && !isAbsolute(rel))
 }
+const compareText = (a, b) => a < b ? -1 : a > b ? 1 : 0
 
 function findInstalledPackage(engineRoot, fromDir, specifier) {
   const parts = specifier.startsWith('@') ? specifier.split('/').slice(0, 2) : [specifier.split('/')[0]]
@@ -35,7 +36,7 @@ export function checkDshRuntimeDependencies(engineRootArg) {
   const resolvedDependencies = []
   let dependencyCount = 0
   const packageFiles = [join(engineRoot, 'package.json')]
-  for (const name of readdirSync(scopeRoot)) packageFiles.push(join(scopeRoot, name, 'package.json'))
+  for (const name of readdirSync(scopeRoot).sort()) packageFiles.push(join(scopeRoot, name, 'package.json'))
 
   // 平台死重（slim.json 的 platformDeadPackages）：这些包被构建期**刻意剔除**——它们是
   // glibc/musl 的 Linux ELF，Android（bionic）上永不加载。但它们仍可能被声明为**非 optional**
@@ -55,12 +56,12 @@ export function checkDshRuntimeDependencies(engineRootArg) {
     if (!existsSync(packageFile)) continue
     const manifest = JSON.parse(readFileSync(packageFile, 'utf8'))
     packageCount++
-    const peerDependencies = Object.keys(manifest.peerDependencies ?? {})
+    const peerDependencies = Object.keys(manifest.peerDependencies ?? {}).sort()
       .filter((dependency) => !manifest.peerDependenciesMeta?.[dependency]?.optional)
     const dependencies = [...new Set([
-      ...Object.keys(manifest.dependencies ?? {}),
+      ...Object.keys(manifest.dependencies ?? {}).sort(),
       ...peerDependencies,
-    ])]
+    ])].sort()
     const packageDir = dirname(realpathSync(packageFile))
     for (const dependency of dependencies) {
       dependencyCount++
@@ -80,6 +81,11 @@ export function checkDshRuntimeDependencies(engineRootArg) {
       })
     }
   }
+  resolvedDependencies.sort((a, b) => compareText(a.importer, b.importer)
+    || compareText(a.dependency, b.dependency)
+    || compareText(a.deployPath, b.deployPath))
+  failures.sort(compareText)
+  deliberatelyAbsent.sort(compareText)
   // 地板值与同链的 materialize-dsh-pnpm-packages.mjs:21 同源（那条断言 >= 266 个钉住的第一方
   // 工作区包；本函数数的是同一群体 + 引擎根包自身，故口径相同）。旧值 200 比真实值（316/317）
   // 低太多：静默少掉一百多个包也照样判绿，而这条门禁的名字正是「装饰链接都在场」。
