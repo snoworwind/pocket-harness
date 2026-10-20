@@ -82,6 +82,27 @@ test('source workflow uploads explicitly listed hidden provenance with APK', () 
   assert.doesNotMatch(upload, /^            \.deploy-tmp\/\*\*$/m)
 })
 
+function checkCachedHarnessProvenance(source) {
+  const start = source.indexOf("          const harness = JSON.parse(fs.readFileSync('.deploy-tmp/source-build/harness-vendor-lock-reconciliation.json'")
+  const end = source.indexOf('          NODE', start)
+  assert.ok(start > 0 && end > start, 'source workflow must read the immutable Harness source receipt')
+  const block = source.slice(start, end)
+  assert.match(block, /scripts\/contract\.json/)
+  assert.match(block, /harness\.harnessSourceCommit !== expectedHarnessCommit/)
+  assert.match(block, /deepseekHarnessCommit: harness\.harnessSourceCommit/)
+  assert.doesNotMatch(block, /git.*rev-parse/)
+}
+test('cached Harness provenance uses the pinned receipt instead of the parent repository Git HEAD', () => {
+  checkCachedHarnessProvenance(read('build-apk-source.yml'))
+})
+test('negative control: parent repository Git HEAD cannot replace the pinned Harness receipt', () => {
+  const source = read('build-apk-source.yml')
+  assert.throws(() => checkCachedHarnessProvenance(source.replace(
+    "          const harness = JSON.parse(fs.readFileSync('.deploy-tmp/source-build/harness-vendor-lock-reconciliation.json', 'utf8'))",
+    "          const harness = { harnessSourceCommit: require('child_process').execFileSync('git', ['-C', '.deploy-tmp/deepseek-harness', 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim() }",
+  )), assert.AssertionError)
+})
+
 test('independent builders and verifier never receive production secrets; only the final signer does', () => {
   const source = read('build-apk-source.yml')
   const build = source.split('  build-arm64:')[1].split('  verify-arm64:')[0]
