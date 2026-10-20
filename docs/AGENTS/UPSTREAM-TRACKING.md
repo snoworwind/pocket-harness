@@ -27,7 +27,7 @@
 | 已吸收（2026-10-19） | [#414 堆上限 1024→4096](https://github.com/kelai141/dsh-mobile-apk/pull/414)，源提交 `15d83fa74ceae282e3abc02d94256c271d3bb4d4`，上游合并提交 `f2df6fa0d2a3b70f171f2a28ed3f020dcad5997a` | 双源上限提升至 4096MB；并修复 1024 上限等于 V8 自然上限标志造成的自适应退化，新增自然标志真源及防退化门禁 | JVM 机型档断言、wrapper 反例和 11 条门禁负控已同步；设备内存压力未验，见 [SECURITY-HARDENING.md](SECURITY-HARDENING.md) 与 [known-gaps.md](known-gaps.md) |
 | P1（条件吸收） | [#420 ADB 键盘投递与来源校验](https://github.com/kelai141/dsh-mobile-apk/pull/420) | 本仓已有显式接收组件、nonce、API 34+ 发送 UID 校验和文本输入回读；接收器不回传应用层处理结果，清空路径也没有文本回读 | 先证明现有回读/命令结果仍会产生假成功，再做最小回执设计；保留现有来源校验，证明回执不会导致重投、双提交或敏感输入泄漏 |
 | P1 | [#403 虚拟屏比例与弹层遮挡](https://github.com/kelai141/dsh-mobile-apk/pull/403) | 本仓 `VdisplayHost` 已有等比 letterbox 的宽/高约束公式；未检出 `data-dsh-popover-open` 对原生 SurfaceView 的显隐协调 | 不重复移植比例算法；针对弹层被原生画面遮挡单独复现并移植可见性协调，拆出引擎升级 PR |
-| P1（拆项） | [#416 离线插件管理与启动即时反馈](https://github.com/kelai141/dsh-mobile-apk/pull/416) | `EngineStartFlow.kt` 的 Starting 文案在启动前探测后才显示；`PluginManagementPage.kt` 离线时只展示状态，插件清单和管理动作依赖引擎 RPC | 将“启动期间即时反馈”与“离线插件管理”分开评估和交付；后者先界定只读/可写插件及恢复事务，再实现离线清单与受限操作 |
+| P1（拆项） | [#416 离线插件管理与启动即时反馈](https://github.com/kelai141/dsh-mobile-apk/pull/416) | 后续源码复核已纠正启动反馈判断：`EngineStartFlow.kt` 已在前置探测前显示 Starting；`PluginManagementPage.kt` 的离线清单与管理动作仍依赖引擎 RPC | 启动即时反馈已具备，不重复移植；离线插件管理先界定只读/可写插件及恢复事务，清单和启停拆成两个逻辑 PR |
 | 已实施，最终候选待验 | [#403 引擎 0.2.1-rc.2](https://github.com/kelai141/dsh-mobile-apk/pull/403)、[#408 模型能力设置](https://github.com/kelai141/dsh-mobile-apk/pull/408) | 官方目标独立源码构建，重核来源链、PTC 两路、peer/槽位/路由与真实夹具；模型能力插件继续保留，因为其能力与设置页的等价范围尚未逐项证明 | 本仓实现与证据统一见 [升级记录](ENGINE-UPGRADE-2026-10-19.md)；未引入同 PR 的虚拟屏 UI 修复，未借用参考设备结论；模型插件是否退役按下方计划重新评估 |
 | 可选 | [#411 双工作区与紧凑控制窗](https://github.com/kelai141/dsh-mobile-apk/pull/411)、[#412 抽屉常驻挂载](https://github.com/kelai141/dsh-mobile-apk/pull/412)、[#415 悬浮球隐藏召回](https://github.com/kelai141/dsh-mobile-apk/pull/415) | 属于交互扩展；本轮只核查部分变更范围，未逐项完整审计 | 暂缓，明确产品需求后评估；重点看常驻挂载内存、召回条命中区域、横竖屏和 overlay 生命周期 |
 | 暂不移植 | [#418 原生启动失败修复助手](https://github.com/kelai141/dsh-mobile-apk/pull/418) | 新增 RepairTools 等壳侧模型工具与文件写入/命令能力，偏离本仓“AI 可见能力全部来自插件”的边界 | 保留启动失败恢复需求；只有经过本仓架构与安全审查、形成符合插件边界的方案后再评估实现 |
@@ -41,7 +41,7 @@
 
 | 项 | 本轮采用的证据 | 边界 |
 |---|---|---|
-| 本仓 | 工作树 `main` HEAD `eb4ea6a2f1f1fcc264e988e167e19f39fa1a457c`；产品/实现基线见 [BASELINE.md](BASELINE.md)、[ENGINE-UPGRADE-2026-10-19.md](ENGINE-UPGRADE-2026-10-19.md)、[SECURITY-HARDENING.md](SECURITY-HARDENING.md) | `0.14.8` 来源草稿实际输入提交为 `9ebe0fc1589a070cb2ee12417f27d89236f7153a`；当前 HEAD 后续主要是文档提交。草稿已有双 ARM64 来源构建证据，尚无设备验收和公开 APK。 |
+| 本仓 | 产品代码对照基线 `eb4ea6a2f1f1fcc264e988e167e19f39fa1a457c`（后续计划分支只追加文档）；产品/实现基线见 [BASELINE.md](BASELINE.md)、[ENGINE-UPGRADE-2026-10-19.md](ENGINE-UPGRADE-2026-10-19.md)、[SECURITY-HARDENING.md](SECURITY-HARDENING.md) | `0.14.8` 来源草稿实际输入提交为 `9ebe0fc1589a070cb2ee12417f27d89236f7153a`；当前 HEAD 后续主要是文档提交。草稿已有双 ARM64 来源构建证据，尚无设备验收和公开 APK。 |
 | 上游发布 | [v0.14.8 Release](https://github.com/kelai141/dsh-mobile-apk/releases/tag/v0.14.8)，tag commit `a10d230`，versionCode 52，2026-10-17 发布 | 这是最新可核验公开 Release。其自述验证以 Android 15/x86_64 模拟器为主；无 ARM64 真机验证，部分 UI 用开发包加热推，几何改动横屏未复跑。上游证据不能替代本仓验收。 |
 | 上游当前源码 | [main `7cd7ccab8247514e20be2925c92d46b45e70d152`](https://github.com/kelai141/dsh-mobile-apk/commit/7cd7ccab8247514e20be2925c92d46b45e70d152)，2026-10-20 06:19 +0800，`feat: 壳侧与注入插件界面文案双语，壳侧新增语言切换 (#450)` | 这是本轮源码比较基线，已核对 v0.14.8 之后的 `main` 尖端；后续检查从该 SHA 继续。 |
 | Release 与源码关系 | [v0.14.8 Release](https://github.com/kelai141/dsh-mobile-apk/releases/tag/v0.14.8)，tag commit `a10d230`，2026-10-17 发布 | Release 早于当前 `main`；资产 ABI、功能状态与验证说明只能代表该 tag，不能覆盖当前源码结论。源码中 Linux 注入已变化，见下表。 |
@@ -57,9 +57,9 @@
 | 构建、ABI、签名 | 当前来源链只构建 ARM64，并以 primary/reference 两份构建复核；从已提交本仓 HEAD 隔离重建、记录 provenance，以本仓私有 PKCS12 签名。 | 当前 `main` 的 build-apk-source workflow 也是 ARM64 primary/reference 双构建；Gradle 配置引用仓内 keystore，workflow 另有签名步骤。v0.14.8 Release 资产另含 x86_64，不能推断当前 main 有 x86_64 构建。 | 两边都已有来源构建和双构建复核，比较具体输入、可复现性与签名边界；不复制上游密钥、包身份或旧协调仓链。双 ABI 是独立产品/设备决策。 |
 | AI 工具与插件 | 工具只由插件注册。自包含副本含 bridge、manage、model-capability、file-open、browser、linux-env、vdisplay 等；源码、`package.json` 与 `lib/` 产物须同步。 | 当前 scripts/plugin-dirs.json 与 Cordis patch 均注入 Linux 环境插件；model-capability 目录与注入项已不存在。其构建哈希循环和 profile 注释仍提到 model-capability，属于源码内残留引用。 | 插件边界相同，但当前有效清单不同。保留本仓模型能力插件；上游删除不能视为等价替代，也不要把残留注释当成有效注入。 |
 | Linux 环境 | 本仓已接入 ARM64 离线资产与 bootstrap；本地保留 linux-release-pins、离线安装集成用例及来源/摘要闭包。设备验收尚缺。 | 当前 main 的 Linux 插件包版本为 0.1.2，scripts/plugin-dirs.json 和 profile patch 均启用；linux-host-asset-io 将宿主已暂存资产交给 bootstrap 复验，不自行下载。v0.14.8 Release 的“未注入”结论已被后续源码改变。 | Linux 能力不是本仓独有。保留本仓离线资产来源与 pin；以当前源代码比较摘要复验、路径约束、失败关闭和恢复语义，只对证实的缺口提取实现。 |
-| 虚拟屏 UI | VdisplayHost 已有宽/高受限等比 letterbox；本仓 vdisplay 客户端未发现弹层开合时向原生层发布隐藏状态。 | 当前 main 的 vdisplay 客户端监听 data-dsh-popover-open，并将遮挡状态合并到 viewer visible 判据；页面侧在打开/收起弹层时翻转属性。 | 比例算法已具备；#403 仍是明确源码差异，吸收最小可见性信号和恢复逻辑，不重复改比例算法。 |
+| 虚拟屏 UI | VdisplayHost 已有宽/高受限等比 letterbox；本仓 vdisplay 客户端未消费已有气泡菜单开合状态；BrowserHost 已消费 `data-dsh-sidebar-bubbles` 的 open/closing 状态。 | 当前 main 的 vdisplay 客户端监听 data-dsh-popover-open，并将遮挡状态合并到 viewer visible 判据；页面侧在打开/收起弹层时翻转属性。 | 比例算法已具备；#403 仍是明确源码差异。优先让 vdisplay 消费本仓已有菜单状态，补恢复逻辑，不再另建全局开合信号。 |
 | 管理和启动体验 | 本仓 EngineStartFlow 已在前置所有权探测和 worker 工作之前显示“正在启动”，与 #416 的即时反馈效果一致；PluginManagementPage 离线时仍只提供状态/启动入口，清单与启停依赖运行中 RPC。 | 当前 main 同样先在主线程显示 Starting；另新增 PluginOfflinePanel/PluginPatchOffline，离线列出并启停 Soft 插件。写入前核对状态，Hard 清单不可写，临时文件原子替换后回读确认。 | 启动反馈已经具备，不再列为吸收项。离线插件管理是实际差异；借鉴 Hard/Soft 边界、失败关闭与读回原则，按本仓持久化与事务约束重做，不直接复制其文本解析器。 |
-| 输入回执 | ADB 键盘已有显式组件、nonce、Android 14+ sender UID 校验和文本回读；目前接收器不写应用处理结果码。清空-only 或无障碍无法回读时，shell 命令成功可能被当成处理成功；文本不一致时另有一次自动清空/重投。 | 当前 main 的接收器只对有序广播写回 committed/not-ready/rejected/bad-request/no-connection；manage 插件点名组件、发有序广播并解析结果，同时兼容旧壳的默认 0/缺失结果码。 | 源码已证明存在可收窄的假成功面。新增结果回执应按每条广播分别判读，保留 nonce/UID 门，不因结果码缺失或错误自动重投；重新审查本仓现有文本重试，避免与回执叠加造成重复输入。 |
+| 输入回执 | ADB 键盘已有显式组件、nonce、Android 14+ sender UID 校验和文本回读；目前接收器不写应用处理结果码，服务 handle 还会忽略底层编辑调用结果。清空-only 或无障碍无法回读时，shell 命令成功可能被当成处理成功；文本不一致时另有一次自动清空/重投。 | 当前 main 的接收器只对有序广播写回 committed/not-ready/rejected/bad-request/no-connection；manage 插件点名组件、发有序广播并解析结果，同时兼容旧壳的默认 0/缺失结果码。 | 源码已证明存在可收窄的假成功面。新增结果回执应按每条广播分别判读，保留 nonce/UID 门，不因结果码缺失或错误自动重投；重新审查本仓现有文本重试，避免与回执叠加造成重复输入。 |
 | 更新与恢复 | 本仓已按用户决定移除 APK 自更新与在线快照入口；本地快照解压/刷新由事务、校验与 UndoGate 管理，APK 只能从源码链生成。 | 当前 main 源码仍含 UpdateChecker、UpdateManager 和 REQUEST_INSTALL_PACKAGES；在线快照更新校验 hash/大小后走 SnapshotTransaction。Release 资产/README 与当前源代码是不同时间截面。 | 保持本仓不提供 OTA、安装权限或在线快照入口。只复用能独立验证的事务/解压缺陷修复，不移植 updater 或绕过本仓来源链。 |
 | 原生桥与安全 | 本仓 MainFrameBridge 将可调用方法收窄到显式注册的注解方法，并用随机 capability 校验后再分发；还有独立测试。 | 当前 main 的 MainActivity 仍直接向主 WebView 注册 AndroidBridge JavascriptInterface，未见对应 MainFrameBridge capability 分发层。 | 保留本仓桥面收窄与 nonce/capability 设计；不以功能相似为由替换为上游直接桥。继续核对 iframe、导航、renderer 销毁和 capability 生命周期。 |
 | 快照事务与沙箱 | 本仓 SnapshotTransaction、SnapshotExtractor、SnapshotFs 和 UndoGate 覆盖本地刷新/恢复；shell-termux 的路径级隔离仍是已知缺口。 | 上游也有 SnapshotTransaction/Extractor，并由 UpdateManager 驱动在线更新；两边 shell-termux 都明确报告 enforcement=partial，边界仍是 Android 应用域，没有 bwrap/landlock 路径隔离。 | 事务文件均有本地产品语义，不能整文件覆盖；路径级沙箱仍是本仓独立 P0，当前上游源码也没有解决它。 |
@@ -75,8 +75,8 @@
 | WebView 原生桥 | [MainActivity.kt](https://github.com/kelai141/dsh-mobile-apk/blob/7cd7ccab8247514e20be2925c92d46b45e70d152/app/src/main/java/com/dsharnessmobile/shell/MainActivity.kt) 直接暴露 AndroidBridge JavascriptInterface | app/src/main/java/com/snoworwind/pocketharness/MainFrameBridge.kt、MainActivity.kt | 保留本仓方法白名单、capability 校验和关闭后撤销；不吸收上游直连桥的暴露面。 |
 | 启动反馈 | [EngineStartFlow.kt](https://github.com/kelai141/dsh-mobile-apk/blob/7cd7ccab8247514e20be2925c92d46b45e70d152/app/src/main/java/com/dsharnessmobile/shell/EngineStartFlow.kt) 在所有权探测/worker 前切到 Starting | app/src/main/java/com/snoworwind/pocketharness/EngineStartFlow.kt | 行为已覆盖，无需新 PR；保留本仓启动所有权和恢复顺序。 |
 | 离线插件管理 | [PluginOfflinePanel.kt](https://github.com/kelai141/dsh-mobile-apk/blob/7cd7ccab8247514e20be2925c92d46b45e70d152/app/src/main/java/com/dsharnessmobile/shell/PluginOfflinePanel.kt)、[PluginPatchOffline.kt](https://github.com/kelai141/dsh-mobile-apk/blob/7cd7ccab8247514e20be2925c92d46b45e70d152/app/src/main/java/com/dsharnessmobile/shell/PluginPatchOffline.kt) | app/src/main/java/com/snoworwind/pocketharness/PluginManagementPage.kt、PluginManagementRepository.kt | 是明确功能缺口；借鉴 Hard 隐藏/拒写、Soft 启停、临时文件原子替换、写后回读。解析与落盘必须服从本仓 Hard/Soft/Data 规则并处理并发修改。 |
-| ADB 键盘结果 | [AdbKeyboardReceiver.kt](https://github.com/kelai141/dsh-mobile-apk/blob/7cd7ccab8247514e20be2925c92d46b45e70d152/app/src/main/java/com/dsharnessmobile/shell/AdbKeyboardReceiver.kt)、[ime-broadcast.ts](https://github.com/kelai141/dsh-mobile-apk/blob/7cd7ccab8247514e20be2925c92d46b45e70d152/plugins/dsh-android-manage/src/ime-broadcast.ts) | app/src/main/java/com/snoworwind/pocketharness/AdbKeyboardReceiver.kt、plugins/dsh-android-manage/src/index.ts | 上游已有五类有序广播结果码和调用方兼容解析；本仓只有命令状态及部分文本回读。吸收回执语义，另行审查现有重试。 |
-| 虚拟屏与网页弹层 | [vdisplay client](https://github.com/kelai141/dsh-mobile-apk/blob/7cd7ccab8247514e20be2925c92d46b45e70d152/plugins/dsh-android-vdisplay/src/client/index.ts) 观察 data-dsh-popover-open 并隐藏 SurfaceView；[sidebar-bubbles.ts](https://github.com/kelai141/dsh-mobile-apk/blob/7cd7ccab8247514e20be2925c92d46b45e70d152/dsh-client-ui-responsive/src/client/mobile/sidebar-bubbles.ts) 发出开合信号 | plugins/dsh-android-vdisplay/src/client/index.ts、VdisplayHost.kt | 几何比例已有；补充最小弹层可见性信号和关窗/重载/旋转时的恢复判据。 |
+| ADB 键盘结果 | [AdbKeyboardReceiver.kt](https://github.com/kelai141/dsh-mobile-apk/blob/7cd7ccab8247514e20be2925c92d46b45e70d152/app/src/main/java/com/dsharnessmobile/shell/AdbKeyboardReceiver.kt)、[ime-broadcast.ts](https://github.com/kelai141/dsh-mobile-apk/blob/7cd7ccab8247514e20be2925c92d46b45e70d152/plugins/dsh-android-manage/src/ime-broadcast.ts) | app/src/main/java/com/snoworwind/pocketharness/AdbKeyboardReceiver.kt、AdbKeyboardService.kt、plugins/dsh-android-manage/src/index.ts | 上游已有五类有序广播结果码和调用方兼容解析；本仓需先把服务真实处理结果传到接收器，再让插件判读逐次回执，同时收窄现有重试。 |
+| 虚拟屏与网页弹层 | [vdisplay client](https://github.com/kelai141/dsh-mobile-apk/blob/7cd7ccab8247514e20be2925c92d46b45e70d152/plugins/dsh-android-vdisplay/src/client/index.ts) 观察 data-dsh-popover-open 并隐藏 SurfaceView；[sidebar-bubbles.ts](https://github.com/kelai141/dsh-mobile-apk/blob/7cd7ccab8247514e20be2925c92d46b45e70d152/dsh-client-ui-responsive/src/client/mobile/sidebar-bubbles.ts) 发出开合信号 | plugins/dsh-android-vdisplay/src/client/index.ts、VdisplayHost.kt | 几何比例已有；复用本仓 sidebar-bubbles.ts 与 native-browser-presentation.ts 的菜单语义，补 vdisplay 消费和关窗/重载/旋转时的恢复判据。 |
 | 运行时更新 | [UpdateManager.kt](https://github.com/kelai141/dsh-mobile-apk/blob/7cd7ccab8247514e20be2925c92d46b45e70d152/app/src/main/java/com/dsharnessmobile/shell/UpdateManager.kt) 保留在线快照替换并复用事务 | app/src/main/java/com/snoworwind/pocketharness/SnapshotTransaction.kt、SnapshotExtractor.kt | 本仓保留事务实现，拒绝吸收在线更新入口、安装权限和签名策略。只对具体事务缺陷做独立反例比较。 |
 | Linux 环境 | [linux-host-asset-io.ts](https://github.com/kelai141/dsh-mobile-apk/blob/7cd7ccab8247514e20be2925c92d46b45e70d152/plugins/dsh-android-linux-env/src/linux-host-asset-io.ts) 只转交宿主已暂存资产并拒绝自行下载；bootstrap 复算摘要和体量 | plugins/dsh-android-linux-env/src/linux-host-asset-io.ts、linux-release-pins.ts、app/src/main/java/com/snoworwind/pocketharness/LinuxAssetIO.kt | 机制方向相同；本仓额外维护离线 pin 与安装集成。只对实际的来源 pin、路径边界、树复验和失败恢复差异做补齐，不重复移植插件。 |
 | 沙箱声明 | [dsh-shell-termux](https://github.com/kelai141/dsh-mobile-apk/tree/7cd7ccab8247514e20be2925c92d46b45e70d152/dsh-shell-termux) 诚实报告 enforcement=partial | dsh-shell-termux/src/index.ts、known-gaps.md | 上游没有路径级执行隔离；本仓 P0 缺口不能以“上游也如此”关闭。 |
@@ -91,13 +91,14 @@
 |---|---|---|---|
 | 0 | 已完成；持续 | 固定源码比较基线 | 已核对 `main` 到 7cd7ccab，并逐项查看构建/注入清单、桥、启动、离线插件页、ADB 回执、虚拟屏、快照更新、Linux 适配和 shell 沙箱。下轮从此 SHA 检查新增提交；Release 与 main 分开记录。 |
 | 0A | 发布阻断项 | 本仓 `dsh-shell-termux` 路径级隔离缺口 | 这是本仓已知安全缺口，不属于上游移植。独立制定执行边界与反证方案；在问题关闭前，不对外声称 `workspace-write`/`read-only` 已提供目录隔离。它与下列 UI PR 分开，不得被其验收覆盖。 |
-| 1 | P1 / L3 | 虚拟屏弹层遮挡（#403） | 本仓比例算法已具备；先复现 HTML 弹层被原生 SurfaceView 盖住，再移植最小开合信号。卸载、旋转、页面重载和异常路径都须恢复显示。单独 UI PR，按两方向三层验收。 |
+| 1 | P1 / L3 | 虚拟屏弹层遮挡（#403） | 本仓比例算法已具备；先复现 HTML 弹层被原生 SurfaceView 盖住，再让 vdisplay 消费本仓现有 open/closing/closed 状态，避免双份信号。卸载、旋转、页面重载和异常路径都须恢复显示。单独 UI PR，按两方向三层验收。 |
 | 已具备 | 不新开 PR | 启动即时反馈（#416） | 本仓 EngineStartFlow 已在前置所有权探测和 worker 前显示 Starting，源码行为与上游修正相符。回归或差异复现时再开单项修复，不重复移植。 |
-| 2 | P1 / L2 | ADB 键盘有序结果回执（#420） | 本地源码已显示清空-only、读回不可用时会把 am broadcast 的命令成功当应用处理成功。为每条点名广播返回五类有序结果码，manage 端分别解析 clear/input 的结果；继续 nonce 与 sender UID 校验。兼容无结果码旧壳时回退到已有回读语义，不增加因回执缺失而重投；单独审查并约束现有“回读不一致后重发一次”，避免重复输入。 |
-| 3 | P1 / L2+L3 | 离线插件管理（#416） | 只管理可确认的 Soft 插件，Hard 清单缺失/不匹配时拒绝写入；打开页面不启动引擎。落盘前比较最新文件状态/摘要，使用本仓持久化策略的原子写、备份或事务边界并写后回读。在线 RPC 路径不改；离线列表/启停作为独立 PR。 |
+| 2 | P1 / L2 | ADB 键盘有序结果回执（#420） | 本地源码已显示清空-only、读回不可用时会把 am broadcast 的命令成功当应用处理成功。先让 AdbKeyboardService 回传真实编辑结果，再为每条点名广播返回有序结果码，manage 端分别解析 clear/input 的结果；继续 nonce 与 sender UID 校验。兼容无结果码旧壳时回退到已有回读语义，不增加因回执缺失而重投；单独审查并约束现有“回读不一致后重发一次”，避免重复输入。 |
+| 3 | P1 / L2+L3 | 离线插件管理（#416） | 只管理可确认的 Soft 插件，Hard 清单缺失/不匹配时拒绝写入；打开页面不启动引擎。落盘前比较最新文件状态/摘要，使用本仓持久化策略的原子写、备份或事务边界并写后回读。在线 RPC 路径保留；先做只读清单 C1，再做具备排他写入与中断恢复的启停 C2，两个独立 PR。 |
 | 4 | P2 / parity | Linux 环境源码差异 | 当前两仓都实际挂载 Linux 插件，且都有“宿主暂存、bootstrap 复验、不自行下载”的代码路径。先以本仓 linux-release-pins、Kotlin 宿主桥和上游 linux-host-asset-io 逐项核对来源、摘要、体量、路径、Symlink 拒绝及恢复；只有出现明确差异/缺陷才开单项补齐 PR。 |
 | 保留 | 不吸收删除 | model-capability 插件差异 | 上游当前有效注入不含该插件，但本仓模型目录、models.dev 缓存、来源梯与诊断仍是本地能力。除非产品决定退役，不能以对齐上游为理由删除；如评估退役须逐项盘点数据迁移和替代项。 |
 | 5 | P3 / 有指标再做 | 快照门禁提速 | 上游一次解码供多个门禁复用，Release 自报最慢三项 134.2s→57.7s。本仓先采集来源链逐门禁耗时；确认解码重复是实际瓶颈后再独立优化，保留完整 XZ 尾部校验、损坏反证与每个消费者的独立失败归因。 |
+| 待审计 | P2 / 产品需求触发 | #450 壳侧双语与语言切换 | 本仓已有局部 locales，尚不能视作壳侧语言切换已覆盖；先审计语言真源、原生/Web/通知同步与重建回退，按独立需求决定范围，不捆绑本轮主线。 |
 | 延后 | 需求触发 | #411 双工作区、#412 抽屉常驻、#415 悬浮球隐藏召回 | 先确认用户场景与设备覆盖，再单项评估内存、焦点、横竖屏和 overlay 生命周期；不打包成一个体验 PR。 |
 | 排除 | 不移植 | APK/快照 OTA、旧签名、双 ABI 资产、协调仓构建链、#418 壳侧修复助手 | 与本仓产品身份、来源链或“AI 工具只由插件注册”边界冲突。启动恢复需求仍可通过插件/非模型控制路径另行设计。 |
 
@@ -111,75 +112,7 @@
 
 ### 详细吸收执行计划
 
-计划基线固定为上游 main 的 7cd7ccab8247514e20be2925c92d46b45e70d152。每个实现包开始前先确认上游是否有后续提交、本仓 main 是否已变化，以及目标文件是否仍与本表描述一致；如果源行为改变，先更新比较结论再动代码。工作包字母仅用于引用，实际实施顺序以本页“吸收优先级与交付顺序”表为准：#403、#420、C1、C2；D 与 E 由审计和性能证据触发。以下内容是计划，不表示当前已实现或已验收。
-
-#### 工作包 A：ADB 键盘应用结果回执
-
-- 建议 PR：新增 ADB 键盘有序广播结果回执。单独处理一个桥协议行为，不与键盘重试或其他输入体验改动混合。
-- 进入条件：复核 AdbKeyboardReceiver、plugins/dsh-android-manage 调用链及现有文本回读/自动重发逻辑；确认广播 action、extra、nonce 和权限校验仍按本仓现状工作。
-- 壳侧改动：定义稳定结果码，区分已提交、输入法未就绪、请求拒绝、请求格式错误、无输入连接。只有 ordered broadcast 才写结果码；无序广播仍按现有授权门拒绝，不能把 shell 命令退出码伪装成应用已处理。
-- 插件侧改动：每次 clear 和 input 广播各自解析回执，前一操作未确认成功时停止后续输入。保留旧壳兼容：结果码缺失或旧壳默认值转入已有设备状态回读；回读不可用时返回未确认状态，不返回成功。
-- 重试边界：结果码缺失、拒绝、超时和输入法未就绪均不得触发自动重放。只有回读明确证明文本不一致时才考虑现有一次修复流程；重发前必须确认清空操作成功，重发后再读回。避免把应用未处理和结果丢失当作可安全重试。
-- 反例与回归：覆盖五类结果码、无序广播、未知码、缺码旧壳、发送方 UID 不符、nonce 不符、无输入连接、clear 成功但 input 失败、clear-only、回读不可用及文本不一致。不得在日志中记录输入文本或控制凭据。
-- 验收与回滚：此项属于 L2 桥协议，代码反证、manage 插件用例、CDP 调用结果和 ADB 用户实际输入/清空结果都要通过；由模型自行完成包含多个动作的输入任务，提示中只提供目标、约束和成功标准。若设备不可用，只能记录未验收，不能以模拟器旧 ABI 代替 ARM64 结果。回滚时整项移除新增结果码调用约定，保留 nonce/UID 授权门和原有输入行为。
-- 文档：更新 BRIDGE-API.md 与执行地图；若新增或改变插件行为，更新相应插件测试/清单及本仓副本的源码、package.json、lib。桥签名或通道语义改变时运行 bridge symmetry 检查和代码地图检查。
-
-#### 工作包 B：虚拟屏弹层遮挡同步
-
-- 建议 PR：修复虚拟屏弹层遮挡状态同步。只处理网页弹层打开期间原生 SurfaceView 的可见性判定。
-- 进入条件：复现 Web 弹层覆盖在虚拟屏上的问题，并确认触发弹层的真实 DOM 节点。上游代码监听的属性必须挂在实际变化节点上；如果属性由 documentElement 更新，就观察 documentElement，或改用明确事件，不能盲目照抄一个可能监听错节点的 MutationObserver。
-- 实现边界：弹层打开时将虚拟屏 viewer 标为不可见或让出遮挡区域；关闭时立即恢复。覆盖弹层关闭、点外部、系统返回、页面导航、WebView 重载、组件销毁及旋转后的恢复。保留本仓现有 letterbox 计算、显示器选择和 viewer 所有权，不顺带改几何算法。
-- 反例与回归：验证属性初始为开/关、开合快速连续变化、重复打开多个弹层、监听节点不存在、WebView 重建以及异常退出时不会永久隐藏虚拟屏；确认 SurfaceView 在弹层关闭后恢复并可交互。
-- 验收与回滚：此项属于 L3 UI/壳侧行为，需代码层、CDP 层、ADB 截图与真实触控三层证据。真实任务由模型自行规划；同一 ARM64 真机竖屏和横屏均完成至少一次点按并留图。回滚只撤销新的弹层状态信号和可见性门控，保留既有 letterbox 行为。
-- 文档与副本：更新 EXECUTION-MAP.md 相关可见性调用链，运行 check-code-map。改动 dsh-client-ui-responsive 或 vdisplay 插件时，只按镜像清单同步源码、package.json 与 lib，不对 scripts 做目录级镜像。
-
-#### 工作包 C1：离线插件清单只读视图
-
-- 建议 PR：离线插件管理只读清单。先交付安全的查看能力，启停写入另开 C2，避免界面和数据写事务同时引入。
-- 进入条件：从 PluginMounts 获取当前 snapshot fingerprint 绑定的 Hard manifest，并校验 schema、来源和完整性。缺失、损坏、旧 fingerprint 或快照事务未收敛时，禁止把任何插件标为可安全修改；列表可明确显示状态未知，但不得猜测归属。
-- 数据真源：按 PERSISTENT-DATA.md 解析活动 web profile 和后续读取的 HOME 级 cordis.patch.yml。历史 settings.yaml 或 settings.yaml.imported 不能当活动配置。区分配置期望状态、plugin_management_pending 中等待重启的期望状态、当前运行时实际状态；列表不得把 pending 说成已生效。
-- 实现边界：离线打开管理页不启动引擎、不发起安装、不修改配置。Hard 身份来自可信 manifest，Soft 身份只在能从当前配置与挂载清单无歧义确定时展示为可管理；未知项保持只读。
-- 验收与回滚：代码层验证 manifest 失效与文件缺失 fail closed；CDP 确认离线页面状态与数据来源；ADB 层证明页面可读、不会因打开页面拉起引擎。若 ARM64 设备不可用，记录未验收。回滚时可独立移除离线列表，保留原有运行时 RPC 页面。
-- 文档：更新模块职责、执行地图和持久化真源说明；新增 Kotlin 文件或改变职责时更新 modules.md。运行代码地图门禁。
-
-#### 工作包 C2：离线 Soft 插件启停
-
-- 建议 PR：离线 Soft 插件启停事务。必须在 C1 清单只读数据源稳定后实施；Hard 插件不得提供离线开关。
-- 写入许可：仅能改动经来源和所有权证明的用户级 HOME patch 覆盖。不得重写 factory profile、Hard 文件、整个 DSH_HOME 或用户手写配置。遇到重复 ID、来源冲突、格式歧义、软链接/路径越界、未知字段无法保真或目标所有权不清时，拒绝写入并保持原文件字节不变。
-- 并发与事务：写前确认当前 fingerprint、Hard manifest 摘要、Soft composition digest、目标文件摘要均未变化，且没有活动中的 snapshot transaction。采用同目录临时文件、落盘校验、原子替换及写后按运行时相同层级回读；任一步不符就恢复精确原字节。检测到并发编辑时中止，不覆盖后来写入。
-- 状态与恢复：只有由本功能明确标记且仍能证明归属的覆盖项才可由关闭操作删除；不得清除用户原有 Cordis 条目。可复用 plugin_management_pending 的前提是其 entryId/moduleName 和“已由运行时确认持久化、但待重启”的语义完全相同；启停成功只表示期望配置已保存，重启后核对运行时才清 pending。配置变化后让现有 composition digest / UndoGate 机制判断健康；不得把 latest 或 restore-last-good 接入自动恢复。若不能证明写后恢复安全，则只交付 C1，不启用写入。
-- 反例与回归：缺失/损坏/错 fingerprint 的 Hard manifest、Hard 条目伪装 Soft、未知和重复 ID、重复 YAML key、软链接、目标文件被并发替换、快照事务活跃、临时写入失败、原子替换失败、写后回读不一致、进程中断、重启后实际状态不符、UndoGate/Safe Mode 期间用户数据保全。每个拒绝用例都证明目标字节未变，成功用例证明未涉及的字段和文件逐字节保留。
-- 验收与回滚：属于 L2 数据事务并触及 L3 UI，需代码反证、CDP 状态流和 ARM64 ADB 实际启停/重启行为；真实任务由模型从目标自行编排，并留操作截图和最终运行态证据。任何一层缺失不得合入为已验收功能。回滚优先停止新的写入入口，再保留用户文件与 pending 记录供诊断；不得靠覆盖 HOME 回滚。
-- 文档：更新 PERSISTENT-DATA.md、EXECUTION-MAP.md、模块地图及必要的桥协议。运行代码地图、插件测试和与所改写入链相关的门禁；新持久化键要列出 owner、绑定身份、清理条件和恢复策略。
-
-#### 工作包 D：Linux 插件源码差异审计
-
-- 建议 PR：只有审计发现明确差异后才开补齐 PR；不以文件不同或上游已有实现本身作为移植理由。
-- 审计项：本仓 release pin 是否绑定可信来源与摘要；宿主暂存资产的路径是否限定在应用授权目录；目录遍历和符号链接是否拒绝；bootstrap 是否独立复核摘要、体量、格式与目标版本；部分解压、权限不足、中断和重复安装后的恢复是否确定；实际注入清单与工具声明是否闭合。
-- 进入条件与边界：先记录对照文件、输入样本、结论和可复现反例。只修一个被证明的差异；资产来源、解压/替换、信任边界变化按 L2 处理。继续保留本仓 pin、离线资产与 Kotlin 宿主桥，不引入联网自下载。
-- 验收与回滚：源码层运行对应插件与离线安装反例；若改动触及设备路径或快照事务，按 L2 做即时三层验收。回滚恢复本仓原有 pin 与失败关闭，不回退到上游可变下载。
-
-#### 工作包 E：来源门禁性能调查
-
-- 建议 PR：性能证据成立后单独优化，当前不进入吸收主线。
-- 调查方法：记录来源链每个门禁的耗时、输入哈希和环境；定位是否存在重复 XZ 解码或重复遍历。仅当重复解码是实际瓶颈时复用已验证的解码产物。
-- 保留判据：完整压缩流尾部校验、损坏输入反证、每个门禁的独立错误归因与最终输入绑定。性能下降可回退到原独立读取方式；不得因缓存共享而跳过校验。
-
-#### 工作包 F：保留、排除与触发条件
-
-- 保留本仓 model-capability 插件。上游当前注入清单不含该插件，不构成退役依据；只有独立产品决策、替代能力盘点、数据迁移方案和回滚方案齐备后才另立议题。
-- 不吸收上游在线 APK/快照更新器、REQUEST_INSTALL_PACKAGES、仓内调试签名、旧包身份、旧协调仓构建链及壳侧模型工具。确有恢复需求时按本仓插件和授权边界另作设计。
-- 双工作区、抽屉常驻、悬浮球隐藏召回等体验项暂不排入主线；出现明确使用场景后逐项评估内存、焦点、横竖屏和 overlay 生命周期。
-- shell-termux 的路径级隔离是本仓独立安全缺口，不属于上游吸收工作。它需单独定义执行边界和反证，不能由本计划中的 UI、插件管理或 Linux 插件工作包关闭。
-
-#### 统一交付与收口门槛
-
-1. 每个工作包从最新 main 单独建分支/PR，一个 PR 只含一个逻辑改动；先按风险级完成反例，再做实现，最后跑匹配该档位的门禁。代码改动不得混入性能重构或无关清理。
-2. 代码地图、桥协议、插件镜像、持久化账本按 AGENTS.md §5 更新。新增/改写插件必须同步本仓镜像清单所列源码、package.json 和 lib；不要对 scripts 整体做目录镜像。
-3. L2 与 L3 改动即时完成代码/CDP/ADB 三层验收。模型任务只给目标、约束和成功标准，不提供逐步操作指令；证据保留命令、每步截图和三层结论。屏幕范围、Shizuku、虚拟屏或通道状态相关时先运行 screen-scope matrix。
-4. ARM64 真机当前不可用期间，可以完成源码比较、实现、静态/主机反例和 CDP 准备，但不得将相应 L2/L3 PR 写成设备已验收或发布就绪。MuMu x86_64 不能替代 ARM64 包验证；虚拟屏 UI 最终还要在同一 ARM64 设备的竖屏和横屏各做一次触控验收。
-5. 设备恢复后，先对已合并候选安装对应 ARM64 来源构建，逐 PR 补齐缺失设备证据；发布候选再从最终提交源码走完整来源链、覆盖升级和三层真实任务验收。热推仅用于快照内 JS 开发期，不作为最终 APK 证据。
-6. 每个 PR 的完成记录包含：比较基线 SHA、改动范围、拒绝/回滚行为、运行过的命令、证据路径、设备与 ABI、未解决事项。无设备验证时在 PR 描述明确写“未做设备验证”，且不得随版本发布，直到补验通过。
+实施依赖、候选来源构建闭环、逐项步骤、离线事务恢复、模型自主任务和 PR 完成条件统一维护在 [上游源码吸收实施计划](UPSTREAM-ABSORPTION-PLAN-2026-10-20.md)。本账本只维护比较结论、优先级和实际吸收记录；该计划尚未开始功能实现或设备验收。
 
 ## 2026-10-19 吸收记录
 
