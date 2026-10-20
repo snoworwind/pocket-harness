@@ -3,8 +3,8 @@
  * host staging; bootstrap independently hashes the retained archive before extraction.
  * Mutable host unpacked trees and cache markers are never used as executable payload.
  */
-import { createReadStream, createWriteStream } from 'node:fs'
-import { link, lstat, mkdir, readFile, readdir, realpath, rename, rm, symlink } from 'node:fs/promises'
+import { constants as fsConstants, createReadStream, createWriteStream } from 'node:fs'
+import { chmod, copyFile, link, lstat, mkdir, readFile, readdir, realpath, rename, rm, symlink } from 'node:fs/promises'
 import { Readable, Transform } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 import xz from 'xz-decompress'
@@ -74,6 +74,39 @@ async function ensureDirectory(path: string): Promise<void> {
   }
 }
 
+const HARDLINK_FALLBACK_CODES = new Set(['EACCES', 'EPERM', 'ENOTSUP', 'EOPNOTSUPP', 'EXDEV', 'ENOSYS', 'EMLINK'])
+
+export interface HardLinkOps {
+  link(source: string, target: string): Promise<void>
+  copyFile(source: string, target: string, flags?: number): Promise<void>
+  chmod(target: string, mode: number): Promise<void>
+}
+
+const DEFAULT_HARDLINK_OPS: HardLinkOps = {
+  link: (source, target) => link(source, target),
+  copyFile: (source, target, flags) => copyFile(source, target, flags),
+  chmod: (target, mode) => chmod(target, mode),
+}
+
+/** Publish a verified archive hard-link target, preserving no-replace semantics on Android. */
+export async function publishHardLink(
+  source: string,
+  target: string,
+  sourceMode: number,
+  ops: HardLinkOps = DEFAULT_HARDLINK_OPS,
+): Promise<'link' | 'copy'> {
+  try {
+    await ops.link(source, target)
+    return 'link'
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException | undefined)?.code
+    if (code === undefined || !HARDLINK_FALLBACK_CODES.has(code)) throw error
+    await ops.copyFile(source, target, fsConstants.COPYFILE_EXCL)
+    await ops.chmod(target, sourceMode & 0o777)
+    return 'copy'
+  }
+}
+
 /** `<filesDir>/linux-environment`，与 Kotlin 的 `root` 同源。 */
 export function linuxEnvironmentRoot(filesDir: string): string {
   return join(resolve(filesDir), LINUX_ENV_DIR)
@@ -119,9 +152,25 @@ export function unpackedTreeFor(filesDir: string, sha256: unknown): string | nul
 
 /** Decode verified archive bytes, never the independently mutable host tree. */
 async function extractVerifiedArchive(archivePath: string, destination: string, kind = 'plugin'): Promise<void> {
-  const root = resolve(destination)
-  const rootInfo = await lstat(root)
-  if (!rootInfo.isDirectory() || rootInfo.isSymbolicLink() || (await readdir(root)).length !== 0) {
+  const lexicalRoot = resolve(destination)
+  const initialInfo = await lstat(lexicalRoot)
+  if (!initialInfo.isDirectory() || initialInfo.isSymbolicLink() || (await readdir(lexicalRoot)).length !== 0) {
+    throw new Error('Archive destination must be a fresh empty directory')
+  }
+  // Android may expose one directory through both /data/user/0 and /data/data.
+  // Normalize the extraction root before comparing it with realpath(entry.source).
+  // Recheck the directory identity after realpath; failure stays closed.
+  const root = await realpath(lexicalRoot)
+  const [currentInfo, canonicalInfo, currentRoot] = await Promise.all([
+    lstat(lexicalRoot),
+    lstat(root),
+    realpath(lexicalRoot),
+  ])
+  if (!currentInfo.isDirectory() || currentInfo.isSymbolicLink() ||
+      !canonicalInfo.isDirectory() || canonicalInfo.isSymbolicLink() ||
+      currentInfo.dev !== initialInfo.dev || currentInfo.ino !== initialInfo.ino ||
+      canonicalInfo.dev !== initialInfo.dev || canonicalInfo.ino !== initialInfo.ino ||
+      currentRoot !== root || (await readdir(root)).length !== 0) {
     throw new Error('Archive destination must be a fresh empty directory')
   }
   const seen = new Set<string>()
@@ -191,7 +240,7 @@ async function extractVerifiedArchive(archivePath: string, destination: string, 
     const sourceInfo = await lstat(entry.source)
     const physical = await realpath(entry.source)
     if (!sourceInfo.isFile() || sourceInfo.isSymbolicLink() || !physical.startsWith(root + sep)) throw new Error('Archive hard link must target an extracted regular file')
-    await link(entry.source, entry.target)
+    await publishHardLink(entry.source, entry.target, sourceInfo.mode)
   }
   for (const entry of links.filter(item => !item.hard)) {
     await safeParents(entry.target)
