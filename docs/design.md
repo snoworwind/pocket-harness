@@ -136,3 +136,5 @@ dsh-mobile-apk/                 ← 独立 git 仓库
 - Shizuku 保活为 best-effort（能拿到 binder 才生效），无 Shizuku 时退化为前台服务 + 看门狗；
 - 16KB 页构建需在 16KB 设备上产出；APK 按 ABI 分发（内含快照与架构绑定）；
 - `pickImage` 回传的是 SAF URI 字符串，页面侧按 content URI 处理。
+
+<!-- probe: branch protection check, not merged -->
