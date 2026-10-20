@@ -4,7 +4,7 @@
 > 复核对象：本仓（HEAD `b836d3a`，versionName 0.14.8，targetSdk 34）。
 > 结论：原报告 5 条问题 + 1 条可观测性问题中，① ② ④ 完全成立；③ 结论成立但归因错误（不是 f2fs）；⑤ 结论成立但范围需收窄（不是 Android 10+ 一律）；⑦ 成立且比原报告更严重。④ 的「显式 env 加 LD_PRELOAD 仍失败」还需设备复验（更像缺 force mode）。当前 `main` 未修复其中任何一条。
 >
-> **后续实机已修正 ⑤ 的归因**（`/data/data` noexec，非 SELinux/targetSdk；W5 已失败）。**最终汇总与“暂不移除”的决策见 [LINUX-ENV-COMPLETE-RECORD-2026-10-19.md](<LINUX-ENV-COMPLETE-RECORD-2026-10-19.md>)**；本文档 §2.5 与附录 B/C 的过程结论以总记录为准。
+> **本文保留调查过程，不作为当前执行结论。** 历史汇总与“暂不移除”决策见 [LINUX-ENV-COMPLETE-RECORD-2026-10-19.md](LINUX-ENV-COMPLETE-RECORD-2026-10-19.md)；2026-10-20 复核发现当前源码已有 `BIONILUX_LOADER`，旧 noexec 唯一归因和 PRoot 排除理由需更正，见 [当前恢复方案](RECOVERY-PROPOSAL-2026-10-20.md) §2。
 
 ---
 

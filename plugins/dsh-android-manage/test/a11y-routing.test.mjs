@@ -5,6 +5,7 @@ import assert from 'node:assert/strict'
 import { pathToFileURL } from 'node:url'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { ADB_KEYBOARD_IME } from '../lib/ime-component.js'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const mod = await import(pathToFileURL(join(HERE, '..', 'lib', 'index.js')).href)
@@ -52,6 +53,31 @@ function applyManage(face) {
   })
   const byName = (n) => tools.find((t) => t.name === n)
   return { tools, byName }
+}
+
+function makeKeyboardFace({ broadcastResults = [], readback = '', initialIme = ADB_KEYBOARD_IME } = {}) {
+  const { face, calls } = makeFace({ backend: 'adb' })
+  let selectedIme = initialIme
+  face.execAdbShell = async (command) => {
+    calls.adbShell.push(command)
+    if (command === 'settings get secure default_input_method') return { ok: true, stdout: selectedIme }
+    if (command.startsWith('ime enable ')) return { ok: true, stdout: '' }
+    if (command.startsWith('ime set ')) {
+      selectedIme = command.slice('ime set '.length).replace(/^'|'$/g, '')
+      return { ok: true, stdout: '' }
+    }
+    if (command.startsWith('am broadcast')) return broadcastResults.shift() ?? { ok: true, stdout: '' }
+    return { ok: true, stdout: '' }
+  }
+  const controlExec = face.controlExec
+  face.controlExec = async (op, args, timeoutMs) => {
+    if (op === 'nodeText') {
+      calls.control.push({ op, args })
+      return { ok: true, data: { text: readback } }
+    }
+    return controlExec(op, args, timeoutMs)
+  }
+  return { face, calls, selectedIme: () => selectedIme }
 }
 
 const exec = { agent: { session: 's1' } }
@@ -468,12 +494,88 @@ test('F3：ui_click 的 a11y 首分支（ref 路径）必须把 screenId 投递�
 test('F3：nodeText 回读必须带上目标屏（校验的是同一块屏的聚焦框）', async () => {
   // 回读不带 screenId → 壳侧按真实屏读聚焦框，输入校验在同一块屏之外比较，会假报「未落地」。
   const { face, calls } = makeFace({ backend: 'adb' })
-  face.execAdbShell = async (command) => { calls.adbShell.push(command); return { ok: true, stdout: '' } }
+  face.execAdbShell = async (command) => {
+    calls.adbShell.push(command)
+    if (command === 'settings get secure default_input_method') {
+      return { ok: true, stdout: 'com.snoworwind.pocketharness/.AdbKeyboardService' }
+    }
+    if (command.startsWith('am broadcast')) return { ok: true, stdout: 'Broadcast completed: result=1' }
+    return { ok: true, stdout: '' }
+  }
   const { byName } = applyManage(face)
   await byName('android_ui_input').execute({ text: 'hello', screenId: 'virtual-1' }, exec)
   const nt = calls.control.find((c) => c.op === 'nodeText')
   assert.ok(nt, 'ADBKeyboard 通道注入后必须回读断言')
   assert.equal(nt.args.screenId, 'virtual-1', 'nodeText 回读必须指向同一块屏')
+})
+
+test('ADBKeyboard：清空回执未知且目标仍有文本时，停止在清空，不发送输入', async () => {
+  const { face, calls } = makeKeyboardFace({
+    broadcastResults: [{ ok: true, stdout: 'Broadcast completed: result=0' }],
+    readback: 'existing text',
+  })
+  const { byName } = applyManage(face)
+
+  const result = await byName('android_ui_input').execute({ text: 'sensitive payload', clear: true }, exec)
+
+  const broadcasts = calls.adbShell.filter((command) => command.startsWith('am broadcast'))
+  assert.equal(result.ok, false)
+  assert.equal(broadcasts.length, 1, '未确认清空不得发送输入或重试')
+  assert.match(broadcasts[0], /-a ADB_CLEAR_TEXT/)
+  assert.doesNotMatch(broadcasts[0], /ADB_INPUT_TEXT/)
+  assert.doesNotMatch(result.text, /sensitive payload/, '结果文案不得回显用户文本')
+})
+
+test('ADBKeyboard：clear 与 input 分开判读，第二步失败后不重放', async () => {
+  const { face, calls } = makeKeyboardFace({
+    broadcastResults: [
+      { ok: true, stdout: 'Broadcast completed: result=1' },
+      { ok: true, stdout: 'Broadcast completed: result=6' },
+    ],
+    readback: 'partially changed',
+  })
+  const { byName } = applyManage(face)
+
+  const result = await byName('android_ui_input').execute({ text: 'sensitive payload', clear: true }, exec)
+
+  const broadcasts = calls.adbShell.filter((command) => command.startsWith('am broadcast'))
+  assert.equal(result.ok, false)
+  assert.equal(broadcasts.length, 2, '每步恰好一次，不自动补发')
+  assert.match(broadcasts[0], /-a ADB_CLEAR_TEXT/)
+  assert.match(broadcasts[1], /-a ADB_INPUT_TEXT/)
+  assert.doesNotMatch(result.text, /sensitive payload/, '结果文案不得回显用户文本')
+})
+
+test('ADBKeyboard：回读不一致后不清空或重发输入', async () => {
+  const { face, calls } = makeKeyboardFace({
+    broadcastResults: [{ ok: true, stdout: 'Broadcast completed: result=1' }],
+    readback: 'partial result',
+  })
+  const { byName } = applyManage(face)
+
+  const result = await byName('android_ui_input').execute({ text: 'sensitive payload' }, exec)
+
+  const broadcasts = calls.adbShell.filter((command) => command.startsWith('am broadcast'))
+  assert.equal(result.ok, false)
+  assert.equal(broadcasts.length, 1, '回读不一致不能自动清空后重放')
+  assert.match(broadcasts[0], /-a ADB_INPUT_TEXT/)
+  assert.doesNotMatch(broadcasts[0], /ADB_CLEAR_TEXT/)
+})
+
+test('ADBKeyboard：拒绝路径经 finally 恢复临时切换的原输入法', async () => {
+  const previousIme = 'com.android.inputmethod.latin/.LatinIME'
+  const { face, calls, selectedIme } = makeKeyboardFace({
+    initialIme: previousIme,
+    broadcastResults: [{ ok: true, stdout: 'Broadcast completed: result=2' }],
+  })
+  const { byName } = applyManage(face)
+
+  const result = await byName('android_ui_input').execute({ text: 'sensitive payload' }, exec)
+
+  assert.equal(result.ok, false)
+  assert.equal(selectedIme(), previousIme, '错误返回前应恢复原输入法')
+  assert.ok(calls.adbShell.includes(`ime set '${previousIme}'`), 'finally 必须恢复经引用保护的原 IME')
+  assert.equal(calls.adbShell.filter((command) => command.startsWith('am broadcast')).length, 1)
 })
 
 test('F4b：virtual-only 下 android_web_dump 不得被屏幕范围门拒绝（它读的是壳自有 WebView）', async () => {

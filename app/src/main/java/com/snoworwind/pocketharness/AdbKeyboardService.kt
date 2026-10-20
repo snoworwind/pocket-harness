@@ -5,6 +5,8 @@ import android.content.Intent
 import android.inputmethodservice.InputMethodService
 import android.view.Gravity
 import android.view.View
+import android.view.inputmethod.ExtractedTextRequest
+import android.view.inputmethod.InputConnection
 import android.view.inputmethod.InputMethodManager
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -56,27 +58,37 @@ class AdbKeyboardService : InputMethodService() {
     super.onDestroy()
   }
 
-  /** 提交文本到当前输入连接（replace 语义，与 ADBKeyboard 默认一致）。幂等失败。 */
-  internal fun commitText(text: String) {
-    val conn = currentInputConnection ?: return
-    if (!conn.beginBatchEdit()) return
-    try {
-      conn.commitText(text, 1)
-    } finally {
-      conn.endBatchEdit()
-    }
+  /** Submit through the current connection and preserve the connection's dispatch result. */
+  private fun commitTextResult(text: String): AdbKeyboardEditStatus {
+    val conn = currentInputConnection ?: return AdbKeyboardEditStatus.NO_INPUT_CONNECTION
+    return AdbKeyboardEdits.commit(editPort(conn), text)
   }
 
-  /** 清空当前输入框（全选后删除）。 */
-  internal fun clearText() {
-    val conn = currentInputConnection ?: return
-    if (!conn.beginBatchEdit()) return
-    try {
-      conn.setSelection(0, Int.MAX_VALUE)
-      conn.deleteSurroundingText(Int.MAX_VALUE, Int.MAX_VALUE)
-    } finally {
-      conn.endBatchEdit()
+  /** Clear only when a complete editor snapshot lets us select the whole field safely. */
+  private fun clearTextResult(): AdbKeyboardEditStatus {
+    val conn = currentInputConnection ?: return AdbKeyboardEditStatus.NO_INPUT_CONNECTION
+    return AdbKeyboardEdits.clear(editPort(conn))
+  }
+
+  private fun editPort(connection: InputConnection): AdbKeyboardEditPort = object : AdbKeyboardEditPort {
+    override fun beginBatchEdit(): Boolean = connection.beginBatchEdit()
+
+    override fun fullTextLength(): Int? {
+      val request = ExtractedTextRequest().apply {
+        hintMaxChars = MAX_CLEAR_TEXT_CHARS
+        hintMaxLines = MAX_CLEAR_TEXT_CHARS
+      }
+      val extracted = connection.getExtractedText(request, 0) ?: return null
+      val text = extracted.text ?: return null
+      // Keep the text transient and use only its length; never log or return field contents.
+      return completeEditorTextLength(extracted.partialStartOffset, extracted.startOffset, text.length)
     }
+
+    override fun setSelection(start: Int, end: Int): Boolean = connection.setSelection(start, end)
+
+    override fun commitText(text: String): Boolean = connection.commitText(text, 1)
+
+    override fun endBatchEdit(): Boolean = connection.endBatchEdit()
   }
 
   private fun hideKeyboardInternal() {
@@ -97,24 +109,16 @@ class AdbKeyboardService : InputMethodService() {
     var instance: AdbKeyboardService? = null
       private set
 
-    /**
-     * 是否可提交：服务实例存在 = 本 IME 正被系统绑定/活跃（系统只会在当前输入法
-     * 使用时实例化 IME 服务；用户切走后即解绑置空）。比读 DEFAULT_INPUT_METHOD
-     * （默认输入法 ≠ 当前临时切换选择）更准确；getCurrentInputMethodId 为
-     * @SystemApi 侧载不可调。
-     */
-    fun canCommit(): Boolean = instance != null
-
-    /** 静态接收器统一入口：校验活跃后提交/清空。返回是否已处理。 */
-    fun handle(action: String, msg: String?): Boolean {
-      if (!canCommit()) return false
-      val svc = instance ?: return false
-      when (action) {
-        ACTION_INPUT_TEXT -> msg?.let { svc.commitText(it) } ?: return false
-        ACTION_CLEAR_TEXT -> svc.clearText()
-        else -> return false
+    /** 静态接收器统一入口：保留未就绪、无连接和编辑调用结果。 */
+    internal fun handle(action: String, msg: String?): AdbKeyboardEditStatus {
+      return when (action) {
+        ACTION_INPUT_TEXT -> {
+          if (msg == null) return AdbKeyboardEditStatus.BAD_REQUEST
+          (instance ?: return AdbKeyboardEditStatus.IME_NOT_READY).commitTextResult(msg)
+        }
+        ACTION_CLEAR_TEXT -> (instance ?: return AdbKeyboardEditStatus.IME_NOT_READY).clearTextResult()
+        else -> AdbKeyboardEditStatus.BAD_REQUEST
       }
-      return true
     }
 
     /** 广播来源 nonce 文件（应用私有 filesDir 根；引擎经 DSH_FILES_DIR 读取后随广播回传）。 */
@@ -160,5 +164,6 @@ class AdbKeyboardService : InputMethodService() {
     }
 
     private const val NONCE_FILE_NAME = "adb-keyboard-nonce"
+    private const val MAX_CLEAR_TEXT_CHARS = ADB_KEYBOARD_MAX_CLEAR_TEXT_CHARS
   }
 }

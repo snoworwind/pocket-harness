@@ -141,7 +141,7 @@ Linux 发现补充（P04，坑 373）：bootstrap `index.js` 串行发现 → `g
 | K02 | 引擎生命周期与保活 | 起 node 引擎、Activity独立观察启动准备窗、5s 探活、看门狗重启熔断与日志落盘 | EngineStartFlow.start及生命周期结束后排队启动前台服务、EngineService先前台提升后初始化及5s tick | 引导与启动 | K01,K03 | MainActivity、BootReceiver、EngineStartFlow | EngineManager.kt,EngineService.kt,WatchdogV2.kt,LogCollector.kt | 高 |
 | K03 | 快照事务与更新链 | 内嵌快照暂存交换事务与回滚（插件故障走**清单式外科拔除**，不整份回滚），兼历史在线事务恢复与清单合并 | 启动流判指纹不新鲜 / APK 覆盖安装 / WebView 导出 | 快照与更新 | 引导启动流、引擎探活、构建快照资产 | EngineStartFlow.runFlow、EngineService 看门狗、引导页按钮、MainActivity 的 WebView 回调 | SnapshotTransaction.kt,SnapshotFs.kt,SnapshotRefreshPolicy.kt,PublicRepoProvision.kt,PluginMounts.kt,SnapshotUserData.kt,SnapshotFingerprintPolicy.kt,ProfilePackageManifest.kt | 高 |
 | K04 | 桥与控制协议面 | 顶层同步 facade 与 nonce dispatcher、引擎鉴权与控制队列承载 | 页面调 androidBridge；EngineService 起控制承载 | 稳态控制 | 引导与启动（EngineService/MainActivity）、无障碍与虚拟屏宿主、快照与更新（UndoGate） | MainActivity 注册并注入 MainFrameBridge；EngineService.onCreate 起 ControlCarrier；看门狗 tick 调 UndoGate | app/src/main/java/com/snoworwind/pocketharness/MainFrameBridge.kt,app/src/main/java/com/snoworwind/pocketharness/AndroidBridge.kt,app/src/main/java/com/snoworwind/pocketharness/ControlPoller.kt,app/src/main/java/com/snoworwind/pocketharness/EngineAuth.kt,app/src/main/java/com/snoworwind/pocketharness/ControlProtocolV2.kt | 高 |
-| K05 | 无障碍控制面 | 按需取语义树并对设备执行点击输入滚动截屏 | 控制队列取活 + 无障碍服务回调 | 稳态控制 | K04 控制协议、K06 特权执行 | ControlCarrier 控制队列取活、onServiceConnected、ADB 键盘广播 | DeviceControlService.kt,GlobalActionCatalog.kt,AdbKeyboardService.kt,AdbKeyboardReceiver.kt | 高 |
+| K05 | 无障碍控制面 | 按需取语义树并对设备执行点击输入滚动截屏 | 控制队列取活 + 无障碍服务回调 | 稳态控制 | K04 控制协议、K06 特权执行 | ControlCarrier 控制队列取活、onServiceConnected、ADB 键盘逐次回执 | DeviceControlService.kt,GlobalActionCatalog.kt,AdbKeyboardEdit.kt,AdbKeyboardService.kt,AdbKeyboardReceiver.kt | 高 |
 | K06 | 特权执行、屏幕范围与本地文件面 | Shizuku 特权 shell 通道、屏幕范围门与本地文件出入口 | 引擎 sh* op / 设置页范围写面 / 外部分享与打开 intent | 稳态控制 | 控制队列承载、引擎 bridge 插件、虚拟屏注册表、无障碍控制面 | 引擎 androidPrivilege 服务面与页面桥 | ShellOps.kt,ScreenScope.kt,ShizukuTransport.kt,ShizukuBindState.kt,ShizukuUserService.kt,ShizukuProbe.kt,ShizukuSupport.kt,ProcIo.kt,FileIncoming.kt,PathOpen.kt,ExternalLinks.kt,ConfigTransfer.kt,RootGrant.kt,RootAccess.kt,OwnershipRepairCore.kt,OwnershipRepair.kt,RootRepairMain.kt,RootExecutionFence.kt,RootMaintenanceLease.kt,RootOwnershipJobs.kt,LeaseClearProbe.kt | 高 |
 | K07 | 虚拟屏宿主 | Shizuku 建屏与 viewer Surface 交接的生命周期编排 | 模型 vd 工具 / 侧栏桥面 / Activity 生命周期 | 交互面 | Shizuku 特权通道、K05 无障碍控制面、K08 浏览器宿主 | MainActivity、DeviceControlService 与 ControlCarrier、侧栏面板 | VdisplayController.kt,VdisplayHost.kt,VdisplayOps.kt | 高 |
 | K08 | 浏览器宿主 | 隔离浏览器：无桥 WebView、准入过滤、几何与保活；无 MULTI_PROFILE 时由用户显式启用兼容模式（共享 Default jar、loopback 仍拒） | 模型 browser* op（控制队列）/ 面板 browserHost* 桥 | 交互面 | S01,P03,控制队列 | MainActivity 构造，op 与面板下推拉起 | BrowserHost.kt,BrowserHostNavigationPolicy.kt,BrowserOverlayPolicy.kt,BrowserHostProfile.kt,BrowserSharedFallback.kt | 高 |
@@ -149,8 +149,8 @@ Linux 发现补充（P04，坑 373）：bootstrap `index.js` 串行发现 → `g
 | K10 | 通知中心 | 引擎事件到通知栏应答的投递-应答闭环；延后日志同步提交、恢复与结算 | 引擎 .notify.ndjson / WS waterfall / 通知动作广播 | 交互面 | P01 通知投影、K09 面板 pending | EngineService.onCreate、动作广播冷启动 | NotifyCenter.kt,NotifyBridge.kt,NotifyStore.kt,NotifySuppressQueue.kt,NotifyDecisionQueue.kt | 高 |
 | K11 | Kotlin 单测面 | JVM策略/core/settlement/wiring与instrumentation覆盖；在场不是已执行。0.14.8 P1 增补：刷新窗口内启动请求的有界等待（跨进程真源 = 真 journal 文件；收口即停 / 超预算必返 / 换代立刻收手 / 无事务不等）与接线契约（裸 `flowOwnership.begin() ?: return` 不得回归、推迟必须进 boot-fail），见 `app/src/test/java/com/snoworwind/pocketharness/DeferredEngineStartTest.kt` | 外部Gradle/结果基线门禁 | 测试与门禁 | 横切 | 实际XML/日志与外部三层证据 | app/src/test/java/com/snoworwind/pocketharness,scripts/check-kotlin-test-count.mjs,scripts/kotlin-test-baseline.json,app/build.gradle.kts | 中 |
 | P01 | 桥插件（dsh-android-bridge） | 设备控制的授权判定、控制队列与三条特权执行出口 | 模型设备工具 / 其它插件直连服务面 / 壳侧长轮询取活 | 稳态控制 | K04 控制队列协议、K05 无障碍面、K06 特权执行、P02 manage、P03 浏览器、K10 通知 | cordis 装配（provide androidPrivilege）、模型设备工具、壳侧 ControlPoller 长轮询 | plugins/dsh-android-bridge/src/index.ts,plugins/dsh-android-bridge/src/control-queue.ts,plugins/dsh-android-bridge/src/screen-scope.ts | 高 |
-| P02 | 管理插件（dsh-android-manage） | 把模型意图落成壳侧无障碍或特权 shell 的屏幕工具面 | 模型每轮 tool call；插件 apply 时注册 14 个工具 | 稳态控制 | 授权桥与控制队列（androidPrivilege）,壳侧无障碍与特权执行面,屏幕范围偏好 | 引擎 cordis 装配（android-bridge 先于 android-manage）；每次模型 tool call | plugins/dsh-android-manage/src/index.ts,plugins/dsh-android-manage/src/protocol-v2.ts,plugins/dsh-android-manage/src/vd-shot.ts | 高 |
-| P03 | 浏览器与虚拟屏插件 | browser_* 与 vd* 工具落壳侧控制 op 并如实回执 | 模型调用 browser_* / android_vdisplay_* 工具 | 稳态控制 | K08,K07,桥控制队列 | 引擎启动时按装配集注册 | plugins/dsh-android-browser/src/tools.ts,plugins/dsh-android-browser/src/index.ts,plugins/dsh-android-vdisplay/src/index.ts,plugins/dsh-android-vdisplay/src/status.ts | 高 |
+| P02 | 管理插件（dsh-android-manage） | 把模型意图落成壳侧无障碍或特权 shell 的屏幕工具面 | 模型每轮 tool call；插件 apply 时注册 14 个工具 | 稳态控制 | 授权桥与控制队列（androidPrivilege）,壳侧无障碍与特权执行面,屏幕范围偏好 | 引擎 cordis 装配（android-bridge 先于 android-manage）；每次模型 tool call | plugins/dsh-android-manage/src/index.ts,plugins/dsh-android-manage/src/ime-broadcast.ts,plugins/dsh-android-manage/src/protocol-v2.ts,plugins/dsh-android-manage/src/vd-shot.ts | 高 |
+| P03 | 浏览器与虚拟屏插件 | browser_* 与 vd* 工具落壳侧控制 op 并如实回执；vdisplay 原生 Surface 可见性同时让出给 DOM 弹层 | 模型调用 browser_* / android_vdisplay_* 工具 | 稳态控制/交互呈现 | K08,K07,桥控制队列 | 引擎启动时按装配集注册；面板可见性观察 DOM 状态并经 vdisplayBounds 下发 | plugins/dsh-android-browser/src/tools.ts,plugins/dsh-android-browser/src/index.ts,plugins/dsh-android-vdisplay/src/index.ts,plugins/dsh-android-vdisplay/src/status.ts,plugins/dsh-android-vdisplay/src/client/index.ts,plugins/dsh-android-vdisplay/src/client/stage-visibility.ts | 高 |
 | P04 | 文件打开、Linux 环境与模型能力插件 | 外部来件草稿、工具链与缓存清理、模型能力写回 | 壳侧 FileIncoming 投递 / 设置页 HTTP / cordis 装配 | 稳态控制 | 桥与鉴权、客户端注入层、shell-termux 工具链表、快照装配链 | 壳侧 FileIncoming.processIncomingIntent、设置页与开发者选项、cordis 装配 | plugins/dsh-android-file-open/src/index.ts,plugins/dsh-android-linux-env/src/runtime-cache.ts,plugins/dsh-model-capability/src/index.ts | 高 |
 | S01 | 引擎侧注入层（三个子仓） | 页面内发布标记与桥入口、钳面板几何、装配老内核垫片 | 客户端插件 apply() 装载；每个 index 响应经 tapIndex 注入 | 交互面 | K04（壳侧 androidBridge/dshBackBridge 桥面） | 引擎插件系统按 profile-web.cordis.patch.yml 的 insert 行拉起 | dsh-client-ui-responsive/src/client/index.ts,dsh-host-web-compat/lib/index.js,dsh-shell-termux/src/index.ts | 高 |
 | B01 | 构建链与快照注入 | 快照构建 插件注入 门禁收口 到 APK 出包；本地 PowerShell、云端 build-apk.mjs、发布 workflow 的 APK 终端组装共用 build-apk-engine，产物再经 apksigner 校验 v1/v2/v3；本分支 build-apk 无条件复用 build-apk-source，仅允许不读 LFS 快照的 ARM64 来源审计构建（签名 Termux 包 → NDK 跨编译 node-pty → 原生闭包门禁 → 快照 → APK） | 人手动 pwsh -File scripts\build-apk-013.ps1、云端 workflow 或发布链 | 构建与发布 | 门禁块,壳侧快照解压,插件源码与 vendor 固化面,可信上游签名/哈希 | 开发者手动,发布链 build-release.ps1,CI 与云端 build-apk.mjs,build-apk-source.yml | scripts/build-apk-013.ps1,scripts/build-apk.mjs,scripts/build-apk-engine.mjs,scripts/build-apk-engine.test.mjs,scripts/build-release.ps1,scripts/check-apk-signatures.mjs,scripts/build-snapshot-013.mjs,scripts/inject-all.py,scripts/source-build/*,.github/workflows/build-apk.yml,.github/workflows/build-apk-source.yml,.github/workflows/release-source-draft.yml,webpages/tools/build.mjs,webpages/src/assets/app.js,webpages/src/assets/release.js,scripts/patches/data/undo-safe-transaction-snippet.mjs,scripts/patches/data/registry-scan-c4.mjs,scripts/patches/data/client-index-loader-barrier.mjs,scripts/patches/tests/client-index-loader-barrier.test.mjs,scripts/patches/tests/gateway-client-source-g1.test.mjs,scripts/patches/mimo-thinking-toggle-056.mjs,scripts/patches/tests/mimo-thinking-toggle-056.test.mjs | 高 |
@@ -472,7 +472,9 @@ Linux 发现补充（P04，坑 373）：bootstrap `index.js` 串行发现 → `g
 | K04 | 构建与发布 | app/build.gradle.kts 的单测依赖决定 jsString 类缺陷的判据落在哪个 org.json 实现上 | app/build.gradle.kts:127 |
 | K05 | K04 | 控制队列与回填协议：op 名 / args 里的 screenId 与 gen / row 句柄 / caps 与 pv 全由 ControlPoller 与 ControlProtocolV2 编解码，两边 op 集合由 check-control-ops.mjs 六面对齐 | app/src/main/java/com/snoworwind/pocketharness/ControlPoller.kt:158 |
 | K05 | K06 | sh* 与 vd* 在 handle 里只有一行转发（ShellOps / VdisplayOps），授权与执行归 K06；运行时由 ControlCarrier 直连，a11y 侧分支仅为门禁存在 | app/src/main/java/com/snoworwind/pocketharness/DeviceControlService.kt:652 |
-| K05 | 引擎 manage 插件 | 文本注入走 ADB 键盘广播（IME 活跃才提交），是否落地由 nodeText 回读断言闭环；广播来源校验共用 files/adb-keyboard-nonce | plugins/dsh-android-manage/src/index.ts:1899 |
+| K05 | ADBKeyboard 编辑结果 | 按 InputConnection 各次 Boolean 结果归一状态；清空只对完整有界文本快照全选后提交空文本 | app/src/main/java/com/snoworwind/pocketharness/AdbKeyboardEdit.kt:37 |
+| P02 | ADBKeyboard 回执解析 | 点名接收器、单结果码解析与清空后是否继续输入的边界 | plugins/dsh-android-manage/src/ime-broadcast.ts:1 |
+| K05 | 引擎 manage 插件 | clear/input 广播逐次解析结果；未知旧壳回执只走同屏回读兼容，不自动清空重放 | plugins/dsh-android-manage/src/index.ts:1992 |
 | K05 | EngineManager | 截图落 filesDir/home/tmp/dsh-tmp，与引擎 TMPDIR 与 DSH_FILES_DIR 同源，读图与旧目录清理都依赖这条路径约定 | app/src/main/java/com/snoworwind/pocketharness/DeviceControlService.kt:770 |
 | K05 | MainActivity | webSnapshot / webAction 在自有 WebView 上求值（MainActivity.webViewRef），并受壳侧范围门约束 | app/src/main/java/com/snoworwind/pocketharness/DeviceControlService.kt:852 |
 | K06 | 引擎 bridge 插件 androidPrivilege | sh* 四 op 的唯一常规调用方；档位/危险命令/范围第一道都在引擎侧 | plugins/dsh-android-bridge/src/index.ts:1034 |
@@ -531,7 +533,7 @@ Linux 发现补充（P04，坑 373）：bootstrap `index.js` 串行发现 → `g
 | P02 | 虚拟屏执行面 | 别名枚举走 vdInfo、虚拟屏坐标点击走 vdInput、跨屏拉起走 vdLaunchApp | plugins/dsh-android-manage/src/index.ts:1519 |
 | P02 | 屏幕范围偏好 | guard 每次调用现读用户范围，默认 virtual-only，越界即结构化拒绝并给引导 | plugins/dsh-android-manage/src/index.ts:138 |
 | P02 | 引擎工具面 | defineTool 的 output.schema 与返回值受引擎整值校验，注册完整性由源码级门禁守 | plugins/dsh-android-manage/src/index.ts:2283 |
-| P02 | ADBKeyboard 输入法 | 广播 ADB_INPUT_TEXT 与 ADB_CLEAR_TEXT 带 nonce auth，壳侧接收器按 uid 白名单校验 | plugins/dsh-android-manage/src/index.ts:1886 |
+| P02 | ADBKeyboard 输入法 | 广播 ADB_INPUT_TEXT 与 ADB_CLEAR_TEXT 带 nonce auth，壳侧接收器按 uid 白名单校验并逐条回执 | plugins/dsh-android-manage/src/index.ts:1992 |
 | P02 | 审计面 | priv.audit 写 files/audit/audit.ndjson，与 bridge 和壳侧 ControlAudit 同路径同格式 | plugins/dsh-android-manage/src/index.ts:152 |
 | P02 | vdisplay 工具面 | 失败文案把模型引到 android_vdisplay_input 与 android_vdisplay_status 承接坐标与状态 | plugins/dsh-android-manage/src/index.ts:1268 |
 | P02 | 引擎 WebView 面 | android_web_dump 与 webAction 读壳自有 WebView 而非设备屏，故刻意不进 SCREEN_ACTIONS | plugins/dsh-android-manage/src/index.ts:114 |
@@ -612,7 +614,7 @@ Linux 发现补充（P04，坑 373）：bootstrap `index.js` 串行发现 → `g
 | 1. 工具回「设备控制超时（8000ms 内壳侧未回填结果）」或「无障碍服务未开启」：`adb shell dumpsys accessibility | grep -A2 "Bound services"`（空 = 没绑上） | K05 | `adb shell settings get secure enabled_accessibility_services`（force-stop 后常见 null，需重设，坑 46）→ prefs `dsh-adb.xml` 的 `a11yEnabled`/`controlHeartbeat` → logcat tag `dsh-a11y`（`ControlPoller` 的 poll error / duplicate delivery / `result post failed for 某 op` / L1 降级日志都在这个 tag）。 |
 | 2. dump 给了行句柄但点击报「行 N 已不存在（页面已变化）」：grep `WindowPick`、`rowNodes`、`nodeByFingerprint`；对照 `adb shell uiautomator dump` 判断是否列表复用（坑 136）； | K05 | （待补） |
 | 3. 虚拟屏取树失败要读回执的 `reason` 字段：`no-window-on-display`（屏上没 App | K05 | 先 launch）与 `window-root-unavailable`（有窗口读不到 → 等待重试）指引不同；`adb shell dumpsys window windows | grep -i accessibilityobserver`、`uiautomator dump --display 虚拟屏 id` 交叉验证（坑 152）。 |
-| 4. 中文/长文本输入不落地：logcat tag `dsh-adb-kb`（`broadcast rejected` = 来源校验失败）；`adb shell settings get secure default_input_method` 看引擎是否临时切到 `com.snoworwind.pocketharness/.AdbKeyboardService`；`run-as com.snoworwind.pocketharness cat files/adb-keyboard-nonce` 与广播 `--es auth` 比对；回读不一致的文案里带期望/实际两串。 | K05 | （待补） |
+| 4. 中文/长文本输入不落地：核对 `dsh-adb-kb` 来源拒绝/编辑未确认日志、广播逐次结果码、临时 IME 恢复及同屏 `nodeText`；用户文本与 nonce 不回显，未知结果或回读不一致时不重放。 | K05 | （待补） |
 | 5. 全局动作「点了没反应」：抓一次 `state` op 的 `globals` 数组（`handleState` :1167）即知设备实际支持面；grep `GlobalActionCatalog.available` 核对 minSdk 与 `getSystemActions()` 空集放行规则（见可疑点 2）。 | K05 | （待补） |
 | 「第一次特权命令报通道失败、第二次成功」 | K06 | logcat tag `dsh-shizuku`（`user service connected` / `disconnected`）；回执看 `code=shizuku-user-service-connecting` 与 `retryAfterMs`。 |
 | virtual-only 下读自己的虚拟屏被拒（`screen-out-of-scope`） | K06 | 先看 `VdisplayController.activeAliases()` 是否有值，再手工跑 `dumpsys SurfaceFlinger | grep -E '^(Virtual Display |    name=)'` 看是否有 `name="DSH virtual-1"`（行尾空白敏感，`ShellOps.kt:556`）。 |
@@ -840,7 +842,7 @@ flowchart TD
   - 主线程（系统回调）：`onServiceConnected`/`onAccessibilityEvent`/`onInterrupt`/`onUnbind`/`onDestroy`；`mainHandler`（:442）只用来承接 `takeScreenshot` 的 Executor 与 `evaluateJavascript` 调用。
   - 工作线程 `dsh-control-poller`：`ControlPoller.loop → execute → runOp → ControlCarrier.handle → DeviceControlService.handle → handle*` 全在同一线程串行；`handleScreenshot` 的 `latch.await(12s)`（:802）、`tapAt` 的 `await(3s)`、`handleScroll` 的 `await(4s)`、`pressAt` 的 `await(duration+2s)`、`evalWebScript` 的 `await(6s)` 都在这个线程上阻塞等待主线程回调，期间整条控制队列停摆（Binder 侧 `AccessibilityNodeInfo` 读写也在此线程）。
   - 工作线程 `dsh-a11y-heartbeat`：每 2s 写 `controlHeartbeat`（`ControlPoller.kt:74-85`，仅当 `ControlCarrier.a11y != null`）。
-  - ADB 键盘：`onReceive` 在应用主线程 → `AdbKeyboardService.handle → commitText` 直调 `currentInputConnection`（`AdbKeyboardService.kt:60`），不经过控制队列，也不经过无障碍。
+  - ADB 键盘：`onReceive` 在应用主线程先校验 action、nonce 与 sender UID → `AdbKeyboardService.handle` → `AdbKeyboardEdit` 检查 InputConnection 的实际返回值；有序广播逐条回写结果码。manage 插件分别解析 clear/input 并经同屏 `nodeText` 回读；任何结果不一致都不自动清空或重放。此链不经过控制队列，回读才使用无障碍面。
 - **耦合**（点名符号）：
   - 引擎侧（K04）：`ControlProtocolV2.SUPPORTED_OPS`（`ControlProtocolV2.kt:46`）/`PV`/`Row`/`F_*` 与 `ControlPoller.envelope` 的 `caps`（`:56-72`）；`scripts/check-control-ops.mjs` 按行首引号解析 `handle` 分支名，所以 browser*/vd*/sh* 分支必须逐条留在 `handle` 里（:634-664）——**但它们运行时不可达**（`ControlCarrier` 已先分流），读代码时不要以为这些 op 在无障碍侧执行。
   - K06：`vd*`（:652-657）与 `sh*`（:661-664）在 handle 里只有一行转发（`VdisplayOps.handle` / `ShellOps.handle`），执行与授权全在 K06；`ControlCarrier.SHIZUKU_CACHE_MS`（`ControlCarrier.kt:47`）只回 `caps.shizuku`。
@@ -862,13 +864,13 @@ flowchart TD
   2. childPath/row 只在**建树那一棵树**里有意义：`snapshotWindowId` 被钉住（`WindowPick` 优先恒选 pin），换树即 stale。违反症状：dump 刚给出的 row 立刻报「行 N 已不存在」（坑 136 实测形态）。
   3. `AccessibilityNodeInfo` 只在同一快照内有效；解析不到就报 stale，不做猜测性点击。快照代次 `gen`（Long，秒级时间戳播种 + 自增）是唯一新鲜度判据。
   4. 截图必须落在引擎可读根（`filesDir/home/tmp/dsh-tmp` ≡ `TMPDIR`）；换目录 → 引擎 `read_image` 打不开（issue #127）。LRU 只兜底保留 8 份，工具层读完即删。
-  5. ADB 键盘只在 IME 实例活跃时提交（`canCommit()`，`AdbKeyboardService.kt:106`）——注入面封闭；竞态是 `ime set` 后广播可能早于 `onCreate`，此时 `handle` 返回 false 且**无日志**，只靠引擎的 `nodeText` 回读断言兜底。
+  5. ADB 键盘只在 IME 实例活跃时接收编辑（`AdbKeyboardService.instance`）；未就绪、无连接、非法请求与编辑未确认分别返回结果码。接收器只为有序广播回写结果，仍先做来源授权；调用方按 clear/input 两条广播独立判读，并在同屏回读不一致时停止，不清空或重放用户文本。编辑派发码只说明 InputConnection 接受调用，最终文本仍须回读确认。
   6. 引擎判定「a11y 在线」只看心跳新鲜（20s）不看 `a11yEnabled` 裸标记（force-stop 会留僵尸 true）；注意注释里的 `serviceEpoch`（:436-439 声称 onServiceConnected 递增）**实际全仓零递增、零读取**，重连观测目前只能靠 `gen` 时间戳播种与日志。
 - **症状 → 排查**：
   1. 工具回「设备控制超时（8000ms 内壳侧未回填结果）」或「无障碍服务未开启」：`adb shell dumpsys accessibility | grep -A2 "Bound services"`（空 = 没绑上）→ `adb shell settings get secure enabled_accessibility_services`（force-stop 后常见 null，需重设，坑 46）→ prefs `dsh-adb.xml` 的 `a11yEnabled`/`controlHeartbeat` → logcat tag `dsh-a11y`（`ControlPoller` 的 poll error / duplicate delivery / `result post failed for 某 op` / L1 降级日志都在这个 tag）。
   2. dump 给了行句柄但点击报「行 N 已不存在（页面已变化）」：grep `WindowPick`、`rowNodes`、`nodeByFingerprint`；对照 `adb shell uiautomator dump` 判断是否列表复用（坑 136）；
   3. 虚拟屏取树失败要读回执的 `reason` 字段：`no-window-on-display`（屏上没 App → 先 launch）与 `window-root-unavailable`（有窗口读不到 → 等待重试）指引不同；`adb shell dumpsys window windows | grep -i accessibilityobserver`、`uiautomator dump --display 虚拟屏 id` 交叉验证（坑 152）。
-  4. 中文/长文本输入不落地：logcat tag `dsh-adb-kb`（`broadcast rejected` = 来源校验失败）；`adb shell settings get secure default_input_method` 看引擎是否临时切到 `com.snoworwind.pocketharness/.AdbKeyboardService`；`run-as com.snoworwind.pocketharness cat files/adb-keyboard-nonce` 与广播 `--es auth` 比对；回读不一致的文案里带期望/实际两串。
+  4. 中文/长文本输入不落地：检查 logcat tag `dsh-adb-kb` 的来源拒绝或编辑未确认结果；读取广播逐次结果码，确认目标 IME 与 `run-as ... cat files/adb-keyboard-nonce` 来源授权，再核对同屏 `nodeText` 回读。用户文本、nonce 不进入结果日志；回执未知或回读不一致时工具停止且不重放。
   5. 全局动作「点了没反应」：抓一次 `state` op 的 `globals` 数组（`handleState` :1167）即知设备实际支持面；grep `GlobalActionCatalog.available` 核对 minSdk 与 `getSystemActions()` 空集放行规则（见可疑点 2）。
 - **可疑点**：
   1. 【已确认·代码路径】壳侧范围门比引擎侧宽 3 个 op，默认范围下必然误拒。`DeviceControlService.kt:678` 的 `REAL_SCREEN_OPS` 含 `state`/`webSnapshot`/`webAction`，而 `realScreenScopeError` 在 args 无 `screenId` 时按 `ScreenTargets.REAL` 判定（:701-702）；引擎侧两层已按块G F4b 摘除这三个（manage `SCREEN_ACTIONS` 无 web_dump、`controlExec` 用 8 项的 `REAL_SCREEN_CONTROL_OPS`，`plugins/dsh-android-bridge/src/screen-scope.ts:70` + `index.ts:991-997`），壳侧第三层没同步。触发：scope = virtual-only（prefs 未设置/损坏时的默认值）时，`android_web_dump {}` 不传 screenId（`plugins/dsh-android-manage/src/index.ts:2031` 显式不带）→ 壳侧回 `screen-out-of-scope` → 工具文案「WebView DOM 快照失败：screen-out-of-scope…」；同一根因让每次点击的生效校验退化成「（生效校验不可用：screen-out-of-scope…）」（`verifyClick` 的 `state` 调用不带 screenId，`index.ts:394`）。影响：默认配置下自有 WebView 通道整条失效，且成功点击的回执带一条误导性拒绝文案。现有测试只锁引擎两层（`plugins/dsh-android-bridge/test/screen-scope.test.mjs:336`、`plugins/dsh-android-manage/test/a11y-routing.test.mjs:479`），壳侧集合无任何覆盖。
@@ -903,9 +905,10 @@ flowchart TD
   Q --> K
   E --> R["回填 pv 与 caps 到引擎"]
   R --> B
-  S["ADB 键盘广播"] --> T["AdbKeyboardReceiver 校验来源"]
-  T --> U["AdbKeyboardService 活跃才 commitText"]
-  E --> V["nodeText 回读供输入链路闭环"]
+  S["ADB 键盘逐条广播"] --> T["Receiver 校验来源并回写有序结果"]
+  T --> U["Service/Edit 检查 InputConnection 结果"]
+  U --> V["manage 独立解析 clear/input 结果"]
+  V --> W["nodeText 同屏回读；未知或不一致不重放"]
 ```
 
 #### K06 特权执行、屏幕范围与本地文件面
@@ -1032,6 +1035,7 @@ flowchart TD
 #### K09 悬浮球与面板
 
 - **一句话**：系统级悬浮球与展开面板的全套交互面——三窗口生命周期、拖动钳制、状态行/待答卡渲染、应答回流引擎、完成态常驻文案与自动收起。
+- **服务收口补充（2026-10-20）**：`OverlayService.onStartCommand` 对显式启动与 null Intent 均返回 `START_NOT_STICKY`，null Intent 按 `startId` 自停；`onTaskRemoved` 由悬浮服务自身 `stopSelf`，不改长期启用偏好，窗口与回调仍由 `onDestroy` 清理。设备侧划除与空 Intent 重投递行为本轮未验证。
 - **入口/触发**：
   - 启停：设置页开关（桥 `androidBridge.setOverlayEnabled` → `MainActivity.kt:769` 的 λ）与回前台补启 `MainActivity.kt:306` 经 `OverlayController.setEnabled/ensureStarted`；停：`OverlayController.stop`、`EngineService.kt:70`（划掉后台=完整停机）。
   - 球手势：球窗 `ACTION_UP` 未移动 → `togglePanel`（`OverlayService.kt:382`）；拖动中每帧钳制并同步光环。
@@ -1284,7 +1288,7 @@ flowchart TD
 | `android_ui_detail` | 无壳侧调用（本地缓存 + 明细文件） | 无（ref 走 `resolveRef`，`all` 走 `pageRows`） | `ok` `denied` `handle` `path` `node?` `rows?` `total` `offset` `omitted` `text` |
 | `android_ui_click` | ① WebView DOM `webAction`（wN/css:/role:）② 虚拟屏 x/y → `vdInput` ③ a11y `click`/`longClick` ④ ADB `input tap` | `webAction` / `vdInput` / `controlExec` / `execAdbShell` | `ok` `ref` `id` `label` `x` `y` `text` `denied` `screenId` `displayId` `scope` `actionMode` |
 | `android_ui_scroll` | a11y `scroll` 优先，否则 ADB `input swipe` | `controlExec('scroll')` / `execAdbShell` | `ok` `from[]` `to[]` `text` `denied` `screenId` `displayId` `scope` `actionMode` `guidance` |
-| `android_ui_input` | ① WebView DOM `webAction setText` ② a11y `setText` ③ ADBKeyboard 广播（注入后经 a11y `nodeText` 回读）④ `input text` | `webAction` / `controlExec('setText')` + `nodeText` / `execAdbShell` 的 `am broadcast` | `ok` `channel` `text` `denied` `screenId` `displayId` `scope` `actionMode` `guidance` |
+| `android_ui_input` | ① WebView DOM `webAction setText` ② a11y `setText` ③ ADBKeyboard clear/input 分步回执 + a11y `nodeText` 回读 ④ `input text` | `webAction` / `controlExec('setText')` + `nodeText` / `execAdbShell` 的两条独立 `am broadcast` | `ok` `channel` `text` `denied` `screenId` `displayId` `scope` `actionMode` `guidance`；回读不一致、未知或部分处理不重放 |
 | `android_web_dump` | a11y 队列 `webSnapshot`（读壳自有 WebView，刻意不进 `SCREEN_ACTIONS`，无 screenId） | `controlExec('webSnapshot')` | `ok` `denied` `count` `url?` `title?` `nodes[]` `text` |
 | `android_env_prepare` | 仅特权 shell | `execAdbShell` 的 `settings put global` + `ime enable/list` | `ok` `denied` `text` |
 | `android_app_launch` | 虚拟屏 → `vdLaunchApp`；真实屏 → ADB `monkey` | `controlExec('vdLaunchApp')` / `execAdbShell` | `ok` `denied` `pkg` `foreground` `text` |
@@ -1293,13 +1297,13 @@ flowchart TD
 - **嵌套与线程**：
   - 引擎侧全在 Node 单进程事件循环（async/await），无自建线程；三条链最多三层：`apply → tools(ctx) → ctx.tools.register`；`execute → guard → priv.screenAccessResolved/controlExec`；`execute → a11yExec → priv.controlExec → controlQueue.enqueue → 壳侧 ControlPoller 长轮询（服务回调）→ 回执`。
   - 工具调用可并发，故模块级单槽状态是跨调用共享的：`uiCache`（`:901`）、`detailHandle`/`detailPath`（`:940`）、`UI_CACHE_TTL`（`:900`）。
-  - 两处 `setTimeout` 在事件循环内挂起（不阻塞别的工具）：`verifyClick` 的 260ms（`:393`）、ADBKeyboard 回读的 260ms/320ms（`:1908`/`:1913`）。
+  - `setTimeout` 在事件循环内挂起（不阻塞别的工具）：`verifyClick` 的 260ms；ADBKeyboard 通过 `waitForEditor` 在派发后留 260ms 再同屏回读，失败路径不重放。
   - 壳侧执行分别在 DeviceControlService 的 mainThread executor（无障碍）与 Shizuku UserService 进程（特权 shell），回到引擎只是 enqueue 的 Promise 完成回调；`bindSession` 用 AsyncLocalStorage 绑定，嵌套 helper 自动继承。
 - **耦合**（具体符号）：
   - `PrivilegeFace` 的十个成员（`:55-87`，提供者是 android-bridge 的 AndroidPrivilegeService）：`bindSession` / `gateFor` / `screenScope` / `screenAccessResolved`（优先，缺失时才回退同步 `screenAccess`）/ `controlDecision` / `controlExec` / `execAdbShell` / `execAdbLine` / `audit`。
   - 壳侧 op 字符串（写死，改名即断）：`snapshot` `click` `longClick` `setText` `scroll` `global` `screenshot` `state` `nodeText` `webSnapshot` `webAction`（无障碍承载，DeviceControlService 的 `A11Y_OPS`/`REAL_SCREEN_OPS`）+ `vdInfo` `vdInput` `vdLaunchApp`（VdisplayOps）；ADB 面 `execAdbShell`→`shExec`、`execAdbLine`→`shExec`/`shPull`。
   - 环境变量与路径：`DSH_FILES_DIR` + `adb-keyboard-nonce`（`:39-43`，壳侧 `app/src/main/java/com/snoworwind/pocketharness/AdbKeyboardService.kt:132` 写、`app/src/main/java/com/snoworwind/pocketharness/MainActivity.kt:255` 幂等补建）；`TMPDIR` + `dsh-tmp/`（`:446`），前缀 `dsh-shot-`（保留 20）/`dsh-ui-`（10）/`ui-detail-`（20）。
-  - 输入法实体与广播：硬编码 `com.snoworwind.pocketharness/.AdbKeyboardService`（`:1874`、`:2119`），广播 action `ADB_INPUT_TEXT`/`ADB_CLEAR_TEXT` + `--es msg`/`--es auth`（`:1889`）。
+  - 输入法实体与广播：`ADB_KEYBOARD_IME`/`ADB_KEYBOARD_RECEIVER` 在 `plugins/dsh-android-manage/src/ime-component.ts:2`；`ime-broadcast.ts` 集中构造点名广播并解析逐次结果；`adbKeyboardAuthArg` 仍从 `DSH_FILES_DIR/adb-keyboard-nonce` 读取授权凭据（`index.ts:44`）。
   - 引擎服务面：`ctx.get('attachments')`（`:56-72`）、`ctx.get('llm').resolveModelInfo`（`:352`）供截图内联一次性读图；`ctx.tools.register`（`:2295`）；日志 tag `ctx.logger('dsh-android-manage')`（`:2289`，仅服务缺失时 warn）。
   - 跨块文案/入口：工具描述把模型引向 `android_vdisplay_input`/`android_vdisplay_status`/`android_vdisplay_create`（`:1268`、`:1511`；其中 `android_vdisplay_input` 在 0.14.1 之前**并不存在**，是「指引指向不存在的路」，本轮已补实现）与 `android_web_dump`（`:1339`）；`android_screen_list` 的别名枚举真源是壳侧 `vdInfo` 注册表，不硬编码 virtual-1（`:248`）。
   - 偏好与门禁：屏幕范围 `ScreenScopePrefs` 只存进程内存（默认 `virtual-only`），插件经 `caps.screenScope` / `vdInfo.data.scope` 读回、`screenScope()`/`refreshScreenScope()` 缓存（A02；不再读 `shared_prefs/dsh_screen_scope.xml`）；审计落 `files/audit/audit.ndjson`（bridge 与壳侧 ControlAudit 同路径同格式）。
@@ -2201,6 +2205,7 @@ app/src/main/AndroidManifest.xml
 app/src/main/java/com/snoworwind/pocketharness/DeviceControlService.kt
 app/src/main/java/com/snoworwind/pocketharness/CoordBasisPolicy.kt
 app/src/main/java/com/snoworwind/pocketharness/GlobalActionCatalog.kt
+app/src/main/java/com/snoworwind/pocketharness/AdbKeyboardEdit.kt
 app/src/main/java/com/snoworwind/pocketharness/AdbKeyboardService.kt
 app/src/main/java/com/snoworwind/pocketharness/AdbKeyboardReceiver.kt
 app/src/main/java/com/snoworwind/pocketharness/ShellOps.kt
@@ -2266,6 +2271,7 @@ plugins/dsh-android-manage/src/protocol-v2.ts
 plugins/dsh-android-manage/src/vd-shot.ts
 plugins/dsh-android-manage/src/detail-store.ts
 plugins/dsh-android-manage/src/ime-component.ts
+plugins/dsh-android-manage/src/ime-broadcast.ts
 glob:plugins/dsh-android-manage/test/*.test.mjs
 glob:plugins/dsh-android-manage/test/*.mjs
 plugins/dsh-android-browser/src/tools.ts
@@ -2276,6 +2282,7 @@ plugins/dsh-android-browser/src/facts.ts
 plugins/dsh-android-vdisplay/src/index.ts
 plugins/dsh-android-vdisplay/src/status.ts
 plugins/dsh-android-vdisplay/src/client/index.ts
+plugins/dsh-android-vdisplay/src/client/stage-visibility.ts
 plugins/dsh-android-vdisplay/src/keybar/keymap.ts
 plugins/dsh-android-vdisplay/src/keybar/layout.ts
 plugins/dsh-android-vdisplay/src/keybar/mount.ts

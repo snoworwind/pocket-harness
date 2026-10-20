@@ -103,7 +103,7 @@
 
 端到端设备验收仍未完成：尚未在 Android 上完整验收离线 manifest/资产读取、Linux 安装、更新、重装、卸载及工具执行。2026-10-19 真机调查已确认被测 ROM 上 Linux 运行时无法启动，证据见 [Linux 环境调查](../linux-env-findings/README.md)。这些内部插件保持默认不启用，APK 更新不得自行启用它们；真实用户流程仍需设备验收。
 
-**2026-10-19 真机调查更正**：已有一轮真机证据（vivo V2425A / Android 16），结论是**当前实现不可用**：本 ROM 的 `/data/data` 是 `tmpfs noexec`，glibc loader 无法被内核 `execve`；W5（外部 loader）已实测失败，bionilux 本身不是 glibc→bionic 转换层。插件可加载但运行时不能启动，安装链也未闭环。本轮决定**暂不移除**该功能（移除涉及构建链、来源资产、插件/厂商、Kotlin 桥、工作流、门禁与文档，设备不在线时风险高），保留为实验性、不宣称可用、不再投入实现。完整证据、真因、保留决策与将来重启的路线门见 [`docs/linux-env-findings/README.md`](../linux-env-findings/README.md)。
+**2026-10-20 源码复核与恢复方案**：旧 vivo V2425A / Android 16 实验观察到 glibc loader 直接执行失败，安装链也未闭环；当前仍不得宣称可用。旧 noexec 唯一归因证据不足，当前 vendor 源码已有 `BIONILUX_LOADER`，不能沿用旧二进制的接口结论。10-19 的暂不移除决策保留；现按用户要求提出 APK 原生目录 launcher + 匹配 loader 的恢复方案，尚未实施，**未做设备验证**。当前缺陷、历史证据和方案入口见 [`docs/linux-env-findings/README.md`](../linux-env-findings/README.md)。
 
 ### 0.15.0 追加：宿主侧准备与来源内离线接线（设备验收待做）
 

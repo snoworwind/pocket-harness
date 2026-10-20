@@ -1,5 +1,7 @@
 # Linux 环境修复计划（可对照执行）
 
+> **历史计划，勿逐条照搬执行。2026-10-20 当前方案见 [RECOVERY-PROPOSAL-2026-10-20.md](RECOVERY-PROPOSAL-2026-10-20.md)。** 当前源码已有外置 loader 接口；noexec 唯一归因、PRoot 排除理由及本文旧 CI 阻塞状态不能直接套用到当前 HEAD。本文保留原工作包与自审历史，路线和实施顺序以新方案为准。
+
 > 依据：[INVESTIGATION-2026-10-19-pocketharness.md](<INVESTIGATION-2026-10-19-pocketharness.md>) 与原报告 [ORIGINAL-REPORT-2026-10-19.md](<ORIGINAL-REPORT-2026-10-19.md>)。
 > 性质：**执行计划**，本轮不写代码。每个工作包都可独立开 PR、独立回滚。
 > **开工前先读 §10「计划自审」：S1（bootstrap 架构）未定不要开 WP-2；S2（⑤ noexec tmpfs）是本机已确认的主阻塞，WP-6 为 P0；W5 已实测失败，下一步是 W3-lite 或 W2。**
