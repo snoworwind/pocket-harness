@@ -126,7 +126,7 @@
     "at": "2026-10-19T16:30:42+08:00",
     "surface": "Windows official adb 37.0.1-15733141",
     "devices": [],
-    "serial": "10AF2B0GN0001F2",
+    "serial": "<arm64-serial>",
     "abi": null,
     "emulators": "127.0.0.1:16416 and :16384 refused connection",
     "log": ".deploy-tmp/engine-021rc2/windows-adb-devices.log",

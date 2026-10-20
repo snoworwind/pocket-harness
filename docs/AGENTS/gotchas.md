@@ -2810,3 +2810,7 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 454. **本地门禁不能假设「本地」就是这台 mac（2026-10-20）**
 
     现象：第一版本地门禁只在本机验证通过，实际依赖三处宿主特性——`docker run -v` 的 POSIX 路径、`date +%s%3N` 的 GNU 扩展、以及 bash 的 `mapfile`。真因：Windows 的盘符路径与含空格路径在 `-v` 下会错位，BSD/macOS 与 Termux 的 `date` 不认 `%N`，macOS 自带 bash 是 3.2 没有 `mapfile`；Android/Termux 则根本没有容器运行时。修法：`--mode auto|container|native`，容器可达优先，否则回退 native；挂载改 `--mount`；计时改 `node -p Date.now()`；native 模式加前置判据（bash >= 4、node >= 22.15、GNU tar、python3、Kotlin 需 JDK 与 SDK），缺件直接失败关闭并列出清单，Kotlin 必须显式 `--no-kotlin` 才跳过。复验：本机 native 实跑 21/25，四条失败全部归因为宿主缺口（bash 3.2 无 mapfile、node 20 无 zstdCompressSync、bsdtar 拒 `--sort=name`），补预检后同一宿主直接给出三条可执行提示；容器模式仍 25/25。未做设备验证。
+
+455. **公开仓库前才发现：两个子仓 `.npmrc` 把开发机缓存路径钉进了仓库（2026-10-20）**
+
+    现象：为转公开做历史审计时，`git ls-files | grep npmrc` 命中 `dsh-client-ui-responsive/.npmrc` 与 `dsh-shell-termux/.npmrc`，内容都是 `cache=D:/coding/dsh-mobile/.npm-cache`。真因：这两个文件在基线导入时被一并提交，把当时开发机的绝对路径固化进仓库；Linux 构建把该串当相对路径，于是在子仓下写出 `D:/coding/...` 目录并污染组件来源（坑 351 的根因）。它们同时是公开仓库里的个人信息残留。修法：删除两个文件、在 `.gitignore` 增加 `dsh-*/.npmrc` 防复发；顺带把 `scripts/deploy-embedded.ps1` 的两个硬编码（设备序列号、`D:\coding\dsh-mobile` 根目录）改为 `ADB_SERIAL` 与 `$PSScriptRoot` 父目录，并把文档里的真机序列号替换为 `<arm64-serial>`。复验：`git grep` 在 `.md/.ps1/.json` 中已无该序列号；`check-code-map` PASSED；本地门禁对同一 HEAD 树通过。未做设备验证（未改运行时行为）。
