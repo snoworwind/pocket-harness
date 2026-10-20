@@ -233,7 +233,12 @@ The full version history lives in [`docs/AGENTS/changelog-archive.md`](docs/AGEN
 
 ## License
 
-MIT. Third-party components under their own licenses (see the dependency notices). GPL compliance:
+MIT, with both copyright notices: the original project
+[`kelai141/dsh-mobile-apk`](https://github.com/kelai141/dsh-mobile-apk) and this repository
+[`snoworwind/pocket-harness`](https://github.com/snoworwind/pocket-harness). This project is a modified
+version of the original and **retains its copyright notice**; the modifications are released under the
+same MIT terms. See [LICENSE](LICENSE).
+Third-party components under their own licenses (see the dependency notices). GPL compliance:
 the full copyleft text ships in three forms — snapshot `usr/share/LICENSES/`, repo `LICENSES/`, and
 APK `assets/licenses/`.
 

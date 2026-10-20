@@ -196,7 +196,10 @@ SAF 目录/图片选择无需权限。虚拟屏与特权 shell 需用户安装�
 
 ## License
 
-MIT。第三方组件按各自许可（见依赖声明）。GPL 合规：copyleft 全文三形态在场——快照
+MIT，双版权：原项目 [`kelai141/dsh-mobile-apk`](https://github.com/kelai141/dsh-mobile-apk) 与本仓
+[`snoworwind/pocket-harness`](https://github.com/snoworwind/pocket-harness)。本项目是原项目的修改版，
+**保留其原始版权声明**，修改部分同样以 MIT 发布；全文见 [LICENSE](LICENSE)。
+第三方组件按各自许可（见依赖声明）。GPL 合规：copyleft 全文三形态在场——快照
 `usr/share/LICENSES/`、仓库 `LICENSES/`、APK `assets/licenses/`。
 
 ## 致谢
