@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join, relative, resolve, sep } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { canonicalJson, COMPONENTS, computeComponentKeys, hashInputs, keyName, verifyLock, verifyManifest } from './base-lock.mjs'
+import { canonicalPackageJson, canonicalYamlMapping } from './normalize-snapshot.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPORTS = [
@@ -143,6 +144,18 @@ function copyTree(from, to, support = false) {
   normalize(to)
 }
 
+/** Canonicalize only the two order-independent root metadata files emitted by pnpm deploy. */
+export function canonicalizeEngineDeploy(engineDeploy) {
+  for (const [name, canonicalize] of [
+    ['package.json', (text) => canonicalPackageJson(text)],
+    ['pnpm-workspace.yaml', (text) => canonicalYamlMapping(text, 'engine-deploy/pnpm-workspace.yaml')],
+  ]) {
+    const path = join(engineDeploy, name)
+    if (!existsSync(path) || !lstatSync(path).isFile()) fail(`engine-deploy is missing a regular ${name}`)
+    writeFileSync(path, canonicalize(readFileSync(path, 'utf8')))
+  }
+}
+
 export function capture(root, plan, artifact, buildRun, replica, env = process.env) {
   if (requireMain(root, env) !== plan.sourceCommit) fail('source commit changed during engine build')
   if (buildRun !== plan.buildRun || !['primary', 'reference'].includes(replica)) fail('invalid replica/run identity')
@@ -164,6 +177,7 @@ export function capture(root, plan, artifact, buildRun, replica, env = process.e
   mkdirSync(payload)
   try {
     copyTree(join(root, '.deploy-tmp/engine-deploy'), join(payload, 'engine-deploy'))
+    canonicalizeEngineDeploy(join(payload, 'engine-deploy'))
     copyTree(join(root, '.deploy-tmp/engine-overlay'), join(payload, 'engine-overlay'))
     copyTree(join(root, '.deploy-tmp/deepseek-harness'), join(payload, 'harness-source'), true)
     copyTree(join(root, 'vendor/dshmarketplace-plugin'), join(payload, 'marketplace'))
