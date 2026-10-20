@@ -49,6 +49,15 @@ function assertWithin(parent, child, label, { allowEqual = false } = {}) {
   }
 }
 
+function lstatIfPresent(path) {
+  try {
+    return lstatSync(path)
+  } catch (error) {
+    if (error.code === 'ENOENT') return null
+    throw error
+  }
+}
+
 /**
  * Resolve a target without following it. If any existing ancestor is a symlink,
  * its real path must still be inside the deploy root; this rejects a symlinked
@@ -57,14 +66,18 @@ function assertWithin(parent, child, label, { allowEqual = false } = {}) {
 function safeTarget(deployReal, target) {
   const lexical = resolve(target)
   assertWithin(deployReal, lexical, 'reclaim target')
+  const targetInfo = lstatIfPresent(lexical)
+  if (targetInfo?.isSymbolicLink()) {
+    throw new Error(`refuses symlinked reclaim target: ${lexical}`)
+  }
   let ancestor = lexical
-  while (!existsSync(ancestor)) ancestor = dirname(ancestor)
+  while (!lstatIfPresent(ancestor)) ancestor = dirname(ancestor)
   const ancestorReal = realpathSync(ancestor)
   assertWithin(deployReal, ancestorReal, 'reclaim target ancestor', { allowEqual: true })
   if (ancestorReal !== ancestor) {
     throw new Error(`refuses symlinked reclaim path: ${lexical}`)
   }
-  if (existsSync(lexical) && realpathSync(lexical) !== lexical) {
+  if (targetInfo && realpathSync(lexical) !== lexical) {
     throw new Error(`refuses symlinked reclaim target: ${lexical}`)
   }
   return lexical
@@ -72,8 +85,8 @@ function safeTarget(deployReal, target) {
 
 function removePath(deployReal, target, { checkOnly = false, rootOwned = false } = {}) {
   const path = safeTarget(deployReal, target)
-  if (!existsSync(path)) return false
-  const info = lstatSync(path)
+  const info = lstatIfPresent(path)
+  if (!info) return false
   if (!info.isDirectory() && !info.isFile()) {
     throw new Error(`refuses non-directory/non-file reclaim target: ${path}`)
   }
@@ -103,7 +116,6 @@ function removePath(deployReal, target, { checkOnly = false, rootOwned = false }
 
 function removeHarnessSourceTree(deployReal, checkOnly) {
   const harness = join(deployReal, 'deepseek-harness')
-  if (!existsSync(harness)) return false
   return removePath(deployReal, harness, { checkOnly })
 }
 
@@ -292,6 +304,29 @@ function runSelfTest() {
       rmSync(escapeRoot, { recursive: true, force: true })
     }
 
+    // A dangling symlink is still a symlink target and must fail closed; the
+    // ordinary existsSync API follows links and would incorrectly call it absent.
+    const danglingRoot = mkdtempSync(join(tmpdir(), 'reclaim-build-disk-dangling-'))
+    try {
+      const deploy = join(danglingRoot, '.deploy-tmp')
+      mkdirSync(deploy, { recursive: true })
+      const link = join(deploy, 'deepseek-harness')
+      const created = spawnSync(process.platform === 'win32' ? 'cmd' : 'ln',
+        process.platform === 'win32'
+          ? ['/c', 'mklink', '/J', link, join(danglingRoot, 'missing')]
+          : ['-s', join(danglingRoot, 'missing'), link])
+      if (created.status === 0 && lstatIfPresent(link)?.isSymbolicLink()) {
+        const rejected = runChild(['--root', danglingRoot, '--min-free-mb', '0'], danglingRoot)
+        if (rejected.status === 0 || !rejected.stderr.includes('refuses symlinked reclaim target')) {
+          throw new Error(`dangling reclaim symlink was not explicitly rejected:\n${rejected.stdout}\n${rejected.stderr}`)
+        }
+      } else if (process.platform !== 'win32') {
+        throw new Error(`dangling symlink fixture was not created: ${created.stderr}`)
+      }
+    } finally {
+      rmSync(danglingRoot, { recursive: true, force: true })
+    }
+
     // Controlled negative: --check-only must not remove anything.
     const checkRoot = mkdtempSync(join(tmpdir(), 'reclaim-build-disk-check-'))
     try {
@@ -316,7 +351,7 @@ function runSelfTest() {
       rmSync(floorRoot, { recursive: true, force: true })
     }
 
-    console.log('RECLAIM-BUILD-DISK SELF-TEST PASSED (positive cleanup, parent-repository isolation, symlink escape, check-only, free-space floor)')
+    console.log('RECLAIM-BUILD-DISK SELF-TEST PASSED (positive cleanup, parent-repository isolation, symlink and dangling-link rejection, check-only, free-space floor)')
   } finally {
     rmSync(root, { recursive: true, force: true })
   }
