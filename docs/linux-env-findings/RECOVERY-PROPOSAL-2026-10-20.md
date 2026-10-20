@@ -1,6 +1,6 @@
 # Linux 环境恢复方案（2026-10-20）
 
-> 状态：完整恢复方案尚未实施。bootstrap `apply()` 对 `ctx.filesDir` 的访问已在当前修复分支移除，并加入真实 Cordis 激活回归用例；CI、合并、新来源草稿和修复后设备复验仍待完成。现有 APK `862e17cffc7bb4a5395ae960eec3f364c953ce73f476ac754f69bcd2166cadbf` 是修复前基线，后续 loader / noexec 证据仍未取得。
+> 状态：完整恢复方案尚未实施。bootstrap `apply()` 对 `ctx.filesDir` 的访问已由 PR #77 修复并合入；真实 Cordis 回归、来源双构建、APK payload 比对、签名与资产校验通过，草稿 `hardening-source-f37eaafe887c-39424480383-1` 已生成。修复后 APK SHA-256 为 `a2d1d85735b98a7168c0c5ea406a542518e5b9c1b82802a6ed0b2860d39d63dd`，尚未做设备复验；修复前 APK `862e17cffc7bb4a5395ae960eec3f364c953ce73f476ac754f69bcd2166cadbf` 上的 loader / noexec 证据仍未取得。
 > 复核基线：`5aad44537881ebe27e7485bbe54158fb7e8f71cd`。
 > 目标：恢复用户主动安装、使用、升级和卸载本机 Debian/glibc 环境，保留 `linux_bash` 插件入口。
 > 本文更新路线选择与证据要求；10-19 原始报告仍保留为历史实验记录，不能作为当前 APK 的验收。
@@ -74,7 +74,7 @@ Termux PRoot 的 `enter.c` 会把内核 exec 目标替换成自己的 `PROOT_LOA
 
 | 当前缺陷 | 修改位置 | 必要反证 |
 |---|---|---|
-| Cordis 激活时读取未声明的 `ctx.filesDir` | 当前修复分支的 `plugins/dsh-linux-bootstrap/src/index.js::apply` 不再读该属性；优先使用已声明的 `linuxBootstrapConfig.dataDir`，保留显式配置和 `DSH_FILES_DIR` 回退 | 新增真实 Cordis `Context.plugin()` + 真实 `apply()` 用例；设备报告确认修复前故障。修复后 APK 尚待设备验证 |
+| Cordis 激活时读取未声明的 `ctx.filesDir` | PR #77 已合入；`plugins/dsh-linux-bootstrap/src/index.js::apply` 不再读该属性，优先使用已声明的 `linuxBootstrapConfig.dataDir`，保留显式配置和 `DSH_FILES_DIR` 回退 | 真实 Cordis `Context.plugin()` + 真实 `apply()` 用例、CI 全量门禁与来源双构建通过；修复后草稿 APK 已生成但尚待设备验证 |
 | 解包根与硬链接源一侧词法、一侧物理路径 | `plugins/dsh-android-linux-env/src/linux-host-asset-io.ts` | 别名根成功；realpath 失败、越界、符号链接替换仍拒绝 |
 | 设备拒绝硬链接后直接终止 | 同上 | 仅受控 errno 走复制，独占创建、保留 mode；穿越、篡改、未知错误仍失败 |
 | rootfs 准备依赖 app 私有 sh/find | `vendor/dsh-linux-runtime/modules/manager.js` | Node fs 原语完成准备，不执行私有辅助 ELF；绝对链接与目录逃逸负控 |
