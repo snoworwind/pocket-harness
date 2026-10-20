@@ -79,7 +79,52 @@ test('source workflow uploads explicitly listed hidden provenance with APK', () 
   assert.match(upload, /^            \.deploy-tmp\/source-build\/linux-bundle-injection.json$/m)
   assert.match(upload, /^            \.deploy-tmp\/source-build\/independent-rebuild-verification.json$/m)
   assert.match(upload, /^            \.deploy-tmp\/linux-build\/provenance\/\*\*$/m)
+  assert.match(upload, /^            \.deploy-tmp\/source-build\/effective-engine-overlay-restoration\.json$/m)
   assert.doesNotMatch(upload, /^            \.deploy-tmp\/\*\*$/m)
+})
+
+function checkCachedEffectiveOverlay(source) {
+  const positive = source.indexOf('node scripts/source-build/restore-effective-engine-overlay.mjs --self-test')
+  const negative = source.indexOf('node scripts/source-build/restore-effective-engine-overlay.mjs --self-test-negative')
+  const install = source.indexOf('node scripts/source-build/restore-effective-engine-overlay.mjs', negative + 1)
+  const addNodeStep = source.indexOf('      - name: Add Node.js to the clean Termux base')
+  const runtimeStep = source.indexOf('      - name: Build runtime snapshot from verified inputs')
+  const endAddNodeStep = source.indexOf('      - name: Verify signed Termux repository', addNodeStep)
+  assert.ok(positive > 0 && negative > positive, 'source-only overlay restore requires a positive self-test and controlled negative')
+  assert.ok(addNodeStep > 0 && install > addNodeStep && install < endAddNodeStep && endAddNodeStep < runtimeStep,
+    'authenticated effective overlay must be installed before the snapshot builder reads it')
+  const block = source.slice(install, endAddNodeStep)
+  for (const path of [
+    '.deploy-tmp/source-build/engine-overlay.original.json',
+    '.deploy-tmp/source-build/effective-engine-overlay.restore-input.json',
+    '.deploy-tmp/source-build/effective-engine-overlay-policy.restore-input.json',
+    '.deploy-tmp/source-build/source-build-policy.json',
+    'scripts/snapshot-config/engine-overlay.json',
+    '.deploy-tmp/source-build/effective-engine-overlay-restoration.json',
+  ]) assert.ok(block.includes(path), 'effective-overlay restore is missing input/output: ' + path)
+  assert.equal((source.match(/^            \.deploy-tmp\/source-build\/effective-engine-overlay-restoration\.json$/gm) ?? []).length, 4,
+    'the restore command and all three APK artifact stages must name the restoration receipt')
+  for (const path of [
+    '.deploy-tmp/source-build/effective-engine-overlay.restore-input.json',
+    '.deploy-tmp/source-build/effective-engine-overlay-policy.restore-input.json',
+  ]) {
+    const escaped = path.replaceAll('.', '\\.')
+    assert.equal((source.match(new RegExp('^            ' + escaped + '$', 'gm')) ?? []).length, 4,
+      'the immutable restore input must be copied, validated, and uploaded in all three APK artifact stages: ' + path)
+  }
+}
+test('trusted cache restores its source-built runtime overlay before snapshot construction', () => {
+  checkCachedEffectiveOverlay(read('build-apk-source.yml'))
+})
+test('negative controls reject missing overlay self-test, negative control, installer, or receipt upload', () => {
+  const source = read('build-apk-source.yml')
+  const installPattern = /          node scripts\/source-build\/restore-effective-engine-overlay\.mjs \\\n[\s\S]*?            \.deploy-tmp\/source-build\/effective-engine-overlay-restoration\.json\n/
+  for (const bad of [
+    source.replace('          node scripts/source-build/restore-effective-engine-overlay.mjs --self-test\n', ''),
+    source.replace('          node scripts/source-build/restore-effective-engine-overlay.mjs --self-test-negative\n', ''),
+    source.replace(installPattern, ''),
+    source.replace(/^            \.deploy-tmp\/source-build\/effective-engine-overlay-restoration\.json\n/gm, ''),
+  ]) assert.throws(() => checkCachedEffectiveOverlay(bad), assert.AssertionError)
 })
 
 function checkCachedHarnessProvenance(source) {

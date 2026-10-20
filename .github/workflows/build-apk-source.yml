@@ -54,6 +54,8 @@ jobs:
         run: |
           python3 -m unittest discover -s scripts/source-build -p 'test_*.py' -v
           node --test scripts/source-build/*.test.mjs scripts/check-apk-signatures.test.mjs scripts/resolve-version-suffix.test.mjs scripts/tests/main-frame-bridge.test.mjs scripts/tests/engine-private-transport.test.mjs
+          node scripts/source-build/restore-effective-engine-overlay.mjs --self-test
+          node scripts/source-build/restore-effective-engine-overlay.mjs --self-test-negative
           node scripts/source-build/reclaim-build-disk.mjs --self-test
           node scripts/source-build/check-package-lock-roots.mjs
           node scripts/source-build/check-workflow-action-pins.mjs --self-test
@@ -309,6 +311,16 @@ jobs:
           git show "$GITHUB_SHA:scripts/snapshot-config/preinstall.json" > scripts/snapshot-config/preinstall.json
           cp scripts/snapshot-config/preinstall.json .deploy-tmp/source-build/preinstall.original.json
           test -s .deploy-tmp/source-build/engine-overlay.original.json
+          cp .deploy-tmp/source-build/effective-engine-overlay.json \
+            .deploy-tmp/source-build/effective-engine-overlay.restore-input.json
+          cp .deploy-tmp/source-build/source-build-policy.json \
+            .deploy-tmp/source-build/effective-engine-overlay-policy.restore-input.json
+          node scripts/source-build/restore-effective-engine-overlay.mjs \
+            .deploy-tmp/source-build/engine-overlay.original.json \
+            .deploy-tmp/source-build/effective-engine-overlay.restore-input.json \
+            .deploy-tmp/source-build/effective-engine-overlay-policy.restore-input.json \
+            scripts/snapshot-config/engine-overlay.json \
+            .deploy-tmp/source-build/effective-engine-overlay-restoration.json
           node -e 'const fs=require("fs"); const p="scripts/snapshot-config/preinstall.json"; const x=JSON.parse(fs.readFileSync(p,"utf8")); if (!x.targets.includes("nodejs-lts")) x.targets.push("nodejs-lts"); x.requiredTargets=["nodejs-lts"]; fs.writeFileSync(p,JSON.stringify(x,null,2)+"\n")'
           node <<'NODE'
           const fs = require('fs')
@@ -697,6 +709,9 @@ jobs:
             .deploy-tmp/source-build/marketplace-patch-adapter.json
             .deploy-tmp/source-build/source-build-policy.json
             .deploy-tmp/source-build/effective-engine-overlay.json
+            .deploy-tmp/source-build/effective-engine-overlay-restoration.json
+            .deploy-tmp/source-build/effective-engine-overlay.restore-input.json
+            .deploy-tmp/source-build/effective-engine-overlay-policy.restore-input.json
             .deploy-tmp/source-build/harness-vendor-overrides.json
             .deploy-tmp/source-build/harness-vendor-lock-reconciliation.json
             .deploy-tmp/source-build/harness-pnpm-lock.original.yaml
@@ -771,6 +786,9 @@ jobs:
             .deploy-tmp/source-build/marketplace-patch-adapter.json
             .deploy-tmp/source-build/source-build-policy.json
             .deploy-tmp/source-build/effective-engine-overlay.json
+            .deploy-tmp/source-build/effective-engine-overlay-restoration.json
+            .deploy-tmp/source-build/effective-engine-overlay.restore-input.json
+            .deploy-tmp/source-build/effective-engine-overlay-policy.restore-input.json
             .deploy-tmp/source-build/harness-vendor-overrides.json
             .deploy-tmp/source-build/harness-vendor-lock-reconciliation.json
             .deploy-tmp/source-build/harness-pnpm-lock.original.yaml
@@ -854,6 +872,9 @@ jobs:
             .deploy-tmp/source-build/marketplace-patch-adapter.json
             .deploy-tmp/source-build/source-build-policy.json
             .deploy-tmp/source-build/effective-engine-overlay.json
+            .deploy-tmp/source-build/effective-engine-overlay-restoration.json
+            .deploy-tmp/source-build/effective-engine-overlay.restore-input.json
+            .deploy-tmp/source-build/effective-engine-overlay-policy.restore-input.json
             .deploy-tmp/source-build/harness-vendor-overrides.json
             .deploy-tmp/source-build/harness-vendor-lock-reconciliation.json
             .deploy-tmp/source-build/harness-pnpm-lock.original.yaml
