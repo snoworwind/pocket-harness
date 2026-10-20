@@ -23,6 +23,33 @@ BOOTSTRAP_URL = (
 )
 
 
+def pinned_harness_source_commit(source_root: pathlib.Path) -> str:
+    """Read the source identity receipt; cached materializations intentionally omit .git."""
+    receipt = source_root.parent / "source-build" / "harness-vendor-lock-reconciliation.json"
+    if receipt.is_symlink() or not receipt.is_file():
+        raise ValueError("verified Harness source commit receipt is missing or not a regular file")
+    try:
+        report = json.loads(receipt.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise ValueError("verified Harness source commit receipt is unreadable") from error
+    if not isinstance(report, dict) or report.get("harnessSourceCommit") != HARNESS_COMMIT:
+        raise ValueError("Harness source commit receipt does not match the pinned official source")
+
+    git_marker = source_root / ".git"
+    if git_marker.exists() or git_marker.is_symlink():
+        if git_marker.is_symlink():
+            raise ValueError("Harness source checkout has a linked .git marker")
+        try:
+            checkout_commit = subprocess.check_output(
+                ["git", "rev-parse", "HEAD"], cwd=source_root, text=True
+            ).strip()
+        except subprocess.CalledProcessError as error:
+            raise ValueError("Harness source checkout commit cannot be verified") from error
+        if checkout_commit != report["harnessSourceCommit"]:
+            raise ValueError("Harness source checkout differs from its verified commit receipt")
+    return report["harnessSourceCommit"]
+
+
 def safe_member(root: pathlib.Path, relative: str) -> pathlib.Path:
     rel = pathlib.PurePosixPath(relative)
     if rel.is_absolute() or ".." in rel.parts:
@@ -131,9 +158,9 @@ def main() -> None:
     if len(sys.argv) != 5:
         raise SystemExit("usage: prepare-termux-bootstrap.py <bootstrap-aarch64.zip> <source-root> <dsh-deploy-root> <output-base-usr.tar.xz>")
     zip_path, source_root, dsh_deploy, out_path = map(pathlib.Path, sys.argv[1:])
-    source_commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=source_root, text=True).strip()
+    source_commit = pinned_harness_source_commit(source_root)
     source_manifest = json.loads((source_root / "package.json").read_text(encoding="utf-8"))
-    if source_commit != HARNESS_COMMIT or source_manifest.get("version") != HARNESS_VERSION:
+    if source_manifest.get("name") != "@deepseek-ai/dsh-root" or source_manifest.get("version") != HARNESS_VERSION:
         raise ValueError("bootstrap assembly requires the official 0.2.1-rc.2 source")
     actual = hashlib.sha256(zip_path.read_bytes()).hexdigest()
     if actual != BOOTSTRAP_SHA256:
@@ -184,16 +211,12 @@ def main() -> None:
         },
         "profileTemplates": {
             "source": "packages/boot/app-boot/src/profile.ts",
-            "deepseekHarnessCommit": subprocess.check_output(
-                ["git", "rev-parse", "HEAD"], cwd=source_root, text=True
-            ).strip(),
+            "deepseekHarnessCommit": source_commit,
             "profiles": ["web", "headless"],
         },
         "deepSeekHarnessRuntime": {
             "package": "@deepseek-ai/dsh@0.2.1-rc.2",
-            "sourceCommit": subprocess.check_output(
-                ["git", "rev-parse", "HEAD"], cwd=source_root, text=True
-            ).strip(),
+            "sourceCommit": source_commit,
             "deploymentFileCount": len(dsh_files),
             "deploymentFiles": dsh_files,
         },

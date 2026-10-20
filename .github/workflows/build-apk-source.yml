@@ -600,7 +600,27 @@ jobs:
           printf '%s\n' "$GITHUB_SHA" > .deploy-tmp/source-build/project-source-commit.txt
           node scripts/source-build/record-project-components.mjs outputs \
             .deploy-tmp/source-build/project-component-provenance.json
-          node -e 'const fs=require("fs"); const cp=require("child_process"); const project=JSON.parse(fs.readFileSync(".deploy-tmp/source-build/project-component-provenance.json","utf8")); const out={projectCommit:project.projectCommit,deepseekHarnessCommit:cp.execFileSync("git",["-C",".deploy-tmp/deepseek-harness","rev-parse","HEAD"],{encoding:"utf8"}).trim(),components:project.components}; out.components["dshmarketplace-plugin"]={source:"pinned npm publish artifact",tarball:"https://registry.npmjs.org/dshmarketplace-plugin/-/dshmarketplace-plugin-0.1.7.tgz",tarballSha256:require("crypto").createHash("sha256").update(fs.readFileSync(".deploy-tmp/component-sources/dshmarketplace-plugin-0.1.7.tgz")).digest("hex")}; out.components["dsh-undo-savepoint"]={source:"checked-in JavaScript source",fileSha256:require("crypto").createHash("sha256").update(fs.readFileSync("vendor/dsh-undo-savepoint/lib/index.js")).digest("hex")}; fs.writeFileSync(".deploy-tmp/source-build/component-source-provenance.json",JSON.stringify(out,null,2)+"\n")'
+          node <<'NODE'
+          const fs = require('node:fs')
+          const crypto = require('node:crypto')
+          const project = JSON.parse(fs.readFileSync('.deploy-tmp/source-build/project-component-provenance.json', 'utf8'))
+          const harness = JSON.parse(fs.readFileSync('.deploy-tmp/source-build/harness-vendor-lock-reconciliation.json', 'utf8'))
+          const expectedHarnessCommit = JSON.parse(fs.readFileSync('scripts/contract.json', 'utf8')).upstream.commit
+          if (harness.harnessSourceCommit !== expectedHarnessCommit) {
+            throw new Error('Harness source provenance does not match the pinned upstream commit')
+          }
+          const out = { projectCommit: project.projectCommit, deepseekHarnessCommit: harness.harnessSourceCommit, components: project.components }
+          out.components['dshmarketplace-plugin'] = {
+            source: 'pinned npm publish artifact',
+            tarball: 'https://registry.npmjs.org/dshmarketplace-plugin/-/dshmarketplace-plugin-0.1.7.tgz',
+            tarballSha256: crypto.createHash('sha256').update(fs.readFileSync('.deploy-tmp/component-sources/dshmarketplace-plugin-0.1.7.tgz')).digest('hex'),
+          }
+          out.components['dsh-undo-savepoint'] = {
+            source: 'checked-in JavaScript source',
+            fileSha256: crypto.createHash('sha256').update(fs.readFileSync('vendor/dsh-undo-savepoint/lib/index.js')).digest('hex'),
+          }
+          fs.writeFileSync('.deploy-tmp/source-build/component-source-provenance.json', JSON.stringify(out, null, 2) + '\n')
+          NODE
           sha256sum app/build.gradle.kts build.gradle.kts settings.gradle.kts \
             > .deploy-tmp/source-build/android-build-inputs-sha256.txt
           gradle_artifacts="${GRADLE_USER_HOME:-$HOME/.gradle}/caches/modules-2/files-2.1"
