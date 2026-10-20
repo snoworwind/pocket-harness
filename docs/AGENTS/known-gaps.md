@@ -1,10 +1,9 @@
 # known-gaps.md — 当前缺口与验收入口
 
-> 本分支宗旨及当前验证边界见 [SECURITY-HARDENING.md](SECURITY-HARDENING.md)。源码有改动不等于新包已验收。
-> 应用身份迁移与 ARM64 离线资产修复仍待云端来源 APK 全链；设备侧实测按用户决定暂缓并统一验收。发版须另行获得用户授权。
+> 本分支宗旨及当前验证边界见 [SECURITY-HARDENING.md](SECURITY-HARDENING.md)。源码有改动不等于新包已验收；来源构建状态以 [变更记录](changelog-archive.md) 最新条目为准。
 
-- Pocket Harness 独立身份与签名改造已完成代码实现：`applicationId=com.snoworwind.pocketharness`、仅 ARM64 下载与产物、独立 PKCS12 证书 pin。已按用户授权设置 `POCKET_SIGNING_KEYSTORE_BASE64` 与 `POCKET_SIGNING_KEYSTORE_PASSWORD` 仓库 Secrets；仍须运行云端来源 APK 全链。设备侧三层验收按用户安排暂缓，未做设备验证，不得作为发行候选。
-- 最终 main HEAD `d4aa9fc` 的来源双构建 run [39113529859](https://github.com/snoworwind/pocket-harness/actions/runs/39113529859) 因标准 14 GB runner 在 APK gate 前耗尽磁盘而失败（`Free space left: 83 MB`，随后 `ENOSPC`）。磁盘回收修复合并后，`d19e8c3` 的 run [39119416887](https://github.com/snoworwind/pocket-harness/actions/runs/39119416887) 已通过该处和来源快照检查，但在注入后暴露内置 bootstrap 的包名/目录名错位；已按 `package.json.name` 修正并补 `test_inject_all.py`。Linux 来源套件与 Python 套件通过；尚未取得修复后的新 main run 或设备证据，不能记为通过。详见 [修复账本](AUDIT-REMEDIATION-2026-10-18.md) 与 [坑 420、421](gotchas.md)。
+- Pocket Harness 独立身份与签名改造已完成：`applicationId=com.snoworwind.pocketharness`、仅 ARM64 下载与产物、独立 PKCS12 证书 pin。2026-10-20，main `9ebe0fc1589a070cb2ee12417f27d89236f7153a` 的云端来源 run [39374235296](https://github.com/snoworwind/pocket-harness/actions/runs/39374235296) 已通过双路独立 ARM64 构建、APK payload 比对、完整 Kotlin 单测、生产签名及来源证明核验，并创建 Draft + prerelease。当前草稿尚未公开；详见 [候选说明](../../release/v0.14.8/notes.md) 与 [构建环境记录](build-and-env.md)。
+- 该候选尚未完成 ARM64 设备安装、升级及代码/CDP/ADB 三层验收；按用户要求，设备验证暂缓。设备验收完成前不得公开发布或称为已验收版本。
 
 ## 当前入口
 
