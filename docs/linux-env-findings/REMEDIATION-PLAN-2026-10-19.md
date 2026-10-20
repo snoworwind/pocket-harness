@@ -204,7 +204,7 @@ send(res, 503, {
 
 **代码示意**
 
-```diff
+```ts
  export function apply(ctx, config = {}) {
    const hostConfig = ctx.linuxBootstrapConfig ?? {}
    const pluginHost = config.pluginHost ?? ctx.linuxPluginHost
@@ -270,6 +270,8 @@ node scripts/hot-push.mjs --serial <s> --plugin plugins/dsh-linux-bootstrap --pk
 
 ### WP-3 · ② 解包根规范化（别名根）
 
+**状态（2026-10-21）**：当前分支已实现并通过别名根硬链接正控、越界/符号链接负控；ARM64 设备验证未做。
+
 **目标**：`/data/data/...` 与 `/data/user/0/...` 两种写法下，rootfs 的合法硬链接都能通过归属校验。
 
 **改动文件**
@@ -281,18 +283,25 @@ node scripts/hot-push.mjs --serial <s> --plugin plugins/dsh-linux-bootstrap --pk
 **代码示意**
 
 ```diff
--  const root = resolve(destination)
--  const rootInfo = await lstat(root)
--  if (!rootInfo.isDirectory() || rootInfo.isSymbolicLink() || (await readdir(root)).length !== 0) {
-+  const lexicalRoot = resolve(destination)
-+  const rootInfo = await lstat(lexicalRoot)
-+  if (!rootInfo.isDirectory() || rootInfo.isSymbolicLink() || (await readdir(lexicalRoot)).length !== 0) {
-     throw new Error('Archive destination must be a fresh empty directory')
-   }
-+  // Android exposes the same directory as /data/data/... and /data/user/0/...;
-+  // the hard-link containment check compares against realpath(), so the root must
-+  // be canonicalized too (gotchas 1 and 67).
-+  const root = await realpath(lexicalRoot).catch(() => lexicalRoot)
+const lexicalRoot = resolve(destination)
+const initialInfo = await lstat(lexicalRoot)
+if (!initialInfo.isDirectory() || initialInfo.isSymbolicLink() || (await readdir(lexicalRoot)).length !== 0) {
+  throw new Error('Archive destination must be a fresh empty directory')
+}
+// Android exposes the same directory as /data/data/... and /data/user/0/...;
+// normalize the root before comparing it with realpath(entry.source).
+// realpath errors fail closed; recheck identity and emptiness after normalization.
+const root = await realpath(lexicalRoot)
+const [currentInfo, canonicalInfo, currentRoot] = await Promise.all([
+  lstat(lexicalRoot), lstat(root), realpath(lexicalRoot),
+])
+if (!currentInfo.isDirectory() || currentInfo.isSymbolicLink() ||
+    !canonicalInfo.isDirectory() || canonicalInfo.isSymbolicLink() ||
+    currentInfo.dev !== initialInfo.dev || currentInfo.ino !== initialInfo.ino ||
+    canonicalInfo.dev !== initialInfo.dev || canonicalInfo.ino !== initialInfo.ino ||
+    currentRoot !== root || (await readdir(root)).length !== 0) {
+  throw new Error('Archive destination must be a fresh empty directory')
+}
 ```
 
 **测试（代码层）**
@@ -326,6 +335,8 @@ node scripts/hot-push.mjs --serial <s> --plugin plugins/dsh-linux-bootstrap --pk
 
 ### WP-4 · ③ 硬链接复制兜底
 
+**状态（2026-10-21）**：当前分支仅对明确的平台拒绝 errno 走 `COPYFILE_EXCL` 复制，并恢复源 mode；受控 `EACCES` 与未知错误用例通过。ARM64 设备验证未做。
+
 **目标**：`link(2)` 被 app 域/设备策略拒绝时，用内容复制完成解包，且不削弱归属校验。
 
 **改动文件**
@@ -338,26 +349,29 @@ node scripts/hot-push.mjs --serial <s> --plugin plugins/dsh-linux-bootstrap --pk
 
 ```ts
 import { constants as fsConstants, createReadStream, createWriteStream } from 'node:fs'
-import { chmod, copyFile, link, lstat, mkdir, readFile, readdir, realpath, rename, rm, stat, symlink } from 'node:fs/promises'
+import { chmod, copyFile, link, lstat, mkdir, readFile, readdir, realpath, rename, rm, symlink } from 'node:fs/promises'
 
-const HARDLINK_FALLBACK_CODES = new Set(['EPERM', 'EACCES', 'ENOTSUP', 'EXDEV', 'ENOSYS', 'EMLINK'])
+const HARDLINK_FALLBACK_CODES = new Set(['EACCES', 'EPERM', 'ENOTSUP', 'EOPNOTSUPP', 'EXDEV', 'ENOSYS', 'EMLINK'])
 
 export interface HardLinkOps {
   link(source: string, target: string): Promise<void>
   copyFile(source: string, target: string, flags?: number): Promise<void>
   chmod(target: string, mode: number): Promise<void>
-  stat(source: string): Promise<{ mode: number }>
 }
 
 const DEFAULT_HARDLINK_OPS: HardLinkOps = {
   link: (source, target) => link(source, target),
   copyFile: (source, target, flags) => copyFile(source, target, flags),
   chmod: (target, mode) => chmod(target, mode),
-  stat: source => stat(source),
 }
 
-/** Android app domains deny link(2); a copy is semantically equivalent for a rootfs. */
-export async function publishHardLink(source: string, target: string, ops: HardLinkOps = DEFAULT_HARDLINK_OPS) {
+/** Publish a verified archive hard-link target, preserving no-replace semantics on Android. */
+export async function publishHardLink(
+  source: string,
+  target: string,
+  sourceMode: number,
+  ops: HardLinkOps = DEFAULT_HARDLINK_OPS,
+): Promise<'link' | 'copy'> {
   try {
     await ops.link(source, target)
     return 'link' as const
@@ -365,7 +379,7 @@ export async function publishHardLink(source: string, target: string, ops: HardL
     const code = (error as NodeJS.ErrnoException)?.code
     if (code === undefined || !HARDLINK_FALLBACK_CODES.has(code)) throw error
     await ops.copyFile(source, target, fsConstants.COPYFILE_EXCL)
-    await ops.chmod(target, (await ops.stat(source)).mode & 0o777)
+    await ops.chmod(target, sourceMode & 0o777)
     return 'copy' as const
   }
 }

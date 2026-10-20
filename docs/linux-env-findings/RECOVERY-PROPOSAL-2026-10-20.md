@@ -75,8 +75,8 @@ Termux PRoot 的 `enter.c` 会把内核 exec 目标替换成自己的 `PROOT_LOA
 | 当前缺陷 | 修改位置 | 必要反证 |
 |---|---|---|
 | Cordis 激活时读取未声明的 `ctx.filesDir` | PR #77 已合入；`plugins/dsh-linux-bootstrap/src/index.js::apply` 不再读该属性，优先使用已声明的 `linuxBootstrapConfig.dataDir`，保留显式配置和 `DSH_FILES_DIR` 回退 | 真实 Cordis `Context.plugin()` + 真实 `apply()` 用例、CI 全量门禁与来源双构建通过；修复后草稿 APK 已生成但尚待设备验证 |
-| 解包根与硬链接源一侧词法、一侧物理路径 | `plugins/dsh-android-linux-env/src/linux-host-asset-io.ts` | 别名根成功；realpath 失败、越界、符号链接替换仍拒绝 |
-| 设备拒绝硬链接后直接终止 | 同上 | 仅受控 errno 走复制，独占创建、保留 mode；穿越、篡改、未知错误仍失败 |
+| 解包根与硬链接源一侧词法、一侧物理路径 | `plugins/dsh-android-linux-env/src/linux-host-asset-io.ts` | 当前分支已规范化根并复核目录身份；别名根正控及越界/符号链接负控通过；ARM64 设备未验证 |
+| 设备拒绝硬链接后直接终止 | 同上 | 当前分支仅对受控 errno 使用 `COPYFILE_EXCL` 复制并保留 mode；未知错误负控通过；ARM64 设备未验证 |
 | rootfs 准备依赖 app 私有 sh/find | `vendor/dsh-linux-runtime/modules/manager.js` | Node fs 原语完成准备，不执行私有辅助 ELF；绝对链接与目录逃逸负控 |
 | 失败只更新内存、路由文案泛化 | bootstrap 状态与 `linux-environment.ts` 路由/客户端 | 重启后错误仍在；区分激活、解包、执行不支持；错误脱敏 |
 | 安装失败后的事务与恢复 | manager / bootstrap | 新实例探测通过才切 active；取消、失败、空间不足不破坏旧实例与用户数据 |

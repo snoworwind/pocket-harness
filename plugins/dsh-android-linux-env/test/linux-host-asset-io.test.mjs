@@ -7,6 +7,7 @@
  */
 import { test } from 'node:test'
 import { archives } from './archive-fixtures.mjs'
+import { constants as fsConstants } from 'node:fs'
 import { registerLinuxEnvironmentRoutes } from '../lib/linux-environment.js'
 import { Readable } from 'node:stream'
 import assert from 'node:assert/strict'
@@ -26,6 +27,7 @@ import {
   createHostAssetIO,
   createLinuxBootstrapConfig,
   linuxEnvironmentRoot,
+  publishHardLink,
   retainedArchiveFor,
   stagedDirectoryFor,
   unpackedTreeFor,
@@ -39,6 +41,49 @@ const TAG = 'v1.2.0'
 const GENUINE_ENTRY = 'export const apply = () => {}\n'
 
 const sha256 = (bytes) => createHash('sha256').update(bytes).digest('hex')
+
+test('hard-link publication copies only for approved platform errors and preserves mode', async () => {
+  const calls = []
+  const ops = {
+    link: async () => { const error = new Error('link denied'); error.code = 'EACCES'; throw error },
+    copyFile: async (...args) => calls.push(['copyFile', ...args]),
+    chmod: async (...args) => calls.push(['chmod', ...args]),
+  }
+  assert.equal(await publishHardLink('/root/source', '/root/target', 0o100755, ops), 'copy')
+  assert.deepEqual(calls, [
+    ['copyFile', '/root/source', '/root/target', fsConstants.COPYFILE_EXCL],
+    ['chmod', '/root/target', 0o755],
+  ])
+})
+
+test('hard-link publication preserves hard links when supported and does not copy on unknown errors', async () => {
+  let copied = false
+  const successOps = {
+    link: async () => {},
+    copyFile: async () => { copied = true },
+    chmod: async () => {},
+  }
+  assert.equal(await publishHardLink('/root/source', '/root/target', 0o644, successOps), 'link')
+  assert.equal(copied, false)
+
+  const denied = Object.assign(new Error('source disappeared'), { code: 'ENOENT' })
+  const failureOps = {
+    link: async () => { throw denied },
+    copyFile: async () => { copied = true },
+    chmod: async () => {},
+  }
+  await assert.rejects(publishHardLink('/root/source', '/root/target', 0o644, failureOps), error => error === denied)
+  assert.equal(copied, false)
+
+  const exists = Object.assign(new Error('target already exists'), { code: 'EEXIST' })
+  const existingOps = {
+    link: async () => { throw exists },
+    copyFile: async () => { copied = true },
+    chmod: async () => {},
+  }
+  await assert.rejects(publishHardLink('/root/source', '/root/target', 0o644, existingOps), error => error === exists)
+  assert.equal(copied, false, 'an existing target must never fall through to copy')
+})
 
 async function tempFilesDir() {
   const workspaceTemp = join(dirname(fileURLToPath(import.meta.url)), '../../../.deploy-tmp')

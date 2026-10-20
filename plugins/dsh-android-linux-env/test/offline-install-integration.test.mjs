@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import { execFileSync } from 'node:child_process'
-import { chmod, cp, lstat, mkdir, mkdtemp, readFile, readlink, rm, stat, writeFile } from 'node:fs/promises'
+import { chmod, cp, lstat, mkdir, mkdtemp, readFile, readlink, rm, stat, symlink, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import tar from 'tar-stream'
@@ -75,6 +75,38 @@ test('GNU tar root and guest-scoped links are accepted without permitting plugin
   assert.equal(await readlink(join(destination, 'absolute')), 'file')
   assert.equal((await stat(join(destination, 'copy'))).ino, (await stat(join(destination, 'file'))).ino)
   await assert.rejects(io.extractArchive(file, join(dir, 'plugin'), { kind: 'plugin' }), /links/)
+}))
+
+test('rootfs hard links are accepted through an aliased filesDir without weakening containment', posix, () => fixture(async dir => {
+  const realFilesDir = join(dir, 'real-files')
+  const aliasFilesDir = join(dir, 'aliased-files')
+  await mkdir(realFilesDir)
+  await symlink(realFilesDir, aliasFilesDir, 'dir')
+
+  const io = createHostAssetIO({ filesDir: aliasFilesDir })
+  const good = await archive(join(dir, 'alias-rootfs.tar.xz'), [
+    dirEntry('./'),
+    hardlinkEntry('copy', './file'),
+    fileEntry('./file', 'payload'),
+  ])
+  const destination = join(aliasFilesDir, 'rootfs')
+  await io.extractArchive(good, destination, { kind: 'rootfs' })
+  assert.equal(await readFile(join(destination, 'copy'), 'utf8'), 'payload')
+  assert.equal((await stat(join(destination, 'copy'))).ino, (await stat(join(destination, 'file'))).ino)
+
+  const outside = join(dir, 'outside')
+  await mkdir(outside)
+  await writeFile(join(outside, 'sentinel'), 'untouched')
+  const escape = await archive(join(dir, 'alias-escape.tar.xz'), [
+    dirEntry('./'),
+    hardlinkEntry('escape', '../outside/sentinel'),
+  ])
+  await assert.rejects(io.extractArchive(escape, join(aliasFilesDir, 'escape'), { kind: 'rootfs' }), /escapes extraction root/)
+
+  const destinationLink = join(aliasFilesDir, 'destination-link')
+  await symlink(outside, destinationLink, 'dir')
+  await assert.rejects(io.extractArchive(good, destinationLink, { kind: 'rootfs' }), /fresh empty directory/)
+  assert.equal(await readFile(join(outside, 'sentinel'), 'utf8'), 'untouched')
 }))
 
 test('archive root, duplicate, traversal, link-parent and hard-link escape negative controls', posix, () => fixture(async dir => {

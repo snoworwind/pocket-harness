@@ -1,7 +1,7 @@
 # DSH Linux 环境调查 · 文档索引
 
 > 更新时间：2026-10-20
-> 本轮状态：**bootstrap 激活修复已合入并通过完整 ARM64 来源双构建；草稿候选已生成。** 修复后 APK 尚未设备验证，loader / noexec 路径仍未测。
+> 本轮状态：**bootstrap 激活修复已合入并通过完整 ARM64 来源双构建；硬链接路径与应用域拒绝兜底已在当前工作分支修复并通过定向测试。** 两项新修复尚未设备验证；loader / noexec 路径仍未测。
 > 当前方案与源码更正：[RECOVERY-PROPOSAL-2026-10-20.md](RECOVERY-PROPOSAL-2026-10-20.md)；历史实机与保留决策：[LINUX-ENV-COMPLETE-RECORD-2026-10-19.md](LINUX-ENV-COMPLETE-RECORD-2026-10-19.md)。
 
 ## 阅读顺序
@@ -11,7 +11,7 @@
 | 1 | [ORIGINAL-REPORT-2026-10-19.md](ORIGINAL-REPORT-2026-10-19.md) | 实机 agent 原始报告：5 个问题、调用链、证据 | 原始证据；部分归因已被后续修正 |
 | 2 | [ORIGINAL-PATCHES-2026-10-19.md](ORIGINAL-PATCHES-2026-10-19.md) | 原始修复建议（4 个补丁） | 参考；W5/`BIONILUX_LOADER` 部分已失效 |
 | 3 | [INVESTIGATION-2026-10-19-pocketharness.md](INVESTIGATION-2026-10-19-pocketharness.md) | 本仓源码复核、①②③④、本机复现、附录 B/C | 过程记录 |
-| 4 | [REMEDIATION-PLAN-2026-10-19.md](REMEDIATION-PLAN-2026-10-19.md) | 修复计划 WP-1..7、WP-CI、W3-lite/W2/QEMU/JIT 评估 | 计划；**未执行** |
+| 4 | [REMEDIATION-PLAN-2026-10-19.md](REMEDIATION-PLAN-2026-10-19.md) | 修复计划 WP-1..7、WP-CI、W3-lite/W2/QEMU/JIT 评估 | WP-3/WP-4 已在当前分支实现；设备未验；其他项仍为计划 |
 | 5 | [LINUX-ENV-COMPLETE-RECORD-2026-10-19.md](LINUX-ENV-COMPLETE-RECORD-2026-10-19.md) | 历史汇总：两轮实机、可用性判定、保留决策、移除成本 | 归因与路线以 10-20 更正为准 |
 | 6 | [RECOVERY-PROPOSAL-2026-10-20.md](RECOVERY-PROPOSAL-2026-10-20.md) | 当前源码复核、APK 原生执行入口方案、分阶段验收与备选 | 激活缺陷已合入并出草稿；执行入口方案待设备验证 |
 
@@ -24,8 +24,7 @@
 ## 当前保留的已知缺陷
 
 - ① `ctx.filesDir` 激活故障：PR #77 已合入并由真实 Cordis `apply()` 回归及双构建验证；新草稿 APK SHA-256 为 `a2d1d85735b98a7168c0c5ea406a542518e5b9c1b82802a6ed0b2860d39d63dd`，尚未在设备上复验。SHA-256 为 `862e17cffc7bb4a5395ae960eec3f364c953ce73f476ac754f69bcd2166cadbf` 的修复前 APK 仍包含故障。
-- ② 解包根未规范化：别名根下硬链接校验必失败。
-- ③ 硬链接未加复制兜底：设备策略拒绝 `link(2)`。
+- ②/③ 硬链接问题的源码修复已在当前分支实现：解包根规范化并复核目录身份；平台明确拒绝 `link(2)` 时独占复制并保留 mode。定向测试通过，ARM64 实机未验。
 - ④ 宿主准备脚本依赖 app 私有 ELF：noexec 下 `find` EACCES。
 - ⑤ app 私有 glibc loader 直接执行受限；noexec 与 SELinux 等因素需按实际进程和文件重新取证。
 - ⑦ 失败不落盘、错误码/文案泛化。
