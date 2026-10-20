@@ -3,6 +3,7 @@
 > 全部版本历史都堆在这里（AGENTS.md 不再设更新记录表）。**新条目倒序加在表格最上方**。细节写进对应详档，这里只留一行摘要。
 
 | 时间 | 版本 | 更新内容 | 更新者 |
+| 2026-10-20 | **0.14.8 ARM64 来源草稿（Draft + prerelease，未公开）** | 基于 main 提交 `9ebe0fc1589a070cb2ee12417f27d89236f7153a` 创建来源草稿 `hardening-source-9ebe0fc1589a-39374235296-1`。两路独立 ARM64 来源构建、APK payload 规范化比较、完整 Kotlin 单测、隔离生产签名及 draft 证据预检均通过；下载资产 SHA-256、独立重建证明、项目组件来源与 effective overlay 恢复回执经复核。PR #65/#66/#67 修复在本次完整链上验证通过。APK SHA-256：`862e17cffc7bb4a5395ae960eec3f364c953ce73f476ac754f69bcd2166cadbf`。按要求未做设备验证；公开前仍须完成 ARM64 真机三层验收。详见 [候选说明](../../release/v0.14.8/notes.md) 与 [来源构建 run](https://github.com/snoworwind/pocket-harness/actions/runs/39374235296)。 | Codex |
 | 2026-10-20 | **仓库转公开、CI 恢复与分支保护（无应用代码改动）** | 全历史审计无凭证后转为公开仓，标准托管 runner 免费，`PR_GATE_MODE=on`，CI 恢复并实测通过；`main` 启用分支保护（必须 PR、4 项必检、管理员受限、禁强推与删除），合并方式收敛为 merge commit；公开前清理两个子仓 `.npmrc`（坑 351 根因）与设备序列号。过程与坑位见 gotchas 455-456、build-and-env 的分支保护一节。未做设备验证。 | DSH Agent |
 | 2026-10-20 | **许可证归属确认（双版权，MIT）** | 经项目所有者确认：本项目是 [`kelai141/dsh-mobile-apk`](https://github.com/kelai141/dsh-mobile-apk) 的修改版，`LICENSE` 保留原版权声明并追加本仓版权行，修改部分同样以 MIT 发布；README 中英双版、`BASELINE.md` 同步，known-gaps 的待确认项关闭。仅文档与许可证文本，无代码改动。 | DSH Agent |
 | 2026-10-20 | **公开仓文档一致性收口** | 全部文档对齐公开仓状态：铁律 4 的分支保护与合并方式、安全加固的私有决定作废、本地门禁定位、README 引擎目标与下载口径；补充坑 456（`required_pull_request_reviews: null` 陷阱）、发布状态与公开仓许可证归属待确认项。 | DSH Agent |
