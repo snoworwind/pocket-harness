@@ -56,7 +56,7 @@ const LOCAL_PATCHES = {
   'README.md': 'b6a54ef5116942484304b8ea31da9bf514a22dcb6496ce2cd99aaadc82db8fb2',
   'src/asset-bundle.js': '7e32ce0f57ee0a7f75dfd2d2af6ff61357d63b6c34e4f0dbf7aa23cf4300e416',
   'src/github.js': '7b6369b5910ecb3e8b49f75a4dae3ca60ceac2d4164bf7f05f71c81803aa110c',
-  'src/index.js': '7517ac3ca1d11b7787b80b733b051de3dacf938105d21b14440267b4d0386245',
+  'src/index.js': '8cb011501ed22b0c23dcd954d7b31006c76690b094f4485bea7d5535795c7fb1',
 }
 
 /** Files this repo adds, including local security regression tests. */

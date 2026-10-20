@@ -8,11 +8,11 @@
       "sourceCommit": "3f86a853e346b4f2c268fbf6a76216294b5c4382",
       "sourcePath": "packages/linux-bootstrap",
       "files": {
-        "plugins/dsh-linux-bootstrap/package.json": "ae019a921c7c8d2500a06fc6f08d1bb8b200d6c80a5c84d08e790646462fa74b",
+        "plugins/dsh-linux-bootstrap/package.json": "d95a5ef2e0abe8babfdb44fab581fb6dd610aa3ee5f47be333cd00675eb67827",
         "plugins/dsh-linux-bootstrap/client/index.js": "4576301803d5eda59b76dfff62c7a2cd67cd05d65a25c58df12f3769e3f382cc",
         "plugins/dsh-linux-bootstrap/src/asset-bundle.js": "7e32ce0f57ee0a7f75dfd2d2af6ff61357d63b6c34e4f0dbf7aa23cf4300e416",
         "plugins/dsh-linux-bootstrap/src/github.js": "7b6369b5910ecb3e8b49f75a4dae3ca60ceac2d4164bf7f05f71c81803aa110c",
-        "plugins/dsh-linux-bootstrap/src/index.js": "7517ac3ca1d11b7787b80b733b051de3dacf938105d21b14440267b4d0386245",
+        "plugins/dsh-linux-bootstrap/src/index.js": "8cb011501ed22b0c23dcd954d7b31006c76690b094f4485bea7d5535795c7fb1",
         "plugins/dsh-linux-bootstrap/src/manifest.js": "a9b8512e24dfbb1b225c2bc260d3d0496b7e8834ef975d17c69355baf1911067",
         "plugins/dsh-linux-bootstrap/src/routes.js": "678391176bcd81ba6cbbbab293a4731d07e37e99c51178d7605821eac6aa5bb9",
         "plugins/dsh-linux-bootstrap/src/status.js": "494238e39094999e44105d1c56ca562f88ce3e65146bd3070806d4c82dd98f7b",
@@ -49,11 +49,11 @@
     "vendor/dsh-linux-runtime/modules/manifest.js": "1722dd47005c62fad20ec22ddb710bbff72f4a1bc5fdbee7199bb73e31185971",
     "vendor/dsh-linux-runtime/package.json": "1d65abf96889a13f9bfce9266f44839c1957ffc5bc6691fa047cb6061041c476",
     "vendor/dsh-linux-runtime/test/manager.test.mjs": "00a9bd003f7ee35437aba275895bca06d140967cea8ed35efa024e23d4728adb",
-    "plugins/dsh-linux-bootstrap/package.json": "ae019a921c7c8d2500a06fc6f08d1bb8b200d6c80a5c84d08e790646462fa74b",
+    "plugins/dsh-linux-bootstrap/package.json": "d95a5ef2e0abe8babfdb44fab581fb6dd610aa3ee5f47be333cd00675eb67827",
     "plugins/dsh-linux-bootstrap/client/index.js": "4576301803d5eda59b76dfff62c7a2cd67cd05d65a25c58df12f3769e3f382cc",
     "plugins/dsh-linux-bootstrap/src/asset-bundle.js": "7e32ce0f57ee0a7f75dfd2d2af6ff61357d63b6c34e4f0dbf7aa23cf4300e416",
     "plugins/dsh-linux-bootstrap/src/github.js": "7b6369b5910ecb3e8b49f75a4dae3ca60ceac2d4164bf7f05f71c81803aa110c",
-    "plugins/dsh-linux-bootstrap/src/index.js": "7517ac3ca1d11b7787b80b733b051de3dacf938105d21b14440267b4d0386245",
+    "plugins/dsh-linux-bootstrap/src/index.js": "8cb011501ed22b0c23dcd954d7b31006c76690b094f4485bea7d5535795c7fb1",
     "plugins/dsh-linux-bootstrap/src/manifest.js": "a9b8512e24dfbb1b225c2bc260d3d0496b7e8834ef975d17c69355baf1911067",
     "plugins/dsh-linux-bootstrap/src/routes.js": "678391176bcd81ba6cbbbab293a4731d07e37e99c51178d7605821eac6aa5bb9",
     "plugins/dsh-linux-bootstrap/src/status.js": "494238e39094999e44105d1c56ca562f88ce3e65146bd3070806d4c82dd98f7b",
@@ -86,7 +86,7 @@
     },
     "plugins/dsh-linux-bootstrap/src/index.js": {
       "upstreamSha256": "27708c714ba0a102a89a72611443c144a107307686146acc49b9fa4b4c1ba4b2",
-      "reason": "Accept a source-pinned offline manifest provider and its raw-byte digest from the Android host; retain release fetching only for explicit standalone integrations."
+      "reason": "Accept a source-pinned offline manifest provider and its raw-byte digest from the Android host; retain release fetching only for explicit standalone integrations. Resolve dataDir from declared host config or DSH_FILES_DIR without reading undeclared Cordis ctx.filesDir."
     },
     "plugins/dsh-linux-bootstrap/package-lock.json": {
       "upstreamSha256": "0000000000000000000000000000000000000000000000000000000000000000",
