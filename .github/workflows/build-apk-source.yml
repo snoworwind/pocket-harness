@@ -13,7 +13,7 @@ jobs:
       fail-fast: false
       matrix:
         replica: [primary, reference]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 180
     env:
       DSH_APK_DIR: ${{ github.workspace }}
@@ -35,20 +35,21 @@ jobs:
       - name: Prepare build tools
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: '24'
+          node-version: '24.21.0'
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
-          python-version: '3.12'
+          python-version: '3.12.15'
       - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: '17.0.20+8'
       - name: Isolate npm cache from checked-in developer settings
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/dsh-npm-cache"
           echo "npm_config_cache=$RUNNER_TEMP/dsh-npm-cache" >> "$GITHUB_ENV"
+          npm install -g corepack@0.36.0 --ignore-scripts --no-audit --no-fund
       - name: Verify pinned source replacement before the expensive build
         run: |
           python3 -m unittest discover -s scripts/source-build -p 'test_*.py' -v
@@ -59,7 +60,7 @@ jobs:
       - name: Install archive and signature tools
         run: |
           sudo apt-get update -y
-          sudo apt-get install -y xz-utils gnupg unzip
+          sudo apt-get install -y xz-utils gnupg unzip zstd g++
 
       # 产出侧签名断言要用 apksigner，而它属于 Android SDK 的 build-tools——
       # runner 镜像上是否预装并不稳定（本仓 pr-gate / release 两条链都显式
@@ -151,7 +152,50 @@ jobs:
           fi
           echo "签名自证通过：keystore 可签名，且 apksigner 能读出期望指纹"
 
+      # Only meaningful when a trusted base is committed. Without base-lock.json there is
+      # nothing to restore, and resolving a key would fail the build on unrelated toolchain
+      # drift; skip it so the source chain keeps building from source.
+      - name: Resolve engine base key and lock
+        id: engine-base
+        if: hashFiles('base-lock.json') != ''
+        shell: bash
+        run: |
+          if [ "${GITHUB_ACTIONS:-}" = "true" ]; then
+            node scripts/source-build/engine-base.mjs plan .deploy-tmp/engine-base-plan.json
+          else
+            echo "local source chain: base cache disabled; engine will build from source"
+          fi
+
+      - name: Restore trusted engine base
+        id: engine-cache
+        if: steps.engine-base.outputs.trusted == 'true'
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: .deploy-tmp/engine-base-cache
+          key: ${{ steps.engine-base.outputs.cache_key }}
+
+      - name: Materialize trusted engine base
+        if: steps.engine-cache.outputs.cache-hit == 'true'
+        shell: bash
+        run: |
+          if [ "${GITHUB_ACTIONS:-}" != "true" ]; then
+            echo "local source chain: no locked base to materialize"
+            exit 0
+          fi
+          node scripts/source-build/engine-base.mjs materialize .deploy-tmp/engine-base-cache
+
+      - name: Fail closed when a trusted engine base is unavailable
+        if: steps.engine-base.outputs.trusted == 'true' && steps.engine-cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          if [ "${GITHUB_ACTIONS:-}" != "true" ]; then
+            exit 0
+          fi
+          echo "::error::trusted engine base is locked but absent; run build-base.yml for this key"
+          exit 1
+
       - name: Build and pack DeepSeek Harness from source
+        if: steps.engine-cache.outputs.cache-hit != 'true'
         shell: bash
         run: bash scripts/source-build/build-engine.sh
 

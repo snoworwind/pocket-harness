@@ -1,0 +1,10 @@
+{
+  "schema": 1,
+  "runner": "ubuntu-24.04",
+  "node": "24.21.0",
+  "python": "3.12.15",
+  "java": "17.0.20+8",
+  "corepack": "0.36.0",
+  "pnpm": "11.28.5",
+  "deploymentPnpm": "12.2.0"
+}
