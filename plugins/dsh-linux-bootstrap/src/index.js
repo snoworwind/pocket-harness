@@ -586,7 +586,9 @@ export const createBootstrap = createMobileBootstrap
 export function apply(ctx, config = {}) {
   const hostConfig = ctx.linuxBootstrapConfig ?? {}
   const pluginHost = config.pluginHost ?? ctx.linuxPluginHost
-  const filesDir = config.filesDir ?? ctx.filesDir ?? process.env.DSH_FILES_DIR
+  // `filesDir` is not a Cordis service. Reading an undeclared property through
+  // Cordis's context proxy throws before the environment fallback can run.
+  const filesDir = config.filesDir ?? process.env.DSH_FILES_DIR
   const dataDir = config.dataDir ?? hostConfig.dataDir ?? (filesDir ? path.join(filesDir, 'linux-environment') : null)
   if (!dataDir) throw new TypeError('dataDir or DSH_FILES_DIR is required')
   const service = createMobileBootstrap({ ...hostConfig, ...config, dataDir, pluginHost })

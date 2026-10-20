@@ -9,7 +9,7 @@ import tar from 'tar-stream'
 import { Context } from '@deepseek-ai/cordis'
 import { createLinuxBootstrapConfig, createHostAssetIO } from '../lib/linux-host-asset-io.js'
 import { createLinuxPluginHost, cordisScope } from '../lib/linux-environment.js'
-import { createBootstrap } from '../../dsh-linux-bootstrap/src/index.js'
+import { apply as applyBootstrap, createBootstrap, inject as bootstrapInject, name as bootstrapName } from '../../dsh-linux-bootstrap/src/index.js'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../../..')
 const posix = { skip: process.platform === 'win32' }
@@ -34,6 +34,36 @@ const dirEntry = name => [{ name, type: 'directory', size: 0 }, '']
 const fileEntry = (name, body = 'payload') => [{ name, type: 'file' }, body]
 const symlinkEntry = (name, linkname) => [{ name, type: 'symlink', linkname, size: 0 }, '']
 const hardlinkEntry = (name, linkname) => [{ name, type: 'link', linkname, size: 0 }, '']
+
+test('bootstrap apply activates in real Cordis with the host-provided dataDir', () => fixture(async filesDir => {
+  const previousFilesDir = process.env.DSH_FILES_DIR
+  delete process.env.DSH_FILES_DIR
+  try {
+    const ctx = new Context()
+    const config = createLinuxBootstrapConfig({
+      filesDir,
+      appVersion: '0.14.8',
+      bundleDirectory: join(filesDir, 'linux-assets'),
+    })
+    const host = { install: async () => { throw new Error('install is not expected in this activation test') }, uninstall: async () => {} }
+    ctx.provide('linuxPluginHost', host)
+    ctx.provide('linuxBootstrapConfig', config)
+    const fiber = ctx.plugin({ name: bootstrapName, inject: bootstrapInject, apply: applyBootstrap })
+    try {
+      await fiber
+      const service = ctx.get('linuxBootstrap')
+      assert.equal(typeof service?.status, 'function', 'real Cordis apply must provide linuxBootstrap')
+      const status = await service.status()
+      assert.equal(status.enabled, false, 'activation alone must not enable or install Linux')
+      assert.equal(status.installed, false)
+    } finally {
+      await fiber.dispose()
+    }
+  } finally {
+    if (previousFilesDir === undefined) delete process.env.DSH_FILES_DIR
+    else process.env.DSH_FILES_DIR = previousFilesDir
+  }
+}))
 
 test('GNU tar root and guest-scoped links are accepted without permitting plugin links', posix, () => fixture(async dir => {
   const io = createHostAssetIO({ filesDir: dir })

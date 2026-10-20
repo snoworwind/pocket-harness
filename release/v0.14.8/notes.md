@@ -2,6 +2,8 @@
 
 本版本将引擎升级到 DeepSeek Harness 0.2.1-rc.2，带来上游新增模型与网页搜索设置能力，并适配 Android 插件、子代理会话和 PTC 运行环境。
 
+下一次 0.14.8 来源候选将包含 Linux 设置服务 bootstrap 激活修复：使用宿主注入的 Linux 数据目录配置，避免读取未声明的 Cordis `ctx.filesDir`。本文下面列出的 SHA-256 对应修复前候选，不含此修复；修复后 APK 和 Android 设备复验尚待完成，glibc 执行路径也仍需独立验证。
+
 ## 获取与安装
 
 - 本候选仅提供 ARM64 APK：`pocket-harness-v0.14.8-source-arm64.apk`。仅在 ARM64 Android 设备上安装；可使用 Android 包安装器，或执行 `adb install -r -t pocket-harness-v0.14.8-source-arm64.apk`。
