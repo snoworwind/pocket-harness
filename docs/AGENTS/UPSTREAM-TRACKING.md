@@ -52,16 +52,17 @@
 | 维度 | 本项目 Pocket Harness | 上游 dsh-mobile-apk | 判断 |
 |---|---|---|---|
 | 产品身份 | `com.snoworwind.pocketharness` / `Pocket Harness`，独立签名、独立安装；不覆盖 DeepCode，也不自动迁移旧数据。 | `com.dsharnessmobile.shell` / DeepCode；同签名覆盖安装并保留既有用户数据。 | 身份、签名和数据迁移策略是产品边界，保持本仓独立，不吸收旧包身份或签名。 |
-| 应用骨架 | 两边都采用 Android 壳、WebView UI、Termux 快照、前台服务/看门狗、SAF、控制台和插件扩展；本仓还明确隔离 BrowserHost 生命周期与来源。 | 上游 README 描述同一主体架构，并带虚拟屏、浏览器工作台、设置页和插件管理。 | 基础平台能力大体同源。比较后续代码时按调用链和边界找差异，不能把相同功能重复移植。 |
+| 应用骨架 | 两边都采用 Android 壳、WebView UI、Termux 快照、前台服务/看门狗、SAF、控制台和插件扩展；本仓 BrowserHost 区分独立 profile 与用户显式开启的 shared 兼容模式，生命周期与来源另有约束。 | 上游 README 描述同一主体架构，并带虚拟屏、浏览器工作台、设置页和插件管理。 | 基础平台能力大体同源。比较后续代码时按调用链和边界找差异，不能把相同功能重复移植。 |
 | 引擎与补丁 | 固定官方 DSH `0.2.1-rc.2` / `687f282e8625c6b8d11ff58211a90524be2e4317`；从源码形成部署树，重验 24 条补丁、peer、槽位、路由和一次/持久 PTC。 | v0.14.8 同样追到 `0.2.1-rc.2`，Release 记载 24 条补丁；其“348 包”与本仓 345 个源码导出包统计口径不同，不能直接据数字判缺包。 | 版本目标相同；已有引擎升级不再重复做。未来追版按本仓独立来源审计与全部补丁/依赖闭包流程执行。 |
 | 构建、ABI、签名 | 当前来源链只构建 ARM64，并以 primary/reference 两份构建复核；从已提交本仓 HEAD 隔离重建、记录 provenance，以本仓私有 PKCS12 签名。 | 当前 `main` 的 build-apk-source workflow 也是 ARM64 primary/reference 双构建；Gradle 配置引用仓内 keystore，workflow 另有签名步骤。v0.14.8 Release 资产另含 x86_64，不能推断当前 main 有 x86_64 构建。 | 两边都已有来源构建和双构建复核，比较具体输入、可复现性与签名边界；不复制上游密钥、包身份或旧协调仓链。双 ABI 是独立产品/设备决策。 |
 | AI 工具与插件 | 工具只由插件注册。自包含副本含 bridge、manage、model-capability、file-open、browser、linux-env、vdisplay 等；源码、`package.json` 与 `lib/` 产物须同步。 | 当前 scripts/plugin-dirs.json 与 Cordis patch 均注入 Linux 环境插件；model-capability 目录与注入项已不存在。其构建哈希循环和 profile 注释仍提到 model-capability，属于源码内残留引用。 | 插件边界相同，但当前有效清单不同。保留本仓模型能力插件；上游删除不能视为等价替代，也不要把残留注释当成有效注入。 |
-| Linux 环境 | 本仓已接入 ARM64 离线资产与 bootstrap；本地保留 linux-release-pins、离线安装集成用例及来源/摘要闭包。设备验收尚缺。 | 当前 main 的 Linux 插件包版本为 0.1.2，scripts/plugin-dirs.json 和 profile patch 均启用；linux-host-asset-io 将宿主已暂存资产交给 bootstrap 复验，不自行下载。v0.14.8 Release 的“未注入”结论已被后续源码改变。 | Linux 能力不是本仓独有。保留本仓离线资产来源与 pin；以当前源代码比较摘要复验、路径约束、失败关闭和恢复语义，只对证实的缺口提取实现。 |
+| Linux 环境 | 本仓已接入 ARM64 离线资产与 bootstrap；本地保留 linux-release-pins、离线安装集成用例及来源/摘要闭包。设备验收尚缺。 | 当前 main 的 Linux 插件包版本为 0.1.2，scripts/plugin-dirs.json 和 profile patch 均启用；linux-host-asset-io 将宿主已暂存资产交给 bootstrap 复验，不自行下载。v0.14.8 Release 的“未注入”结论已被后续源码改变。 | Linux 能力不是本仓独有。保留本仓离线资产来源与 pin；以当前源代码比较摘要复验、路径约束、失败关闭和恢复语义，只对证实的缺口提取实现；第二轮已证实解包载荷来源不同，保留本仓从已验归档重新解包，详见源码复核 R6。 |
 | 虚拟屏 UI | VdisplayHost 已有宽/高受限等比 letterbox；本仓 vdisplay 客户端未消费已有气泡菜单开合状态；BrowserHost 已消费 `data-dsh-sidebar-bubbles` 的 open/closing 状态。 | 当前 main 的 vdisplay 客户端监听 data-dsh-popover-open，并将遮挡状态合并到 viewer visible 判据；页面侧在打开/收起弹层时翻转属性。 | 比例算法已具备；#403 仍是明确源码差异。优先让 vdisplay 消费本仓已有菜单状态，补恢复逻辑，不再另建全局开合信号。 |
 | 管理和启动体验 | 本仓 EngineStartFlow 已在前置所有权探测和 worker 工作之前显示“正在启动”，与 #416 的即时反馈效果一致；PluginManagementPage 离线时仍只提供状态/启动入口，清单与启停依赖运行中 RPC。 | 当前 main 同样先在主线程显示 Starting；另新增 PluginOfflinePanel/PluginPatchOffline，离线列出并启停 Soft 插件。写入前核对状态，Hard 清单不可写，临时文件原子替换后回读确认。 | 启动反馈已经具备，不再列为吸收项。离线插件管理是实际差异；借鉴 Hard/Soft 边界、失败关闭与读回原则，按本仓持久化与事务约束重做，不直接复制其文本解析器。 |
 | 输入回执 | ADB 键盘已有显式组件、nonce、Android 14+ sender UID 校验和文本回读；目前接收器不写应用处理结果码，服务 handle 还会忽略底层编辑调用结果。清空-only 或无障碍无法回读时，shell 命令成功可能被当成处理成功；文本不一致时另有一次自动清空/重投。 | 当前 main 的接收器只对有序广播写回 committed/not-ready/rejected/bad-request/no-connection；manage 插件点名组件、发有序广播并解析结果，同时兼容旧壳的默认 0/缺失结果码。 | 源码已证明存在可收窄的假成功面。新增结果回执应按每条广播分别判读，保留 nonce/UID 门，不因结果码缺失或错误自动重投；重新审查本仓现有文本重试，避免与回执叠加造成重复输入。 |
 | 更新与恢复 | 本仓已按用户决定移除 APK 自更新与在线快照入口；本地快照解压/刷新由事务、校验与 UndoGate 管理，APK 只能从源码链生成。 | 当前 main 源码仍含 UpdateChecker、UpdateManager 和 REQUEST_INSTALL_PACKAGES；在线快照更新校验 hash/大小后走 SnapshotTransaction。Release 资产/README 与当前源代码是不同时间截面。 | 保持本仓不提供 OTA、安装权限或在线快照入口。只复用能独立验证的事务/解压缺陷修复，不移植 updater 或绕过本仓来源链。 |
 | 原生桥与安全 | 本仓 MainFrameBridge 将可调用方法收窄到显式注册的注解方法，并用随机 capability 校验后再分发；还有独立测试。 | 当前 main 的 MainActivity 仍直接向主 WebView 注册 AndroidBridge JavascriptInterface，未见对应 MainFrameBridge capability 分发层。 | 保留本仓桥面收窄与 nonce/capability 设计；不以功能相似为由替换为上游直接桥。继续核对 iframe、导航、renderer 销毁和 capability 生命周期。 |
+| 自动 Soft 恢复 | 本仓仍挂载 undo-savepoint，由健康拍记录 known-good，启动流和看门狗可执行 UndoGate。 | 上游虽保留 UndoGate 类，profile 挂载和 EngineService 的自动恢复调用已退役，另接原生修复助手。 | 保留本地自动恢复与 exact fingerprint 判据，不以同名类存在认定行为等价；见第二轮源码复核 R5。 |
 | 快照事务与沙箱 | 本仓 SnapshotTransaction、SnapshotExtractor、SnapshotFs 和 UndoGate 覆盖本地刷新/恢复；shell-termux 的路径级隔离仍是已知缺口。 | 上游也有 SnapshotTransaction/Extractor，并由 UpdateManager 驱动在线更新；两边 shell-termux 都明确报告 enforcement=partial，边界仍是 Android 应用域，没有 bwrap/landlock 路径隔离。 | 事务文件均有本地产品语义，不能整文件覆盖；路径级沙箱仍是本仓独立 P0，当前上游源码也没有解决它。 |
 | 验收与发布 | 按风险档验证；L2/L3 当轮代码/CDP/ADB 三层，真实任务由模型自主编排，几何改动双方向；当前 ARM64 设备不可用，候选未做设备验收。 | v0.14.8 Release 的证据针对 tag、模拟器与开发运行时；当前 main 后续源码不因此自动获得同等设备验证。 | 上游源码用于设计比较，Release 证据用于理解 tag；两者都不替代本仓按当前提交和 ARM64 真机自验。 |
 
@@ -78,10 +79,27 @@
 | ADB 键盘结果 | [AdbKeyboardReceiver.kt](https://github.com/kelai141/dsh-mobile-apk/blob/7cd7ccab8247514e20be2925c92d46b45e70d152/app/src/main/java/com/dsharnessmobile/shell/AdbKeyboardReceiver.kt)、[ime-broadcast.ts](https://github.com/kelai141/dsh-mobile-apk/blob/7cd7ccab8247514e20be2925c92d46b45e70d152/plugins/dsh-android-manage/src/ime-broadcast.ts) | app/src/main/java/com/snoworwind/pocketharness/AdbKeyboardReceiver.kt、AdbKeyboardService.kt、plugins/dsh-android-manage/src/index.ts | 上游已有五类有序广播结果码和调用方兼容解析；本仓需先把服务真实处理结果传到接收器，再让插件判读逐次回执，同时收窄现有重试。 |
 | 虚拟屏与网页弹层 | [vdisplay client](https://github.com/kelai141/dsh-mobile-apk/blob/7cd7ccab8247514e20be2925c92d46b45e70d152/plugins/dsh-android-vdisplay/src/client/index.ts) 观察 data-dsh-popover-open 并隐藏 SurfaceView；[sidebar-bubbles.ts](https://github.com/kelai141/dsh-mobile-apk/blob/7cd7ccab8247514e20be2925c92d46b45e70d152/dsh-client-ui-responsive/src/client/mobile/sidebar-bubbles.ts) 发出开合信号 | plugins/dsh-android-vdisplay/src/client/index.ts、VdisplayHost.kt | 几何比例已有；复用本仓 sidebar-bubbles.ts 与 native-browser-presentation.ts 的菜单语义，补 vdisplay 消费和关窗/重载/旋转时的恢复判据。 |
 | 运行时更新 | [UpdateManager.kt](https://github.com/kelai141/dsh-mobile-apk/blob/7cd7ccab8247514e20be2925c92d46b45e70d152/app/src/main/java/com/dsharnessmobile/shell/UpdateManager.kt) 保留在线快照替换并复用事务 | app/src/main/java/com/snoworwind/pocketharness/SnapshotTransaction.kt、SnapshotExtractor.kt | 本仓保留事务实现，拒绝吸收在线更新入口、安装权限和签名策略。只对具体事务缺陷做独立反例比较。 |
-| Linux 环境 | [linux-host-asset-io.ts](https://github.com/kelai141/dsh-mobile-apk/blob/7cd7ccab8247514e20be2925c92d46b45e70d152/plugins/dsh-android-linux-env/src/linux-host-asset-io.ts) 只转交宿主已暂存资产并拒绝自行下载；bootstrap 复算摘要和体量 | plugins/dsh-android-linux-env/src/linux-host-asset-io.ts、linux-release-pins.ts、app/src/main/java/com/snoworwind/pocketharness/LinuxAssetIO.kt | 机制方向相同；本仓额外维护离线 pin 与安装集成。只对实际的来源 pin、路径边界、树复验和失败恢复差异做补齐，不重复移植插件。 |
+| Linux 环境 | [linux-host-asset-io.ts](https://github.com/kelai141/dsh-mobile-apk/blob/7cd7ccab8247514e20be2925c92d46b45e70d152/plugins/dsh-android-linux-env/src/linux-host-asset-io.ts) 只转交宿主已暂存资产并拒绝自行下载；bootstrap 复算摘要和体量 | plugins/dsh-android-linux-env/src/linux-host-asset-io.ts、linux-release-pins.ts、app/src/main/java/com/snoworwind/pocketharness/LinuxAssetIO.kt | 准备/复验方向相近，执行载荷不同：上游复制宿主 unpacked 树，本仓从保留归档重解包。保留本地 pin、依赖闭包与重解包；剩余激活/卸载/恢复差异继续审计。 |
 | 沙箱声明 | [dsh-shell-termux](https://github.com/kelai141/dsh-mobile-apk/tree/7cd7ccab8247514e20be2925c92d46b45e70d152/dsh-shell-termux) 诚实报告 enforcement=partial | dsh-shell-termux/src/index.ts、known-gaps.md | 上游没有路径级执行隔离；本仓 P0 缺口不能以“上游也如此”关闭。 |
 
 源码比较修正了基于 Release 的两项判断：当前上游 main 已注入 Linux 插件；当前 main 的启动即时反馈已实现且本仓也已有对应行为。反过来，当前 main 的在线更新器仍在源码中，model-capability 插件则确实不在有效包/挂载清单中。后续报告需同时写清 commit/tag，避免把一个时间截面的状态套到另一个时间截面。
+
+### 第二轮源码复核与计划修订
+
+本轮联网复核时，上游 main 仍与“对照口径”的固定样本一致；本仓 main 为 1a8cbfc0792f9d17bfdda463aa6d1cc4105c8b2a。两边历史和源码均已取到本地静态比较，范围涵盖受选源码/测试/清单/workflow；不是只看 PR 标题，也未将文件差异清单当成全仓行为审计。
+
+证据、路径、调用关系和静态推导集中见 [第二轮源码复核报告](UPSTREAM-SOURCE-REVIEW-2026-10-20.md)，实施要求仍以独立计划为准。本轮新增/修订处置：
+
+| 复核项 | 对计划的影响 |
+|---|---|
+| R1：无引擎服务时悬浮层自收尾 | 新增独立 F 生命周期候选；与 #415 隐藏召回条分开 |
+| R2/R3：输入选区、失败重投与弹层观察目标 | A 补清空语义反例，B 复用本仓菜单状态；上游实现不能直接整体移植 |
+| R4/R12：离线解析与真正活动配置写者 | C1 区分未知和空，C2 排他写者加入 SnapshotUserData.importConfiguration，保留精确回滚 |
+| R5/R6/R7：自动恢复、Linux 载荷与浏览器模式 | 保留本地调用链、归档重解包、屏幕末端范围门和显式 shared 兼容模式 |
+| R8/R9/R10：语言、会话身份与抽屉补丁 | 语言细化 H1/H2，会话身份复用拆 G，双锚点抽屉保活拆 I；分屏整体仍需独立需求和 store 契约 |
+| R11：快速打包 | 不作为本仓候选来源构建的替代，不修改 main-only 规则 |
+
+本轮只交付源码审计和计划文档，未移植代码、未运行实现测试、未构建 APK、未做设备验证。新增候选是否在设备上复现、方案是否通过三层验收，留待其独立实施 PR 取证。
 
 ### 吸收优先级与交付顺序
 
@@ -94,12 +112,15 @@
 | 1 | P1 / L3 | 虚拟屏弹层遮挡（#403） | 本仓比例算法已具备；先复现 HTML 弹层被原生 SurfaceView 盖住，再让 vdisplay 消费本仓现有 open/closing/closed 状态，避免双份信号。卸载、旋转、页面重载和异常路径都须恢复显示。单独 UI PR，按两方向三层验收。 |
 | 已具备 | 不新开 PR | 启动即时反馈（#416） | 本仓 EngineStartFlow 已在前置所有权探测和 worker 前显示 Starting，源码行为与上游修正相符。回归或差异复现时再开单项修复，不重复移植。 |
 | 2 | P1 / L2 | ADB 键盘有序结果回执（#420） | 本地源码已显示清空-only、读回不可用时会把 am broadcast 的命令成功当应用处理成功。先让 AdbKeyboardService 回传真实编辑结果，再为每条点名广播返回有序结果码，manage 端分别解析 clear/input 的结果；继续 nonce 与 sender UID 校验。兼容无结果码旧壳时回退到已有回读语义，不增加因回执缺失而重投；单独审查并约束现有“回读不一致后重发一次”，避免重复输入。 |
+| 2A | P1 / L3，先复现 | #443 悬浮服务生命周期 | 最小提取 OverlayService 自停/非粘性策略；在引擎未启动、已停止和运行中分别复现任务划除，三层取证后独立交付，不引入召回条与面板重排。 |
 | 3 | P1 / L2+L3 | 离线插件管理（#416） | 只管理可确认的 Soft 插件，Hard 清单缺失/不匹配时拒绝写入；打开页面不启动引擎。落盘前比较最新文件状态/摘要，使用本仓持久化策略的原子写、备份或事务边界并写后回读。在线 RPC 路径保留；先做只读清单 C1，再做具备排他写入与中断恢复的启停 C2，两个独立 PR。 |
-| 4 | P2 / parity | Linux 环境源码差异 | 当前两仓都实际挂载 Linux 插件，且都有“宿主暂存、bootstrap 复验、不自行下载”的代码路径。先以本仓 linux-release-pins、Kotlin 宿主桥和上游 linux-host-asset-io 逐项核对来源、摘要、体量、路径、Symlink 拒绝及恢复；只有出现明确差异/缺陷才开单项补齐 PR。 |
+| 4 | P2 / parity | Linux 环境源码差异 | 当前两仓都实际挂载 Linux 插件，且都有“宿主暂存、bootstrap 复验、不自行下载”的代码路径。已核对到上游复制宿主 unpacked 树、本仓重新解包这一差异，保留本地载荷边界；剩余激活/卸载/升级/恢复面只对具体反例开单项 PR。 |
 | 保留 | 不吸收删除 | model-capability 插件差异 | 上游当前有效注入不含该插件，但本仓模型目录、models.dev 缓存、来源梯与诊断仍是本地能力。除非产品决定退役，不能以对齐上游为理由删除；如评估退役须逐项盘点数据迁移和替代项。 |
 | 5 | P3 / 有指标再做 | 快照门禁提速 | 上游一次解码供多个门禁复用，Release 自报最慢三项 134.2s→57.7s。本仓先采集来源链逐门禁耗时；确认解码重复是实际瓶颈后再独立优化，保留完整 XZ 尾部校验、损坏反证与每个消费者的独立失败归因。 |
-| 待审计 | P2 / 产品需求触发 | #450 壳侧双语与语言切换 | 本仓已有局部 locales，尚不能视作壳侧语言切换已覆盖；先审计语言真源、原生/Web/通知同步与重建回退，按独立需求决定范围，不捆绑本轮主线。 |
-| 延后 | 需求触发 | #411 双工作区、#412 抽屉常驻、#415 悬浮球隐藏召回 | 先确认用户场景与设备覆盖，再单项评估内存、焦点、横竖屏和 overlay 生命周期；不打包成一个体验 PR。 |
+| 条件候选 G | P2 / 复现成立后 | #411 中的跨入口会话身份复用 | 已核对 existingConversation/retainDockIdentity；先证实本仓真实 store 契约和意外重复打开，不合并用户主动镜像，不引入双工作区。 |
+| 设计已细化 H | P2 / 范围确定后 | #450 壳侧双语与语言切换 | 已核对资源/bootstrap/桥与配置同步；拆资源显示 H1 和偏好/持久化 H2，不照搬直接覆写与忽略同步失败的路径。 |
+| 条件候选 I | P2 / 有指标再做 | #412 手机抽屉宽内容保活 | 先采集本仓帧耗时与内存；收益成立才同时移植 wide 与内联宽度两个锚点及真实引擎夹具。 |
+| 延后 | 需求触发 | #411 双工作区整体、#415 悬浮球隐藏召回 | G/I 与 F 不等于整项已吸收；双工作区保留 tab 能力限制，先确认用户场景与设备覆盖，再单项评估内存、焦点、横竖屏和 overlay 生命周期。 |
 | 排除 | 不移植 | APK/快照 OTA、旧签名、双 ABI 资产、协调仓构建链、#418 壳侧修复助手 | 与本仓产品身份、来源链或“AI 工具只由插件注册”边界冲突。启动恢复需求仍可通过插件/非模型控制路径另行设计。 |
 
 ### 已有实现与无需重复吸收项
