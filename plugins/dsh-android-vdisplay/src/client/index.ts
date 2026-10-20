@@ -24,6 +24,7 @@ import {
   type VdPanelState,
 } from '../status.ts'
 import { watchTerminalKeybars } from '../keybar/mount.ts'
+import { hasBlockingStageOverlay, watchStageVisibility } from './stage-visibility.ts'
 
 import type {} from '@deepseek-ai/dsh-client-ui-slots'
 
@@ -159,36 +160,6 @@ async function pullPanelState(): Promise<VdPanelState> {
  * @param publish - 可见性下发函数（幂等，可在同一帧内安全重复调用）。
  * @returns 解绑函数。
  */
-function watchStageVisibility(publish: () => void): () => void {
-  // rAF 合帧：MutationObserver 在整棵子树上是高频回调，必须收敛到每帧最多一次下发。
-  let queued = 0
-  const schedule = () => {
-    if (queued !== 0) return
-    queued = window.requestAnimationFrame(() => { queued = 0; publish() })
-  }
-  const observer = typeof MutationObserver === 'undefined'
-    ? null
-    : new MutationObserver(schedule)
-  try {
-    observer?.observe(document.body, {
-      childList: true,
-      subtree: true,
-      attributes: true,
-      // 只盯与可见性相关的属性，避免把每次文本重排都收进来。
-      attributeFilter: ['style', 'class', 'hidden', 'data-sidebar-right-open', 'data-sidebar-right-collapsed'],
-    })
-  } catch {
-    /* document.body 尚未就绪：轮询兜底仍然在 */
-  }
-  document.addEventListener('visibilitychange', schedule)
-  return () => {
-    if (queued !== 0) window.cancelAnimationFrame(queued)
-    queued = 0
-    observer?.disconnect()
-    document.removeEventListener('visibilitychange', schedule)
-  }
-}
-
 /**
  * Panel: 编号列表（选择查看哪块虚拟屏）+ 原生画面工位。
  * 空态「暂无虚拟屏」；占用态「由会话 X 使用中」（不渲染任何操作面）。
@@ -216,10 +187,11 @@ function VdPanel(props: { sessionId?: unknown }): ReactElement {
       // data-rightbar-collapsed 是恒为 true 的常量，不可用——见坑 119/120）。
       const collapsed = document.querySelector('[data-sidebar-right-expand]') !== null
       const hidden = getComputedStyle(stage).display === 'none' || getComputedStyle(stage).visibility === 'hidden'
+      const overlay = hasBlockingStageOverlay(document, window)
       nativeBridge()?.vdisplayBounds?.(JSON.stringify({
         left: rect.left, top: rect.top, width: rect.width, height: rect.height,
         viewportWidth: window.innerWidth, viewportHeight: window.innerHeight,
-        visible: !occupiedRef.current && !collapsed && !hidden && snap.state === 'active' &&
+        visible: !occupiedRef.current && !collapsed && !hidden && !overlay && snap.state === 'active' &&
           rect.width > 1 && rect.height > 1,
         viewerId: VIEWER_ID,
         // 目标屏别名兜底（0.14.0 设备实锤）：`snap.selected` 在面板刚打开 / 状态未拉到 / 该屏刚被
@@ -240,7 +212,7 @@ function VdPanel(props: { sessionId?: unknown }): ReactElement {
     if (stageRef.current !== null) observer?.observe(stageRef.current)
     window.addEventListener('resize', publishBounds)
     // 事件驱动的可见性下发（0.14.0 用户实报「收起后还要延迟一下才消失」的直接修复）。
-    const unwatch = watchStageVisibility(publishBounds)
+    const unwatch = watchStageVisibility(document, window, publishBounds)
     return () => {
       unwatch()
       observer?.disconnect()
