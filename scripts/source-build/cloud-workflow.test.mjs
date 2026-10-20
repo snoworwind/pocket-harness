@@ -116,6 +116,36 @@ function checkCachedEffectiveOverlay(source) {
 test('trusted cache restores its source-built runtime overlay before snapshot construction', () => {
   checkCachedEffectiveOverlay(read('build-apk-source.yml'))
 })
+function checkCachedProjectComponentInputs(source, base) {
+  const materialize = source.indexOf('      - name: Materialize trusted engine base')
+  const freeze = source.indexOf('      - name: Freeze current project component inputs for trusted cache hit')
+  const buildFromSource = source.indexOf('      - name: Build and pack DeepSeek Harness from source')
+  assert.ok(materialize > 0 && freeze > materialize && buildFromSource > freeze,
+    'a trusted cache hit must recreate project provenance after materialization and before source/cache paths diverge')
+  const end = source.indexOf('\n      - name:', freeze + 1)
+  const block = source.slice(freeze, end)
+  assert.match(block, /if: steps\.engine-cache\.outputs\.cache-hit == 'true'/)
+  assert.match(block, /record-project-components\.mjs inputs/)
+  assert.match(block, /\.deploy-tmp\/source-build\/project-component-provenance\.json/)
+  assert.doesNotMatch(base, /['"]project-component-provenance\.json['"]/,
+    'project commit provenance must be recomputed per run, not restored from engine-only cache')
+}
+test('trusted engine cache hit freezes project component inputs from the current checkout', () => {
+  checkCachedProjectComponentInputs(read('build-apk-source.yml'),
+    readFileSync(new URL('./engine-base.mjs', import.meta.url), 'utf8'))
+})
+test('negative controls reject missing or unconditional cached project provenance refresh', () => {
+  const source = read('build-apk-source.yml')
+  const base = readFileSync(new URL('./engine-base.mjs', import.meta.url), 'utf8')
+  const start = source.indexOf('      - name: Freeze current project component inputs for trusted cache hit')
+  const end = source.indexOf('\n      - name:', start + 1)
+  const block = source.slice(start, end + 1)
+  const unconditional = block.replace("        if: steps.engine-cache.outputs.cache-hit == 'true'\n", '')
+  for (const bad of [source.replace(block, ''),
+    source.replace(block, unconditional)]) {
+    assert.throws(() => checkCachedProjectComponentInputs(bad, base), assert.AssertionError)
+  }
+})
 test('negative controls reject missing overlay self-test, negative control, installer, or receipt upload', () => {
   const source = read('build-apk-source.yml')
   const installPattern = /          node scripts\/source-build\/restore-effective-engine-overlay\.mjs \\\n[\s\S]*?            \.deploy-tmp\/source-build\/effective-engine-overlay-restoration\.json\n/

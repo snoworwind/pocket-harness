@@ -186,6 +186,15 @@ jobs:
           fi
           node scripts/source-build/engine-base.mjs materialize .deploy-tmp/base-cache
 
+      - name: Freeze current project component inputs for trusted cache hit
+        if: steps.engine-cache.outputs.cache-hit == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .deploy-tmp/source-build
+          node scripts/source-build/record-project-components.mjs inputs \
+            .deploy-tmp/source-build/project-component-provenance.json
+
       - name: Fail closed when a trusted engine base is unavailable
         if: steps.engine-base.outputs.trusted == 'true' && steps.engine-cache.outputs.cache-hit != 'true'
         shell: bash
