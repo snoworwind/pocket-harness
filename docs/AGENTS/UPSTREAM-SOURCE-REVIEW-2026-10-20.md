@@ -2,6 +2,8 @@
 
 本轮按用户要求继续读源码并完善计划，只提交文档。固定输入与实施顺序分别见 [跟踪账本](UPSTREAM-TRACKING.md) 和 [实施计划](UPSTREAM-ABSORPTION-PLAN-2026-10-20.md)。下文的“存在差异”指固定源码中的差异，“风险推导”不是设备复现；本轮未构建 APK、未运行实现测试、未做设备验证。
 
+本报告保留固定输入的源码事实；处置已按后续宗旨复核更新。功能差异不自动构成本仓需求，当前吸收范围以实施计划为准。
+
 ## 取证方法与覆盖边界
 
 联网读取两个仓库 main 的 commit API：上游仍为前轮样本，本仓 main 为已合并计划的提交。本轮取得上游稀疏源码副本，静态读取源码、测试文本、注入清单和方法调用关系，没有执行上游构建或程序。
@@ -48,11 +50,11 @@
 
 ## R4：离线插件管理只借鉴边界和原子替换，不复制解析器
 
-上游 [PluginOfflineRepository](https://github.com/kelai141/dsh-mobile-apk/blob/7cd7ccab8247514e20be2925c92d46b45e70d152/app/src/main/java/com/dsharnessmobile/shell/PluginOfflinePanel.kt#L39) 核对 Hard 清单、拒绝目标软链接，用同目录临时文件校验后 ATOMIC_MOVE，并用相同解析器回读。这些可作为本仓 C1/C2 的设计参考。
+上游 [PluginOfflineRepository](https://github.com/kelai141/dsh-mobile-apk/blob/7cd7ccab8247514e20be2925c92d46b45e70d152/app/src/main/java/com/dsharnessmobile/shell/PluginOfflinePanel.kt#L39) 核对 Hard 清单、拒绝目标软链接，用同目录临时文件校验后 ATOMIC_MOVE，并用相同解析器回读。这些可作为归属检查和数据完整性审查参考，不构成新增原生离线管理器的理由。
 
 实际限制也须登记：它只读取 profile patch；读取异常折为空字符串；[rows](https://github.com/kelai141/dsh-mobile-apk/blob/7cd7ccab8247514e20be2925c92d46b45e70d152/app/src/main/java/com/dsharnessmobile/shell/PluginPatchOffline.kt#L120) 以 distinctBy(id) 折叠重复项；setEnabled 可改已有 disabled 行；写后回读失败路径未见恢复原字节的事务。其“拒绝歧义”“保留原清单”文案不能代替这些判据的实现证据。
 
-处置：C1 必须区分空清单、读取失败、组合无法确定；C2 必须纳入 HOME/bundle 层、重复身份、并发、中断和真实回滚条件。上游解析器与成功文案不直接吸收。
+处置：C1 收窄为复用已有可信信息的必要只读诊断，区分空清单、读取失败和组合未知；C2 通用原生解析/写入/恢复方案撤回。未来确有写入需求时，HOME/bundle 层、重复身份、并发、中断和真实回滚仍是审查条件，须先判断引擎/插件复用边界。上游解析器与成功文案不直接吸收，既有恢复继续保留。
 
 ## R5：UndoGate 类仍在，但上游自动恢复调用已断开
 
@@ -70,7 +72,7 @@
 
 BrowserOverlayPolicy、原生浏览器 presentation、在线 PluginManagementRepository 与 SnapshotUserData 在 namespace/换行归一化后相同；这些文件没有新的行为移植项。BrowserHost/Profile 与客户端 adapter/bridge 的主要已核对差异是本仓显式 shared 兼容模式：不支持 MULTI_PROFILE 时由用户开启、状态报告 shared、仍拒绝 loopback；上游默认拒绝该场景。
 
-处置：保留 [ARCHITECTURE.md](ARCHITECTURE.md) 记录的用户决定及本仓 MainFrameBridge。引入客户端或工作区更新时要同时覆盖 isolated/shared/unavailable，不能整文件替换掉兼容状态，也不能将 shared 标成隔离。相关浏览器与虚拟屏设备事实仍以本仓验收为准。
+处置：保留 [ARCHITECTURE.md](ARCHITECTURE.md) 记录的用户决定及本仓 MainFrameBridge。引入客户端或工作区更新时要同时覆盖 isolated/shared/unavailable，不能整文件替换掉兼容状态，也不能将 shared 标成隔离。保留这些语义不使当前实现免于安全审查；相关浏览器与虚拟屏设备事实仍以本仓验收为准。
 
 ## R8：双语功能有清晰分层，但持久化同步需重做
 
@@ -78,23 +80,23 @@ BrowserOverlayPolicy、原生浏览器 presentation、在线 PluginManagementRep
 
 不过 [syncDshLocale](https://github.com/kelai141/dsh-mobile-apk/blob/7cd7ccab8247514e20be2925c92d46b45e70d152/app/src/main/java/com/dsharnessmobile/shell/AppLanguage.kt#L98) 直接改 profile patch，rename 失败会退回直接 writeText；[MainActivity setter](https://github.com/kelai141/dsh-mobile-apk/blob/7cd7ccab8247514e20be2925c92d46b45e70d152/app/src/main/java/com/dsharnessmobile/shell/MainActivity.kt#L1239) 忽略该同步返回值，setMode 也会吞持久化异常。由此不能保证“界面选择、偏好与活动配置”同时已保存。
 
-处置：将 #450 从“仅看标题、待审计”细化为独立语言工作包。先定唯一偏好真源和明确的部分失败状态，优先使用已有 settings revision/事务或本仓受限写入边界；保持 MainFrameBridge 和正常配置原字节。资源/翻译层可先整理，桥协议和配置写入另按风险验收。尚未将整项承诺为本轮功能交付。
+处置：保留分层和同步风险的源码结论，完整双语与语言切换列为非默认产品备选，不承诺 H1/H2 两个实现 PR。必要授权/错误提示的显示缺陷可按具体问题最小修复；未来明确需要跨层切换时，先复用引擎/插件 locale 并确定单一偏好真源，不能为翻译新增平行壳侧 Cordis 写者或吞掉同步失败。MainFrameBridge 和正常配置原字节仍须保护。
 
 ## R9：会话身份复用可从双工作区中拆出
 
 上游 [existingConversation/retainDockIdentity](https://github.com/kelai141/dsh-mobile-apk/blob/7cd7ccab8247514e20be2925c92d46b45e70d152/dsh-client-ui-responsive/src/client/mobile/conversation-dock.tsx#L39) 在当前 owner 内跨 conversation/subagentchat 地址查找同一 child，优先聚焦既有 tab；释放时只恢复自己仍拥有的包装器。另有 [身份用例](https://github.com/kelai141/dsh-mobile-apk/blob/7cd7ccab8247514e20be2925c92d46b45e70d152/dsh-client-ui-responsive/tests/conversation-dock-identity.spec.ts)，但这些 fixture 不替代实际 rc.2 store 契约。
 
-本仓尚无该包装器。处置：新增条件候选，先复现不同入口造成的意外重复 tab，再以真实 owner/session 与 contentId 定义去重范围。明确保留用户主动创建多个镜像视图的能力，不以全局 child ID 无条件合并；不要求引入 MobileWorkspaces、keepMounted 或分屏 CSS。
+本仓尚无该包装器。处置：列为非默认备选，先证明意外重复、跨会话错误或状态丢失确实损害必要任务，再以真实 owner/session 与 contentId 定义修复范围。明确保留用户主动创建多个镜像视图的能力，不以全局 child ID 无条件合并；不要求引入 MobileWorkspaces、keepMounted 或分屏 CSS。
 
 ## R10：抽屉常驻补丁需两个锚点，双工作区需保留能力限制
 
-上游 [sidebar-keep-wide-B2](https://github.com/kelai141/dsh-mobile-apk/blob/7cd7ccab8247514e20be2925c92d46b45e70d152/scripts/patches/data/sidebar-keep-wide-B2.mjs) 同时修改 wide 判据和收起时内联宽度，并登记到 registry；只取一个锚点会把内容保活与窄宽度冻结混在一起。本地没有该补丁。处置：P2 性能候选，先取得本仓打开帧耗时、保活内存与冷启动收起态数据；收益成立才移植两个锚点及版本夹具，不能只复制一行判断。
+上游 [sidebar-keep-wide-B2](https://github.com/kelai141/dsh-mobile-apk/blob/7cd7ccab8247514e20be2925c92d46b45e70d152/scripts/patches/data/sidebar-keep-wide-B2.mjs) 同时修改 wide 判据和收起时内联宽度，并登记到 registry；只取一个锚点会把内容保活与窄宽度冻结混在一起。本地没有该补丁。处置：非默认性能备选，先取得本仓打开帧耗时、保活内存、后台副作用与冷启动收起态数据；必要任务瓶颈及收益成立、决定采用后，才评估两个锚点及版本夹具，不能只复制一行判断。
 
 上游 [MobileWorkspaces](https://github.com/kelai141/dsh-mobile-apk/blob/7cd7ccab8247514e20be2925c92d46b45e70d152/dsh-client-ui-responsive/src/client/mobile/mobile-workspaces.ts#L10) 对 tab 类型显式许可，拒绝 virtual display 分屏/浮动，也拒绝两个原生浏览器同时分屏，并依赖 rc.2 owner.adopted/store 私有结构。处置：双工作区继续单独需求评估；若选用，保留这些限制、store 契约、生命周期和 shared 浏览器回归，不把它误记成所有工具视图都可任意分屏。
 
 ## R11：快速打包不解决本仓来源构建前置问题
 
-上游 [build-apk-dev-fast](https://github.com/kelai141/dsh-mobile-apk/blob/7cd7ccab8247514e20be2925c92d46b45e70d152/scripts/build-apk-dev-fast.mjs) 明示跳过所有发布门禁，复用已有 snapshot 后运行 assembleDebug。它不属于本仓获准的来源链。处置：保持实施计划的候选来源构建决定项，不用此脚本、旧协调仓链或改分支名来绕过 main-only 规则；本轮没有修改该规则。
+上游 [build-apk-dev-fast](https://github.com/kelai141/dsh-mobile-apk/blob/7cd7ccab8247514e20be2925c92d46b45e70d152/scripts/build-apk-dev-fast.mjs) 明示跳过所有发布门禁，复用已有 snapshot 后运行 assembleDebug。它不属于本仓获准的来源链。处置：沿用已提交 main 来源链，撤回原计划建议推进 PR 提交构建 APK 例外的方向；不用此脚本、旧协调仓链或改分支名绕过规则。具体原生 PR 的证据与 main-only 约束若有冲突，必须如实记录，不能推导出分支构建授权或先合后验豁免；本轮未改变来源链规则。
 
 ## R12：活动配置传输主路径已经覆盖，不按旧类名重做
 
@@ -104,4 +106,4 @@ BrowserOverlayPolicy、原生浏览器 presentation、在线 PluginManagementRep
 
 ## 计划修订结论
 
-B/A/C1/C2 保持主线，补入 F 悬浮服务生命周期和 G 会话身份复用两个可独立复现、独立交付的候选；语言与抽屉常驻细化为条件工作包。保留本地自动恢复、显式屏幕目标/末端范围门、Linux 重解包和浏览器兼容模式。每项的进入/退出、源码触点、反例、回滚和真实任务要求在实施计划维护，本报告只存源码证据和处置依据。
+按宗旨复核后的当前计划，已知安全风险和 Linux 信任边界优先审查，A 输入结果链优先于 B 呈现修复，F 独立复现后处理。C1 仅在必要诊断受阻时实施，C2 通用原生写入方案撤回，G/H/I 与整体分屏/召回功能不进入默认队列。保留本地自动恢复、显式屏幕目标/末端范围门、Linux 重解包和用户显式浏览器兼容语义，不将保留视为安全豁免。每项的进入/退出、源码触点、反例、回滚和真实任务要求在实施计划维护，本报告只存源码证据和处置依据。
