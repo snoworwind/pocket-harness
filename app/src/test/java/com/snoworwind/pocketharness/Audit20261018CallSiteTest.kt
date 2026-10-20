@@ -96,6 +96,23 @@ class Audit20261018CallSiteTest {
     assertTrue("身份不可验证时仍 fail-closed（只认 nonce）", service.contains("senderUid != null"))
   }
 
+  @Test
+  fun adbKeyboardReportsOrderedDispatchAndDoesNotTreatPartialEditsAsSuccess() {
+    val receiver = codeOnly(source("AdbKeyboardReceiver.kt"))
+    assertTrue("只有有序广播才回写结果", receiver.contains("if (isOrderedBroadcast()) setResultCode(result.resultCode)"))
+    assertTrue("接收器必须把服务编辑结果写回广播", receiver.contains("val result = AdbKeyboardService.handle("))
+
+    val service = codeOnly(source("AdbKeyboardService.kt"))
+    assertTrue("活跃输入法但无连接必须保留独立结果", service.contains("NO_INPUT_CONNECTION"))
+    assertTrue("未知动作和缺消息必须拒绝", service.contains("AdbKeyboardEditStatus.BAD_REQUEST"))
+    assertTrue(
+      "字段文本只用于取得完整快照长度，不写入日志/回包",
+      service.contains("completeEditorTextLength(extracted.partialStartOffset, extracted.startOffset, text.length)"),
+    )
+    val edit = codeOnly(source("AdbKeyboardEdit.kt"))
+    assertTrue("截断的全字段快照必须保持未知", edit.contains("partialStartOffset != -1"))
+  }
+
   // ── A04 / A05：显式目标优先 + 最后派发点范围复核 ─────────────────────────
 
   @Test

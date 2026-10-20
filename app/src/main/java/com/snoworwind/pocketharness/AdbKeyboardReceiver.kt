@@ -28,11 +28,16 @@ class AdbKeyboardReceiver : BroadcastReceiver() {
   override fun onReceive(context: Context, intent: Intent) {
     if (intent.action != AdbKeyboardService.ACTION_INPUT_TEXT && intent.action != AdbKeyboardService.ACTION_CLEAR_TEXT) return
     if (!AdbKeyboardService.isTrustedSender(context, intent, senderUid())) {
+      if (isOrderedBroadcast()) setResultCode(AdbKeyboardEditStatus.SOURCE_REJECTED.resultCode)
       android.util.Log.w("dsh-adb-kb", "broadcast rejected (untrusted sender, no uid match / auth nonce)")
       return
     }
     val msg = intent.getStringExtra(AdbKeyboardService.EXTRA_MSG)
-    AdbKeyboardService.handle(intent.action ?: "", msg)
+    val result = AdbKeyboardService.handle(intent.action ?: "", msg)
+    if (isOrderedBroadcast()) setResultCode(result.resultCode)
+    if (result != AdbKeyboardEditStatus.EDIT_DISPATCHED) {
+      android.util.Log.w("dsh-adb-kb", "broadcast edit not confirmed (result=${result.resultCode})")
+    }
   }
 
   /**
