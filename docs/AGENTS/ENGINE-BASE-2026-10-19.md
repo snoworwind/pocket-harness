@@ -60,6 +60,8 @@
 
 ### 3.1 `engine-toolchain.json` 的 Java 钉值不存在
 
+**2026-10-20 已修复**：钉值改为真实存在的 `17.0.20+8`，两条 workflow 的 setup-java 输入同步；并为来源链加了「无 `base-lock.json` 时跳过 plan」守卫，避免在无可恢复 base 时因工具链漂移打断 APK 构建。原文如下。
+
 `java: "17.0.20+1"` 不是 Temurin 的可用标识：Adoptium 的 API 对 `jdk-17.0.20+1` 返回 404，GitHub Releases 实际只有 `jdk-17.0.20+8`，其 `java.runtime.version` 为 `17.0.20+8`。`toolchain()` 对非 local 模式做全等比较，因此 `plan` 在任何满足本策略的 runner 上都会以 `runtime does not match fixed engine toolchain policy` 失败。
 
 处理方向：改成真实存在的标识，或按 `java.runtime.version` 的前缀/主版本匹配，并把选择写进 `build-base.yml` 的 setup-java 输入。

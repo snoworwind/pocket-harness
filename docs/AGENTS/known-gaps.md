@@ -162,7 +162,7 @@
 
 | 项 | 当前事实 | 必须取得的结论 |
 |---|---|---|
-| Java 钉值 | `engine-toolchain.json` 写 `17.0.20+1`，Temurin 无此标识（实际 `17.0.20+8`），全等比较使 plan 在合规 runner 上也必红 | 改为真实标识或前缀匹配，并在 runner 上跑通 plan |
+| Java 钉值 | **已于 2026-10-20 修复**：`engine-toolchain.json` 与两条 workflow 的 setup-java 输入改为真实存在的 `17.0.20+8`；另为来源链加了「无 `base-lock.json` 时跳过 plan」的守卫 | 在 runner 上跑通 plan（待首次 build-base 验证） |
 | 本地复跑 | `buildRun` 来自 `GITHUB_RUN_ID` 且被 compare 要求两端相等，本地双构建必停在 `replica source identity mismatch` | 提供显式 run 标识或用「同 run 内副本」语义比较 |
 | 生成文件归一化 | `engine-deploy` 三件套未 rebase、未定序，内嵌 `file://` 绝对路径 344/3349/1 处 | 归一化与定序后计入 tree，或登记为已知非确定性并写进锁 schema |
 | materialize | 尚未在真实 base 上验证（compare 从未产出可信 base） | 用真实候选 lock 跑 materialize 并继续一次 engine 复用构建 |

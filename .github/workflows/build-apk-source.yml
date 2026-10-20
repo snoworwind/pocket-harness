@@ -42,7 +42,7 @@ jobs:
       - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
         with:
           distribution: temurin
-          java-version: '17.0.20+1'
+          java-version: '17.0.20+8'
       - name: Isolate npm cache from checked-in developer settings
         shell: bash
         run: |
@@ -152,8 +152,12 @@ jobs:
           fi
           echo "签名自证通过：keystore 可签名，且 apksigner 能读出期望指纹"
 
+      # Only meaningful when a trusted base is committed. Without base-lock.json there is
+      # nothing to restore, and resolving a key would fail the build on unrelated toolchain
+      # drift; skip it so the source chain keeps building from source.
       - name: Resolve engine base key and lock
         id: engine-base
+        if: hashFiles('base-lock.json') != ''
         shell: bash
         run: |
           if [ "${GITHUB_ACTIONS:-}" = "true" ]; then

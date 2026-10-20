@@ -6,8 +6,8 @@
 # GitHub runner when the workflow is re-enabled.
 #
 # Versions mirror scripts/source-build/engine-toolchain.json and the workflow's
-# setup-node / setup-python / setup-java inputs. Java is 17.0.20+8: the pinned
-# "17.0.20+1" does not exist upstream (Adoptium publishes 17.0.20+8).
+# setup-node / setup-python / setup-java inputs. Java is 17.0.20+8, the identifier
+# Adoptium actually publishes.
 FROM ubuntu:24.04
 
 ENV DEBIAN_FRONTEND=noninteractive
