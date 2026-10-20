@@ -95,19 +95,19 @@ run 39357008785 绑定 main commit `7fe0597ec1ed05ccf90b8de8418e104fea3e6b61`，
 
 PR #61 已按收窄方案修复：capture 仅对根 `package.json` 使用既有受限 JSON canonicalizer，对根 `pnpm-workspace.yaml` 使用严格块映射 canonicalizer；runtime dependency report 在生成端排序。YAML 序列/未知形态仍判红，缺依赖仍判红；没有文件从 tree 排除。run 39357008785 的两个 hosted replica 跨 runner 逐文件 compare 成功。报告及部署文件中的绝对 `file://` 路径保持原字节；本次固定 GitHub workspace 环境下相同，若未来不相同，完整 compare 仍会失败。跨目录本地双构建另受 §3.2 的 run identity 限制。
 
-### 3.4 真实 `materialize` 已验证；来源链复用待候选构建确认
+### 3.4 真实 materialize 与来源链集成复验
 
-使用 run 39357008785 的真实 artifact 与 candidate lock，在 main commit `7fe0597` 的隔离 clone 中，固定 Linux gate image 的 `materialize` exit 0；`checkPayload` 在写工作区前核对 manifest 输出哈希、解包并逐项比较完整 tree receipt。materialized runtime checker 为 345 packages / 2435 links；marketplace patch adapter 与主线产物字节一致。最后一步是 lock PR 合并后运行 draft source workflow，让正式来源链通过真实 cache restore 和 materialize 再继续 ARM64 双构建。该 release draft 按用户要求不做设备验证，并会明确标记。
+使用 run 39357008785 的真实 artifact 与 candidate lock，在 main commit `7fe0597` 的隔离 clone 中，固定 Linux gate image 的 `materialize` exit 0；`checkPayload` 在写工作区前核对 manifest 输出哈希、解包并逐项比较完整 tree receipt。materialized runtime checker 为 345 packages / 2435 links；marketplace patch adapter 与主线产物字节一致。PR #62 合入 `base-lock.json` 后，run 39360009635 两个 replica 实际 cache hit 且再次 `materialize` 成功。
 
-### 3.5 云端 checks 状态
+main `4e14d68` 的 run 39361687578 又证明两路 Termux base 装配、来源绑定及离线 Linux ARM64 资产均通过；随后两路在 runtime snapshot 的 `pi-toolcall` 门禁因 `@earendil-works/pi-ai` 导入 `partial-json` 时 `ERR_MODULE_NOT_FOUND` 而失败，`verify-arm64`、`sign-arm64`、`prepare`、`draft` 均被跳过，未创建 Release。原因是 trusted cache 命中跳过 `build-engine.sh`，而工作流仍让 snapshot builder 读取仓库原始 overlay，未应用 cache report 里受锁保护的 `partial-json@0.1.7` 与源码包摘除结果。修复由 `restore-effective-engine-overlay.mjs` 校验原始 overlay 字节 SHA、源码注入/摘除收据及 vendor pin，再在 snapshot 前装载，并将恢复前 effective overlay 与 policy 保留为独立输入快照，连同恢复回执上传以便外部复算；对之前物化的真实 cache report 已本机验证成功，helper 正反例及 workflow 顺序负控通过。修复须经 PR 和完整来源链复验，不能跳过 snapshot 行为门禁。
 
-PR #61 的 hosted PR checks 已通过；本地 Linux full local-gate 为 28/28，`check-code-map` 和 maintenance docs 均通过。run 39357008785 的 resolve/build/compare/cache/upload 四 job 全成功。剩余 release source build 尚未运行。
+### 3.5 云端 checks 与待复验
+
+PR #61、#63、#64 的 hosted 必检通过；Linux gate 容器对 base-lock 与真实 materialize 证据通过。run 39361687578 的失败是有效阻断：两个独立 replica 在同一 snapshot runtime import 处失败，后续 APK compare、production signing 与 Release 创建没有执行。当前改动新增 effective overlay 完整性校验、五项正反例、显式 self-test 与受控 negative，并将回执随三阶段 artifact 上传；须通过 PR Gate，再触发 main 草稿链复验。
 
 ### 3.6 发布衔接顺序
 
-candidate 与 cache 已由 run 39357008785 写入；当前 lock PR 将候选提交为仓内 trust root。合入后 `build-apk-source.yml` 会严格按 key/manifest 复用该 cache，缺 cache 失败关闭；本次草稿 release 的 source workflow 是 lock 合并后的集成复验。
-
----
+依次完成 effective overlay 修复 PR → main 上同一可信 key 的 cache restore/materialize → 两副本 runtime snapshot 与 APK source build → 从实际 APK 字节做独立双构建 compare → 隔离 job production signing 与身份/包校验 → 验证资产集合和 SHA256 后创建 draft+prerelease。任何步骤红都必须修复并重新走全链；本次明确不做设备验证，release notes 需写明这一限制，草稿不得公开发布。
 
 ## 4. 复验入口
 
@@ -116,6 +116,6 @@ candidate 与 cache 已由 run 39357008785 写入；当前 lock PR 将候选提�
 1. Linux local-gate 28/28、PR #61 hosted static job；`engine-base.test.mjs` 的实际归档 compare 与缺依赖负控通过；`check-code-map`、maintenance docs 通过；
 2. main run 39357008785 的两个独立 build/capture、完整 tree compare 与 cache/artifact upload 成功，candidate 标记 `independentRebuildMatched: true`；
 3. 真实 candidate 在 Linux gate 容器 materialize 成功，post-materialize dependency closure 与 marketplace patch-byte parity 通过；
-4. lock PR 合入后，draft source workflow 必须成功完成 cache restore → materialize → ARM64 source build。按用户要求该 draft 不做设备验证，notes 必须明确标注。
+4. effective overlay 修复 PR 合入后，draft source workflow 必须成功完成 cache restore → materialize → 双副本 ARM64 source build → APK compare → 独立签名 → 资产核验与 draft 创建。按用户要求该 draft 不做设备验证，notes 必须明确标注。
 
 本文件记录的是实现边界与未决项，不构成任何验收结论；设备与发布链状态以 `docs/AGENTS/known-gaps.md` 与 `SECURITY-HARDENING.md` 为准。
