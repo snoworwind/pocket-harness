@@ -298,7 +298,7 @@ bootstrap 的 package-lock.json 与 package.json 一样属于逐字节来源输�
 
 `scripts/ci/classify-changes.mjs` 按 changed paths 输出 `engine/termux/linux/plugins/app/build/gates/apk/docs_only/full`。PR Gate 的 `changes` job 用它决定跑哪些 job。
 
-分层口径（私有仓，改动一律走 PR，合并提交的树已被同一 HEAD 的 PR run 验证过）：
+分层口径（公开仓、改动一律走 PR、`main` 已启用分支保护；合并提交的树已被同一 HEAD 的 PR run 验证过）：
 
 - `apk=true` 才跑 Kotlin 编译。**`apk` 的含义是「该改动可能改变 Kotlin 测试观察到的内容」，不是「碰到了构建系统」**：`.github/**`、`scripts/ci/**`、通用 `scripts/source-build/**` 只置 `build`，不再置 `apk`。这条收窄由 `classify-changes.test.mjs` 的不变量用例守住——Kotlin 源码一旦 `File()` 读取这三棵树，测试立即判红，逼分类器同步改回。
 - `docs_only=true` 时跳过整个 `static` job（24 步全是代码/构建契约，文档改动不可能改变它们）；冲突标记与敏感信息扫描独立成 `docs-hygiene` job 始终运行，且把扫描面扩到 `docs` 与 `.github`。
@@ -307,9 +307,9 @@ bootstrap 的 package-lock.json 与 package.json 一样属于逐字节来源输�
 
 分类器单测 `node --test scripts/ci/classify-changes.test.mjs`（含「Kotlin 不读 workflow/source-build」不变量）。
 
-## 本地门禁（2026-10-20，CI 休眠期间即合并判据）
+## 本地门禁（2026-10-20，CI 的快速自查与离线回退）
 
-`node scripts/ci/local-gate.mjs` 是合并判据：**步骤不另维护清单，直接读 `.github/workflows/pr-gate.yml`**，按同一套 job 条件（`docs-hygiene` 恒跑、`static` 除文档改动、`compile` 仅 `apk`）在 gate 镜像里执行同样的 `run:` 块。workflow 增删门禁时本地自动跟随；`local-gate.test.mjs` 用计数钉住这个契约。
+`node scripts/ci/local-gate.mjs` 在本地复现 CI 的同一套检查，CI 可用时用于推送前自查，配额或网络不可用时即合并判据：**步骤不另维护清单，直接读 `.github/workflows/pr-gate.yml`**，按同一套 job 条件（`docs-hygiene` 恒跑、`static` 除文档改动、`compile` 仅 `apk`）在 gate 镜像里执行同样的 `run:` 块。workflow 增删门禁时本地自动跟随；`local-gate.test.mjs` 用计数钉住这个契约。
 
 - `--mode auto|container|native`（默认 auto：容器运行时可达就用容器，否则回退 native）。三种宿主的能力矩阵：
 
@@ -328,7 +328,23 @@ bootstrap 的 package-lock.json 与 package.json 一样属于逐字节来源输�
 - 镜像内的 `/workspace/local.properties` 以只读挂载覆盖为 `sdk.dir=/opt/android-sdk`，宿主的 macOS SDK 路径不会漏进容器，仓库文件也不被改写。
 - Gradle 与 pnpm 缓存用命名卷 `pocket-harness-gate-gradle` / `pocket-harness-gate-pnpm` 复用，热跑显著快于冷跑。
 
-**CI 休眠开关**：`pr-gate.yml` 的每个 job 都带 `vars.PR_GATE_MODE == 'on'`。仓库变量未设置时全部 job 跳过，PR 上只显示 skipped，不产生红色噪声；配额恢复后把变量设为 `on` 即恢复托管流水线，无需改文件。休眠期间合并条件按 `AGENTS.md` 铁律 4 改为「本地门禁绿（同一 HEAD 树）或 CI 绿」。
+**CI 开关**：`pr-gate.yml` 的每个 job 都带 `vars.PR_GATE_MODE == 'on'`，仓库变量当前为 `on`（2026-10-20 起）。变量未设置时全部 job 跳过、PR 上只显示 skipped，可在配额或故障期间临时静默而不产生红色噪声。
+
+## 分支保护与合并策略（2026-10-20）
+
+仓库已公开，`main` 的分支保护在远端启用；本文只记录口径，不改远端设置。
+
+| 项 | 值 | 说明 |
+|---|---|---|
+| 必须走 PR | 是 | 直接 push 返回 `protected branch hook declined` |
+| 必需审批 | 0 | 单人仓，无法自我批准 |
+| 必需状态检查 | 变更范围分类 / 冲突标记与敏感信息扫描 / 静态门禁与源码回归 / Kotlin 编译门禁 | docs-only PR 的两个 job 为 skipped，实测不阻塞合并（`mergeStateStatus=CLEAN`） |
+| 分支必须最新 | 是 | 合并前需与 `main` 同步 |
+| 管理员同样受限 | 是 | 紧急情况用 `gh api -X DELETE .../branches/main/protection` 临时解除 |
+| 强推 / 删除分支 | 禁止 | 与铁律 10 一致 |
+| 合并方式 | 仅 merge commit | squash/rebase 已关闭，与铁律 11 一致 |
+
+> 2026-10-20 实测教训：API 里 `required_pull_request_reviews: null` 等于**关闭**「必须走 PR」，而状态检查只约束 PR、不拦直接推送。首次配置正是这样漏掉 PR 要求，一次直接 push 落到 `main`，随后用回滚 PR 纠正。见 gotchas 坑 456。
 
 ## Engine 构建复用（2026-10-19）
 

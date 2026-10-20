@@ -2814,3 +2814,7 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 455. **公开仓库前才发现：两个子仓 `.npmrc` 把开发机缓存路径钉进了仓库（2026-10-20）**
 
     现象：为转公开做历史审计时，`git ls-files | grep npmrc` 命中 `dsh-client-ui-responsive/.npmrc` 与 `dsh-shell-termux/.npmrc`，内容都是 `cache=D:/coding/dsh-mobile/.npm-cache`。真因：这两个文件在基线导入时被一并提交，把当时开发机的绝对路径固化进仓库；Linux 构建把该串当相对路径，于是在子仓下写出 `D:/coding/...` 目录并污染组件来源（坑 351 的根因）。它们同时是公开仓库里的个人信息残留。修法：删除两个文件、在 `.gitignore` 增加 `dsh-*/.npmrc` 防复发；顺带把 `scripts/deploy-embedded.ps1` 的两个硬编码（设备序列号、`D:\coding\dsh-mobile` 根目录）改为 `ADB_SERIAL` 与 `$PSScriptRoot` 父目录，并把文档里的真机序列号替换为 `<arm64-serial>`。复验：`git grep` 在 `.md/.ps1/.json` 中已无该序列号；`check-code-map` PASSED；本地门禁对同一 HEAD 树通过。未做设备验证（未改运行时行为）。
+
+456. **`required_pull_request_reviews: null` 等于关闭「必须走 PR」，状态检查拦不住直接推送（2026-10-20）**
+
+    现象：为公开仓启用 `main` 分支保护后，按预期配置了 4 项必需状态检查、`enforce_admins=true`、禁止强推与删除，随后一次直接 `git push origin <branch>:main` **成功**，探针提交落进 main。真因：GitHub 分支保护里「必须走 PR」由 `required_pull_request_reviews` 是否存在决定，传 `null` 是**关闭**该项而非「要求 PR 但不要审批」；而 `required_status_checks` 只对 PR 施加约束，对直接推送不生效，`enforce_admins` 与 `allow_force_pushes=false` 都不能替代 PR 要求。所以「4 项必检 + 管理员受限」看起来很强，实际仍允许直推。修法：显式传 `required_pull_request_reviews: {required_approving_review_count: 0, ...}`（单人仓无法自我批准，审批数必须为 0）。复验：修后同一路径 push 返回 `remote: - Changes must be made through a pull request. / ! [remote rejected] HEAD -> main (protected branch hook declined)`；误入提交经 PR #57 回滚（未用强推），main 树 hash 与回滚前一致；docs-only 探针 PR 的 `mergeStateStatus=CLEAN`，证明 skipped 的必检项不阻塞合并。未做设备验证（远端配置变更）。
