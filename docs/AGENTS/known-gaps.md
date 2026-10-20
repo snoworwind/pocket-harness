@@ -103,7 +103,7 @@
 
 端到端设备验收仍未完成：尚未在 Android 上完整验收离线 manifest/资产读取、Linux 安装、更新、重装、卸载及工具执行。2026-10-19 真机调查已确认被测 ROM 上 Linux 运行时无法启动，证据见 [Linux 环境调查](../linux-env-findings/README.md)。这些内部插件保持默认不启用，APK 更新不得自行启用它们；真实用户流程仍需设备验收。
 
-**2026-10-20 真机证据与首个修复**：Huawei Mate 80 Pro Max（SGT-AL10，Android 16 / API 36，arm64-v8a）上的 APK `862e17cffc7bb4a5395ae960eec3f364c953ce73f476ac754f69bcd2166cadbf` 在 `linux-bootstrap` 的 Cordis `apply()` 阶段因读取未声明的 `ctx.filesDir` 失败；配置已提供 `linuxBootstrapConfig.dataDir`，但 JS 在访问后续 `DSH_FILES_DIR` 回退前就抛错，导致服务未注册、状态路由 503、运行时未安装。当前修复分支移除了该属性读取并新增真实 Cordis 激活回归用例；修复后 APK 尚未构建 / 设备复验。此结果没有测试 Bionilux、loader、guest ELF 映射、noexec 或 SELinux；这些仍按 [Linux 恢复方案](../linux-env-findings/RECOVERY-PROPOSAL-2026-10-20.md) 保持未验收。
+**2026-10-20 真机证据与首个修复**：Huawei Mate 80 Pro Max（SGT-AL10，Android 16 / API 36，arm64-v8a）上的修复前 APK `862e17cffc7bb4a5395ae960eec3f364c953ce73f476ac754f69bcd2166cadbf` 在 `linux-bootstrap` 的 Cordis `apply()` 阶段因读取未声明的 `ctx.filesDir` 失败；配置已提供 `linuxBootstrapConfig.dataDir`，但 JS 在访问后续 `DSH_FILES_DIR` 回退前就抛错，导致服务未注册、状态路由 503、运行时未安装。PR #77 已移除此属性读取并新增真实 Cordis 激活回归用例；合入 main 的来源双构建和签名校验通过，生成草稿 APK `hardening-source-f37eaafe887c-39424480383-1`，SHA-256 `a2d1d85735b98a7168c0c5ea406a542518e5b9c1b82802a6ed0b2860d39d63dd`，尚未设备复验。此结果没有测试 Bionilux、loader、guest ELF 映射、noexec 或 SELinux；这些仍按 [Linux 恢复方案](../linux-env-findings/RECOVERY-PROPOSAL-2026-10-20.md) 保持未验收。
 
 ### 0.15.0 追加：宿主侧准备与来源内离线接线（设备验收待做）
 
