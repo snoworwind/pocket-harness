@@ -206,3 +206,5 @@ haitunlang（MIUI12 兼容）、TACONailoong（老 WebView 兼容方案）、X-S
 Yangerwei（文件竞态反馈）、gr12-cmd（armv7l 需求）、cmyfqwq（覆盖安装兼容反馈）。
 
 开发维护规范见 [`AGENTS.md`](AGENTS.md)（开发地图）。
+
+<!-- ci connectivity probe; this branch is not merged -->
