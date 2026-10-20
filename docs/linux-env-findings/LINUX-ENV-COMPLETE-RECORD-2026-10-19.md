@@ -5,6 +5,7 @@
 > 原始报告：[ORIGINAL-REPORT-2026-10-19.md](<ORIGINAL-REPORT-2026-10-19.md>)、[ORIGINAL-PATCHES-2026-10-19.md](<ORIGINAL-PATCHES-2026-10-19.md>)。
 > 过程文档：[INVESTIGATION-2026-10-19-pocketharness.md](<INVESTIGATION-2026-10-19-pocketharness.md>)、[REMEDIATION-PLAN-2026-10-19.md](<REMEDIATION-PLAN-2026-10-19.md>)。
 > 本文档是上述材料的**最终汇总与决策记录**；过程文档保留为证据附录。
+> **2026-10-20 更正**：本文保留 10-19 决策与实验历史；当前源码已有 `BIONILUX_LOADER`，旧 noexec 唯一归因及 PRoot 排除理由证据不足。当前方案与一手依据见 [恢复方案](RECOVERY-PROPOSAL-2026-10-20.md) §2。以下旧实验结果不构成当前 APK 验收。
 
 ---
 
@@ -30,7 +31,7 @@
 
 ### 0.3 当前可用性判定
 
-> **不可用。** 插件可以加载；`bionilux` 可以启动；但 glibc guest 在本 app 的 app 私有 `noexec` 挂载上无法启动。安装链也没有完整走通（详见 §8）。
+> **不可用。** 旧实验中 `bionilux` 可以启动，但 glibc loader 直接执行失败。具体执行策略仍需按真实进程和文件重新归因；安装链也没有完整走通（详见 §8）。
 
 ---
 
@@ -203,20 +204,20 @@ args: ['node', '--version'],      // guest node（glibc）
 
 失败：`execve(…/rootfs/usr/lib/ld-linux-aarch64.so.1)` → `EACCES`。
 
-#### 4.5.2 真因：`/data/data` 是 `tmpfs noexec`
+#### 4.5.2 历史归因：`/data/data` 的 `tmpfs noexec` 行不足以单独定因
 
-- 本 ROM 把 `/data/data` 单独挂成 `tmpfs rw,nosuid,nodev,noexec`；
-- `EACCES` 来自 `do_open_execat()` 的 `MNT_NOEXEC`，发生在 SELinux 之前；
-- **不是** targetSdk 36，**不是** `untrusted_app` 域。
+- 历史记录观察到 `/data/data` 挂载行含 `tmpfs rw,nosuid,nodev,noexec`；
+- 尚未提供实际 loader 文件所属 mount ID、进程 mount namespace 与 syscall 证据，不能只凭该行和 `EACCES` 定位到 `MNT_NOEXEC`；
+- 不能排除 SELinux/应用执行策略。当前 targetSdk 是 34；Android API 29 起已有应用私有文件直接执行限制，见恢复方案 §2.2。
 
 #### 4.5.3 为什么 app 自己的 bionic 程序能跑
 
 ```text
 execve("/system/bin/linker64")          ← /system，允许 exec
-  └─ linker64 mmap /data/data/.../node  ← 只读映射，noexec 不管
+  └─ linker64 加载 app 私有 bionic node  ← 观察到成功，仍需核对文件可执行映射策略
 ```
 
-内核从未 exec app 私有 node；termux-exec 只是把 `execve(node)` 改写为上面这条。`env -i` 清掉 `LD_PRELOAD` 后，退化成裸 `execve(node)` → `EACCES`。
+内核直接 exec 的入口变成系统 linker；`env -i` 清掉 `LD_PRELOAD` 后，旧实验的裸 `execve(node)` 返回 `EACCES`。该差异支持“直接执行受限”，但不证明文件处于 noexec 挂载：文件可执行 mmap 本身也受 noexec 检查。
 
 #### 4.5.4 为什么 Linux 模块不行
 
@@ -250,7 +251,7 @@ execve(<rootfs>/usr/lib/ld-linux-aarch64.so.1)   ← app 私有，noexec → EAC
 
 两个硬事实：
 
-- **`BIONILUX_LOADER` 不存在**，二进制里只有 `BIONILUX_PRELOAD`；
+- 旧报告称当时被测二进制没有 `BIONILUX_LOADER`；当前 vendor 源码已有此配置及子进程传递，不能沿用为当前接口结论（恢复方案 §2.1）；
 - 非 noexec 落脚点矩阵：
 
 | 路径 | 可写 | exec |
@@ -262,7 +263,7 @@ execve(<rootfs>/usr/lib/ld-linux-aarch64.so.1)   ← app 私有，noexec → EAC
 | `/sdcard` | ✓ | ✗（FUSE noexec） |
 | app 私有（`/data/data`、`/data/user/0`） | ✓ | ✗ |
 
-结论：**任何仍 `execve(loader)` 且 loader 在 app 私有的变体都会 EACCES**。W5 是结构性死路。
+该次实验的实际 exec 路径仍指向私有 rootfs loader，证明这一调用失败，未证明当前源码配合 APK 外置可信 loader 必然失败。新路线必须单独验证来源产物、外置入口与 guest 映射。
 
 ### 4.6 ⑦ 可观测性
 
@@ -317,8 +318,8 @@ execve(<rootfs>/usr/lib/ld-linux-aarch64.so.1)   ← app 私有，noexec → EAC
 ## 6. 根因模型（一页）
 
 ```text
-noexec 挂载（/data/data）
-  ├─ bionic ELF：可由 /system/bin/linker64 mmap 执行 → 绕过
+app 私有 ELF 直接执行受限（具体策略待复核）
+  ├─ bionic ELF：旧实验可由 /system/bin/linker64 加载
   │    └─ node/busybox/bionilux 本身能跑
   └─ glibc ELF：需要 glibc loader 被内核 exec
        ├─ loader 在 app 私有 → EACCES
@@ -328,7 +329,7 @@ noexec 挂载（/data/data）
 
 **一句话**：
 
-> app 自己的可执行文件是“被系统 loader 读进来”的；Linux 模块需要“自己的 loader 被内核启动”。noexec 恰好只拦后者。
+> 两条路径的内核 exec 入口不同；不能据此断言 noexec 只拦后者。APK 入口与 guest 可执行映射必须分别验证。
 
 ---
 
@@ -359,9 +360,9 @@ noexec 挂载（/data/data）
 
 ### 7.4 proot
 
-- proot 是 ptrace chroot，最终仍让内核 exec guest loader；
-- **不绕过 app 私有 noexec**；
-- 只有 rootfs 在 `/data/local/tmp` 等非 noexec 路径（W3）时才有意义；
+- Termux PRoot 用自带 `PROOT_LOADER` 加载 guest/interpreter，旧“内核直接 exec guest loader”归纳不准确；
+- 仍需验证自身入口、ptrace 和 guest 可执行映射；不能保证解决真正的 noexec backing mount；
+- 可将 PRoot 及自身 loader 放 APK 原生目录作为无特权候选，不应预先限定必须走 shell 域；
 - proot-distro 本身不要求 root/Shizuku；Termux 上无 root 运行。
 
 ---
@@ -422,6 +423,8 @@ noexec 挂载（/data/data）
 ---
 
 ## 10. 如果将来重启：路线与决策门（不实施）
+
+> 以下为 10-19 候选历史；当前优先顺序由 [恢复方案](RECOVERY-PROPOSAL-2026-10-20.md) 替代。
 
 | 路线 | 做法 | 可行性 | 决策门 |
 |---|---|---|---|
