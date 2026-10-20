@@ -175,6 +175,18 @@ class OverlayService : Service() {
     panel.startMux()
   }
 
+  /** The overlay is recreated only by an explicit controller start, never by system redelivery. */
+  override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+    if (intent == null) stopSelf(startId)
+    return START_NOT_STICKY
+  }
+
+  /** A removed app task is an explicit close signal even when EngineService is not running. */
+  override fun onTaskRemoved(rootIntent: Intent?) {
+    stopSelf()
+    super.onTaskRemoved(rootIntent)
+  }
+
   override fun onDestroy() {
     if (instance === this) instance = null
     live.stopWatcher()

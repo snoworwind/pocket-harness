@@ -175,6 +175,23 @@ class CallSiteContractTest {
     assertTrue("I-A1：四向钳制必须保留", body.contains("coerceIn(margin"))
   }
 
+  /** F lifecycle: task removal and null redelivery stop only the service, not the saved user preference. */
+  @Test
+  fun overlayServiceStopsOnTaskRemovalAndNullRedelivery() {
+    val code = codeOnly(source("OverlayService.kt"))
+    val start = memberBody(code, "override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int")
+    assertTrue("空 Intent 重投递必须按 startId 自停", start.contains("intent == null") && start.contains("stopSelf(startId)"))
+    assertTrue("悬浮服务必须显式使用非粘性策略", start.contains("return START_NOT_STICKY"))
+    assertFalse("不得通过覆写长期启用偏好处理生命周期", start.contains("OverlayController."))
+
+    val removed = memberBody(code, "override fun onTaskRemoved(rootIntent: Intent?)")
+    assertTrue("任务划除必须由悬浮服务自身停止", removed.contains("stopSelf()"))
+    assertFalse("任务划除不能清除用户长期启用偏好", removed.contains("OverlayController."))
+
+    val destroy = memberBody(code, "override fun onDestroy()")
+    assertTrue("实际窗口和回调仍统一由 onDestroy 清理", destroy.contains("removeWindow(rootView)") && destroy.contains("main.removeCallbacksAndMessages(null)"))
+  }
+
   /** I-A2：ring 必须与 glow 同 View 合成——光环维不得出现任何窗口操作（不新增窗口）。 */
   @Test
   fun ringIsCompositedInTheSameHaloViewNotANewWindow() {
