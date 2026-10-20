@@ -156,17 +156,17 @@
 
 源码适配、真实构建产物及代码验证已实施，最终 main 来源双构建与设备证据按 [升级记录](ENGINE-UPGRADE-2026-10-19.md) 收口。ADB 实际为空，目标 ARM64 设备 ABI 不可读；CDP、ADB 自主任务、横竖屏与覆盖升级未验收。旧 runtime-capture 退为历史，不移植参考仓的设备结论；模型能力插件暂保留至替代设置能力实际验收。
 
-## Engine base 复用未决项（2026-10-19，PR #51）
+## Engine base 复用收口（2026-10-20，PR #61；lock PR 待合入）
 
-机制本身与门禁已落地（PR Gate 25 步、Kotlin 122/122 类 / 1322 用例通过），但真实产物链路尚未闭环。详见 [ENGINE-BASE-2026-10-19.md](ENGINE-BASE-2026-10-19.md) 与坑 451。
+PR #61 修正了 capture/report 顺序差异；main run 39357008785 的两个独立构建、完整 tree compare、cache 与 candidate artifact 均通过，真实 candidate 在 Linux gate 容器 materialize 成功。当前 PR 将候选提交为仓内 trust root；合入后仍需 draft source workflow 确认正式 cache restore → materialize → ARM64 source build。详见 [ENGINE-BASE-2026-10-19.md](ENGINE-BASE-2026-10-19.md) 与坑 457、458。
 
 | 项 | 当前事实 | 必须取得的结论 |
 |---|---|---|
-| Java 钉值 | **已于 2026-10-20 修复并由 runner 验证**：`engine-toolchain.json` 与两条 workflow 的 setup-java 输入改为真实存在的 `17.0.20+8`；build-base run 39354019902 的 plan 成功 | 已通过；双构建 compare 的独立阻塞见下行及 [ENGINE-BASE-2026-10-19.md](ENGINE-BASE-2026-10-19.md) |
-| 本地复跑 | `buildRun` 来自 `GITHUB_RUN_ID` 且被 compare 要求两端相等，本地双构建必停在 `replica source identity mismatch` | 提供显式 run 标识或用「同 run 内副本」语义比较 |
-| 生成文件归一化 | 首次云端 compare 在两个映射键序与两份 2435 条回执数组顺序上判红；当前 PR 只规范根 `package.json` / `pnpm-workspace.yaml` 的无序映射并固定回执顺序，绝对 `file://` 路径保持原字节 | 新 main compare 必须证明整个 tree 相同；若路径造成差异，继续窄化修复，不能排除文件或放宽 compare |
-| materialize | 尚未在真实 base 上验证（compare 从未产出可信 base） | 用真实候选 lock 跑 materialize 并继续一次 engine 复用构建 |
-| 云端 checks | 首次 hosted run 39354019902 的 resolve 与两个 replica 均真实运行并成功，compare 因 tree 不同判红；本地 Linux PR 门禁 28/28 通过 | 修复 PR 合入后重跑 hosted 双构建 compare |
+| Java 钉值 | **已修复并由 runner 验证**：`engine-toolchain.json` 与两条 workflow 均固定到真实存在的 `17.0.20+8`；plan 在 runs 39354019902、39357008785 通过 | 已通过 |
+| 本地双构建 | `buildRun` 固定到 `GITHUB_RUN_ID`；独立本地 run 会在 identity 判据失败 | 仅是本地复现限制；正式证据使用 main 上的 hosted 双构建，不放宽 compare |
+| 输出树确定性 | PR #61 只规范根 JSON/YAML 无序映射并固定依赖回执顺序；绝对 `file://` 路径仍按原字节计入 | run 39357008785 跨两个 hosted runner 的完整 tree compare 成功；未来路径不同仍会硬失败 |
+| 真实 `materialize` | run 39357008785 candidate 与 lock 在隔离 main clone 的固定 Linux gate 容器中通过；materialized 检查为 345 packages / 2435 links | 已通过；lock 合入后由 draft source workflow 复验正式缓存使用 |
+| 设备验证 | 按用户要求，本次草稿 release 不做设备验证；不会宣称设备验收或公开发布 | 创建草稿时 notes 必须明示未做设备验证；转公开前仍须补足 §2.1 三层验收 |
 ## 发布状态（2026-10-20）
 
 仓库已公开，但**尚未对外发布 APK**：三个 `hardening-source-*` 预发布已转为草稿，对外不可见（未认证 API 返回 0 条）。对外发布需先完成设备三层验收，再由维护者手动把草稿转正；当前 ARM64 真机不可用，故该项保持未完成。

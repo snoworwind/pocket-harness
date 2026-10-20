@@ -2,7 +2,7 @@
 
 本文件记录 `build-base.yml` / `engine-base.mjs` 这套 engine base 复用机制在 PR #51（head `7ca0cae`）上的实现边界、PR #51 合并后的首次云端双构建结果，以及 `base-lock.json` 的收口步骤与当前证据。
 
-当前状态：PR #51 已合并；`17.0.20+8` Java pin 与无 lock 时跳过 plan 已于 2026-10-20 落地。第一次真实云端 run 39354019902 的 resolve 与两个 build 成功，compare 因输出树差异判红。当前 PR 修复 capture 的两处顺序不确定性；通过 PR 后必须在新 main 上重跑双构建、取得可信 candidate、真实 materialize，再以独立 PR 提交 lock。该顺序未完成前不得宣称 engine base 已启用。
+当前状态：PR #51 与顺序确定性修复 PR #61 已合并。main commit `7fe0597` 的 run 39357008785 中 resolve、两个独立 build、完整 tree compare 与 cache 保存全部成功；候选 key 为 `engine-v1-941e395d…7a28`。真实候选已在临时 main clone 的 Linux gate 容器中通过 `materialize`，且 materialized runtime dependency 检查通过。当前独立 lock PR 正在提交该候选；它合入后再由来源草稿 workflow 验证真实 cache restore → materialize → ARM64 source build。未做设备验证，不能当作设备验收或公开发布依据。
 
 ---
 
@@ -58,7 +58,13 @@
 
 ### 2.3 main 云端双构建（run 39354019902）
 
-2026-10-20 的首次云端 run 在 `2bcea5a` 上完成 resolve（22s）及 primary/reference 构建；compare 随后以 `engine-base: independent engine output trees differ` 失败。job 日志确认失败发生在逐文件 tree 比对，不是 runner 未分配、工具链漂移或 source identity 校验；该 run 未执行 candidate/cache 上传，不能用于 `materialize` 或生成锁。Artifacts 页面列出两份 648 MB replica 与 plan，但它们不构成可信 base。
+2026-10-20 的首次云端 run 39354019902 在 `2bcea5a` 上完成 resolve 及 primary/reference 构建；compare 以 `engine-base: independent engine output trees differ` 失败。它没有 candidate/cache，不能用于 `materialize` 或生成锁。
+
+### 2.4 修复后 main 云端双构建与真实 materialize
+
+run 39357008785 绑定 main commit `7fe0597ec1ed05ccf90b8de8418e104fea3e6b61`，resolve 18s、primary 9m59s、reference 6m21s；四个 job 均成功。compare 保留逐文件 tree 判据并通过，随后才写 cache 和上传唯一 canonical artifact `base-engine-engine-v1-941e395d4f7afbc62d77adf94e62837a640b0bd2e797aaee9c77604cee1b7a28`（679,533,164 bytes）。candidate manifest 的 SHA-256 为 `3fcc7aa697acd794956d9a05a5a1fb6257523d27c514547ca84faff6d9674053`，`independentRebuildMatched=true`，两 replica 的 tree SHA-256 同为 `fa2fe4fd3d7b8a7ac6d37220fe0869b6812855875c6abcaa8e8eb9ac07d92600`。`base-lock.mjs --verify` 与在临时 main clone 上的 `--check` 均通过。
+
+真实 artifact 在 `pocket-harness-gate:24.04` Linux amd64 容器中运行 `engine-base.mjs materialize`，exit 0；随后 runtime checker 检到 345 packages / 2435 required links。再运行来源链固定 marketplace patch adapter，marketplace 5 项补丁成功应用、总登记 16/16 通过，materialized `lib/client.js` 与 `lib/index.js` 与 main 完全同字节。该 clone 的 marketplace 源码重置是 materialize 的设计步骤；后续来源 workflow 按固定 tarball 再施加补丁。
 
 ---
 
@@ -70,7 +76,7 @@
 
 `java: "17.0.20+1"` 不是 Temurin 的可用标识：Adoptium 的 API 对 `jdk-17.0.20+1` 返回 404，GitHub Releases 实际只有 `jdk-17.0.20+8`，其 `java.runtime.version` 为 `17.0.20+8`。`toolchain()` 对非 local 模式做全等比较，因此 `plan` 在任何满足本策略的 runner 上都会以 `runtime does not match fixed engine toolchain policy` 失败。
 
-处理方向：改成真实存在的标识，或按 `java.runtime.version` 的前缀/主版本匹配，并把选择写进 `build-base.yml` 的 setup-java 输入。
+复验：runs 39354019902 与 39357008785 的 `plan` 均在固定 runner 上通过；新 run 的两条 build 也验证了 setup-java 与 toolchain 完全相符。
 
 ### 3.2 `buildRun` 让本地复跑结构性不可用
 
@@ -87,29 +93,29 @@
 
 后果有两层：同路径双副本也可能因顺序不同而比较失败（§2.2 实测）；路径一变（另一构建目录、恢复后重跑、缓存跨 run 复用）内嵌路径就会与锁里的树不一致，`materialize` 的逐条比对必然失败。
 
-修复方向已收窄为不排除任何文件、也不改写路径语义：capture 仅对根 `package.json` 使用既有受限 JSON canonicalizer，对根 `pnpm-workspace.yaml` 使用既有严格块映射 canonicalizer；runtime dependency report 在生成端排序。当前 PR 的回归用例把 JSON/YAML 映射键反序并断言两份真实 capture tree 相同，同时保留 YAML 序列判红与缺依赖判红。报告中的绝对 `file://` 工作区路径仍保持原字节；云端两个 replica 使用相同 GitHub workspace 路径，修复后的新 main compare 是此构建环境下的最终证据。本地跨目录双构建仍受此边界影响，且本地 `buildRun` identity 另见 §3.2。
+PR #61 已按收窄方案修复：capture 仅对根 `package.json` 使用既有受限 JSON canonicalizer，对根 `pnpm-workspace.yaml` 使用严格块映射 canonicalizer；runtime dependency report 在生成端排序。YAML 序列/未知形态仍判红，缺依赖仍判红；没有文件从 tree 排除。run 39357008785 的两个 hosted replica 跨 runner 逐文件 compare 成功。报告及部署文件中的绝对 `file://` 路径保持原字节；本次固定 GitHub workspace 环境下相同，若未来不相同，完整 compare 仍会失败。跨目录本地双构建另受 §3.2 的 run identity 限制。
 
-### 3.4 `materialize` 尚未在真实产物上验证
+### 3.4 真实 `materialize` 已验证；来源链复用待候选构建确认
 
-因为 §3.2/§3.3，compare 至今没有产出过可信 base，`materialize` 只跑过单元测试夹具。修完前两条后必须在真实 base 上验证「materialize → build-engine 复用」这条链，否则 base 复用只是纸面承诺。
+使用 run 39357008785 的真实 artifact 与 candidate lock，在 main commit `7fe0597` 的隔离 clone 中，固定 Linux gate image 的 `materialize` exit 0；`checkPayload` 在写工作区前核对 manifest 输出哈希、解包并逐项比较完整 tree receipt。materialized runtime checker 为 345 packages / 2435 links；marketplace patch adapter 与主线产物字节一致。最后一步是 lock PR 合并后运行 draft source workflow，让正式来源链通过真实 cache restore 和 materialize 再继续 ARM64 双构建。该 release draft 按用户要求不做设备验证，并会明确标记。
 
 ### 3.5 云端 checks 状态
 
-PR #51 的 runner 未分配问题已随公开仓恢复 CI 而消失：PR #51 的静态门禁 28 步全绿。run 39354019902 的两个 build job 也实际运行并成功；当前阻塞只剩本文件 3.3 记载的 compare 差异，后续以修复合并后的新 run 复核。
+PR #61 的 hosted PR checks 已通过；本地 Linux full local-gate 为 28/28，`check-code-map` 和 maintenance docs 均通过。run 39357008785 的 resolve/build/compare/cache/upload 四 job 全成功。剩余 release source build 尚未运行。
 
 ### 3.6 发布衔接顺序
 
-`base-lock.json` 目前不在仓库里，`build-apk-source.yml` 在无锁时仍从源码构建，因此合并本 PR 不会立刻启用失败关闭。但一旦提交了候选锁，若对应缓存尚未由 `build-base.yml` 写入，构建会按设计失败关闭。发布时须保证「先产出并写入缓存 → 再提交锁」的顺序。
+candidate 与 cache 已由 run 39357008785 写入；当前 lock PR 将候选提交为仓内 trust root。合入后 `build-apk-source.yml` 会严格按 key/manifest 复用该 cache，缺 cache 失败关闭；本次草稿 release 的 source workflow 是 lock 合并后的集成复验。
 
 ---
 
 ## 4. 复验入口
 
-修完上述条目后，至少需要：
+已取得并仍须保留的复验证据：
 
-1. `node scripts/source-build/engine-base.mjs --self-test`；
-2. 两份独立工作区跑 `build-engine.sh` → plan → capture → compare，并确认候选 lock 的 `independentRebuildMatched: true`；
-3. 用该候选 lock 跑 `materialize`，再继续一次 engine 构建，确认复用路径可用；
-4. 若改动涉及 workflow，`node scripts/source-build/check-workflow-action-pins.mjs --self-test` 与 `engine-base-workflow.test.mjs` 的负控必须仍会红。
+1. Linux local-gate 28/28、PR #61 hosted static job；`engine-base.test.mjs` 的实际归档 compare 与缺依赖负控通过；`check-code-map`、maintenance docs 通过；
+2. main run 39357008785 的两个独立 build/capture、完整 tree compare 与 cache/artifact upload 成功，candidate 标记 `independentRebuildMatched: true`；
+3. 真实 candidate 在 Linux gate 容器 materialize 成功，post-materialize dependency closure 与 marketplace patch-byte parity 通过；
+4. lock PR 合入后，draft source workflow 必须成功完成 cache restore → materialize → ARM64 source build。按用户要求该 draft 不做设备验证，notes 必须明确标注。
 
 本文件记录的是实现边界与未决项，不构成任何验收结论；设备与发布链状态以 `docs/AGENTS/known-gaps.md` 与 `SECURITY-HARDENING.md` 为准。
