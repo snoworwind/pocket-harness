@@ -1,9 +1,10 @@
-param([string]$Serial = "10AF2B0GN0001F2", [string]$Package)
+param([string]$Serial = $env:ADB_SERIAL, [string]$Package)
 # deploy-embedded.ps1 — embedded-form plugin deploy (run-as com.snoworwind.pocketharness + /data/user/0 paths)
 $ErrorActionPreference = "Continue"
 $adb = "$env:LOCALAPPDATA\Android\Sdk\platform-tools\adb.exe"
-$root = "D:\coding\dsh-mobile"
+$root = Split-Path -Parent $PSScriptRoot
 $pkgDir = Join-Path $root $Package
+if (-not $Serial) { throw "Serial missing: pass -Serial <s> or set ADB_SERIAL" }
 if (-not (Test-Path (Join-Path $pkgDir "lib\index.js"))) { throw "lib missing — build first" }
 $stage = Join-Path $root ".deploy-staging"
 $stagePkg = Join-Path $stage $Package

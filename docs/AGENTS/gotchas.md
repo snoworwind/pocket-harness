@@ -2798,3 +2798,19 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 450. **pi-ai 类型索引不是模型 wire id，旧夹具掩盖来源快照回归（2026-10-19）**
 
     现象：来源 run 39251430586 在增加实际写回等待后仍超时。真因：pi-ai 1.1.0 将目录 key 改为 chat:<id>，gen-model-catalog 仍以 key 建表而非读取条目 raw.id；真实快照缺少用户保存的原始 id，本地旧夹具却包含它。坑 449 的 timer 竞态属独立问题，并非这次云端失败的充分解释。修法：优先采用声明 id，旧式无类型 key 保持原样；类型 key 缺声明或非法 id 失败关闭，不猜测去前缀；完整目录测试逐组验证歧义，不把历史冲突组数当协议。复验：实际固定 pi-ai 包旧生成器下 T1-⑤/⑥ 均红；新生成器及真实全目录全套复验随 PR 记录，未做设备验证；需最终 main 来源链到签名。
+
+452. **收窄 CI 分层时，Kotlin 对 scripts/ 的隐式读取是唯一会静默漏检的依赖（2026-10-20）**
+
+    现象：PR Gate 对每次 push 都跑全套（24 个静态步骤 + Kotlin 编译），一个只改 workflow 的 PR 也要付约 7 分钟 Kotlin 编译。初步判断「workflow 不影响 Kotlin」是对的，但直接按目录一刀切会漏：`app/src/test` 实际 `File()` 读取 5 个 scripts 路径（`scripts/build-snapshot-013.mjs`、`scripts/patches/apply-patches.mjs`、`scripts/patches/data/undo-safe-filter-helper-snippet.mjs`、`scripts/patches/tests/fixtures/safe-mode-policy.yml`、`scripts/profile-web.cordis.patch.yml`），其中 `scripts/patches/**` 由 engine 规则覆盖、其余由 app 规则覆盖，所以只有 `.github/**`、`scripts/ci/**`、通用 `scripts/source-build/**` 可以安全地不置 `apk`。真因：这些依赖是**间接**的（测试读文件），编译通过与否看不出来，一旦漏判就是「改了脚本但 Kotlin 门禁没跑」的静默降级。修法：分类器只对上述三棵树去掉 `apk`，同时补一条不变量用例——扫描 `app/src/test` 与 `app/src/main` 的 `File("...")` 字面量，命中 `.github/`、`scripts/source-build/`、`scripts/ci/` 即判红，逼分类器跟着改。复验：`node --test scripts/ci/classify-changes.test.mjs` 13/13；把 `build` 重新置回 `apk` 的受控负控令该用例判红，恢复即绿。未做设备验证。
+
+453. **本地门禁把步骤清单复制一份就会立刻漂移（2026-10-20）**
+
+    现象：要把 PR 门禁搬到本地跑，最自然的写法是新建一份「本地要跑的检查」清单。真因：PR Gate 的 23 个静态步骤与 3 个 Kotlin 步骤会随 workflow 演进；两份清单一旦分叉，本地全绿而远端门禁早已增删，合并判据就变成假的——与坑 448「回归必须跟随实际执行入口」同形。修法有意反其道：`scripts/ci/local-gate.mjs` **不维护清单**，直接解析 `.github/workflows/pr-gate.yml` 的 `run:` 块，按 `docs-hygiene/static/compile` 三个 job 的既有条件挑选；只用一个小型行式读取器（不引 YAML 依赖），并由 `local-gate.test.mjs` 把 2/25/28 三个计数与 compile 的三步名钉死，格式一变就红。另：Android build-tools 的 Linux 包只有 x86-64，gate 镜像必须是 amd64，arm64 容器里 `aidl` 直接跑不起来（会报 Mach-O 或 exec format），这是选架构而非选速度的理由。复验：本地 gate 步骤数与 PyYAML 解析逐条一致（仅差 block scalar 尾部换行），`node --test scripts/ci/local-gate.test.mjs` 5/5；去掉某 job 的 `PR_GATE_MODE` 开关的受控负控令结构用例判红。未做设备验证。
+
+454. **本地门禁不能假设「本地」就是这台 mac（2026-10-20）**
+
+    现象：第一版本地门禁只在本机验证通过，实际依赖三处宿主特性——`docker run -v` 的 POSIX 路径、`date +%s%3N` 的 GNU 扩展、以及 bash 的 `mapfile`。真因：Windows 的盘符路径与含空格路径在 `-v` 下会错位，BSD/macOS 与 Termux 的 `date` 不认 `%N`，macOS 自带 bash 是 3.2 没有 `mapfile`；Android/Termux 则根本没有容器运行时。修法：`--mode auto|container|native`，容器可达优先，否则回退 native；挂载改 `--mount`；计时改 `node -p Date.now()`；native 模式加前置判据（bash >= 4、node >= 22.15、GNU tar、python3、Kotlin 需 JDK 与 SDK），缺件直接失败关闭并列出清单，Kotlin 必须显式 `--no-kotlin` 才跳过。复验：本机 native 实跑 21/25，四条失败全部归因为宿主缺口（bash 3.2 无 mapfile、node 20 无 zstdCompressSync、bsdtar 拒 `--sort=name`），补预检后同一宿主直接给出三条可执行提示；容器模式仍 25/25。未做设备验证。
+
+455. **公开仓库前才发现：两个子仓 `.npmrc` 把开发机缓存路径钉进了仓库（2026-10-20）**
+
+    现象：为转公开做历史审计时，`git ls-files | grep npmrc` 命中 `dsh-client-ui-responsive/.npmrc` 与 `dsh-shell-termux/.npmrc`，内容都是 `cache=D:/coding/dsh-mobile/.npm-cache`。真因：这两个文件在基线导入时被一并提交，把当时开发机的绝对路径固化进仓库；Linux 构建把该串当相对路径，于是在子仓下写出 `D:/coding/...` 目录并污染组件来源（坑 351 的根因）。它们同时是公开仓库里的个人信息残留。修法：删除两个文件、在 `.gitignore` 增加 `dsh-*/.npmrc` 防复发；顺带把 `scripts/deploy-embedded.ps1` 的两个硬编码（设备序列号、`D:\coding\dsh-mobile` 根目录）改为 `ADB_SERIAL` 与 `$PSScriptRoot` 父目录，并把文档里的真机序列号替换为 `<arm64-serial>`。复验：`git grep` 在 `.md/.ps1/.json` 中已无该序列号；`check-code-map` PASSED；本地门禁对同一 HEAD 树通过。未做设备验证（未改运行时行为）。
