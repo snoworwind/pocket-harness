@@ -1,7 +1,19 @@
-# Pocket Harness 0.14.8 开发候选
+# Pocket Harness 0.14.8 草稿候选说明
 
-本版本将引擎升级到 DeepSeek Harness 0.2.1-rc.2，包含官方新增模型与网页搜索设置能力，并适配 Android 插件、子代理会话和 PTC 运行环境。
+本版本将引擎升级到 DeepSeek Harness 0.2.1-rc.2，带来上游新增模型与网页搜索设置能力，并适配 Android 插件、子代理会话和 PTC 运行环境。
 
-当前仅完成源码适配及已登记代码验证，未发布、未做设备验证。来源链候选 APK、安装升级、横竖屏和三层验收取得后再收口说明；不推荐把本草稿视为可安装版本。来源、变更与验证边界见 [升级记录](../../docs/AGENTS/ENGINE-UPGRADE-2026-10-19.md)。
+## 获取与安装
 
-源码升级及来源修复已合并，候选提交 `c640eb0` 的 main CI 通过；ARM64 双来源构建已启动，本轮按用户要求不等待结果。APK 比对、最终签名与设备验收结论尚未取得，不作为发布通过依据。
+- 本候选仅提供 ARM64 APK：`pocket-harness-v0.14.8-source-arm64.apk`。仅在 ARM64 Android 设备上安装；可使用 Android 包安装器，或执行 `adb install -r -t pocket-harness-v0.14.8-source-arm64.apk`。
+- 当前 Release 仍为 Draft + prerelease，尚未公开。
+
+## 来源与验证
+
+- 源码提交：[`9ebe0fc1589a070cb2ee12417f27d89236f7153a`](https://github.com/snoworwind/pocket-harness/commit/9ebe0fc1589a070cb2ee12417f27d89236f7153a)
+- 来源构建：[Actions run 39374235296](https://github.com/snoworwind/pocket-harness/actions/runs/39374235296)
+- 两个独立 ARM64 来源构建及 APK payload 规范化比较通过；完整 Kotlin 单测通过；最终 APK 在隔离签名任务中使用仓库固定的 Pocket Harness 发布证书完成签名验证。
+- 下载资产 SHA-256 清单通过；`provenance.zip` 中的独立重建证明绑定到上述源码提交和最终 APK。APK SHA-256：`862e17cffc7bb4a5395ae960eec3f364c953ce73f476ac754f69bcd2166cadbf`。
+
+## 验收限制
+
+Device validation has NOT been performed for this candidate. 尚未完成 ARM64 真机安装、升级以及代码层、CDP 层和 ADB 用户实际体验层验收；不得将本候选视为设备验收通过。公开发布前必须补齐设备验收。
