@@ -2829,3 +2829,7 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 458. **macOS `/var/folders` 别名会令真实 base materialize 的链接边界误报（2026-10-20）**
 
     现象：用真实 candidate 在 macOS 原生执行 `engine-base.mjs materialize`，`indexTree` 把 pnpm `.pnpm/.../zod` 链接报成 escaped/broken。真因：系统 `tmpdir()` 返回 `/var/folders/...`，`realpathSync(link)` 返回 `/private/var/folders/...`；路径边界判据比较的是物理目标与未 canonicalize 的词法顶层路径，因此对合法内部 symlink 误报。归档本身经 base-archive 安全解包通过，链接目标存在且在 `engine-deploy` 内。修法/操作：来源构建的受支持验证环境是固定 Linux gate / hosted runner；在该 Linux 语义下跑真实 materialize，**不要**为了本机路径别名削弱逃逸判据。复验：run 39357008785 candidate 在 `pocket-harness-gate:24.04` Linux amd64 临时 main clone materialize exit 0；345 packages / 2435 links 及 marketplace patch parity 通过。未做设备验证。
+
+459. **engine base cache key 相同但 restore 仍 miss：缓存路径参与 cache version（2026-10-20）**
+
+    现象：build-base run 39357008785 已成功保存 `base-engine-engine-v1-941e395d…-3fcc7aa6…`（main，约 680 MB），来源草稿 run 39359395963 的 `Resolve engine base key and lock` 得到相同 key，但 `Restore trusted engine base` 输出 `Cache not found`，随后正确在 `Fail closed when a trusted engine base is unavailable` 停止。真因：`build-base.yml` 保存路径为 `.deploy-tmp/base-cache`，`build-apk-source.yml` 恢复路径为 `.deploy-tmp/engine-base-cache`；GitHub Actions cache version 除 key 外还绑定 path 与压缩工具，因此相同 key 不代表相同 cache version。修法：两条 workflow 的保存、恢复及 `materialize` 使用同一 `.deploy-tmp/base-cache`；`engine-base-workflow.test.mjs` 跨文件断言真实执行路径一致，并用错配路径作受控负控。复验：`engine-base.mjs --self-test`、workflow 回归与 hosted PR Gate；合并后还必须在真实来源链观测到 cache hit 和 `materialize` 成功，再认定修复完成。首次草稿失败未创建 Release；本次未做设备验证。

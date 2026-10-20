@@ -171,7 +171,7 @@ jobs:
         if: steps.engine-base.outputs.trusted == 'true'
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
         with:
-          path: .deploy-tmp/engine-base-cache
+          path: .deploy-tmp/base-cache
           key: ${{ steps.engine-base.outputs.cache_key }}
 
       - name: Materialize trusted engine base
@@ -182,7 +182,7 @@ jobs:
             echo "local source chain: no locked base to materialize"
             exit 0
           fi
-          node scripts/source-build/engine-base.mjs materialize .deploy-tmp/engine-base-cache
+          node scripts/source-build/engine-base.mjs materialize .deploy-tmp/base-cache
 
       - name: Fail closed when a trusted engine base is unavailable
         if: steps.engine-base.outputs.trusted == 'true' && steps.engine-cache.outputs.cache-hit != 'true'
