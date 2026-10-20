@@ -18,8 +18,8 @@
 - 第二轮 376–392 已进入源码修复；以 [修复账本](SECURITY-REMEDIATION-2026-10-17-R2.md) 为当前状态。设备实测按用户决定暂缓，基本修复完成后统一执行；期间保留 **未做设备验证** 状态，不能据此发布。
 
 - 2026-10-19：浏览器在无 `MULTI_PROFILE` 的设备上不再整块拒绝。用户显式启用兼容模式后使用进程级 Default cookie jar（`profileIsolation=shared`，loopback 仍拒，UI 明示共享），以可用性换隔离；每会话隔离与“不回 Default”的旧口径只对显式兼容模式例外。**未做设备验证**，需真机验证面板提示、第三站点导航与 `browser_*`。详见 [坑 437](gotchas.md)。
-- 2026-10-19：Linux 环境在设备上不可用的直接根因已定位并修复（源码层）——`@dsh-android/dsh-android-linux-env` 的 `xz-decompress`/`tar-stream` 原先只在引擎树，profile 路径解析不到，插件 import 失败导致路由与 bootstrap 服务全缺席。注入器现把运行时依赖闭包复制进插件自己的 `node_modules/`，`check-inject-completeness` 新增 C1/C2 可达性判据与负控；详见 [坑 436](gotchas.md)。**未做设备验证**，仍需来源链新 APK 的 engine.log 与面板/`linux_bash` 验收。同一轮修复了引擎重启后 reinstall/uninstall 必失败（持久化 pinned manifest 摘要、卸载时重新激活取 manager，见 [坑 438](gotchas.md)）。
-- Linux ARM64 离线资产链现已接入 APK 来源 workflow：同一提交从源码构建资产、校验来源 commit / 清单 sidecar / 每个资产摘要和长度，再嵌入 ARM64 Termux 快照；离线 bootstrap 已注册、编译客户端 bundle，并由 `linux-env` 提供已签名快照内资产和原始清单摘要。runtime manager 另有 Node 启动探测、有限输出与超时终止。当前本地单测和自检通过，仍待来源 APK 云端全链证明生成资产与 APK 同提交、APK 产物门禁成功；设备验收按用户要求暂缓，基本工作完成后统一进行。未经来源链及设备验收不得宣称 Linux 功能可发布。
+- 2026-10-19：修复了 Linux 插件依赖闭包导致的路由/bootstrap 未加载问题（源码层）：`@dsh-android/dsh-android-linux-env` 的 `xz-decompress`/`tar-stream` 原先只在引擎树，profile 路径解析不到，插件 import 失败。注入器现把运行时依赖闭包复制进插件自己的 `node_modules/`，`check-inject-completeness` 新增 C1/C2 可达性判据与负控；详见 [坑 436](gotchas.md)。这修复的是插件加载接线，不解决被测 ROM 上 `/data/data` 的 `noexec` 对 glibc loader 的阻断（见 [Linux 环境调查](../linux-env-findings/README.md)）。此源码修复未做设备验收，run [39374235296](https://github.com/snoworwind/pocket-harness/actions/runs/39374235296) 已生成来源 APK，后续设备 `engine.log`、面板与 `linux_bash` 流程仍待验。同一轮修复了引擎重启后 reinstall/uninstall 必失败（持久化 pinned manifest 摘要、卸载时重新激活取 manager，见 [坑 438](gotchas.md)）。
+- Linux ARM64 离线资产链已接入 APK 来源 workflow：同一提交从源码构建资产、校验来源 commit / 清单 sidecar / 每个资产摘要和长度，再嵌入 ARM64 Termux 快照；离线 bootstrap 已注册、编译客户端 bundle，并由 `linux-env` 提供已签名快照内资产和原始清单摘要。runtime manager 另有 Node 启动探测、有限输出与超时终止。本地单测与自检通过；main `9ebe0fc1589a070cb2ee12417f27d89236f7153a` 的来源 run [39374235296](https://github.com/snoworwind/pocket-harness/actions/runs/39374235296) 已通过，证明来源资产进入同提交 APK。该结果只证明构建与封装：设备端完整流程仍未验收，且 2026-10-19 实测 ROM 的 `/data/data` 为 `tmpfs noexec`，glibc loader 无法执行。Linux 保持实验功能，不得宣称可发布；详见 [Linux 环境调查](../linux-env-findings/README.md)。
 
 
 - 本轮安全团队审计修复四类边界，见 [SECURITY-AUDIT-2026-10-17.md](SECURITY-AUDIT-2026-10-17.md) 与坑 372–375。**未做设备验证**：WSL ADB 无设备且两个模拟器端口拒绝连接；没有本轮来源 APK/CDP/ADB 自主任务证据。L2/L3 三层仍阻塞验收及发布；普通 web 重定向的手势兼容需设备复核。宿主回归不得代替这项缺口。
@@ -101,7 +101,7 @@
 
 `kelai141/dsh-bionilux` 的内部 bootstrap 需被启用后提供 `linuxBootstrap` 服务、调用 `linuxPluginHost`（含 `isInjected` 在场查询）后再激活；构造/下载/解包由 bootstrap 拥有，运行时 manager 装配由宿主从激活作用域读出并交回（`install` 返回 `{manager, rollback?}`）。**未覆盖**：runtime 插件本体仍未 vendored（按设计只来自 Release），因此 `linuxPluginHost.install` 与 manager 交接只由单测（真实 Cordis + 受控 manager）覆盖，**没有**跑过真实 Release 产物。
 
-设备验收尚未执行：没有在 Android 上验收离线 manifest/资产读取、Linux 安装、更新、重装、卸载或工具执行。本轮先完成基本代码、自检与来源 APK 构建；随后统一执行设备侧验收。这些内部插件保持默认不启用，APK 更新不得自行启用它们；真实用户流程仍需设备验收。
+端到端设备验收仍未完成：尚未在 Android 上完整验收离线 manifest/资产读取、Linux 安装、更新、重装、卸载及工具执行。2026-10-19 真机调查已确认被测 ROM 上 Linux 运行时无法启动，证据见 [Linux 环境调查](../linux-env-findings/README.md)。这些内部插件保持默认不启用，APK 更新不得自行启用它们；真实用户流程仍需设备验收。
 
 **2026-10-19 真机调查更正**：已有一轮真机证据（vivo V2425A / Android 16），结论是**当前实现不可用**：本 ROM 的 `/data/data` 是 `tmpfs noexec`，glibc loader 无法被内核 `execve`；W5（外部 loader）已实测失败，bionilux 本身不是 glibc→bionic 转换层。插件可加载但运行时不能启动，安装链也未闭环。本轮决定**暂不移除**该功能（移除涉及构建链、来源资产、插件/厂商、Kotlin 桥、工作流、门禁与文档，设备不在线时风险高），保留为实验性、不宣称可用、不再投入实现。完整证据、真因、保留决策与将来重启的路线门见 [`docs/linux-env-findings/README.md`](../linux-env-findings/README.md)。
 
@@ -109,7 +109,7 @@
 
 已落地并有反证：`LinuxAssetIO`（来源面/落点面/摘要+体量/解包面判据，复用 `SnapshotExtractor` 与 `SnapshotBundledAsset`）与 `LinuxAssetPrepare`（客户端触发入口，`@JavascriptInterface` `linuxAssetPrepare`/`linuxAssetPrepareStatus`）。五条负控（穿越、符号链接逃逸、炸弹、摘要不符、字节数不符）在 Kotlin 侧各有真实用例，且失败一律不发布产物。
 
-**接入与验收边界**：壳侧 `LinuxAssetPrepare` 的网络准备面继续保留原有职责；离线 Linux bootstrap 使用另一条受 APK 签名保护的内置资产路径，不回退到网络下载。离线构建接线、自检与插件单测已经落地，来源 APK 云端全链与 Android 设备验收仍未完成，不能记为端到端已验收。
+**接入与验收边界**：壳侧 `LinuxAssetPrepare` 的网络准备面继续保留原有职责；离线 Linux bootstrap 使用另一条受 APK 签名保护的内置资产路径，不回退到网络下载。离线构建接线、自检与插件单测已经落地；来源 APK 云端全链已由 run [39374235296](https://github.com/snoworwind/pocket-harness/actions/runs/39374235296) 验证通过，Android 设备端到端验收仍未完成，不能记为 Linux 功能可用。
 
 **工具链边界**：APK workflow 的 Linux 交叉编译宿主工具由 Ubuntu runner 的 apt 仓库提供，目前未按每个 deb 固定版本与 SHA-256；NDK 官方 Linux 包只有 SHA-1 发布摘要可用，provenance 会披露该事实。离线 bundle 的用户侧信任锚仍是 APK 签名保护的原始 manifest 字节与 sidecar，逐项匹配内嵌资产的 SHA-256 和长度。主机工具链可复现性还需后续提高，不能把 source commit 相同直接等同于 bit-for-bit 可复现。
 
@@ -129,7 +129,7 @@
 上游 `e3e728b` 已同步到安全分支工作树；本轮 **未做设备验证**，模拟器两端口拒绝连接且无在线真机。管理中心、气泡导航、Shizuku 及新增 Linux 桥的 CDP/ADB 层均未关闭；本轮没有来源链新 APK，不得沿用上游设备截图作为本分支验收。源码检查和本机测试证据见 SECURITY-HARDENING.md 同日复核。
 
 
-2026-10-17 Linux 安全修复仍 **未做设备验证**：源码反证与 Kotlin 编译/单测通过不能替代来源链 APK、CDP 和 ADB 自主任务；bootstrap 未进入注入集、页面尚无准备桥调用者的集成缺口不变，详见上述 Linux 待接入边界。
+2026-10-17 Linux 安全复核当时 **未做设备验证**，并发现 bootstrap 未进入注入集、页面没有准备桥调用者。后续源码已完成离线 bootstrap 注册、准备桥与运行时依赖接线（见上述 Linux 内部插件边界及 [坑 436](gotchas.md)）；来源 APK 链已由 2026-10-20 run [39374235296](https://github.com/snoworwind/pocket-harness/actions/runs/39374235296) 验证通过。设备端到端验收仍未完成，且被测 ROM 上的 `noexec` 限制使 Linux 运行时不可用，详见 [Linux 环境调查](../linux-env-findings/README.md)。
 
 ## 2026-10-17 晚第二轮发现时记录（历史，修复状态见当前入口）
 
