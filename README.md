@@ -14,7 +14,7 @@
 > **本项目宗旨：最大程度提高安全性和可验证性。** 范围、实施原则、已接受风险与证据要求见 [安全加固分支宗旨](docs/AGENTS/SECURITY-HARDENING.md)。
 
 应用名为 `Pocket Harness`，applicationId 与 Kotlin namespace 均为 `com.snoworwind.pocketharness`，
-源码版本与 versionCode 见 [构建声明](app/build.gradle.kts)，后缀由构建属性决定；引擎 `@deepseek-ai/dsh` 0.2.0-rc.2（本地开发候选，**未发布**）。应用名、applicationId 与 APK 产物前缀的迁移边界见 [项目基线](docs/AGENTS/BASELINE.md)。
+源码版本与 versionCode 见 [构建声明](app/build.gradle.kts)，后缀由构建属性决定；引擎 `@deepseek-ai/dsh` 0.2.1-rc.2（来源目标，**未发布**）。应用名、applicationId 与 APK 产物前缀的迁移边界见 [项目基线](docs/AGENTS/BASELINE.md)。
 
 namespace 迁移后的升级限制、前后检查及来源构建进展见 [迁移记录](docs/AGENTS/NAMESPACE-MIGRATION-2026-10-19.md)。
 
@@ -81,7 +81,7 @@ namespace 迁移后的升级限制、前后检查及来源构建进展见 [迁�
 
 ## 下载 / 安装
 
-新仓库尚未发布 APK，也没有可用的 Release。来源链只构建 ARM64，产物名为 `pocket-harness-v<版本>-source-arm64.apk`，由私有仓库 Secret 提供的独立发布密钥签名。
+仓库已公开，但**尚未对外发布 APK**：现有来源构建产物以草稿预发布形式保留，对外不可见。来源链只构建 ARM64，产物名为 `pocket-harness-v<版本>-source-arm64.apk`，由仓库 Secret 提供的独立发布密钥签名。
 
 ```sh
 adb install -r -t <apk>    # 同签名覆盖安装

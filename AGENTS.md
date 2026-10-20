@@ -36,7 +36,7 @@ gh workflow run build-apk-source.yml --repo snoworwind/pocket-harness --ref main
 # Linux / WSL 本地来源副本，仅 main 已提交 HEAD、自动隔离；交付须云端双构建验证与正式签名：
 node scripts/source-build/run-local-source-chain.mjs
 # 产物与环境详见 docs/AGENTS/build-and-env.md；禁止旧本地/协调仓链出 APK。
-# PR 合并前的本地门禁：步骤直接取自 pr-gate.yml，在 gate 镜像内跑（CI 配额不可用期间即合并判据）
+# 合并前自查（可选，CI 亦会自动跑；步骤直接取自 pr-gate.yml）
 node scripts/ci/local-gate.mjs
 
 # 装机（<serial> 用 adb devices 查；arm64 真机必须用 arm64 产物）
@@ -97,7 +97,7 @@ adb -s <serial> install -r -t out\v<版本>\pocket-harness-v<版本>-arm64.apk
 - 根据变更输入选择自检；结果记录源码/门禁版本、输入哈希、环境和命令。相关输入、依赖、门禁或环境改变即失效；相关输入不变可复用已有有效证据。成组修正后集中重验；权限、数据事务、签名、桥协议及门禁自身的即时反证不可省。
 - 纯 runtime JS 改动开发期优先热推；壳侧、签名、Manifest、APK assets 改动需要 APK。当前仅构建 ARM64；装机前实际查询 ADB 设备和 `ro.product.cpu.abilist`，设备为空或未知不得推断已兼容或已验收。最终候选从最终源码构建 ARM64，重新安装并完成 §2.1 三层验收及覆盖升级；热推证据不能代替最终 APK。
 - 来源审计入口 `scripts/source-build/run-local-source-chain.mjs` 仅构建已提交 HEAD，在原工作树外的独立检出执行；未提交内容不进入来源链。产物留在隔离目录，续跑显式传 `--build-workspace <同 HEAD 目录>`。不要把来源链的 LFS pointer 当成本地底座归档。
-- 权限、用户数据、运行时生效、ABI、签名、快照/APK 产物门禁保持阻断。仅维护说明的生成块漂移由 PR Gate 的提示 job 呈现（`check-maintenance-docs.mjs`，更新用 `--write`），不加入 APK 发布阻断链；branch protection 的远端设置不由本地文档改变。
+- 权限、用户数据、运行时生效、ABI、签名、快照/APK 产物门禁保持阻断。仅维护说明的生成块漂移由 PR Gate 的提示 job 呈现（`check-maintenance-docs.mjs`，更新用 `--write`），不加入 APK 发布阻断链；`main` 的分支保护已在远端启用（2026-10-20），本文只记录口径，不在此处改远端设置，详见 `docs/AGENTS/build-and-env.md`。
 
 ## 3. 去哪查（按需 grep，别通读）
 
@@ -135,7 +135,7 @@ adb -s <serial> install -r -t out\v<版本>\pocket-harness-v<版本>-arm64.apk
    **不可省的两条**：① 未做设备验证的改动必须在 PR 描述里**显式标注「未做设备验证」**；② 该改动进入发版候选前必须补验，未补验不得随版本发布。禁止以「等真机」推迟高风险面的验证；真机仍是发布前补充门禁。
 3. **原子化交付 + 分档验证**：一个 PR = 一个逻辑改动，可独立 revert；禁止把「修 bug + 重构 + 顺手优化」混在一个 PR 里。**但「原子 PR」不等于「不验」**——每个 PR 必须携带与其风险类相符的**最廉价充分证据**：L0 文档/注释 → CI 绿即可；L1 门禁/脚本逻辑 → `--self-test` + **一条受控负控**；L2 安全敏感面（快照事务 / 签名 / 门禁自身判据 / 桥协议）→ **即时三层**；L3 UI/UX 与壳侧行为 → **即时模拟器三层**。
    统一全量测试（ARM64 全链 + 冷启动矩阵 + 真机补充门禁）前移到**发布计划确定时**执行，且它**只做集成验证、替代不了上面每档的证据**。细则见协调仓 `docs/0.14.8-DELIVERY-PLAN-2026-10-14.md` §3。
-4. **默认改动走 PR**（私有仓暂不启用收费分支保护，也不升级套餐；此为用户决定，依靠同一 HEAD 的 CI 复核与可追溯合并流程）：建分支 → 提交（`<type>: <描述>`）→ 推分支 → 开 PR（1-3 标签）→ 本地门禁绿（`node scripts/ci/local-gate.mjs`，同一 HEAD 树）或 CI 绿（仓库变量 `PR_GATE_MODE=on` 时）→ 合并 → 删分支。**禁止直接 push `main`**。本仓以 `main` 为长期维护线，首个提交为基线导入；后续改动按 PR 合入，来源链构建与安全加固规则继续适用，详见 `docs/AGENTS/SECURITY-HARDENING.md`。其他例外仅限不改仓库内容的外部动作（Release 资产、issue 评论与开关、标签）。
+4. **默认改动走 PR**（仓库自 2026-10-20 起为公开仓：标准托管 runner 免费、`main` 已启用分支保护，直接 push 会被拒绝，合并方式只保留 merge commit）：建分支 → 提交（`<type>: <描述>`）→ 推分支 → 开 PR（1-3 标签）→ CI 绿（必检项与保护配置见 `docs/AGENTS/build-and-env.md`；本地门禁 `node scripts/ci/local-gate.mjs` 可先自查）→ 合并 → 删分支。**禁止直接 push `main`**。本仓以 `main` 为长期维护线，首个提交为基线导入；后续改动按 PR 合入，来源链构建与安全加固规则继续适用，详见 `docs/AGENTS/SECURITY-HARDENING.md`。其他例外仅限不改仓库内容的外部动作（Release 资产、issue 评论与开关、标签）。
 5. **子仓副本同步（幽灵缺陷防线）**：改 `dsh-client-ui-responsive` / `dsh-host-web-compat` / `dsh-shell-termux` / `plugins/dsh-android-*` 的源码或 bump 版本后，**必须把源码、`package.json` 与 `lib/` 产物同步进本仓同名目录**（本分支树内副本即权威，不存在需要对端的第二棵树）。漏了 → 构建注入旧副本，**编译通过但功能缺失**。
    - 只同步**镜像清单内的文件**，切勿对 `scripts/` 等目录整体 `/MIR`——会删掉本仓独有的设备脚本（真实事故）。
 6. **跨树权威已收归本仓（2026-10-15，按用户决定）**：原先声明 `scripts/patches/**`、`scripts/check-patch-mirror.mjs`、`scripts/build-apk-013.ps1` 等是「协调仓的逐字节镜像，单边演进即拒；补丁改动先合本仓镜像 PR、再合协调仓权威源 PR」。本分支既然只从源码构建、且不依赖 kelai141 名下任何仓库（见 `docs/AGENTS/SECURITY-HARDENING.md` 的「独立」口径），**跨树镜像层已从门禁中整体移除**——`check-patch-mirror.mjs` 只保留 registry↔IMPLS 自洽面，`check-release-gates.mjs` 的「两树同版」断言已删除（它原先在对端缺席时打印 PASS 却从未比对）。树内副本即权威，这些文件在本分支按本仓评审与门禁正常演进，不需要对端配合。
