@@ -1035,6 +1035,7 @@ flowchart TD
 #### K09 悬浮球与面板
 
 - **一句话**：系统级悬浮球与展开面板的全套交互面——三窗口生命周期、拖动钳制、状态行/待答卡渲染、应答回流引擎、完成态常驻文案与自动收起。
+- **服务收口补充（2026-10-20）**：`OverlayService.onStartCommand` 对显式启动与 null Intent 均返回 `START_NOT_STICKY`，null Intent 按 `startId` 自停；`onTaskRemoved` 由悬浮服务自身 `stopSelf`，不改长期启用偏好，窗口与回调仍由 `onDestroy` 清理。设备侧划除与空 Intent 重投递行为本轮未验证。
 - **入口/触发**：
   - 启停：设置页开关（桥 `androidBridge.setOverlayEnabled` → `MainActivity.kt:769` 的 λ）与回前台补启 `MainActivity.kt:306` 经 `OverlayController.setEnabled/ensureStarted`；停：`OverlayController.stop`、`EngineService.kt:70`（划掉后台=完整停机）。
   - 球手势：球窗 `ACTION_UP` 未移动 → `togglePanel`（`OverlayService.kt:382`）；拖动中每帧钳制并同步光环。
