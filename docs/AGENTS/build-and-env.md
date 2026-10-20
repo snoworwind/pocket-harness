@@ -358,4 +358,6 @@ engine 的 checkout/upstream/overlay/patches/build/deploy 步骤集中到 `scrip
 
 `build-base.yml` 只跑 engine：`engine-base.mjs plan` 固定 key、`build-engine.sh` 构建、双 replica 各自 `capture`，`compare` 对实际输出树逐文件比对后才发 `base-lock.candidate.json` 并写 cache。`build-apk-source.yml` 用同一 key 恢复；命中则 `materialize`，未命中且锁可信时失败关闭，无锁时才从源码构建。`base-lock.json` 是仓内信任根；base 不含 APK、签名密钥或项目插件产物。
 
-实跑状态：PR Gate 与 Kotlin 门禁已绿，但真实双构建的 `compare` 不通过（pnpm 生成文件顺序 + `engine-deploy` 未 rebase 的绝对路径），`materialize` 尚未在真实 base 上验证，且 `engine-toolchain.json` 的 Java 钉值不存在。未决项、根因与复验入口见 [ENGINE-BASE-2026-10-19.md](ENGINE-BASE-2026-10-19.md)。
+两条 workflow 的 cache `path` 必须逐字相同：`build-base.yml` 保存 `.deploy-tmp/base-cache`，来源链也必须从该路径 restore 并执行 `materialize`。Actions cache version 包含缓存路径和压缩工具；cache key 相同但路径不同仍会 miss。回归由 `node scripts/source-build/engine-base.mjs --self-test` 与 `node --test scripts/source-build/engine-base-workflow.test.mjs` 覆盖，后者含跨 workflow 路径错配负控。
+
+实跑状态：PR #51、#61、#62 已合并；main `23d4e3d` 上 build-base run 39357008785 的独立双构建、完整 tree compare、cache 保存成功，锁 key 为 `engine-v1-941e395d…7a28`。真实候选在 Linux gate 容器通过 `materialize` 与 345 packages / 2435 links 检查。来源草稿首次运行 39359395963 在 cache restore 后按失败关闭门禁停止：cache key 存在，但 build-base 保存路径与来源链 restore 路径不一致；本次 PR 统一路径并加入回归，合并后必须重跑完整草稿来源链，确认真实 cache restore → `materialize` → ARM64 双构建。按用户要求本次不做设备验证；草稿说明须保留该边界。历史根因与证据见 [ENGINE-BASE-2026-10-19.md](ENGINE-BASE-2026-10-19.md) 与 [坑 459](gotchas.md)。

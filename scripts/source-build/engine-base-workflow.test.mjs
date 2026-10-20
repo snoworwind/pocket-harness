@@ -2,6 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 const workflow = readFileSync(new URL('../../.github/workflows/build-base.yml', import.meta.url), 'utf8').replaceAll('\r\n', '\n')
+const sourceWorkflow = readFileSync(new URL('../../.github/workflows/build-apk-source.yml', import.meta.url), 'utf8').replaceAll('\r\n', '\n')
 function check(text) {
   assert.match(text, /^  workflow_dispatch:/m)
   assert.match(text, /^  workflow_call:/m)
@@ -27,10 +28,21 @@ function check(text) {
   assert.equal((text.match(/path: \.deploy-tmp\/base-cache\n/g) ?? []).length, 2, 'cache restore/save paths must share the same cache version')
   assert.equal((text.match(/runs-on: ubuntu-24\.04/g) ?? []).length, 3)
 }
+function checkSourceCachePath(text) {
+  const restore = text.split('      - name: Restore trusted engine base\n')[1]?.split('      - name: Materialize trusted engine base\n')[0]
+  const materialize = text.split('      - name: Materialize trusted engine base\n')[1]?.split('      - name: Fail closed when a trusted engine base is unavailable\n')[0]
+  assert.ok(restore, 'source workflow must restore the trusted engine base')
+  assert.ok(materialize, 'source workflow must materialize the trusted engine base')
+  const restorePath = restore.match(/^\s+path: (.+)$/m)?.[1]
+  assert.equal(restorePath, '.deploy-tmp/base-cache', 'restore path must use the cache path saved by build-base.yml')
+  assert.match(materialize, /engine-base\.mjs materialize \.deploy-tmp\/base-cache\s/)
+}
 test('base workflow is main-only and publishes only after actual dual comparison', () => check(workflow))
+test('source workflow restores and materializes the exact build-base cache path', () => checkSourceCachePath(sourceWorkflow))
 test('controlled workflow regressions reject bypassed comparison and cache writes', () => {
   for (const bad of [workflow.replace('engine-base.mjs compare', 'true # omitted comparison'),
     workflow.replace('replica: [primary, reference]', 'replica: [primary]'),
     workflow.replace('path: .deploy-tmp/base-cache', 'path: .deploy-tmp/other'),
     workflow + '\n# restore-keys: broad-prefix\n']) assert.throws(() => check(bad), assert.AssertionError)
+  assert.throws(() => checkSourceCachePath(sourceWorkflow.replace('path: .deploy-tmp/base-cache', 'path: .deploy-tmp/engine-base-cache')), assert.AssertionError)
 })
