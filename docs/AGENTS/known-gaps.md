@@ -167,3 +167,6 @@
 | 生成文件归一化 | `engine-deploy` 三件套未 rebase、未定序，内嵌 `file://` 绝对路径 344/3349/1 处 | 归一化与定序后计入 tree，或登记为已知非确定性并写进锁 schema |
 | materialize | 尚未在真实 base 上验证（compare 从未产出可信 base） | 用真实候选 lock 跑 materialize 并继续一次 engine 复用构建 |
 | 云端 checks | runner 未分配（job `steps: []`，main 同形态），计费/配额问题 | 恢复后由 CI 复跑确认 |
+## 发布状态（2026-10-20）
+
+仓库已公开，但**尚未对外发布 APK**：三个 `hardening-source-*` 预发布已转为草稿，对外不可见（未认证 API 返回 0 条）。对外发布需先完成设备三层验收，再由维护者手动把草稿转正；当前 ARM64 真机不可用，故该项保持未完成。

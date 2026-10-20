@@ -3,6 +3,9 @@
 > 全部版本历史都堆在这里（AGENTS.md 不再设更新记录表）。**新条目倒序加在表格最上方**。细节写进对应详档，这里只留一行摘要。
 
 | 时间 | 版本 | 更新内容 | 更新者 |
+| 2026-10-20 | **仓库转公开、CI 恢复与分支保护（无应用代码改动）** | 全历史审计无凭证后转为公开仓，标准托管 runner 免费，`PR_GATE_MODE=on`，CI 恢复并实测通过；`main` 启用分支保护（必须 PR、4 项必检、管理员受限、禁强推与删除），合并方式收敛为 merge commit；公开前清理两个子仓 `.npmrc`（坑 351 根因）与设备序列号。过程与坑位见 gotchas 455-456、build-and-env 的分支保护一节。未做设备验证。 | DSH Agent |
+| 2026-10-20 | **许可证归属确认（双版权，MIT）** | 经项目所有者确认：本项目是 [`kelai141/dsh-mobile-apk`](https://github.com/kelai141/dsh-mobile-apk) 的修改版，`LICENSE` 保留原版权声明并追加本仓版权行，修改部分同样以 MIT 发布；README 中英双版、`BASELINE.md` 同步，known-gaps 的待确认项关闭。仅文档与许可证文本，无代码改动。 | DSH Agent |
+| 2026-10-20 | **公开仓文档一致性收口** | 全部文档对齐公开仓状态：铁律 4 的分支保护与合并方式、安全加固的私有决定作废、本地门禁定位、README 引擎目标与下载口径；补充坑 456（`required_pull_request_reviews: null` 陷阱）、发布状态与公开仓许可证归属待确认项。 | DSH Agent |
 | 2026-10-19 | **0.14.8 开发候选：引擎 0.2.1-rc.2 吸收（未做设备验证）** | 固定官方 687f282e 源码与 pnpm 11.28.5；重锚官方 pi-ai 补丁、PTC 一次/持久执行两路 Android 启动及空模型环境，保持隔离失败关闭；同步插件 peer/锁/lib、槽位/行/路由清单与三份覆盖资产。真实源码构建及代码证据、PR/来源链进展见 ENGINE-UPGRADE-2026-10-19.md；设备为空，禁止当作已验收发布。 | Codex |
 | 2026-10-19 | **吸收参考仓 #414 堆自适应修复（设备压力待验）** | 参考源提交 `15d83fa`（上游合并提交 `f2df6fa`）：上限 1024→4096MB；新增 V8 自然堆标志真源与防退化门禁 F，修复旧上限令 `totalRam/2` 分支恒被截断的问题；补 1/2/3/4/6GB JVM 档断言、wrapper 反例及 11 条门禁负控。代码门禁、wrapper、地图及三项 PR CI 检查全通过；本机 Gradle 单测未取得结果。PR #38 已以 merge commit `ff2261b` 合并。未做设备验证或来源链 APK；实际内存压力仍待验。检查游标 `18439f1` 与当前上游 main 尖端相同。 | Codex |
 | 2026-10-19 | **Kotlin namespace 统一迁移（未做设备验证）** | 生产、单测、androidTest 与 AIDL 迁至 `com.snoworwind.pocketharness`，同步组件/Root/插件/门禁及源码地图；Shizuku 协议升至 5，使旧 descriptor 缓存失效；绑定判据支持新同包简写并拒绝旧类。applicationId、签名策略与数据根不变；前后完整检查及升级重新绑定边界见 NAMESPACE-MIGRATION-2026-10-19.md。 | Codex |

@@ -42,3 +42,6 @@ out/
 # Vendored runtime JavaScript is source, not a generated plugin build directory.
 !vendor/dsh-linux-runtime/lib/
 !vendor/dsh-linux-runtime/lib/*.js
+
+# 子仓 npm 配置曾把开发机缓存路径提交进仓库，Linux 构建把它当相对路径写成目录（坑 351/455）
+dsh-*/.npmrc

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { spawnSync } from 'node:child_process'
@@ -46,9 +46,35 @@ test('gate scripts run gates but do not force an APK', () => {
   expect(classifyPaths(['scripts/check-release-gates.mjs']), { gates: true })
 })
 
-test('workflow and generic source-build changes fail safe to full', () => {
-  expect(classifyPaths(['.github/workflows/build-apk-source.yml']), { full: true, engine: true, termux: true, linux: true, plugins: true, app: true, build: true, gates: true, apk: true })
-  expect(classifyPaths(['scripts/source-build/run-local-source-chain.mjs']), { full: true, engine: true, termux: true, linux: true, plugins: true, app: true, build: true, gates: true, apk: true })
+test('workflow and generic source-build changes are build-only, not APK/Kotlin', () => {
+  // `apk` gates the Kotlin compile job. A workflow or generic source-build script cannot
+  // change what `app/src/test` observes, so it must not buy a full Kotlin compile. The
+  // static gate job still runs every check for these paths.
+  expect(classifyPaths(['.github/workflows/build-apk-source.yml']), { build: true })
+  expect(classifyPaths(['scripts/source-build/run-local-source-chain.mjs']), { build: true })
+  expect(classifyPaths(['scripts/ci/classify-changes.mjs']), { build: true })
+})
+
+test('Kotlin sources never read workflow, ci or generic source-build paths', () => {
+  // This invariant is what makes `build`-only classification safe. If a Kotlin test starts
+  // reading one of these trees, a workflow-only change could turn the compile gate green
+  // while the real dependency is broken — so this test must fail and force the classifier
+  // back to `apk` for that path family.
+  const root = fileURLToPath(new URL('../../', import.meta.url))
+  const readTree = (dir) => readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    const path = join(dir, entry.name)
+    return entry.isDirectory() ? readTree(path) : [path]
+  })
+  const pattern = /File\(\s*"(?:\.\.\/)?(?:\.github|scripts\/source-build|scripts\/ci)\//
+  const offenders = []
+  for (const dir of ['app/src/test', 'app/src/main']) {
+    const absolute = join(root, dir)
+    if (!existsSync(absolute)) continue
+    for (const file of readTree(absolute)) {
+      if (file.endsWith('.kt') && pattern.test(readFileSync(file, 'utf8'))) offenders.push(file.slice(root.length))
+    }
+  }
+  assert.deepEqual(offenders, [], 'Kotlin sources read a path the classifier no longer marks as APK-affecting')
 })
 
 test('unknown paths and empty diffs fail safe to full', () => {

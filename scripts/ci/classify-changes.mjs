@@ -3,6 +3,12 @@
  * Classify changed paths into build components. Fail-safe: any unknown path or empty
  * diff maps to `full`, so CI over-builds rather than silently skipping a dependency.
  *
+ * `apk` gates the Kotlin compile/test job, so it must mean "this change can alter what
+ * the Kotlin tests observe" — not "this change touches the build system". Workflow and
+ * generic `scripts/source-build/**` changes build artifacts but are never read by
+ * `app/src/test` (enforced by `classify-changes.test.mjs`), so they stay `build` only.
+ * Engine/termux/linux/plugin/app changes still set `apk`.
+ *
  * Usage:
  *   node scripts/ci/classify-changes.mjs --base <sha> --head <sha>
  *   node scripts/ci/classify-changes.mjs --files a.ts,b.md
@@ -69,8 +75,11 @@ export function classifyPaths(files) {
   if (docs === list.length) {
     return { ...Object.fromEntries(FLAGS.map(flag => [flag, false])), apk: false, docs_only: true, full: false, files: list }
   }
-  // A build-system change can alter any component's output; treat it as full.
-  if (out.build) return { ...full(), files: list }
+  // Build-system changes alter how components are produced, but the Kotlin compile gate
+  // only observes app sources, gradle wiring and the few scripts that Kotlin tests read
+  // directly (all covered by engine/app above). Keeping `build` out of `apk` stops a
+  // workflow-only tweak from paying for a full Kotlin compile; every gate in the static
+  // job still runs, so build-system changes remain covered.
   out.apk = out.engine || out.termux || out.linux || out.plugins || out.app
   return out
 }

@@ -18,7 +18,7 @@ install: it boots a full dsh web agent that can really execute bash.
 > **Project charter: maximize security and verifiability.** See [the security charter](docs/AGENTS/SECURITY-HARDENING.md) for scope, principles, accepted risks and evidence requirements.
 
 The app is named `Pocket Harness` and uses the independent package `com.snoworwind.pocketharness` (the Kotlin namespace is also `com.snoworwind.pocketharness`),
-source version and versionCode follow the [build declarations](app/build.gradle.kts), with the suffix supplied by build properties; engine `@deepseek-ai/dsh` 0.2.0-rc.2 (local development candidate, **not released**). See the [project baseline](docs/AGENTS/BASELINE.md) for the migration boundary of the app name, applicationId and APK artifact prefix.
+source version and versionCode follow the [build declarations](app/build.gradle.kts), with the suffix supplied by build properties; engine `@deepseek-ai/dsh` 0.2.1-rc.2 (source target, **not released**). See the [project baseline](docs/AGENTS/BASELINE.md) for the migration boundary of the app name, applicationId and APK artifact prefix.
 
 See the [namespace migration record](docs/AGENTS/NAMESPACE-MIGRATION-2026-10-19.md) for upgrade limitations, before/after checks and source-build progress.
 
@@ -107,8 +107,9 @@ See the [namespace migration record](docs/AGENTS/NAMESPACE-MIGRATION-2026-10-19.
 
 ## Download / install
 
-This new repository has no APK releases yet. Artifact naming and signing policy will be settled before the
-first release. The source chain builds ARM64 only and names artifacts `pocket-harness-v<version>-source-arm64.apk`, signed with the independent private release key.
+The repository is public, but **no APK has been released**: current source-build artifacts are kept as draft
+pre-releases and are not publicly visible. The source chain builds ARM64 only and names artifacts
+`pocket-harness-v<version>-source-arm64.apk`, signed with the independent release key held in repository secrets.
 
 ```sh
 adb install -r -t <apk>    # in-place upgrade, same signature
@@ -232,7 +233,12 @@ The full version history lives in [`docs/AGENTS/changelog-archive.md`](docs/AGEN
 
 ## License
 
-MIT. Third-party components under their own licenses (see the dependency notices). GPL compliance:
+MIT, with both copyright notices: the original project
+[`kelai141/dsh-mobile-apk`](https://github.com/kelai141/dsh-mobile-apk) and this repository
+[`snoworwind/pocket-harness`](https://github.com/snoworwind/pocket-harness). This project is a modified
+version of the original and **retains its copyright notice**; the modifications are released under the
+same MIT terms. See [LICENSE](LICENSE).
+Third-party components under their own licenses (see the dependency notices). GPL compliance:
 the full copyleft text ships in three forms — snapshot `usr/share/LICENSES/`, repo `LICENSES/`, and
 APK `assets/licenses/`.
 

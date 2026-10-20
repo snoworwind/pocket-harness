@@ -294,9 +294,57 @@ bootstrap 的 package-lock.json 与 package.json 一样属于逐字节来源输�
 
 引擎 0.2.1-rc.2 来源链原生登记：Sharp 本体/Linux payload 固定 0.35.5，Android 仍使用已核对 loader 的 @img/sharp-wasm32 0.35.3；node-addon-require-builtin Linux payload 增补精确 0.1.9，不接受任意新版本。原始根 manifest 在编译前只读复制，归集缺件仍阻断。失败与复验记录见 ENGINE-UPGRADE-2026-10-19.md。
 
-## PR Gate 变更分类（2026-10-19）
+## PR Gate 变更分类（2026-10-19，2026-10-20 收紧口径）
 
-`scripts/ci/classify-changes.mjs` 按 changed paths 输出 `engine/termux/linux/plugins/app/build/gates/apk/docs_only/full`。PR Gate 新增 `changes` job：`apk=true` 才跑 Kotlin 编译；静态扫描、冲突/敏感信息与补丁/门禁检查始终跑。**未知路径、空 diff、workflow/generic source-build 改动一律 `full=true`**，宁可多跑不误跳过。分类器单测 `node --test scripts/ci/classify-changes.test.mjs`。
+`scripts/ci/classify-changes.mjs` 按 changed paths 输出 `engine/termux/linux/plugins/app/build/gates/apk/docs_only/full`。PR Gate 的 `changes` job 用它决定跑哪些 job。
+
+分层口径（公开仓、改动一律走 PR、`main` 已启用分支保护；合并提交的树已被同一 HEAD 的 PR run 验证过）：
+
+- `apk=true` 才跑 Kotlin 编译。**`apk` 的含义是「该改动可能改变 Kotlin 测试观察到的内容」，不是「碰到了构建系统」**：`.github/**`、`scripts/ci/**`、通用 `scripts/source-build/**` 只置 `build`，不再置 `apk`。这条收窄由 `classify-changes.test.mjs` 的不变量用例守住——Kotlin 源码一旦 `File()` 读取这三棵树，测试立即判红，逼分类器同步改回。
+- `docs_only=true` 时跳过整个 `static` job（24 步全是代码/构建契约，文档改动不可能改变它们）；冲突标记与敏感信息扫描独立成 `docs-hygiene` job 始终运行，且把扫描面扩到 `docs` 与 `.github`。
+- **未知路径、空 diff 仍 fail-safe 到 `full`**，宁可多跑不误跳过；`static` 用 `if: always() && ...`，分类 job 失败（输出为空）时仍按全量跑。Kotlin 编译同样只在分类**明确为 `false`** 时跳过（`always() && apk != 'false'`），分类失败时照跑而不是静默跳过。
+- 触发面只有 `pull_request`：删掉了 `push: branches: [main]`，合并提交不再把同一棵树重验一遍（直接 push main 已被铁律 4 禁止）。并发组 `pr-gate-<PR号>` 开启 `cancel-in-progress`，连续 push 不再叠加跑完。
+
+分类器单测 `node --test scripts/ci/classify-changes.test.mjs`（含「Kotlin 不读 workflow/source-build」不变量）。
+
+## 本地门禁（2026-10-20，CI 的快速自查与离线回退）
+
+`node scripts/ci/local-gate.mjs` 在本地复现 CI 的同一套检查，CI 可用时用于推送前自查，配额或网络不可用时即合并判据：**步骤不另维护清单，直接读 `.github/workflows/pr-gate.yml`**，按同一套 job 条件（`docs-hygiene` 恒跑、`static` 除文档改动、`compile` 仅 `apk`）在 gate 镜像里执行同样的 `run:` 块。workflow 增删门禁时本地自动跟随；`local-gate.test.mjs` 用计数钉住这个契约。
+
+- `--mode auto|container|native`（默认 auto：容器运行时可达就用容器，否则回退 native）。三种宿主的能力矩阵：
+
+  | 宿主 | 推荐 | 能跑 Kotlin | 说明 |
+  |---|---|---|---|
+  | macOS / Linux / Windows + Docker | `container` | 是 | 钉住的 Linux 环境，与 CI 同构 |
+  | Windows（无 Docker） | `native` | 否 | 需 Git Bash（bash 5）、node >= 22.15、GNU tar；Kotlin 必须显式 `--no-kotlin` |
+  | Android / Termux | `native` | 否 | 无容器运行时；同上，Kotlin 必须显式跳过 |
+  | macOS 原生 | 不推荐 | 否 | 系统 bash 3.2 无 `mapfile`、node 20 无 `zstdCompressSync`、bsdtar 不认 `--sort=name`；预检会直接拒绝并给出清单 |
+
+- 镜像 `scripts/ci/gate-image/Dockerfile`（tag `pocket-harness-gate:24.04`）钉 node 24.21.0 / python 3.12.15 / JDK 17 / Android SDK 36，首次运行构建约 2.5GB。**必须 linux/amd64**：Google 的 Linux build-tools 只有 x86-64，arm64 镜像里 `aidl` 跑不了；Apple Silicon 上走 Rosetta，与 CI 的 x64 runner 一致。
+- 容器挂载用 `--mount` 而非 `-v`：Windows 的盘符路径与含空格路径只有前者可靠。步骤计时用 `node -p Date.now()` 而非 `date +%s%3N`（BSD 与 Termux 的 date 不支持 `%N`）。
+- **native 模式缺件即失败关闭**：选中 Kotlin 而宿主没有 JDK / Android SDK 时不会静默跳过，必须显式 `--no-kotlin`；证据里记 `mode` / `platform` / `kotlinIncluded`，PR 可据此标注未覆盖的层。
+- 工作树必须干净（证据绑定 HEAD 树），否则 exit 2；`--allow-dirty` 可覆盖但会在证据里记 `dirty: true`。
+- 证据落 `.deploy-tmp/local-gate/<tree12>.json` 与同名 `.log`：commit、tree、base、分类结果、逐步骤 rc/耗时、工具链钉值、verdict。`--dry-run` 只列将跑的步骤。
+- 镜像内的 `/workspace/local.properties` 以只读挂载覆盖为 `sdk.dir=/opt/android-sdk`，宿主的 macOS SDK 路径不会漏进容器，仓库文件也不被改写。
+- Gradle 与 pnpm 缓存用命名卷 `pocket-harness-gate-gradle` / `pocket-harness-gate-pnpm` 复用，热跑显著快于冷跑。
+
+**CI 开关**：`pr-gate.yml` 的每个 job 都带 `vars.PR_GATE_MODE == 'on'`，仓库变量当前为 `on`（2026-10-20 起）。变量未设置时全部 job 跳过、PR 上只显示 skipped，可在配额或故障期间临时静默而不产生红色噪声。
+
+## 分支保护与合并策略（2026-10-20）
+
+仓库已公开，`main` 的分支保护在远端启用；本文只记录口径，不改远端设置。
+
+| 项 | 值 | 说明 |
+|---|---|---|
+| 必须走 PR | 是 | 直接 push 返回 `protected branch hook declined` |
+| 必需审批 | 0 | 单人仓，无法自我批准 |
+| 必需状态检查 | 变更范围分类 / 冲突标记与敏感信息扫描 / 静态门禁与源码回归 / Kotlin 编译门禁 | docs-only PR 的两个 job 为 skipped，实测不阻塞合并（`mergeStateStatus=CLEAN`） |
+| 分支必须最新 | 是 | 合并前需与 `main` 同步 |
+| 管理员同样受限 | 是 | 紧急情况用 `gh api -X DELETE .../branches/main/protection` 临时解除 |
+| 强推 / 删除分支 | 禁止 | 与铁律 10 一致 |
+| 合并方式 | 仅 merge commit | squash/rebase 已关闭，与铁律 11 一致 |
+
+> 2026-10-20 实测教训：API 里 `required_pull_request_reviews: null` 等于**关闭**「必须走 PR」，而状态检查只约束 PR、不拦直接推送。首次配置正是这样漏掉 PR 要求，一次直接 push 落到 `main`，随后用回滚 PR 纠正。见 gotchas 坑 456。
 
 ## Engine 构建复用（2026-10-19）
 
