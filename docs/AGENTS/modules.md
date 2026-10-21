@@ -103,6 +103,8 @@
 
 `dsh-client-ui-responsive/src/client/snapshot-panels-observer.ts` 的 `snapshotOwners` 按真实三层 `data-slot` 认领 vendored 快照面板的 header/titleRow；`SnapshotPanelsObserver` 分别租赁抬升和解除包含的临时 class，并在关闭、重分类、移除或 reload 时恢复。配套 `snapshot-panels.css.ts` 只改变这两个已认领元素的绘制层和包含约束。真因、测试与设备边界见 `gotchas.md` 坑 239。
 
+`dsh-client-ui-responsive/src/client/mobile/incoming-runtime.ts` 是来件草稿的 Cordis 适配边界：`sessions` 负责 refresh/scope，`uiWorkspace` 负责 connect/openSession；来件只有在目标 scope 建立后才 claim 文件并交给正常 composer 草稿路径。导航服务归属与测试见 `gotchas.md` 坑 472。
+
 ## 0.14.3 新模块与职责（源码登记，未执行验证）
 
 | 新模块 | 职责 / 关键入口 |

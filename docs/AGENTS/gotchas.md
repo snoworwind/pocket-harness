@@ -2881,3 +2881,7 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 471. **来件清理不能把未知引用当作空队列，待发清单必须串行原子发布（2026-10-21）**
 
     现象：pending ledger 或 `.sessions` 读失败曾返回空列表，task-removed/TTL 清理可删掉仍待投递或待 claim 的文件；并发 enqueue 与 flush 的整文件写回也可丢掉新条目。另有时序问题：先增加 activeDeliveries 再调用 TTL sweep，sweep 因“投递在途”跳过，导致每次来件都绕过 TTL。真因：缺失与不可读共用空值、ledger 写者与删除者无共同所有权锁、清扫与 reservation 顺序倒置。修法：空 ledger/不存在 queue 才是空列表；已有索引无法完整解析返回 null 并使整轮清理让路；cleanup、TTL 与 ledger read-modify-write 共用锁；先清扫、同锁预留投递窗口；完整 ledger 写入并 fsync 同目录临时文件后替换 live 文件。复验：`FileIncomingCleanupTest` 覆盖未知 schema、损坏索引、读取失败、保留引用、TTL 过期/目录跳过、清扫预留顺序、ledger 写入失败保留旧字节和临时文件回收。未做设备验证（当前环境无 ADB）。参考上游 `e5330fe`、`fc93163`。
+
+472. **rc.2 来件草稿导航由 uiWorkspace 持有，不是 sessions.open（2026-10-21）**
+
+    现象：来件 consumer 可拿到新建 sessionId，但调用 rc.2 `sessions.open()` 没有把 WebView 导航到草稿，后续 composer scope 不出现、claim 不应发生。真因：`sessions` 服务保留身份/查 scope，页面导航属于 `uiWorkspace`。修法：通过 `incoming-runtime.ts` 适配器统一 `connectWorkspace` 与 `openSession`，并保持 claim 在导航目标 scope 可用之后。复验：`incoming-runtime.spec.ts` 断言 Sessions 面没有 `open`、导航通过 `uiWorkspace.openSession`，且仅在目标 scope 出现后执行 claim/附件挂载；插件 753/753 通过。`npm run typecheck` 仍被未改动的 `conversation-dock.tsx:137-138` 类型错误阻断，设备/CDP 未做。参考上游 `5a6761b`。
