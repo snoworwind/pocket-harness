@@ -2877,3 +2877,7 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 470. **注入后鉴权门禁必须把 marker 绑定到各自归档成员（2026-10-21）**
 
     现象：`tar -xOf archive pathA pathB` 把多个成员内容串接到 stdout，随后对每个成员都搜索该整段输出；只要 A 含 marker，缺少鉴权的 B 也能判绿。真因：断言没有保留成员与内容的对应关系。修法：在一次流式归档扫描中按成员名分别取文本，拒绝重复项、非普通文件和超限成员，再对每个文件独立验证 marker。复验：`node scripts/check-api-route-auth.mjs --self-test` 含“B 缺 marker、A 带 B 的 marker”受控负控，并覆盖成员缺失、重复与链接；通过。来源链正式快照因无可用设备不影响 L1 门禁证据；完整 snapshot 输入的集成读取需在来源构建中复验。参考上游 `8edfdb8`。
+
+471. **来件清理不能把未知引用当作空队列，待发清单必须串行原子发布（2026-10-21）**
+
+    现象：pending ledger 或 `.sessions` 读失败曾返回空列表，task-removed/TTL 清理可删掉仍待投递或待 claim 的文件；并发 enqueue 与 flush 的整文件写回也可丢掉新条目。另有时序问题：先增加 activeDeliveries 再调用 TTL sweep，sweep 因“投递在途”跳过，导致每次来件都绕过 TTL。真因：缺失与不可读共用空值、ledger 写者与删除者无共同所有权锁、清扫与 reservation 顺序倒置。修法：空 ledger/不存在 queue 才是空列表；已有索引无法完整解析返回 null 并使整轮清理让路；cleanup、TTL 与 ledger read-modify-write 共用锁；先清扫、同锁预留投递窗口；完整 ledger 写入并 fsync 同目录临时文件后替换 live 文件。复验：`FileIncomingCleanupTest` 覆盖未知 schema、损坏索引、读取失败、保留引用、TTL 过期/目录跳过、清扫预留顺序、ledger 写入失败保留旧字节和临时文件回收。未做设备验证（当前环境无 ADB）。参考上游 `e5330fe`、`fc93163`。

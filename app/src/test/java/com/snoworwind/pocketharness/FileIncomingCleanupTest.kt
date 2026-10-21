@@ -1,5 +1,7 @@
 package com.snoworwind.pocketharness
 
+import java.io.File
+import java.nio.file.Files
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -13,6 +15,36 @@ import org.junit.Test
  * 待发清单与元数据一起消失（无重试、无残留、无日志）。
  */
 class FileIncomingCleanupTest {
+
+  @Test
+  fun deliveryReservationIsTakenAfterSweepAndAlwaysReleased() {
+    val lock = Any()
+    val deliveries = java.util.concurrent.atomic.AtomicInteger(0)
+    val observed = mutableListOf<Pair<Int, Int>>()
+    var insideLock = false
+
+    val result = FileIncoming.withIncomingDeliveryAfterSweep(
+      lock,
+      deliveries,
+      sweep = {
+        insideLock = Thread.holdsLock(lock)
+        observed += 1 to deliveries.get()
+      },
+    ) {
+      observed += 2 to deliveries.get()
+      "done"
+    }
+
+    assertEquals("done", result)
+    assertTrue("sweep must run while holding the cleanup lock", insideLock)
+    assertEquals("sweep sees no in-flight delivery reservation", 1 to 0, observed[0])
+    assertEquals("delivery is reserved before work starts", 2 to 1, observed[1])
+    assertEquals("reservation must be released", 0, deliveries.get())
+    assertTrue(runCatching {
+      FileIncoming.withIncomingDeliveryAfterSweep(lock, deliveries, {}) { error("pipeline failed") }
+    }.isFailure)
+    assertEquals("failed delivery must not leak its reservation", 0, deliveries.get())
+  }
 
   @Test
   fun wipeIsAllowedOnlyWhenBothCopyAndDeliveryAreSilent() {
@@ -58,5 +90,176 @@ class FileIncomingCleanupTest {
     val entries = listOf("a.pdf", "b.pdf")
     val pending = listOf("/x/incoming/gone.pdf")
     assertEquals(listOf("a.pdf", "b.pdf"), FileIncoming.cleanupDeletions(entries, pending))
+  }
+
+  @Test
+  fun ttlSweepKeepsPendingAndQueuedSources() {
+    val entries = listOf("pending.pdf", "draft.pdf", "orphan.txt", ".pending-notify.ndjson", ".sessions")
+    val pending = listOf("/x/incoming/pending.pdf")
+    val queued = listOf("/x/incoming/draft.pdf")
+    assertEquals(listOf("orphan.txt"), FileIncoming.ttlDeletions(entries, pending, queued))
+  }
+
+  @Test
+  fun sweepWorkspaceDeletesOnlyUnreferencedExpiredFiles() {
+    val dir = Files.createTempDirectory("ttl-sweep").toFile()
+    try {
+      val pending = File(dir, "pending.pdf").apply { writeText("pending") }
+      val queued = File(dir, "draft.pdf").apply { writeText("queued") }
+      val orphan = File(dir, "orphan.txt").apply { writeText("old") }
+      val metadata = File(dir, ".pending-notify.ndjson").apply { writeText("reference") }
+      val old = System.currentTimeMillis() - 8L * 24 * 60 * 60 * 1000
+      listOf(pending, queued, orphan, metadata).forEach { it.setLastModified(old) }
+
+      val removed = FileIncoming.sweepWorkspace(
+        dir,
+        listOf(pending.absolutePath),
+        listOf(queued.absolutePath),
+        System.currentTimeMillis(),
+        7L * 24 * 60 * 60 * 1000,
+      )
+
+      assertEquals(1, removed)
+      assertTrue("pending source must survive", pending.isFile)
+      assertTrue("queued source must survive", queued.isFile)
+      assertTrue("metadata must survive", metadata.isFile)
+      assertFalse("unreferenced expired file is the only deletion", orphan.exists())
+    } finally {
+      dir.deleteRecursively()
+    }
+  }
+
+  @Test
+  fun sweepWorkspaceFailsClosedWhenAnyReferenceListIsUnreadable() {
+    val dir = Files.createTempDirectory("ttl-unreadable").toFile()
+    try {
+      val orphan = File(dir, "orphan.txt").apply { writeText("old") }
+      val pending = File(dir, "pending.pdf").apply { writeText("pending") }
+      val old = System.currentTimeMillis() - 8L * 24 * 60 * 60 * 1000
+      orphan.setLastModified(old)
+      pending.setLastModified(old)
+      val now = System.currentTimeMillis()
+
+      assertEquals(0, FileIncoming.sweepWorkspace(dir, null, emptyList(), now, 7L * 24 * 60 * 60 * 1000))
+      assertEquals(0, FileIncoming.sweepWorkspace(dir, emptyList(), null, now, 7L * 24 * 60 * 60 * 1000))
+      assertTrue(orphan.isFile)
+      assertTrue(pending.isFile)
+    } finally {
+      dir.deleteRecursively()
+    }
+  }
+
+  @Test
+  fun sweepWorkspaceDoesNotDeleteUnexpiredOrDirectoryEntries() {
+    val dir = Files.createTempDirectory("ttl-scope").toFile()
+    try {
+      val fresh = File(dir, "fresh.txt").apply { writeText("fresh") }
+      val subdirectory = File(dir, "sub").apply { mkdirs(); File(this, "child").writeText("child") }
+      subdirectory.setLastModified(System.currentTimeMillis() - 8L * 24 * 60 * 60 * 1000)
+      val removed = FileIncoming.sweepWorkspace(
+        dir, emptyList(), emptyList(), System.currentTimeMillis(), 7L * 24 * 60 * 60 * 1000,
+      )
+      assertEquals(0, removed)
+      assertTrue(fresh.isFile)
+      assertTrue(subdirectory.isDirectory)
+      assertTrue(File(subdirectory, "child").isFile)
+    } finally {
+      dir.deleteRecursively()
+    }
+  }
+
+  @Test
+  fun corruptSessionRecordMakesTheWholeSweepFailClosed() {
+    val dir = Files.createTempDirectory("ttl-corrupt-session").toFile()
+    try {
+      val sessions = File(dir, ".sessions").apply { mkdirs() }
+      File(sessions, "broken.json").writeText("{")
+      File(sessions, "valid.json").writeText("{\"path\":\"/x/incoming/draft.pdf\"}")
+      val pending = File(dir, "pending.pdf").apply { writeText("pending") }
+      val orphan = File(dir, "orphan.txt").apply { writeText("old") }
+      val old = System.currentTimeMillis() - 8L * 24 * 60 * 60 * 1000
+      pending.setLastModified(old)
+      orphan.setLastModified(old)
+
+      assertEquals(0, FileIncoming.sweepWorkspace(dir, emptyList(), null, System.currentTimeMillis(), 7L * 24 * 60 * 60 * 1000))
+      assertTrue(pending.isFile)
+      assertTrue(orphan.isFile)
+    } finally {
+      dir.deleteRecursively()
+    }
+  }
+
+  @Test
+  fun queuedIndexReadFailureIsNotTreatedAsAnEmptyQueue() {
+    val dir = Files.createTempDirectory("queued-read").toFile()
+    try {
+      val sessions = File(dir, ".sessions").apply { mkdirs() }
+      File(sessions, "broken.json").writeText("{")
+      assertTrue("unreadable session index must fail closed", FileIncoming.readQueuedSessionPaths(sessions) == null)
+
+      File(sessions, "broken.json").delete()
+      File(sessions, "valid.json").writeText("{\"path\":\"/x/incoming/draft.pdf\"}")
+      assertEquals(listOf("/x/incoming/draft.pdf"), FileIncoming.readQueuedSessionPaths(sessions))
+      assertEquals(emptyList<String>(), FileIncoming.readQueuedSessionPaths(File(dir, "missing")))
+    } finally {
+      dir.deleteRecursively()
+    }
+  }
+
+  @Test
+  fun validJsonWithUnknownReferenceSchemaStopsCleanup() {
+    val dir = Files.createTempDirectory("queued-schema").toFile()
+    try {
+      val record = File(dir, "unknown.json")
+      for (text in listOf("{}", "{\"path\":null}", "{\"path\":42}", "{\"path\":\" \"}")) {
+        record.writeText(text)
+        assertEquals("unknown reference schema must not be treated as no references", null, FileIncoming.readQueuedSessionPaths(dir))
+      }
+    } finally {
+      dir.deleteRecursively()
+    }
+  }
+
+  @Test
+  fun missingAndEmptyLedgerAreDifferentFromUnreadableLedger() {
+    val dir = Files.createTempDirectory("pending-ledger").toFile()
+    try {
+      val ledger = File(dir, ".pending-notify.ndjson")
+      assertEquals(emptyList<String>(), FileIncoming.readPending(ledger))
+      ledger.writeText("alpha\n\nbeta\n")
+      assertEquals(listOf("alpha", "beta"), FileIncoming.readPending(ledger))
+      assertEquals(null, FileIncoming.readPending(dir))
+    } finally {
+      dir.deleteRecursively()
+    }
+  }
+
+  @Test
+  fun ledgerWriteReplacesTheWholeManifestAtomically() {
+    val dir = Files.createTempDirectory("pending-write").toFile()
+    try {
+      val ledger = File(dir, ".pending-notify.ndjson").apply { writeText("old\n") }
+      FileIncoming.writePending(ledger, listOf("survivor", "new"))
+      assertEquals(listOf("survivor", "new"), FileIncoming.readPending(ledger))
+      assertTrue("temporary files must not be left behind", dir.listFiles()!!.none { it.name.endsWith(".tmp") })
+    } finally {
+      dir.deleteRecursively()
+    }
+  }
+
+  @Test
+  fun ledgerWriteFailureLeavesOldManifestAndNoTemporaryFile() {
+    val dir = Files.createTempDirectory("pending-failure").toFile()
+    try {
+      val ledger = File(dir, ".pending-notify.ndjson").apply { writeText("old\n") }
+      val old = ledger.readText()
+      val badParent = File(dir, "not-directory").apply { writeText("block") }
+      assertTrue(runCatching { FileIncoming.writePending(File(badParent, "ledger"), listOf("new")) }.isFailure)
+      assertEquals(old, ledger.readText())
+      assertTrue(dir.listFiles()!!.none { it.name.endsWith(".tmp") })
+      assertFalse(File(badParent, "ledger").exists())
+    } finally {
+      dir.deleteRecursively()
+    }
   }
 }
