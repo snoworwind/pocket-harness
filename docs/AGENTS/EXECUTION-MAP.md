@@ -485,7 +485,7 @@ Linux 发现补充（P04，坑 373）：bootstrap `index.js` 串行发现 → `g
 | K06 | 无障碍控制面 DeviceControlService | 另一条通道的同名分支与范围门；六面登记链要求分支留在该服务里 | app/src/main/java/com/snoworwind/pocketharness/DeviceControlService.kt:661 |
 | K06 | 虚拟屏注册表 VdisplayController | displayId 与 SF token 两个 id 空间的真源，范围放行只认它 | app/src/main/java/com/snoworwind/pocketharness/ShellOps.kt:197 |
 | K06 | 页面桥 AndroidBridge/MainActivity | 范围写面、外部打开、配置导入导出、来件 intent 的接线点 | app/src/main/java/com/snoworwind/pocketharness/MainActivity.kt:771 |
-| K06 | 引擎 file-open 插件 | 来件在来源授权与持有 FD 检查后拷贝，再经 POST /api/android/file-incoming 建立强制新会话草稿 | app/src/main/java/com/snoworwind/pocketharness/FileIncoming.kt:40-100、FileIncoming.kt:163-190、FileIncoming.kt:368 |
+| K06 | 引擎 file-open 插件 | 来件在来源授权与持有 FD 检查后拷贝，再经 POST /api/android/file-incoming 建立强制新会话草稿；待发 ledger 与清理共用 pendingLock，引用读取失败不删文件，TTL 清扫先于投递 reservation | app/src/main/java/com/snoworwind/pocketharness/FileIncoming.kt:40-100、FileIncoming.kt:163-190、FileIncoming.kt:368 |
 | K06 | 审计块 ControlAudit | 每条 sh* 写一条 audit.ndjson（result 字段硬编码 ok） | app/src/main/java/com/snoworwind/pocketharness/ShellOps.kt:586 |
 | K06 | 构建门禁块 | check-bounded-io / check-control-ops / gen-screen-scope-fixture 三条门禁约束本块形态 | scripts/check-bounded-io.mjs:54 |
 | K06 | 引擎启动流 EngineStartFlow | 引擎就绪时补投待发来件，闭合冷启动竞态 | app/src/main/java/com/snoworwind/pocketharness/EngineStartFlow.kt:550 |
@@ -546,7 +546,7 @@ Linux 发现补充（P04，坑 373）：bootstrap `index.js` 串行发现 → `g
 | P03 | 注入层与侧栏面板（dsh-client-ui-responsive） | 浏览器面板与虚拟屏 Tab 经 androidBridge 直连壳侧，与插件共用同一 op 契约与 stage bounds 语义 | dsh-client-ui-responsive/src/client/mobile/native-browser-presentation.ts:61 |
 | P03 | 测试与门禁 | 交付面由 output.schema 门禁（含 browser_* 夹具）、六面登记门禁与插件单测共同守住 | scripts/check-tool-output-schema.mjs:153 |
 | P04 | 桥与鉴权 | 五条 file-incoming 与四条 env/runtime-cache 路由全部走 authorizeMobileRoute，令牌与控制队列同一枚 shellControlToken；route-auth.ts 只是转发不复制 | plugins/dsh-android-file-open/src/route-auth.ts:47 |
-| P04 | 壳侧文件来件 FileIncoming | 壳把来件拷进 files/home/.dsh/workspaces/incoming 后 POST 本插件；两处元数据名（.sessions/.meta.ndjson/.pending-notify.ndjson/.tool-temp.ndjson）与 TTL/全清豁免面必须两侧对齐 | app/src/main/java/com/snoworwind/pocketharness/FileIncoming.kt:32 |
+| P04 | 壳侧文件来件 FileIncoming | 壳把来件拷进 files/home/.dsh/workspaces/incoming 后 POST 本插件；pending ledger 的写者与 cleanup/TTL 共用锁，原子替换完整清单；pending/.sessions 引用读失败时不清理，引用文件与三种元数据受保护 | app/src/main/java/com/snoworwind/pocketharness/FileIncoming.kt:32 |
 | P04 | 客户端注入层 | 草稿链的公开元数据与 claim/content/complete、clean、runtime-cache scan/execute 全由页面驱动，页面是唯一的草稿消费者 | dsh-client-ui-responsive/src/client/mobile/incoming-draft.ts:175 |
 | P04 | 工具链表 dsh-shell-termux | PROBE_BINARIES/REQUIRED_TOOLCHAIN/TOOLCHAIN_REPRESENTATIVE 是工具链状态的单一来源，linux-env 不再维护第二份字面量 | dsh-shell-termux/src/index.ts:42 |
 | P04 | 授权档位 androidPrivilege | 工具面 adbTier 与 bridge 服务同源（同一次判定），linux-env 自算的 deployedAdbTier 只作服务缺席兜底 | plugins/dsh-android-bridge/src/index.ts:569 |
@@ -620,7 +620,7 @@ Linux 发现补充（P04，坑 373）：bootstrap `index.js` 串行发现 → `g
 | 「第一次特权命令报通道失败、第二次成功」 | K06 | logcat tag `dsh-shizuku`（`user service connected` / `disconnected`）；回执看 `code=shizuku-user-service-connecting` 与 `retryAfterMs`。 |
 | virtual-only 下读自己的虚拟屏被拒（`screen-out-of-scope`） | K06 | 先看 `VdisplayController.activeAliases()` 是否有值，再手工跑 `dumpsys SurfaceFlinger | grep -E '^(Virtual Display |    name=)'` 看是否有 `name="DSH virtual-1"`（行尾空白敏感，`ShellOps.kt:556`）。 |
 | 命令输出被砍在 16 KiB / 大输出命令返回失败 | K06 | 检查调用方是否传 `capture`（见可疑点 2），logcat tag `dsh-shizuku-user`。 |
-| 分享来件后划掉应用、草稿消失 | K06 | 看 `files/home/.dsh/workspaces/incoming` 下 `.pending-notify.ndjson` / `.meta.ndjson` / `.sessions`，logcat tag `dsh-file-open`（`temp workspace clean skipped`、`incoming processed`、`pending incoming flushed`）。 |
+| 分享来件后划掉应用、草稿消失 | K06 | 看 `files/home/.dsh/workspaces/incoming` 下 `.pending-notify.ndjson` / `.meta.ndjson` / `.sessions`，logcat tag `dsh-file-open`（`temp workspace clean skipped`、`pending ledger enqueue skipped/failed`、`incoming processed`、`pending incoming flushed`）。引用索引读失败时 cleanup/TTL 会保留现场；待发 ledger 由同目录临时文件同步后替换。 |
 | 页面「打开方式 / 文件提及」无反应 | K06 | logcat tag `dsh-path`（`chooser ok` / `not-allowed` / `uri-failed`）与 `dsh-image`（`openNativePath rejected`）；核对 `res/xml/file_paths.xml` 的映射面。 |
 | 导入配置后引擎行为不变 | K06 | 查 `files/home/.dsh/settings.yaml` 的 mtime 与 `settings.yaml.import-backup`，logcat tag `dsh-shell`（`config imported from`）。 |
 | 权限/范围类取证 | K06 | `files/audit/audit.ndjson` 里 `action=shExec|shPull|shPush|shRemove`；屏幕范围读控制应答 `caps.screenScope` 或 `vdInfo.data.scope`（原生进程内存真源，A02 起不再读 prefs 文件）。 |
@@ -1474,7 +1474,7 @@ vendored bootstrap 与注入集的关系（0.15.0）：`plugins/dsh-linux-bootst
 - **入口/触发**：① 外部应用 `ACTION_VIEW`/`ACTION_SEND` → 壳侧 `FileIncoming.processIncomingIntent`（`app/src/main/java/com/snoworwind/pocketharness/FileIncoming.kt:379`）→ POST `/api/android/file-incoming`；② 设置页/开发者选项 → file-incoming 五条 exact 路由（GET 统计、claim、content、complete、clean）、`/api/android/env/status|recipe`、`/api/android/runtime-cache/scan|execute`；③ cordis 装配调三个插件的 `apply()`：注册工具 `android_file_incoming_status` / `android_toolchain_status` / `android_env_recipe` / `model_capability_probe` / `model_capability_apply`，并给 model-capability 起 auto-apply 轮询。
 - **运行顺序**：
   1. **装配期**（引擎起来即跑）：file-open `apply`（`plugins/dsh-android-file-open/src/index.ts:481`）先 `purgeStaleUnclaimed('boot')` 清上个进程的未认领残骸 → `mkdirSync(tmpWorkspace())` → `void incomingWorkspaceId()` 异步登记「临时工作区」→ 注册五条 exact 路由（每条都 `ctx.effect` 包裹）；linux-env `apply`（`plugins/dsh-android-linux-env/src/index.ts:337`）注册两个工具 + 两条 env 路由 + 两条 runtime-cache 路由；model-capability `apply`（`plugins/dsh-model-capability/src/index.ts:238`）读构建期注入的 `lib/catalog-snapshot.json` → 注册两个工具 → `autoApply !== false` 时装一个 `setTimeout(8s)` + `setInterval(5s)` 的签名轮询 effect。
-  2. **来件链**（用户动作触发）：壳侧后台单线程校验/净化/`copyIn` → POST → 鉴权 → `enqueueSession` 断言路径在临时工作区内 → 写 `.sessions/<entryId>.json` 并把 canonical 路径记进 `.tool-temp.ndjson`。
+  2. **来件链**（用户动作触发）：壳侧后台单线程先在 pendingLock 下扫 TTL 并预留 delivery 窗口，再校验/净化/`copyIn` → 同锁原子写 pending ledger → POST → 鉴权 → `enqueueSession` 断言路径在临时工作区内 → 写 `.sessions/<entryId>.json` 并把 canonical 路径记进 `.tool-temp.ndjson`。pending/.sessions 任一引用索引读失败时壳侧 cleanup/TTL fail closed。
   3. **草稿链**（浏览器轮询驱动）：GET 拿公开元数据（顺带 TTL 复核及工作区登记重试）→ `IncomingDraftPoller.hydrate` 经客户端 `runtime.createSession(cwd)` 创建可寻址的空白会话并导航 → POST claim（删队列记录、发进程内 ticket）→ GET content 流式回字节 → 放入该会话 composer 后 POST complete 收口；未认领记录在 boot/TTL 两档被墓碑化。插件内 `ensureSessions()` 目前只有定义，没有调用，不承担创建职责。
   4. **清理链**：设置页 POST clean（只删自有清单项）；开发者选项 GET scan → 展示体积 → POST execute 逐项删并落审计。
   5. **能力补给链**：签名变化才跑 `runAutoPass`（离线目录查表）→ 只对 `reasoningEfforts` 缺口出补丁 → `settings.mutate('llm-pi-ai', …)` 写 `providers.<route>.models`。

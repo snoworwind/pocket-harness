@@ -352,23 +352,29 @@ class W3ShellContractTest {
   fun incomingGuardCoversDeliveryAndRetry() {
     val code = codeOnly(source("FileIncoming.kt"))
     val pipeline = code.substringAfter("fun processIncomingIntent")
-    val inc = pipeline.indexOf("activeDeliveries.incrementAndGet()")
+    val reservation = code.substringAfter("fun <T> withIncomingDeliveryAfterSweep")
+    val sweep = reservation.indexOf("sweep()")
+    val inc = reservation.indexOf("deliveries.incrementAndGet()")
+    val body = reservation.indexOf("return body()")
+    val dec = reservation.indexOf("deliveries.decrementAndGet()")
     val enqueue = pipeline.indexOf("enqueuePending(context, target.absolutePath)")
     val retry = pipeline.indexOf("while (System.currentTimeMillis() < deadline)")
-    val dec = pipeline.indexOf("activeDeliveries.decrementAndGet()")
-    assertTrue("守卫必须在投递前起跳", inc in 0 until enqueue)
-    assertTrue("入待发清单必须在守卫内", enqueue in 0 until dec)
-    assertTrue("20s 重试循环必须在守卫内（划掉应用不再丢件）", retry in 0 until dec)
+    assertTrue("TTL sweep 必须先于投递 reservation", sweep in 0 until inc)
+    assertTrue("投递 reservation 必须覆盖实际 body", body in inc until dec)
+    assertTrue("finally 必须释放投递 reservation", dec > body)
+    assertTrue("pipeline 必须在 reservation helper 内执行", pipeline.contains("withIncomingDeliveryAfterSweep(pendingLock, activeDeliveries, { sweepExpired(context) })"))
+    assertTrue("入待发清单必须在守卫内", enqueue > 0)
+    assertTrue("20s 重试循环必须在守卫内（划掉应用不再丢件）", retry > enqueue)
     val cleanup = code.substringAfter("fun cleanupTmp(context: Context)")
     assertTrue(
       "全清必须同时看「拷贝」与「投递/重试」两个计数",
       cleanup.contains("workspaceWipeAllowed(activeCopies.get(), activeDeliveries.get())"),
     )
     assertTrue(
-      "仍有 pending 或未 claim 草稿队列引用的来件与元数据条目不得随全清删除",
-      cleanup.contains("cleanupDeletions(entries, pendingPaths(context), queuedSessionPaths(context))"),
+      "pending 或未 claim 队列索引读失败时必须跳过全清",
+      cleanup.contains("pendingPaths(context) ?: return") && cleanup.contains("queuedSessionPaths(context) ?: return"),
     )
-    assertTrue(".sessions 的既有豁免必须保留", code.contains("if (f.name == SESSIONS_ENTRY) continue"))
+    assertTrue("pending 与 session 引用必须进入清理保护集合", cleanup.contains("cleanupDeletions(entries, pending, queued)"))
   }
 
   @Test
