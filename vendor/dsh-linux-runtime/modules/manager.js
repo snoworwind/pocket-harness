@@ -374,6 +374,32 @@ function cleanHostEnvironment() {
   return environment;
 }
 
+function linuxRuntimeError(code, message) {
+  const error = new Error(message);
+  error.code = code;
+  return error;
+}
+
+function resolveHostLibraryPath(configuredPath) {
+  const filesDir = process.env.DSH_FILES_DIR;
+  const prefix = process.env.TERMUX__PREFIX ?? process.env.PREFIX;
+  const candidate = configuredPath ?? (filesDir ? path.join(filesDir, 'usr', 'lib') : prefix ? path.join(prefix, 'lib') : undefined);
+  if (!candidate) {
+    if (process.env.ANDROID_ROOT) {
+      throw linuxRuntimeError('linux-host-library-path-unavailable', 'Termux host library directory is not configured');
+    }
+    return undefined;
+  }
+  if (typeof candidate !== 'string' || !path.isAbsolute(candidate)) {
+    throw linuxRuntimeError('linux-host-library-path-unavailable', 'Termux host library directory must be an absolute path');
+  }
+  const resolved = path.resolve(candidate);
+  if (!directoryExists(resolved)) {
+    throw linuxRuntimeError('linux-host-library-path-unavailable', 'Termux host library directory is unavailable');
+  }
+  return resolved;
+}
+
 function executableFileExists(file) {
   try {
     const stat = statSync(file);
@@ -418,6 +444,7 @@ export class LinuxRuntimeManager {
     this.extractArchive = options.extractArchive;
     this.runCommand = options.runCommand ?? spawnCommand;
     if (typeof this.runCommand !== 'function') throw new TypeError('runCommand must be a function');
+    this.hostLibraryPath = options.hostLibraryPath;
     this.onStateChange = typeof options.onStateChange === 'function' ? options.onStateChange : undefined;
     this.events = new EventEmitter();
     this.children = new Set();
@@ -540,12 +567,15 @@ export class LinuxRuntimeManager {
 
   async _probeRuntime(health) {
     const nodeBin = path.join(health.paths.node, 'bin');
+    const hostEnvironment = cleanHostEnvironment();
+    const hostLibraryPath = resolveHostLibraryPath(this.hostLibraryPath);
+    if (hostLibraryPath) hostEnvironment.LD_LIBRARY_PATH = hostLibraryPath;
     const result = normaliseCommandResult(await this._runManaged({
       file: health.paths.launcher,
       args: ['node', '--version'],
       cwd: this.dataDir,
       env: {
-        ...cleanHostEnvironment(),
+        ...hostEnvironment,
         BIONILUX_ROOTFS: health.paths.rootfs,
         BIONILUX_PRELOAD: health.paths.preload,
         BIONILUX_GUEST_CWD: '/',
@@ -721,18 +751,24 @@ export class LinuxRuntimeManager {
 
   async _prepareRootfs(instance, signal) {
     const script = path.join(instance.backend, 'scripts', 'prepare-rootfs.sh');
+    const hostEnvironment = cleanHostEnvironment();
+    const hostLibraryPath = resolveHostLibraryPath(this.hostLibraryPath);
+    if (hostLibraryPath) hostEnvironment.LD_LIBRARY_PATH = hostLibraryPath;
     const result = normaliseCommandResult(
       await this._runManaged({
         file: 'sh',
         args: [script, '--rootfs', instance.rootfs, '--relative-links'],
         cwd: instance.root,
-        env: cleanHostEnvironment(),
+        env: hostEnvironment,
         timeout: 120_000,
         signal,
       }),
     );
     if (result.exitCode !== 0) {
-      throw new Error(`prepare-rootfs.sh failed with exit code ${result.exitCode}: ${result.stderr}`.trim());
+      throw linuxRuntimeError(
+        'linux-rootfs-prepare-failed',
+        `prepare-rootfs.sh failed with exit code ${result.exitCode}: ${result.stderr}`.trim(),
+      );
     }
   }
 
@@ -943,6 +979,8 @@ export class LinuxRuntimeManager {
 
   _executionEnvironment(paths, cwdInfo) {
     const environment = cleanHostEnvironment();
+    const hostLibraryPath = resolveHostLibraryPath(this.hostLibraryPath);
+    if (hostLibraryPath) environment.LD_LIBRARY_PATH = hostLibraryPath;
     const nodeBin = path.join(paths.node, 'bin');
     const hostPaths = [nodeBin, ...cwdInfo.hostPaths];
     environment.BIONILUX_ROOTFS = paths.rootfs;

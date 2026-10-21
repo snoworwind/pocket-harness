@@ -249,6 +249,53 @@ test('a genuine host-staged bundle activates', async () => {
   }
 })
 
+test('rootfs install diagnostics persist across bootstrap restart and stay sanitized in status', async () => {
+  const filesDir = await tempFilesDir()
+  try {
+    const asset = await stageBundle(filesDir)
+    const pluginHost = makePluginHost()
+    let failInstall = true
+    pluginHost.install = async () => ({
+      manager: {
+        install: async () => {
+          if (failInstall) {
+            throw Object.assign(new Error('prepare-rootfs.sh: /private/app/usr/bin/find: Permission denied'), {
+              code: 'linux-rootfs-prepare-failed',
+            })
+          }
+        },
+        uninstall: async () => {},
+      },
+    })
+    const options = { filesDir, manifest: makeManifest({ asset }), pluginHost }
+    const first = makeBootstrap(options).service
+    await first.ready
+    await assert.rejects(installConfirmed(first), error => error.code === 'linux-rootfs-prepare-failed')
+
+    const stateFile = JSON.parse(await readFile(join(filesDir, 'linux-environment', 'linux-bootstrap-state.json'), 'utf8'))
+    assert.equal(stateFile.lastErrorCode, 'linux-rootfs-prepare-failed')
+    assert.match(stateFile.lastError, /private\/app.*Permission denied/)
+    const firstStatus = await first.status()
+    assert.equal(firstStatus.lastErrorCode, 'linux-rootfs-prepare-failed')
+    assert.match(firstStatus.lastError, /根文件系统准备失败/)
+    assert.doesNotMatch(firstStatus.lastError, /private\/app|Permission denied/)
+
+    const restarted = makeBootstrap(options).service
+    await restarted.ready
+    const restartedStatus = await restarted.status()
+    assert.equal(restartedStatus.lastErrorCode, 'linux-rootfs-prepare-failed')
+    assert.match(restartedStatus.lastError, /根文件系统准备失败/)
+    assert.doesNotMatch(restartedStatus.lastError, /private\/app|Permission denied/)
+
+    failInstall = false
+    const recovered = await installConfirmed(restarted)
+    assert.equal(recovered.lastError, null)
+    assert.equal(recovered.lastErrorCode, null)
+  } finally {
+    await rm(filesDir, { recursive: true, force: true })
+  }
+})
+
 // ── 负控 1：宿主没准备 → 拒绝，且不得自行下载 ───────────────────────────────
 
 test('refuses when nothing is staged and never falls back to downloading', async () => {

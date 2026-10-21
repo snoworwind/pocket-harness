@@ -84,6 +84,27 @@ test('mutations require bounded explicit confirmation; manual check never instal
   assert.deepEqual(h.bootstrap.calls.at(-1), ['install', { runtimeId: 'debian-minimal', confirmed: true, activate: true }])
 })
 
+test('Linux install failures return stable codes without exposing raw subprocess stderr', async () => {
+  const bootstrap = makeBootstrap()
+  bootstrap.install = async () => {
+    throw Object.assign(new Error('find: /private/app/files/usr/bin/find: Permission denied'), {
+      code: 'linux-rootfs-prepare-failed',
+    })
+  }
+  const h = harness(bootstrap)
+  const response = await h.call('install')
+  assert.equal(response.code, 500)
+  assert.equal(response.payload.code, 'linux-rootfs-prepare-failed')
+  assert.match(response.payload.error, /根文件系统准备失败/)
+  assert.doesNotMatch(JSON.stringify(response.payload), /private\/app|Permission denied/)
+  h.dispose()
+})
+
+test('normalized status preserves the bootstrap diagnostic code', () => {
+  const status = normalizeLinuxStatus({ lastErrorCode: 'linux-rootfs-prepare-failed' })
+  assert.equal(status.errorCode, 'linux-rootfs-prepare-failed')
+})
+
 test('missing bootstrap is explicit 503, blocked compatibility is visible, status is read-only', async () => {
   assert.equal((await harness(undefined).call('status')).code, 200)
   const absent = harness(null)

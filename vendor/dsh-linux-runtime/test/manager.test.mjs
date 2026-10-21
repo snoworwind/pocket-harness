@@ -124,7 +124,7 @@ function makeIo(fixture, { onExtract } = {}) {
  * cancels it — that is what the cutover gate has to do before it replaces an
  * active rootfs.
  */
-function makeRunner({ instant, healthProbeResult = { stdout: 'v24.22.0', stderr: '', exitCode: 0 }, onHealthProbe } = {}) {
+function makeRunner({ instant, healthProbeResult = { stdout: 'v24.22.0', stderr: '', exitCode: 0 }, commandResult = { stdout: 'ok', stderr: '', exitCode: 0 }, onHealthProbe } = {}) {
   const calls = [];
   const isInstant =
     instant ?? ((spec) => !String(spec.args?.at(-1) ?? '').includes('sleep'));
@@ -152,7 +152,7 @@ function makeRunner({ instant, healthProbeResult = { stdout: 'v24.22.0', stderr:
           if (isInstant(spec)) {
             const healthProbe = spec.args?.[0] === 'node' && spec.args?.[1] === '--version';
             if (healthProbe) onHealthProbe?.(spec);
-            settle(healthProbe ? healthProbeResult : { stdout: 'ok', stderr: '', exitCode: 0 });
+            settle(healthProbe ? healthProbeResult : commandResult);
           }
         }),
         cancel: () => {
@@ -168,12 +168,13 @@ function makeRunner({ instant, healthProbeResult = { stdout: 'v24.22.0', stderr:
   };
 }
 
-function makeManager(fixture, { dataDir, ioOptions, runnerOptions, arch = 'arm64' } = {}) {
+function makeManager(fixture, { dataDir, ioOptions, runnerOptions, hostLibraryPath, arch = 'arm64' } = {}) {
   const io = makeIo(fixture, ioOptions);
   const runner = makeRunner(runnerOptions);
   const manager = createManager({
     dataDir,
     arch,
+    hostLibraryPath,
     downloadAsset: io.downloadAsset,
     extractArchive: io.extractArchive,
     runCommand: runner.runCommand,
@@ -526,6 +527,77 @@ test('the guest environment is derived, not inherited from the host', async () =
   assert.equal(spec.args[0], '/bin/bash');
   assert.equal(spec.args[1], '-lc');
   assert.equal(spec.args[2], 'echo hi');
+});
+
+test('Termux host libraries reach host tools and the launcher only', async () => {
+  const dataDir = tempDir();
+  const fixture = makeManifest();
+  const hostLibraryPath = path.join(dataDir, 'usr', 'lib');
+  await mkdir(hostLibraryPath, { recursive: true });
+  const keys = ['DSH_FILES_DIR', 'ANDROID_ROOT', 'LD_LIBRARY_PATH'];
+  const previous = Object.fromEntries(keys.map(key => [key, process.env[key]]));
+  process.env.DSH_FILES_DIR = dataDir;
+  process.env.ANDROID_ROOT = '/system';
+  process.env.LD_LIBRARY_PATH = '/untrusted/inherited/lib';
+  try {
+    const { manager, runner } = makeManager(fixture, { dataDir });
+    await manager.install(fixture.manifest);
+
+    const prepare = runner.calls.find(({ spec }) => spec.file === 'sh')?.spec;
+    const probe = runner.calls.find(({ spec }) => spec.args?.[0] === 'node' && spec.args?.[1] === '--version')?.spec;
+    assert.ok(prepare, 'rootfs preparation must invoke the host shell');
+    assert.ok(probe, 'installation must probe the runtime through Bionilux');
+    assert.equal(prepare.env.LD_LIBRARY_PATH, hostLibraryPath, 'derive the library directory from DSH_FILES_DIR');
+    assert.equal(probe.env.LD_LIBRARY_PATH, hostLibraryPath);
+
+    runner.calls.length = 0;
+    await manager.execute({ command: 'echo guest' });
+    const guest = runner.calls.at(-1).spec;
+    assert.equal(guest.env.LD_LIBRARY_PATH, hostLibraryPath, 'the launcher itself needs the host loader path');
+    assert.equal(guest.env.LD_PRELOAD, undefined);
+    for (const leaked of ['PREFIX', 'TERMUX_VERSION', 'TERMUX_EXEC__EXECVE_CALL__INTERCEPT']) {
+      assert.equal(guest.env[leaked], undefined, `${leaked} must not reach the launcher environment`);
+    }
+  } finally {
+    for (const [key, value] of Object.entries(previous)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+});
+
+test('rootfs preparation fails with a stable code when the Termux library directory is unavailable', async () => {
+  const dataDir = tempDir();
+  const fixture = makeManifest();
+  const { manager, runner } = makeManager(fixture, {
+    dataDir,
+    hostLibraryPath: path.join(dataDir, 'missing', 'usr', 'lib'),
+  });
+
+  await assert.rejects(manager.install(fixture.manifest), error => {
+    assert.equal(error.code, 'linux-host-library-path-unavailable');
+    assert.match(error.message, /Termux host library directory is unavailable/);
+    return true;
+  });
+  assert.equal(runner.calls.some(({ spec }) => spec.file === 'sh'), false, 'do not run host tools with an unresolved loader path');
+});
+
+test('rootfs script failures carry a stable diagnostic code', async () => {
+  const dataDir = tempDir();
+  const fixture = makeManifest();
+  const hostLibraryPath = path.join(dataDir, 'usr', 'lib');
+  await mkdir(hostLibraryPath, { recursive: true });
+  const { manager } = makeManager(fixture, {
+    dataDir,
+    hostLibraryPath,
+    runnerOptions: { commandResult: { stdout: '', stderr: 'find: Permission denied', exitCode: 1 } },
+  });
+
+  await assert.rejects(manager.install(fixture.manifest), error => {
+    assert.equal(error.code, 'linux-rootfs-prepare-failed');
+    assert.match(error.message, /find: Permission denied/);
+    return true;
+  });
 });
 
 test('cwd inside the rootfs becomes a guest path, and relative cwd is rejected', async () => {

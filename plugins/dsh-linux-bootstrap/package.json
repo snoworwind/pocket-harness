@@ -56,14 +56,15 @@
       "private: true so the vendored copy can never be published",
       "src/asset-bundle.js locally hardened: always authenticate and independently extract archive bytes; never reuse size-only slots or host unpacked trees",
       "src/index.js requires approved manifests for discovery, installation and reinstall; no optional verification bypass",
-      "apply resolves dataDir from explicit config, declared linuxBootstrapConfig or DSH_FILES_DIR; it never reads unprovided Cordis ctx.filesDir"
+      "apply resolves dataDir from explicit config, declared linuxBootstrapConfig or DSH_FILES_DIR; it never reads unprovided Cordis ctx.filesDir",
+      "src/index.js locally patched to persist install diagnostics with a stable code and expose only a sanitized status summary"
     ],
     "localPatches": {
       "client/index.js": "4576301803d5eda59b76dfff62c7a2cd67cd05d65a25c58df12f3769e3f382cc",
       "README.md": "b6a54ef5116942484304b8ea31da9bf514a22dcb6496ce2cd99aaadc82db8fb2",
       "src/asset-bundle.js": "7e32ce0f57ee0a7f75dfd2d2af6ff61357d63b6c34e4f0dbf7aa23cf4300e416",
       "src/github.js": "7b6369b5910ecb3e8b49f75a4dae3ca60ceac2d4164bf7f05f71c81803aa110c",
-      "src/index.js": "8cb011501ed22b0c23dcd954d7b31006c76690b094f4485bea7d5535795c7fb1"
+      "src/index.js": "ea78b4cd67a1ed356800df924b25409ec7c22f139ebc846acd757ef04124b8b1"
     }
   }
 }
