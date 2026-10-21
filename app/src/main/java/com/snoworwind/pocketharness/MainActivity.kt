@@ -140,6 +140,13 @@ class MainActivity : ComponentActivity() {
   /** 跨类 ::isInitialized 形式（EngineStartFlow 监控/冻结看门狗用；语义等价原 lambda 内检查）。 */
   private val pageRecovery = ForegroundPageRecoveryPolicy()
   private var pendingWebPresentation = false
+  /** Set only after the startup probe receives an HTTP response from the engine. */
+  @Volatile internal var engineHttpReady = false
+  /** Keep the native guide visible until the first engine document is committed. */
+  @Volatile private var initialWebPresentationPending = false
+  /** Frame and reveal state belong to this Activity's WebView instance. */
+  @Volatile internal var webFrameCommitted = false
+  @Volatile private var webRevealPending = false
   /**
    * 非前台期间收到插件装配失败契约行时挂起的前台呈现（CONTRACT §4），由 [onResume] 消费。
    *
@@ -256,11 +263,6 @@ class MainActivity : ComponentActivity() {
     @Volatile
     internal var observedChromiumVersion: String = ""
 
-    /** #242：引擎文档首帧是否已提交（`onPageCommitVisible`）；新文档在 `onPageStarted` 复位。 */
-    @Volatile internal var webFrameCommitted = false
-
-    /** #242：是否有一次「露出 WebView」正在等首帧（决定淡入还是已显形）。 */
-    @Volatile private var webRevealPending = false
   }
 
   // —— 引擎流 / 引导页委托（原位一行委托到协作类；引擎启动与引导页状态渲染
@@ -321,8 +323,55 @@ class MainActivity : ComponentActivity() {
       }
       reloadEnginePage()
     }
+    if (initialWebPresentationPending && (enginePageFailed || !webFrameCommitted)) {
+      // Cold start keeps the native guide visible until the first engine document is committed.
+      if (guideView.visibility != View.VISIBLE) showGuide()
+      return
+    }
+    if (webView.url == null || webView.url == "about:blank") {
+      if (!webFrameCommitted) initialWebPresentationPending = true
+      if (!engineHttpReady || !loadInitialEnginePageAfterReadiness()) {
+        initialWebPresentationPending = false
+        // A relay socket alone is not readiness evidence. Stay on the native guide and let the
+        // startup probe call this again after an HTTP response has been observed.
+        showGuide()
+        return
+      }
+      if (!webFrameCommitted) initialWebPresentationPending = true
+      // Navigation runs behind the guide. onPageCommitVisible performs the presentation handoff.
+      showGuide()
+      return
+    }
     guideRenderer.showWeb()
     engineFlow.startFreezeWatchdog()
+  }
+
+  /** Called by EngineStartFlow only after an HTTP probe has confirmed an engine response. */
+  internal fun markEngineHttpReady() {
+    engineHttpReady = true
+  }
+
+  /** Start the first engine navigation after readiness; true means WebView accepted the request. */
+  private fun loadInitialEnginePageAfterReadiness(): Boolean {
+    if (!engineHttpReady || !EngineTransport.ownsPort()) return false
+    // Cookie lookup is local and non-blocking; network refresh remains on the existing background loop.
+    val authCookie = EngineAuth.cookie(this)
+    if (authCookie != null) {
+      try {
+        android.webkit.CookieManager.getInstance().setCookie(EngineProbe.ENGINE_URL, authCookie)
+      } catch (t: Throwable) {
+        Log.w("dsh-engine-auth", "CookieManager injection failed: " + t.message)
+      }
+      webView.loadUrl(EngineProbe.ENGINE_URL)
+    } else {
+      val token = EngineAuth.tokenFromLog(this)
+      webView.loadUrl(if (token != null) EngineProbe.ENGINE_URL + "/?token=" + token else EngineProbe.ENGINE_URL)
+      // Keep the existing first-install auth recovery path for the race where the token line
+      // has not reached engine.log yet; it retries in the background with a bounded deadline.
+      initialAuthRecoveryPending = true
+      webView.post { startInitialEngineAuthRecovery() }
+    }
+    return true
   }
 
   /**
@@ -432,7 +481,7 @@ class MainActivity : ComponentActivity() {
       }
     }
     uiChrome.applyImmersive(uiChrome.immersivePrefs())
-    val root = FrameLayout(this)
+    val root = FrameLayout(this).apply { setBackgroundColor(getColor(R.color.ds_bg)) }
     // provider 缺失或升级窗口期内 WebView 构造本身会抛（无 GMS 精简 ROM / WebView 被停用 /
     // provider 热更新中——低端与老设备实测情形）。旧路径在 onCreate 直接炸：无诊断、无引导页，
     // 系统层面表现为「点开即崩」。改为如实落 boot-diag + 一句话告知 + finish 干净退出；
@@ -463,6 +512,13 @@ class MainActivity : ComponentActivity() {
     guideView = guideRenderer.buildGuideView()
     guideRenderer.management.restore(savedInstanceState?.getString("dsh.guide-page"))
     root.addView(guideView, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+    // GuideChrome starts hidden for ordinary transitions. Put a native surface on the first
+    // frame so the light theme window background is never exposed while startup work is queued.
+    guideView.visibility = View.VISIBLE
+    guideRenderer.applyGuidePhase(
+      if (userClosedEngine) GuidePhase.Closed else GuidePhase.Starting,
+      if (userClosedEngine) "引擎已停止" else "正在启动引擎…",
+    )
     setContentView(root)
     // 0.14.1 用户反馈：公共导出目录（Documents/dshdata）的供给必须在**不依赖引擎状态**的地方触发。
     // 旧实现只从 startEngine()/shellEnv() 进入，而 startEngine() 在「引擎已可连或进程还活着」时
@@ -1071,9 +1127,13 @@ class MainActivity : ComponentActivity() {
        */
       override fun onPageCommitVisible(view: WebView, url: String?) {
         super.onPageCommitVisible(view, url)
-        if (isEngineSource(url ?: "")) {
+        if (isEngineSource(url ?: "") && !enginePageFailed) {
           webFrameCommitted = true
           onWebFrameCommitted()
+          if (initialWebPresentationPending) {
+            initialWebPresentationPending = false
+            showWeb()
+          }
         }
       }
 
@@ -1327,31 +1387,8 @@ class MainActivity : ComponentActivity() {
       }
     }
     installBackGate()
-    // 0.13.3 W2：引擎 /api 全前缀走浏览器鉴权（401）。WebView 首屏先换好 cookie：
-    // Kotlin 侧 P0（engine.log token 交换）/P1（credentials 密钥自 mint）拿到 cookie 后
-    // 注入 CookieManager——同源 XHR/WS 自动携带；交换失败时回退带 token 的 URL 让引擎
-    // 303+Set-Cookie 自愈（官方交换路径）。
-    // FX-210.5：此处只取**零网络**的本地缓存 cookie（预置 cookie 有效即用）；同步 refresh
-    // 含最长 8s 的 HTTP 且持 EngineAuth 锁（排队可达 ~16s），原先在 onCreate 主线程同步调用
-    // 会冻结首帧——已迁到下面的后台重试线程（首个尝试立即执行）。
-    if (!EngineTransport.ownsPort()) { enginePageFailed = true; return }
-    val authCookie = EngineAuth.cookie(this)
-    if (authCookie != null) {
-      try {
-        android.webkit.CookieManager.getInstance().setCookie(EngineProbe.ENGINE_URL, authCookie)
-      } catch (t: Throwable) {
-        Log.w("dsh-engine-auth", "CookieManager injection failed: " + t.message)
-      }
-      webView.loadUrl(EngineProbe.ENGINE_URL)
-    } else {
-      val token = EngineAuth.tokenFromLog(this)
-      webView.loadUrl(if (token != null) EngineProbe.ENGINE_URL + "/?token=" + token else EngineProbe.ENGINE_URL)
-      // 全新安装首启竞态自愈（0.13.3 模拟器实测）：引擎冷启动期 token 行尚未打印，
-      // 首次 refresh/tokenFromLog 均落空 → WebView 载入 401 文案页。仅前台定期重试，
-      // 拿到 cookie 即注入 CookieManager 并重载一次（用户无感自愈，120s 预算封顶）。
-      initialAuthRecoveryPending = true
-      webView.post { startInitialEngineAuthRecovery() }
-    }
+    // First navigation is deliberately deferred until EngineStartFlow proves that the
+    // engine HTTP endpoint responds. A bound relay socket only proves the local listener exists.
   }
 
   /** Stop the startup-cookie retry loop while paused; one pending refresh resumes in the foreground. */
@@ -1486,9 +1523,8 @@ class MainActivity : ComponentActivity() {
    *  Runnable 体内 try/catch + onDestroy removeCallbacks（M7：防销毁后
    *  迟到的 evaluateJavascript 抛主线程异常）。 */
   /**
-   * #242：引导页切到 Web 面。露出时机与「首帧已提交」对齐，但**永远立刻露出**——
-   * 未提交时以 alpha=0 露出（加载继续、触摸可达），首帧到达再淡入；若 [WEB_REVEAL_FALLBACK_MS]
-   * 内都没到（引擎死了 / 导航失败），也必须把诊断深色底显形，绝不让用户停在毫无反馈的界面上。
+   * #242：首次冷启动由调用方等到页面提交后再切到 Web 面；后续恢复仍立即露出透明 WebView，
+   * 首帧到达再淡入。若 [WEB_REVEAL_FALLBACK_MS] 内未提交，则显出诊断深色底，避免用户停在无反馈界面。
    */
   internal fun revealWebView() {
     val wv = webView

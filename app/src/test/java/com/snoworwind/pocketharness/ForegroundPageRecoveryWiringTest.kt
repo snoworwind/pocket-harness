@@ -75,7 +75,7 @@ class ForegroundPageRecoveryWiringTest {
     val internalRefresh = between(manager, "private fun refreshSnapshotInternal(", "fun recoverInterruptedRefresh()")
     assertTrue(ordered(internalRefresh, "SnapshotUserData.prepareStagedSnapshot(", "SnapshotTransaction.writeMarker("))
     val flow = source("EngineStartFlow.kt")
-    assertTrue(ordered(flow, "snapshotFingerprintProblem()", "if (engineAlreadyRunning)"))
+    assertTrue(ordered(flow, "snapshotFingerprintProblem()", "if (engineAlreadyRunning && startupAvailability == EngineProbe.EngineAvailability.OUR_HTTP)"))
   }
 
   @Test fun activityRecreationRebindsEveryMainPageOwnerWithoutRestartingTheEngine() {
@@ -117,6 +117,34 @@ class ForegroundPageRecoveryWiringTest {
     assertTrue(ordered(gone, "if (pageRecovery.rendererGone) return true", "pageRecovery.rendererLost()"))
     assertTrue(gone.contains("if (webViewRef === view) webViewRef = null"))
     assertFalse(gone.contains("Toast.makeText"))
+  }
+
+  @Test fun coldStartPageWaitsForHttpReadinessAndFirstDocumentCommit() {
+    val activity = source("MainActivity.kt")
+    val configure = between(activity, "private fun configureWebView()", "private fun startInitialEngineAuthRecovery()")
+    assertFalse("WebView setup must not issue the initial engine navigation", configure.contains("webView.loadUrl(EngineProbe.ENGINE_URL)"))
+    assertFalse("WebView setup must not treat a bound relay as HTTP readiness", configure.contains("EngineTransport.ownsPort()"))
+
+    val presentation = between(activity, "internal fun showWeb()", "internal fun markEngineHttpReady()")
+    assertTrue("initial navigation requires a confirmed HTTP response", presentation.contains("if (!engineHttpReady || !loadInitialEnginePageAfterReadiness())"))
+    assertTrue("the native guide stays visible while the initial document is pending", presentation.contains("initialWebPresentationPending && (enginePageFailed || !webFrameCommitted)"))
+    val commit = between(activity, "override fun onPageCommitVisible(", "override fun onPageFinished(")
+    assertTrue("first committed engine page triggers the presentation handoff", ordered(commit, "initialWebPresentationPending", "showWeb()"))
+    assertTrue("a WebView transport error must not count as the first valid page frame", commit.contains("isEngineSource(url ?: \"\") && !enginePageFailed"))
+
+    val creation = between(activity, "override fun onCreate(", "private var pendingNotifySession")
+    assertTrue("the first attached frame uses the app surface", creation.contains("FrameLayout(this).apply { setBackgroundColor(getColor(R.color.ds_bg)) }"))
+    assertTrue("the guide is visible before the first content frame", ordered(creation, "guideView.visibility = View.VISIBLE", "setContentView(root)"))
+
+    val flow = source("EngineStartFlow.kt")
+    val processWait = between(
+      flow,
+      "if (engineAlreadyRunning && startupAvailability == EngineProbe.EngineAvailability.OUR_PROCESS)",
+      "if (engineAlreadyRunning && startupAvailability == EngineProbe.EngineAvailability.OUR_HTTP)",
+    )
+    assertTrue("a tracked process without HTTP readiness waits on the bounded engine probe", processWait.contains("awaitEngineHttpReady("))
+    assertTrue("the process-only wait is bounded by real engine liveness", processWait.contains("engineBootMayContinue()"))
+    assertTrue("EngineStartFlow marks readiness only after the HTTP probe succeeds", flow.contains("activity.markEngineHttpReady()"))
   }
 
   @Test fun configurationBridgeReadsAndWritesTheActualActiveDocument() {
@@ -196,7 +224,7 @@ class ForegroundPageRecoveryWiringTest {
   @Test fun rootPrebootRepairStillPrecedesAnySnapshotRecovery() {
     val startup = between(source("EngineStartFlow.kt"), "fun start()", "private fun isCurrentEngineFlow(")
     assertTrue(ordered(startup, "ShizukuTransport.prepareStartupOwnership(", "startupRecoverThenProbe("))
-    assertTrue(ordered(startup, "startupRecoverThenProbe(", "if (engineAlreadyRunning)"))
+    assertTrue(ordered(startup, "startupRecoverThenProbe(", "if (engineAlreadyRunning && startupAvailability == EngineProbe.EngineAvailability.OUR_HTTP)"))
     assertFalse(source("MainActivity.kt").contains("autoHealOwnership("))
   }
 }

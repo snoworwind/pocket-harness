@@ -76,8 +76,8 @@ flowchart TD
 
 ### 阶段 1：每次冷启动（秒级到三十秒）
 
-- MainActivity构造协作类、恢复用户关闭意图并装trusted bridge，当前源码入口见§6 K01。
-- 引导页先上屏，Activity/Service后台caller通过ownership prelude及generation/epoch检查后启动，见§6 K01/K02。
+- MainActivity构造协作类、恢复用户关闭意图并装trusted bridge；首次内容帧同步显示原生引导页并使用 `ds_bg`，避免隐藏的 WebView/引导页之间露出窗口底色。
+- `EngineStartFlow` 经ownership prelude确认引擎 HTTP 可响应后才允许首次 WebView 导航；引导页保留到 `onPageCommitVisible` 再交接，已归属但尚无 HTTP 应答的进程走有界等待，见§6 K01/K02。
 - 看门狗在服务侧起 tick：`app/src/main/java/com/snoworwind/pocketharness/WatchdogV2.kt:109`（`planTick`，深度探活/退避/熔断）；
 - 失败退路：引擎有限retry/UndoGate；ownership pending独立finite6预算，未知不能读事务/spawn；页面只quiet前台恢复，见§6 K01/K02/K06。
 
@@ -432,7 +432,7 @@ Linux 发现补充（P04，坑 373）：bootstrap `index.js` 串行发现 → `g
 |---|---|---|---|
 | K01 | 引擎进程与快照面 | EngineStartFlow 在工作线程调 refreshSnapshot/startEngine/engineProcessAlive，Activity 侧只传 Activity 与 pickToken | app/src/main/java/com/snoworwind/pocketharness/EngineStartFlow.kt:408 |
 | K01 | 快照事务（跨进程真源） | 0.14.8 P1：启动请求与安全模式重启都不得在刷新窗口内被静默丢弃。判据 = 事务 journal（`SnapshotTransaction.readMarker(filesDir)`，跨进程）而不是本 Activity 实例的内存态所有权；`start()`/`restart()` 的 destroyed 与 running 必须分开处置，安全模式重启在**停旧引擎之前**先判事务 | app/src/main/java/com/snoworwind/pocketharness/EngineStartFlow.kt:659；app/src/main/java/com/snoworwind/pocketharness/EngineManager.kt:211 |
-| K01 | 引擎鉴权与探活 | 首屏 cookie 注入进程级 CookieManager，探活结果决定 showWeb/showGuide 分流 | app/src/main/java/com/snoworwind/pocketharness/MainActivity.kt:812 |
+| K01 | 引擎鉴权与探活 | HTTP 探活成功后注入首屏 cookie 并设置 `engineHttpReady`；`showWeb` 才发起首次导航，原生引导页保持到首个引擎文档 `onPageCommitVisible`，之后切入 WebView | app/src/main/java/com/snoworwind/pocketharness/MainActivity.kt:306；app/src/main/java/com/snoworwind/pocketharness/MainActivity.kt:1128；app/src/main/java/com/snoworwind/pocketharness/EngineStartFlow.kt:738 |
 | K01 | 前台服务与看门狗 | startEngineService 挂载前台服务，回撤阈值取 WatchdogV2.effectiveFailureCount | app/src/main/java/com/snoworwind/pocketharness/EngineStartFlow.kt:670 |
 | K01 | 诊断落盘 | 启动分段、引导页 stall、HTTP/TLS/渲染进程错误全部经 LogCollector 写壳侧自有文件 | app/src/main/java/com/snoworwind/pocketharness/MainActivity.kt:1113 |
 | K01 | 沉浸式与开发者日志真源 | onCreate/onWindowFocusChanged 读 ImmersiveMode，onResume 读 DevLogControl（单一真源，壳侧不再持第二份） | app/src/main/java/com/snoworwind/pocketharness/WebUiChrome.kt:19 |
@@ -445,7 +445,7 @@ Linux 发现补充（P04，坑 373）：bootstrap `index.js` 串行发现 → `g
 | K01 | 快照与更新面 | 启动前部署 APK 内嵌快照，历史中断恢复走 SnapshotTransaction，自动回撤走 UndoGate | app/src/main/java/com/snoworwind/pocketharness/EngineStartFlow.kt:294 |
 | K01 | 内置控制台 | 引导页与控制台按钮 START ConsoleActivity，其 ConsoleSession 用与引擎同源的 shellEnv 起快照 bash | app/src/main/java/com/snoworwind/pocketharness/ConsoleSession.kt:33 |
 | K01 | 系统外部角色 | BootReceiver 接 ACTION_BOOT_COMPLETED 决定是否自启前台服务，分享面板经 VIEW/SEND 进本 Activity | app/src/main/java/com/snoworwind/pocketharness/BootReceiver.kt:24 |
-| K02 | K01 | 启动全程用引导页阶段承载文案，成功才切 WebUI | EngineStartFlow.kt:445-479、MainActivity.kt:145-155 |
+| K02 | K01 | 启动全程用可见引导页承载文案；只有引擎 HTTP 就绪且首个页面文档提交后才切 WebUI | EngineStartFlow.kt:738-780、MainActivity.kt:306-369、MainActivity.kt:1130-1143 |
 | K02 | K03 | 刷新期禁启动、事务恢复、update-pending 健康 3 拍才删 usr-old 三处握手；刷新窗口内的启动请求**不得静默丢弃**（0.14.8 P1）：`start()`/`restart()` 拿不到世代所有权时按 destroyed/running 分开处置，running 走 boot-fail 留痕 + 有界等待后自动续跑；安全模式重启在停旧引擎前先判事务 journal | EngineManager.kt:595、1298-1345、2157-2158；EngineStartFlow.kt:659、1417 |
 | K02 | UndoGate | 看门狗 UNDO、启动超时与客户端插件树失败共用闸门：可点名时外科拔除非 Hard 插件；整份回撤只用当前 snapshot fingerprint 下的壳侧 HEALTHY known-good ID；被拒后复位锁存以继续引擎重试 | EngineService.kt:207-293、EngineStartFlow.kt:345-390、UndoGate.kt:278-434 |
 | K02 | 通知链 NotifyStore/NotifyCenter | 每拍按字节偏移消费 .task-done.ndjson，双读不双发 | WatchdogV2.kt:258-309、NotifyCenter.kt:188 |
