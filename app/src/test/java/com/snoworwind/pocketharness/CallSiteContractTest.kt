@@ -80,13 +80,18 @@ class CallSiteContractTest {
     )
   }
 
-  /** FX-210.5：onCreate 路径（configureWebView）不得同步 refresh cookie。 */
+  /** FX-210.5：首屏 cookie 只读本地缓存，任何网络 refresh 都留在后台重试线程。 */
   @Test
-  fun configureWebViewDoesNotRefreshTheCookieOnTheMainThread() {
-    val configure = memberBody(codeOnly(source("MainActivity.kt")), "private fun configureWebView()")
-    assertTrue("FX-210.5：初始化只允许零网络的本地 cookie", configure.contains("EngineAuth.cookie(this)"))
-    val beforeRefresh = configure.substringBefore("EngineAuth.refresh(this)")
-    assertTrue("FX-210.5：refresh 只允许出现在后台线程块内", beforeRefresh.contains("Thread {"))
+  fun initialNavigationUsesCachedCookieAndRefreshesOffMainThread() {
+    val code = codeOnly(source("MainActivity.kt"))
+    val configure = memberBody(code, "private fun configureWebView()")
+    assertFalse("WebView 配置阶段不得取 cookie 或发起首屏导航", configure.contains("EngineAuth.cookie(this)"))
+    assertFalse("WebView 配置阶段不得同步 refresh cookie", configure.contains("EngineAuth.refresh(this)"))
+    val initialNavigation = memberBody(code, "private fun loadInitialEnginePageAfterReadiness()")
+    assertTrue("首屏导航只允许零网络的本地 cookie", initialNavigation.contains("EngineAuth.cookie(this)"))
+    assertFalse("首屏导航不得同步 refresh cookie", initialNavigation.contains("EngineAuth.refresh(this)"))
+    val authRecovery = memberBody(code, "private fun startInitialEngineAuthRecovery()")
+    assertTrue("cookie refresh 必须运行在后台线程", authRecovery.indexOf("Thread {") in 0 until authRecovery.indexOf("EngineAuth.refresh(this)"))
   }
 
   /** ST-02：开关真源 = 偏好 && 系统权限 && 服务实例在场。 */

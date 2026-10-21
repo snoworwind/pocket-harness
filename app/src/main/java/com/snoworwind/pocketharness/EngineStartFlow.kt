@@ -77,6 +77,7 @@ internal class EngineStartFlow(private val activity: MainActivity) {
                 // C1：本 tick 拿到了真实 HTTP 应答。这条路径覆盖「引擎由看门狗/服务拉起」的世代——
                 // 否则那些世代只有 t_listen（TCP）而没有首个响应读数，C1 在门禁里会被判 SKIP 而非判绿。
                 LogCollector.markFirstHttp(activity)
+                activity.markEngineHttpReady()
                 if (activity.guideView.visibility == View.VISIBLE) {
                   activity.showWeb()
                 } else if (activity.enginePageFailed &&
@@ -696,7 +697,8 @@ internal class EngineStartFlow(private val activity: MainActivity) {
       // FX-210.1（源文档 §3.3 B1 顺序约束）：恢复入口是「服务路径与 Activity 路径」的
       // 共同前置——引擎已被前台服务拉起时重开 app 也要消费 .snapshot-transaction 判据，
       // 因此它必须排在「引擎已在跑」早退之前（顺序由 startupRecoverThenProbe 保证）。
-      val engineAlreadyRunning = startupRecoverThenProbe(
+      var startupAvailability = EngineProbe.EngineAvailability.DOWN
+      var engineAlreadyRunning = startupRecoverThenProbe(
         recover = {
           requireCurrentEngineFlow(generation)
           activity.engineManager.recoverInterruptedRefresh()
@@ -720,6 +722,7 @@ internal class EngineStartFlow(private val activity: MainActivity) {
         probeRunning = {
           requireCurrentEngineFlow(generation)
           val ownership = activity.engineManager.probeAvailability()
+          startupAvailability = ownership
           ownership == EngineProbe.EngineAvailability.OUR_PROCESS ||
             ownership == EngineProbe.EngineAvailability.OUR_HTTP
         },
@@ -735,13 +738,46 @@ internal class EngineStartFlow(private val activity: MainActivity) {
         }
         return@Thread
       }
-      if (engineAlreadyRunning) {
+      if (engineAlreadyRunning && startupAvailability == EngineProbe.EngineAvailability.OUR_PROCESS) {
+        // A tracked child proves ownership, not HTTP readiness. Keep the native guide up while
+        // waiting for the already-running process to serve its first response.
+        activity.runOnUiThread {
+          if (!isCurrentEngineFlow(generation)) return@runOnUiThread
+          activity.applyGuidePhase(GuidePhase.Starting, "正在启动引擎…")
+          activity.showGuide()
+        }
+        val ready = awaitEngineHttpReady(
+          processAlive = { activity.engineManager.engineBootMayContinue() },
+          current = { isCurrentEngineFlow(generation) },
+        )
+        if (!isCurrentEngineFlow(generation)) return@Thread
+        if (ready) {
+          startupAvailability = EngineProbe.EngineAvailability.OUR_HTTP
+        } else if (!activity.engineManager.engineBootMayContinue()) {
+          // The previously tracked child died while we waited; continue through normal recovery/start.
+          engineAlreadyRunning = false
+        } else {
+          LogCollector.writeBootFail(
+            activity, "boot-budget-exceeded",
+            "已归属的引擎进程仍存活，但 " + ENGINE_BOOT_BUDGET_MS / 1000 + "s 预算内 Web 端口未就绪（t_listen=-1 形态）",
+          )
+          activity.runOnUiThread {
+            if (!isCurrentEngineFlow(generation)) return@runOnUiThread
+            activity.applyGuidePhase(GuidePhase.Starting, "引擎启动较慢（已安排自动重试）")
+            activity.showGuide()
+          }
+          scheduleEngineRetry(generation)
+          return@Thread
+        }
+      }
+      if (engineAlreadyRunning && startupAvailability == EngineProbe.EngineAvailability.OUR_HTTP) {
         // P-AC-04：这条早退路径不经过 spawn 观察线程，补一次 listen 标记（幂等；本进程没记过
         // t_boot_start 时按「未知」记 -1 落盘，而不是让三字段整行缺失）。
         LogCollector.markListen(activity)
-        // C1：探活已经拿到 HTTP 应答（engineAlreadyRunning 覆盖 running 或 401=可认证，见 probeRunning）；
+        // C1：探活或有界等待已经拿到 HTTP 应答；仅有本壳进程句柄不再被记作首个响应。
         // 所以首个响应时刻同样可判——否则「进程内接手已在跑的引擎」这一路径永远没有 C1 读数。
         LogCollector.markFirstHttp(activity)
+        activity.markEngineHttpReady()
         activity.runOnUiThread { if (isCurrentEngineFlow(generation)) activity.showWeb() }
         return@Thread
       }
@@ -968,6 +1004,7 @@ internal class EngineStartFlow(private val activity: MainActivity) {
           // 要的「首个 HTTP 响应」而不是 TCP LISTEN。与 t_listen 分开记，使「LISTEN 快、首个响应慢」
           // 这条已验证的假绿路径可被门禁在同一行上同时断言（详档 §5.1 C1）。幂等。
           LogCollector.markFirstHttp(activity)
+          activity.markEngineHttpReady()
           // 0.13.8 #174：引擎就绪钩子——补投冷启动期间待发的来件通知（拷贝完成时
           // 引擎尚未 listen 的竞态路径；fail-soft，失败留在待发清单等下一轮）。
           requireCurrentEngineFlow(generation)

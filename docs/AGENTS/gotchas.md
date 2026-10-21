@@ -2890,6 +2890,10 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 
     现象：旧 profile repair 在 `.pre-<version>.bak` 已存在时不保存本轮当前内容；备份写失败也继续覆盖 live；临时 rename 失败后直接 `target.writeText` 截断 YAML。真因：备份路径固定且失败被忽略，原子发布失败被当作可降级的普通写入。修法：每次修复先把 live 原始字节写入独立临时文件、flush/fsync 并逐字节校验，再发布到唯一 `.pre-<version>-<random>.bak`；replacement 同样写入并同步 sibling 临时文件，只有原语发布成功才算修复；任一步失败保留 live 原字节并将启动标记留待重试。复验：`SnapshotFsTest` 覆盖两次唯一备份、备份发布失败、live 发布失败与字节保全；`FactoryProfilePatchTest` 锁定 EngineManager 调用安全原语、不再直接写 live。未做设备验证（当前环境无 ADB）。参考上游 `c1d5a29`。
 
-474. **离线 Linux 安装仍会在 rootfs 准备时因 Termux `find` 动态链接失败（2026-10-21）**
+474. **冷启动必须等引擎 HTTP 与首个有效页面提交后再交接 WebView（2026-10-21）**
+
+    现象：用户截图依次出现本地 `ERR_EMPTY_RESPONSE`、空白窗口和 Harness「Loading plugins…」。真因：`configureWebView()` 只检查 `EngineTransport.ownsPort()`（本地 relay 已绑定），就提前导航；引擎进程存在也曾直接走 `showWeb()`，没有证明 HTTP 已响应。与此同时 WebView 与 `GuideChrome` 初始都为 `GONE`，透明根容器短暂露出浅色 window background；引擎就绪后又在页面提交首帧前隐藏引导页。修法：根容器同步使用 `ds_bg` 并首帧显示原生启动页；EngineStartFlow 对「进程已归属但 HTTP 未就绪」使用有界等待；仅 HTTP 响应后设置 `engineHttpReady` 并开始首次导航；首个引擎页面提交前保留启动页，且不把 WebView 的传输错误页当作有效首帧。复验：Kotlin 单测 1355/1355 通过，`node scripts/check-code-map.mjs` 与 `git diff --check` 通过；当前 ADB 列表为空，CDP / ADB 用户体验验证未做。
+
+475. **离线 Linux 安装仍会在 rootfs 准备时因 Termux `find` 动态链接失败（2026-10-21）**
 
     现象：更新日志确认 APK 内置的 backend、rootfs、Node 与插件资产复制、SHA-256 校验和解包均成功，安装全程离线；`prepare-rootfs.sh` 调用 `$PREFIX/bin/find` 时返回 `Permission denied`。同一日志的正反实验证明：保留宿主 `LD_LIBRARY_PATH=$DSH_FILES_DIR/usr/lib` 时成功，过滤后找不到 `libandroid-support.so`。真因：runtime manager 的宿主环境规则丢弃该路径，Termux `find` ELF 的旧 `DT_RUNPATH` 指向不可用的 `/data/data/com.termux/...`。修法：manager 只从应用 `DSH_FILES_DIR/usr/lib`（或明确 Termux prefix）校验并传递宿主库目录；Bionilux 首次进入 guest 时剔除宿主值，但允许 guest 为自身子进程设置值；rootfs 错误带稳定码，bootstrap 持久化详情并向页面返回脱敏摘要。复验：runtime manager 28/28；新增 route 与跨 bootstrap 重启错误状态用例通过；source manifest 37 文件、bootstrap vendored source、code-map 通过。未做设备验证；Linux-env 全套在本机 71/78（其余为 `/var` 别名、ESM fixture 解析和 BSD tar 选项环境失败）；Bionilux Rust 回归因离线缓存缺 `clap` 未编译。故不宣称 Linux 环境已恢复。
