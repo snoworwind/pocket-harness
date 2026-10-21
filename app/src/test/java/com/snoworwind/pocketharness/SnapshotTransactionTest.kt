@@ -1,6 +1,7 @@
 package com.snoworwind.pocketharness
 
 import java.io.File
+import java.io.IOException
 import java.nio.file.Files
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -1602,6 +1603,142 @@ class SnapshotTransactionTest {
       assertTrue("内容相同不得留副本（纯噪声）", pre.isEmpty())
     } finally {
       SnapshotFs.deletePath(filesDir)
+    }
+  }
+
+  @Test
+  fun factoryOverwriteAbortsWhenTheUserCopyCannotBePublished() {
+    val filesDir = tempDir()
+    try {
+      val live = File(filesDir, "live").apply { mkdirs() }
+      val stage = SnapshotTransaction.stageRoot(filesDir)
+      writeRuntime(live, "old-node", "old-profile")
+      writeRuntime(stage, "new-node", "new-profile")
+      val rel = "home/.dsh/profiles/web/node_modules/@dsh-android/dsh-x/cordis.yml"
+      File(live, rel).apply { parentFile!!.mkdirs(); writeText("user-patched: true\n") }
+      File(stage, rel).apply { parentFile!!.mkdirs(); writeText("factory: true\n") }
+
+      val failure = try {
+        SnapshotTransaction.swap(
+          filesDir = filesDir,
+          stagedRoot = stage,
+          usrDir = File(live, "usr"),
+          homeDir = File(live, "home"),
+          preservedNames = preserved,
+          fingerprint = "fp-preserve-failed",
+          startedAt = 1L,
+          preserveCopy = { _, _ -> throw IOException("controlled copy failure") },
+        )
+        null
+      } catch (t: SnapshotFsException) {
+        t
+      }
+
+      assertEquals(CODE_PRESERVE_FAILED, failure?.code)
+      assertEquals("factory overwrite must not destroy the user's file", "user-patched: true\n", File(live, rel).readText())
+    } finally {
+      SnapshotFs.deletePath(filesDir)
+    }
+  }
+
+  @Test
+  fun factoryOverwriteRejectsSameLengthCorruptPreservationCopy() {
+    val filesDir = tempDir()
+    try {
+      val live = File(filesDir, "live").apply { mkdirs() }
+      val stage = SnapshotTransaction.stageRoot(filesDir)
+      writeRuntime(live, "old-node", "old-profile")
+      writeRuntime(stage, "new-node", "new-profile")
+      val rel = "home/.dsh/profiles/web/node_modules/@dsh-android/dsh-x/cordis.yml"
+      val oldText = "user: true\n"
+      File(live, rel).apply { parentFile!!.mkdirs(); writeText(oldText) }
+      File(stage, rel).apply { parentFile!!.mkdirs(); writeText("factory: yes\n") }
+
+      val failure = try {
+        SnapshotTransaction.swap(
+          filesDir = filesDir,
+          stagedRoot = stage,
+          usrDir = File(live, "usr"),
+          homeDir = File(live, "home"),
+          preservedNames = preserved,
+          fingerprint = "fp-preserve-corrupt",
+          startedAt = 1L,
+          preserveCopy = { from, to -> to.writeText("x".repeat(from.length().toInt())) },
+        )
+        null
+      } catch (t: SnapshotFsException) {
+        t
+      }
+
+      assertEquals(CODE_PRESERVE_FAILED, failure?.code)
+      assertEquals("a same-length but corrupt copy must not authorize overwrite", oldText, File(live, rel).readText())
+    } finally {
+      SnapshotFs.deletePath(filesDir)
+    }
+  }
+
+  @Test
+  fun atomicTextPublishFailureKeepsOldBytesAndLeavesDiscoverableEvidence() {
+    val parent = tempDir()
+    try {
+      val target = File(parent, "package.json").apply { writeBytes("{\"old\":true}\n".toByteArray()) }
+      val oldBytes = target.readBytes()
+      val failure = try {
+        SnapshotTransaction.writeTextAtomic(
+          target = target,
+          text = "{\"new\":true}\n",
+          label = "package.json",
+          validate = { _ -> },
+          publish = { _, _ -> false },
+        )
+        null
+      } catch (t: SnapshotFsException) {
+        t
+      }
+
+      assertEquals(CODE_ATOMIC_WRITE, failure?.code)
+      assertTrue("failed publication must not truncate or replace the old target", oldBytes.contentEquals(target.readBytes()))
+      val evidence = parent.listFiles()!!.filter { it.name.startsWith(".pre-package.json-") }
+      assertEquals("old bytes must be available as failure evidence", 1, evidence.size)
+      assertTrue(oldBytes.contentEquals(evidence.single().readBytes()))
+      assertTrue("temporary publication files must be cleaned", parent.listFiles()!!.none { it.name.contains(".tmp-") })
+    } finally {
+      SnapshotFs.deletePath(parent)
+    }
+  }
+
+  @Test
+  fun atomicTextPublishSuccessReplacesTheWholeTarget() {
+    val parent = tempDir()
+    try {
+      val target = File(parent, "package.json").apply { writeText("{\"old\":true}\n") }
+      SnapshotTransaction.writeTextAtomic(target, "{\"new\":true}\n", "package.json") { _ -> }
+      assertEquals("{\"new\":true}\n", target.readText())
+      assertTrue(parent.listFiles()!!.none { it.name.startsWith(".pre-package.json-") })
+    } finally {
+      SnapshotFs.deletePath(parent)
+    }
+  }
+
+  @Test
+  fun preservedBytesCountsChangedFactoryFilesButNotProfileRootManifests() {
+    val root = tempDir()
+    try {
+      val live = File(root, "live/profiles/web").apply { mkdirs() }
+      val staged = File(root, "stage/profiles/web").apply { mkdirs() }
+      File(live, "package.json").writeText("{\"user\":true}\n")
+      File(staged, "package.json").writeText("{\"factory\":true}\n")
+      File(live, "cordis.patch.yml").writeText("- id: user\n")
+      File(staged, "cordis.patch.yml").writeText("- id: factory\n")
+      File(live, "node_modules/pkg/index.js").apply { parentFile!!.mkdirs(); writeText("user-code") }
+      File(staged, "node_modules/pkg/index.js").apply { parentFile!!.mkdirs(); writeText("factory!!") }
+
+      val userFacing = SnapshotTransaction.profileUserFacingFiles(File(root, "stage/profiles"))
+      val required = SnapshotTransaction.preservedBytes(File(root, "stage/profiles"), File(root, "live/profiles"), userFacing)
+
+      assertEquals("only overwritten factory files need an extra preserved copy", "user-code".toByteArray().size.toLong(), required)
+    } finally {
+      SnapshotFs.deletePath(root)
     }
   }
 
