@@ -283,6 +283,54 @@ class SnapshotMoveResidueTest {
     }
   }
 
+  @Test
+  fun failedResidueCleanupOnlyDeletesKnownTransactionOwnedSlots() {
+    val filesDir = tempDir()
+    try {
+      val ownedUsr = File(filesDir, "usr.failed-1234").apply { mkdirs() }
+      val ownedProfiles = File(filesDir, "home/.dsh/profiles.failed-1234").apply { mkdirs() }
+      val unknownRoot = File(filesDir, "report.failed-1234").apply { mkdirs() }
+      val unknownHome = File(filesDir, "home/report.failed-1234").apply { mkdirs() }
+      val malformed = File(filesDir, "usr.failed-not-a-time").apply { mkdirs() }
+      val wrongSlot = File(filesDir, "home/.dsh/settings.failed-1234").apply { mkdirs() }
+
+      val cleared = SnapshotTransaction.clearFailedResidue(filesDir)
+
+      assertFalse(SnapshotFs.exists(ownedUsr))
+      assertFalse(SnapshotFs.exists(ownedProfiles))
+      assertTrue("unknown root directories are user data", SnapshotFs.exists(unknownRoot))
+      assertTrue("home-level names have no transaction writer", SnapshotFs.exists(unknownHome))
+      assertTrue("malformed timestamps are not owned", SnapshotFs.exists(malformed))
+      assertTrue("unknown .dsh siblings are not owned", SnapshotFs.exists(wrongSlot))
+      assertEquals(2, cleared.size)
+    } finally {
+      SnapshotFs.deletePath(filesDir)
+    }
+  }
+
+  @Test
+  fun agedResidueScanOnlyReturnsKnownNamesInTheirWriterLocations() {
+    val filesDir = tempDir()
+    try {
+      val now = System.currentTimeMillis()
+      val old = now - 31L * 60L * 1000L
+      val recent = now.toString()
+      val ownedUsr = File(filesDir, "usr.failed-$old").apply { mkdirs() }
+      val ownedProfiles = File(filesDir, "home/.dsh/profiles.failed-$old").apply { mkdirs() }
+      val orphanStage = File(filesDir, SnapshotTransaction.STAGE_ORPHAN_PREFIX + old).apply { mkdirs() }
+      File(filesDir, "report.failed-$old").mkdirs()
+      File(filesDir, "home/report.failed-$old").mkdirs()
+      File(filesDir, "home/.dsh/settings.failed-$old").mkdirs()
+      File(filesDir, "usr.failed-$recent").mkdirs()
+
+      val residues = SnapshotTransaction.residueDirs(filesDir, now)
+
+      assertEquals(setOf(ownedUsr, ownedProfiles, orphanStage), residues.toSet())
+    } finally {
+      SnapshotFs.deletePath(filesDir)
+    }
+  }
+
   // ── F. 归类码可归因（issue #271 ④） ──────────────────────────────────────────────
 
   @Test
