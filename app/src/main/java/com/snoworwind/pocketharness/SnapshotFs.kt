@@ -205,6 +205,74 @@ internal object SnapshotFs {
     }
   }
 
+  /** Replace a sibling file without opening or truncating the existing target. */
+  fun atomicReplace(source: File, target: File): Boolean {
+    return try {
+      Files.move(source.toPath(), target.toPath(), ATOMIC_MOVE, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+      true
+    } catch (_: Exception) {
+      // Some Android filesystem providers reject ATOMIC_MOVE. A single move fallback still
+      // preserves the old target when the move fails; never fall back to target.writeText().
+      try {
+        Files.move(source.toPath(), target.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+        true
+      } catch (_: Exception) {
+        false
+      }
+    }
+  }
+
+  /** Back up exact live bytes to a unique sibling before atomically publishing replacement bytes. */
+  fun replaceWithVerifiedBackup(
+    target: File,
+    replacement: ByteArray,
+    backupPrefix: String,
+    expectedOriginal: ByteArray,
+    createTemp: (String, String, File) -> File = { prefix, suffix, directory ->
+      File.createTempFile(prefix, suffix, directory)
+    },
+    replace: (File, File) -> Boolean = { source, destination -> atomicReplace(source, destination) },
+  ): File {
+    val parent = target.parentFile ?: throw IOException("replacement target has no parent")
+    val original = target.readBytes()
+    if (!original.contentEquals(expectedOriginal)) throw IOException("live target changed during repair")
+    var backupReservation: File? = null
+    var backupStage: File? = null
+    var replacementStage: File? = null
+    var backupPublished = false
+    try {
+      val backup = createTemp(backupPrefix, ".bak", parent)
+      backupReservation = backup
+      val backupTemp = createTemp(backupPrefix, ".tmp", parent)
+      backupStage = backupTemp
+      writeSynced(backupTemp, original)
+      if (!backupTemp.readBytes().contentEquals(original)) throw IOException("backup byte verification failed")
+      if (!replace(backupTemp, backup)) throw IOException("backup publication failed")
+      backupStage = null
+      backupPublished = true
+
+      val replacementTemp = createTemp(target.name + ".repair-", ".tmp", parent)
+      replacementStage = replacementTemp
+      writeSynced(replacementTemp, replacement)
+      if (!replacementTemp.readBytes().contentEquals(replacement)) throw IOException("replacement byte verification failed")
+      if (!replace(replacementTemp, target)) throw IOException("replacement publication failed")
+      replacementStage = null
+      return backup
+    } finally {
+      backupStage?.let { if (exists(it)) it.delete() }
+      replacementStage?.let { if (exists(it)) it.delete() }
+      if (!backupPublished) backupReservation?.let { if (exists(it)) it.delete() }
+    }
+  }
+
+  private fun writeSynced(file: File, bytes: ByteArray) {
+    java.io.FileOutputStream(file).use { output ->
+      output.write(bytes)
+      output.flush()
+      output.fd.sync()
+    }
+  }
+
   /**
    * 目录字节数（**不跟随符号链接**：快照树里有大量指向同树的链，跟随会把体积算成几倍）。
    * 用于交换前的空间断言（审查 §7.2-F-4）。不可读的条目按 0 计（宁可低估也不抛）。
@@ -310,6 +378,9 @@ internal const val CODE_DELETE_RESIDUE = "snapshot-delete-residue"
 
 /** 原子写失败（issue #274 ②）：写用户面清单时的 tmp+rename 或可解析性校验失败。 */
 internal const val CODE_ATOMIC_WRITE = "snapshot-atomic-write"
+
+/** A changed live factory file could not be preserved before overwrite. */
+internal const val CODE_PRESERVE_FAILED = "snapshot-preserve-failed"
 
 /** 写事务 journal（marker）失败（issue #273 ②）：恢复权威写不进去，事务必须中止。 */
 internal const val CODE_MARKER_WRITE = "snapshot-marker-write"

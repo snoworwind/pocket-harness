@@ -97,6 +97,7 @@ import type { AndroidBrowserBodyProps } from './mobile/browser-tab.tsx'
 import type { NativeBrowserControlsInjected } from './mobile/native-browser-adapter.ts'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { IncomingDraftConsumer } from './mobile/incoming-draft.ts'
+import { createIncomingDraftRuntime, type IncomingDraftRuntimeServices } from './mobile/incoming-runtime.ts'
 
 // Contract exports only (export-convergence rule): the plugin surface is
 // `apply` and `inject`; every component, marker, and helper stays internal.
@@ -111,35 +112,6 @@ declare global {
 
 /** Required services: composition, copy/theme faces, the runtime sessions, and the frame's panel actions. */
 export const inject = ['slots', 'theme', 'sessions', 'workspaces', 'uiWorkspace', 'layout', 'conversation']
-
-/** Narrow runtime face for the existing Conversation draft/upload service. */
-interface IncomingConversationFace {
-  /** Build-time J1 seam over the normal composer draft/upload path. */
-  addFiles(sessionId: unknown, files: readonly File[]): boolean
-  input: {
-    for(scope: unknown): {
-      notify(level: 'info' | 'error', text: string): void
-    }
-  }
-}
-
-/** Session service methods used by the process-local external attachment hand-off. */
-interface IncomingSessionsFace {
-  refresh(): Promise<void>
-  open(id: unknown): void
-  scope(id: unknown): unknown | undefined
-}
-
-/** Standard workspace create path used before connecting its blank Session. */
-interface IncomingWorkspacesFace {
-  create(input: { path: string }): Promise<{ workspaceId: unknown }>
-}
-
-/** Standard workspace navigation face; it returns a locally addressable blank session. */
-interface IncomingUiWorkspaceFace {
-  connectWorkspace(workspaceId: unknown): Promise<unknown>
-}
-
 
 /** Append one stylesheet and return its disposer. */
 function injectStyle(id: string, css: string): () => void {
@@ -776,37 +748,17 @@ export function apply(ctx: ClientContext): void {
     // Resolve the scoped service faces only at their actual operation. Cordis may install this
     // extension before a root-scoped Conversation tracker is materialized; eager property reads
     // would abort the effect and leave the incoming queue unpolled.
-    const sessions = (): IncomingSessionsFace => ctx.sessions as unknown as IncomingSessionsFace
-    const workspaces = (): IncomingWorkspacesFace => ctx.get('workspaces') as IncomingWorkspacesFace
-    const uiWorkspace = (): IncomingUiWorkspaceFace => ctx.get('uiWorkspace') as IncomingUiWorkspaceFace
-    const conversation = (): IncomingConversationFace => ctx.conversation as unknown as IncomingConversationFace
+    const sessions = (): ReturnType<IncomingDraftRuntimeServices['sessions']> =>
+      ctx.sessions as unknown as ReturnType<IncomingDraftRuntimeServices['sessions']>
+    const workspaces = (): ReturnType<IncomingDraftRuntimeServices['workspaces']> =>
+      ctx.get('workspaces') as ReturnType<IncomingDraftRuntimeServices['workspaces']>
+    const uiWorkspace = (): ReturnType<IncomingDraftRuntimeServices['uiWorkspace']> =>
+      ctx.get('uiWorkspace') as ReturnType<IncomingDraftRuntimeServices['uiWorkspace']>
+    const conversation = (): ReturnType<IncomingDraftRuntimeServices['conversation']> =>
+      ctx.conversation as unknown as ReturnType<IncomingDraftRuntimeServices['conversation']>
     const consumer = new IncomingDraftConsumer(
       (path, init) => fetch(path, init),
-      {
-        refreshSessions: () => sessions().refresh(),
-        createSession: async (cwd) => {
-          document.documentElement.setAttribute('data-dsh-incoming-draft-poll', 'workspace-create')
-          const workspace = await workspaces().create({ path: cwd })
-          document.documentElement.setAttribute('data-dsh-incoming-draft-poll', 'workspace-created')
-          document.documentElement.setAttribute('data-dsh-incoming-draft-poll', 'workspace-connect')
-          const sessionId = await uiWorkspace().connectWorkspace(workspace.workspaceId)
-          document.documentElement.setAttribute('data-dsh-incoming-draft-poll', 'workspace-connected')
-          return String(sessionId)
-        },
-        openSession: (sessionId) => { sessions().open(sessionId) },
-        sessionScope: (sessionId) => sessions().scope(sessionId),
-        attachGenericFile: (sessionId, file) => {
-          try {
-            return conversation().addFiles(sessionId, [file])
-          } catch {
-            // The target can be released between session navigation and draft admission.
-            return false
-          }
-        },
-        notify: (scope, text) => {
-          try { conversation().input.for(scope).notify('error', text) } catch { /* target scope ended */ }
-        },
-      },
+      createIncomingDraftRuntime({ sessions, workspaces, uiWorkspace, conversation }),
     )
     const poll = (): void => { void consumer.poll() }
     const timer = window.setInterval(() => {

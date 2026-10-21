@@ -1822,7 +1822,7 @@ class EngineManager(private val context: Context, private val pickToken: String?
    * 所以自愈必须在引擎读 profile 之前做一次，不能只依赖 [refreshSnapshot]。
    *
    * 边界（与 [FactoryProfilePatch] 一致）：只清退役行 id 的 `disabled: true`；不新增任何
-   * disable；用户独有条目与自建 profile 条目不动；改前留同目录 `.pre-<版本>.bak`（回滚路径）；
+   * disable；用户独有条目与自建 profile 条目不动；改前留同步校验的唯一同目录 `.pre-<版本>-<随机>.bak`（回滚路径）；
    * 改动逐条进开发日志；每版本只跑一次（幂等标记），失败不阻塞启动。
    */
   private fun repairProfilePatch() {
@@ -1853,7 +1853,8 @@ class EngineManager(private val context: Context, private val pickToken: String?
         .filter { it.isFile }
       var repaired = 0
       for (target in targets) {
-        val live = try { target.readText() } catch (_: Throwable) { failed = true; continue }
+        val liveBytes = try { target.readBytes() } catch (_: Throwable) { failed = true; continue }
+        val live = String(liveBytes, Charsets.UTF_8)
         val result = FactoryProfilePatch.repairRetiredDisabledRows(live)
         if (result.text == live) continue
         // 解析校验（review C8）：只允许移除退役行——其余 id 集合必须原样保留，否则不写。
@@ -1864,30 +1865,26 @@ class EngineManager(private val context: Context, private val pickToken: String?
           failed = true
           continue
         }
-        val backup = File(target.parentFile, target.name + ".pre-" + BuildConfig.VERSION_NAME + ".bak")
-        if (!backup.exists()) {
-          try { backup.writeText(live) } catch (_: Throwable) {}
-        }
-        // 原子写（review C8）：旧实现 writeText 直接覆盖，写盘中被杀会留截断 YAML（引擎装配直接失败）。
-        val tmp = File(target.parentFile, target.name + ".repair.tmp")
+        val backupPrefix = target.name + ".pre-" + BuildConfig.VERSION_NAME + "-"
         try {
-          tmp.writeText(result.text)
-          if (!tmp.renameTo(target)) {
-            target.writeText(result.text)
-            SnapshotFs.deletePath(tmp)
-          }
+          // 每次尝试都先同步、验 bytes 并保留一个唯一回滚副本；两次发布均只走同目录 move。
+          val backup = SnapshotFs.replaceWithVerifiedBackup(
+            target,
+            result.text.toByteArray(Charsets.UTF_8),
+            backupPrefix,
+            liveBytes,
+          )
+          repaired++
+          LogCollector.log(
+            TAG,
+            "profile patch repaired (" + (target.parentFile?.name ?: "?") + "): " +
+              result.changes.joinToString(" | ") + " ; backup=" + backup.name,
+          )
         } catch (t: Throwable) {
           failed = true
-          SnapshotFs.deletePath(tmp)
           Log.w(TAG, "profile patch repair write failed (retried next boot): " + target.absolutePath, t)
           continue
         }
-        repaired++
-        LogCollector.log(
-          TAG,
-          "profile patch repaired (" + (target.parentFile?.name ?: "?") + "): " +
-            result.changes.joinToString(" | ") + " ; backup=" + backup.name,
-        )
       }
       if (failed) {
         // review C8：部分失败不写 marker → 下次启动重试（旧实现失败后本版内不再重试）。

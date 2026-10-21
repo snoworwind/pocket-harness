@@ -156,10 +156,10 @@
 
 | 吸收项 | 本仓 PR | 本机证据 | 未完成边界 |
 |---|---|---|---|
-| 快照用户文件保全、配置原子发布与残留归属 | [#80](https://github.com/snoworwind/pocket-harness/pull/80) | `SnapshotTransactionTest`、`SnapshotMoveResidueTest`；完整 Kotlin 套件 1338/1338 | L2 设备三层验收未做，草稿 PR |
-| 产物路由鉴权逐归档成员检查 | [#81](https://github.com/snoworwind/pocket-harness/pull/81) | `check-api-route-auth.mjs --self-test` 含受控假绿负控通过 | 来源快照集成输入未提供；PR 以 #80 为基线的栈式草稿 |
-| 待发来件台账并发、引用与 TTL 清理 | [#82](https://github.com/snoworwind/pocket-harness/pull/82) | 完整 Kotlin 套件 1349/1349 | L2 设备三层验收未做；PR 以 #81 为基线的栈式草稿 |
-| 来件附件草稿导航切到 `uiWorkspace.openSession` | [#83](https://github.com/snoworwind/pocket-harness/pull/83) | 插件测试 753/753；产物包含新导航调用 | `npm run typecheck` 仍有既存 `conversation-dock.tsx:137-138` 错误；CDP/ADB 未做；PR 以 #82 为基线的栈式草稿 |
-| 工厂 profile 修复先备份并原子发布 | [#84](https://github.com/snoworwind/pocket-harness/pull/84) | 完整 Kotlin 套件 1354/1354；`check-code-map.mjs`、`check-kotlin-comments.mjs`、`check-kotlin-test-count.mjs`、`git diff --check` 通过 | L2 设备三层验收未做；PR 以 #83 为基线的栈式草稿 |
+| 快照用户文件保全、配置原子发布与残留归属 | [#80](https://github.com/snoworwind/pocket-harness/pull/80) | `SnapshotTransactionTest`、`SnapshotMoveResidueTest`；完整 Kotlin 套件 1338/1338 | 已合并 `f46e9b1`；L2 实机三层验收未做，尚未验收 |
+| 产物路由鉴权逐归档成员检查 | [#81](https://github.com/snoworwind/pocket-harness/pull/81) | `check-api-route-auth.mjs --self-test` 含受控假绿负控通过 | 已合并 `39ab569`；来源快照集成输入未提供；未做实机验收（L1 门禁改动不依赖设备） |
+| 待发来件台账并发、引用与 TTL 清理 | [#82](https://github.com/snoworwind/pocket-harness/pull/82) | 完整 Kotlin 套件 1349/1349 | 已合并 `63c3371`；L2 实机三层验收未做，尚未验收 |
+| 来件附件草稿导航切到 `uiWorkspace.openSession` | [#83](https://github.com/snoworwind/pocket-harness/pull/83) | 插件测试 753/753；产物包含新导航调用 | 已合并 `acc442e`；`npm run typecheck` 仍有既存 `conversation-dock.tsx:137-138` 错误；CDP/ADB 未做，L3 尚未验收 |
+| 工厂 profile 修复先备份并原子发布 | [#84](https://github.com/snoworwind/pocket-harness/pull/84) | 完整 Kotlin 套件 1354/1354；`check-code-map.mjs`、`check-kotlin-comments.mjs`、`check-kotlin-test-count.mjs`、`git diff --check` 通过 | 已合并 `255806b`；L2 实机三层验收未做，尚未验收 |
 
-五个 PR 均已推送并保持草稿；栈式 PR 按基线顺序审查。设备三层验收未完成的 L2/L3 改动不得据此视为已验收或合并。本记录中的测试为各实现分支对应提交的本机证据，完整命令与限制见实施计划 §12.2–§12.3。
+五个实现 PR 已按依赖顺序以 merge commit 合入 `main`。本机与 CI 证据不代表实机验收：#80、#82、#84 的 L2 与 #83 的 L3 三层设备验收未做，本轮按用户明确要求先行合并；这些改动仍属未验收，进入发版候选前必须补齐三层证据。#81 是 L1 门禁改动，`--self-test` 与受控负控通过；没有执行实机验收。本记录中的测试为各实现分支对应提交的本机证据，完整限制见实施计划 §12.2–§12.3。

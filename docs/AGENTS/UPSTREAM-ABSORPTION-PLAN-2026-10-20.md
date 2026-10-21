@@ -244,12 +244,12 @@ APK/快照 OTA、旧包身份/签名、协调仓构建入口与壳侧模型工�
 
 ### 12.3 PR 执行顺序与收口条件
 
-| 顺序 | 改动 | PR | 基线 |
+| 顺序 | 改动 | PR | merge commit |
 |---|---|---|---|
-| 1 | 快照文件保全与原子发布 | [#80](https://github.com/snoworwind/pocket-harness/pull/80) | `main` |
-| 2 | 路由鉴权归档成员门禁 | [#81](https://github.com/snoworwind/pocket-harness/pull/81) | #80 |
-| 3 | 待发来件持久化安全 | [#82](https://github.com/snoworwind/pocket-harness/pull/82) | #81 |
-| 4 | 来件附件草稿导航 | [#83](https://github.com/snoworwind/pocket-harness/pull/83) | #82 |
-| 5 | 工厂 profile 备份与原子修复 | [#84](https://github.com/snoworwind/pocket-harness/pull/84) | #83 |
+| 1 | 快照文件保全与原子发布 | [#80](https://github.com/snoworwind/pocket-harness/pull/80) | `f46e9b1` |
+| 2 | 路由鉴权归档成员门禁 | [#81](https://github.com/snoworwind/pocket-harness/pull/81) | `39ab569` |
+| 3 | 待发来件持久化安全 | [#82](https://github.com/snoworwind/pocket-harness/pull/82) | `63c3371` |
+| 4 | 来件附件草稿导航 | [#83](https://github.com/snoworwind/pocket-harness/pull/83) | `acc442e` |
+| 5 | 工厂 profile 备份与原子修复 | [#84](https://github.com/snoworwind/pocket-harness/pull/84) | `255806b` |
 
-上述 PR 已推送，均保持草稿，未合并；按表中依赖顺序审查与合入，避免后续 PR 的差异建立在尚未合并的代码之上。每个 PR 仍须自身 CI 与对应风险档证据。#81 的 L1 自检含受控负控；#80、#82、#84 的 L2 与 #83 的 L3 设备三层验收尚未完成，设备恢复后须补证并更新 PR；不得因栈后分支有后续 Kotlin 通过结果而倒推前序 PR 的设备验收已通过。所有证据摘要见 [上游跟踪账本](UPSTREAM-TRACKING.md#2026-10-21-吸收-pr-与验证状态)。
+五项 PR 均按表中依赖顺序通过必需 CI 后，以 merge commit 合入 `main`。本轮按用户明确要求先行合并；#80、#82、#84 的 L2 与 #83 的 L3 实机三层验收未做，这些改动仍未验收，合并不表示设备验证通过。进入发版候选前必须补齐相应三层证据；不得因后续分支的 Kotlin 通过结果而倒推前序 PR 的设备验收通过。#81 为 L1 门禁改动，`--self-test` 和受控负控通过；没有执行实机验收。证据摘要见 [上游跟踪账本](UPSTREAM-TRACKING.md#2026-10-21-吸收-pr-与验证状态)。
