@@ -69,6 +69,9 @@
 
 `app/src/main/assets/`：`snapshot.tar.xz`、`snapshot.sha256`、`undo-emergency.mjs`（急救 CLI，UndoGate 用）、`licenses/`（LICENSES 标准文本 + THIRD_PARTY_NOTICES.md，GPL 合规 A2）、`console.html`、`docs/root-disclaimer.html`（0.14.2-fx-2-root.1：issue #262 免责声明，`LocalDocs` 登记消费）。
 
+| **SnapshotFs.replaceWithVerifiedBackup** | profile 自愈用的有回滚原子发布原语 | 原始 live bytes 写入唯一同目录备份临时文件，flush/fsync 并逐字节校验后发布；replacement 也先写入同步临时文件，仅通过 `atomicReplace` 发布；任一步失败都不直接打开/截断 live。 |
+| **EngineManager.repairProfilePatch** | 引擎装配前退役行自愈的安全发布点 | 仅修 `FactoryProfilePatch.RETIRED_DISABLED_ROW_IDS`；修前通过 `SnapshotFs.replaceWithVerifiedBackup` 同目录生成同步校验的唯一 `.pre-*` 备份，再原子替换 live；备份或发布失败不写启动 marker、不直接截断目标，供下一次启动重试。 |
+
 ### 4.1 引擎侧插件文件（本仓 `plugins/` 为权威副本）
 
 > 本表登记引擎侧插件中本轮新增或职责变化的文件；其余插件文件见本仓 `plugins/*/src/`。同步边界以 AGENTS.md §4 为准，无需从协调仓覆盖本仓源码。

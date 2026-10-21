@@ -2885,3 +2885,7 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 472. **rc.2 来件草稿导航由 uiWorkspace 持有，不是 sessions.open（2026-10-21）**
 
     现象：来件 consumer 可拿到新建 sessionId，但调用 rc.2 `sessions.open()` 没有把 WebView 导航到草稿，后续 composer scope 不出现、claim 不应发生。真因：`sessions` 服务保留身份/查 scope，页面导航属于 `uiWorkspace`。修法：通过 `incoming-runtime.ts` 适配器统一 `connectWorkspace` 与 `openSession`，并保持 claim 在导航目标 scope 可用之后。复验：`incoming-runtime.spec.ts` 断言 Sessions 面没有 `open`、导航通过 `uiWorkspace.openSession`，且仅在目标 scope 出现后执行 claim/附件挂载；插件 753/753 通过。`npm run typecheck` 仍被未改动的 `conversation-dock.tsx:137-138` 类型错误阻断，设备/CDP 未做。参考上游 `5a6761b`。
+
+473. **profile 自愈必须先完成唯一备份，再原子替换 live（2026-10-21）**
+
+    现象：旧 profile repair 在 `.pre-<version>.bak` 已存在时不保存本轮当前内容；备份写失败也继续覆盖 live；临时 rename 失败后直接 `target.writeText` 截断 YAML。真因：备份路径固定且失败被忽略，原子发布失败被当作可降级的普通写入。修法：每次修复先把 live 原始字节写入独立临时文件、flush/fsync 并逐字节校验，再发布到唯一 `.pre-<version>-<random>.bak`；replacement 同样写入并同步 sibling 临时文件，只有原语发布成功才算修复；任一步失败保留 live 原字节并将启动标记留待重试。复验：`SnapshotFsTest` 覆盖两次唯一备份、备份发布失败、live 发布失败与字节保全；`FactoryProfilePatchTest` 锁定 EngineManager 调用安全原语、不再直接写 live。未做设备验证（当前环境无 ADB）。参考上游 `c1d5a29`。

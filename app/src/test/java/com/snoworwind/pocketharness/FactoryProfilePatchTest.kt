@@ -264,6 +264,20 @@ class FactoryProfilePatchTest {
     assertTrue("自愈必须排在真正 spawn 之前", spawnAt < 0 || repairAt < spawnAt)
   }
 
+  @Test
+  fun profileRepairRequiresVerifiedBackupAndNeverTruncatesTheLiveFile() {
+    val src = listOf(
+      File("src/main/java/com/snoworwind/pocketharness/EngineManager.kt"),
+      File("app/src/main/java/com/snoworwind/pocketharness/EngineManager.kt"),
+    ).firstOrNull { it.isFile } ?: throw AssertionError("找不到 EngineManager.kt")
+    val repair = src.readText().substringAfter("private fun repairProfilePatch()")
+      .substringBefore("private fun normalizeLegacySinglePointPatch()")
+    assertTrue("修复必须先经过验证备份 + 原子替换原语", repair.contains("SnapshotFs.replaceWithVerifiedBackup("))
+    assertTrue("每次修复都须生成唯一备份名", repair.contains("target.name + \".pre-\" + BuildConfig.VERSION_NAME + \"-\""))
+    assertFalse("禁止目标移动失败后退化为直接截断 live 文件", repair.contains("target.writeText("))
+    assertFalse("禁止复用固定 .repair.tmp 落点", repair.contains(".repair.tmp"))
+  }
+
   // ── 0.14.2 D10：合并粒度 = 条目（反证用例） ─────────────────────────────
 
   /**

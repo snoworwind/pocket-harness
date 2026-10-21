@@ -455,7 +455,7 @@ Linux 发现补充（P04，坑 373）：bootstrap `index.js` 串行发现 → `g
 | K02 | 页面失败诊断与恢复 | onClientPluginTreeFailed 的文件 detail 和直接 logcat 共用脱敏后截断的 diagnosticLine；原文保留于恢复字段，供后续回撤编排 | EngineStartFlow.kt:330-341、LogCollector.kt:528-537 |
 | K03 | 引导与启动 | refreshSnapshot 的进度/失败文案与恢复前置由启动流拉起，刷新期 snapshotRefreshing 闸门禁止拉引擎 | app/src/main/java/com/snoworwind/pocketharness/EngineStartFlow.kt:427 |
 | K03 | 引擎探活与看门狗 | 每 5 秒一拍 onEngineProbe 驱动 .update-pending 的 usr-old 确认或回退 | app/src/main/java/com/snoworwind/pocketharness/EngineService.kt:348 |
-| K03 | 引擎总管 EngineManager | 事务/残渣/空间的调用方，也是 usr、home、.snapshot-fingerprint 的持有者 | app/src/main/java/com/snoworwind/pocketharness/EngineManager.kt:99 |
+| K03 | 引擎总管 EngineManager | 事务/残渣/空间的调用方，也是 usr、home、.snapshot-fingerprint 的持有者；启动前 profile 自愈先验证唯一 `.pre-*` 备份再原子发布 | app/src/main/java/com/snoworwind/pocketharness/EngineManager.kt:99 |
 | K03 | 构建与发布 | 内嵌 assets/snapshot.tar.xz 与 snapshot.sha256 是首次解压与刷新两条路径的唯一输入，指纹翻转是刷新触发条件 | app/src/main/java/com/snoworwind/pocketharness/EngineManager.kt:68 |
 | K03 | 插件注入层 | profiles 的 package.json 与 cordis.patch.yml 决定引擎实际挂载集，工厂 disabled 语义以 FactoryProfilePatch 为权威 | app/src/main/java/com/snoworwind/pocketharness/FactoryProfilePatch.kt:79 |
 | K03 | 交互面 MainActivity | DownloadSaver 由 WebView 下载/外链回调拉起，回执经 window.__dshExportResult 回灌页面 | app/src/main/java/com/snoworwind/pocketharness/MainActivity.kt:89 |

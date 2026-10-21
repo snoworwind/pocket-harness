@@ -145,4 +145,112 @@ class SnapshotFsTest {
       root.deleteRecursively()
     }
   }
+
+  @Test
+  fun repairReplacementKeepsUniqueVerifiedBackups() {
+    val root = tempDir()
+    try {
+      val target = File(root, "cordis.patch.yml").apply { writeBytes("original\n".toByteArray()) }
+      val original = target.readBytes()
+      val first = SnapshotFs.replaceWithVerifiedBackup(
+        target,
+        "repaired-one\n".toByteArray(),
+        "cordis.patch.yml.pre-1.0-",
+        original,
+      )
+      val firstBytes = target.readBytes()
+      val second = SnapshotFs.replaceWithVerifiedBackup(
+        target,
+        "repaired-two\n".toByteArray(),
+        "cordis.patch.yml.pre-1.0-",
+        firstBytes,
+      )
+
+      assertEquals("original\n", first.readText())
+      assertEquals("repaired-one\n", second.readText())
+      assertEquals("repaired-two\n", target.readText())
+      assertTrue("each repair gets a distinct rollback file", first.name != second.name)
+      assertTrue("verified backups stay beside the live file", first.parentFile == target.parentFile)
+    } finally {
+      root.deleteRecursively()
+    }
+  }
+
+  @Test
+  fun failedBackupPublicationLeavesLiveBytesUntouched() {
+    val root = tempDir()
+    try {
+      val target = File(root, "cordis.patch.yml").apply { writeBytes(byteArrayOf(0x00, 0x7f, 0x80.toByte(), 0xff.toByte())) }
+      val original = target.readBytes()
+
+      val failure = runCatching {
+        SnapshotFs.replaceWithVerifiedBackup(
+          target,
+          "replacement".toByteArray(),
+          "cordis.patch.yml.pre-fail-",
+          original,
+          replace = { _, _ -> false },
+        )
+      }.exceptionOrNull()
+
+      assertTrue("backup publication failure must abort repair", failure is java.io.IOException)
+      assertTrue("live bytes remain exact", target.readBytes().contentEquals(original))
+      assertTrue("failed backup leaves no placeholder or temp", root.listFiles()!!.toList() == listOf(target))
+    } finally {
+      root.deleteRecursively()
+    }
+  }
+
+  @Test
+  fun failedTargetPublicationLeavesTheVerifiedBackupAndOriginalLiveBytes() {
+    val root = tempDir()
+    try {
+      val target = File(root, "cordis.patch.yml").apply { writeText("original\n") }
+      val original = target.readBytes()
+      var replaces = 0
+
+      val failure = runCatching {
+        SnapshotFs.replaceWithVerifiedBackup(
+          target,
+          "replacement\n".toByteArray(),
+          "cordis.patch.yml.pre-target-fail-",
+          original,
+          replace = { source, destination ->
+            replaces++
+            if (replaces == 1) SnapshotFs.atomicReplace(source, destination) else false
+          },
+        )
+      }.exceptionOrNull()
+      val backup = root.listFiles()!!.single { it.name.endsWith(".bak") }
+
+      assertTrue("target publication failure must abort repair", failure is java.io.IOException)
+      assertTrue("live bytes remain exact", target.readBytes().contentEquals(original))
+      assertTrue("published backup is exact", backup.readBytes().contentEquals(original))
+      assertTrue("failed replacement temp is removed", root.listFiles()!!.none { it.name.endsWith(".tmp") })
+    } finally {
+      root.deleteRecursively()
+    }
+  }
+
+  @Test
+  fun changedLiveBytesAbortBeforeCreatingBackupOrReplacement() {
+    val root = tempDir()
+    try {
+      val target = File(root, "cordis.patch.yml").apply { writeText("newer live\n") }
+      val changed = runCatching {
+        SnapshotFs.replaceWithVerifiedBackup(
+          target,
+          "stale repair\n".toByteArray(),
+          "cordis.patch.yml.pre-stale-",
+          expectedOriginal = "older live\n".toByteArray(),
+        )
+      }.exceptionOrNull()
+
+      assertTrue("stale parsed content must not overwrite a changed profile", changed is java.io.IOException)
+      assertEquals("newer live\n", target.readText())
+      assertTrue("precondition failure creates no backup or temp", root.listFiles()!!.toList() == listOf(target))
+    } finally {
+      root.deleteRecursively()
+    }
+  }
 }
