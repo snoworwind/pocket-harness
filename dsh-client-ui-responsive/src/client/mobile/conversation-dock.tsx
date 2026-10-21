@@ -259,15 +259,6 @@ export const CONVERSATION_DOCK_CSS = `
     -webkit-user-drag: none; -webkit-touch-callout: none;
   }
 }
-/* Frost lives only in the edge, never on the reading or composing surface. */
-[data-sidebar-right-panel][data-sidebar-right-open]::after {
-  content: ''; position: absolute; inset: 0 auto 0 0; width: 12px; z-index: 45;
-  pointer-events: none; border: 0;
-  background: linear-gradient(to right, rgba(117,167,255,.045), transparent);
-  -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px);
-  -webkit-mask-image: linear-gradient(to right, #000, transparent);
-  mask-image: linear-gradient(to right, #000, transparent);
-}
 [data-sidebar-right-open] [data-dockkit-divider]::before {
   background: rgba(117,167,255,.12); box-shadow: 0 0 8px rgba(94,158,255,.06);
 }
