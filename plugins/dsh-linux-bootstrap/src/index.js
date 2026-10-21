@@ -53,8 +53,16 @@ function initialState(autoUpdate) {
     updateBlocked: false,
     lastCheckAt: null,
     lastError: null,
+    lastErrorCode: null,
     runtime: null,
   }
+}
+
+function publicError(state) {
+  if (!state.lastError) return null
+  if (state.lastErrorCode === 'linux-rootfs-prepare-failed') return 'Linux 根文件系统准备失败，请检查引擎日志。'
+  if (state.lastErrorCode) return 'Linux 环境操作失败，请检查引擎日志。'
+  return state.lastError
 }
 
 /**
@@ -109,8 +117,9 @@ function statusShape(state, mobileVersion, operation, packageVersion) {
       bootstrap: state.availableManifest?.plugins?.bootstrap?.pluginReleaseUrl ?? state.pinnedManifest?.plugins?.bootstrap?.pluginReleaseUrl ?? null,
       runtime: state.availableManifest?.plugins?.runtime?.pluginReleaseUrl ?? state.pinnedManifest?.plugins?.runtime?.pluginReleaseUrl ?? null,
     },
-    error: state.lastError,
-    lastError: state.lastError,
+    error: publicError(state),
+    lastError: publicError(state),
+    lastErrorCode: state.lastErrorCode,
     lastCheckAt: state.lastCheckAt,
     lastAutomaticCheckMobileVersion: state.lastAutomaticCheckMobileVersion,
   })
@@ -146,6 +155,9 @@ function validateStoredState(value) {
     throw new Error('Linux bootstrap state has an invalid pinned manifest digest')
   }
   value.pinnedManifestSha256 = value.pinnedManifestSha256 ?? null
+  value.lastErrorCode = typeof value.lastErrorCode === 'string' && /^linux-[a-z0-9-]+$/.test(value.lastErrorCode)
+    ? value.lastErrorCode
+    : null
   return value
 }
 
@@ -339,6 +351,7 @@ export function createMobileBootstrap(options = {}) {
     }
     operation = reinstall ? 'reinstalling' : 'installing'
     state.lastError = null
+    state.lastErrorCode = null
     emit()
 
     let result
@@ -384,6 +397,7 @@ export function createMobileBootstrap(options = {}) {
       state.enabled = true
       state.injectionActivated = true
       state.lastError = null
+      state.lastErrorCode = null
       state.installedSystemMobileVersion = mobileVersion
       state.lastAutomaticCheckMobileVersion = automatic ? mobileVersion : state.lastAutomaticCheckMobileVersion
       state.pinnedManifest = publicManifest(manifest)
@@ -395,6 +409,7 @@ export function createMobileBootstrap(options = {}) {
       state.updateAvailable = false
       state.updateBlocked = false
       state.lastError = null
+      state.lastErrorCode = null
       state.runtime = typeof resolvedManager.status === 'function' ? await resolvedManager.status() : { id: runtime.id, label: runtime.label, architecture: runtime.architecture, backend: runtime.backend }
       await save()
       return emit()
@@ -408,6 +423,16 @@ export function createMobileBootstrap(options = {}) {
         }
       }
       state.lastError = safeError(error)
+      state.lastErrorCode = typeof error?.code === 'string' && /^linux-[a-z0-9-]+$/.test(error.code)
+        ? error.code
+        : 'linux-install-failed'
+      try {
+        await save()
+      } catch (persistError) {
+        // Keep the install exception as the rejection; make the secondary
+        // persistence failure visible in the in-memory diagnostic.
+        state.lastError += ` (failed to persist diagnostic: ${safeError(persistError)})`
+      }
       emit()
       throw error
     } finally {
@@ -421,6 +446,7 @@ export function createMobileBootstrap(options = {}) {
     if (automatic && (!state.autoUpdateEnabled || !state.enabled || !state.injectionActivated || !state.installedLinuxVersion || !state.installedSystemMobileVersion || !mobileVersion || state.installedSystemMobileVersion === mobileVersion || state.lastAutomaticCheckMobileVersion === mobileVersion)) return emit()
     operation = automatic ? 'automatic-check' : 'checking'
     state.lastError = null
+    state.lastErrorCode = null
     state.updateBlocked = false
     emit()
     try {
@@ -442,6 +468,9 @@ export function createMobileBootstrap(options = {}) {
       return emit()
     } catch (error) {
       state.lastError = safeError(error)
+      state.lastErrorCode = typeof error?.code === 'string' && /^linux-[a-z0-9-]+$/.test(error.code)
+        ? error.code
+        : 'linux-check-failed'
       state.lastCheckAt = new Date().toISOString()
       if (automatic) {
         state.lastAutomaticCheckMobileVersion = mobileVersion
@@ -478,6 +507,7 @@ export function createMobileBootstrap(options = {}) {
     return emit()
   })).catch((error) => {
     state.lastError = safeError(error)
+    state.lastErrorCode = 'linux-bootstrap-start-failed'
     emit()
   })
 
@@ -520,6 +550,8 @@ export function createMobileBootstrap(options = {}) {
       if (confirmed !== true) throw new Error('uninstall requires confirmed:true')
       if (!state.installedLinuxVersion) return emit()
       operation = 'uninstalling'
+      state.lastError = null
+      state.lastErrorCode = null
       emit()
       try {
         if (!manager) {
@@ -555,6 +587,9 @@ export function createMobileBootstrap(options = {}) {
         return emit()
       } catch (error) {
         state.lastError = safeError(error)
+        state.lastErrorCode = typeof error?.code === 'string' && /^linux-[a-z0-9-]+$/.test(error.code)
+          ? error.code
+          : 'linux-uninstall-failed'
         emit()
         throw error
       } finally {

@@ -5,10 +5,10 @@
 //! 1. The guest must not be able to tell it is running inside an Android app.
 //!    Host variables that point into the host user space (`PREFIX`, Termux
 //!    metadata) are removed rather than inherited.
-//! 2. Anything the guest can legitimately set itself (`LD_LIBRARY_PATH`, user
-//!    `LD_PRELOAD` entries) is preserved. The loader's own search path is
-//!    supplied per-invocation on the command line, not through the
-//!    environment, so guest intentions survive.
+//! 2. The host's `LD_LIBRARY_PATH` points at Termux's bionic libraries and is
+//!    removed on the initial guest entry. A guest-set value is preserved when
+//!    rerouting its own children. The loader's search path is supplied per
+//!    invocation, so host and guest library paths remain separate.
 
 use std::collections::HashMap;
 use std::env;
@@ -67,6 +67,9 @@ fn build_from(cfg: &Config, spec: &GuestEnv<'_>, mut vars: HashMap<String, Strin
         .unwrap_or_default();
     for key in ALWAYS_DROP.iter().chain(config::host_env_leaks()) {
         vars.remove(*key);
+    }
+    if !spec.rerouted {
+        vars.remove("LD_LIBRARY_PATH");
     }
 
     if spec.rootfs_enabled && !spec.rerouted {
@@ -329,6 +332,7 @@ mod tests {
             ("TMPDIR", "/work/temp"),
             ("TMP", "/work/other-temp"),
             ("SHELL", "/bin/bash"),
+            ("LD_LIBRARY_PATH", "/guest/lib"),
             ("MAKEFLAGS", " -j8 --jobserver-auth=3,4"),
         ]);
         let actual = unpack(build_from(&cfg, &guest_spec(true), expected.clone()));
@@ -484,5 +488,20 @@ mod tests {
         // PREFIX must never reach a guest: programs would use it to find
         // Termux' user space.
         assert!(config::host_env_leaks().contains(&"PREFIX"));
+    }
+
+    #[test]
+    fn host_termux_library_path_does_not_leak_into_guest() {
+        let cfg = Config::from_env().unwrap();
+        let vars = unpack(build_from(
+            &cfg,
+            &guest_spec(false),
+            environment(&[
+                ("PATH", "/host/bin"),
+                ("LD_LIBRARY_PATH", "/app/files/usr/lib"),
+            ]),
+        ));
+        assert!(!vars.contains_key("LD_LIBRARY_PATH"));
+        assert!(!config::host_env_leaks().contains(&"LD_LIBRARY_PATH"));
     }
 }

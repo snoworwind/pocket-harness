@@ -1463,7 +1463,7 @@ Linux 客户端启动链：浏览器 Cordis 只等待 slots，面板经鉴权 HT
 
 壳侧 `LinuxAssetPrepare.start`：清单/环境/URL 预检不改共享状态 → 锁内领取独占任务代次 → runner 下载/校验/解包 → 同代次结果提交（成功、异常及调度失败均有终态）。未拥有任务的无效请求不能释放 busy，陈旧完成不能覆盖新任务。
 
-Linux runtime manager（`vendor/dsh-linux-runtime/modules/manager.js`）：结构检查通过后，在切换 `active.json` 前经 Bionilux 在目标 rootfs 下运行共享 Node 的 `--version`，10 秒内无有效版本输出即拒绝并清理新实例，保留旧 active；外部命令输出每个流最多保留 256 KiB，超时/取消先发 TERM，1.5 秒后对进程组发 KILL。health 结构检查仍为同步只读面；安装/升级提交另需实际 smoke probe 成功。
+Linux runtime manager（`vendor/dsh-linux-runtime/modules/manager.js`）：rootfs 准备前从壳侧 `DSH_FILES_DIR/usr/lib` 解析并校验 Termux 宿主库目录，只把它传给宿主 shell、Bionilux launcher，不信任任意继承路径；Bionilux 首次进入 guest 时剔除宿主 `LD_LIBRARY_PATH`，guest 为后代进程设置的值仍可保留。路径缺失或无效时失败关闭，rootfs 脚本错误带 `linux-rootfs-prepare-failed`。结构检查通过后，在切换 `active.json` 前经 Bionilux 在目标 rootfs 下运行共享 Node 的 `--version`，10 秒内无有效版本输出即拒绝并清理新实例，保留旧 active；外部命令输出每个流最多保留 256 KiB，超时/取消先发 TERM，1.5 秒后对进程组发 KILL。health 结构检查仍为同步只读面；安装/升级提交另需实际 smoke probe 成功。
 
 版本变化链为 `linuxBootstrap 服务就绪 → 读取持久化安装版本/应用基线/自动更新偏好/尝试记录 → 基线不同时 checkForUpdates({source:'mobile-version-change'})`；偏好开关和页面挂载都不发更新检查。手动检查只调用 `source:'manual'`，安装、重装、卸载与开关写入均需 `confirmed:true`。设置页不持久化第二份系统状态，读写都回到 bootstrap；无该服务时 HTTP 503 且不注册设置入口。这两个实验性内部插件的发布不修改注入目录或默认启用状态。
 
@@ -2461,7 +2461,7 @@ Linux runtime gate：共享计数归零即唤醒管理等待者；pendingExclusi
 
 Linux runtime 安装提交点为 _writeActive 成功返回；此后旧实例清理不进入删除新实例的回滚域，失败通过 cleanupWarning 返回。change 观察者按 rawListeners 独立调用并保留 once 语义。
 
-离线 Linux 安装链：createLinuxBootstrapConfig 的包槽为 linux-environment/plugins/linux-runtime，位于真实 pluginHost 根内；runtimePluginConfig.downloadAsset 把已验证宿主归档复制到 manager 指定的新文件，extractArchive 转发 kind。plugin 包无链接；node/backend/rootfs 延迟落链接，根成员只接受一次零大小目录。生产跨层回归：plugins/dsh-android-linux-env/test/offline-install-integration.test.mjs（原生执行器夹具，不代替 ARM64 设备）。
+离线 Linux 安装链：APK 已内置 release 清单、runtime/bootstrap/backend/rootfs/Node 归档与清单 sidecar；createLinuxBootstrapConfig 的包槽为 linux-environment/plugins/linux-runtime，位于真实 pluginHost 根内；runtimePluginConfig.downloadAsset 把已摘要验证的宿主归档复制到 manager 指定的新文件，extractArchive 转发 kind。plugin 包无链接；node/backend/rootfs 延迟落链接，根成员只接受一次零大小目录。失败时 bootstrap 将原始诊断和稳定码持久化，HTTP 仅返回码和脱敏摘要。生产跨层回归：plugins/dsh-android-linux-env/test/offline-install-integration.test.mjs（原生执行器夹具，不代替 ARM64 设备）。
 
 Linux runtime scope 退出：先注销工具/监听，再 await 自建 manager.dispose 终止 in-flight 命令；config.manager 的外部所有权保留。bootstrap 保存的 disposed handle 只可卸载数据，不可执行/安装新任务。真实 Cordis 回收断言见 offline-install-integration.test.mjs。
 

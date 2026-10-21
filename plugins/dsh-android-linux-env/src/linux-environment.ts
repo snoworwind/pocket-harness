@@ -33,6 +33,7 @@ export interface BootstrapStatus {
   latestReleaseVersion?: string | null
   lastAutomaticCheckMobileVersion?: string | null
   lastError?: string | null
+  lastErrorCode?: string | null
   plugins?: { bootstrap?: { releaseUrl?: string }; runtime?: { releaseUrl?: string } }
 }
 
@@ -272,6 +273,7 @@ export function normalizeLinuxStatus(status: BootstrapStatus) {
     injectionActivated: status.injectionActivated,
     enabled: status.enabled,
     lastCheckAt: status.lastCheckAt ?? undefined,
+    ...(status.lastErrorCode ? { errorCode: status.lastErrorCode } : {}),
     error: status.error ?? status.lastError ??
       (updateBlocked ? '此系统版本与当前应用不兼容，暂不能安装更新。' : undefined),
   }
@@ -370,7 +372,18 @@ export function registerLinuxEnvironmentRoutes(options: {
             case 'auto-update-off': await bootstrap.setAutoUpdateEnabled(false); break
           }
           send(res, 200, normalizeLinuxStatus(await bootstrap.status()))
-        } catch { send(res, 500, { error: 'Linux 环境操作失败，请检查环境状态与日志后重试。' }) }
+        } catch (error) {
+          const candidate = (error as { code?: unknown } | null)?.code
+          const code = typeof candidate === 'string' && /^linux-[a-z0-9-]+$/.test(candidate)
+            ? candidate
+            : 'linux-operation-failed'
+          const message = code === 'linux-rootfs-prepare-failed'
+            ? 'Linux 根文件系统准备失败，请检查引擎日志。'
+            : code === 'linux-host-library-path-unavailable'
+              ? 'Linux 宿主运行环境未就绪，请检查引擎日志。'
+              : 'Linux 环境操作失败，请检查引擎日志后重试。'
+          send(res, 500, { code, error: message })
+        }
         finally { busy = false }
       },
     }))
