@@ -240,4 +240,16 @@ APK/快照 OTA、旧包身份/签名、协调仓构建入口与壳侧模型工�
 
 首项工作位于分支 `codex/upstream-safety-2026-10-21`。已增加 `SnapshotFs.atomicReplace`，将快照配置与失败证据改为同目录替换发布；工厂配置覆盖前校验 `.pre-*` 副本并把保留空间计入准入；快照失败残留按写入位置与名称识别。针对性命令 `./gradlew :app:testDebugUnitTest --tests com.snoworwind.pocketharness.SnapshotTransactionTest --tests com.snoworwind.pocketharness.SnapshotMoveResidueTest --no-daemon` 与完整 Kotlin 测试均通过；测试基线升至 1,338。门禁工作单独修改 `check-api-route-auth.mjs`：`--self-test` 通过并含受控负控。文档地图、门禁说明、坑位及上游账本已同步。
 
-上述命令证明本机 JVM 实现用例通过，不证明设备文件系统、用户配置升级、WebView/CDP 或真实交互通过。环境没有可用 `adb`，所以本轮原生安全与 UI 候选都不标验收完成。按 AGENTS 的逐逻辑 PR 约束，后续候选各自提交和审阅，不合并；设备缺口作为显式未验收项报告。
+上述命令证明本机 JVM 实现用例通过，不证明设备文件系统、用户配置升级、WebView/CDP 或真实交互通过。环境没有可用 `adb`，所以本轮原生安全与 UI 候选都不标验收完成。五项已按逻辑拆成独立分支和 PR；栈式基线关系、设备缺口与合并条件记录于 §12.3，不能把本机证据写成设备验收通过。
+
+### 12.3 PR 执行顺序与收口条件
+
+| 顺序 | 改动 | PR | merge commit |
+|---|---|---|---|
+| 1 | 快照文件保全与原子发布 | [#80](https://github.com/snoworwind/pocket-harness/pull/80) | `f46e9b1` |
+| 2 | 路由鉴权归档成员门禁 | [#81](https://github.com/snoworwind/pocket-harness/pull/81) | `39ab569` |
+| 3 | 待发来件持久化安全 | [#82](https://github.com/snoworwind/pocket-harness/pull/82) | `63c3371` |
+| 4 | 来件附件草稿导航 | [#83](https://github.com/snoworwind/pocket-harness/pull/83) | `acc442e` |
+| 5 | 工厂 profile 备份与原子修复 | [#84](https://github.com/snoworwind/pocket-harness/pull/84) | `255806b` |
+
+五项 PR 均按表中依赖顺序通过必需 CI 后，以 merge commit 合入 `main`。本轮按用户明确要求先行合并；#80、#82、#84 的 L2 与 #83 的 L3 实机三层验收未做，这些改动仍未验收，合并不表示设备验证通过。进入发版候选前必须补齐相应三层证据；不得因后续分支的 Kotlin 通过结果而倒推前序 PR 的设备验收通过。#81 为 L1 门禁改动，`--self-test` 和受控负控通过；没有执行实机验收。证据摘要见 [上游跟踪账本](UPSTREAM-TRACKING.md#2026-10-21-吸收-pr-与验证状态)。

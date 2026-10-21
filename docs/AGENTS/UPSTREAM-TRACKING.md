@@ -151,3 +151,15 @@
 | 设备边界 | 当前环境未发现 `adb` 命令，ARM64 设备不可用。代码与离线反例可执行；涉及快照/来件安全或用户可见导航的改动，设备三层未完成即保持开放，不写成验收通过。 |
 
 逐项改动、验证命令与状态见 [2026-10-20 计划的 10-21 执行附录](UPSTREAM-ABSORPTION-PLAN-2026-10-20.md#12-2026-10-21-增量吸收执行)。本轮没有改上游游标的含义：`1a8f9fb` 表示已检查，不表示已吸收。
+
+## 2026-10-21 吸收 PR 与验证状态
+
+| 吸收项 | 本仓 PR | 本机证据 | 未完成边界 |
+|---|---|---|---|
+| 快照用户文件保全、配置原子发布与残留归属 | [#80](https://github.com/snoworwind/pocket-harness/pull/80) | `SnapshotTransactionTest`、`SnapshotMoveResidueTest`；完整 Kotlin 套件 1338/1338 | 已合并 `f46e9b1`；L2 实机三层验收未做，尚未验收 |
+| 产物路由鉴权逐归档成员检查 | [#81](https://github.com/snoworwind/pocket-harness/pull/81) | `check-api-route-auth.mjs --self-test` 含受控假绿负控通过 | 已合并 `39ab569`；来源快照集成输入未提供；未做实机验收（L1 门禁改动不依赖设备） |
+| 待发来件台账并发、引用与 TTL 清理 | [#82](https://github.com/snoworwind/pocket-harness/pull/82) | 完整 Kotlin 套件 1349/1349 | 已合并 `63c3371`；L2 实机三层验收未做，尚未验收 |
+| 来件附件草稿导航切到 `uiWorkspace.openSession` | [#83](https://github.com/snoworwind/pocket-harness/pull/83) | 插件测试 753/753；产物包含新导航调用 | 已合并 `acc442e`；`npm run typecheck` 仍有既存 `conversation-dock.tsx:137-138` 错误；CDP/ADB 未做，L3 尚未验收 |
+| 工厂 profile 修复先备份并原子发布 | [#84](https://github.com/snoworwind/pocket-harness/pull/84) | 完整 Kotlin 套件 1354/1354；`check-code-map.mjs`、`check-kotlin-comments.mjs`、`check-kotlin-test-count.mjs`、`git diff --check` 通过 | 已合并 `255806b`；L2 实机三层验收未做，尚未验收 |
+
+五个实现 PR 已按依赖顺序以 merge commit 合入 `main`。本机与 CI 证据不代表实机验收：#80、#82、#84 的 L2 与 #83 的 L3 三层设备验收未做，本轮按用户明确要求先行合并；这些改动仍属未验收，进入发版候选前必须补齐三层证据。#81 是 L1 门禁改动，`--self-test` 与受控负控通过；没有执行实机验收。本记录中的测试为各实现分支对应提交的本机证据，完整限制见实施计划 §12.2–§12.3。
