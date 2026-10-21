@@ -9,7 +9,7 @@ import { compareVersions, parseVersion } from './version.js'
 export const name = 'dsh-linux-bootstrap'
 export const inject = ['linuxPluginHost', 'linuxBootstrapConfig']
 export const DEFAULT_RUNTIME_ID = 'debian-minimal'
-export const BOOTSTRAP_VERSION = '0.5.0'
+export const BOOTSTRAP_VERSION = '0.5.1'
 export const STATE_FILE_NAME = 'linux-bootstrap-state.json'
 const SOURCE_MANIFEST_SHA256 = Symbol('source-manifest-sha256')
 const isManager = (value) => value && typeof value.install === 'function' && typeof value.uninstall === 'function'
@@ -60,8 +60,8 @@ function initialState(autoUpdate) {
 
 function publicError(state) {
   if (!state.lastError) return null
-  if (state.lastErrorCode === 'linux-rootfs-prepare-failed') return 'Linux 根文件系统准备失败，请检查引擎日志。'
-  if (state.lastErrorCode) return 'Linux 环境操作失败，请检查引擎日志。'
+  if (state.lastErrorCode === 'linux-rootfs-prepare-failed') return 'Linux 根文件系统准备失败。请查看应用私有目录 files/linux-environment/linux-bootstrap-state.json 中的 lastError。'
+  if (state.lastErrorCode) return 'Linux 环境操作失败。详细原因保存在应用私有目录 files/linux-environment/linux-bootstrap-state.json 中。'
   return state.lastError
 }
 

@@ -278,6 +278,7 @@ test('rootfs install diagnostics persist across bootstrap restart and stay sanit
     const firstStatus = await first.status()
     assert.equal(firstStatus.lastErrorCode, 'linux-rootfs-prepare-failed')
     assert.match(firstStatus.lastError, /根文件系统准备失败/)
+    assert.match(firstStatus.lastError, /files\/linux-environment\/linux-bootstrap-state\.json/)
     assert.doesNotMatch(firstStatus.lastError, /private\/app|Permission denied/)
 
     const restarted = makeBootstrap(options).service
@@ -285,6 +286,7 @@ test('rootfs install diagnostics persist across bootstrap restart and stay sanit
     const restartedStatus = await restarted.status()
     assert.equal(restartedStatus.lastErrorCode, 'linux-rootfs-prepare-failed')
     assert.match(restartedStatus.lastError, /根文件系统准备失败/)
+    assert.match(restartedStatus.lastError, /files\/linux-environment\/linux-bootstrap-state\.json/)
     assert.doesNotMatch(restartedStatus.lastError, /private\/app|Permission denied/)
 
     failInstall = false

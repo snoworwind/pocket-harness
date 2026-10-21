@@ -1463,7 +1463,7 @@ Linux 客户端启动链：浏览器 Cordis 只等待 slots，面板经鉴权 HT
 
 壳侧 `LinuxAssetPrepare.start`：清单/环境/URL 预检不改共享状态 → 锁内领取独占任务代次 → runner 下载/校验/解包 → 同代次结果提交（成功、异常及调度失败均有终态）。未拥有任务的无效请求不能释放 busy，陈旧完成不能覆盖新任务。
 
-Linux runtime manager（`vendor/dsh-linux-runtime/modules/manager.js`）：rootfs 准备前从壳侧 `DSH_FILES_DIR/usr/lib` 解析并校验 Termux 宿主库目录，只把它传给宿主 shell、Bionilux launcher，不信任任意继承路径；Bionilux 首次进入 guest 时剔除宿主 `LD_LIBRARY_PATH`，guest 为后代进程设置的值仍可保留。路径缺失或无效时失败关闭，rootfs 脚本错误带 `linux-rootfs-prepare-failed`。结构检查通过后，在切换 `active.json` 前经 Bionilux 在目标 rootfs 下运行共享 Node 的 `--version`，10 秒内无有效版本输出即拒绝并清理新实例，保留旧 active；外部命令输出每个流最多保留 256 KiB，超时/取消先发 TERM，1.5 秒后对进程组发 KILL。health 结构检查仍为同步只读面；安装/升级提交另需实际 smoke probe 成功。
+Linux runtime manager（`vendor/dsh-linux-runtime/modules/manager.js`）：宿主工具、运行时 probe 与 Bionilux launcher 共用 `hostExecutionEnvironment()`。Android 环境只从壳侧 `DSH_FILES_DIR/usr` 推导并校验 Termux 库目录、`libtermux-exec-ld-preload.so`、`TERMUX_EXEC__*`、`TERMUX__PREFIX`、`TERMUX_APP__DATA_DIR` 和 PATH，不信任进程继承值；缺项时失败关闭。rootfs 脚本前依次运行 `find/sed/wc --version`，必须识别为 GNU 工具，拒绝 exit 0 的 toybox 假成功。rootfs 脚本错误带稳定码，bootstrap 持久化详细原因于 `files/linux-environment/linux-bootstrap-state.json`；面板不再误导用户查 `engine.log`。Bionilux 首次进入 guest 时剔除宿主 Termux 元数据与 exec 变量（包括 shebang overrides），并剔除宿主 `LD_LIBRARY_PATH`；guest 为后代进程设置的库路径仍可保留。结构检查通过后，在切换 `active.json` 前经 Bionilux 在目标 rootfs 下运行共享 Node 的 `--version`，10 秒内无有效版本输出即拒绝并清理新实例，保留旧 active；外部命令输出每个流最多保留 256 KiB，超时/取消先发 TERM，1.5 秒后对进程组发 KILL。health 结构检查仍为同步只读面；安装/升级提交另需实际 smoke probe 成功。
 
 版本变化链为 `linuxBootstrap 服务就绪 → 读取持久化安装版本/应用基线/自动更新偏好/尝试记录 → 基线不同时 checkForUpdates({source:'mobile-version-change'})`；偏好开关和页面挂载都不发更新检查。手动检查只调用 `source:'manual'`，安装、重装、卸载与开关写入均需 `confirmed:true`。设置页不持久化第二份系统状态，读写都回到 bootstrap；无该服务时 HTTP 503 且不注册设置入口。这两个实验性内部插件的发布不修改注入目录或默认启用状态。
 

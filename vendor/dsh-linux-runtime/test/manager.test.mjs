@@ -124,8 +124,14 @@ function makeIo(fixture, { onExtract } = {}) {
  * cancels it — that is what the cutover gate has to do before it replaces an
  * active rootfs.
  */
-function makeRunner({ instant, healthProbeResult = { stdout: 'v24.22.0', stderr: '', exitCode: 0 }, commandResult = { stdout: 'ok', stderr: '', exitCode: 0 }, onHealthProbe } = {}) {
+function makeRunner({ instant, healthProbeResult = { stdout: 'v24.22.0', stderr: '', exitCode: 0 }, commandResult = { stdout: 'ok', stderr: '', exitCode: 0 }, hostToolProbeResults = {}, onHealthProbe } = {}) {
   const calls = [];
+  const defaultHostToolProbeResults = {
+    find: { stdout: 'find (GNU findutils) 4.11.0\n', stderr: '', exitCode: 0 },
+    sed: { stdout: 'sed (GNU sed) 4.9\n', stderr: '', exitCode: 0 },
+    wc: { stdout: 'wc (GNU coreutils) 9.7\n', stderr: '', exitCode: 0 },
+  };
+  const toolProbeResults = { ...defaultHostToolProbeResults, ...hostToolProbeResults };
   const isInstant =
     instant ?? ((spec) => !String(spec.args?.at(-1) ?? '').includes('sleep'));
   return {
@@ -151,8 +157,9 @@ function makeRunner({ instant, healthProbeResult = { stdout: 'v24.22.0', stderr:
           );
           if (isInstant(spec)) {
             const healthProbe = spec.args?.[0] === 'node' && spec.args?.[1] === '--version';
+            const hostToolProbe = spec.args?.[0] === '--version' ? toolProbeResults[spec.file] : undefined;
             if (healthProbe) onHealthProbe?.(spec);
-            settle(healthProbe ? healthProbeResult : commandResult);
+            settle(healthProbe ? healthProbeResult : hostToolProbe ?? commandResult);
           }
         }),
         cancel: () => {
@@ -529,35 +536,117 @@ test('the guest environment is derived, not inherited from the host', async () =
   assert.equal(spec.args[2], 'echo hi');
 });
 
-test('Termux host libraries reach host tools and the launcher only', async () => {
+test('Termux exec environment reaches host tools and launcher from the in-app snapshot', async () => {
   const dataDir = tempDir();
   const fixture = makeManifest();
   const hostLibraryPath = path.join(dataDir, 'usr', 'lib');
   await mkdir(hostLibraryPath, { recursive: true });
-  const keys = ['DSH_FILES_DIR', 'ANDROID_ROOT', 'LD_LIBRARY_PATH'];
+  const preload = path.join(hostLibraryPath, 'libtermux-exec-ld-preload.so');
+  await writeFile(preload, 'test preload');
+  const keys = [
+    'DSH_FILES_DIR', 'ANDROID_ROOT', 'LD_LIBRARY_PATH', 'LD_PRELOAD', 'PATH',
+    'TERMUX__ROOTFS', 'TERMUX__PREFIX', 'TERMUX_APP__DATA_DIR',
+    'TERMUX_EXEC__SYSTEM_LINKER_EXEC__MODE', 'TERMUX_EXEC__EXECVE_CALL__INTERCEPT',
+  ];
   const previous = Object.fromEntries(keys.map(key => [key, process.env[key]]));
   process.env.DSH_FILES_DIR = dataDir;
   process.env.ANDROID_ROOT = '/system';
   process.env.LD_LIBRARY_PATH = '/untrusted/inherited/lib';
+  process.env.LD_PRELOAD = '/untrusted/inherited/preload.so';
+  process.env.TERMUX__ROOTFS = '/untrusted/rootfs';
+  process.env.TERMUX__PREFIX = '/untrusted/prefix';
+  process.env.TERMUX_APP__DATA_DIR = '/untrusted/app-data';
+  process.env.TERMUX_EXEC__SYSTEM_LINKER_EXEC__MODE = 'never';
+  process.env.TERMUX_EXEC__EXECVE_CALL__INTERCEPT = '0';
   try {
     const { manager, runner } = makeManager(fixture, { dataDir });
     await manager.install(fixture.manifest);
 
     const prepare = runner.calls.find(({ spec }) => spec.file === 'sh')?.spec;
+    const findProbe = runner.calls.find(({ spec }) => spec.file === 'find' && spec.args?.[0] === '--version')?.spec;
     const probe = runner.calls.find(({ spec }) => spec.args?.[0] === 'node' && spec.args?.[1] === '--version')?.spec;
     assert.ok(prepare, 'rootfs preparation must invoke the host shell');
+    assert.ok(findProbe, 'Android install must positively identify GNU find before rootfs preparation');
+    for (const tool of ['find', 'sed', 'wc']) {
+      assert.ok(
+        runner.calls.some(({ spec }) => spec.file === tool && spec.args?.[0] === '--version'),
+        `Android install must positively identify GNU ${tool} before rootfs preparation`,
+      );
+    }
     assert.ok(probe, 'installation must probe the runtime through Bionilux');
     assert.equal(prepare.env.LD_LIBRARY_PATH, hostLibraryPath, 'derive the library directory from DSH_FILES_DIR');
+    assert.equal(prepare.env.LD_PRELOAD, preload);
+    assert.equal(prepare.env.TERMUX_EXEC__SYSTEM_LINKER_EXEC__MODE, 'force');
+    assert.equal(prepare.env.TERMUX_EXEC__EXECVE_CALL__INTERCEPT, '1');
+    assert.equal(prepare.env.TERMUX__ROOTFS, dataDir);
+    assert.equal(prepare.env.TERMUX__PREFIX, path.join(dataDir, 'usr'));
+    assert.equal(prepare.env.TERMUX_APP__DATA_DIR, path.dirname(dataDir));
+    assert.equal(prepare.env.PATH, `${path.join(dataDir, 'usr', 'bin')}${path.delimiter}/system/bin`);
     assert.equal(probe.env.LD_LIBRARY_PATH, hostLibraryPath);
+    assert.equal(probe.env.LD_PRELOAD, preload);
+    assert.equal(probe.env.TERMUX__PREFIX, path.join(dataDir, 'usr'));
 
     runner.calls.length = 0;
     await manager.execute({ command: 'echo guest' });
-    const guest = runner.calls.at(-1).spec;
-    assert.equal(guest.env.LD_LIBRARY_PATH, hostLibraryPath, 'the launcher itself needs the host loader path');
-    assert.equal(guest.env.LD_PRELOAD, undefined);
-    for (const leaked of ['PREFIX', 'TERMUX_VERSION', 'TERMUX_EXEC__EXECVE_CALL__INTERCEPT']) {
-      assert.equal(guest.env[leaked], undefined, `${leaked} must not reach the launcher environment`);
+    const launcher = runner.calls.at(-1).spec;
+    assert.equal(launcher.env.LD_LIBRARY_PATH, hostLibraryPath, 'the launcher itself needs the host loader path');
+    assert.equal(launcher.env.LD_PRELOAD, preload, 'the launcher needs termux-exec for host-side execve interception');
+    assert.equal(launcher.env.TERMUX_EXEC__EXECVE_CALL__INTERCEPT, '1');
+    assert.equal(launcher.env.TERMUX_APP__DATA_DIR, path.dirname(dataDir));
+  } finally {
+    for (const [key, value] of Object.entries(previous)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
     }
+  }
+});
+
+test('Android Linux install fails closed when the termux-exec shim is missing', async () => {
+  const dataDir = tempDir();
+  const fixture = makeManifest();
+  await mkdir(path.join(dataDir, 'usr', 'lib'), { recursive: true });
+  const keys = ['DSH_FILES_DIR', 'ANDROID_ROOT'];
+  const previous = Object.fromEntries(keys.map(key => [key, process.env[key]]));
+  process.env.DSH_FILES_DIR = dataDir;
+  process.env.ANDROID_ROOT = '/system';
+  try {
+    const { manager, runner } = makeManager(fixture, { dataDir });
+    await assert.rejects(manager.install(fixture.manifest), error => {
+      assert.equal(error.code, 'linux-termux-exec-environment-unavailable');
+      assert.match(error.message, /Termux exec shim is unavailable/);
+      return true;
+    });
+    assert.equal(runner.calls.length, 0, 'do not try shell or runtime probes without the exec shim');
+  } finally {
+    for (const [key, value] of Object.entries(previous)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+});
+
+test('Android Linux install rejects toybox success instead of accepting false GNU toolchain health', async () => {
+  const dataDir = tempDir();
+  const fixture = makeManifest();
+  const hostLibraryPath = path.join(dataDir, 'usr', 'lib');
+  await mkdir(hostLibraryPath, { recursive: true });
+  await writeFile(path.join(hostLibraryPath, 'libtermux-exec-ld-preload.so'), 'test preload');
+  const keys = ['DSH_FILES_DIR', 'ANDROID_ROOT'];
+  const previous = Object.fromEntries(keys.map(key => [key, process.env[key]]));
+  process.env.DSH_FILES_DIR = dataDir;
+  process.env.ANDROID_ROOT = '/system';
+  try {
+    const { manager, runner } = makeManager(fixture, {
+      dataDir,
+      runnerOptions: { hostToolProbeResults: { find: { stdout: 'toybox 0.8.10\n', stderr: '', exitCode: 0 } } },
+    });
+    await assert.rejects(manager.install(fixture.manifest), error => {
+      assert.equal(error.code, 'linux-host-toolchain-unavailable');
+      assert.match(error.message, /must be the GNU find utility/);
+      assert.match(error.message, /toybox/);
+      return true;
+    });
+    assert.equal(runner.calls.some(({ spec }) => spec.file === 'sh'), false, 'toybox must be rejected before rootfs scripts run');
   } finally {
     for (const [key, value] of Object.entries(previous)) {
       if (value === undefined) delete process.env[key];

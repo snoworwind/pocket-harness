@@ -33,7 +33,7 @@ class PackageLinuxAssetsTest(unittest.TestCase):
         self.put('scripts/source-build/linux-inputs.json', json.dumps(self.inputs))
         for package in ['linux-runtime', 'linux-bootstrap']:
             directory = 'vendor/dsh-linux-runtime' if package == 'linux-runtime' else 'plugins/dsh-linux-bootstrap'
-            self.put(directory + '/package.json', json.dumps(dict(name='@dsh-android/' + package, version='0.5.0')))
+            self.put(directory + '/package.json', json.dumps(dict(name='@dsh-android/' + package, version=self.inputs['runtimeVersion'])))
             if package == 'linux-runtime':
                 self.put(directory + '/lib/index.js', 'export const fixture = true')
                 self.put(directory + '/modules/manager.js', 'export const fixture = true')
@@ -69,6 +69,7 @@ class PackageLinuxAssetsTest(unittest.TestCase):
         if version.returncode != 0 or 'GNU tar' not in version.stdout:
             self.skipTest('asset archive reproducibility test requires GNU tar; Linux CI runs it')
         manifest = self.run_package()
+        self.assertEqual(manifest['version'], self.inputs['runtimeVersion'])
         self.assertEqual(manifest['runtimes'][0]['architecture'], 'arm64')
         for asset in [*manifest['plugins'].values(), *[manifest['runtimes'][0][key] for key in ['backendAsset', 'rootfsAsset', 'nodeAsset']]]:
             archive = self.work / 'assets' / asset['url'].rsplit('/', 1)[1]

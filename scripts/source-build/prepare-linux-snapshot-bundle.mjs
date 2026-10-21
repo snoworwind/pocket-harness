@@ -38,7 +38,8 @@ async function prepare(assetsDir, provenanceDir, snapshotRoot, projectCommit, wr
   const manifestBytes = await readFile(manifestInput.path)
   const manifestDigest = sha256(manifestBytes)
   const manifest = JSON.parse(manifestBytes.toString('utf8'))
-  if (manifest.version !== '0.5.0' || manifest.runtimes?.length !== 1 || manifest.runtimes[0]?.architecture !== 'arm64') {
+  const linuxInputs = JSON.parse(await readFile(join(ROOT, 'scripts/source-build/linux-inputs.json'), 'utf8'))
+  if (manifest.version !== linuxInputs.runtimeVersion || manifest.runtimes?.length !== 1 || manifest.runtimes[0]?.architecture !== 'arm64') {
     fail('Offline Linux manifest must contain exactly one ARM64 runtime at the reviewed version')
   }
   const sidecar = (await readFile(join(assets, 'linux-runtime-manifest.sha256'), 'utf8')).trim()
