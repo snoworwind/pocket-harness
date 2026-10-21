@@ -378,10 +378,10 @@ export function registerLinuxEnvironmentRoutes(options: {
             ? candidate
             : 'linux-operation-failed'
           const message = code === 'linux-rootfs-prepare-failed'
-            ? 'Linux 根文件系统准备失败，请检查引擎日志。'
+            ? 'Linux 根文件系统准备失败。请查看应用私有目录 files/linux-environment/linux-bootstrap-state.json 中的 lastError。'
             : code === 'linux-host-library-path-unavailable'
-              ? 'Linux 宿主运行环境未就绪，请检查引擎日志。'
-              : 'Linux 环境操作失败，请检查引擎日志后重试。'
+              ? 'Linux 宿主运行环境未就绪。详细原因保存在应用私有目录 files/linux-environment/linux-bootstrap-state.json 中。'
+              : 'Linux 环境操作失败。详细原因保存在应用私有目录 files/linux-environment/linux-bootstrap-state.json 中。'
           send(res, 500, { code, error: message })
         }
         finally { busy = false }

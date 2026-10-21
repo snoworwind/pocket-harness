@@ -96,6 +96,8 @@ test('Linux install failures return stable codes without exposing raw subprocess
   assert.equal(response.code, 500)
   assert.equal(response.payload.code, 'linux-rootfs-prepare-failed')
   assert.match(response.payload.error, /根文件系统准备失败/)
+  assert.match(response.payload.error, /files\/linux-environment\/linux-bootstrap-state\.json/)
+  assert.match(response.payload.error, /linux-bootstrap-state\.json.*lastError/)
   assert.doesNotMatch(JSON.stringify(response.payload), /private\/app|Permission denied/)
   h.dispose()
 })

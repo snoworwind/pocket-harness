@@ -177,6 +177,39 @@ fn build_from(cfg: &Config, spec: &GuestEnv<'_>, mut vars: HashMap<String, Strin
     for (k, v) in spec.overrides {
         vars.insert(k.clone(), v.clone());
     }
+    if let Some(preload) = spec.preload {
+        // Keep the mandatory guest preload and filter an override too: a
+        // shebang must not restore Termux's bionic exec shim into glibc.
+        let current_preload = spec
+            .overrides
+            .iter()
+            .rev()
+            .find(|(key, _)| key == "LD_PRELOAD")
+            .map(|(_, value)| value.as_str())
+            .unwrap_or(&existing_preload);
+        let rootfs = Rootfs::from_config(cfg);
+        let mut merged = vec![preload.to_string()];
+        for entry in filter_preload(current_preload) {
+            if entry == preload {
+                continue;
+            }
+            let entry = if spec.rootfs_enabled && entry.starts_with('/') {
+                rootfs.physical(&entry).to_string_lossy().into_owned()
+            } else {
+                entry
+            };
+            if !merged.contains(&entry) {
+                merged.push(entry);
+            }
+        }
+        vars.insert("LD_PRELOAD".into(), merged.join(":"));
+    }
+    // Shebang-provided overrides are user-controlled guest inputs. Re-apply
+    // the host boundary after them so a script cannot reintroduce Android's
+    // private Termux paths or execve interception settings into the guest.
+    for key in config::host_env_leaks() {
+        vars.remove(*key);
+    }
     vars.remove(env_keys::INTERNAL_PRELOAD);
     vars.remove(env_keys::INTERNAL_ARGV0);
     if spec.preload.is_none() {
@@ -488,6 +521,45 @@ mod tests {
         // PREFIX must never reach a guest: programs would use it to find
         // Termux' user space.
         assert!(config::host_env_leaks().contains(&"PREFIX"));
+    }
+
+    #[test]
+    fn termux_exec_metadata_and_shim_controls_never_reach_guest_even_from_overrides() {
+        let cfg = Config::from_env().unwrap();
+        let host_keys = [
+            "TERMUX__ROOTFS",
+            "TERMUX__PREFIX",
+            "TERMUX_APP__DATA_DIR",
+            "TERMUX_APP__LEGACY_DATA_DIR",
+            "TERMUX_EXEC__EXECVE_CALL__INTERCEPT",
+            "TERMUX_EXEC__SYSTEM_LINKER_EXEC__MODE",
+        ];
+        let mut overrides = host_keys
+            .iter()
+            .map(|key| ((*key).to_string(), "/must-not-leak".to_string()))
+            .collect::<Vec<_>>();
+        overrides.push((
+            "LD_PRELOAD".into(),
+            "/app/private/usr/lib/libtermux-exec-ld-preload.so".into(),
+        ));
+        let mut spec = guest_spec(true);
+        spec.overrides = &overrides;
+        let mut pairs = host_keys
+            .iter()
+            .map(|key| (*key, "/app/private/termux"))
+            .collect::<Vec<_>>();
+        pairs.push((
+            "LD_PRELOAD",
+            "/app/private/usr/lib/libtermux-exec-ld-preload.so",
+        ));
+        let vars = unpack(build_from(&cfg, &spec, environment(&pairs)));
+
+        for key in host_keys {
+            assert!(config::host_env_leaks().contains(&key));
+            assert!(!vars.contains_key(key), "{key} must not reach the guest");
+        }
+        assert!(vars["LD_PRELOAD"].contains("/runtime/preload.so"));
+        assert!(!vars["LD_PRELOAD"].contains("libtermux-exec"));
     }
 
     #[test]

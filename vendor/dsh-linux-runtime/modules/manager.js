@@ -42,6 +42,12 @@ const HOST_ENV_ALLOWLIST = new Set([
 ]);
 const MAX_CAPTURED_OUTPUT_BYTES = 256 * 1024;
 const TERMINATION_GRACE_MS = 1500;
+const HOST_TOOL_PROBE_TIMEOUT_MS = 5000;
+const GNU_HOST_TOOLS = Object.freeze({
+  find: /^find \(GNU findutils\) /m,
+  sed: /^sed \(GNU sed\) /m,
+  wc: /^wc \(GNU coreutils\) /m,
+});
 const GUEST_PATH_PREFIXES_LIST = [
   '/bin',
   '/dev',
@@ -400,6 +406,53 @@ function resolveHostLibraryPath(configuredPath) {
   return resolved;
 }
 
+function hostExecutionEnvironment(configuredLibraryPath) {
+  const environment = cleanHostEnvironment();
+  const hostLibraryPath = resolveHostLibraryPath(configuredLibraryPath);
+  if (hostLibraryPath) environment.LD_LIBRARY_PATH = hostLibraryPath;
+
+  if (process.env.ANDROID_ROOT) {
+    const filesDir = process.env.DSH_FILES_DIR;
+    if (typeof filesDir !== 'string' || !path.isAbsolute(filesDir)) {
+      throw linuxRuntimeError(
+        'linux-termux-exec-environment-unavailable',
+        'Termux app files directory is missing or not an absolute path',
+      );
+    }
+    const appFilesDir = path.resolve(filesDir);
+    const prefix = path.join(appFilesDir, 'usr');
+    const libraryDirectory = path.join(prefix, 'lib');
+    const preload = path.join(libraryDirectory, 'libtermux-exec-ld-preload.so');
+    let preloadIsRegularFile = false;
+    try { preloadIsRegularFile = lstatSync(preload).isFile(); } catch { /* checked below */ }
+    if (!directoryExists(prefix) || !directoryExists(libraryDirectory) || !preloadIsRegularFile) {
+      throw linuxRuntimeError(
+        'linux-termux-exec-environment-unavailable',
+        `Termux exec shim is unavailable under the app prefix (${preload})`,
+      );
+    }
+    if (hostLibraryPath !== libraryDirectory) {
+      throw linuxRuntimeError(
+        'linux-host-library-path-unavailable',
+        'Termux host library directory does not match DSH_FILES_DIR/usr/lib',
+      );
+    }
+
+    // Derive these values from the in-app snapshot. Never trust inherited values:
+    // they control termux-exec's execve rewrite and the shell's /usr/bin mapping.
+    environment.PATH = `${path.join(prefix, 'bin')}${path.delimiter}/system/bin`;
+    environment.LD_LIBRARY_PATH = libraryDirectory;
+    environment.LD_PRELOAD = preload;
+    environment.TERMUX_EXEC__SYSTEM_LINKER_EXEC__MODE = 'force';
+    environment.TERMUX_EXEC__EXECVE_CALL__INTERCEPT = '1';
+    environment.TERMUX__ROOTFS = appFilesDir;
+    environment.TERMUX__PREFIX = prefix;
+    environment.TERMUX_APP__DATA_DIR = path.dirname(appFilesDir);
+  }
+
+  return environment;
+}
+
 function executableFileExists(file) {
   try {
     const stat = statSync(file);
@@ -567,9 +620,7 @@ export class LinuxRuntimeManager {
 
   async _probeRuntime(health) {
     const nodeBin = path.join(health.paths.node, 'bin');
-    const hostEnvironment = cleanHostEnvironment();
-    const hostLibraryPath = resolveHostLibraryPath(this.hostLibraryPath);
-    if (hostLibraryPath) hostEnvironment.LD_LIBRARY_PATH = hostLibraryPath;
+    const hostEnvironment = hostExecutionEnvironment(this.hostLibraryPath);
     const result = normaliseCommandResult(await this._runManaged({
       file: health.paths.launcher,
       args: ['node', '--version'],
@@ -584,7 +635,7 @@ export class LinuxRuntimeManager {
         BIONILUX_FAKE_ROOT: '1',
         BIONILUX_LENIENT: '0',
         BIONILUX_ANDROID_PATHS: '1',
-        PATH: `${nodeBin}${path.delimiter}${process.env.PATH ?? ''}`,
+        PATH: `${nodeBin}${path.delimiter}${hostEnvironment.PATH ?? ''}`,
       },
       timeout: 10_000,
     }));
@@ -751,24 +802,59 @@ export class LinuxRuntimeManager {
 
   async _prepareRootfs(instance, signal) {
     const script = path.join(instance.backend, 'scripts', 'prepare-rootfs.sh');
-    const hostEnvironment = cleanHostEnvironment();
-    const hostLibraryPath = resolveHostLibraryPath(this.hostLibraryPath);
-    if (hostLibraryPath) hostEnvironment.LD_LIBRARY_PATH = hostLibraryPath;
-    const result = normaliseCommandResult(
-      await this._runManaged({
+    const hostEnvironment = hostExecutionEnvironment(this.hostLibraryPath);
+    if (process.env.ANDROID_ROOT) await this._probeTermuxHostTools(instance.root, hostEnvironment, signal);
+    let result;
+    try {
+      result = normaliseCommandResult(await this._runManaged({
         file: 'sh',
         args: [script, '--rootfs', instance.rootfs, '--relative-links'],
         cwd: instance.root,
         env: hostEnvironment,
         timeout: 120_000,
         signal,
-      }),
-    );
+      }));
+    } catch (error) {
+      if (typeof error?.code === 'string' && error.code.startsWith('linux-')) throw error;
+      throw linuxRuntimeError(
+        'linux-rootfs-prepare-failed',
+        `prepare-rootfs.sh could not start: ${String(error?.message ?? error)}`,
+      );
+    }
     if (result.exitCode !== 0) {
       throw linuxRuntimeError(
         'linux-rootfs-prepare-failed',
         `prepare-rootfs.sh failed with exit code ${result.exitCode}: ${result.stderr}`.trim(),
       );
+    }
+  }
+
+  async _probeTermuxHostTools(cwd, environment, signal) {
+    for (const [tool, signature] of Object.entries(GNU_HOST_TOOLS)) {
+      let result;
+      try {
+        result = normaliseCommandResult(await this._runManaged({
+          file: tool,
+          args: ['--version'],
+          cwd,
+          env: environment,
+          timeout: HOST_TOOL_PROBE_TIMEOUT_MS,
+          signal,
+        }));
+      } catch (error) {
+        throw linuxRuntimeError(
+          'linux-host-toolchain-unavailable',
+          `Termux ${tool} probe could not start: ${String(error?.message ?? error)}`,
+        );
+      }
+      const output = `${result.stdout}\n${result.stderr}`;
+      if (result.timedOut || result.exitCode !== 0 || !signature.test(output)) {
+        const evidence = output.trim().slice(0, 300) || 'no version output';
+        throw linuxRuntimeError(
+          'linux-host-toolchain-unavailable',
+          `Termux ${tool} must be the GNU ${tool} utility (exit ${result.exitCode ?? 'unknown'}): ${evidence}`,
+        );
+      }
     }
   }
 
@@ -978,9 +1064,7 @@ export class LinuxRuntimeManager {
   }
 
   _executionEnvironment(paths, cwdInfo) {
-    const environment = cleanHostEnvironment();
-    const hostLibraryPath = resolveHostLibraryPath(this.hostLibraryPath);
-    if (hostLibraryPath) environment.LD_LIBRARY_PATH = hostLibraryPath;
+    const environment = hostExecutionEnvironment(this.hostLibraryPath);
     const nodeBin = path.join(paths.node, 'bin');
     const hostPaths = [nodeBin, ...cwdInfo.hostPaths];
     environment.BIONILUX_ROOTFS = paths.rootfs;
