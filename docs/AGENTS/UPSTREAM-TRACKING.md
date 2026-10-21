@@ -134,8 +134,32 @@
 
 ### 详细吸收执行计划
 
-宗旨审查、现行 main 来源链与职责边界、最小修复步骤、撤回/备选范围、模型自主任务和 PR 完成条件统一维护在 [上游源码吸收实施计划](UPSTREAM-ABSORPTION-PLAN-2026-10-20.md)。本账本只维护比较结论、优先级和实际吸收记录；该计划尚未开始功能实现或设备验收。
+宗旨审查、现行 main 来源链与职责边界、最小修复步骤、撤回/备选范围、模型自主任务和 PR 完成条件统一维护在 [上游源码吸收实施计划](UPSTREAM-ABSORPTION-PLAN-2026-10-20.md)。本账本只维护比较结论、优先级和实际吸收记录；2026-10-21 后续执行与未验收边界见该计划末尾的本轮记录。
 
 ## 2026-10-19 吸收记录
 
 本轮经 GitHub API 核对 #414 已合并：源提交 `15d83fa74ceae282e3abc02d94256c271d3bb4d4`，上游合并提交 `f2df6fa0d2a3b70f171f2a28ed3f020dcad5997a`。此前检查游标 `18439f1b8cb96f7d4d9b8508bdb02aa2695143a3` 仍是上游 `main` 当前尖端，故不前移。吸收不只提升上限：原上限 1024 恰等于重现 V8 自然 1120MB 堆上限的标志值，导致常见设备 `totalRam/2` 恒被截断；本仓新增自然标志真源、cap/区间宽度门禁、双源同为 1024 的反证，以及现实内存档 JVM 断言。设备内存压力仍待设备复核。
+
+## 2026-10-21 上游增量检查
+
+| 项 | 结果 |
+|---|---|
+| Pocket Harness 同步 | `git fetch --prune origin` 成功；本地 `main` 与 `origin/main` 同为 `f57001d6f52ade37a86b9c65b61f78a448ae51de`，无待拉取提交。清理了 12 条远端已删除的旧跟踪分支。当前实施从该同步点新建分支。 |
+| 上游检查游标 | 上次记录 `7cd7ccab8247514e20be2925c92d46b45e70d152`；最新 `main` 为 [`1a8f9fb309580c8c1a3c826272c8da17c9e4877b`](https://github.com/kelai141/dsh-mobile-apk/commit/1a8f9fb309580c8c1a3c826272c8da17c9e4877b)，2026-10-20。其间新增 42 个提交；检查了提交列表、重点生产代码、相关测试及注入/产物门禁，不将发布说明或测试自述当成本仓证据。 |
+| 选择性吸收 | 快照用户文件保全、配置原子发布和精确残留归属（`bbae1ca` / `a4c44d7` / `20fda3b`）；待发来件台账/TTL 清理（`e5330fe` / `fc93163`）；来件附件会话使用当前引擎 `uiWorkspace.openSession`（`5a6761b`）；产物鉴权门禁按每个 tar 成员分别核对（`8edfdb8`）。本仓逐项保留既有包身份、插件边界和本地路径语义后实现。 |
+| 暂缓或排除 | 注入清单把 `dsh-undo-savepoint` 移入退役项不能直接照搬：本仓仍主动挂载并使用 UndoGate；离线启动页/视频、下载页视觉改版属于未提出的产品扩展；通知混合队列与本仓互动通知、待答报告队列职责不同；工厂 profile 退役修复仅在本仓受证实的原子发布风险范围内评估，不搬入上游对已退役插件所有权的整套语义。 |
+| 设备边界 | 当前环境未发现 `adb` 命令，ARM64 设备不可用。代码与离线反例可执行；涉及快照/来件安全或用户可见导航的改动，设备三层未完成即保持开放，不写成验收通过。 |
+
+逐项改动、验证命令与状态见 [2026-10-20 计划的 10-21 执行附录](UPSTREAM-ABSORPTION-PLAN-2026-10-20.md#12-2026-10-21-增量吸收执行)。本轮没有改上游游标的含义：`1a8f9fb` 表示已检查，不表示已吸收。
+
+## 2026-10-21 吸收 PR 与验证状态
+
+| 吸收项 | 本仓 PR | 本机证据 | 未完成边界 |
+|---|---|---|---|
+| 快照用户文件保全、配置原子发布与残留归属 | [#80](https://github.com/snoworwind/pocket-harness/pull/80) | `SnapshotTransactionTest`、`SnapshotMoveResidueTest`；完整 Kotlin 套件 1338/1338 | L2 设备三层验收未做，草稿 PR |
+| 产物路由鉴权逐归档成员检查 | [#81](https://github.com/snoworwind/pocket-harness/pull/81) | `check-api-route-auth.mjs --self-test` 含受控假绿负控通过 | 来源快照集成输入未提供；PR 以 #80 为基线的栈式草稿 |
+| 待发来件台账并发、引用与 TTL 清理 | [#82](https://github.com/snoworwind/pocket-harness/pull/82) | 完整 Kotlin 套件 1349/1349 | L2 设备三层验收未做；PR 以 #81 为基线的栈式草稿 |
+| 来件附件草稿导航切到 `uiWorkspace.openSession` | [#83](https://github.com/snoworwind/pocket-harness/pull/83) | 插件测试 753/753；产物包含新导航调用 | `npm run typecheck` 仍有既存 `conversation-dock.tsx:137-138` 错误；CDP/ADB 未做；PR 以 #82 为基线的栈式草稿 |
+| 工厂 profile 修复先备份并原子发布 | [#84](https://github.com/snoworwind/pocket-harness/pull/84) | 完整 Kotlin 套件 1354/1354；`check-code-map.mjs`、`check-kotlin-comments.mjs`、`check-kotlin-test-count.mjs`、`git diff --check` 通过 | L2 设备三层验收未做；PR 以 #83 为基线的栈式草稿 |
+
+五个 PR 均已推送并保持草稿；栈式 PR 按基线顺序审查。设备三层验收未完成的 L2/L3 改动不得据此视为已验收或合并。本记录中的测试为各实现分支对应提交的本机证据，完整命令与限制见实施计划 §12.2–§12.3。
