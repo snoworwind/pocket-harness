@@ -232,12 +232,12 @@ APK/快照 OTA、旧包身份/签名、协调仓构建入口与壳侧模型工�
 | 2 / L2 | `e5330fe`、`fc93163`：待发清单 read-modify-write 并发覆盖；pending 或 session 引用读取失败被当作空引用，清理可删除仍可投递的文件；TTL 清扫与来件投递窗口时序错误。 | 对待发清单、清理和投递使用一个同步边界；原子替换完整台账；引用读取失败按未知处理并跳过删除；TTL 清扫必须在预留投递窗口之前执行，且不删除被引用的来件。 | 待实现；单独 PR，补注入读失败、并发/清理和 TTL 反证。作为来件持久数据路径，三层设备证据完成前保持开放。 |
 | 3 / L3 | `5a6761b`：引擎 rc.2 的会话身份由 `sessions` 服务持有，屏幕导航由 `uiWorkspace` 承担；本仓来件 consumer 调 `sessions().open()`，没有可靠导航到新草稿。 | 仅将附件草稿的可见导航切到 `uiWorkspace.openSession`，通过单一 runtime adapter 隔离服务面并补实际连接契约测试；同步源码、`package.json` 与 `lib/`。 | 待实现；单独 UI/运行时 PR。CDP 与真实来件用户任务缺设备证据前保持开放。 |
 | 4 / L2 | `c1d5a29`：工厂 profile 自愈在备份失败时仍可能写 live，临时文件替换失败后直接 `writeText` 截断目标；本仓 `EngineManager.repairProfilePatch` 有同一发布退化。上游 null-name 归属修复对应其已退役插件表，本仓是不同的 `ui-layout` disabled 修复契约。 | 只修本仓现有自愈的唯一目标：每次尝试写入同步的唯一旧文件备份，失败不修改 live；复用同目录原子发布；保留未知/非退役条目并校验条目集。不上游退役插件归属表。 | 待实现；单独 PR，并测备份失败、发布失败与配置字节保持。L2 三层未完成前不关闭。 |
-| 5 / L1 | `8edfdb8`：多个 tar 成员的 `tar -xO` 输出串接后对每个 marker 都检查整个输出，可由单一成员的 marker 掩盖其他成员缺失；本仓 `check-api-route-auth.mjs` 有此门禁假绿。 | 改为逐成员读取与逐成员断言，并加一个成员缺标记、另一成员含标记的受控负控。 | 待实现；单独 PR，要求 `--self-test` 和受控负控。 |
+| 5 / L1 | `8edfdb8`：多个 tar 成员的 `tar -xO` 输出串接后对每个 marker 都检查整个输出，可由单一成员的 marker 掩盖其他成员缺失；本仓 `check-api-route-auth.mjs` 有此门禁假绿。 | 改为一次流式扫描逐成员读取与逐成员断言，并加一个成员缺标记、另一成员含标记的受控负控。 | 已实施；`node scripts/check-api-route-auth.mjs --self-test` 通过，含成员归属反例、缺失/重复/链接档案成员负控。源码档 SKIP 仅为协调仓只读上游树不在本仓；没有执行注入快照正式档。 |
 
 不吸收 `52c2cbf` / `83ca7db` 的退役注入清单：本仓仍主动挂载 `dsh-undo-savepoint` 并保留 `UndoGate`，将其移入退役清单会违反当前产品行为。#467 启动视频/自动启动、下载页改版是未请求的产品扩展。通知工作涉及不同的队列职责，不能按上游混合容量设计合并。其他审计或 UI 测试工具改动按明确本仓反例再立项，不因处于同一提交范围自动移植。
 
 ### 12.2 本轮交付与证据边界
 
-首项工作位于分支 `codex/upstream-safety-2026-10-21`。已增加 `SnapshotFs.atomicReplace`，将快照配置与失败证据改为同目录替换发布；工厂配置覆盖前校验 `.pre-*` 副本并把保留空间计入准入；快照失败残留按写入位置与名称识别。针对性命令 `./gradlew :app:testDebugUnitTest --tests com.snoworwind.pocketharness.SnapshotTransactionTest --tests com.snoworwind.pocketharness.SnapshotMoveResidueTest --no-daemon` 通过。文档地图、坑位及上游账本已同步。
+首项工作位于分支 `codex/upstream-safety-2026-10-21`。已增加 `SnapshotFs.atomicReplace`，将快照配置与失败证据改为同目录替换发布；工厂配置覆盖前校验 `.pre-*` 副本并把保留空间计入准入；快照失败残留按写入位置与名称识别。针对性命令 `./gradlew :app:testDebugUnitTest --tests com.snoworwind.pocketharness.SnapshotTransactionTest --tests com.snoworwind.pocketharness.SnapshotMoveResidueTest --no-daemon` 与完整 Kotlin 测试均通过；测试基线升至 1,338。门禁工作单独修改 `check-api-route-auth.mjs`：`--self-test` 通过并含受控负控。文档地图、门禁说明、坑位及上游账本已同步。
 
 上述命令证明本机 JVM 实现用例通过，不证明设备文件系统、用户配置升级、WebView/CDP 或真实交互通过。环境没有可用 `adb`，所以本轮原生安全与 UI 候选都不标验收完成。按 AGENTS 的逐逻辑 PR 约束，后续候选各自提交和审阅，不合并；设备缺口作为显式未验收项报告。

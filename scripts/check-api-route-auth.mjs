@@ -11,10 +11,10 @@
 // route. Protected rows need a local guard marker; narrow public rows need a response marker and a
 // reviewed rationale.
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
-import { TAR } from './lib/shell.mjs'
 import { dirname, join, relative } from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
+import { readSnapshotRouteFiles, snapshotRouteVerdicts } from './lib/snapshot-route-auth.mjs'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const root = dirname(here)
@@ -641,26 +641,22 @@ if (snapshotIndex >= 0 && snapshotPath === undefined) {
     ['@dsh-android/dsh-host-web-compat/lib/index.js', "const authorized = (req) => token !== ''"],
   ]
   if (existsSync(snapshotPath)) {
-    for (const profile of ['web', 'headless']) {
-      const entries = artifactMarkers.map(([relativePath, marker]) => ({
-        relativePath,
-        marker,
-        tarPath: 'home/.dsh/profiles/' + profile + '/node_modules/' + relativePath,
-      }))
-      const result = spawnSync(TAR, ['-xOf', snapshotPath, ...entries.map((entry) => entry.tarPath)], {
-        encoding: 'utf8',
-        maxBuffer: 32 * 1024 * 1024,
-      })
-      for (const entry of entries) {
-        check('post-injection marker: ' + profile + '/' + entry.relativePath,
-          result.status === 0 && result.stdout.includes(entry.marker),
-          result.status === 0 ? 'marker missing: ' + entry.marker : String(result.stderr ?? '').trim().slice(0, 180))
+    try {
+      const members = ['web', 'headless'].flatMap((profile) => artifactMarkers.map(([path]) =>
+        'home/.dsh/profiles/' + profile + '/node_modules/' + path))
+      const files = readSnapshotRouteFiles(snapshotPath, members)
+      for (const verdict of snapshotRouteVerdicts(files, artifactMarkers)) {
+        check('post-injection marker: ' + verdict.label, verdict.ok, verdict.detail)
       }
+    } catch (error) {
+      check('post-injection route-auth archive readable', false, error.message)
     }
   }
 }
 
 if (selfTest) {
+  const artifactTests = spawnSync(process.execPath, ['--test', join(here, 'check-api-route-auth-artifact.test.mjs')], { stdio: 'inherit' })
+  check('self-test: per-member snapshot marker ownership', artifactTests.status === 0)
   const longBody = 'x'.repeat(1024)
   const reordered = 'server.register({ path: "/api/self-test-unlisted", handler: () => ({ note: "' + longBody + '" }), kind: "exact" })'
   const commented = '/* server.register({ kind: "exact", path: "/api/commented-fake" }) */\nconst text = "server.register({ kind: \'prefix\', path: \'/api/string-fake\' })"'
