@@ -80,7 +80,8 @@ Upstream attributes the sheet relies on: `data-sidebar-collapsed`,
 ## Build
 
 ```sh
-npm install          # @deepseek-ai/* pinned to 0.1.5-rc.1
+node --version       # requires ^22.18.0 or >=24.11.0
+npm ci               # install the exact dependency tree from package-lock.json
 npm run typecheck
 npm run build        # tsc (lib/types) + tsdown (lib/client.js browser bundle)
 npx vitest run

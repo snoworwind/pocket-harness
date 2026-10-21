@@ -3,6 +3,9 @@
   "description": "Client plugin: Android mobile adaptation layer over the upstream ui-layout frame (narrow drawer form, top-bar sidebar toggle, safe areas, native open-with wiring)",
   "version": "0.3.3",
   "type": "module",
+  "engines": {
+    "node": "^22.18.0 || >=24.11.0"
+  },
   "main": "lib/index.js",
   "types": "lib/types/index.d.ts",
   "exports": {
