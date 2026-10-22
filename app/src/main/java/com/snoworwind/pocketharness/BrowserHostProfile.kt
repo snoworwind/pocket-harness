@@ -6,6 +6,7 @@ import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebView
 import androidx.webkit.Profile
+import androidx.webkit.ProfileStore
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
 import java.io.ByteArrayInputStream
@@ -47,6 +48,20 @@ internal class BrowserHostProfile(
     fun blockedResponse(): WebResourceResponse = WebResourceResponse(
       "text/plain", "utf-8", 403, "Blocked", emptyMap(), ByteArrayInputStream(ByteArray(0)),
     )
+
+    /** Delete only the deterministic nonDefault profile for a removed Session. */
+    internal fun deleteProfileForSession(sessionKey: String): Boolean = deleteProfile(nameForSession(sessionKey))
+
+    private fun deleteProfile(name: String): Boolean {
+      if (!supported()) return true
+      return try {
+        // false means that no profile with this name remains. WebView may finish disk cleanup async.
+        ProfileStore.getInstance().deleteProfile(name)
+        true
+      } catch (_: Throwable) {
+        false
+      }
+    }
   }
 
   /** Explicit compatibility path; separate so the isolated attach order stays auditable. */
@@ -139,6 +154,19 @@ internal class BrowserHostProfile(
       override fun shouldInterceptRequest(request: WebResourceRequest): WebResourceResponse = blockedResponse()
     })
     own.cookieManager.flush()
+  }
+
+  /** Destroy this Session's isolated profile after its WebViews are gone; never clear the shared jar. */
+  fun deleteSessionData(): Boolean {
+    val wasShared = shared
+    return try {
+      dispose()
+      profile = null
+      wasShared || deleteProfile(name)
+    } catch (_: Throwable) {
+      profile = null
+      false
+    }
   }
 
   /**

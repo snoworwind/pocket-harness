@@ -2,7 +2,7 @@
 import type {} from '../android-bridge.ts'
 
 /** The complete narrow command vocabulary implemented by the Android shell. */
-export type NativeBrowserAction = 'open' | 'back' | 'forward' | 'reload' | 'select' | 'close' | 'status' | 'tabs' | 'compat'
+export type NativeBrowserAction = 'open' | 'back' | 'forward' | 'reload' | 'select' | 'close' | 'status' | 'tabs' | 'compat' | 'workspaceClose'
 
 /** One native tab; its id belongs to the named Session, not to global focus. */
 export interface NativeBrowserTab {

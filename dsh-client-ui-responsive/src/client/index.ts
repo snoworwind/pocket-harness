@@ -483,7 +483,9 @@ export function apply(ctx: ClientContext): void {
     scope.effect(() => scope.sidebarRightTabs.register(legacyBrowserTabDefinition(t)), 'ui-responsive.browser.legacy-type')
     for (const kind of [BROWSER_TAB_KIND, LEGACY_BROWSER_TAB_KIND]) {
       scope.effect(() => scope.sidebarRight.registerCloseHandler(kind, (session, tab) => {
-        placement.for(session).closeUi(tab.id)
+        // A removed Session is closed as one native workspace below; per-tab close would
+        // recreate an empty workspace while Sidebar is discarding its stale occurrences.
+        if (scope.sessions.list.getSnapshot().ids.includes(session)) placement.for(session).closeUi(tab.id)
       }), 'ui-responsive.browser.explicit-close')
     }
     scope.effect(() => async () => {

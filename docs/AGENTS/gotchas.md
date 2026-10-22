@@ -2997,3 +2997,7 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 500. **会话导出 DownloadListener 没有可验证的用户手势（2026-10-22）**
 
     现象：主 frame 导航按 `request.hasGesture()` 拦截 `/api/session.export`，但 WebView `DownloadListener` 不提供手势或 frame 来源，旧回调仍会直接进入 `DownloadSaver`，由壳附加引擎 Cookie 并保存会话 ZIP。真因：把精确 URL 校验误当成用户意图证明；该回调签名无法证明触发来源。修法：`DownloadSaver.downloadToDownloads` 必须接收并复核手势布尔值，只有 `shouldOverrideUrlLoading` 传来的真实手势可启动请求；`DownloadListener` 命中精确导出端点只记录拒绝，不调用下载器。复验：`EngineAuthPolicyTest` 覆盖精确 endpoint + 有/无手势、错误路径与非 GET；**未构建 APK、未做 CDP/ADB 设备验证**，真实 WebView 回调顺序与普通用户导出流程仍待设备复现。
+
+501. **已删除 Session 会因轮询集合自引用而保留 BrowserHost（2026-10-22）**
+
+    现象：会话从官方列表删除后，原生 BrowserHost WebView 与工作区仍由 Activity 持有；`NativeBrowserPlacement` 的轮询集合把 `workspaces.keys()` 再并回会话集合，所以旧键永不自然退出。真因：客户端把“曾访问过”误当成“仍存活”，而 `browserClose` 只关闭当前工作区、HMR dispose 又刻意保留原生页面。修法：仅对曾出现在官方会话列表、随后连续三轮缺席的 Session 进入退休态；关闭它遗留的 Sidebar occurrence，再通过精确 Session 的 `workspaceClose` 销毁全部 WebView 并请求 `ProfileStore.deleteProfile` 删除隔离 profile；失败保持退休态并重试。显式 shared compatibility 不清全局 Cookie jar；ProfileStore 可能异步完成磁盘清理，不承诺立即擦除。复验：Kotlin `BrowserHostCommandWiringTest` 与 TypeScript `tsc` 通过；临时 Node 回归覆盖跨会话、短暂缺席与清理重试。Vitest 未能启动（本机缺 `@esbuild/darwin-arm64`），tsdown 还缺可选 peer `unrun`；**未构建 APK、未做 CDP/ADB 设备验证**。

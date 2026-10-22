@@ -49,8 +49,13 @@ class BrowserHostCommandWiringTest {
     assertBefore(command, "raw.length > 20_480", "JSONObject(raw)")
     assertBefore(command, "validUiId(session, 2048)", "workspaceFor(session)")
     assertBefore(command, "browser-tab-id-invalid", "workspaceFor(session)")
-    assertTrue(command.contains("""setOf("open", "back", "forward", "reload", "select", "close", "status", "tabs", "compat")"""))
+    assertTrue(command.contains("""setOf("open", "back", "forward", "reload", "select", "close", "status", "tabs", "compat", "workspaceClose")"""))
     assertTrue(command.contains("browser-command-invalid") && command.contains("browser-command-unknown"))
+    assertBefore(command, "validUiId(session, 2048)", "if (action == \"workspaceClose\")")
+    assertBefore(command, "if (action == \"workspaceClose\")", "val workspace = workspaces[session]")
+    assertBefore(command, "val workspace = workspaces[session]", "workspaceFor(session)")
+    assertTrue(command.contains("dropWorkspace(workspace, deleteSessionData = true)"))
+    assertTrue(command.contains("BrowserHostProfile.deleteProfileForSession(session)"))
     assertBefore(command, "browser-ui-tab-conflict", "currentWorkspace = workspace")
     assertBefore(command, "browser-ui-tab-mismatch", "currentWorkspace = workspace")
     assertTrue(command.contains("tab.uiTabId != uiId && action != \"select\""))
@@ -197,6 +202,21 @@ class BrowserHostCommandWiringTest {
     assertFalse(body("BrowserHost.kt", "private fun dropWorkspace(").contains("workspaces.values.lastOrNull()"))
     assertTrue(body("BrowserHost.kt", "private fun applyVisibility(")
       .contains("visible && tab.id == workspace.activeTabId"))
+  }
+
+  @Test
+  fun removedSessionCleanupDestroysViewsBeforeDeletingOnlyItsNonDefaultProfile() {
+    val drop = body("BrowserHost.kt", "private fun dropWorkspace(")
+    assertBefore(drop, "browser.destroy()", "workspace.profile.deleteSessionData()")
+    assertTrue(drop.contains("if (viewerSessionId == workspace.sessionKey) viewerSessionId = null"))
+    val deletion = body("BrowserHostProfile.kt", "fun deleteSessionData(")
+    assertBefore(deletion, "dispose()", "profile = null")
+    assertTrue(deletion.contains("wasShared || deleteProfile(name)"))
+    val store = body("BrowserHostProfile.kt", "private fun deleteProfile(name: String)")
+    assertTrue(store.contains("ProfileStore.getInstance().deleteProfile(name)"))
+    assertTrue(store.contains("if (!supported()) return true"))
+    assertFalse("compatibility fallback must not delete the process-wide cookie jar",
+      body("BrowserHostProfile.kt", "fun deleteSessionData(").contains("CookieManager.getInstance"))
   }
 
   @Test

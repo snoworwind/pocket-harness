@@ -59,6 +59,23 @@ describe('native frame ownership and cleanup', () => {
     expect(closes).toEqual([{ action: 'close', session: SESSION, tabId: 'native-a', uiTabId: UI }])
     owner.dispose()
   })
+  it('closes the captured Session workspace after Session removal and is idempotent', () => {
+    const command = vi.fn((payload: string) => {
+      const request = JSON.parse(payload) as { action: string; session: string }
+      return request.action === 'workspaceClose'
+        ? JSON.stringify({ ok: true, available: true, session: request.session, profileAvailable: false,
+          profileReason: 'browser-session-closed', tabs: [] })
+        : reply()
+    })
+    window.androidBridge = { browserHostCommand: command }
+    const owner = new NativeBrowserSession(SESSION)
+    expect(owner.closeWorkspace()).toBe(true)
+    expect(command.mock.calls.map(([raw]) => JSON.parse(raw))).toEqual([
+      { action: 'workspaceClose', session: SESSION },
+    ])
+    expect(owner.closeWorkspace()).toBe(true)
+    expect(command).toHaveBeenCalledTimes(1)
+  })
   it('does not claim a native tab already owned by another live UI occurrence', () => {
     window.androidBridge = { browserHostCommand: vi.fn(() => reply()) }
     const owner = new NativeBrowserSession(SESSION)

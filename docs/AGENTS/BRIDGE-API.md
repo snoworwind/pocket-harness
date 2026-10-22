@@ -46,7 +46,7 @@ Shizuku v4以追加configuration()回读完整app UID/anchor，AIDL旧transactio
 
 ### 2.2 窄browserHostCommand与Session/tab归属
 
-browserHostCommand(payloadJson)由MainActivity转交Activity拥有的BrowserHost.command；payload须受长度/词汇/session/uiTabId/tabId约束，action仅status/tabs/open/select/close/back/forward/reload/compat。`compat` 是**用户显式**开关（`{enabled:true|false}`），只用于 WebView provider 不支持 MULTI_PROFILE 的设备；它重建全部 workspace，使旧隔离决定不残留。它不是任意JS、shell或controlExec通道。status/tabs不创建renderer、不抢UI舞台，返回available/profileAvailable/profileReason/session/ownerSessionId/tabs/activeTabId/tabId及每页真实导航状态。
+browserHostCommand(payloadJson)由MainActivity转交Activity拥有的BrowserHost.command；payload须受长度/词汇/session/uiTabId/tabId约束，action仅status/tabs/open/select/close/back/forward/reload/compat/workspaceClose。`compat` 是**用户显式**开关（`{enabled:true|false}`），只用于 WebView provider 不支持 MULTI_PROFILE 的设备；它重建全部 workspace，使旧隔离决定不残留。`workspaceClose` 只作用于 payload 指定 Session：销毁该会话全部 WebView，再请求 ProfileStore 删除其 nonDefault profile；删除失败会返回明确失败供客户端重试。WebView provider 可能异步完成磁盘清理，成功只代表删除请求被接受，不承诺立刻擦除磁盘。显式共享兼容档不清进程级 CookieManager，避免注销引擎及其他应用态。它不是任意JS、shell或controlExec通道。status/tabs不创建renderer、不抢UI舞台，返回available/profileAvailable/profileReason/session/ownerSessionId/tabs/activeTabId/tabId及每页真实导航状态。
 
 模型controlOp捕获自己的Session/tab（包括modelTabId）供后续main-thread片段/异步回调，校验同一workspace/tab/view/generation，不依赖当时UI焦点。UI bounds/viewport/identity必须指定自己的Session/nativeTab/GUI occurrence，暂切上下文后恢复前台；陈旧hide/HMR detach不能盖掉邻页。identity、viewport、error、refs均per-tab。主状态旧入口为兼容面，不是0.14.3多Session查询真源。
 
