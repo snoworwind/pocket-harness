@@ -2,8 +2,9 @@
 // 在本地（WSL/Linux）跑**与 CI 同一条**来源审计链。
 //
 // 设计要点：命令**不是**在这里重写一遍，而是直接从 `.github/workflows/build-apk-source.yml`
-// 抽出各步骤的 `run:` 脚本原样执行——本地跑的命令与远程跑的逐字节同一份，只有就地解析、
-// 不会各写一套然后漂移。`uses:` 步骤（checkout / setup-*）跳过，改为本地前置检查。
+// 抽出 build-arm64 各步骤的 `run:` 脚本原样执行——本地跑的命令与远程跑的逐字节同一份，
+// 只有就地解析、不会各写一套然后漂移。`uses:` 步骤（checkout / setup-*）跳过；
+// CI 专用 Termux 预检 artifact 在单路本地构建中映射回同一个验签准备脚本。
 //
 // 为什么要它：远程一次 60-90 分钟；引擎、快照、APK 门禁那几面无法靠「输入侧预检」覆盖，
 // 只能在本地把链跑起来。分阶段 + `--from/--to` 让失败后从中间续跑，不必每次从头。
@@ -44,7 +45,7 @@ export const STAGES = [
   { key: 'plugins', label: '构建插件与市场补丁', match: /^Build project plugins|^Apply project patches/ },
   // 注意：bootstrap 认证/取密钥那一步在文件里排得靠前（紧跟 harness 之后），但它属于 Termux 链
   // ——归到 termux 阶段，`--from termux` 才不会再把它跳过（曾因此报「Termux 签名密钥不在场」）。
-  { key: 'termux', label: '组装并验签 Termux 基座', match: /^Authenticate official Termux bootstrap|^Add Node\.js to the clean Termux base|^Verify signed Termux repository|^Cross-compile node-pty|^Assemble clean Termux base/ },
+  { key: 'termux', label: '组装并验签 Termux 基座', match: /^Authenticate official Termux bootstrap|^Add Node\.js to the clean Termux base|^Download this run's authenticated Termux package snapshot|^Cross-compile node-pty|^Assemble clean Termux base/ },
   { key: 'linux-assets', label: '构建签名校验的离线 ARM64 Linux 资产', match: /^Install Linux asset cross-build tools|^Prepare pinned Debian archive trust keys|^Build source-owned offline ARM64 Linux assets/ },
   { key: 'snapshot', label: '构建运行时快照', match: /^Build runtime snapshot/ },
   // Kotlin 单测门禁是 APK 步的**前置输入**（build-apk.mjs 的 check-kotlin-test-count 会读它产出的
@@ -66,7 +67,15 @@ export function parseWorkflowSteps(workflowText) {
   // Windows 检出是 CRLF：行尾的 \r 会让 `(.*)$` 直接失配（JS 的 `.` 不匹配 \r），
   // 表现为「一个步骤都解析不到」。统一成 LF 再解析。
   // Local execution owns one build replica, never the CI verifier/private signer.
-  const text = workflowText.replaceAll('\r\n', '\n').split('\n  verify-arm64:')[0]
+  const normalized = workflowText.replaceAll('\r\n', '\n')
+  const buildStart = normalized.indexOf('\n  build-arm64:')
+  const verifierStart = normalized.indexOf('\n  verify-arm64:', buildStart)
+  if (buildStart < 0 || verifierStart < 0) {
+    throw new Error('workflow must contain build-arm64 before verify-arm64')
+  }
+  // Local execution models one builder. The CI-only preflight job is replaced at
+  // its artifact download step with the same authenticated preparation script.
+  const text = normalized.slice(buildStart, verifierStart)
   const lines = text.split('\n')
   const steps = []
   let current = null
@@ -127,7 +136,17 @@ export function planSteps(workflowText) {
   let inheritedStage = null
   for (const step of parseWorkflowSteps(workflowText)) {
     if (SKIP_STEP.test(step.name ?? '')) continue
-    if (!step.run) continue
+    let run = step.run
+    if (!run && step.name === "Download this run's authenticated Termux package snapshot") {
+      run = [
+        'set -euo pipefail',
+        'python3 scripts/source-build/prepare-termux-signed-repo.py \\',
+        '  .deploy-tmp/source-build/bootstrap-extracted/usr \\',
+        '  .deploy-tmp/source-build/termux-webroot \\',
+        '  scripts/snapshot-config/preinstall.json',
+      ].join('\n')
+    }
+    if (!run) continue
     const matched = STAGES.find((stage) => stage.match.test(step.name ?? ''))
     if (matched) inheritedStage = matched.key
     planned.push({
@@ -135,7 +154,7 @@ export function planSteps(workflowText) {
       stage: matched?.key ?? inheritedStage ?? 'misc',
       stageSource: matched ? 'named' : (inheritedStage ? 'inherited' : 'pre-stage'),
       shell: step.shell,
-      run: step.run.trimEnd(),
+      run: run.trimEnd(),
     })
   }
   return planned

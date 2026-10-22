@@ -96,14 +96,13 @@ class SignedTermuxRepoParserTest(unittest.TestCase):
 
 
 class ReproducibleTermuxInputsTest(unittest.TestCase):
-    def test_inrelease_must_match_the_repository_lock(self):
-        payload = b"signed repository metadata fixture"
-        digest = hashlib.sha256(payload).hexdigest()
-        self.assertEqual(module.require_pinned_inrelease(payload, digest), digest)
-        with self.assertRaisesRegex(ValueError, "differs from pinned input"):
-            module.require_pinned_inrelease(payload, "0" * 64)
-        with self.assertRaisesRegex(ValueError, "SHA-256 is invalid"):
-            module.require_pinned_inrelease(payload, "not-a-sha256")
+    def test_rolling_inrelease_digest_is_run_provenance_not_a_static_lock(self):
+        root = pathlib.Path(__file__).parent
+        inputs = json.loads((root / "linux-inputs.json").read_text(encoding="utf-8"))
+        self.assertNotIn("termuxInReleaseSha256", inputs)
+        source = SCRIPT.read_text(encoding="utf-8")
+        self.assertIn('inrelease_hash = hashlib.sha256(inrelease).hexdigest()', source)
+        self.assertIn('"inRelease": {"path": "dists/stable/InRelease", "sha256": inrelease_hash}', source)
 
     def test_package_recipes_use_the_pinned_immutable_termux_commit(self):
         root = pathlib.Path(__file__).parent
@@ -112,7 +111,7 @@ class ReproducibleTermuxInputsTest(unittest.TestCase):
         manifest = json.loads((root / "linux-source-manifest.json").read_text(encoding="utf-8"))
         commit = inputs.get("termuxPackagesRecipeCommit")
         self.assertRegex(commit or "", r"^[0-9a-f]{40}$")
-        self.assertRegex(inputs.get("termuxInReleaseSha256", ""), r"^[0-9a-f]{64}$")
+        self.assertNotIn("termuxInReleaseSha256", inputs)
         external = next(item for item in manifest["externalSources"]
                         if item["component"] == "Termux PRoot ARM64 package closure")
         self.assertEqual(external.get("recipeCommit"), commit)

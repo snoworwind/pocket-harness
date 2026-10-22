@@ -37,7 +37,7 @@ TermFold 派生的 glibc preload 只在内核拒绝普通文件 `link(2)`/`linka
 
 `linux-source-manifest.json` 锁住仓内 runtime、PRoot 适配源码和 bootstrap 实际打包输入；外部 PRoot/依赖按 signed repo provenance 与源归档 SHA 记录。来源构建另外核验 APK 中 native libraries 与许可证文件和输入逐字节一致。发行前仍需跑完整许可证门禁和 APK 资产核验。
 
-复现边界：仓内输入锁固定 Termux `InRelease` 的 SHA-256；构建仍先用 bootstrap 内的官方密钥验签，再要求字节摘要完全相同。该 InRelease 认证 `Packages.gz` 的摘要与字节数，包记录认证每个 `.deb` 摘要。PRoot、libandroid-shmem、libtalloc 的 recipe 链接固定到同一个审核过的 `termux-packages` commit，并记录 recipe 文件 SHA-256；具体版本及摘要见 `linux-inputs.json` 与 `linux-backend-packages.json`。仓库更新后如果 InRelease 不再匹配，构建会失败关闭，必须评审并追加新的输入锁；本地下载不证明签名，签名判据由来源构建的 Linux runner 实际执行。该锁防止同一提交静默改用后续索引或 recipe；Termux 是否继续提供锁定索引引用的 `.deb` 仍是外部可用性条件，文件缺失时构建会失败而不会换包。
+复现边界（2026-10-23 更新）：PR #102 曾把 Termux `InRelease` 摘要放进仓内输入锁，后续官方 `stable` 发布使两次来源 CI 在官方签名有效后仍被旧摘要拒绝（见 `docs/AGENTS/gotchas.md` 坑 506）。当前设计不把滚动 InRelease 当提交级输入：每轮由固定 bootstrap keyring 验签，校验其 `Packages.gz` 摘要/字节数及每个 `.deb` 摘要，并将摘要、包版本与哈希写入 provenance；APK 来源 workflow 将这一轮的已验证包闭包上传一次，两路 ARM64 builder 共用同一个 run/attempt artifact。PRoot、libandroid-shmem、libtalloc 的 recipe 仍固定到审核过的 `termux-packages` commit 并校验文件 SHA-256。此方案避免仓库正常发布导致旧摘要锁失败，并保证一次双构建使用相同 Termux 输入；跨时间重建仍取决于 Termux 是否保留包，尚无仓内不可变包归档。
 
 ## 本轮可本机提前验证的项目
 

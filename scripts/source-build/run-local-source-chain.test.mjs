@@ -37,6 +37,11 @@ test('planSteps：最终复验跟随 apk 阶段，而不是落入 misc', () => {
     'Require the maintained source branch',
     'Isolate npm cache from checked-in developer settings',
   ])
+  const termuxSnapshot = planned.find((item) => item.name === "Download this run's authenticated Termux package snapshot")
+  assert.ok(termuxSnapshot, 'the CI artifact step must be represented in the local single-builder plan')
+  assert.equal(termuxSnapshot.stage, 'termux')
+  assert.match(termuxSnapshot.run, /prepare-termux-signed-repo\.py/,
+    'local source chain must prepare one authenticated snapshot when there is no cross-job artifact')
   // Kotlin 单测门禁是 APK 步的前置输入；--to snapshot 不应顺带跑它，--only apk 必须带上它。
   assert.equal(planned.find((item) => item.name.startsWith('单元测试门禁前置'))?.stage, 'apk')
 })

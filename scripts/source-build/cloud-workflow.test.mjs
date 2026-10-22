@@ -83,13 +83,45 @@ test('source workflow uploads explicitly listed hidden provenance with APK', () 
   assert.doesNotMatch(upload, /^            \.deploy-tmp\/\*\*$/m)
 })
 
+function checkTermuxPackageSnapshotFlow(source) {
+  const preflight = source.split('  termux-package-inputs:')[1]?.split('\n  build-arm64:')[0]
+  const build = source.split('  build-arm64:')[1]?.split('\n  verify-arm64:')[0]
+  assert.ok(preflight && build, 'source workflow must have separate Termux input and ARM64 build jobs')
+  assert.match(preflight, /python3 scripts\/source-build\/prepare-termux-signed-repo\.py/)
+  assert.equal((preflight.match(/prepare-termux-signed-repo\.py/g) ?? []).length, 1,
+    'the rolling Termux repository must be resolved exactly once per workflow run')
+  assert.match(preflight, /name: termux-package-inputs-\$\{\{ github\.run_id \}\}-\$\{\{ github\.run_attempt \}\}/)
+  assert.match(preflight, /path: \.deploy-tmp\/termux-package-artifact\//)
+  assert.match(readFileSync(new URL('./prepare-termux-signed-repo.py', import.meta.url), 'utf8'),
+    /webroot\.parent \/ "termux-packages-provenance\.json"/)
+  assert.match(build, /needs: termux-package-inputs/)
+  assert.match(build, /name: termux-package-inputs-\$\{\{ github\.run_id \}\}-\$\{\{ github\.run_attempt \}\}/)
+  assert.match(build, /path: \.deploy-tmp\/source-build/)
+  assert.equal((build.match(/prepare-termux-signed-repo\.py/g) ?? []).length, 0,
+    'build replicas must consume the shared snapshot instead of independently resolving stable')
+  assert.match(build, /Download this run's authenticated Termux package snapshot/)
+}
+test('both ARM64 replicas consume one authenticated Termux package snapshot per workflow run', () => {
+  checkTermuxPackageSnapshotFlow(read('build-apk-source.yml'))
+})
+test('negative controls reject independent repo fetches, missing dependency, or mismatched artifact names', () => {
+  const source = read('build-apk-source.yml')
+  for (const bad of [
+    source.replace('    needs: termux-package-inputs\n', ''),
+    source.replace('          name: termux-package-inputs-${{ github.run_id }}-${{ github.run_attempt }}\n          path: .deploy-tmp/source-build',
+      '          name: termux-package-inputs-stale-run\n          path: .deploy-tmp/source-build'),
+    source.replace('      - name: Download this run\'s authenticated Termux package snapshot\n        uses:',
+      '      - name: Download this run\'s authenticated Termux package snapshot\n        run: python3 scripts/source-build/prepare-termux-signed-repo.py\n        uses:'),
+  ]) assert.throws(() => checkTermuxPackageSnapshotFlow(bad), assert.AssertionError)
+})
+
 function checkCachedEffectiveOverlay(source) {
   const positive = source.indexOf('node scripts/source-build/restore-effective-engine-overlay.mjs --self-test')
   const negative = source.indexOf('node scripts/source-build/restore-effective-engine-overlay.mjs --self-test-negative')
   const install = source.indexOf('node scripts/source-build/restore-effective-engine-overlay.mjs', negative + 1)
   const addNodeStep = source.indexOf('      - name: Add Node.js to the clean Termux base')
   const runtimeStep = source.indexOf('      - name: Build runtime snapshot from verified inputs')
-  const endAddNodeStep = source.indexOf('      - name: Verify signed Termux repository', addNodeStep)
+  const endAddNodeStep = source.indexOf("      - name: Download this run's authenticated Termux package snapshot", addNodeStep)
   assert.ok(positive > 0 && negative > positive, 'source-only overlay restore requires a positive self-test and controlled negative')
   assert.ok(addNodeStep > 0 && install > addNodeStep && install < endAddNodeStep && endAddNodeStep < runtimeStep,
     'authenticated effective overlay must be installed before the snapshot builder reads it')

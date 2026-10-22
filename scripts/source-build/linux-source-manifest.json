@@ -117,7 +117,7 @@
       "packageLock": "scripts/source-build/linux-backend-packages.json",
       "recipeCommit": "9aedff9c28af3ca93c42eb2c3074221893232ae9",
       "recipeCommitSource": "scripts/source-build/linux-inputs.json",
-      "trust": "pinned Termux InRelease SHA-256 + Termux signature -> signed Packages.gz hash/size -> exact .deb hash -> extracted ELF hash"
+      "trust": "Termux bootstrap key verifies the per-run InRelease -> signed Packages.gz hash/size -> exact .deb hash -> extracted ELF hash; provenance records the InRelease digest and the same-run package snapshot is shared by both ARM64 replicas"
     },
     {
       "component": "TermFold compatibility preload",

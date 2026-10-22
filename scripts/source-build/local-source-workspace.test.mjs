@@ -274,7 +274,7 @@ test('actual local runner routes cwd and build environment into isolation and ke
   mkdirSync(scriptDir)
   for (const file of ['run-local-source-chain.mjs', 'local-source-workspace.mjs', 'record-project-components.mjs']) copyFileSync(join(import.meta.dirname, file), join(scriptDir, file))
   writeFileSync(join(source, '.github/workflows/build-apk-source.yml'), [
-    'jobs:', '  build:', '    steps:',
+    'jobs:', '  build-arm64:', '    steps:',
     '      - name: Checkout pinned fixture source', '        shell: bash', '        run: |',
     '          test "$PWD" = "$GITHUB_WORKSPACE"',
     '          test "$DSH_APK_DIR" = "$GITHUB_WORKSPACE"',
@@ -288,6 +288,7 @@ test('actual local runner routes cwd and build environment into isolation and ke
     '          mkdir -p .deploy-tmp/source-build',
     '          printf policy > .deploy-tmp/source-build/source-build-policy.json',
     '          printf isolated > result.txt', '          exit 23', '',
+    '  verify-arm64:', '    steps:',
   ].join('\n'))
   git('add', '.')
   git('commit', '-qm', 'runner fixture')
