@@ -10,10 +10,11 @@ environment — no fake sandboxing, no dependency on the ambient environment bei
 
 ## Why
 
-On Android the upstream `bash-sandbox` fails closed (no bwrap/landlock/seatbelt platform chain),
-so the bash tool is dead out of the box. This provider replaces it with an honest Termux execution
-world: explicit environment injection, probe diagnostics, and a declared app-domain sandbox
-semantics (`workspace-write` + `enforcement: 'partial'`).
+On Android there is no available path-confined shell backend. This provider supplies the Termux
+execution environment and probe diagnostics, then refuses `read-only` and `workspace-write`
+commands before spawning bash. Arbitrary shell syntax cannot be safely checked for writes or paths.
+`danger-full-access` runs under the Android app UID and remains subject to the app-domain boundary;
+it does not mean workspace confinement.
 
 ## Quick start
 
@@ -64,9 +65,11 @@ npm install /path/to/dsh-shell-termux-0.2.0.tgz
   explicitly; execution never depends on the launcher environment.
 - **Reuses local mechanics** — extends `LocalBashExecutor` (`runArgv`/`startArgv`): process-group
   SIGTERM→SIGKILL, output caps + spill, grace period, background lifecycle, teardown ownership.
-- **Honest sandbox declaration** — `sandboxMode = 'workspace-write'` (so permission presets mount)
-  with per-process `enforcement: 'partial'`: the protection boundary is the Android app domain
-  (SELinux u0_aXXX) plus the approval flow, not a path-level confiner.
+- **Fail-closed restricted modes** — `read-only` and `workspace-write` return
+  `SANDBOX_UNAVAILABLE` before process creation. `danger-full-access` executes only when selected
+  by the session policy; its result reports the Android app-domain boundary as partial enforcement.
+- **Diagnostic workspace variables** — `DSH_WORKSPACE` and `DSH_SHARED_DIRS` are passed through for
+  child-tool compatibility. They are not access controls and must not be treated as a fence.
 - **Probe diagnostics** — `probe()` reports bash presence/version and missing toolchain packages
   (`pkg install bash coreutils findutils grep ripgrep` hints). Misconfigured bash fails loud with
   repair guidance.
@@ -77,6 +80,8 @@ npm install /path/to/dsh-shell-termux-0.2.0.tgz
 ## Verification
 
 - `probe()` status: `full` / `partial` / `unusable` with a missing-package list;
+- `npm test` proves both restricted modes are rejected without spawning and the explicit
+  `danger-full-access` mode retains its per-call facts;
 - fault injection: point `bashPath` at a missing binary → structured error
   (`shell-termux: <path> is not executable; run 'pkg install bash' …`) returned to the model.
 

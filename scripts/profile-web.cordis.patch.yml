@@ -1,8 +1,8 @@
 # gateway/client 由继承的 base/typert-gateway 唯一行提供，不在此重复 insert。
 # 0.14.7 的 host-fiber 时序适配随 client-registry-scan-C4 注入；controllers 全部保留。
 # Android adaptation (M1.1 final form): dsh-shell-termux replaces the temporary patch v2.
-# Protection boundary = Termux app domain (SELinux u0_aXXX) + approval flow;
-# sandboxMode explicitly declares workspace-write (permission-presets mount prerequisite), enforcement honestly reported as partial.
+# Android has no path-level bash confiner: read-only/workspace-write fail before spawn;
+# danger-full-access requires an explicit session selection and remains within the app UID domain.
 - id: bash-sandbox
   disabled: true
 - insert:
@@ -19,9 +19,8 @@
         cwd: /data/data/com.snoworwind.pocketharness/files/home
         timeoutMs: 120000
         maxTimeoutMs: 600000
-        # 写面栅栏（0.13.0 D21）：默认档位仅工作区与选定共享目录；danger-full-access 为完全访问档位
-        # （开放共享存储全域，仍限应用域沙盒）。workspaceRoot/sharedDirs 为全局单一实例，
-        # 由 dsh-android-linux-env 插件在设置页动态维护（此处的初始值仅出厂基线）。
+        # 默认档位为 workspace-write；Android 无路径级 bash 围栏，因此该档位执行前失败关闭。
+        # workspaceRoot/sharedDirs 只作子进程兼容/诊断变量，不提供访问控制；设置页仍维护这些值。
         writeMode: workspace-write
         workspaceRoot: /data/data/com.snoworwind.pocketharness/files/home/.dsh/workspaces
         sharedDirs: []
@@ -77,8 +76,8 @@
       name: '@dsh-android/dsh-android-manage'
 
 # 工具链与环境设置面板（0.13.0 F1.3/F1.5，M3.2）：dsh-android-linux-env——工具链状态/环境配方/
-# 共享目录与镜像设置视图；同时是 shell-termux 写面栅栏（workspaceRoot/sharedDirs，见上文 L20-22）
-# 的设置页维护面——不装载则共享目录设置无处维护（审校 C4 2026-08-23：注入四件套缺此条目）。
+# 共享目录与镜像设置视图；同时维护 shell-termux 传给子进程的兼容目录变量（非执行围栏，见上文）——
+# 不装载则共享目录设置无处维护（审校 C4 2026-08-23：注入四件套缺此条目）。
 - insert:
     - id: android-linux-env
       name: '@dsh-android/dsh-android-linux-env'

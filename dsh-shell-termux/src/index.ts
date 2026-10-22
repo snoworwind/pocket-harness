@@ -30,6 +30,48 @@ import type { Config as LocalConfig } from '@deepseek-ai/dsh-bash-local'
 
 /** Default grace period passed to probe spawns. */
 const PROBE_GRACE_MS = 3_000
+const SANDBOX_MODES: readonly SandboxMode[] = ['workspace-write', 'danger-full-access', 'read-only']
+
+/** Read the session policy without trusting a caller-controlled environment variable. */
+function modeFromPolicy(value: unknown, fallback: SandboxMode): SandboxMode | undefined {
+  if (value === null || typeof value !== 'object') return fallback
+  const policy = (value as { sandboxPolicy?: unknown }).sandboxPolicy
+  if (policy === undefined || policy === null) return fallback
+  if (typeof policy !== 'object') return undefined
+  const mode = (policy as { mode?: unknown }).mode
+  if (mode === undefined) return fallback
+  return typeof mode === 'string' && SANDBOX_MODES.includes(mode as SandboxMode)
+    ? mode as SandboxMode
+    : undefined
+}
+
+/** Full access must be selected by this call's session policy, never inherited from plugin config. */
+function hasExplicitPolicyMode(value: unknown): boolean {
+  if (value === null || typeof value !== 'object') return false
+  const policy = (value as { sandboxPolicy?: unknown }).sandboxPolicy
+  if (policy === null || typeof policy !== 'object') return false
+  return typeof (policy as { mode?: unknown }).mode === 'string'
+}
+
+/** Fail-closed result when Android cannot enforce a restricted bash mode. */
+function sandboxUnavailable(mode: unknown): Error & { code: string } {
+  const requested = typeof mode === 'string' ? mode : 'unknown'
+  const error = new Error(
+    `SANDBOX_UNAVAILABLE: Android cannot enforce ${requested} for arbitrary bash commands because no path-level confiner is available. The command was not started. Select danger-full-access in the user's permission settings to run with app-domain access, or use a shell backend with a real path fence.`,
+  ) as Error & { code: string }
+  error.name = 'SandboxUnavailableError'
+  error.code = 'SANDBOX_UNAVAILABLE'
+  return error
+}
+
+function fullAccessSelectionRequired(): Error & { code: string } {
+  const error = new Error(
+    'SANDBOX_SELECTION_REQUIRED: Android shell requires this call\'s session policy to explicitly select danger-full-access. The command was not started.',
+  ) as Error & { code: string }
+  error.name = 'SandboxSelectionRequiredError'
+  error.code = 'SANDBOX_SELECTION_REQUIRED'
+  return error
+}
 
 /**
  * Tools the dsh tool surface relies on beyond bash itself (pkg names).
@@ -67,15 +109,11 @@ export interface Config extends LocalConfig {
   termuxVersion?: string
   /** Extra PATH entries prepended to the injected PATH (e.g. /system/bin). */
   extraPath?: string[]
-  /**
-   * 写面档位（PRD F1.4/F1.8/D21）：workspace-write（默认，仅工作区与共享目录白名单）|
-   * danger-full-access（完全访问档位，开放共享存储全域，仍限应用域沙盒）|
-   * read-only（只读档位）。与 dsh-sandbox 的档位契约一一对应。
-   */
+  /** Default permission mode reported to the shell tool. Android cannot enforce path-restricted modes. */
   writeMode?: SandboxMode
-  /** 模型工作区根：写面白名单基准（与宿主文件工具共享同一份配置）。 */
+  /** Model workspace root advertised to child processes; this is not an execution fence. */
   workspaceRoot?: string
-  /** 用户经存储访问框架选定的共享目录（写面白名单，全局单一实例）。 */
+  /** User-selected shared directories advertised to child processes; these are not an execution fence. */
   sharedDirs?: string[]
 }
 
@@ -114,6 +152,7 @@ export class TermuxBashExecutor extends LocalBashExecutor {
   private readonly writeMode: SandboxMode
   private readonly workspaceRoot?: string
   private readonly sharedDirs: readonly string[]
+  private readonly resolvedModes = new WeakMap<object, { mode: SandboxMode | undefined; explicit: boolean }>()
 
   constructor(ctx: Context, config: Config) {
     super(ctx, config)
@@ -137,26 +176,13 @@ export class TermuxBashExecutor extends LocalBashExecutor {
     this.sharedDirs = entry.sharedDirs ?? []
   }
 
-  /**
-   * The declared default mode — the capability fact the tool layer and
-   * permission presets read. Enforcement is the Android app domain, not a
-   * path-level confiner; per-process facts report that honestly.
-   * v2 (PRD F1.4/D21): the mode is configurable (workspace-write default ✓,
-   * danger-full-access under the full-access tier, read-only for the read-only tier).
-   */
+  /** The configured default mode read by permission presets. Restricted modes fail closed in execute(). */
   override get sandboxMode(): SandboxMode {
     return this.writeMode
   }
 
-  /**
-   * Self-contained Termux environment, merged under the caller's own env so a
-   * trusted caller may still override (same philosophy as ENV_OVERRIDES).
-   * v2 additionally stamps the write-fence facts (PRD F1.4): the write mode,
-   * the workspace root and the shared-dir whitelist — the same single-instance
-   * config that the host file tools fence against. Child processes advertise
-   * the fence instead of silently assuming unlimited writes.
-   */
-  private termuxEnv(): Record<string, string> {
+  /** Stamp Termux's environment and diagnostic permission mode. These values do not constrain bash. */
+  private termuxEnv(mode = this.writeMode): Record<string, string> {
     return {
       PATH: [...this.extraPath, `${this.prefix}/bin`, '/system/bin'].join(':'),
       LD_LIBRARY_PATH: `${this.prefix}/lib`,
@@ -164,25 +190,24 @@ export class TermuxBashExecutor extends LocalBashExecutor {
       PREFIX: this.prefix,
       TERMUX_VERSION: this.termuxVersion,
       SHELL: this.bashPath,
-      DSH_WRITE_MODE: this.writeMode,
+      DSH_WRITE_MODE: mode,
       ...this.workspaceRoot ? { DSH_WORKSPACE: this.workspaceRoot } : {},
       DSH_SHARED_DIRS: this.sharedDirs.join(':'),
     }
   }
 
-  /**
-   * 栅栏键（2026-08-23，审核 M6 修复）：写面事实由调用方 request.env 覆盖会
-   * 让子进程"以为"处于另一个档位（应用域栅栏不会被真提权，但下游信赖该 env
-   * 就会误导）。termuxEnv 产出的这三个键在 resolve 时拒绝被 request.env 覆盖。
-   */
+  /** Labels stay controlled for diagnostics; the real fail-closed check is in execute(). */
   private static readonly FENCE_KEYS = ['DSH_WRITE_MODE', 'DSH_WORKSPACE', 'DSH_SHARED_DIRS'] as const
 
   /** Stamp the controlled Termux environment onto every request. */
   override resolve(request: ShellExecRequest): ShellExecSpec {
-    const fence = this.termuxEnv()
+    const mode = modeFromPolicy(request, this.writeMode)
+    const fence = this.termuxEnv(mode ?? this.writeMode)
     const user = { ...request.env }
     for (const k of TermuxBashExecutor.FENCE_KEYS) delete user[k]
-    return super.resolve({ ...request, env: { ...fence, ...user } })
+    const spec = super.resolve({ ...request, env: { ...fence, ...user } })
+    this.resolvedModes.set(spec, { mode, explicit: hasExplicitPolicyMode(request) })
+    return spec
   }
 
   /** Reject with repair guidance when the configured bash is not executable. */
@@ -208,8 +233,8 @@ export class TermuxBashExecutor extends LocalBashExecutor {
    * rebuilt: 0.1.7's `ShellExecution` carries spawn state on the instance, so a
    * spread copy would hand back a handle whose `done`/read path is detached.
    */
-  private declareSandbox(execution: ShellExecution): ShellExecution {
-    const facts = { mode: this.writeMode, denied: false, enforcement: 'partial' } as const
+  private declareSandbox(execution: ShellExecution, mode: SandboxMode): ShellExecution {
+    const facts = { mode, denied: false, enforcement: 'partial' } as const
     const base = execution.result.bind(execution)
     let decorated: Promise<ShellRunResult> | undefined
     execution.sandbox = facts
@@ -227,8 +252,13 @@ export class TermuxBashExecutor extends LocalBashExecutor {
    * through). Background consumers take the handle and skip `result()`.
    */
   override async execute(spec: ShellExecSpec): Promise<ShellExecution> {
+    const resolved = this.resolvedModes.get(spec as object)
+    const mode = resolved?.mode ?? modeFromPolicy(spec, this.writeMode)
+    const explicit = resolved?.explicit ?? hasExplicitPolicyMode(spec)
+    if (mode !== 'danger-full-access') throw sandboxUnavailable(mode)
+    if (!explicit) throw fullAccessSelectionRequired()
     this.assertBash()
-    return this.declareSandbox(await this.executeArgv(spec, this.bashArgv(spec.command)))
+    return this.declareSandbox(await this.executeArgv(spec, this.bashArgv(spec.command)), mode)
   }
 
   /**

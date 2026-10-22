@@ -176,11 +176,10 @@ if grep -q 'lstat(absolutePath).then' "$PFS"; then echo "fs-local link patch alr
 sed -i 's|await linkFile(tempPath, absolutePath);|await linkFile(tempPath, absolutePath).catch(function (e) { if (e.code !== "EACCES" \&\& e.code !== "EPERM" \&\& e.code !== "ENOTSUP") throw e; return lstat(absolutePath).then(function () { throw e; }, function (e2) { if (e2.code !== "ENOENT") throw e2; return rename(tempPath, absolutePath); }); });|' "$PFS"
 echo "fs-local link patch applied"
 fi
-# 2026-08-15 (Bug fix): Android has no bwrap/Landlock backend, so confined mode
-# (workspace-write/read-only) fails closed ("no sandbox backend is usable; refusing to run
-# unconfined"). Honest degradation: under the Termux env (engine injects TERMUX__PREFIX) confine
-# returns the original argv (enforcement: partial — the real boundary is app-domain SELinux
-# u0_aXXX + the approval flow, matching what shell-termux declares).
+# 2026-08-15 (Bug fix): Android has no bwrap/Landlock backend. This compatibility patch lets
+# sandbox-local.confine() return the original argv under the Termux runner; that is not a path
+# fence. dsh-shell-termux does not use this as authorization: it refuses read-only/workspace-write
+# before bash spawn and requires an explicit danger-full-access session mode.
 PSB=usr/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-sandbox-local/lib/index.js
 if grep -q 'TERMUX__PREFIX' "$PSB"; then echo "sandbox-local patch already applied"; else
 # Insertion point is the top of confine() (the runnerCommand branch is excluded by its own condition):
@@ -188,9 +187,9 @@ if grep -q 'TERMUX__PREFIX' "$PSB"; then echo "sandbox-local patch already appli
 # SandboxUnavailableError exceptions on Android, so short-circuiting at the top is safest.
 # TERMUX__PREFIX is combined with a platform check (2026-08-15 on-device: Node/Termux on Android
 # reports process.platform "android", not "linux"; both are allowed — this guards against a host
-# WSL/Termux env that would otherwise disable the sandbox globally). Boundaries stated honestly:
-# enforcement=partial, no path-level confiner (Android has no bwrap), real constraints =
-# app-domain SELinux u0_aXXX + the approval flow; read-only mode degrades the same way.
+# WSL/Termux env that would otherwise disable the sandbox globally). This branch only preserves
+# plugin startup; callers must not treat its original argv as confined execution. The Android
+# shell-termux provider enforces its own fail-closed mode check before starting bash.
 sed -i 's|confine(argv, policy) {|confine(argv, policy) {\n\t\tif ((process.platform === "linux" \|\| process.platform === "android") \&\& process.env.TERMUX__PREFIX \&\& this.runnerCommand === void 0) return { argv: [...argv], enforcement: "partial", denialSignatures: [], runnerFailureRules: [] };|' "$PSB"
 echo "sandbox-local patch applied"
 fi
