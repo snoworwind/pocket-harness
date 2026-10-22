@@ -2965,3 +2965,7 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 492. **Termux signed Packages 索引可合法包含同包的多个版本**
 
     现象：来源链已成功验证官方 `InRelease` 与 `Packages.gz` 签名摘要，却在读取 `buf` 条目时因重复包名退出；实时索引同时含 `1.75.0` 与 `1.74.0-1`。真因：把 Debian/Termux 索引的多版本记录误判成签名索引损坏，未应用 apt 的版本候选选择。修法：限定 AArch64/`all` 记录，按 `dpkg --compare-versions` 选最高版本，同版本优先 native AArch64；同版本同架构重复项仍 fail closed。复验：新增多版本、架构无关同版本和冲突重复候选用例；PR #90 草稿构建首轮实测暴露，follow-up Linux CI 与来源构建需重验。
+
+493. **Debian epoch 冒号只应在签名包文件名中放行**
+
+    现象：PR #91 的 Linux CI 已验证签名与多版本选择后，来源构建在有效路径 `pool/main/c/ca-certificates/ca-certificates_1:2026.10.20-1_all.deb` 被“unsafe”拒绝。真因：路径防护把目录分隔与遍历风险和 Debian 版本 epoch 共用的 `:` 混为一谈。修法：只接受 `pool/main/` 下安全字符组成的相对目录和 `.deb` 文件名；允许 `:` 出现在最终文件名中，目录、URL 查询/片段、绝对路径和 `..` 仍拒绝。复验：新增 epoch 正例及路径遍历、目录冒号、URL 特殊字符负例；PR #92 Linux CI 与来源双构建需确认。
