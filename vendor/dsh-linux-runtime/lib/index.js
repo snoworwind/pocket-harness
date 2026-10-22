@@ -7,9 +7,9 @@
  * loads and activates it.
  *
  * It owns the runtime lifecycle (install, reinstall, uninstall, health) and the
- * Agent-facing `linux_bash` tool. Bionilux, the Debian minimal rootfs and the
- * shared glibc Node.js package are downloaded, checksum-verified release assets
- * managed by the bootstrap plugin, not code in this package.
+ * Agent-facing `linux_bash` tool. Termux PRoot, the Debian minimal rootfs and the
+ * shared glibc Node.js package are assembled from pinned inputs and embedded as
+ * checksum-verified APK assets, then managed by the bootstrap plugin.
  */
 import { createManager, LinuxRuntimeManager, ExecutionGate } from '../modules/manager.js';
 
@@ -37,6 +37,7 @@ export const LINUX_BASH_DESCRIPTION = [
   'Inside Linux, npm/node resolve to the shared Linux glibc Node.js runtime, not the host Bionic Node.js.',
   'Paths follow guest semantics: /usr, /etc and /var are the Debian ones; the workspace and configured shared directories stay visible under their own absolute paths.',
   'This is a Debian environment, not a sandbox: guest root is a user-space identity and is not Android root.',
+  'Host working directories are bound only when they are under the configured workspace or shared-directory roots; host /proc is not exposed inside Linux.',
   'If the Linux runtime is not installed or unhealthy, the command fails with an explicit error. It never silently falls back to the Termux shell.',
 ].join(' ');
 
@@ -128,6 +129,7 @@ export function apply(ctx, config = {}) {
     createManager({
       dataDir: config.dataDir,
       arch: config.arch,
+      allowedHostPaths: config.allowedHostPaths,
       downloadAsset: config.downloadAsset ?? config.linuxAssetIO?.downloadAsset,
       extractArchive: config.extractArchive ?? config.linuxAssetIO?.extractArchive,
       fetchImpl: config.fetchImpl,

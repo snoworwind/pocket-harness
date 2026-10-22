@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises'
+import { mkdtemp, mkdir, realpath, writeFile, rm } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -202,12 +202,12 @@ test('isInjected reads injection membership without creating or repairing anythi
     const flat = join(root, 'runtime')
     await mkdir(join(flat, 'lib'), { recursive: true })
     await writeFile(join(flat, 'lib', 'index.js'), 'export function apply() {}')
-    assert.deepEqual(await host().isInjected({ name: 'runtime' }), { injected: true, active: false, directory: flat })
+    assert.deepEqual(await host().isInjected({ name: 'runtime' }), { injected: true, active: false, directory: await realpath(flat) })
     // Versioned layout prefers the newest verified directory.
     const versioned = join(root, 'linux-runtime', '1.0.0')
     await mkdir(join(versioned, 'lib'), { recursive: true })
     await writeFile(join(versioned, 'lib', 'index.js'), 'export function apply() {}')
-    assert.deepEqual(await host().isInjected({ runtimeId: 'linux-runtime' }), { injected: true, active: false, directory: versioned })
+    assert.deepEqual(await host().isInjected({ runtimeId: 'linux-runtime' }), { injected: true, active: false, directory: await realpath(versioned) })
     for (const name of ['../escape', 'a/b', '', '.']) {
       assert.equal((await host().isInjected({ name })).injected, false, name)
     }
@@ -222,11 +222,12 @@ test('manual removal is never resurrected: activation and reinstall both fail cl
   try {
     const directory = join(root, 'linux-runtime', '2.0.0')
     await mkdir(join(directory, 'lib'), { recursive: true })
+    await writeFile(join(directory, 'package.json'), '{"type":"module"}')
     await writeFile(join(directory, 'lib', 'index.js'), 'export function apply(ctx) { ctx.provide("runtimeInjectedMarker", true); ctx.provide("linuxRuntimeManager", { install: async () => {}, uninstall: async () => {} }) }')
     const ctx = new Context()
     const host = createLinuxPluginHost({ root, activate: (plugin, config) => cordisScope(ctx.plugin(plugin, config)) })
     await host.install({ directory })
-    assert.deepEqual(await host.isInjected({ runtimeId: 'linux-runtime' }), { injected: true, active: true, directory })
+    assert.deepEqual(await host.isInjected({ runtimeId: 'linux-runtime' }), { injected: true, active: true, directory: await realpath(directory) })
     await rm(join(root, 'linux-runtime'), { recursive: true, force: true })
     assert.deepEqual(await host.isInjected({ runtimeId: 'linux-runtime' }), { injected: false, active: false })
     await assert.rejects(host.install({ directory }), /not present in the injection directory/)
@@ -236,25 +237,25 @@ test('manual removal is never resurrected: activation and reinstall both fail cl
   } finally { await rm(dir, { recursive: true, force: true }) }
 })
 
-test('normalizer accepts the finalized Bionilux status shape and the earlier proposal', () => {
+test('normalizer accepts the current Linux status shape and the earlier proposal', () => {
   const finalized = normalizeLinuxStatus({
     installed: true, version: '1.2.0', mobileVersion: '0.14.9', autoUpdate: true, availableVersion: '1.3.0',
     updateAvailable: true, busy: false, operation: 'idle', runtime: 'debian-minimal', injectionActivated: true,
-    enabled: true, pluginReleaseUrls: { bootstrap: 'https://github.com/kelai141/dsh-bionilux/releases/tag/v1', runtime: 'https://github.com/kelai141/dsh-bionilux/releases/tag/v1' },
+    enabled: true, pluginReleaseUrls: { bootstrap: 'https://github.com/snoworwind/pocket-harness/releases/tag/v1', runtime: 'https://github.com/snoworwind/pocket-harness/releases/tag/v1' },
     lastCheckAt: '2026-10-16T10:00:00Z',
   })
   assert.deepEqual(finalized, {
     installed: true, version: '1.2.0', mobileVersion: '0.14.9', installedSystemMobileVersion: undefined,
     autoUpdate: true, availableVersion: '1.3.0', busy: false,
     runtime: { id: 'debian-minimal', label: 'Debian minimal' },
-    plugins: { bootstrap: { releaseUrl: 'https://github.com/kelai141/dsh-bionilux/releases/tag/v1' }, runtime: { releaseUrl: 'https://github.com/kelai141/dsh-bionilux/releases/tag/v1' } },
+    plugins: { bootstrap: { releaseUrl: 'https://github.com/snoworwind/pocket-harness/releases/tag/v1' }, runtime: { releaseUrl: 'https://github.com/snoworwind/pocket-harness/releases/tag/v1' } },
     injectionActivated: true, enabled: true, lastCheckAt: '2026-10-16T10:00:00Z', error: undefined,
   })
   // Earlier proposed names still normalize; a blocked update hides the candidate but stays visible as an error.
   const legacy = normalizeLinuxStatus({
     installedLinuxVersion: '0.9.0', currentMobileVersion: '0.14.8', autoUpdateEnabled: true,
     updateAvailable: true, updateBlocked: true, latestReleaseVersion: '2.0.0', runtimeId: 'debian-minimal',
-    plugins: { bootstrap: { releaseUrl: 'https://github.com/kelai141/dsh-bionilux/releases/tag/v1' } },
+    plugins: { bootstrap: { releaseUrl: 'https://github.com/snoworwind/pocket-harness/releases/tag/v1' } },
   })
   assert.equal(legacy.installed, true)
   assert.equal(legacy.availableVersion, undefined)
@@ -270,19 +271,20 @@ test('install returns the manager the bootstrap requires, and fails closed witho
   try {
     const directory = join(root, 'runtime')
     await mkdir(join(directory, 'lib'), { recursive: true })
+    await writeFile(join(directory, 'package.json'), '{"type":"module"}')
     await writeFile(join(directory, 'lib', 'index.js'), 'export function apply() {}')
     const manager = makeManager()
     // The host may see the manager either as the scope's own value or through the service the
     // runtime plugin publishes; `resolveManager` accepts hostResult.manager first.
     const host = createLinuxPluginHost({ root, activate: () => ({ state: 2, dispose() {}, manager }) })
     const first = await host.install({ directory, enable: true, config: {} })
-    assert.equal(first.directory, directory)
+    assert.equal(first.directory, await realpath(directory))
     assert.equal(first.active, true)
     assert.equal(first.manager, manager, 'hostResult.manager must carry the runtime manager')
     assert.equal(typeof first.rollback, 'function', 'rollback is optional but we always offer it')
     const again = await host.install({ directory })
     assert.equal(again.manager, manager, 'repeat activation is idempotent')
-    assert.deepEqual(await host.isInjected({ directory }), { injected: true, active: true, directory })
+    assert.deepEqual(await host.isInjected({ directory }), { injected: true, active: true, directory: await realpath(directory) })
     const outside = join(dir, 'elsewhere')
     assert.deepEqual(await host.isInjected({ directory: outside }), { injected: false, active: false })
     await assert.rejects(host.install({ directory: outside, enable: true }), /not present in the injection directory/)
@@ -295,6 +297,7 @@ test('activation without a runtime manager is refused instead of reported as ins
   try {
     const directory = join(root, 'runtime')
     await mkdir(join(directory, 'lib'), { recursive: true })
+    await writeFile(join(directory, 'package.json'), '{"type":"module"}')
     await writeFile(join(directory, 'lib', 'index.js'), 'export function apply() {}')
     // A service that is not a manager (no install/uninstall) must not pass either.
     const host = createLinuxPluginHost({ root, activate: () => ({ state: 2, dispose() {}, get: () => ({ install: async () => {} }) }) })
@@ -302,7 +305,7 @@ test('activation without a runtime manager is refused instead of reported as ins
       host.install({ directory, enable: true }),
       /The installed runtime plugin did not provide a runtime manager/,
     )
-    assert.deepEqual(await host.isInjected({ directory }), { injected: true, active: false, directory })
+    assert.deepEqual(await host.isInjected({ directory }), { injected: true, active: false, directory: await realpath(directory) })
     // The published service shape wins when it carries the manager inside it.
     const manager = makeManager()
     const published = createLinuxPluginHost({ root, activate: () => ({ state: 2, dispose() {}, get: () => ({ service: { manager } }) }) })
@@ -316,16 +319,17 @@ test('rollback releases the scope so a failed install leaves nothing active', as
   try {
     const directory = join(root, 'runtime')
     await mkdir(join(directory, 'lib'), { recursive: true })
+    await writeFile(join(directory, 'package.json'), '{"type":"module"}')
     await writeFile(join(directory, 'lib', 'index.js'), 'export function apply() {}')
     let disposed = 0
     const host = createLinuxPluginHost({
       root, activate: () => ({ state: 2, dispose: () => { disposed += 1 }, manager: makeManager() }),
     })
     const result = await host.install({ directory, enable: true })
-    assert.deepEqual(await host.isInjected({ directory }), { injected: true, active: true, directory })
+    assert.deepEqual(await host.isInjected({ directory }), { injected: true, active: true, directory: await realpath(directory) })
     await result.rollback()
     assert.equal(disposed, 1)
-    assert.deepEqual(await host.isInjected({ directory }), { injected: true, active: false, directory })
+    assert.deepEqual(await host.isInjected({ directory }), { injected: true, active: false, directory: await realpath(directory) })
   } finally { await rm(dir, { recursive: true, force: true }) }
 })
 
@@ -350,6 +354,7 @@ test('uninstall accepts the documented argument object and still releases the sc
   try {
     const directory = join(root, 'runtime')
     await mkdir(join(directory, 'lib'), { recursive: true })
+    await writeFile(join(directory, 'package.json'), '{"type":"module"}')
     await writeFile(join(directory, 'lib', 'index.js'), 'export function apply(ctx) { ctx.provide("uninstallProbe", true); ctx.provide("linuxRuntimeManager", { install: async () => {}, uninstall: async () => {} }) }')
     const host = createLinuxPluginHost({ root, activate: (plugin, config) => cordisScope(ctx.plugin(plugin, config)) })
     await host.install({ directory })

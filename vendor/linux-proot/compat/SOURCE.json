@@ -1,0 +1,8 @@
+{
+  "repository": "https://github.com/Bibarud/TermFold",
+  "commit": "a9f678d794a9f9942da923161d6fe996b89b935f",
+  "path": "tools/compat-shim/termfold_compat.c",
+  "license": "Apache-2.0",
+  "upstreamSha256": "4d30bdc6d353a3df8bfa774ec177a09ac8c7419dc205ff63c1cfecf5ca352e3b",
+  "adaptation": "Renamed the preload for Pocket Harness; added compile-time forced-EPERM, copy-error and interrupted-copy test paths; bounded both independent hard-link fallback copies and /proc/self/fd dlopen copies to 1 GiB including source growth during reads; verified source inode and metadata against replacement or mutation; and published regular-file copies through a same-directory fsync plus renameat2(RENAME_NOREPLACE), so failed or interrupted copies never expose a partial target. Hard-link copies are independent files and do not preserve shared-inode semantics; process termination may leave a hidden temporary copy."
+}

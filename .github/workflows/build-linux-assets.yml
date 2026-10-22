@@ -3,12 +3,32 @@ on:
   workflow_dispatch:
   pull_request:
     paths:
-      - 'vendor/bionilux/**'
+      - 'vendor/linux-proot/**'
       - 'vendor/dsh-linux-runtime/**'
+      - 'plugins/dsh-android-linux-env/**'
       - 'plugins/dsh-linux-bootstrap/**'
       - 'scripts/source-build/*linux*'
-      - 'scripts/source-build/test_prepare_rootfs_dns.py'
-      - 'scripts/source-build/test_bionilux_preload_links.py'
+      - 'scripts/source-build/prepare-termux-bootstrap.py'
+      - 'scripts/source-build/prepare-proot-backend.py'
+      - 'scripts/source-build/prepare-termux-signed-repo.py'
+      - 'scripts/source-build/test_prepare_termux_bootstrap.py'
+      - 'scripts/source-build/test_prepare_termux_signed_repo.py'
+      - 'scripts/source-build/test_prepare_rootfs_proot.py'
+      - 'scripts/source-build/ensure-no-rootfs-mounts.py'
+      - 'scripts/source-build/test_ensure_no_rootfs_mounts.py'
+      - 'scripts/source-build/test_proot_compat.py'
+      - 'scripts/source-build/test_prepare_proot_backend.py'
+      - 'scripts/source-build/linux-assets-workflow.test.mjs'
+      - 'scripts/source-build/seed-dsh-profiles.mjs'
+      - 'scripts/snapshot-config/preinstall.json'
+      - 'scripts/lib/shell.mjs'
+      - 'scripts/third-party-licenses.json'
+      - 'scripts/check-third-party.mjs'
+      - 'scripts/check-third-party.test.mjs'
+      - 'scripts/check-vendored-linux-bootstrap.mjs'
+      - 'LICENSES/**'
+      - 'docs/AGENTS/gpl-compliance.md'
+      - '.github/workflows/build-apk-source.yml'
       - '.github/workflows/build-linux-assets.yml'
 permissions:
   contents: read
@@ -21,29 +41,39 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with: { node-version: '24' }
-      - name: Compile Bionilux preload hooks for Android ARM64
+      - name: Install native validation toolchain
         run: |
           sudo apt-get update
-          sudo apt-get install -y gcc-aarch64-linux-gnu
-          aarch64-linux-gnu-gcc -shared -fPIC -O2 -Wall -Wextra -Werror \
-            -o "$RUNNER_TEMP/libbionilux_preload.so" \
-            vendor/bionilux/src/preload/hooks.c -pthread -ldl
-      - name: Verify source import and controlled tamper rejection
+          sudo apt-get install -y gcc gcc-aarch64-linux-gnu dpkg-dev gnupg
+      - name: Verify reviewed inputs and native payload shape
         run: |
           node scripts/source-build/check-linux-sources.mjs --self-test
-      - name: Compile and test the reviewed native launcher
+          node --test scripts/source-build/check-linux-sources.test.mjs
+          node scripts/check-vendored-linux-bootstrap.mjs --self-test
+          node scripts/source-build/check-linux-native-libraries.mjs --self-test
+          python3 scripts/source-build/verify-linux-native-apk.py --self-test
+      - name: Compile the ARM64 guest compatibility library
         run: |
-          rust=$(node -p 'require("./scripts/source-build/linux-inputs.json").rust')
-          rustup toolchain install "$rust" --profile minimal
-          CARGO_TARGET_DIR="$RUNNER_TEMP/linux-host-target" CARGO_PROFILE_DEV_CODEGEN_UNITS=1 rustup run "$rust" cargo test --locked --jobs 8 --manifest-path vendor/bionilux/Cargo.toml
+          aarch64-linux-gnu-gcc -shared -fPIC -O2 -Wall -Wextra -Werror \
+            -o "$RUNNER_TEMP/libpocket-linux-compat.so" \
+            vendor/linux-proot/compat/termfold_compat.c -ldl
+          aarch64-linux-gnu-readelf -h "$RUNNER_TEMP/libpocket-linux-compat.so" | grep 'Machine:.*AArch64'
       - name: Runtime manager and manifest regressions
         run: node --test vendor/dsh-linux-runtime/test/*.test.mjs
-      - name: Linux asset, preload hook, DNS and license regressions
+      - name: Internal Linux plugin build and regression checks
         run: |
-          python3 -m unittest discover -s scripts/source-build -p 'test_*linux*.py' -v
-          python3 -m unittest \
-            scripts.source-build.test_prepare_rootfs_dns \
-            scripts.source-build.test_bionilux_preload_links -v
+          npm ci --prefix plugins/dsh-linux-bootstrap --no-audit --no-fund
+          npm run build --prefix plugins/dsh-linux-bootstrap
+          node --test plugins/dsh-linux-bootstrap/test/*.test.mjs
+          npm ci --prefix plugins/dsh-android-linux-env --no-audit --no-fund
+          npm test --prefix plugins/dsh-android-linux-env
+      - name: PRoot backend, rootfs and compatibility regressions
+        run: |
+          python3 -m unittest scripts.source-build.test_prepare_proot_backend scripts.source-build.test_prepare_rootfs_proot scripts.source-build.test_ensure_no_rootfs_mounts scripts.source-build.test_proot_compat scripts.source-build.test_prepare_termux_bootstrap scripts.source-build.test_prepare_termux_signed_repo scripts.source-build.test_package_linux_assets -v
+      - name: Third-party notice generator regressions
+        run: |
+          node --test scripts/check-third-party.test.mjs
+          node --test scripts/source-build/linux-assets-workflow.test.mjs
   build:
     if: github.event_name == 'workflow_dispatch'
     needs: validate
@@ -58,18 +88,40 @@ jobs:
       - name: Install signed distribution build tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y gcc-aarch64-linux-gnu debootstrap debian-archive-keyring qemu-user-static binfmt-support xz-utils
+          sudo apt-get install -y gcc-aarch64-linux-gnu debootstrap debian-archive-keyring qemu-user-static binfmt-support xz-utils gnupg
           sudo update-binfmts --enable qemu-aarch64
-      - name: Verify official Android NDK before source compilation
+      - name: Fetch and authenticate the Termux bootstrap signing keys
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p .deploy-tmp/linux-ndk
-          ndk=$(node -p 'require("./scripts/source-build/linux-inputs.json").ndk')
-          checksum=$(node -p 'require("./scripts/source-build/linux-inputs.json").ndkSha1')
-          curl --fail --location --retry 3 "https://dl.google.com/android/repository/android-ndk-$ndk-linux.zip" -o .deploy-tmp/linux-ndk/ndk.zip
-          printf '%s  %s\n' "$checksum" '.deploy-tmp/linux-ndk/ndk.zip' | sha1sum --check --strict
-          unzip -q .deploy-tmp/linux-ndk/ndk.zip -d .deploy-tmp/linux-ndk
+          mkdir -p .deploy-tmp/linux-termux
+          python3 - <<'PY' > .deploy-tmp/linux-termux/bootstrap-pins.env
+          import ast
+          from pathlib import Path
+          tree = ast.parse(Path('scripts/source-build/prepare-termux-bootstrap.py').read_text())
+          values = {}
+          for node in tree.body:
+              if isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
+                  if node.targets[0].id in {'BOOTSTRAP_URL', 'BOOTSTRAP_SHA256'}:
+                      values[node.targets[0].id] = ast.literal_eval(node.value)
+          if set(values) != {'BOOTSTRAP_URL', 'BOOTSTRAP_SHA256'}:
+              raise SystemExit('Termux bootstrap URL/hash pins are incomplete')
+          print('BOOTSTRAP_URL=' + values['BOOTSTRAP_URL'])
+          print('BOOTSTRAP_SHA256=' + values['BOOTSTRAP_SHA256'])
+          PY
+          source .deploy-tmp/linux-termux/bootstrap-pins.env
+          curl --fail --location --retry 3 "$BOOTSTRAP_URL" -o .deploy-tmp/linux-termux/bootstrap-aarch64.zip
+          printf '%s  %s\n' "$BOOTSTRAP_SHA256" .deploy-tmp/linux-termux/bootstrap-aarch64.zip | sha256sum --check --strict
+          python3 scripts/source-build/prepare-termux-bootstrap.py --extract-bootstrap-only \
+            .deploy-tmp/linux-termux/bootstrap-aarch64.zip .deploy-tmp/linux-termux/bootstrap-extracted/usr
+      - name: Verify signed Termux repository and stage the PRoot package closure
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/source-build/prepare-termux-signed-repo.py \
+            .deploy-tmp/linux-termux/bootstrap-extracted/usr \
+            .deploy-tmp/linux-termux/webroot \
+            scripts/snapshot-config/preinstall.json
       - name: Add pinned official Debian 13 archive signing keys
         shell: bash
         run: |
@@ -92,9 +144,12 @@ jobs:
           gpg --batch --quiet --homedir "$homedir" --export > "$keydir/debian-archive-keyring.gpg"
           test -s "$keydir/debian-archive-keyring.gpg"
       - name: Build source-owned offline ARM64 Linux assets
-        run: |
-          ndk=$(node -p 'require("./scripts/source-build/linux-inputs.json").ndk')
-          NDK="$GITHUB_WORKSPACE/.deploy-tmp/linux-ndk/android-ndk-$ndk" DEBIAN_KEYRING="$GITHUB_WORKSPACE/.deploy-tmp/linux-keyring/debian-archive-keyring.gpg" bash scripts/source-build/build-linux-assets.sh
+        env:
+          DEBIAN_KEYRING: ${{ github.workspace }}/.deploy-tmp/linux-keyring/debian-archive-keyring.gpg
+          TERMUX_WEBROOT: ${{ github.workspace }}/.deploy-tmp/linux-termux/webroot
+          TERMUX_PROVENANCE: ${{ github.workspace }}/.deploy-tmp/linux-termux/termux-packages-provenance.json
+          TERMUX_BOOTSTRAP_USR: ${{ github.workspace }}/.deploy-tmp/linux-termux/bootstrap-extracted/usr
+        run: bash scripts/source-build/build-linux-assets.sh
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: pocket-harness-linux-arm64-${{ github.sha }}

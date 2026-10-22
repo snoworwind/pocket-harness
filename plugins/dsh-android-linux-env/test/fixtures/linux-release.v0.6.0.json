@@ -1,16 +1,16 @@
 {
   "schemaVersion": 1,
-  "version": "0.5.0",
+  "version": "0.6.0",
   "minMobileVersion": "0.14.0",
   "plugins": {
     "bootstrap": {
-      "url": "https://github.com/snoworwind/pocket-harness/releases/download/v0.5.0/linux-bootstrap-plugin.tar.xz",
+      "url": "https://github.com/snoworwind/pocket-harness/releases/download/v0.6.0/linux-bootstrap-plugin.tar.xz",
       "sha256": "010a0b0eb63d246c3a9988de0ff8e01e979ff3d48aa7d521e53700061184e21c",
       "size": 16244,
       "unpackedSize": 112059
     },
     "runtime": {
-      "url": "https://github.com/snoworwind/pocket-harness/releases/download/v0.5.0/linux-runtime-plugin.tar.xz",
+      "url": "https://github.com/snoworwind/pocket-harness/releases/download/v0.6.0/linux-runtime-plugin.tar.xz",
       "sha256": "d1fec5e4162deee3cae2cc54f56c91f80b28196f5c6a04c9168544ce5536b770",
       "size": 14112,
       "unpackedSize": 55915
@@ -21,21 +21,22 @@
       "id": "debian-minimal",
       "label": "Debian 13 ARM64",
       "architecture": "arm64",
-      "backend": "bionilux",
+      "backend": "proot",
+      "prootVersion": "5.1.107.98",
       "backendAsset": {
-        "url": "https://github.com/snoworwind/pocket-harness/releases/download/v0.5.0/bionilux-backend-aarch64.tar.xz",
+        "url": "https://github.com/snoworwind/pocket-harness/releases/download/v0.6.0/proot-backend-aarch64.tar.xz",
         "sha256": "3f464273e9ce5a86fd093195e78d1a98080d668084d5eeee90bc25faa072b5f3",
         "size": 491928,
         "unpackedSize": 1942297
       },
       "rootfsAsset": {
-        "url": "https://github.com/snoworwind/pocket-harness/releases/download/v0.5.0/debian-minimal-aarch64.tar.xz",
+        "url": "https://github.com/snoworwind/pocket-harness/releases/download/v0.6.0/debian-minimal-aarch64.tar.xz",
         "sha256": "f123ca15d64ee94ec2b80be0660cd28b08ca7fd715ce18a0f391b49495e6d800",
         "size": 30766496,
         "unpackedSize": 144937670
       },
       "nodeAsset": {
-        "url": "https://github.com/snoworwind/pocket-harness/releases/download/v0.5.0/node-glibc-v24.22.0-linux-arm64.tar.xz",
+        "url": "https://github.com/snoworwind/pocket-harness/releases/download/v0.6.0/node-glibc-v24.22.0-linux-arm64.tar.xz",
         "sha256": "ab2c1543f378ad07ef7cf0f9e797d6281cc97e8042e7ab3f7e89f522eb9b7a95",
         "size": 30885092,
         "unpackedSize": 136239356

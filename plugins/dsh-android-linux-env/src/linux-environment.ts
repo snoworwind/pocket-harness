@@ -8,7 +8,7 @@ import {
 } from '@dsh-android/dsh-android-bridge'
 
 export interface BootstrapStatus {
-  /** Finalized Bionilux shape. */
+  /** Current Linux bootstrap status shape. */
   installed?: boolean
   version?: string | null
   mobileVersion?: string
@@ -247,7 +247,7 @@ export function createLinuxPluginHost(options: {
   }
 }
 
-/** Normalizes both the finalized Bionilux status shape and the earlier proposed one. */
+/** Normalizes the current bootstrap status shape and the earlier proposed one. */
 export function normalizeLinuxStatus(status: BootstrapStatus) {
   const updateBlocked = status.updateBlocked === true
   const runtime = status.runtime ?? status.runtimeId ?? undefined

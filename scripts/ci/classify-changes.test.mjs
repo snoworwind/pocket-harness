@@ -36,6 +36,7 @@ test('engine overlay and preinstall fan out to their downstream components', () 
 
 test('linux inputs stay linux + APK, not a generic full build', () => {
   expect(classifyPaths(['scripts/source-build/linux-inputs.json']), { linux: true, apk: true })
+  expect(classifyPaths(['scripts/check-vendored-linux-bootstrap.mjs']), { linux: true, gates: true, apk: true })
 })
 
 test('app changes require app and APK only', () => {

@@ -71,7 +71,7 @@ internal object LinuxAssetIO {
   )
 
   /** 只接受本仓 Linux 插件的版本化 Release 资产路径。 */
-  const val REQUIRED_PATH_PREFIX = "/kelai141/dsh-bionilux/releases/download/"
+  const val REQUIRED_PATH_PREFIX = "/snoworwind/pocket-harness/releases/download/"
 
   const val MAX_REDIRECTS = 5
 

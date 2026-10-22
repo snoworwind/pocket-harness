@@ -3,7 +3,36 @@
 set -euo pipefail
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)
 cd "$ROOT"
+node scripts/check-vendored-linux-bootstrap.mjs
 node scripts/source-build/check-linux-sources.mjs
+SOURCE_PROOF_INPUTS=(
+  vendor/linux-proot vendor/dsh-linux-runtime
+  plugins/dsh-linux-bootstrap/README.md plugins/dsh-linux-bootstrap/build-client.mjs
+  plugins/dsh-linux-bootstrap/build.mjs plugins/dsh-linux-bootstrap/client
+  plugins/dsh-linux-bootstrap/package-lock.json plugins/dsh-linux-bootstrap/package.json
+  plugins/dsh-linux-bootstrap/src plugins/dsh-linux-bootstrap/test
+  scripts/source-build/build-linux-assets.sh scripts/source-build/linux-inputs.json
+  scripts/source-build/linux-backend-packages.json scripts/source-build/linux-source-manifest.json
+  scripts/snapshot-config/preinstall.json scripts/lib/shell.mjs
+  scripts/source-build/prepare-termux-bootstrap.py scripts/source-build/prepare-termux-signed-repo.py
+  scripts/source-build/prepare-proot-backend.py scripts/source-build/ensure-no-rootfs-mounts.py
+  scripts/source-build/linux-assets-workflow.test.mjs
+  scripts/source-build/package-linux-assets.py scripts/source-build/check-linux-sources.mjs
+  scripts/source-build/check-linux-sources.test.mjs scripts/source-build/check-linux-native-libraries.mjs
+  scripts/check-vendored-linux-bootstrap.mjs
+  scripts/source-build/verify-linux-native-apk.py scripts/source-build/test_prepare_termux_signed_repo.py
+  scripts/source-build/test_prepare_proot_backend.py scripts/source-build/test_prepare_rootfs_proot.py
+  scripts/source-build/test_ensure_no_rootfs_mounts.py scripts/source-build/test_proot_compat.py
+  scripts/source-build/test_package_linux_assets.py scripts/source-build/test_prepare_termux_bootstrap.py
+  scripts/source-build/seed-dsh-profiles.mjs scripts/third-party-licenses.json
+  scripts/check-third-party.mjs scripts/check-third-party.test.mjs LICENSES docs/AGENTS/gpl-compliance.md
+  .github/workflows/build-linux-assets.yml
+)
+for source in "${SOURCE_PROOF_INPUTS[@]}"; do
+  [[ -f "$source" || -d "$source" ]] || { echo "Linux source proof input is missing: $source" >&2; exit 1; }
+done
+SOURCE_PROOF_SYMLINK=$(find "${SOURCE_PROOF_INPUTS[@]}" -type l -print -quit)
+[[ -z "$SOURCE_PROOF_SYMLINK" ]] || { echo "Linux source proof input is a symlink: $SOURCE_PROOF_SYMLINK" >&2; exit 1; }
 (
   cd plugins/dsh-linux-bootstrap
   npm ci --no-audit --no-fund
@@ -14,50 +43,45 @@ WORK="$ROOT/.deploy-tmp/linux-build"
 mkdir -p "$WORK/assets" "$WORK/input" "$WORK/provenance"
 STAGE="$WORK/assets"
 ROOTFS="$WORK/rootfs"
+# Only remove generated PRoot staging destinations after the build root has been
+# resolved and checked above. This keeps local retries deterministic.
+rm -rf -- "$WORK/backend" "$WORK/native-libs"
 THREADS=$(node --input-type=module -e 'import { XZ_THREADS, CPU_THREADS_CAP } from "./scripts/lib/shell.mjs"; console.log(Math.min(XZ_THREADS, CPU_THREADS_CAP))')
 [[ "$THREADS" =~ ^[1-8]$ ]] || { echo 'DSH_CPU_THREADS must be 1..8' >&2; exit 1; }
 export XZ_OPT="-T$THREADS -6"
 EPOCH=$(git show -s --format=%ct HEAD)
 NODE_VERSION=$(node -p 'require("./scripts/source-build/linux-inputs.json").node')
 NODE_SHA=$(node -p 'require("./scripts/source-build/linux-inputs.json").nodeSha256')
-RUST_VERSION=$(node -p 'require("./scripts/source-build/linux-inputs.json").rust')
 DEBIAN_SNAPSHOT=$(node -p 'require("./scripts/source-build/linux-inputs.json").debianSnapshot')
 DEBIAN_SHA=$(node -p 'require("./scripts/source-build/linux-inputs.json").debianInReleaseSha256')
-: "${NDK:?NDK must identify the verified Android NDK directory}"
 : "${DEBIAN_KEYRING:?DEBIAN_KEYRING must identify the pinned Debian archive keyring}"
+: "${TERMUX_WEBROOT:?TERMUX_WEBROOT must identify the authenticated Termux package mirror}"
+: "${TERMUX_PROVENANCE:?TERMUX_PROVENANCE must identify Termux package provenance}"
+: "${TERMUX_BOOTSTRAP_USR:?TERMUX_BOOTSTRAP_USR must identify the official Termux bootstrap keyring}"
 test -s "$DEBIAN_KEYRING"
-TC="$NDK/toolchains/llvm/prebuilt/linux-x86_64"
-test -x "$TC/bin/aarch64-linux-android24-clang"
-export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$TC/bin/aarch64-linux-android24-clang"
-export CC_aarch64_linux_android="$TC/bin/aarch64-linux-android24-clang"
-export AR_aarch64_linux_android="$TC/bin/llvm-ar"
-export CARGO_TARGET_DIR="$WORK/cargo"
-export CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1
-export RUSTFLAGS="--remap-path-prefix=$ROOT=/usr/src/pocket-harness --remap-path-prefix=${CARGO_HOME:-$HOME/.cargo}=/usr/local/cargo -C link-arg=-Wl,--threads=1"
-rustup toolchain install "$RUST_VERSION" --profile minimal --target aarch64-linux-android
-rustup run "$RUST_VERSION" cargo build --release --locked --jobs "$THREADS" --target aarch64-linux-android --manifest-path vendor/bionilux/Cargo.toml
-rustup run "$RUST_VERSION" cargo metadata --locked --format-version=1 --filter-platform aarch64-linux-android --manifest-path vendor/bionilux/Cargo.toml > "$WORK/provenance/cargo-metadata.json"
-python3 scripts/source-build/collect-linux-licenses.py "$WORK/provenance/cargo-metadata.json" "$WORK/backend/share/licenses"
-mkdir -p "$WORK/backend/bin" "$WORK/backend/lib" "$WORK/backend/scripts"
-install -m755 "$CARGO_TARGET_DIR/aarch64-linux-android/release/bionilux" "$WORK/backend/bin/bionilux"
+test -d "$TERMUX_BOOTSTRAP_USR/share/termux-keyring"
 NATIVE_LIBS="$WORK/native-libs/arm64-v8a"
-mkdir -p "$NATIVE_LIBS"
-install -m755 "$WORK/backend/bin/bionilux" "$NATIVE_LIBS/libpocketharness_bionilux.so"
-aarch64-linux-gnu-gcc -shared -fPIC -O2 -Wall -Wextra -Werror -Wl,-soname,libbionilux_preload.so \
-  -ffile-prefix-map="$ROOT"=/usr/src/pocket-harness -fdebug-prefix-map="$ROOT"=/usr/src/pocket-harness \
-  -Wl,-rpath,/usr/lib/aarch64-linux-gnu -o "$WORK/backend/lib/libbionilux_preload.so" vendor/bionilux/src/preload/hooks.c -pthread -ldl
-install -m755 vendor/bionilux/scripts/prepare-rootfs.sh "$WORK/backend/scripts/prepare-rootfs.sh"
-"$TC/bin/llvm-readelf" -h "$WORK/backend/bin/bionilux" | grep 'Machine:.*AArch64'
-"$TC/bin/llvm-readelf" -l "$WORK/backend/bin/bionilux" | grep '/system/bin/linker64'
-aarch64-linux-gnu-readelf -h "$WORK/backend/lib/libbionilux_preload.so" | grep 'Machine:.*AArch64'
-tar --sort=name --mtime="@$EPOCH" --owner=0 --group=0 --numeric-owner -cJf "$STAGE/bionilux-backend-aarch64.tar.xz" -C "$WORK/backend" bin lib scripts share
+python3 scripts/source-build/prepare-proot-backend.py \
+  "$TERMUX_WEBROOT" "$TERMUX_PROVENANCE" scripts/source-build/linux-inputs.json "$TERMUX_BOOTSTRAP_USR" \
+  "$WORK/backend" "$WORK/native-libs"
+aarch64-linux-gnu-readelf -h "$NATIVE_LIBS/libpocketharness_proot.so" | grep 'Machine:.*AArch64'
+aarch64-linux-gnu-readelf -l "$NATIVE_LIBS/libpocketharness_proot.so" | grep '/system/bin/linker64'
+aarch64-linux-gnu-readelf -h "$NATIVE_LIBS/libpocketharness_proot_loader.so" | grep 'Machine:.*AArch64'
+if aarch64-linux-gnu-readelf -l "$NATIVE_LIBS/libpocketharness_proot_loader.so" | grep -q 'Requesting program interpreter'; then
+  echo 'PRoot loader must be static and directly executable from nativeLibraryDir' >&2
+  exit 1
+fi
+tar --sort=name --mtime="@$EPOCH" --owner=0 --group=0 --numeric-owner -cJf \
+  "$STAGE/proot-backend-aarch64.tar.xz" -C "$WORK/backend" bin lib libexec share LICENSE-GPL-2.0.txt
 
 curl --fail --location --retry 3 "$DEBIAN_SNAPSHOT/dists/trixie/InRelease" -o "$WORK/input/debian-InRelease"
 printf '%s  %s\n' "$DEBIAN_SHA" "$WORK/input/debian-InRelease" | sha256sum --check --strict
 gpgv --keyring "$DEBIAN_KEYRING" "$WORK/input/debian-InRelease"
 # Never recursively clean a leftover host bind mount or a redirected directory.
 [[ "$(realpath -m "$ROOTFS")" == "$ROOTFS" ]] || exit 1
-if mountpoint -q "$ROOTFS/dev" || mountpoint -q "$ROOTFS/proc"; then echo 'Previous rootfs contains mounts; refuse cleanup' >&2; exit 1; fi
+if [[ -e "$ROOTFS" || -L "$ROOTFS" ]]; then
+  python3 scripts/source-build/ensure-no-rootfs-mounts.py "$ROOTFS"
+fi
 sudo rm -rf -- "$ROOTFS"
 sudo debootstrap --arch=arm64 --foreign --variant=minbase --components=main \
   --keyring="$DEBIAN_KEYRING" \
@@ -76,41 +100,18 @@ sudo mount -t proc proc "$ROOTFS/proc"
 sudo chroot "$ROOTFS" /debootstrap/debootstrap --second-stage
 test "$(sudo chroot "$ROOTFS" dpkg --print-architecture)" = arm64
 sudo chroot "$ROOTFS" /bin/bash -ec '/lib/ld-linux-aarch64.so.1 --version; /usr/bin/apt-get --version'
-sudo chroot "$ROOTFS" apt-mark hold libc6:arm64 libc-bin:arm64
-for package in libc6:arm64 libc-bin:arm64; do
-  if ! sudo chroot "$ROOTFS" dpkg --get-selections "$package" | awk '$2 == "hold" { found=1 } END { exit !found }'; then
-    echo "glibc loader package was not held: $package" >&2
-    exit 1
-  fi
-done
-libc6_version=$(sudo chroot "$ROOTFS" dpkg-query -W -f='${Version}' libc6:arm64)
-libc_bin_version=$(sudo chroot "$ROOTFS" dpkg-query -W -f='${Version}' libc-bin:arm64)
-test "$libc6_version" = "$libc_bin_version"
-printf 'libc6:arm64\t%s\theld\nlibc-bin:arm64\t%s\theld\n' \
-  "$libc6_version" "$libc_bin_version" > "$WORK/provenance/linux-loader-apt-holds.txt"
 cleanup_mounts
 trap - EXIT
 sudo rm -f "$ROOTFS/usr/bin/qemu-aarch64-static"
 sudo chroot "$ROOTFS" dpkg-query -W '-f=${binary:Package}\t${Version}\t${source:Package}\t${source:Version}\n' > "$WORK/provenance/debian-packages.tsv"
-# Android denies direct execve from the writable app files directory for the
-# app's target SDK. Package the matched glibc loader under APK nativeLibraryDir,
-# where Android labels installed native libraries as apk_data_file. Bionilux's
-# initial launcher is packaged there too so guest re-exec uses the same trusted
-# executable location instead of its private backend copy.
-ROOTFS_LOADER=$(realpath "$ROOTFS/lib/ld-linux-aarch64.so.1")
-case "$ROOTFS_LOADER" in
-  "$ROOTFS"/*) ;;
-  *) echo 'glibc loader resolved outside the built rootfs' >&2; exit 1 ;;
-esac
-test -f "$ROOTFS_LOADER"
-install -m755 "$ROOTFS_LOADER" "$NATIVE_LIBS/libpocketharness_glibc_loader.so"
-"$TC/bin/llvm-readelf" -h "$NATIVE_LIBS/libpocketharness_bionilux.so" | grep 'Machine:.*AArch64'
-"$TC/bin/llvm-readelf" -l "$NATIVE_LIBS/libpocketharness_bionilux.so" | grep '/system/bin/linker64'
-aarch64-linux-gnu-readelf -h "$NATIVE_LIBS/libpocketharness_glibc_loader.so" | grep 'Machine:.*AArch64'
-if aarch64-linux-gnu-readelf -l "$NATIVE_LIBS/libpocketharness_glibc_loader.so" | grep -q 'Requesting program interpreter'; then
-  echo 'glibc loader must be directly executable and have no PT_INTERP' >&2
-  exit 1
-fi
+mkdir -p "$WORK/provenance"
+aarch64-linux-gnu-gcc -shared -fPIC -O2 -Wall -Wextra -Werror \
+  -ffile-prefix-map="$ROOT"=/usr/src/pocket-harness -fdebug-prefix-map="$ROOT"=/usr/src/pocket-harness \
+  -Wl,-soname,libpocket-linux-compat.so \
+  -o "$WORK/provenance/libpocket-linux-compat.so" vendor/linux-proot/compat/termfold_compat.c -ldl
+sudo install -D -m755 "$WORK/provenance/libpocket-linux-compat.so" "$ROOTFS/opt/pocket-harness/libpocket-linux-compat.so"
+sudo sh vendor/linux-proot/scripts/prepare-rootfs.sh --rootfs "$ROOTFS"
+sudo sh vendor/linux-proot/scripts/prepare-rootfs.sh --rootfs "$ROOTFS" --verify
 sha256sum "$NATIVE_LIBS"/*.so > "$WORK/provenance/linux-native-libraries.sha256"
 node scripts/source-build/check-linux-native-libraries.mjs "$WORK/native-libs"
 find "$ROOTFS/var/cache/apt/archives" -type f -name '*.deb' -print0 | sort -z | xargs -0 -r sha256sum > "$WORK/provenance/debian-debs.sha256"
@@ -134,8 +135,8 @@ sudo rm -rf -- "$ROOTFS/debootstrap" "$ROOTFS/var/lib/apt/lists" "$ROOTFS/var/ca
 sudo mkdir -p "$ROOTFS/var/lib/apt/lists/partial" "$ROOTFS/var/cache/apt/archives/partial" "$ROOTFS/etc/apt/sources.list.d"
 sudo rm -f "$ROOTFS/etc/resolv.conf" "$ROOTFS/etc/machine-id" "$ROOTFS/var/lib/dbus/machine-id" "$ROOTFS/var/cache/ldconfig/aux-cache"
 sudo find "$ROOTFS/var/log" -type f -exec truncate -s0 {} +
-sudo sh vendor/bionilux/scripts/prepare-rootfs.sh --rootfs "$ROOTFS" --relative-links
-sudo sh vendor/bionilux/scripts/prepare-rootfs.sh --rootfs "$ROOTFS" --relative-links --verify
+sudo sh vendor/linux-proot/scripts/prepare-rootfs.sh --rootfs "$ROOTFS"
+sudo sh vendor/linux-proot/scripts/prepare-rootfs.sh --rootfs "$ROOTFS" --verify
 test ! -e "$ROOTFS/etc/hostname"
 printf '%s\n' '127.0.0.1 localhost' '::1 localhost ip6-localhost ip6-loopback' | diff - "$ROOTFS/etc/hosts"
 if grep -RniE 'Acquire::(http|https)::Proxy|proxy=' "$ROOTFS/etc/apt/apt.conf.d"; then
@@ -153,7 +154,12 @@ python3 scripts/source-build/package-linux-assets.py "$WORK" "$EPOCH"
 qemu-aarch64-static -L "$ROOTFS" "$WORK/node-stage/bin/node" --version | grep -Fx "v$NODE_VERSION"
 cp "$WORK/input/debian-InRelease" "$WORK/provenance/"
 cp scripts/source-build/linux-inputs.json scripts/source-build/linux-source-manifest.json "$WORK/provenance/"
+cp "$WORK/proot-backend-inputs.json" "$WORK/provenance/"
+mkdir -p "$WORK/provenance/linux-native-licenses"
+cp -a "$WORK/backend/share/licenses/." "$WORK/provenance/linux-native-licenses/"
+install -D -m644 vendor/linux-proot/compat/LICENSE \
+  "$WORK/provenance/linux-native-licenses/pocket-harness-termfold-compat/LICENSE"
 printf '%s\n' "$(git rev-parse HEAD)" > "$WORK/provenance/project-source-commit.txt"
-tar --sort=name --mtime="@$EPOCH" --owner=0 --group=0 --numeric-owner -cJf "$WORK/provenance/linux-component-source.tar.xz" \
-  vendor/bionilux vendor/dsh-linux-runtime plugins/dsh-linux-bootstrap scripts/source-build/build-linux-assets.sh scripts/source-build/linux-inputs.json scripts/source-build/package-linux-assets.py scripts/source-build/check-linux-native-libraries.mjs
+tar --sort=name --mtime="@$EPOCH" --owner=0 --group=0 --numeric-owner \
+  -cJf "$WORK/provenance/linux-component-source.tar.xz" "${SOURCE_PROOF_INPUTS[@]}"
 echo "Built verified ARM64 Linux assets: $STAGE"

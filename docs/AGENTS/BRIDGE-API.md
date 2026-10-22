@@ -224,7 +224,7 @@ bootstrap 调用 `linuxPluginHost.install({directory,entry='lib/index.js',config
 
 `linuxPluginHost.isInjected({name?, runtimeId?, directory?})` 是**在场（presence）的只读权威**，返回 `{injected, active}`（含 `directory`）：接受显式 `directory`，或按单段目录名（拒绝分隔符与 `.`/`..`）查 `$DSH_FILES_DIR/linux-environment/plugins/<name>`，支持平铺与 `<name>/<version>` 两级并在多版本时优先取最新已验证目录；只读 stat/realpath，**不创建、不修复、不重新下载**，bootstrap 只能用它做只读判定。因此用户手工移除的 runtime 不会被新 Release 或新应用版本复活：显式查询未命中即返回在场 `false`（不回落到内存中已激活的目录），随后的 `install()` 以「not present in the injection directory」失败关闭；bootstrap 应随之持久化未启用并停止安装。跨出根目录的符号链接与越级目录名同样判为不在场。**在场不等于启用**：首次安装与自动更新都必须显式确认（`confirmed:true`，install/reinstall 还需 `activate:true`）后才调用宿主激活，宿主本身不发起任何启用。
 
-`status` 归一映射同时接受 Bionilux 定稿字段（`installed/version/mobileVersion/autoUpdate/availableVersion/updateAvailable/updateBlocked/busy/operation/runtime/injectionActivated/enabled/pluginReleaseUrls/lastCheckAt/error/lastErrorCode`）与此前提案字段（`installedLinuxVersion/currentMobileVersion/autoUpdateEnabled/latestReleaseVersion/runtimeId/plugins.*.releaseUrl/lastError`）；`updateBlocked` 时不下发候选版本但保留不兼容原因，缺版本号显示 `unknown` 而不留空。自动检查门为「已安装 + `injectionActivated !== false` + `enabled !== false` + 开关开启 + 应用版本与安装时记录不同」，每个应用版本一次，由服务侧持久化去重。
+`status` 归一映射同时接受 0.5.x 旧版 bootstrap 字段（`installed/version/mobileVersion/autoUpdate/availableVersion/updateAvailable/updateBlocked/busy/operation/runtime/injectionActivated/enabled/pluginReleaseUrls/lastCheckAt/error/lastErrorCode`）与此前提案字段（`installedLinuxVersion/currentMobileVersion/autoUpdateEnabled/latestReleaseVersion/runtimeId/plugins.*.releaseUrl/lastError`）；`updateBlocked` 时不下发候选版本但保留不兼容原因，缺版本号显示 `unknown` 而不留空。自动检查门为「已安装 + `injectionActivated !== false` + `enabled !== false` + 开关开启 + 应用版本与安装时记录不同」，每个应用版本一次，由服务侧持久化去重。
 
 ### 资产准备（0.15.0，(iii) 形态：客户端触发）
 
@@ -241,7 +241,7 @@ bootstrap 调用 `linuxPluginHost.install({directory,entry='lib/index.js',config
 
 **端到端仍未打通（不记通过）**：客户端调用 `linuxAssetPrepare` 的那一步、以及引擎侧 bootstrap 的透传接线都**尚未落地**；且 bootstrap 包本身还没进注入集，因此**不会随应用分发**。本轮交付的是宿主侧「可准备」的能力与其反证，不是可安装的系统。
 
-页面状态由 `normalizeLinuxStatus` 映射，同时接受 Bionilux 定稿字段与此前提案字段；其中两条插件 `releaseUrl` 来自 bootstrap 状态（`pluginReleaseUrls` 或 `plugins.*.releaseUrl`），不拼接默认最新版本。Linux rootfs 是 glibc 运行支持，不是安全沙箱；guest root 不等于 Android root；Termux/Bionic Bash 与 Debian/glibc Linux Bash 分开展示，共享 glibc Node 不替换原有 Termux Node。已安装但 runtime 被手工移除时，页面显式显示「自动更新已停用」并要求重新放回并启用，而不是静默停更。内部 bootstrap 成品接线及真实安装验收状态见 `known-gaps.md`。
+页面状态由 `normalizeLinuxStatus` 映射，同时接受 0.5.x 旧版 bootstrap 字段与此前提案字段；其中两条插件 `releaseUrl` 来自 bootstrap 状态（`pluginReleaseUrls` 或 `plugins.*.releaseUrl`），不拼接默认最新版本。Linux rootfs 是 glibc 运行支持，不是安全沙箱；guest root 不等于 Android root；Termux/Bionic Bash 与 Debian/glibc Linux Bash 分开展示，共享 glibc Node 不替换原有 Termux Node。已安装但 runtime 被手工移除时，页面显式显示「自动更新已停用」并要求重新放回并启用，而不是静默停更。内部 bootstrap 成品接线及真实安装验收状态见 `known-gaps.md`。
 
 
 当前 Shizuku 协议为 v5：namespace 与 AIDL descriptor 已统一迁移，服务 version 随协议增加以淘汰旧缓存；v4 引入的 configuration() 与全部 transaction 编号保持不变。升级与验证边界见 NAMESPACE-MIGRATION-2026-10-19.md。

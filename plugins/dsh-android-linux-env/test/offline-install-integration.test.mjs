@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import { execFileSync } from 'node:child_process'
-import { chmod, cp, lstat, mkdir, mkdtemp, readFile, readlink, rm, stat, symlink, writeFile } from 'node:fs/promises'
+import { chmod, cp, lstat, mkdir, mkdtemp, readFile, readlink, readdir, rm, stat, symlink, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import tar from 'tar-stream'
@@ -31,9 +31,31 @@ async function archive(file, entries) {
   return file
 }
 const dirEntry = name => [{ name, type: 'directory', size: 0 }, '']
-const fileEntry = (name, body = 'payload') => [{ name, type: 'file' }, body]
+const fileEntry = (name, body = 'payload', mode = 0o644) => [{ name, type: 'file', mode }, body]
 const symlinkEntry = (name, linkname) => [{ name, type: 'symlink', linkname, size: 0 }, '']
 const hardlinkEntry = (name, linkname) => [{ name, type: 'link', linkname, size: 0 }, '']
+async function archiveDirectory(file, root) {
+  const entries = [dirEntry('./')]
+  async function visit(directory, prefix = '') {
+    for (const name of (await readdir(directory)).sort()) {
+      const path = join(directory, name)
+      const relativeName = prefix ? `${prefix}/${name}` : name
+      const info = await lstat(path)
+      if (info.isDirectory()) {
+        entries.push([{ name: relativeName + '/', type: 'directory', mode: info.mode & 0o777, size: 0 }, ''])
+        await visit(path, relativeName)
+      } else if (info.isSymbolicLink()) {
+        entries.push(symlinkEntry(relativeName, await readlink(path)))
+      } else if (info.isFile()) {
+        entries.push(fileEntry(relativeName, await readFile(path), info.mode & 0o777))
+      } else {
+        throw new Error(`unsupported fixture entry: ${path}`)
+      }
+    }
+  }
+  await visit(root)
+  return archive(file, entries)
+}
 
 test('bootstrap apply activates in real Cordis with the host-provided dataDir', () => fixture(async filesDir => {
   const previousFilesDir = process.env.DSH_FILES_DIR
@@ -154,13 +176,12 @@ async function unpackedSize(dir) {
 test('offline production host + bootstrap + runtime install, execute, reinstall and uninstall', { ...posix, timeout: 30_000 }, () => fixture(async filesDir => {
   const bundle = join(filesDir, 'signed-bundle')
   await mkdir(bundle)
-  const base = 'https://github.com/snoworwind/pocket-harness/releases/download/v0.5.0/'
+  const base = 'https://github.com/snoworwind/pocket-harness/releases/download/v0.6.0/'
   async function pack(name, build) {
     const source = join(filesDir, name + '-source')
     await mkdir(source)
     await build(source)
-    // Same producer shape as package-linux-assets.py, including the ./ root member.
-    execFileSync('tar', ['--sort=name', '-cJf', join(bundle, name), '-C', source, '.'])
+    await archiveDirectory(join(bundle, name), source)
     const bytes = await readFile(join(bundle, name))
     return { url: base + name, size: bytes.length, sha256: sha(bytes), unpackedSize: await unpackedSize(source) }
   }
@@ -173,30 +194,38 @@ test('offline production host + bootstrap + runtime install, execute, reinstall 
     const { symlink } = await import('node:fs/promises')
     await symlink('../lib/node_modules/npm/bin/npm-cli.js', join(source, 'bin/npm'))
   })
-  const backend = await pack('bionilux-backend-aarch64.tar.xz', async source => {
-    await put(source, 'bin/bionilux', '#!/bin/sh\n', 0o755)
-    await put(source, 'lib/libbionilux_preload.so', 'fixture native payload\n')
-    await put(source, 'scripts/prepare-rootfs.sh', '#!/bin/sh\n', 0o755)
+  const backend = await pack('proot-backend-aarch64.tar.xz', async source => {
+    await put(source, 'bin/proot', '#!/bin/sh\n', 0o755)
+    await put(source, 'lib/libtalloc.so', 'fixture talloc payload\n')
+    await put(source, 'lib/libandroid-shmem.so', 'fixture shmem payload\n')
+    await put(source, 'libexec/proot/loader', '#!/bin/sh\n', 0o755)
+    await put(source, 'LICENSE-GPL-2.0.txt', 'fixture GPL text\n')
   })
   const rootfs = await pack('debian-minimal-aarch64.tar.xz', async source => {
     for (const name of ['sh', 'bash', 'apt-get', 'dpkg']) await put(source, 'usr/bin/' + name, '#!/bin/sh\n', 0o755)
     await put(source, 'etc/os-release', 'ID=debian\n')
+    await put(source, 'etc/resolv.conf', '# generated at runtime\n')
+    await put(source, 'etc/ld.so.preload', '/opt/pocket-harness/libpocket-linux-compat.so\n')
+    await put(source, 'opt/pocket-harness/libpocket-linux-compat.so', 'fixture compatibility preload\n', 0o755)
+    for (const name of ['dev', 'dev/shm', 'proc', 'sys', 'tmp', 'var/tmp']) await mkdir(join(source, name), { recursive: true })
     const { symlink } = await import('node:fs/promises')
     await symlink('usr/bin', join(source, 'bin'))
   })
   const bootstrapAsset = { ...runtime, url: base + 'linux-bootstrap-plugin.tar.xz' }
-  const manifest = { schemaVersion: 1, version: '0.5.0', minMobileVersion: '0.14.0', plugins: { bootstrap: bootstrapAsset, runtime }, runtimes: [{ id: 'debian-minimal', label: 'Debian', architecture: 'arm64', backend: 'bionilux', backendAsset: backend, rootfsAsset: rootfs, nodeAsset: node }] }
+  const manifest = { schemaVersion: 1, version: '0.6.0', minMobileVersion: '0.14.0', plugins: { bootstrap: bootstrapAsset, runtime }, runtimes: [{ id: 'debian-minimal', label: 'Debian', architecture: 'arm64', backend: 'proot', prootVersion: '5.1.107.98', backendAsset: backend, rootfsAsset: rootfs, nodeAsset: node }] }
   const manifestBytes = Buffer.from(JSON.stringify(manifest))
   await writeFile(join(bundle, 'linux-release.json'), manifestBytes)
   await writeFile(join(bundle, 'linux-runtime-manifest.sha256'), sha(manifestBytes))
   const tools = new Map()
   const ctx = new Context()
   ctx.provide('tools', { register(tool) { tools.set(tool.name, tool); return () => tools.delete(tool.name) } })
-  const config = createLinuxBootstrapConfig({ filesDir, appVersion: '0.14.7', bundleDirectory: bundle })
+  const config = createLinuxBootstrapConfig({ filesDir, appVersion: '0.14.8', bundleDirectory: bundle })
   const calls = []
   const nativeRunner = async spec => {
     calls.push(spec)
-    return { exitCode: 0, stdout: spec.args[0] === 'node' ? 'v24.22.0\n' : 'native-fixture-ok\n', stderr: '' }
+    const versionProbe = spec.args?.length === 1 && spec.args[0] === '--version'
+    const guestProbe = spec.args?.at(-1) === 'node --version'
+    return { exitCode: 0, stdout: versionProbe ? 'PRoot v5.1.107.98\n' : guestProbe ? 'v24.22.0\n' : 'native-fixture-ok\n', stderr: '' }
   }
   const host = createLinuxPluginHost({ root: join(filesDir, 'linux-environment', 'plugins'), activate: (plugin, options) => cordisScope(ctx.plugin(plugin, options)) })
   const originalFetch = globalThis.fetch
@@ -217,7 +246,7 @@ test('offline production host + bootstrap + runtime install, execute, reinstall 
     assert.equal(ownedManager.disposed, true, 'real Cordis teardown awaits the owned runtime manager')
     assert.equal(tools.has('linux_bash'), false)
     assert.equal(network, 0)
-    assert.ok(calls.some(spec => spec.args[0] === 'node'))
+    assert.ok(calls.some(spec => spec.args.at(-1) === 'node --version'))
   } finally {
     globalThis.fetch = originalFetch
     await host.uninstall()

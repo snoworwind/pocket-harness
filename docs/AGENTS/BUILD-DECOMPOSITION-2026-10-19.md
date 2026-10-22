@@ -12,7 +12,7 @@
 
 1. checkout 固定 upstream Harness，pnpm install/build/deploy，打补丁和 overlay；
 2. Termux bootstrap、签名仓库、`node-pty` 交叉编译、组装 base；
-3. Linux assets（Debian rootfs、bionilux、glibc Node）；
+3. Linux assets（Termux PRoot 包闭包、Debian rootfs、glibc Node）；
 4. 快照、Kotlin、APK、双构建比对、签名。
 
 其中 engine、Termux base、Linux assets 只在**上游/补丁/工具链输入变化**时才变，普通 app/插件改动不需要重编。但当前没有 `actions/cache`，也没有组件级 artifact，导致每次全量。
@@ -45,7 +45,7 @@ upstream Harness(固定 commit) + overlay/patches/toolchain
 bootstrap(固定 SHA) + signed repo + preinstall + node-pty + engine lock
         └─> termux-key      ──> base-termux-<key>.tar.zst + manifest
 
-linux-inputs + vendor/bionilux + build scripts
+linux-inputs + Termux signed package closure + vendor/linux-proot + build scripts
         └─> linux-key       ──> base-linux-<key>.tar.zst + manifest
 
 project plugins/client/web
@@ -65,7 +65,7 @@ snapshot + Kotlin/app assets
 | **engine** | `scripts/contract.json` upstream commit、`engine-overlay.json`、`engine-overlay-licenses.json`、`scripts/patches/**`、engine 构建脚本、Node/pnpm/Python 版本 | 是 | 任一输入变化 |
 | **termux-base** | bootstrap SHA、签名仓库/preinstall、`prepare-termux-*.py`、`build-node-pty-android.mjs`、engine lock/版本、NDK/Node | 是 | 任一输入变化 |
 | **node-pty binding** | node-pty 版本、Termux headers、NDK | 是 | 版本/headers 变化 |
-| **linux-assets** | `linux-inputs.json`、`linux-source-manifest.json`、`vendor/bionilux/**`、`vendor/dsh-linux-runtime/**`、Linux 构建脚本 | 是 | Linux 输入变化；不随 app 改动重建 |
+| **linux-assets** | `linux-inputs.json`、`linux-backend-packages.json`、`linux-source-manifest.json`、`vendor/linux-proot/**`、`vendor/dsh-linux-runtime/**`、Linux 构建脚本 | 是 | Linux 输入变化；不随 app 改动重建 |
 | **plugins** | `plugins/**`、`dsh-shell-termux/**`、client/web 源 | 按 commit | 插件/客户端变化 |
 | **snapshot** | 所有 base key + 项目 commit | 否 | 任何下游变化 |
 | **APK** | snapshot + `app/**`/Gradle/assets | 否 | app 或 snapshot 变化 |

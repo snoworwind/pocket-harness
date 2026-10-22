@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os'
 
 const ROOT = resolve(import.meta.dirname, '..', '..')
 const EXPECTED = new Set([
-  'bionilux-backend-aarch64.tar.xz',
+  'proot-backend-aarch64.tar.xz',
   'debian-minimal-aarch64.tar.xz',
   'linux-bootstrap-plugin.tar.xz',
   'linux-release.json',

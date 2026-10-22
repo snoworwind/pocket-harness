@@ -27,7 +27,7 @@ import org.junit.Test
 class LinuxAssetPrepareTest {
 
   private val goodUrl =
-    "https://github.com/kelai141/dsh-bionilux/releases/download/v1.2.0/linux-runtime-plugin.tar.xz"
+    "https://github.com/snoworwind/pocket-harness/releases/download/v0.6.0/linux-runtime-plugin.tar.xz"
 
   private lateinit var root: File
   private lateinit var envRoot: File
@@ -119,7 +119,7 @@ class LinuxAssetPrepareTest {
     LinuxAssetPrepare.opener = LinuxAssetIO.Opener { _, _, _ -> fetched = true; -1L }
 
     val bytes = goodArchive()
-    for (bad in listOf("http://github.com/kelai141/dsh-bionilux/releases/download/v1/a.tar.xz", "https://evil.example.com/a.tar.xz")) {
+    for (bad in listOf("http://github.com/snoworwind/pocket-harness/releases/download/v1/a.tar.xz", "https://evil.example.com/a.tar.xz")) {
       val answer = JSONObject(LinuxAssetPrepare.start(root, specJson(bytes, url = bad)))
       assertEquals(false, answer.getBoolean("ok"))
       assertEquals(LinuxAssetIO.CODE_URL_REJECTED, answer.getString("code"))

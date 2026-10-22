@@ -173,7 +173,9 @@ try {
   // ---- 1. 前置：基座/插件/vendor 在场 ----
   requires('snapshot 源', snapSrc)
   if (ABI === 'arm64') {
-    requires('Linux APK native libraries', join(linuxNativeLibraryDir, 'arm64-v8a', 'libpocketharness_bionilux.so'))
+    requires('Linux APK native libraries', join(linuxNativeLibraryDir, 'arm64-v8a', 'libpocketharness_proot.so'))
+    requires('Linux PRoot provenance', join(ROOT, '.deploy-tmp', 'linux-build', 'provenance', 'proot-backend-inputs.json'))
+    requires('Linux native license files', join(ROOT, '.deploy-tmp', 'linux-build', 'provenance', 'linux-native-licenses'))
     run('node', [gate('source-build/check-linux-native-libraries.mjs'), linuxNativeLibraryDir])
   }
   pluginDirs.forEach((p) => requires('插件', p))
@@ -354,7 +356,10 @@ try {
     else throw new Error('快照权限模式校验失败')
   }
   log('门禁：第三方许可…')
-  run('node', [gate('check-third-party.mjs'), 'x', '--tar', snapIn, '--write-notices', join(ROOT, 'THIRD_PARTY_NOTICES.md')])
+  const linuxBackendProvenance = join(ROOT, '.deploy-tmp', 'linux-build', 'provenance', 'proot-backend-inputs.json')
+  const linuxBackendLicenses = join(ROOT, '.deploy-tmp', 'linux-build', 'provenance', 'linux-native-licenses')
+  run('node', [gate('check-third-party.mjs'), 'x', '--tar', snapIn, '--write-notices', join(ROOT, 'THIRD_PARTY_NOTICES.md'),
+    ...(ABI === 'arm64' ? ['--linux-backend-provenance', linuxBackendProvenance, '--linux-backend-licenses', linuxBackendLicenses] : [])])
   log('门禁：机密（严格：归档不可读/成员为空即失败）…')
   run('node', [gate('check-snapshot-secrets.mjs'), snapIn, '--require'])
   log('门禁：ELF 架构…')
@@ -374,6 +379,11 @@ try {
   mkdirSync(licAssets, { recursive: true })
   for (const f of readdirSync(join(ROOT, 'LICENSES'))) if (f.endsWith('.txt')) copyFileSync(join(ROOT, 'LICENSES', f), join(licAssets, f))
   copyFileSync(join(ROOT, 'THIRD_PARTY_NOTICES.md'), join(licAssets, 'THIRD_PARTY_NOTICES.md'))
+  if (ABI === 'arm64') {
+    const linuxLicenseTarget = join(licAssets, 'linux-native')
+    rmSync(linuxLicenseTarget, { recursive: true, force: true })
+    cpSync(linuxBackendLicenses, linuxLicenseTarget, { recursive: true, errorOnExist: true, force: false })
+  }
   log('许可资产就位')
 
   // ---- 6-8. Shared terminal stage: snapshot/fingerprint + Gradle + copy ----
@@ -392,7 +402,8 @@ try {
   }, (cmd, argv, opts) => spawnSync(cmd, argv, { cwd: ROOT, encoding: 'utf8', stdio: 'inherit', ...opts }))
   if (ABI === 'arm64') {
     log('核对 APK 内原生 Linux launcher/loader 字节…')
-    run(PYTHON, [gate('source-build/verify-linux-native-apk.py'), finalApk, linuxNativeLibraryDir])
+    run(PYTHON, [gate('source-build/verify-linux-native-apk.py'), finalApk, linuxNativeLibraryDir,
+      join(licAssets, 'linux-native'), linuxBackendProvenance])
   }
   // 内嵌快照「真的能解压」门禁（0.14.7 / task-9 D-4）：必须紧跟 assembleApk —— 那时
   // assets/snapshot.tar.xz 正是本次被复制进 APK 的字节。判据与本地链同源（同一份脚本）。

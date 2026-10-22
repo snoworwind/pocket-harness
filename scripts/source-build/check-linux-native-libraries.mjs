@@ -3,11 +3,13 @@ import { createHash } from 'node:crypto'
 import { chmodSync, lstatSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 
 const EXPECTED = new Map([
-  ['libpocketharness_bionilux.so', { interp: '/system/bin/linker64' }],
-  ['libpocketharness_glibc_loader.so', { interp: null }],
+  ['libpocketharness_proot.so', { type: 3, interp: '/system/bin/linker64', entry: true }],
+  ['libpocketharness_proot_loader.so', { type: 2, interp: null, entry: true }],
+  ['libtalloc.so', { type: 3, interp: null, entry: false }],
+  ['libandroid-shmem.so', { type: 3, interp: null, entry: false }],
 ])
 
 function fail(message) { throw new Error(`Linux native library check: ${message}`) }
@@ -15,35 +17,34 @@ function fail(message) { throw new Error(`Linux native library check: ${message}
 function parseElf(bytes, name, expected) {
   if (bytes.length < 64 || bytes.subarray(0, 4).toString('hex') !== '7f454c46') fail(`${name} is not ELF`)
   if (bytes[4] !== 2 || bytes[5] !== 1 || bytes[6] !== 1) fail(`${name} must be 64-bit little-endian ELF`)
-  if (bytes.readUInt16LE(16) !== 3 || bytes.readUInt16LE(18) !== 183) fail(`${name} must be AArch64 ET_DYN`)
+  if (bytes.readUInt16LE(16) !== expected.type || bytes.readUInt16LE(18) !== 183) fail(`${name} has an unexpected ELF type or architecture`)
+  const entry = bytes.readBigUInt64LE(24)
   const phoff = Number(bytes.readBigUInt64LE(32))
-  if (bytes.readBigUInt64LE(24) === 0n) fail(`${name} has no executable entry point`)
   const phentsize = bytes.readUInt16LE(54)
   const phnum = bytes.readUInt16LE(56)
   if (phentsize < 56 || phnum < 1 || phoff + phentsize * phnum > bytes.length) fail(`${name} has an invalid program header table`)
   const interpreters = []
   let executableEntryMapped = false
-  const entry = bytes.readBigUInt64LE(24)
   for (let index = 0; index < phnum; index += 1) {
     const offset = phoff + index * phentsize
     const type = bytes.readUInt32LE(offset)
     if (type === 1) {
       const flags = bytes.readUInt32LE(offset + 4)
-      const segmentOffset = bytes.readBigUInt64LE(offset + 8)
+      const fileOffset = bytes.readBigUInt64LE(offset + 8)
       const virtualAddress = bytes.readBigUInt64LE(offset + 16)
       const fileSize = bytes.readBigUInt64LE(offset + 32)
       const memorySize = bytes.readBigUInt64LE(offset + 40)
-      if (fileSize > memorySize || segmentOffset + fileSize > BigInt(bytes.length)) fail(`${name} has an invalid PT_LOAD`)
-      if ((flags & 1) !== 0 && entry >= virtualAddress && entry < virtualAddress + memorySize) executableEntryMapped = true
+      if (fileSize > memorySize || fileOffset + fileSize > BigInt(bytes.length)) fail(`${name} has an invalid PT_LOAD`)
+      if (entry !== 0n && (flags & 1) !== 0 && entry >= virtualAddress && entry < virtualAddress + memorySize) executableEntryMapped = true
       continue
     }
     if (type !== 3) continue
-    const segmentOffset = Number(bytes.readBigUInt64LE(offset + 8))
+    const offsetInFile = Number(bytes.readBigUInt64LE(offset + 8))
     const segmentSize = Number(bytes.readBigUInt64LE(offset + 32))
-    if (segmentSize < 2 || segmentOffset + segmentSize > bytes.length) fail(`${name} has an invalid PT_INTERP`)
-    interpreters.push(bytes.subarray(segmentOffset, segmentOffset + segmentSize).toString('utf8').replace(/\0+$/, ''))
+    if (segmentSize < 2 || offsetInFile + segmentSize > bytes.length) fail(`${name} has an invalid PT_INTERP`)
+    interpreters.push(bytes.subarray(offsetInFile, offsetInFile + segmentSize).toString('utf8').replace(/\0+$/, ''))
   }
-  if (!executableEntryMapped) fail(`${name} entry point is not inside an executable PT_LOAD segment`)
+  if (expected.entry && (entry === 0n || !executableEntryMapped)) fail(`${name} entry point is not inside an executable PT_LOAD segment`)
   if (expected.interp === null ? interpreters.length !== 0 : interpreters.length !== 1 || interpreters[0] !== expected.interp) {
     fail(`${name} has an unexpected PT_INTERP (${interpreters.join(', ') || 'none'})`)
   }
@@ -73,7 +74,7 @@ export function checkLinuxNativeLibraries(directory) {
   return { architecture: 'arm64', files }
 }
 
-function fixtureElf(interp) {
+function fixtureElf({ type, interp = null, entry = true }) {
   const phoff = 64
   const phentsize = 56
   const phnum = interp ? 2 : 1
@@ -81,9 +82,9 @@ function fixtureElf(interp) {
   const interpOffset = phoff + phentsize * phnum
   const bytes = Buffer.alloc(interpOffset + interpBytes.length)
   bytes.set([0x7f, 0x45, 0x4c, 0x46, 2, 1, 1])
-  bytes.writeUInt16LE(3, 16)
+  bytes.writeUInt16LE(type, 16)
   bytes.writeUInt16LE(183, 18)
-  bytes.writeBigUInt64LE(0x40n, 24)
+  bytes.writeBigUInt64LE(entry ? 0x40n : 0n, 24)
   bytes.writeBigUInt64LE(BigInt(phoff), 32)
   bytes.writeUInt16LE(phentsize, 54)
   bytes.writeUInt16LE(phnum, 56)
@@ -108,28 +109,27 @@ function selfTest() {
     const libraries = join(root, 'native-libs')
     const abi = join(libraries, 'arm64-v8a')
     mkdirSync(abi, { recursive: true })
-    writeFileSync(join(abi, 'libpocketharness_bionilux.so'), fixtureElf('/system/bin/linker64'))
-    writeFileSync(join(abi, 'libpocketharness_glibc_loader.so'), fixtureElf(null))
+    for (const [name, shape] of EXPECTED) writeFileSync(join(abi, name), fixtureElf(shape))
     for (const name of EXPECTED.keys()) chmodSync(join(abi, name), 0o755)
     checkLinuxNativeLibraries(libraries)
 
-    writeFileSync(join(abi, 'libpocketharness_glibc_loader.so'), fixtureElf('/system/bin/linker64'))
+    writeFileSync(join(abi, 'libpocketharness_proot_loader.so'), fixtureElf({ type: 3, interp: '/system/bin/linker64' }))
     let rejected = false
-    try { checkLinuxNativeLibraries(libraries) } catch (error) { rejected = /unexpected PT_INTERP/.test(error.message) }
-    if (!rejected) fail('self-test did not reject a glibc loader with PT_INTERP')
-    console.log('PASS linux native libraries: AArch64 launcher accepted, malformed loader rejected')
+    try { checkLinuxNativeLibraries(libraries) } catch (error) { rejected = /unexpected ELF type/.test(error.message) || /unexpected PT_INTERP/.test(error.message) }
+    if (!rejected) fail('self-test accepted a dynamic PRoot loader')
+    console.log('PASS Linux native libraries: PRoot launcher, static loader, and dependency ELF shapes validated')
   } finally {
     rmSync(root, { recursive: true, force: true })
   }
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url))) {
+if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   try {
     if (process.argv[2] === '--self-test') selfTest()
     else {
       const result = checkLinuxNativeLibraries(process.argv[2] ?? '')
       for (const file of result.files) console.log(`${file.sha256} ${file.size} ${file.name}`)
-      console.log(`PASS linux native libraries: ${result.architecture}`)
+      console.log(`PASS Linux native libraries: ${result.architecture}`)
     }
   } catch (error) {
     console.error(error.message)

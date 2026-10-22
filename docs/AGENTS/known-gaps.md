@@ -7,6 +7,8 @@
 
 ## 当前入口
 
+- **2026-10-22 Linux 后端已改为 Termux PRoot，源码尚待构建/设备验收**：runtime/bootstrap `0.6.0`；Bionilux launcher/preload/native loader 构建链与 Cargo 许可收集器已移除，bootstrap 的历史来源仍保留。PRoot 资产来自 Termux 官方签名 ARM64 仓库包，Debian/Node/原生依赖的锁和 provenance 已改为对应来源。PRoot 不提供沙箱，guest 仍以 app UID 执行；宿主 `/proc` 不绑定进 guest，依赖 guest procfs 的工具可能不完整。硬链接拒绝最多复制 1 GiB，但副本不是共享 inode，dpkg 兼容性和磁盘行为仍待 ARM64 实机验收。本轮用户要求不做实机测试，且尚未执行 APK 构建、云端 CI。**来源可复现性边界**：Termux InRelease、软件包索引与 `.deb` 摘要在每次构建时验证并写入 provenance，但摘要尚未固定在仓库锁中；recipe URL 也仍指向可变 `master`。这能验证某次构建的来源，不能保证同一提交在未来取到相同 `.deb` 或相同配方。此前 0.5.x Bionilux 记录仅作历史证据，不代表当前实现。
+
 - 2026-10-20：继续比较上游源码后新增悬浮服务退出候选：本仓 OverlayService 缺少上游 #443 的服务自停/非粘性策略，现有 EngineService 的收尾不覆盖其未启动场景；实际任务划除复活仍待本仓设备复现。输入清空/回执与虚拟屏弹层差异也已细化反例。证据和静态推导见 [第二轮源码复核](UPSTREAM-SOURCE-REVIEW-2026-10-20.md)，实施依赖见 [吸收计划](UPSTREAM-ABSORPTION-PLAN-2026-10-20.md)。**本轮仅文档，未修复、未构建 APK、未做设备验证，不构成候选通过。**
 
 - 2026-10-19：Android `dsh-shell-termux` 的 `workspace-write`/`read-only` **没有路径级执行边界**；bash 以 app UID 直接运行，`spec.sandboxPolicy` 未被读取，`enforcement: partial` 不阻断、不触发审批、也不进入模型面。这是“模型可通过 bash 访问其他文件夹”的直接根因。详见 [dsh-shell-termux 沙箱边界审计](SHELL-TERMUX-SANDBOX-AUDIT-2026-10-19.md)。**未修复、未构建 APK、未做设备验证。**
@@ -95,13 +97,13 @@
 
 本仓交付实验性、默认不启用的宿主服务/API 与条件设置入口。bootstrap 与 runtime 是**我们自己的实验性内部插件**：按用户口径应随应用放入**内置（hard）插件目录**，但**默认不启用（存在不等于启用）**；应用更新或插件新版本发布都不得启用插件，也不得重新启用用户停用的插件。
 
-现状与缺口（如实登记）：bootstrap 源码 vendored 于 `plugins/dsh-linux-bootstrap/`（`@dsh-android/linux-bootstrap` 0.5.3，源 `kelai141/dsh-bionilux@3f86a85` `packages/linux-bootstrap`）。它现在已进入 `scripts/plugin-dirs.json`、`scripts/contract.json` 与 profile 插件挂载；来源链先编译 `lib/index.js` 和 `lib/client.js`，再同运行时、Bionilux、Debian ARM64 rootfs、glibc Node 一起嵌入快照的 `usr/share/pocket-harness/linux-assets`。插件服务由 `linux-env` 以函数配置注入 APK 签名保护下的快照资产、原始 manifest SHA-256 sidecar 和应用版本。配置只提供资产和信任校验；运行时仍默认禁用，安装/激活必须用户明确确认。工厂资产 workflow 的 artifact 仅保留为独立检查产物，APK 来源 workflow 会对当前提交重新构建，避免依赖短期 artifact。
+现状与缺口（如实登记）：bootstrap 源码 vendored 于 `plugins/dsh-linux-bootstrap/`（当前 `@dsh-android/linux-bootstrap` 0.6.0；历史上游为 `kelai141/dsh-bionilux@3f86a85` 的 `packages/linux-bootstrap`，这是 bootstrap 来源，不代表执行后端仍用 Bionilux）。它进入 `scripts/plugin-dirs.json`、`scripts/contract.json` 与 profile 插件挂载；来源链重建 `lib/index.js`/`lib/client.js`，并将 PRoot、Debian ARM64 rootfs、glibc Node 和插件资产嵌入快照 `usr/share/pocket-harness/linux-assets`。`linux-env` 以 APK 签名保护下的快照资产、原始 manifest SHA-256 sidecar 和应用版本配置 bootstrap。工具 runtime 不默认启用；安装/激活要求用户明确操作。工厂 workflow 的 artifact 仅用于独立检查，APK 来源 workflow 对当前提交重新构建。PRoot 安全边界和未验项以本节上方的 2026-10-22 迁移记录为准。
 
 漂移由 `scripts/check-vendored-linux-bootstrap.mjs` 守（`--self-test` 含 1 正控 + 3 负控）：断言 vendored 文件集 == 上游包去掉 `test/` 加本仓两个文件、9 个上游一致文件的 EOL 归一秒摘要、以及三条刻意偏差（`exports` 指 `./lib`、保留 `build` 脚本、去掉 `test` 脚本、`private:true`）。它**不进** `check-release-gates.mjs` 的 `GATES`（进册即要求本地链与云端链同时接线，而那是镜像面文件），故以文档化命令 + 自检形式提供。
 
 `kelai141/dsh-bionilux` 的内部 bootstrap 需被启用后提供 `linuxBootstrap` 服务、调用 `linuxPluginHost`（含 `isInjected` 在场查询）后再激活；构造/下载/解包由 bootstrap 拥有，运行时 manager 装配由宿主从激活作用域读出并交回（`install` 返回 `{manager, rollback?}`）。runtime 插件源码位于 `vendor/dsh-linux-runtime/`，APK 来源链从本仓源码构建插件 bundle 并嵌入离线资产，不依赖外部 Release 下载。**未覆盖**：离线生产 bundle 尚未在 Android 设备上实际安装/激活，`linuxPluginHost.install` 与 manager 交接仍只有源码/受控 Cordis 回归证据。
 
-端到端设备验收仍未完成：尚未在 Android 上完整验收离线 manifest/资产读取、Linux 安装、更新、重装、卸载及工具执行。2026-10-19 真机调查已确认被测 ROM 上 Linux 运行时无法启动，证据见 [Linux 环境调查](../linux-env-findings/README.md)。这些内部插件保持默认不启用，APK 更新不得自行启用它们；真实用户流程仍需设备验收。
+端到端设备验收仍未完成：尚未在 Android 上完整验收离线 manifest/资产读取、PRoot 安装、更新、重装、卸载及工具执行。2026-10-19 的 ROM 证据针对 Bionilux 旧路线，不能直接推断 PRoot 当前能否启动；PRoot 的 app 域 ptrace/nativeLibraryDir、guest `/proc` 缺失影响、DNS、guest ELF、多级子进程、apt/dpkg 和 hard-link fallback 都须用最终 ARM64 APK 验证。内部插件不默认激活，APK 更新不得自行启用；完整安全边界见 [PRoot 迁移记录](../linux-env-findings/PROOT-MIGRATION-2026-10-22.md)。
 
 **2026-10-20 真机证据与首个修复**：Huawei Mate 80 Pro Max（SGT-AL10，Android 16 / API 36，arm64-v8a）上的修复前 APK `862e17cffc7bb4a5395ae960eec3f364c953ce73f476ac754f69bcd2166cadbf` 在 `linux-bootstrap` 的 Cordis `apply()` 阶段因读取未声明的 `ctx.filesDir` 失败；配置已提供 `linuxBootstrapConfig.dataDir`，但 JS 在访问后续 `DSH_FILES_DIR` 回退前就抛错，导致服务未注册、状态路由 503、运行时未安装。PR #77 已移除此属性读取并新增真实 Cordis 激活回归用例；合入 main 的来源双构建和签名校验通过，生成草稿 APK `hardening-source-f37eaafe887c-39424480383-1`，SHA-256 `a2d1d85735b98a7168c0c5ea406a542518e5b9c1b82802a6ed0b2860d39d63dd`，尚未设备复验。此结果没有测试 Bionilux、loader、guest ELF 映射、noexec 或 SELinux；这些仍按 [Linux 恢复方案](../linux-env-findings/RECOVERY-PROPOSAL-2026-10-20.md) 保持未验收。
 
@@ -111,11 +113,13 @@
 
 **接入与验收边界**：壳侧 `LinuxAssetPrepare` 的网络准备面继续保留原有职责；离线 Linux bootstrap 使用另一条受 APK 签名保护的内置资产路径，不回退到网络下载。离线构建接线、自检与插件单测已经落地；来源 APK 云端全链已由 run [39374235296](https://github.com/snoworwind/pocket-harness/actions/runs/39374235296) 验证通过，Android 设备端到端验收仍未完成，不能记为 Linux 功能可用。
 
-**2026-10-21 子进程环境复修**：新版实机日志仍在 `prepare-rootfs.sh` 报 `find: Permission denied`。第二轮复核发现上一修复仅传 `LD_LIBRARY_PATH`，Linux runtime manager 的环境白名单仍过滤 termux-exec preload 与拦截变量；仅加 `TERMUX_APP__DATA_DIR` 还可能让 toybox `find` 返回 0。当前源码改为从 `DSH_FILES_DIR/usr` 推导完整 host env，安装前验证 GNU `find`/`sed`/`wc`，并由 Bionilux 在 guest 环境剔除 Termux 变量。详细原因改指向 `files/linux-environment/linux-bootstrap-state.json`。插件/资产版本统一 bump 至 0.5.1；本轮按用户要求未做实机测试，不能据源码通过宣称恢复，见 [最新修复记录](../linux-env-findings/REMEDIATION-TERMUX-EXEC-2026-10-21.md)。
+以下三条是 **Bionilux 后端时期的历史记录**，已由 2026-10-22 的 PRoot 迁移替代，不描述当前 Linux 执行入口。
 
-**2026-10-22 新日志与后续 DNS 修复**：`sed --version` exit 0 且为 GNU sed，但 Termux linker 让版本首行以绝对 `argv[0]` 路径开头，旧 `^sed` 正则误判；同时 rootfs 准备没传 `--dns`，Debian 资产没有 `/etc/resolv.conf`。当前 PR 源码放宽 `find/sed/wc` 身份正则，壳侧持续记录 Android 默认网络 DNS，rootfs 初始化与每次 guest spawn 都读取最新值，Bionilux resolver 支持 IPv6 nameserver 并避免沿用旧 resolver。Android API 28+ Private DNS 活跃时 fail-closed：rootfs 清除旧 nameserver，guest 暂不具备外网解析能力，避免绕过系统加密 DNS。Linux/runtime 版本升至 0.5.2。源码构建、自动测试和设备验证状态见 [修复记录](../linux-env-findings/REMEDIATION-HOST-TOOLS-DNS-2026-10-22.md)；旧 APK 不含本修复。
+**2026-10-21 子进程环境复修**：新版实机日志仍在 `prepare-rootfs.sh` 报 `find: Permission denied`。第二轮复核发现上一修复仅传 `LD_LIBRARY_PATH`，Linux runtime manager 的环境白名单仍过滤 termux-exec preload 与拦截变量；仅加 `TERMUX_APP__DATA_DIR` 还可能让 toybox `find` 返回 0。源码当时改为从 `DSH_FILES_DIR/usr` 推导完整 host env，安装前验证 GNU `find`/`sed`/`wc`，并由 Bionilux 在 guest 环境剔除 Termux 变量。详细原因改指向 `files/linux-environment/linux-bootstrap-state.json`。插件/资产版本统一 bump 至 0.5.1；当时按用户要求未做实机测试，见 [修复记录](../linux-env-findings/REMEDIATION-TERMUX-EXEC-2026-10-21.md)。
 
-**2026-10-22 Android app-data ELF 执行限制**：新设备证据确认 Bionilux 直接 `execve` 私有目录 glibc loader 被 Android 拒绝，linker64 又因 Debian loader 的 ELF PHDR 布局拒载。runtime `0.5.3` 把同源 Bionilux launcher 和 glibc loader 从 APK nativeLibraryDir 启动；来源链结构校验 ELF 并在最终 APK 核对两个成员字节。安装前 probe launcher，安装后以真实 guest Node `--version` 检查 loader/guest ELF 映射，失败不提交 active。rootfs 构建 hold `libc6:arm64` 和 `libc-bin:arm64`，且检查两者版本相同，避免常规 apt 操作更新 guest glibc 却不更新 APK loader；用户强制绕过 hold 仍可能破坏配对。targetSdk 34 保持不变。manager 33/33、ELF checker 与 APK payload checker 自检通过；CI APK 构建和设备层执行仍未验证。硬链接的受限复制兜底已由坑 466 记录，dpkg 实机回滚场景仍待测。详情见 [Android 执行入口修复](../linux-env-findings/REMEDIATION-ANDROID-EXEC-2026-10-22.md)。
+**2026-10-22 新日志与后续 DNS 修复（Bionilux 历史实现）**：`sed --version` exit 0 且为 GNU sed，但 Termux linker 让版本首行以绝对 `argv[0]` 路径开头，旧 `^sed` 正则误判；同时 rootfs 准备没传 `--dns`，Debian 资产没有 `/etc/resolv.conf`。当时的 PR 源码放宽 `find/sed/wc` 身份正则，壳侧持续记录 Android 默认网络 DNS，rootfs 初始化与每次 guest spawn 都读取最新值，Bionilux resolver 支持 IPv6 nameserver 并避免沿用旧 resolver。Android API 28+ Private DNS 活跃时 fail-closed：rootfs 清除旧 nameserver，guest 暂不具备外网解析能力，避免绕过系统加密 DNS。Linux/runtime 版本升至 0.5.2。源码构建、自动测试和设备验证状态见 [修复记录](../linux-env-findings/REMEDIATION-HOST-TOOLS-DNS-2026-10-22.md)；旧 APK 不含本修复。
+
+**2026-10-22 Android app-data ELF 执行限制（Bionilux 历史方案，已放弃）**：新设备证据确认 Bionilux 直接 `execve` 私有目录 glibc loader 被 Android 拒绝，linker64 又因 Debian loader 的 ELF PHDR 布局拒载。runtime `0.5.3` 曾把同源 Bionilux launcher 和 glibc loader 从 APK nativeLibraryDir 启动；这条路线没有成为当前后端。targetSdk 34 保持不变；历史分析详见 [Android 执行入口修复](../linux-env-findings/REMEDIATION-ANDROID-EXEC-2026-10-22.md)。当前 PRoot 迁移的验收状态见 [迁移记录](../linux-env-findings/PROOT-MIGRATION-2026-10-22.md)。
 
 **工具链边界**：APK workflow 的 Linux 交叉编译宿主工具由 Ubuntu runner 的 apt 仓库提供，目前未按每个 deb 固定版本与 SHA-256；NDK 官方 Linux 包只有 SHA-1 发布摘要可用，provenance 会披露该事实。离线 bundle 的用户侧信任锚仍是 APK 签名保护的原始 manifest 字节与 sidecar，逐项匹配内嵌资产的 SHA-256 和长度。主机工具链可复现性还需后续提高，不能把 source commit 相同直接等同于 bit-for-bit 可复现。
 

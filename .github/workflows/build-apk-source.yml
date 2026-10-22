@@ -455,10 +455,14 @@ jobs:
 
       - name: Build source-owned offline ARM64 Linux assets
         shell: bash
+        env:
+          DEBIAN_KEYRING: ${{ github.workspace }}/.deploy-tmp/linux-keyring/debian-archive-keyring.gpg
+          TERMUX_WEBROOT: ${{ github.workspace }}/.deploy-tmp/source-build/termux-webroot
+          TERMUX_PROVENANCE: ${{ github.workspace }}/.deploy-tmp/source-build/termux-packages-provenance.json
+          TERMUX_BOOTSTRAP_USR: ${{ github.workspace }}/.deploy-tmp/source-build/bootstrap-extracted/usr
         run: |
           set -euo pipefail
-          ndk=$(node -p 'require("./scripts/source-build/linux-inputs.json").ndk')
-          NDK="$GITHUB_WORKSPACE/.deploy-tmp/source-build/ndk/android-ndk-$ndk" DEBIAN_KEYRING="$GITHUB_WORKSPACE/.deploy-tmp/linux-keyring/debian-archive-keyring.gpg" bash scripts/source-build/build-linux-assets.sh
+          bash scripts/source-build/build-linux-assets.sh
 
       - name: Build runtime snapshot from verified inputs
         shell: bash

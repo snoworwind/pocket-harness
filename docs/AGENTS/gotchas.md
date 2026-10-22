@@ -2913,3 +2913,39 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 479. **APK 新输入必须跨过来源链磁盘回收点（2026-10-22）**
 
     现象：APK 组装新增依赖 `.deploy-tmp/linux-build/native-libs`，但来源链在快照封包后运行 `reclaim-build-disk.mjs`，该工具原先删除 `linux-build` 下除 provenance 外的所有内容，后续组装会因 native launcher/loader 缺失而中止。真因：磁盘回收清单按旧消费者边界把整个 Linux 构建目录都视为 snapshot-only，未随 APK 新输入更新。修法：清理时明确保留 `native-libs` 与 provenance；self-test 构造并断言 native launcher 穿过清理点；Linux asset workflow 的 path filter 显式包含新增 preload 集成测试文件。复验：`reclaim-build-disk.mjs --self-test` 与来源链相关 workflow 用例通过；没有设备验证。引用：本轮 Linux nativeLibraryDir APK 接入。
+
+480. **BSD `stat` 的 `%Lp` 会丢掉 sticky bit，rootfs 自检误拒绝模式正确的 `/tmp`（2026-10-22）**
+
+    现象：在 macOS 上运行 `prepare-rootfs.sh --verify`，Debian rootfs 的 `/tmp` 实为 `1777`，却被报告模式错误；GNU/Linux 上同一检查通过。真因：BSD `stat -f %Lp` 输出 `777`，不包含 sticky bit。修法：BSD fallback 改读 `%p`，剥去目录文件类型位后再比较权限；GNU stat 路径保持不变。复验：rootfs prepare/verify Python 测试在 macOS 通过，并覆盖 sticky bit 缺失的负控；Linux CI 仍须复核。
+
+481. **删除 rootfs 前必须检查其全部后代挂载点（2026-10-22）**
+
+    现象：rootfs 重试清理只检查 `/dev`、`/proc` 两个预期挂载点；若上次运行在其他深层目录留下 bind mount，递归删除会进入仍挂载的树并可能删错数据。真因：固定点检查把「预期挂载清理」误当成「目标目录无任何 mount」。修法：从 `/proc/self/mountinfo` 解码转义路径，按路径祖先关系检查 rootfs 本身及全部后代；mountinfo 不可读或格式异常一律拒绝删除。复验：纯函数用例覆盖 rootfs 本身、深层挂载、空格转义、相似前缀和损坏输入；未做 Android/PRoot 设备验证。
+
+482. **PRoot 许可 provenance 检查必须自身有可执行测试**
+
+    现象：Linux backend 第三方许可检查遍历 provenance 指定的 license 文件时调用 `lstatSync` 与 `relative`，但模块未导入这两个符号；旧测试只运行快照 dpkg 许可路径，不带 PRoot provenance，因此此发布路径会在构建期触发 `ReferenceError`。修法：显式导入文件与路径原语，增加完整 PRoot provenance 正控和 license 符号链接负控，并把测试纳入 Linux assets PR workflow。复验：`node --test scripts/check-third-party.test.mjs`；设备验证不适用。
+
+483. **硬链接降级复制必须原子发布，且复制上限要约束实时字节数**
+
+    现象：TermFold 兼容层原先直接以 `O_EXCL` 创建最终目标后再拷贝；普通错误会 unlink，但 guest 进程若在写入期间被杀，半文件会留在目标名下，使 dpkg 重试撞 `EEXIST`。源文件若在复制期间增长，初始 `st_size` 上限也不能限制实际写入量。修法：副本改写入同目录隐藏临时文件，按累计读取字节执行 1 GiB 上限，源 inode/元数据复核及权限/时间戳完成后 fsync，再以 `renameat2(RENAME_NOREPLACE)` 发布；普通失败清理临时文件，进程中断至多留下不占目标名的隐藏残片。复验：Linux preload 集成测试覆盖成功发布、写入失败清理及复制中 SIGKILL 后最终目标仍不存在；设备/PRoot 侧 renameat2 与 dpkg 重试待 ARM64 验收。
+
+484. **APK native payload 核验要拒绝符号链接输入，并把生成资产的脚本带入来源证明**
+
+    现象：APK 核验脚本先对 native library 根目录调用 `realpath`，会把符号链接静默规范化；Linux 资产 provenance 包也未包含生成签名 Termux 软件包闭包所需的引导、索引验证脚本和回归测试，拿到该包无法完整复查构建步骤。来源归档原先还把 bootstrap 插件整个目录归档；该步骤在 `npm ci` 后执行，可能混入未审阅且不由来源清单固定的 `node_modules`。真因：校验信任了路径规范化后的目标，来源归档清单覆盖不足且将运行目录当作源码目录。修法：核验 provenance、native root 与 ARM64 子目录必须为普通文件/目录；来源证明包明确纳入 Termux bootstrap、签名索引验证、后端组装、ELF/APK 核验、许可矩阵及关联测试；bootstrap 只归档明确的插件源码、元数据和测试路径，不含安装依赖目录。Linux 资产 workflow 的路径过滤同时覆盖构建链实际读取的预装清单、shell helper、Termux bootstrap、profile seeder、许可矩阵和发布来源 workflow。复验：APK 核验 self-test 加入符号链接 native root/ABI 负控；来源归档内容和 Linux asset workflow 过滤仍待验证。
+
+485. **PRoot guest 不能绑定整个宿主 `/proc`**
+
+    现象：runtime 将 Android 宿主 `/proc` 整棵映射进 guest，而引擎父进程环境含 `DSH_PICK_TOKEN`、`DASHSCOPE_API_KEY`、`DEEPSEEK_API_KEY`。在允许同 UID 进程读取的设备策略下，guest 可尝试从 `/proc/<pid>/environ` 或 `/proc/<pid>/root` 越过显式 workspace bind，接触引擎环境或 app 私有路径；本轮只有源码证据，未在设备上证明特定 ROM 的访问结果。真因：把 PRoot 的 `-b /proc` 当作普通 Linux 功能补齐，忽略了它是宿主路径映射，不会创建隔离 procfs。修法：移除 guest 的宿主 `/proc` bind，并在 runtime 命令构造回归中断言它缺席；兼容 preload 的 `/proc/self/fd/N` 分支从已有 fd 复制，不要求 guest 能浏览宿主 procfs。明确记录依赖 guest procfs 的程序可能不完整；PRoot 内部为翻译被跟踪文件描述符仍使用宿主 procfs。复验：`node --test vendor/dsh-linux-runtime/test/*.test.mjs` 31/31、Linux 来源哈希与 code-map 通过；未做 APK、云端 CI 或设备验收。
+
+486. **Termux provenance 必须与生成脚本的输出目录一致**
+
+    现象：Linux 资产专用 workflow 将 `TERMUX_PROVENANCE` 指向 `webroot/termux-packages-provenance.json`，但签名仓库准备脚本把文件写在 `webroot.parent`；PR 检查通过后，手动资产构建会在 PRoot 包组装阶段因 provenance 缺失而失败。真因：workflow 输入路径与生成脚本输出路径分开维护，没有跨文件契约检查。修法：workflow 与 APK 来源链都把 provenance 指向 webroot 的同级目录；`linux-assets-workflow.test.mjs` 对两个 workflow 的 webroot/provenance 关系加正向断言，并以嵌套进 webroot 的旧路径做负控。复验：本地 workflow 契约测试与 YAML 解析通过；未触发 CI、资产构建或设备测试。
+
+487. **Termux 包版本锁与可重复构建锁是两个层次**
+
+    现象：PRoot 依赖的精确版本受 `linux-backend-packages.json` 固定，构建时也校验 Termux InRelease、签名索引摘要和每个 `.deb` 摘要；但仓内不固定 InRelease 或 `.deb` 摘要，recipe 链接仍指向 `termux-packages/master`。因此某次构建有可核验 provenance，不代表同一仓库提交未来会取回相同软件包和配方。真因：把签名认证、版本选择与跨时间的输入复现视作同一保证。修法：在将跨时间可复现作为交付要求前，需把审核过的 InRelease/package 摘要与不可变 recipe 修订写入仓内锁，并为其变更加负控。复验：源码审查确认当前只在 build output provenance 记录这些摘要；未执行资产构建。
+
+488. **Android 原生执行目录应由显式路径识别，不依赖系统环境标记**
+
+    现象：壳侧总会注入 `DSH_LINUX_NATIVE_LIBRARY_DIR`，但 runtime 曾只在 `ANDROID_ROOT` 存在时选择 APK nativeLibraryDir；若系统启动环境缺少该标记，就会回退执行 app 私有目录中的 PRoot，撞回 Android 的 ELF exec 限制。真因：执行目录能力通过显式配置传入，平台判断却依赖另一份可缺失的隐式环境变量。修法：`ANDROID_ROOT` 或显式 native library 路径任一存在即按 Android 路径处理；native 路径不完整时在下载/安装前失败关闭。复验：runtime 回归用例删除 `ANDROID_ROOT` 后仍断言使用 APK 原生目录与当前 DNS；未做 APK/设备验证。

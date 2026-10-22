@@ -2330,16 +2330,15 @@ class EngineManager(private val context: Context, private val pickToken: String?
       "npm_config_store_dir" to pnpmStoreDir(homeDir),
       // 0.13.8 #183：引擎子进程读取键盘广播 nonce 的路径基（manage 插件 --es auth 随广播携带）
       "DSH_FILES_DIR" to context.filesDir.absolutePath,
-      // Bionilux and the matching glibc loader are PackageManager-extracted
-      // native libraries. Android allows execution from nativeLibraryDir while
-      // denying direct execve of ELFs placed in writable filesDir.
+      // PRoot, its static guest loader and dependencies are PackageManager-
+      // extracted native libraries. Android permits execution from this
+      // directory while denying direct execve of ELFs in writable filesDir.
       "DSH_LINUX_NATIVE_LIBRARY_DIR" to context.applicationInfo.nativeLibraryDir,
       // os.tmpdir() falls back to the baked-in Termux tmp on Android
       // (unwritable from the app domain); keep spill inside filesDir.
       "TMPDIR" to File(homeDir, "tmp").apply { mkdirs() }.absolutePath,
-      // Host-side Termux commands use termux-exec to enter app-private Bionic
-      // binaries through linker64. The glibc guest loader and Bionilux launcher
-      // use PackageManager-installed nativeLibraryDir copies instead.
+      // Host-side Termux commands use termux-exec for app-private Bionic tools.
+      // PRoot and its guest loader use PackageManager-installed native files.
       "LD_PRELOAD" to preload.absolutePath,
       "TERMUX_EXEC__SYSTEM_LINKER_EXEC__MODE" to "force",
       "TERMUX_EXEC__EXECVE_CALL__INTERCEPT" to "1",
@@ -2728,8 +2727,8 @@ private object LinuxDnsServers {
 
   private fun publishLinkProperties(context: Context, linkProperties: LinkProperties?) {
     // Android requires apps to keep DNS encrypted whenever Private DNS is in
-    // use. Bionilux currently sends classic UDP/TCP DNS, so fail closed until
-    // it can use Android's resolver or implement certificate-verified DoT.
+    // use. PRoot currently passes classic resolver traffic through the guest,
+    // so fail closed rather than bypass Android's encrypted DNS policy.
     val addresses = selectLinuxDnsServers(
       Build.VERSION.SDK_INT,
       linkProperties?.isPrivateDnsActive == true,

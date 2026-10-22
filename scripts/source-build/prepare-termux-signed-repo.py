@@ -6,6 +6,7 @@ import gzip
 import hashlib
 import json
 import pathlib
+import re
 import subprocess
 import sys
 import tempfile
@@ -31,9 +32,99 @@ def parse_stanzas(text: str):
                 record[key] += "\n" + line[1:]
             elif ": " in line:
                 key, value = line.split(": ", 1)
+                if key in record:
+                    raise ValueError(f"duplicate field in signed Termux package stanza: {key}")
                 record[key] = value
+            elif line.strip():
+                raise ValueError(f"invalid line in signed Termux package stanza: {line!r}")
         if "Package" in record:
             yield record
+
+
+DEPENDENCY_ATOM = re.compile(
+    r"^([a-z0-9][a-z0-9+.-]*)(?::([a-z0-9-]+))?"
+    r"(?:\s*\((<<|<=|=|>=|>>)\s*([^()\s]+)\))?"
+    r"(?:\s*\[([^]]+)\])?(?:\s*<([^>]+)>)?$"
+)
+
+
+def _version_satisfies(actual: str, operator: str, required: str) -> bool:
+    operators = {"<<": "lt", "<=": "le", "=": "eq", ">=": "ge", ">>": "gt"}
+    if operator not in operators:
+        raise ValueError(f"unsupported Debian version operator: {operator}")
+    result = subprocess.run(["dpkg", "--compare-versions", actual, operators[operator], required],
+                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    if result.returncode not in (0, 1):
+        raise ValueError(f"dpkg could not compare package versions {actual!r} and {required!r}")
+    return result.returncode == 0
+
+
+def _dependency_applies(expression: str, owner: str, records: dict[str, dict]) -> str | None:
+    match = DEPENDENCY_ATOM.fullmatch(expression.strip())
+    if not match:
+        raise ValueError(f"cannot parse dependency for {owner}: {expression!r}")
+    name, qualifier, operator, version, architecture_restriction, profiles = match.groups()
+    if profiles:
+        raise ValueError(f"unsupported build-profile dependency for {owner}: {expression!r}")
+    if architecture_restriction:
+        tokens = architecture_restriction.split()
+        supported = {"aarch64", "arm64", "!aarch64", "!arm64"}
+        if not tokens or any(token not in supported for token in tokens):
+            raise ValueError(f"unsupported architecture restriction for {owner}: {expression!r}")
+        positive = [token for token in tokens if not token.startswith("!")]
+        excluded = {token[1:] for token in tokens if token.startswith("!")}
+        if "aarch64" in excluded or "arm64" in excluded:
+            return None
+        if positive and not ({"aarch64", "arm64"} & set(positive)):
+            return None
+
+    record = records.get(name)
+    if record is None:
+        return None
+    architecture = record.get("Architecture")
+    if architecture not in ("aarch64", "all"):
+        return None
+    if qualifier in ("aarch64", "arm64", "native"):
+        if architecture not in ("aarch64", "all"):
+            return None
+    elif qualifier == "any":
+        if record.get("Multi-Arch") not in ("allowed", "foreign"):
+            return None
+    elif qualifier is not None:
+        raise ValueError(f"unsupported architecture qualifier for {owner}: {expression!r}")
+    if operator and not _version_satisfies(record.get("Version", ""), operator, version):
+        return None
+    return name
+
+
+def dependency_closure(records: dict[str, dict], seeds: list[str], purpose: str) -> set[str]:
+    needed = set()
+    queue = list(seeds)
+    while queue:
+        name = queue.pop(0)
+        if name in needed:
+            continue
+        record = records.get(name)
+        if not record:
+            print(f"skip {purpose} package absent from signed index: {name}")
+            continue
+        if record.get("Architecture") not in ("aarch64", "all"):
+            raise ValueError(f"{purpose} package has an incompatible architecture: {name}={record.get('Architecture')}")
+        needed.add(name)
+        for field in ("Pre-Depends", "Depends"):
+            expression = record.get(field, "").strip()
+            if not expression:
+                continue
+            for group in expression.split(","):
+                choices = []
+                for alternative in group.split("|"):
+                    choice = _dependency_applies(alternative, name, records)
+                    if choice:
+                        choices.append(choice)
+                if not choices:
+                    raise ValueError(f"signed Termux index has no applicable alternative for {name}: {group.strip()}")
+                queue.append(choices[0])
+    return needed
 
 
 def signed_sha256(release_text: str, relative_path: str) -> tuple[str, int]:
@@ -85,31 +176,42 @@ def main() -> None:
     actual_index_hash = hashlib.sha256(index_gz).hexdigest()
     if len(index_gz) != expected_index_size or actual_index_hash != expected_index_hash:
         raise ValueError("Termux Packages.gz does not match the signed Release file")
-    records = {record["Package"]: record for record in parse_stanzas(gzip.decompress(index_gz).decode("utf-8"))}
+    records = {}
+    for record in parse_stanzas(gzip.decompress(index_gz).decode("utf-8")):
+        name = record["Package"]
+        if name in records:
+            raise ValueError(f"duplicate package stanza in signed Termux index: {name}")
+        records[name] = record
     config = json.loads(preinstall_file.read_text(encoding="utf-8"))
-    targets = config["targets"]
+    backend_config_path = pathlib.Path(__file__).with_name("linux-backend-packages.json")
+    backend_config = json.loads(backend_config_path.read_text(encoding="utf-8"))
+    targets = config.get("targets")
+    linux_backend_targets = backend_config.get("targets")
+    if not isinstance(targets, list) or not isinstance(linux_backend_targets, list):
+        raise ValueError("Termux snapshot and Linux backend target lists must be arrays")
     missing_required = [name for name in config.get("requiredTargets", []) if name not in records]
     if missing_required:
         raise ValueError(f"required Termux packages are absent from the signed index: {', '.join(missing_required)}")
-    needed = set()
-    queue = list(targets)
-    while queue:
-        name = queue.pop(0)
-        if name in needed:
-            continue
-        record = records.get(name)
-        if not record:
-            print(f"skip package absent from signed index: {name}")
-            continue
-        needed.add(name)
-        for dependency in record.get("Depends", "").split(","):
-            candidate = dependency.strip().split(" ")[0]
-            if candidate and "|" not in candidate and candidate not in needed:
-                queue.append(candidate)
+    missing_backend = [name for name in backend_config.get("requiredTargets", []) if name not in records]
+    if missing_backend:
+        raise ValueError(f"required Linux backend packages are absent from the signed index: {', '.join(missing_backend)}")
+
+    snapshot_needed = dependency_closure(records, targets, "snapshot")
+    linux_backend_needed = dependency_closure(records, linux_backend_targets, "Linux backend")
+    needed = snapshot_needed | linux_backend_needed
 
     webroot.mkdir(parents=True, exist_ok=True)
+    if webroot.is_symlink() or not webroot.is_dir():
+        raise ValueError("Termux webroot must be a real directory")
+    inrelease_target = webroot / "dists" / "stable" / "InRelease"
+    inrelease_target.parent.mkdir(parents=True, exist_ok=True)
+    if inrelease_target.is_symlink() or inrelease_target.exists():
+        raise ValueError("Termux InRelease destination is not a fresh regular path")
+    inrelease_target.write_bytes(inrelease)
     index_path = webroot / INDEX_REL
     index_path.parent.mkdir(parents=True, exist_ok=True)
+    if index_path.is_symlink() or index_path.exists():
+        raise ValueError("Termux Packages.gz destination is not a fresh regular path")
     index_path.write_bytes(index_gz)
     package_provenance = []
     for name in sorted(needed):
@@ -118,7 +220,7 @@ def main() -> None:
         if not filename:
             raise ValueError(f"signed package index has no Filename for {name}")
         relative = pathlib.PurePosixPath(filename)
-        if relative.is_absolute() or ".." in relative.parts:
+        if relative.is_absolute() or ".." in relative.parts or "\\" in filename or ":" in filename or not relative.parts:
             raise ValueError(f"unsafe Termux package filename: {filename}")
         expected = record.get("SHA256", "").lower()
         if len(expected) != 64:
@@ -129,7 +231,14 @@ def main() -> None:
             raise ValueError(f"Termux package digest mismatch: {name} {actual} != {expected}")
         target = webroot.joinpath(*relative.parts)
         target.parent.mkdir(parents=True, exist_ok=True)
+        if target.is_symlink() or target.exists():
+            raise ValueError(f"Termux package destination is not a fresh regular path: {filename}")
         target.write_bytes(data)
+        purposes = []
+        if name in snapshot_needed:
+            purposes.append("snapshot")
+        if name in linux_backend_needed:
+            purposes.append("linux-backend")
         package_provenance.append({
             "package": name,
             "version": record.get("Version"),
@@ -137,6 +246,7 @@ def main() -> None:
             "source": record.get("Source", name),
             "filename": filename,
             "sha256": actual,
+            "purposes": purposes,
         })
         print(f"verified signed Termux package {name}={record.get('Version')} sha256={actual}")
 
@@ -144,6 +254,7 @@ def main() -> None:
     provenance = {
         "repository": REPOSITORY,
         "suite": "stable",
+        "inRelease": {"path": "dists/stable/InRelease", "sha256": inrelease_hash},
         "index": {"path": INDEX_REL, "sha256": actual_index_hash, "signedReleaseSha256": inrelease_hash},
         "packageCount": len(package_provenance),
         "packages": package_provenance,

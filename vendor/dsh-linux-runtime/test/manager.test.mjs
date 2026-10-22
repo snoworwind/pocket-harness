@@ -1,7 +1,8 @@
 import test, { after } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { chmod, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
+import { readFileSync, realpathSync } from 'node:fs';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 
@@ -9,7 +10,7 @@ import { createManager, ExecutionGate, GUEST_PATH_PREFIXES, isGuestPath, spawnCo
 import { apply as applyRuntime } from '../lib/index.js';
 import { validateManifest, validateAsset, selectRuntime } from '../modules/manifest.js';
 
-const temporaryRoot = path.join(process.cwd(), '.deploy-tmp', `bionilux-runtime-tests-${process.pid}`);
+const temporaryRoot = path.join(process.cwd(), '.deploy-tmp', `proot-runtime-tests-${process.pid}`);
 
 function sha256(buffer) {
   return createHash('sha256').update(buffer).digest('hex');
@@ -21,16 +22,27 @@ const ARCHIVE_FILES = {
     'lib/node_modules/npm/index.js': '// npm\n',
   },
   backend: {
-    'bin/bionilux': '#!/bin/sh\n',
-    'lib/libbionilux_preload.so': 'shared object\n',
-    'scripts/prepare-rootfs.sh': '#!/bin/sh\n',
+    'bin/proot': '#!/bin/sh\n',
+    'lib/libtalloc.so': 'shared object\n',
+    'lib/libandroid-shmem.so': 'shared object\n',
+    'libexec/proot/loader': '#!/bin/sh\n',
   },
   rootfs: {
+    'dev/.keep': '',
+    'dev/shm/.keep': '',
+    'proc/.keep': '',
+    'sys/.keep': '',
+    'tmp/.keep': '',
+    'var/tmp/.keep': '',
     'bin/sh': '#!/bin/sh\n',
     'bin/bash': '#!/bin/sh\n',
     'usr/bin/apt-get': '#!/bin/sh\n',
     'usr/bin/dpkg': '#!/bin/sh\n',
     'etc/os-release': 'ID=debian\n',
+    'etc/resolv.conf': '# DNS is supplied for each command.\n',
+    'etc/ld.so.preload': '/opt/pocket-harness/libpocket-linux-compat.so\n',
+    'opt/pocket-harness/libpocket-linux-compat.so': 'shared object\n',
+    'dev/null': '',
   },
 };
 
@@ -40,7 +52,7 @@ function makeAsset(name, { body = `archive:${name}`, digestBody = null } = {}) {
   return {
     bytes,
     asset: {
-      url: `https://github.com/kelai141/dsh-bionilux/releases/download/v1.0.0/${name}`,
+      url: `https://github.com/snoworwind/pocket-harness/releases/download/v0.6.0/${name}`,
       sha256: sha256(digestBody ? Buffer.from(digestBody) : bytes),
       size: bytes.length,
       unpackedSize: 1024,
@@ -48,8 +60,8 @@ function makeAsset(name, { body = `archive:${name}`, digestBody = null } = {}) {
   };
 }
 
-function makeManifest({ nodeAsset, rootfsFiles = ARCHIVE_FILES.rootfs, version = '1.0.0' } = {}) {
-  const backend = makeAsset('bionilux-backend-aarch64.tar.xz');
+function makeManifest({ nodeAsset, rootfsFiles = ARCHIVE_FILES.rootfs, version = '0.6.0' } = {}) {
+  const backend = makeAsset('proot-backend-aarch64.tar.xz');
   const rootfs = makeAsset('debian-minimal-aarch64.tar.xz');
   const node = nodeAsset ?? makeAsset('node-glibc-v24.22.0-linux-arm64.tar.xz');
   return {
@@ -68,7 +80,8 @@ function makeManifest({ nodeAsset, rootfsFiles = ARCHIVE_FILES.rootfs, version =
           id: 'debian-minimal',
           label: 'Debian minimal',
           architecture: 'arm64',
-          backend: 'bionilux',
+          backend: 'proot',
+          prootVersion: '5.1.107.98',
           backendAsset: backend.asset,
           rootfsAsset: rootfs.asset,
           nodeAsset: node.asset,
@@ -89,7 +102,7 @@ function makeIo(fixture, { onExtract } = {}) {
     downloadAsset: async (asset, destination) => {
       stats.downloads.push(path.basename(new URL(asset.url).pathname));
       const name = path.basename(new URL(asset.url).pathname);
-      const bytes = name.includes('bionilux-backend')
+      const bytes = name.includes('proot-backend')
         ? fixture.bytes.backend
         : name.includes('debian-minimal')
           ? fixture.bytes.rootfs
@@ -108,7 +121,8 @@ function makeIo(fixture, { onExtract } = {}) {
         const target = path.join(destination, relative);
         await mkdir(path.dirname(target), { recursive: true });
         await writeFile(target, contents);
-        if (relative.startsWith('bin/') || relative.startsWith('usr/bin/') || relative === 'bin/node') {
+        if (relative.startsWith('bin/') || relative.startsWith('usr/bin/') || relative === 'bin/node' ||
+            relative === 'libexec/proot/loader' || relative === 'opt/pocket-harness/libpocket-linux-compat.so') {
           const { chmod } = await import('node:fs/promises');
           await chmod(target, 0o755);
         }
@@ -124,14 +138,8 @@ function makeIo(fixture, { onExtract } = {}) {
  * cancels it — that is what the cutover gate has to do before it replaces an
  * active rootfs.
  */
-function makeRunner({ instant, healthProbeResult = { stdout: 'v24.22.0', stderr: '', exitCode: 0 }, nativeLauncherResult = { stdout: 'BIONILUX_VERSION=0.4.2 | HOST_ARCH=Aarch64\n', stderr: '', exitCode: 0 }, commandResult = { stdout: 'ok', stderr: '', exitCode: 0 }, hostToolProbeResults = {}, onHealthProbe } = {}) {
+function makeRunner({ instant, prootVersionResult = { stdout: 'PRoot v5.1.107.98\n', stderr: '', exitCode: 0 }, healthProbeResult = { stdout: 'v24.22.0', stderr: '', exitCode: 0 }, commandResult = { stdout: 'ok', stderr: '', exitCode: 0 }, onHealthProbe, onRun } = {}) {
   const calls = [];
-  const defaultHostToolProbeResults = {
-    find: { stdout: 'find (GNU findutils) 4.11.0\n', stderr: '', exitCode: 0 },
-    sed: { stdout: 'sed (GNU sed) 4.9\n', stderr: '', exitCode: 0 },
-    wc: { stdout: 'wc (GNU coreutils) 9.7\n', stderr: '', exitCode: 0 },
-  };
-  const toolProbeResults = { ...defaultHostToolProbeResults, ...hostToolProbeResults };
   const isInstant =
     instant ?? ((spec) => !String(spec.args?.at(-1) ?? '').includes('sleep'));
   return {
@@ -139,6 +147,7 @@ function makeRunner({ instant, healthProbeResult = { stdout: 'v24.22.0', stderr:
     runCommand(spec) {
       const record = { spec, aborted: false, cancelled: false, forceKilled: false, settled: false };
       calls.push(record);
+      onRun?.(spec);
       return {
         promise: new Promise((resolve) => {
           const settle = (result) => {
@@ -156,11 +165,10 @@ function makeRunner({ instant, healthProbeResult = { stdout: 'v24.22.0', stderr:
             { once: true },
           );
           if (isInstant(spec)) {
-            const healthProbe = spec.args?.[0] === 'node' && spec.args?.[1] === '--version';
-            const nativeLauncherProbe = spec.args?.[0] === '--print-config';
-            const hostToolProbe = spec.args?.[0] === '--version' ? toolProbeResults[spec.file] : undefined;
+            const versionProbe = spec.args?.length === 1 && spec.args?.[0] === '--version';
+            const healthProbe = spec.args?.at(-1) === 'node --version';
             if (healthProbe) onHealthProbe?.(spec);
-            settle(healthProbe ? healthProbeResult : nativeLauncherProbe ? nativeLauncherResult : hostToolProbe ?? commandResult);
+            settle(versionProbe ? prootVersionResult : healthProbe ? healthProbeResult : commandResult);
           }
         }),
         cancel: () => {
@@ -176,13 +184,13 @@ function makeRunner({ instant, healthProbeResult = { stdout: 'v24.22.0', stderr:
   };
 }
 
-function makeManager(fixture, { dataDir, ioOptions, runnerOptions, hostLibraryPath, arch = 'arm64' } = {}) {
+function makeManager(fixture, { dataDir, ioOptions, runnerOptions, allowedHostPaths, arch = 'arm64' } = {}) {
   const io = makeIo(fixture, ioOptions);
   const runner = makeRunner(runnerOptions);
   const manager = createManager({
     dataDir,
     arch,
-    hostLibraryPath,
+    allowedHostPaths: allowedHostPaths ?? [path.join(dataDir, 'workspaces')],
     downloadAsset: io.downloadAsset,
     extractArchive: io.extractArchive,
     runCommand: runner.runCommand,
@@ -199,7 +207,7 @@ function tempDir() {
 async function makeAndroidNativeLibraries(dataDir) {
   const directory = path.join(dataDir, 'native-libs');
   await mkdir(directory, { recursive: true });
-  for (const name of ['libpocketharness_bionilux.so', 'libpocketharness_glibc_loader.so']) {
+  for (const name of ['libpocketharness_proot.so', 'libpocketharness_proot_loader.so', 'libtalloc.so', 'libandroid-shmem.so']) {
     const file = path.join(directory, name);
     await writeFile(file, 'test native executable');
     await chmod(file, 0o755);
@@ -286,7 +294,7 @@ test('install stages, proves health, then activates the runtime', async () => {
   assert.equal(status.healthy, true);
   assert.equal(status.installed, true);
   assert.equal(status.runtimeId, 'debian-minimal');
-  assert.equal(status.version, '1.0.0');
+  assert.equal(status.version, '0.6.0');
   assert.equal(activeDuringProbe, false, 'the new runtime is not active until the smoke probe succeeds');
 
   const record = JSON.parse(await readFile(path.join(dataDir, 'active.json'), 'utf8'));
@@ -311,9 +319,9 @@ test('a failing install leaves the previous active runtime untouched', async () 
 
   const after = second.status();
   assert.equal(after.healthy, true, 'the previously active instance must stay active');
-  assert.equal(after.version, '1.0.0');
+  assert.equal(after.version, '0.6.0');
   const record = JSON.parse(await readFile(path.join(dataDir, 'active.json'), 'utf8'));
-  assert.equal(record.version, '1.0.0');
+  assert.equal(record.version, '0.6.0');
 });
 
 test('a runtime that fails the launch smoke probe cannot replace the active instance', async () => {
@@ -328,7 +336,7 @@ test('a runtime that fails the launch smoke probe cannot replace the active inst
     runnerOptions: { healthProbeResult: { stdout: '', stderr: 'ELF load failed', exitCode: 1 } },
   });
 
-  await assert.rejects(() => second.manager.install(secondFixture.manifest), /runtime smoke probe failed/);
+  await assert.rejects(() => second.manager.install(secondFixture.manifest), /PRoot guest smoke probe failed/);
   assert.equal(await readFile(path.join(dataDir, 'active.json'), 'utf8'), activeBefore);
   assert.equal(second.manager.status().instanceId, installed.instanceId);
 });
@@ -539,33 +547,31 @@ test('the guest environment is derived, not inherited from the host', async () =
   for (const leaked of ['PREFIX', 'TERMUX_VERSION', 'LD_PRELOAD', 'NODE_OPTIONS', 'npm_config_prefix']) {
     assert.equal(env[leaked], undefined, `${leaked} must not reach the guest`);
   }
-  assert.equal(env.BIONILUX_ROOTFS, manager.status().paths.rootfs);
-  assert.equal(env.BIONILUX_LENIENT, '0');
-  assert.match(env.BIONILUX_GUEST_PATH, /lib\/node_modules\/npm|bin:.*\/usr\/bin/);
-  assert.equal(env.BIONILUX_GUEST_PATH.startsWith(path.join(manager.status().paths.node, 'bin')), true);
-  assert.equal(spec.args[0], '/bin/bash');
-  assert.equal(spec.args[1], '-lc');
-  assert.equal(spec.args[2], 'echo hi');
+  assert.equal(env.PROOT_LOADER, path.join(manager.status().paths.backend, 'libexec', 'proot', 'loader'));
+  assert.equal(env.LD_LIBRARY_PATH, path.join(manager.status().paths.backend, 'lib'));
+  assert.equal(env.PROOT_NO_SECCOMP, undefined, 'PRoot seccomp compatibility must remain enabled');
+  assert.equal(spec.args[spec.args.length - 3], '/bin/bash');
+  assert.equal(spec.args[spec.args.length - 2], '-lc');
+  assert.equal(spec.args[spec.args.length - 1], 'echo hi');
+  assert.ok(spec.args.includes('-r'));
+  assert.equal(spec.args[spec.args.indexOf('-r') + 1], manager.status().paths.rootfs);
+  assert.ok(spec.args.includes('/usr/bin/env'));
+  assert.ok(spec.args.includes('-i'));
 });
 
-test('Termux exec environment reaches host tools while Bionilux uses APK native entrypoints', async () => {
+test('Android PRoot uses APK-native assets, hides host procfs, and binds current DNS', async () => {
   const dataDir = tempDir();
   const fixture = makeManifest();
-  const hostLibraryPath = path.join(dataDir, 'usr', 'lib');
-  await mkdir(hostLibraryPath, { recursive: true });
-  const preload = path.join(hostLibraryPath, 'libtermux-exec-ld-preload.so');
-  await writeFile(preload, 'test preload');
   const nativeLibraryDir = await makeAndroidNativeLibraries(dataDir);
   const keys = [
-    'DSH_FILES_DIR', 'DSH_LINUX_NATIVE_LIBRARY_DIR', 'ANDROID_ROOT', 'LD_LIBRARY_PATH', 'LD_PRELOAD', 'PATH',
-    'TERMUX__ROOTFS', 'TERMUX__PREFIX', 'TERMUX_APP__DATA_DIR',
-    'TERMUX_EXEC__SYSTEM_LINKER_EXEC__MODE', 'TERMUX_EXEC__EXECVE_CALL__INTERCEPT',
-    'BIONILUX_DNS_SERVERS',
+    'DSH_FILES_DIR', 'DSH_LINUX_NATIVE_LIBRARY_DIR', 'ANDROID_ROOT', 'LD_LIBRARY_PATH', 'LD_PRELOAD',
+    'TERMUX__ROOTFS', 'TERMUX__PREFIX', 'TERMUX_APP__DATA_DIR', 'TERMUX_EXEC__SYSTEM_LINKER_EXEC__MODE',
+    'TERMUX_EXEC__EXECVE_CALL__INTERCEPT', 'TERMUX_VERSION',
   ];
   const previous = Object.fromEntries(keys.map(key => [key, process.env[key]]));
   process.env.DSH_FILES_DIR = dataDir;
   process.env.DSH_LINUX_NATIVE_LIBRARY_DIR = nativeLibraryDir;
-  process.env.ANDROID_ROOT = '/system';
+  delete process.env.ANDROID_ROOT;
   process.env.LD_LIBRARY_PATH = '/untrusted/inherited/lib';
   process.env.LD_PRELOAD = '/untrusted/inherited/preload.so';
   process.env.TERMUX__ROOTFS = '/untrusted/rootfs';
@@ -573,66 +579,58 @@ test('Termux exec environment reaches host tools while Bionilux uses APK native 
   process.env.TERMUX_APP__DATA_DIR = '/untrusted/app-data';
   process.env.TERMUX_EXEC__SYSTEM_LINKER_EXEC__MODE = 'never';
   process.env.TERMUX_EXEC__EXECVE_CALL__INTERCEPT = '0';
-  process.env.BIONILUX_DNS_SERVERS = '203.0.113.99';
+  process.env.TERMUX_VERSION = 'untrusted';
+  const resolverReads = [];
   try {
     await writeFile(path.join(dataDir, 'linux-dns-servers'), '1.1.1.1\n2001:4860:4860::8888\n');
     const { manager, runner } = makeManager(fixture, {
       dataDir,
       runnerOptions: {
-        hostToolProbeResults: {
-          sed: { stdout: '/data/user/0/com.example/files/usr/bin/sed (GNU sed) 4.10\n', stderr: '', exitCode: 0 },
+        onRun: spec => {
+          const resolverBind = spec.args?.find(value => typeof value === 'string' && value.endsWith(':/etc/resolv.conf'));
+          if (resolverBind) resolverReads.push(readFileSync(resolverBind.slice(0, -':/etc/resolv.conf'.length), 'utf8'));
         },
       },
     });
     await manager.install(fixture.manifest);
 
-    const prepare = runner.calls.find(({ spec }) => spec.file === 'sh')?.spec;
-    const findProbe = runner.calls.find(({ spec }) => spec.file === 'find' && spec.args?.[0] === '--version')?.spec;
-    const probe = runner.calls.find(({ spec }) => spec.args?.[0] === 'node' && spec.args?.[1] === '--version')?.spec;
-    const nativeLauncherProbe = runner.calls.find(({ spec }) => spec.args?.[0] === '--print-config')?.spec;
-    assert.ok(prepare, 'rootfs preparation must invoke the host shell');
-    assert.ok(findProbe, 'Android install must positively identify GNU find before rootfs preparation');
-    for (const tool of ['find', 'sed', 'wc']) {
-      assert.ok(
-        runner.calls.some(({ spec }) => spec.file === tool && spec.args?.[0] === '--version'),
-        `Android install must positively identify GNU ${tool} before rootfs preparation`,
-      );
-    }
-    assert.ok(probe, 'installation must probe the runtime through Bionilux');
-    assert.ok(nativeLauncherProbe, 'installation must prove the APK native Bionilux launcher starts before downloading assets');
-    assert.equal(nativeLauncherProbe.file, path.join(nativeLibraryDir, 'libpocketharness_bionilux.so'));
-    assert.equal(nativeLauncherProbe.env.BIONILUX_LOADER, path.join(nativeLibraryDir, 'libpocketharness_glibc_loader.so'));
-    assert.ok(prepare.args.includes('--dns'), 'rootfs preparation must receive current Android DNS servers');
-    assert.ok(prepare.args.includes('1.1.1.1 2001:4860:4860::8888'));
-    assert.equal(prepare.env.LD_LIBRARY_PATH, hostLibraryPath, 'derive the library directory from DSH_FILES_DIR');
-    assert.equal(prepare.env.LD_PRELOAD, preload);
-    assert.equal(prepare.env.TERMUX_EXEC__SYSTEM_LINKER_EXEC__MODE, 'force');
-    assert.equal(prepare.env.TERMUX_EXEC__EXECVE_CALL__INTERCEPT, '1');
-    assert.equal(prepare.env.TERMUX__ROOTFS, dataDir);
-    assert.equal(prepare.env.TERMUX__PREFIX, path.join(dataDir, 'usr'));
-    assert.equal(prepare.env.TERMUX_APP__DATA_DIR, path.dirname(dataDir));
-    assert.equal(prepare.env.BIONILUX_DNS_SERVERS, '1.1.1.1,2001:4860:4860::8888');
-    assert.equal(prepare.env.PATH, `${path.join(dataDir, 'usr', 'bin')}${path.delimiter}/system/bin`);
-    assert.equal(probe.file, path.join(nativeLibraryDir, 'libpocketharness_bionilux.so'));
-    assert.equal(probe.env.BIONILUX_LOADER, path.join(nativeLibraryDir, 'libpocketharness_glibc_loader.so'));
-    for (const leaked of ['LD_LIBRARY_PATH', 'LD_PRELOAD', 'TERMUX__ROOTFS', 'TERMUX__PREFIX', 'TERMUX_APP__DATA_DIR', 'TERMUX_EXEC__EXECVE_CALL__INTERCEPT']) {
-      assert.equal(probe.env[leaked], undefined, `${leaked} must not intercept the APK native Bionilux launcher`);
+    const proot = path.join(nativeLibraryDir, 'libpocketharness_proot.so');
+    const loader = path.join(nativeLibraryDir, 'libpocketharness_proot_loader.so');
+    const versionProbes = runner.calls.filter(({ spec }) => spec.file === proot && spec.args?.[0] === '--version');
+    assert.ok(versionProbes.length >= 2, 'the explicit APK native directory must select PRoot before and after asset staging, even without ANDROID_ROOT');
+    for (const { spec } of versionProbes) {
+      assert.equal(spec.env.LD_LIBRARY_PATH, nativeLibraryDir);
+      assert.equal(spec.env.PROOT_LOADER, loader);
+      assert.equal(spec.env.LD_PRELOAD, undefined);
+      assert.equal(spec.env.TERMUX__ROOTFS, undefined);
+      assert.equal(spec.env.TERMUX__PREFIX, undefined);
+      assert.equal(spec.env.TERMUX_EXEC__EXECVE_CALL__INTERCEPT, undefined);
     }
 
     runner.calls.length = 0;
     await manager.execute({ command: 'echo guest' });
-    const launcher = runner.calls.at(-1).spec;
-    assert.equal(launcher.file, path.join(nativeLibraryDir, 'libpocketharness_bionilux.so'));
-    assert.equal(launcher.env.BIONILUX_LOADER, path.join(nativeLibraryDir, 'libpocketharness_glibc_loader.so'));
-    for (const leaked of ['LD_LIBRARY_PATH', 'LD_PRELOAD', 'TERMUX__ROOTFS', 'TERMUX__PREFIX', 'TERMUX_APP__DATA_DIR', 'TERMUX_EXEC__EXECVE_CALL__INTERCEPT']) {
-      assert.equal(launcher.env[leaked], undefined, `${leaked} must not intercept the APK native Bionilux launcher`);
-    }
-    assert.equal(launcher.env.BIONILUX_DNS_SERVERS, '1.1.1.1,2001:4860:4860::8888');
+    const command = runner.calls.at(-1).spec;
+    assert.equal(command.file, proot);
+    assert.equal(command.env.LD_LIBRARY_PATH, nativeLibraryDir);
+    assert.equal(command.env.PROOT_LOADER, loader);
+    assert.equal(command.env.PROOT_NO_SECCOMP, undefined, 'PRoot seccomp compatibility must stay enabled');
+    assert.equal(command.env.LD_PRELOAD, undefined);
+    assert.equal(command.env.TERMUX__ROOTFS, undefined);
+    assert.equal(command.args.some((value, index) => value === '-b' && command.args[index + 1] === '/proc'), false,
+      'the guest must not receive host procfs, which exposes host process metadata and app-private paths');
+    assert.equal(command.args.includes('/sys'), false, 'host sysfs is not exposed to the guest');
+    assert.ok(command.args.includes('/dev/null'));
+    assert.ok(command.args.includes('/usr/bin/env'));
+    assert.ok(command.args.includes('-i'));
+    assert.equal(command.args.at(-3), '/bin/bash');
+    assert.equal(command.args.at(-2), '-lc');
+    assert.equal(command.args.at(-1), 'echo guest');
+    assert.equal(resolverReads.at(-1), '# Resolvers supplied by the current Android network.\nnameserver 1.1.1.1\nnameserver 2001:4860:4860::8888\n');
 
     await writeFile(path.join(dataDir, 'linux-dns-servers'), '9.9.9.9\n');
     runner.calls.length = 0;
     await manager.execute({ command: 'echo updated dns' });
-    assert.equal(runner.calls.at(-1).spec.env.BIONILUX_DNS_SERVERS, '9.9.9.9', 'guest spawn must reread DNS after network changes');
+    assert.equal(resolverReads.at(-1), '# Resolvers supplied by the current Android network.\nnameserver 9.9.9.9\n', 'each PRoot invocation must bind current DNS');
   } finally {
     for (const [key, value] of Object.entries(previous)) {
       if (value === undefined) delete process.env[key];
@@ -641,34 +639,31 @@ test('Termux exec environment reaches host tools while Bionilux uses APK native 
   }
 });
 
-test('Android Linux install explicitly clears stale rootfs DNS when no safe resolver is available', async () => {
+test('Android PRoot binds an empty resolver instead of reusing stale rootfs DNS', async () => {
   const dataDir = tempDir();
-  const fixture = makeManifest({
-    rootfsFiles: {
-      ...ARCHIVE_FILES.rootfs,
-      'etc/resolv.conf': 'nameserver 203.0.113.53\n',
-    },
-  });
-  const hostLibraryPath = path.join(dataDir, 'usr', 'lib');
-  await mkdir(hostLibraryPath, { recursive: true });
-  await writeFile(path.join(hostLibraryPath, 'libtermux-exec-ld-preload.so'), 'test preload');
+  const fixture = makeManifest({ rootfsFiles: {
+    ...ARCHIVE_FILES.rootfs,
+    'etc/resolv.conf': 'nameserver 203.0.113.53\n',
+  } });
   const nativeLibraryDir = await makeAndroidNativeLibraries(dataDir);
-  const keys = ['DSH_FILES_DIR', 'DSH_LINUX_NATIVE_LIBRARY_DIR', 'ANDROID_ROOT', 'BIONILUX_DNS_SERVERS'];
+  const keys = ['DSH_FILES_DIR', 'DSH_LINUX_NATIVE_LIBRARY_DIR', 'ANDROID_ROOT'];
   const previous = Object.fromEntries(keys.map(key => [key, process.env[key]]));
   process.env.DSH_FILES_DIR = dataDir;
   process.env.DSH_LINUX_NATIVE_LIBRARY_DIR = nativeLibraryDir;
   process.env.ANDROID_ROOT = '/system';
-  process.env.BIONILUX_DNS_SERVERS = '203.0.113.99';
+  const resolverReads = [];
   try {
-    const { manager, runner } = makeManager(fixture, { dataDir });
+    const { manager } = makeManager(fixture, {
+      dataDir,
+      runnerOptions: { onRun: spec => {
+        const resolverBind = spec.args?.find(value => typeof value === 'string' && value.endsWith(':/etc/resolv.conf'));
+        if (resolverBind) resolverReads.push(readFileSync(resolverBind.slice(0, -':/etc/resolv.conf'.length), 'utf8'));
+      } },
+    });
     await manager.install(fixture.manifest);
-    const prepare = runner.calls.find(({ spec }) => spec.file === 'sh')?.spec;
-    assert.ok(prepare?.args.includes('--no-dns'), 'do not preserve a resolver from a prior network or asset');
-    assert.equal(prepare.env.BIONILUX_DNS_SERVERS, 'none', 'Bionilux must fail closed without a current resolver');
-
-    runner.calls.length = 0;
     await manager.execute({ command: 'echo guest' });
-    assert.equal(runner.calls.at(-1).spec.env.BIONILUX_DNS_SERVERS, 'none');
+    assert.equal(resolverReads.at(-1), '# No safe DNS resolver is available on the current Android network.\n');
+    assert.equal(resolverReads.at(-1).includes('203.0.113.53'), false);
   } finally {
     for (const [key, value] of Object.entries(previous)) {
       if (value === undefined) delete process.env[key];
@@ -677,12 +672,9 @@ test('Android Linux install explicitly clears stale rootfs DNS when no safe reso
   }
 });
 
-test('Android install fails before downloading when APK native execution assets are missing', async () => {
+test('Android install fails before downloads when native PRoot assets are missing', async () => {
   const dataDir = tempDir();
   const fixture = makeManifest();
-  const hostLibraryPath = path.join(dataDir, 'usr', 'lib');
-  await mkdir(hostLibraryPath, { recursive: true });
-  await writeFile(path.join(hostLibraryPath, 'libtermux-exec-ld-preload.so'), 'test preload');
   const keys = ['DSH_FILES_DIR', 'DSH_LINUX_NATIVE_LIBRARY_DIR', 'ANDROID_ROOT'];
   const previous = Object.fromEntries(keys.map(key => [key, process.env[key]]));
   process.env.DSH_FILES_DIR = dataDir;
@@ -695,8 +687,8 @@ test('Android install fails before downloading when APK native execution assets 
       assert.match(error.message, /APK native library directory is unavailable/);
       return true;
     });
-    assert.equal(runner.calls.length, 0, 'do not try app-private ELF execution when packaged native assets are missing');
-    assert.equal(io.stats.downloads.length, 0, 'fail before downloading Linux assets');
+    assert.equal(runner.calls.length, 0);
+    assert.equal(io.stats.downloads.length, 0);
   } finally {
     for (const [key, value] of Object.entries(previous)) {
       if (value === undefined) delete process.env[key];
@@ -705,12 +697,9 @@ test('Android install fails before downloading when APK native execution assets 
   }
 });
 
-test('Android install fails before downloading when the packaged Bionilux launcher cannot execute', async () => {
+test('Android install rejects an unlaunchable APK-native PRoot before downloading assets', async () => {
   const dataDir = tempDir();
   const fixture = makeManifest();
-  const hostLibraryPath = path.join(dataDir, 'usr', 'lib');
-  await mkdir(hostLibraryPath, { recursive: true });
-  await writeFile(path.join(hostLibraryPath, 'libtermux-exec-ld-preload.so'), 'test preload');
   const nativeLibraryDir = await makeAndroidNativeLibraries(dataDir);
   const keys = ['DSH_FILES_DIR', 'DSH_LINUX_NATIVE_LIBRARY_DIR', 'ANDROID_ROOT'];
   const previous = Object.fromEntries(keys.map(key => [key, process.env[key]]));
@@ -720,16 +709,16 @@ test('Android install fails before downloading when the packaged Bionilux launch
   try {
     const { manager, io, runner } = makeManager(fixture, {
       dataDir,
-      runnerOptions: { nativeLauncherResult: { stdout: '', stderr: 'EACCES: Permission denied', exitCode: 126 } },
+      runnerOptions: { prootVersionResult: { stdout: '', stderr: 'EACCES: Permission denied', exitCode: 126 } },
     });
     await assert.rejects(manager.install(fixture.manifest), error => {
       assert.equal(error.code, 'linux-host-exec-assets-unavailable');
-      assert.match(error.message, /native Bionilux launcher probe failed/);
+      assert.match(error.message, /APK native PRoot probe failed/);
       assert.match(error.message, /Permission denied/);
       return true;
     });
-    assert.equal(runner.calls.length, 1, 'the APK native launcher probe is the only process attempted');
-    assert.equal(io.stats.downloads.length, 0, 'do not download assets before proving the APK native launcher works');
+    assert.equal(runner.calls.length, 1);
+    assert.equal(io.stats.downloads.length, 0);
   } finally {
     for (const [key, value] of Object.entries(previous)) {
       if (value === undefined) delete process.env[key];
@@ -738,96 +727,18 @@ test('Android install fails before downloading when the packaged Bionilux launch
   }
 });
 
-test('Android Linux install fails closed when the termux-exec shim is missing', async () => {
+test('rootfs preparation fails closed when the PRoot compatibility preload is missing', async () => {
   const dataDir = tempDir();
-  const fixture = makeManifest();
-  await mkdir(path.join(dataDir, 'usr', 'lib'), { recursive: true });
-  const nativeLibraryDir = await makeAndroidNativeLibraries(dataDir);
-  const keys = ['DSH_FILES_DIR', 'DSH_LINUX_NATIVE_LIBRARY_DIR', 'ANDROID_ROOT'];
-  const previous = Object.fromEntries(keys.map(key => [key, process.env[key]]));
-  process.env.DSH_FILES_DIR = dataDir;
-  process.env.DSH_LINUX_NATIVE_LIBRARY_DIR = nativeLibraryDir;
-  process.env.ANDROID_ROOT = '/system';
-  try {
-    const { manager, runner } = makeManager(fixture, { dataDir });
-    await assert.rejects(manager.install(fixture.manifest), error => {
-      assert.equal(error.code, 'linux-termux-exec-environment-unavailable', error.message);
-      assert.match(error.message, /Termux exec shim is unavailable/);
-      return true;
-    });
-    assert.equal(runner.calls.length, 0, 'do not try shell or runtime probes without the exec shim');
-  } finally {
-    for (const [key, value] of Object.entries(previous)) {
-      if (value === undefined) delete process.env[key];
-      else process.env[key] = value;
-    }
-  }
-});
-
-test('Android Linux install rejects toybox success instead of accepting false GNU toolchain health', async () => {
-  const dataDir = tempDir();
-  const fixture = makeManifest();
-  const hostLibraryPath = path.join(dataDir, 'usr', 'lib');
-  await mkdir(hostLibraryPath, { recursive: true });
-  await writeFile(path.join(hostLibraryPath, 'libtermux-exec-ld-preload.so'), 'test preload');
-  const nativeLibraryDir = await makeAndroidNativeLibraries(dataDir);
-  const keys = ['DSH_FILES_DIR', 'DSH_LINUX_NATIVE_LIBRARY_DIR', 'ANDROID_ROOT'];
-  const previous = Object.fromEntries(keys.map(key => [key, process.env[key]]));
-  process.env.DSH_FILES_DIR = dataDir;
-  process.env.DSH_LINUX_NATIVE_LIBRARY_DIR = nativeLibraryDir;
-  process.env.ANDROID_ROOT = '/system';
-  try {
-    const { manager, runner } = makeManager(fixture, {
-      dataDir,
-      runnerOptions: { hostToolProbeResults: { find: { stdout: 'toybox 0.8.10\n', stderr: '', exitCode: 0 } } },
-    });
-    await assert.rejects(manager.install(fixture.manifest), error => {
-      assert.equal(error.code, 'linux-host-toolchain-unavailable');
-      assert.match(error.message, /must be the GNU find utility/);
-      assert.match(error.message, /toybox/);
-      return true;
-    });
-    assert.equal(runner.calls.some(({ spec }) => spec.file === 'sh'), false, 'toybox must be rejected before rootfs scripts run');
-  } finally {
-    for (const [key, value] of Object.entries(previous)) {
-      if (value === undefined) delete process.env[key];
-      else process.env[key] = value;
-    }
-  }
-});
-
-test('rootfs preparation fails with a stable code when the Termux library directory is unavailable', async () => {
-  const dataDir = tempDir();
-  const fixture = makeManifest();
-  const { manager, runner } = makeManager(fixture, {
-    dataDir,
-    hostLibraryPath: path.join(dataDir, 'missing', 'usr', 'lib'),
-  });
-
-  await assert.rejects(manager.install(fixture.manifest), error => {
-    assert.equal(error.code, 'linux-host-library-path-unavailable');
-    assert.match(error.message, /Termux host library directory is unavailable/);
-    return true;
-  });
-  assert.equal(runner.calls.some(({ spec }) => spec.file === 'sh'), false, 'do not run host tools with an unresolved loader path');
-});
-
-test('rootfs script failures carry a stable diagnostic code', async () => {
-  const dataDir = tempDir();
-  const fixture = makeManifest();
-  const hostLibraryPath = path.join(dataDir, 'usr', 'lib');
-  await mkdir(hostLibraryPath, { recursive: true });
-  const { manager } = makeManager(fixture, {
-    dataDir,
-    hostLibraryPath,
-    runnerOptions: { commandResult: { stdout: '', stderr: 'find: Permission denied', exitCode: 1 } },
-  });
-
+  const rootfsFiles = { ...ARCHIVE_FILES.rootfs };
+  delete rootfsFiles['opt/pocket-harness/libpocket-linux-compat.so'];
+  const fixture = makeManifest({ rootfsFiles });
+  const { manager, runner } = makeManager(fixture, { dataDir });
   await assert.rejects(manager.install(fixture.manifest), error => {
     assert.equal(error.code, 'linux-rootfs-prepare-failed');
-    assert.match(error.message, /find: Permission denied/);
+    assert.match(error.message, /opt\/pocket-harness\/libpocket-linux-compat\.so/);
     return true;
   });
+  assert.equal(runner.calls.some(({ spec }) => spec.args?.at(-1) === 'node --version'), false);
 });
 
 test('cwd inside the rootfs becomes a guest path, and relative cwd is rejected', async () => {
@@ -841,19 +752,14 @@ test('cwd inside the rootfs becomes a guest path, and relative cwd is rejected',
   runner.calls.length = 0;
   const inside = await manager.execute({ command: 'pwd', cwd: path.join(rootfs, 'work') });
   assert.equal(inside.cwd, '/work');
-  const nodeBin = path.join(manager.status().paths.node, 'bin');
-  // The list is colon-separated for the POSIX guest; on a Windows host an
-  // absolute path itself contains ':', so compare by position instead of by
-  // splitting.
-  assert.equal(
-    String(runner.calls.at(-1).spec.env.BIONILUX_HOST_PATHS).startsWith(nodeBin),
-    true,
-    'the shared Linux Node bin directory must stay reachable from the guest',
-  );
+  const args = runner.calls.at(-1).spec.args;
+  assert.ok(args.includes(`${manager.status().paths.node}:${manager.status().paths.node}`), 'shared Linux Node must be explicitly bound into PRoot');
+  assert.equal(args[args.indexOf('-w') + 1], '/work');
 
   const guestPath = await manager.execute({ command: 'pwd', cwd: '/root' });
   assert.equal(guestPath.cwd, '/root');
-  assert.equal(runner.calls.at(-1).spec.env.BIONILUX_HOST_PATHS.includes('/root'), false);
+  const guestArgs = runner.calls.at(-1).spec.args;
+  assert.equal(guestArgs.some((value, index) => value === '-b' && guestArgs[index + 1] === '/root'), false);
 
   await assert.rejects(() => manager.execute({ command: 'pwd', cwd: 'relative/path' }), /absolute path/);
 });
@@ -866,18 +772,15 @@ test('a working directory in the guest namespace is never promoted to a host pas
 
   // /tmp exists on the host and is also a guest path: promoting it would shadow
   // the guest's own /tmp, so the cwd must stay a guest path.
-  const guestNamespaceDir = path.posix.join('/tmp', `bionilux-guest-ns-${process.pid}`);
+  const guestNamespaceDir = path.posix.join('/tmp', `proot-guest-ns-${process.pid}`);
   await mkdir(guestNamespaceDir, { recursive: true });
 
   runner.calls.length = 0;
   const result = await manager.execute({ command: 'pwd', cwd: guestNamespaceDir });
 
   assert.equal(result.cwd, guestNamespaceDir);
-  assert.equal(
-    String(runner.calls.at(-1).spec.env.BIONILUX_HOST_PATHS).includes(guestNamespaceDir),
-    false,
-    'the guest namespace must not be shadowed',
-  );
+  const args = runner.calls.at(-1).spec.args;
+  assert.equal(args.some((value, index) => value === '-b' && args[index + 1] === guestNamespaceDir), false, 'the guest namespace must not be shadowed');
 });
 
 test('a host workspace outside the guest namespace stays visible under its own name', async () => {
@@ -899,11 +802,25 @@ test('a host workspace outside the guest namespace stays visible under its own n
   const outside = await manager.execute({ command: 'pwd', cwd: shared });
 
   assert.equal(outside.cwd, shared);
-  assert.equal(
-    String(runner.calls.at(-1).spec.env.BIONILUX_HOST_PATHS).endsWith(shared),
-    true,
-    'a real host workspace must stay reachable',
-  );
+  const args = runner.calls.at(-1).spec.args;
+  assert.equal(args.some((value, index) => value === '-b' && args[index + 1] === `${shared}:${shared}`), true, 'a real host workspace must stay reachable through an explicit bind');
+});
+
+test('host path allowlist resolves symlinks and rejects paths outside configured roots', async () => {
+  const dataDir = tempDir();
+  const fixture = makeManifest();
+  const { manager } = makeManager(fixture, { dataDir });
+  const allowedRoot = path.join(dataDir, 'workspaces');
+  const allowedChild = path.join(allowedRoot, 'project');
+  const privateData = path.join(dataDir, 'private-data');
+  const escapeLink = path.join(allowedRoot, 'escape');
+  await mkdir(allowedChild, { recursive: true });
+  await mkdir(privateData, { recursive: true });
+  await symlink(privateData, escapeLink, 'dir');
+
+  assert.equal(manager._isAllowedHostPath(realpathSync(allowedChild)), true);
+  assert.equal(manager._isAllowedHostPath(realpathSync(privateData)), false);
+  assert.equal(manager._isAllowedHostPath(realpathSync(escapeLink)), false, 'symlink target must be checked after resolution');
 });
 
 test('the guest namespace list covers the directories the rootfs owns', () => {
@@ -947,7 +864,7 @@ test('manifest validation rejects unsafe assets and unsupported selections', () 
   assert.equal(validateManifest(fixture.manifest).runtimes[0].id, 'debian-minimal');
 
   const httpUrl = structuredClone(fixture.manifest);
-  httpUrl.plugins.runtime.url = 'http://github.com/kelai141/dsh-bionilux/releases/download/v1.0.0/linux-runtime-plugin.tar.xz';
+  httpUrl.plugins.runtime.url = 'http://github.com/snoworwind/pocket-harness/releases/download/v0.6.0/linux-runtime-plugin.tar.xz';
   assert.throws(() => validateManifest(httpUrl), /HTTPS/i);
 
   const badDigest = structuredClone(fixture.manifest);

@@ -1,6 +1,6 @@
 # Linux 环境恢复方案（2026-10-20）
 
-> 状态：bootstrap 激活缺陷已由 PR #77 修复并合入；2026-10-22 源码将 launcher 和匹配 glibc loader 接到 APK `nativeLibraryDir`，Linux runtime 升为 0.5.3。runtime 33/33 与资产格式/负控自检通过；本轮尚无新 APK、CI 或设备执行证据。新设备日志确认 filesDir 直接 exec EACCES，但 ELF 映射、mount 与 SELinux 归因仍需在目标设备复核。上一候选 APK SHA-256 `a2d1d85735b98a7168c0c5ea406a542518e5b9c1b82802a6ed0b2860d39d63dd` 不包含本轮修复。
+> 状态：**本方案已被 [2026-10-22 PRoot 迁移记录](PROOT-MIGRATION-2026-10-22.md) 取代，不再代表当前实现或推荐路线。**以下内容保留当时基于 Bionilux 的分析与决策背景。
 > 复核基线：`5aad44537881ebe27e7485bbe54158fb7e8f71cd`。
 > 目标：恢复用户主动安装、使用、升级和卸载本机 Debian/glibc 环境，保留 `linux_bash` 插件入口。
 > 本文更新路线选择与证据要求；10-19 原始报告仍保留为历史实验记录，不能作为当前 APK 的验收。

@@ -15,7 +15,7 @@
  *   - .deploy-tmp/snapshot-013/arm64/stage (check-contract reads semantic
  *     version data from it during the APK gate),
  *   - .deploy-tmp/linux-build/native-libs (the APK build packages and verifies
- *     the source-built launcher and matching glibc loader after reclamation),
+ *     the source-authenticated PRoot launcher, loader and dependencies),
  *   - .deploy-tmp/linux-build/provenance (uploaded as evidence),
  *   - .deploy-tmp/engine-overlay (the checker's hash-bound source tarballs),
  *   - .deploy-tmp/source-build (reports/manifests consumed by later gates).
@@ -218,7 +218,7 @@ function runSelfTest() {
       'linux-build/rootfs', 'linux-build/cargo']) {
       write(join(deploy, rel, 'marker'), `${rel}\n`)
     }
-    write(join(deploy, 'linux-build', 'native-libs', 'arm64-v8a', 'libpocketharness_bionilux.so'), 'launcher\n')
+    write(join(deploy, 'linux-build', 'native-libs', 'arm64-v8a', 'libpocketharness_proot.so'), 'launcher\n')
     write(join(deploy, 'linux-build', 'provenance', 'keep.txt'), 'keep provenance\n')
     makeHarnessCheckout(root)
 
@@ -232,7 +232,7 @@ function runSelfTest() {
     if (!existsSync(join(deploy, 'linux-build', 'provenance', 'keep.txt'))) {
       throw new Error('positive cleanup removed linux-build/provenance')
     }
-    if (readFileSync(join(deploy, 'linux-build', 'native-libs', 'arm64-v8a', 'libpocketharness_bionilux.so'), 'utf8') !== 'launcher\n') {
+    if (readFileSync(join(deploy, 'linux-build', 'native-libs', 'arm64-v8a', 'libpocketharness_proot.so'), 'utf8') !== 'launcher\n') {
       throw new Error('positive cleanup removed APK native Linux libraries')
     }
     if (existsSync(join(deploy, 'deepseek-harness'))) {

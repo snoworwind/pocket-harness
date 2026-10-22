@@ -52,11 +52,11 @@ const MANIFEST = {
 
 // Explicit local security fork; MANIFEST above retains the original upstream hashes.
 const LOCAL_PATCHES = {
-  'client/index.js': '4576301803d5eda59b76dfff62c7a2cd67cd05d65a25c58df12f3769e3f382cc',
+  'client/index.js': '2098d477559bd1113cd75e08c1ad042c5ccfc07882d2f8fab3d939320e40d20f',
   'README.md': 'b6a54ef5116942484304b8ea31da9bf514a22dcb6496ce2cd99aaadc82db8fb2',
   'src/asset-bundle.js': '7e32ce0f57ee0a7f75dfd2d2af6ff61357d63b6c34e4f0dbf7aa23cf4300e416',
   'src/github.js': '7b6369b5910ecb3e8b49f75a4dae3ca60ceac2d4164bf7f05f71c81803aa110c',
-  'src/index.js': 'ac2dbb4aee91eef1fed59c6829a694a83be4990393dfc42240e366d14f6f9767',
+  'src/index.js': '07e509158bfc604699a5ee35fdce176f9680b2d389b87587d3374951588ba05a',
 }
 
 /** Files this repo adds, including local security regression tests. */
