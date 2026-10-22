@@ -3001,3 +3001,7 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 501. **已删除 Session 会因轮询集合自引用而保留 BrowserHost（2026-10-22）**
 
     现象：会话从官方列表删除后，原生 BrowserHost WebView 与工作区仍由 Activity 持有；`NativeBrowserPlacement` 的轮询集合把 `workspaces.keys()` 再并回会话集合，所以旧键永不自然退出。真因：客户端把“曾访问过”误当成“仍存活”，而 `browserClose` 只关闭当前工作区、HMR dispose 又刻意保留原生页面。修法：仅对曾出现在官方会话列表、随后连续三轮缺席的 Session 进入退休态；关闭它遗留的 Sidebar occurrence，再通过精确 Session 的 `workspaceClose` 销毁全部 WebView 并请求 `ProfileStore.deleteProfile` 删除隔离 profile；失败保持退休态并重试。显式 shared compatibility 不清全局 Cookie jar；ProfileStore 可能异步完成磁盘清理，不承诺立即擦除。复验：Kotlin `BrowserHostCommandWiringTest` 与 TypeScript `tsc` 通过；临时 Node 回归覆盖跨会话、短暂缺席与清理重试。Vitest 未能启动（本机缺 `@esbuild/darwin-arm64`），tsdown 还缺可选 peer `unrun`；**未构建 APK、未做 CDP/ADB 设备验证**。
+
+502. **Termux 签名成功还不足以固定 Linux 来源输入（2026-10-22）**
+
+    现象：同一 Pocket Harness 提交每次都能验证 Termux InRelease 与 `.deb` 来源，但滚动的 `stable` 索引可改变依赖闭包，`linux-backend-packages.json` 中 `termux-packages/master` recipe 也会随时间变化。真因：把“本轮输入可验签”当成“同一提交未来取得同一输入”。修法：`linux-inputs.json` 固定已审核 InRelease SHA-256 与 recipe commit；每个 PRoot 依赖 recipe 记录 commit 和文件 SHA-256；准备脚本在 gpgv 验签后还必须匹配仓内 InRelease pin，索引变化或旧 `.deb` 缺失时失败关闭。复验：Python 自测覆盖匹配摘要、错误摘要/格式及 mutable master 拒绝；实际官方签名验收须 Linux 来源 runner，Termux `.deb` 长期可用性仍依赖外部仓库。未构建 APK、未做设备验证。

@@ -115,7 +115,9 @@
     {
       "component": "Termux PRoot ARM64 package closure",
       "packageLock": "scripts/source-build/linux-backend-packages.json",
-      "trust": "Termux signed InRelease -> signed Packages.gz hash/size -> exact .deb hash -> extracted ELF hash"
+      "recipeCommit": "9aedff9c28af3ca93c42eb2c3074221893232ae9",
+      "recipeCommitSource": "scripts/source-build/linux-inputs.json",
+      "trust": "pinned Termux InRelease SHA-256 + Termux signature -> signed Packages.gz hash/size -> exact .deb hash -> extracted ELF hash"
     },
     {
       "component": "TermFold compatibility preload",

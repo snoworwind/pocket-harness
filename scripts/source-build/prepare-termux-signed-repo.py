@@ -138,6 +138,42 @@ def signed_sha256(release_text: str, relative_path: str) -> tuple[str, int]:
     raise ValueError(f"signed Termux Release does not list {relative_path}")
 
 
+def require_pinned_inrelease(inrelease: bytes, expected_sha256: str) -> str:
+    if not isinstance(expected_sha256, str) or not re.fullmatch(r"[0-9a-f]{64}", expected_sha256):
+        raise ValueError("pinned Termux InRelease SHA-256 is invalid")
+    actual_sha256 = hashlib.sha256(inrelease).hexdigest()
+    if actual_sha256 != expected_sha256:
+        raise ValueError(f"Termux InRelease differs from pinned input: {actual_sha256} != {expected_sha256}")
+    return actual_sha256
+
+
+def termux_recipe_url(source: dict, expected_commit: str) -> str:
+    if not isinstance(expected_commit, str) or not re.fullmatch(r"[0-9a-f]{40}", expected_commit):
+        raise ValueError("pinned Termux recipe commit is invalid")
+    if source.get("recipeCommit") != expected_commit:
+        raise ValueError("Termux package recipe commit differs from the source lock")
+    recipe_path = source.get("recipePath")
+    if not isinstance(recipe_path, str) or not re.fullmatch(r"packages/[a-z0-9][a-z0-9+.-]*/build\.sh", recipe_path):
+        raise ValueError("Termux package recipe path is missing or unsafe")
+    relative = pathlib.PurePosixPath(recipe_path)
+    if relative.is_absolute() or str(relative) != recipe_path or not relative.parts or any(part in ("", ".", "..") for part in relative.parts):
+        raise ValueError("Termux package recipe path is unsafe")
+    expected_url = f"https://github.com/termux/termux-packages/blob/{expected_commit}/{recipe_path}"
+    if source.get("recipe") != expected_url:
+        raise ValueError("Termux package recipe URL is not the pinned immutable URL")
+    if not isinstance(source.get("recipeSha256"), str) or not re.fullmatch(r"[0-9a-f]{64}", source["recipeSha256"]):
+        raise ValueError("Termux package recipe SHA-256 is invalid")
+    return f"https://raw.githubusercontent.com/termux/termux-packages/{expected_commit}/{recipe_path}"
+
+
+def verify_termux_recipe(source: dict, expected_commit: str, content: bytes) -> str:
+    termux_recipe_url(source, expected_commit)
+    actual_sha256 = hashlib.sha256(content).hexdigest()
+    if actual_sha256 != source["recipeSha256"]:
+        raise ValueError(f"Termux package recipe digest mismatch: {actual_sha256} != {source['recipeSha256']}")
+    return actual_sha256
+
+
 def main() -> None:
     if len(sys.argv) != 4:
         raise SystemExit("usage: prepare-termux-signed-repo.py <extracted-bootstrap-usr> <webroot> <preinstall.json>")
@@ -158,6 +194,7 @@ def main() -> None:
             subprocess.run(["gpg", "--homedir", str(home), "--batch", "--export"],
                            check=True, stdout=output)
 
+        linux_inputs = json.loads(pathlib.Path(__file__).with_name("linux-inputs.json").read_text(encoding="utf-8"))
         inrelease = fetch(REPOSITORY + "/dists/stable/InRelease")
         inrelease_path = home / "InRelease"
         inrelease_path.write_bytes(inrelease)
@@ -165,6 +202,7 @@ def main() -> None:
         subprocess.run(["gpgv", "--keyring", str(keyring), "--output", str(release_path), str(inrelease_path)],
                        check=True)
         release_text = release_path.read_text(encoding="utf-8")
+        inrelease_hash = require_pinned_inrelease(inrelease, linux_inputs.get("termuxInReleaseSha256"))
     # Release checksums are relative to the suite root; the repository URL
     # and local apt layout additionally include dists/stable/.
     expected_index_hash, expected_index_size = signed_sha256(release_text, SUITE_REL)
@@ -177,6 +215,14 @@ def main() -> None:
     config = json.loads(preinstall_file.read_text(encoding="utf-8"))
     backend_config_path = pathlib.Path(__file__).with_name("linux-backend-packages.json")
     backend_config = json.loads(backend_config_path.read_text(encoding="utf-8"))
+    recipe_commit = linux_inputs.get("termuxPackagesRecipeCommit")
+    recipe_sources = backend_config.get("packageSources")
+    if not isinstance(recipe_sources, dict) or not recipe_sources:
+        raise ValueError("Termux package recipe lock is empty")
+    for name, source in sorted(recipe_sources.items()):
+        raw_url = termux_recipe_url(source, recipe_commit)
+        recipe_hash = verify_termux_recipe(source, recipe_commit, fetch(raw_url))
+        print(f"verified pinned Termux recipe {name} sha256={recipe_hash}")
     targets = config.get("targets")
     linux_backend_targets = backend_config.get("targets")
     if not isinstance(targets, list) or not isinstance(linux_backend_targets, list):
@@ -240,7 +286,6 @@ def main() -> None:
         })
         print(f"verified signed Termux package {name}={record.get('Version')} sha256={actual}")
 
-    inrelease_hash = hashlib.sha256(inrelease).hexdigest()
     provenance = {
         "repository": REPOSITORY,
         "suite": "stable",
