@@ -23,12 +23,17 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 /** 内存 UnlockStore：模拟「跨进程重启」——store 对象在两次 install 之间存活，agent 对象换新。 */
-function memoryStore(initial = []) {
+function memoryStore(initial = [], options = {}) {
   let saved = [...initial]
   const writes = []
   return {
     read: () => [...saved],
-    write: (groups) => { saved = [...groups]; writes.push([...groups]) },
+    write: (groups) => {
+      writes.push([...groups])
+      if (options.failWrites) return false
+      saved = [...groups]
+      return true
+    },
     /** 当前磁盘内容（断言用）。 */
     peek: () => [...saved],
     writes,
@@ -108,7 +113,7 @@ test('必测1：解锁 browser 后重建 gate（模拟进程重启），browser 
 
 test('必测1 反证：删掉持久化读回（store 永远返回空），重启后 browser 仍会被 mask —— 必须判红', async () => {
   // 用「读回失效」的 store 复现缺陷形态：写能成功，但读永远空。
-  const brokenStore = { read: () => [], write: () => {} }
+  const brokenStore = { read: () => [], write: () => true }
   let created1
   const boot1 = boot(brokenStore, { created: (h) => { created1 = h } })
   created1({ agent: boot1.agent })
@@ -250,6 +255,39 @@ test('边界4b：撤销全部（revoke + all）清空持久化，重启后三组
   assert.deepEqual(maskedGroups(b2.denies), ['browser', 'phone', 'virtual-display'])
 })
 
+test('撤销落盘失败：当前会话立即锁定，但返回失败并说明重启可能恢复旧授权', async () => {
+  const store = memoryStore(['phone', 'browser'], { failWrites: true })
+  let created
+  const b1 = boot(store, { created: (handler) => { created = handler } })
+  created({ agent: b1.agent })
+  const result = await b1.registered[0].execute({ group: 'off' }, { agent: b1.agent })
+
+  assert.equal(result.ok, false, '持久化撤销失败不得报告成功')
+  assert.match(result.text, /撤销已在当前会话重新锁定，但持久状态写入失败/)
+  assert.match(result.text, /重启后旧授权可能恢复/)
+  assert.deepEqual(result.locked.sort(), ['browser', 'phone', 'virtual-display'])
+  assert.deepEqual(store.peek(), ['phone', 'browser'], '失败不得伪称旧磁盘授权已经删除')
+
+  let created2
+  const b2 = boot(store, { created: (handler) => { created2 = handler } })
+  created2({ agent: b2.agent })
+  assert.deepEqual(maskedGroups(b2.denies), ['virtual-display'], '重启仍按真实旧磁盘状态恢复')
+})
+
+test('首次解锁落盘失败：工具保持锁定且不声称跨重启解锁', async () => {
+  const store = memoryStore([], { failWrites: true })
+  let created
+  const b = boot(store, { created: (handler) => { created = handler } })
+  created({ agent: b.agent })
+  const result = await b.registered[0].execute({ group: 'browser' }, { agent: b.agent })
+
+  assert.equal(result.ok, false)
+  assert.deepEqual(result.unlocked, [])
+  assert.deepEqual(result.locked.sort(), ['browser', 'phone', 'virtual-display'])
+  assert.match(result.text, /授权状态无法写入持久存储；工具保持锁定/)
+  assert.deepEqual(store.peek(), [])
+})
+
 // ---------------------------------------------------------------------------
 // 边界 2（fail-closed）与存储自身
 // ---------------------------------------------------------------------------
@@ -269,13 +307,37 @@ test('存储：序列化去重、只收非空字符串；坏数据写不进去',
   assert.deepEqual(JSON.parse(text), { version: UNLOCK_STATE_VERSION, unlocked: ['phone', 'browser'] })
 })
 
-test('存储：写失败不得抛（持久化是尽力而为，进程内解锁仍有效）', () => {
+test('存储：写失败以 false 返回且不得抛', () => {
   const store = createFileUnlockStore({
     file: '/x/state.json',
     writeFileSync: () => { throw new Error('EROFS') },
     renameSync: () => {},
   })
-  assert.doesNotThrow(() => store.write(['phone']))
+  assert.equal(store.write(['phone']), false)
+})
+
+test('存储：rename 失败保留旧授权文件，并由新 store 读回旧状态', () => {
+  const file = '/x/state.json'
+  const temp = file + '.tmp'
+  let target = serializeUnlockedGroups(['phone', 'browser'])
+  const pending = new Map()
+  const store = createFileUnlockStore({
+    file,
+    readFileSync: (path) => {
+      if (path === file) return target
+      if (pending.has(path)) return pending.get(path)
+      throw new Error('ENOENT')
+    },
+    writeFileSync: (path, data) => { pending.set(path, data) },
+    mkdirSync: () => {},
+    renameSync: () => { throw new Error('EIO') },
+    rmSync: (path) => { pending.delete(path) },
+  })
+
+  assert.equal(store.write(['phone']), false)
+  assert.equal(pending.has(temp), false, 'rename 失败后应清理临时文件')
+  const afterRestart = createFileUnlockStore({ file, readFileSync: () => target })
+  assert.deepEqual([...afterRestart.read()].sort(), ['browser', 'phone'])
 })
 
 test('存储：文件路径取自 DSH_HOME，文件名固定', () => {

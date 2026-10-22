@@ -13,6 +13,8 @@
 
 - 2026-10-22：Android `dsh-shell-termux` 尚无真实路径级执行围栏；源码现对 `read-only`/`workspace-write` 在 spawn 前 fail-closed，并要求每次会话策略显式选择 `danger-full-access` 才启动 bash。该档仍以应用 UID 运行，app-domain 不是工作区隔离；独立 UID/Landlock、秘密隔离与设备行为仍未验收。详见 [dsh-shell-termux 沙箱边界审计](SHELL-TERMUX-SANDBOX-AUDIT-2026-10-19.md)。本轮有宿主代码回归，**未构建 APK、未做设备验证**。
 
+- 2026-10-22：能力组撤销/解锁的持久化失败语义已在源码修复：写入失败不再返回成功，撤销仍立即锁住当前会话并提示旧磁盘授权在重启后可能恢复；只有原子写成功才承诺跨重启状态。源码反例与落盘/rename 失败用例通过；[PR #97](https://github.com/snoworwind/pocket-harness/pull/97) 待 CI/设备层验证，**未构建 APK、未做设备验证**。实现见 [能力持久化坑位](gotchas.md#498-能力组撤销与解锁必须等待持久状态写入成功)；这不等于写入失败时能清除旧授权。
+
 - 2026-10-18 在 main `187246a` 上的分区复审发现原生 relay 准入遗漏、屏幕范围内存/旧 XML 断链、路由门禁注释假绿，以及文件/虚拟屏/来源续跑等问题，见 [项目分区复审](PROJECT-AUDIT-2026-10-18.md)。**A01–A14 已在源码层修复**，实现、宿主反例与新增测试见 [修复账本](AUDIT-REMEDIATION-2026-10-18.md) 的「项目分区复审 A01–A14」一节。本轮未重建 APK、未做设备验证（无在线 ARM64 设备与 Android SDK）；L2/L3 面进入发版候选前仍须来源链新包的三层验收。与下方此前综合审查的 A01–A10 是不同编号集合。
 
 - 2026-10-18 综合审查的问题现按用户授权修复，当前进度见 [修复账本](AUDIT-REMEDIATION-2026-10-18.md)；[原审查报告](COMPREHENSIVE-AUDIT-2026-10-18.md) 保留发现时事实。实现、宿主反例与设备证据分别记账；**未做设备验证**。

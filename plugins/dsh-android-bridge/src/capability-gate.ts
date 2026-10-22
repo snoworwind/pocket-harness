@@ -210,6 +210,9 @@ export function installCapabilityGate(
   const persisted = new Set<string>(
     store.read().filter((group) => DEVICE_TOOL_GROUPS[group] !== undefined),
   )
+  const persist = (groups: readonly string[]): boolean => {
+    try { return store.write(groups) === true } catch { return false }
+  }
   const locksOf = (agent: unknown): Map<string, ScopedFiber> | undefined =>
     agent === null || agent === undefined ? undefined : locks.get(agent as object)
 
@@ -253,19 +256,21 @@ export function installCapabilityGate(
    * 内存锁表（perAgent）仍照常维护——它管「本进程这一轮到底有没有被 restrict」，
    * 持久化管「下次进程起来还算不算解锁过」。两者缺一都不成立。
    */
-  const unlock = (group: string, agent: unknown): { unlocked: string[]; locked: string[] } => {
+  const unlock = (group: string, agent: unknown): { unlocked: string[]; locked: string[]; error?: string } => {
     const requested = group === 'all' ? Object.keys(DEVICE_TOOL_GROUPS) : [group]
     const perAgent = locksOf(agent)
     const unlocked: string[] = []
-    let dirty = false
+    const additions = requested.filter((name) => knownGroup(name) && !persisted.has(name))
+    if (additions.length > 0) {
+      const next = [...persisted, ...additions]
+      if (!persist(next)) {
+        const locked = Object.keys(DEVICE_TOOL_GROUPS).filter((name) => perAgent?.has(name) === true)
+        return { unlocked: [], locked, error: '授权状态无法写入持久存储；工具保持锁定，请检查存储后重试。' }
+      }
+      for (const name of additions) persisted.add(name)
+    }
     for (const name of requested) {
       if (!knownGroup(name)) continue
-      // 先把「解锁过」记下来（即使本 agent 当前没有锁 fiber：该组可能已被持久化跳过掩蔽，
-      // 此时也要保证持久化文件里确实有它——否则下次重启会退回锁定）。
-      if (!persisted.has(name)) {
-        persisted.add(name)
-        dirty = true
-      }
       const fiber = perAgent?.get(name)
       if (fiber === undefined) continue
       try {
@@ -276,7 +281,6 @@ export function installCapabilityGate(
       perAgent?.delete(name)
       unlocked.push(name)
     }
-    if (dirty) store.write([...persisted])
     const locked = Object.keys(DEVICE_TOOL_GROUPS).filter((name) => perAgent?.has(name) === true)
     return { unlocked, locked }
   }
@@ -286,15 +290,18 @@ export function installCapabilityGate(
    * 「解一次永久生效」不能变成不可逆。
    * @returns 本次重新上锁的组。
    */
-  const relock = (group: string, agent: unknown): { relocked: string[]; locked: string[] } => {
+  const relock = (group: string, agent: unknown): { relocked: string[]; locked: string[]; error?: string } => {
     const requested = group === 'all' || group === 'relock' ? Object.keys(DEVICE_TOOL_GROUPS) : [group]
     const relocked: string[] = []
     for (const name of requested) {
       if (!knownGroup(name)) continue
-      persisted.delete(name)
       relocked.push(name)
     }
-    store.write([...persisted])
+    const next = [...persisted].filter((name) => !requested.includes(name))
+    const persistenceOk = next.length === persisted.size || persist(next)
+    // 即使落盘失败也立即撤销当前 agent 的授权；响应会明确标为失败，不能承诺重启后仍锁定。
+    persisted.clear()
+    for (const name of next) persisted.add(name)
     // 重新掩蔽：把该 agent 的锁表清掉后按当前持久化集合重建（已撤销的组会重新被 restrict）。
     const perAgent = locksOf(agent)
     if (perAgent !== undefined) {
@@ -308,7 +315,9 @@ export function installCapabilityGate(
     lockAgent(agent)
     const perAfter = locksOf(agent)
     const locked = Object.keys(DEVICE_TOOL_GROUPS).filter((name) => perAfter?.has(name) === true)
-    return { relocked, locked }
+    return persistenceOk
+      ? { relocked, locked }
+      : { relocked: [], locked, error: '撤销已在当前会话重新锁定，但持久状态写入失败；重启后旧授权可能恢复。请检查存储并重试。' }
   }
 
   try {
@@ -339,9 +348,9 @@ export function installCapabilityGate(
  * @param channels - 无障碍 / Shizuku 就绪度，供模型判断能否建屏。
  */
 export function capabilityTool(
-  unlock: (group: string, agent: unknown) => { unlocked: string[]; locked: string[] },
+  unlock: (group: string, agent: unknown) => { unlocked: string[]; locked: string[]; error?: string },
   channels: () => ChannelFacts | Promise<ChannelFacts>,
-  relock: (group: string, agent: unknown) => { relocked: string[]; locked: string[] } = () => ({ relocked: [], locked: [] }),
+  relock: (group: string, agent: unknown) => { relocked: string[]; locked: string[]; error?: string } = () => ({ relocked: [], locked: [] }),
   /** 该组是否已被**持久化**记住解锁（跨进程重启存活）——与「当前是否被掩蔽」是两件事。 */
   isPersisted: (group: string) => boolean = () => false,
 ) {
@@ -398,13 +407,16 @@ export function capabilityTool(
         // 与「当前是否被掩蔽」区分开：这里说的是「是否已持久化记住解锁」（跨重启存活）。
         persisted: isPersisted(name),
       }))
-      const head = revoked !== undefined
-        ? `已撤销：${revoked.relocked.join('、')}。对应工具将从下一步起重回锁定，重启后也不会自动解锁。`
-        : unlocked.length > 0
-          ? `已解锁：${unlocked.join('、')}。对应工具将从下一步起出现在工具列表，**并在应用重启后保持解锁**。`
-          : locked.length === 0
-            ? '全部能力组均已解锁，工具已可用（重启后仍然有效）。'
-            : '请求的组此前已解锁（无需重复解锁）。'
+      const operationError = revoked?.error ?? attempted?.error
+      const head = operationError !== undefined
+        ? operationError
+        : revoked !== undefined
+          ? `已撤销：${revoked.relocked.join('、')}。对应工具将从下一步起重回锁定，重启后也不会自动解锁。`
+          : unlocked.length > 0
+            ? `已解锁：${unlocked.join('、')}。对应工具将从下一步起出现在工具列表，**并在应用重启后保持解锁**。`
+            : locked.length === 0
+              ? '全部能力组均已解锁，工具已可用（重启后仍然有效）。'
+              : '请求的组此前已解锁（无需重复解锁）。'
       const stateLines = groups.map((g) => `- ${g.group}：${g.state === 'locked' ? '未解锁' : '可用'}（${g.tools} 个工具）${g.persisted ? '［已记住解锁，重启后仍有效］' : ''}`)
       const channelLines = [
         `- 无障碍通道：${facts.a11y ? '已开启（语义树 / ref 动作 / 虚拟屏语义树可用）' : '未开启（只能走 Shizuku 或坐标面）'}`,
@@ -415,7 +427,7 @@ export function capabilityTool(
       const honesty = '注意：解锁只代表这些工具**出现在列表里**，不代表权限当前可用——'
         + '无障碍未开启 / Shizuku 未运行时，调用会如实返回结构化失败（本行以上即为当前实测通道状态）。'
       return {
-        ok: true,
+        ok: operationError === undefined,
         unlocked,
         locked,
         groups,
@@ -459,7 +471,8 @@ export interface UnlockStore {
   /** @returns 此前已持久化解锁的组名；读不到或坏数据一律返回空集。 */
   read(): readonly string[]
   /** @param groups - 当前应持久化的解锁组全集（覆盖写）。 */
-  write(groups: readonly string[]): void
+  /** @returns 只有原子写入成功时返回 true；失败不得被当成已保存。 */
+  write(groups: readonly string[]): boolean
 }
 
 /** 状态文件名（放在 DSH_HOME 下，与既有 .notify.ndjson / .task-done 等同一层）。 */
@@ -495,7 +508,7 @@ export function serializeUnlockedGroups(groups: readonly string[]): string {
  * 建一个文件支撑的解锁态存储。
  *
  * @param options - 文件路径与文件系统函数（默认取 DSH_HOME 下的状态文件；单测可注入桩）。
- * @returns 存储句柄；任何 IO 异常都被吞成 fail-closed（不抛，不影响门禁安装）。
+ * @returns 存储句柄；read 在 IO 异常时 fail-closed，write 则以 false 暴露持久化失败。
  */
 export function createFileUnlockStore(options: {
   readonly file?: string
@@ -529,7 +542,7 @@ export function createFileUnlockStore(options: {
         return []
       }
     },
-    write(groups: readonly string[]): void {
+    write(groups: readonly string[]): boolean {
       const temp = file + '.tmp'
       try {
         try { mkdirSync?.(dirnamePath(file)) } catch { /* 已存在 */ }
@@ -540,9 +553,11 @@ export function createFileUnlockStore(options: {
           // 无 rename 能力（注入桩）：退化为直写目标文件。
           writeFileSync(file, serializeUnlockedGroups(groups))
         }
+        return true
       } catch {
-        // 写失败不抛：持久化是「尽量记住」，失败时本次进程内解锁仍然有效（内存锁表照常解开）。
+        // 写失败不抛给 Cordis，但必须返回 false，防止调用方谎报解锁/撤销已跨重启生效。
         try { rmSync?.(temp) } catch { /* 清理失败无所谓 */ }
+        return false
       }
     },
   }
