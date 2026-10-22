@@ -62,7 +62,18 @@ test('AR1 patches current artifacts, parses, and remains idempotent', () => {
   assert.ok(patchedClient.includes('select(AUTO_REVIEW_PRESET);'))
   assert.ok(patchedClient.includes('High-risk denials and review failures are hard-denied and cannot be approved'))
   assert.ok(patchedClient.includes("Changing the current session's permission preset disables Auto review."))
+  assert.ok(patchedClient.includes('此工作区会话没有路径级文件系统沙箱'))
+  assert.ok(patchedClient.includes('This workspace session has no path-level filesystem sandbox'))
   assert.ok(patchedClient.includes('PTC 外层程序'))
+
+  const sessionPicker = patchedClient.slice(
+    patchedClient.indexOf('const choose = (id) => {'),
+    patchedClient.indexOf('const closeConfirmation = () => {'),
+  )
+  assert.ok(sessionPicker.includes('if (id === "danger-full-access" || id === "auto")'))
+  assert.ok(sessionPicker.includes('setConfirmation(id);'))
+  assert.ok(patchedClient.includes('confirmation !== null && (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.RiskConfirmation, {'))
+  assert.ok(patchedClient.includes('description: confirmationDescription,'))
   assert.equal(patchPermissionPresetsClientAutoDefault(patchedClient), patchedClient)
 
   const check = (filename, source) => {
