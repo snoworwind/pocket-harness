@@ -1305,6 +1305,81 @@
       "patchIds": [
         "atomic-stale-lock-F4"
       ]
+    },
+    "dsh-permission-presets-0.2.1-rc.2": {
+      "source": "engine-tgz",
+      "engine": "0.2.1-rc.2",
+      "package": "@deepseek-ai/dsh-permission-presets@0.2.1-rc.2",
+      "provenance": {
+        "tarballFile": "deepseek-ai-dsh-permission-presets-0.2.1-rc.2.tgz",
+        "tarballSha256": "481425091094caaa466a9ce7000a63ce41a61015a0510b3086d48b89d9efeb07",
+        "inputKind": "published-tarball"
+      },
+      "files": [
+        "package.json",
+        "lib/index.js"
+      ],
+      "fileSha256": {
+        "package.json": "80f3e9e868eb258ca2149229682a62ae530b5e8b78715d5b53756466a0e9132a",
+        "lib/index.js": "4f23c620145098d611d04d8363bc6716f49b26930c9141a21dc9a8df2b72ba63"
+      },
+      "targets": {
+        "lib/index.js": "usr/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-permission-presets/lib/index.js",
+        "package.json": "usr/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-permission-presets/package.json"
+      },
+      "patchIds": [
+        "permission-auto-review-default-AR1"
+      ]
+    },
+    "dsh-experimental-auto-review-0.2.1-rc.2": {
+      "source": "engine-tgz",
+      "engine": "0.2.1-rc.2",
+      "package": "@deepseek-ai/dsh-experimental-auto-review@0.2.1-rc.2",
+      "provenance": {
+        "tarballFile": "deepseek-ai-dsh-experimental-auto-review-0.2.1-rc.2.tgz",
+        "tarballSha256": "32d63af79bfe1bebde3a46c984f83122c2661fe86026ca77b0cf76f416af6ea1",
+        "inputKind": "published-tarball"
+      },
+      "files": [
+        "package.json",
+        "lib/index.js"
+      ],
+      "fileSha256": {
+        "package.json": "192d5585c5dab6b77fd46885547f2c463fb8dc619b2f18ed110e47cfce9248b0",
+        "lib/index.js": "14b0fec944f734a888468b75ee9d7ae121383f018ce5bf76c4506393a910787f"
+      },
+      "targets": {
+        "lib/index.js": "usr/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-experimental-auto-review/lib/index.js",
+        "package.json": "usr/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-experimental-auto-review/package.json"
+      },
+      "patchIds": [
+        "permission-auto-review-default-AR1"
+      ]
+    },
+    "dsh-client-ui-permission-presets-0.2.1-rc.2": {
+      "source": "engine-tgz",
+      "engine": "0.2.1-rc.2",
+      "package": "@deepseek-ai/dsh-client-ui-permission-presets@0.2.1-rc.2",
+      "provenance": {
+        "tarballFile": "deepseek-ai-dsh-client-ui-permission-presets-0.2.1-rc.2.tgz",
+        "tarballSha256": "2a74bdd8d509623d9bdaaa7492e8244ec3d6f3a6cbb2979ee7c88d7c332045c7",
+        "inputKind": "published-tarball"
+      },
+      "files": [
+        "package.json",
+        "lib/client.js"
+      ],
+      "fileSha256": {
+        "package.json": "355738aaf2f9ccc6b5d3104283ff247c6494c179a6b9c17c13ea915ef0dc8656",
+        "lib/client.js": "0c5d7757b657615b3f34a5712d73e30af6726e5fb48d5947881533e6fdbdfcdd"
+      },
+      "targets": {
+        "lib/client.js": "usr/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-client-ui-permission-presets/lib/client.js",
+        "package.json": "usr/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-client-ui-permission-presets/package.json"
+      },
+      "patchIds": [
+        "permission-auto-review-default-AR1"
+      ]
     }
   },
   "capture": {
@@ -1316,7 +1391,7 @@
       ]
     },
     "overlaySha256": "412c665ba42ceb8486545901ee28cbcfed54d3fdad0c80b641a7046e6e5ce2f4",
-    "registrySha256": "ed6f2eaa8c39bf0cb4dfd759faef2fbcfb0998f05d40afd7b63b01e1f56628df",
+    "registrySha256": "057593642f75d5cf9aeacc29570048727d457c5800e0d574caa15c74192c11aa",
     "sourceManifestSha256": "553cb7fbbd365c7decb991a4f0505fbcce03429a9ba96cde943661427a14e084"
   }
 }
