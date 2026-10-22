@@ -82,6 +82,51 @@ class SafeTermuxPackagePathTest(unittest.TestCase):
                         module.safe_package_file(webroot, filename)
 
 
+class SafeTermuxCopyrightTest(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory(prefix="termux-copyright-")
+        self.root = pathlib.Path(self.temp.name)
+        self.prefix = self.root / "package/usr"
+        (self.prefix / "share/doc/libtalloc").mkdir(parents=True)
+        self.shared = self.root / "bootstrap/usr/share/LICENSES"
+        self.shared.mkdir(parents=True)
+        (self.shared / "LGPL-3.0.txt").write_text("authenticated generic license\n")
+
+    def tearDown(self):
+        self.temp.cleanup()
+
+    def test_resolves_only_termux_shared_license_link(self):
+        (self.prefix / "share/doc/libtalloc/copyright").symlink_to("../../LICENSES/LGPL-3.0.txt")
+        destination = self.root / "backend/share/licenses"
+        origin = module.copy_copyright(self.prefix, "libtalloc", destination, self.shared)
+        self.assertEqual((destination / "libtalloc/copyright").read_text(), "authenticated generic license\n")
+        self.assertEqual(origin["source"], "official-termux-bootstrap:share/LICENSES/LGPL-3.0.txt")
+
+    def test_rejects_copyright_link_outside_package_and_shared_license_roots(self):
+        (self.prefix / "share/doc/libtalloc/copyright").symlink_to("/etc/passwd")
+        with self.assertRaisesRegex(ValueError, "escapes its authenticated roots"):
+            module.copy_copyright(self.prefix, "libtalloc", self.root / "backend/share/licenses", self.shared)
+
+    def test_rejects_missing_non_shared_copyright_target(self):
+        (self.prefix / "share/doc/libtalloc/copyright").symlink_to("../../doc/missing.txt")
+        with self.assertRaisesRegex(ValueError, "missing non-shared target"):
+            module.copy_copyright(self.prefix, "libtalloc", self.root / "backend/share/licenses", self.shared)
+
+    def test_rejects_missing_file_from_official_shared_license_root(self):
+        (self.prefix / "share/doc/libtalloc/copyright").symlink_to("../../LICENSES/UNKNOWN.txt")
+        with self.assertRaisesRegex(ValueError, "official Termux bootstrap omitted shared license"):
+            module.copy_copyright(self.prefix, "libtalloc", self.root / "backend/share/licenses", self.shared)
+
+    def test_bootstrap_shared_license_directory_cannot_be_a_symlink(self):
+        (self.shared / "LGPL-3.0.txt").unlink()
+        self.shared.rmdir()
+        outside = self.root / "untrusted-license-directory"
+        outside.mkdir()
+        self.shared.symlink_to(outside, target_is_directory=True)
+        with self.assertRaisesRegex(ValueError, "omitted its shared license directory"):
+            module.termux_shared_license_root(self.root / "bootstrap/usr")
+
+
 @unittest.skipUnless(shutil.which("dpkg-deb") and shutil.which("gpg") and shutil.which("gpgv"),
                      "backend assembly integration requires dpkg-deb and GnuPG")
 class PrepareProotBackendTest(unittest.TestCase):
@@ -93,6 +138,8 @@ class PrepareProotBackendTest(unittest.TestCase):
         self.provenance_path = self.root / "termux-packages-provenance.json"
         self.bootstrap_usr = self.root / "bootstrap-usr"
         (self.bootstrap_usr / "share/termux-keyring").mkdir(parents=True)
+        (self.bootstrap_usr / "share/LICENSES").mkdir(parents=True)
+        (self.bootstrap_usr / "share/LICENSES/LGPL-3.0.txt").write_text("authenticated generic license\n")
         self.inputs_path = SCRIPT.with_name("linux-inputs.json")
         self.provenance = {"repository": "https://packages.termux.dev/apt/termux-main", "index": {"sha256": "a" * 64}, "packages": []}
         self.package_roots = {}
@@ -109,7 +156,7 @@ class PrepareProotBackendTest(unittest.TestCase):
         self.make_package("libtalloc", "2.5.0", {
             "lib/libtalloc.so.2.5.0": elf64(3),
             "lib/libtalloc.so.2": b"libtalloc.so.2.5.0\0",
-            "share/doc/libtalloc/copyright": b"talloc LGPL notice\n",
+            "share/doc/libtalloc/copyright": ("symlink", "../../LICENSES/LGPL-3.0.txt"),
         })
         self.make_signed_repo()
 
@@ -126,7 +173,9 @@ class PrepareProotBackendTest(unittest.TestCase):
         for relative, payload in files.items():
             target = prefix / relative
             target.parent.mkdir(parents=True, exist_ok=True)
-            if relative.endswith("libtalloc.so.2"):
+            if isinstance(payload, tuple) and payload[0] == "symlink":
+                target.symlink_to(payload[1])
+            elif relative.endswith("libtalloc.so.2"):
                 target.symlink_to(payload.decode().strip("\0"))
             else:
                 target.write_bytes(payload)
@@ -221,6 +270,11 @@ class PrepareProotBackendTest(unittest.TestCase):
             "libpocketharness_proot.so", "libpocketharness_proot_loader.so", "libtalloc.so", "libandroid-shmem.so",
         })
         self.assertTrue((self.root / "backend/share/licenses/proot/copyright").is_file())
+        self.assertEqual((self.root / "backend/share/licenses/libtalloc/copyright").read_text(),
+                         "authenticated generic license\n")
+        license_origins = {item["package"]: item["source"] for item in result["licenseOrigins"]}
+        self.assertEqual(license_origins["libtalloc"],
+                         "official-termux-bootstrap:share/LICENSES/LGPL-3.0.txt")
         compat_licenses = self.root / "backend/share/licenses/pocket-harness-termfold-compat"
         self.assertTrue((compat_licenses / "LICENSE").is_file())
         self.assertEqual((compat_licenses / "NOTICE.md").read_bytes(),

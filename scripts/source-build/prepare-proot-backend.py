@@ -162,16 +162,60 @@ def copy_shared_libraries(source_lib: Path, destination_lib: Path) -> None:
         shutil.copy2(source, destination)
 
 
-def copy_copyright(prefix: Path, package_name: str, destination: Path) -> None:
+def termux_shared_license_root(bootstrap_usr: Path) -> Path:
+    if bootstrap_usr.is_symlink() or not bootstrap_usr.is_dir():
+        raise ValueError("official Termux bootstrap root is missing or unsafe")
+    bootstrap_root = bootstrap_usr.resolve(strict=True)
+    candidate = bootstrap_usr / "share" / "LICENSES"
+    if candidate.is_symlink() or not candidate.is_dir():
+        raise ValueError("official Termux bootstrap omitted its shared license directory")
+    resolved = candidate.resolve(strict=True)
+    if not resolved.is_relative_to(bootstrap_root) or not resolved.is_dir():
+        raise ValueError("official Termux shared license directory escapes the bootstrap")
+    return resolved
+
+
+def copy_copyright(prefix: Path, package_name: str, destination: Path,
+                   shared_license_root: Path) -> dict[str, str]:
     source = prefix / "share" / "doc" / package_name / "copyright"
     if not source.exists() and not source.is_symlink():
         raise ValueError(f"Termux package omitted copyright notice: {package_name}")
-    resolved = source.resolve(strict=True)
-    if not resolved.is_relative_to(prefix.resolve(strict=True)) or not resolved.is_file():
+    package_root = prefix.resolve(strict=True)
+    if shared_license_root.is_symlink() or not shared_license_root.is_dir():
+        raise ValueError("official Termux shared license directory is missing or unsafe")
+    shared_root = shared_license_root.resolve(strict=True)
+    package_shared_root = (package_root / "share" / "LICENSES").resolve(strict=False)
+    if not package_shared_root.is_relative_to(package_root):
+        raise ValueError(f"Termux package shared license path escapes its package: {package_name}")
+    try:
+        resolved = source.resolve(strict=True)
+        origin = f"signed-termux-package:{package_name}/share/doc/{package_name}/copyright"
+    except FileNotFoundError as error:
+        # Termux uses relative links such as ../../LICENSES/GPL-3.0.txt for
+        # generic notices. The standalone .deb omits that shared directory;
+        # resolve only that exact in-prefix location against the authenticated
+        # official bootstrap's license tree.
+        unresolved = source.resolve(strict=False)
+        if not unresolved.is_relative_to(package_shared_root):
+            raise ValueError(f"Termux copyright notice has a missing non-shared target: {package_name}") from error
+        relative = unresolved.relative_to(package_shared_root)
+        if not relative.parts:
+            raise ValueError(f"Termux copyright notice does not identify a shared license file: {package_name}")
+        try:
+            resolved = (shared_root / relative).resolve(strict=True)
+        except FileNotFoundError as missing:
+            raise ValueError(f"official Termux bootstrap omitted shared license {relative.as_posix()}") from missing
+        if not resolved.is_relative_to(shared_root):
+            raise ValueError(f"Termux shared license target escapes the official bootstrap: {package_name}")
+        origin = f"official-termux-bootstrap:share/LICENSES/{relative.as_posix()}"
+    if not resolved.is_relative_to(package_root) and not resolved.is_relative_to(shared_root):
+        raise ValueError(f"Termux copyright notice escapes its authenticated roots: {package_name}")
+    if not resolved.is_file():
         raise ValueError(f"Termux copyright notice is not a file: {package_name}")
     target = destination / package_name / "copyright"
     target.parent.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(resolved, target)
+    return {"package": package_name, "destination": f"{package_name}/copyright", "source": origin}
 
 
 def termux_library(prefix: Path, stem: str) -> Path:
@@ -396,8 +440,10 @@ def assemble(webroot_arg: str, provenance_arg: str, inputs_arg: str, bootstrap_u
             (abi / name).chmod(0o755)
 
         licenses = backend / "share" / "licenses"
+        shared_license_root = termux_shared_license_root(bootstrap_usr)
+        license_origins = []
         for package, prefix in package_prefixes.items():
-            copy_copyright(prefix, package, licenses)
+            license_origins.append(copy_copyright(prefix, package, licenses, shared_license_root))
         shutil.copyfile(Path(__file__).resolve().parents[2] / "LICENSES" / "GPL-2.0.txt", backend / "LICENSE-GPL-2.0.txt")
         compat_dir = licenses / "pocket-harness-termfold-compat"
         compat_dir.mkdir(parents=True, exist_ok=True)
@@ -428,6 +474,8 @@ def assemble(webroot_arg: str, provenance_arg: str, inputs_arg: str, bootstrap_u
             **package_sources[item["package"]],
         } for item in sorted(packages, key=lambda value: value["package"])],
         "patchedTallocNeeded": patched_talloc,
+        "licenseOrigins": sorted(license_origins, key=lambda item: item["package"]),
+        "sharedLicenseSource": "official-termux-bootstrap:share/LICENSES",
         "licenseFiles": [
             {"path": str(item.relative_to(licenses)), "size": item.stat().st_size, "sha256": sha256(item)}
             for item in sorted(licenses.rglob("*")) if item.is_file() and not item.is_symlink()

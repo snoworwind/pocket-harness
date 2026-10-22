@@ -61,6 +61,8 @@ DEBIAN_SHA=$(node -p 'require("./scripts/source-build/linux-inputs.json").debian
 : "${TERMUX_BOOTSTRAP_USR:?TERMUX_BOOTSTRAP_USR must identify the official Termux bootstrap keyring}"
 test -s "$DEBIAN_KEYRING"
 test -d "$TERMUX_BOOTSTRAP_USR/share/termux-keyring"
+test -d "$TERMUX_BOOTSTRAP_USR/share/LICENSES"
+test ! -L "$TERMUX_BOOTSTRAP_USR/share/LICENSES"
 NATIVE_LIBS="$WORK/native-libs/arm64-v8a"
 python3 scripts/source-build/prepare-proot-backend.py \
   "$TERMUX_WEBROOT" "$TERMUX_PROVENANCE" scripts/source-build/linux-inputs.json "$TERMUX_BOOTSTRAP_USR" \
