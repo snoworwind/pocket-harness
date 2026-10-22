@@ -2961,3 +2961,7 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 491. **兼容层故障注入夹具必须先通过文件大小上限检查**
 
     现象：Linux CI 的硬链接复制失败/中断用例立即返回 `EFBIG`，没有进入注入的写入错误或进程停止路径。真因：测试文件大于该测试库设置的 1 MiB 复制上限，预检提前拒绝，故障注入断言实际没有覆盖原子发布中断。修法：夹具保持大于注入阈值、同时低于复制上限；另为变更 provenance 的测试设置与 signed index 不同的版本。复验：PR #90 首轮 CI 失败已定位；需以修复提交后的 Linux preload 回归全绿确认。
+
+492. **Termux signed Packages 索引可合法包含同包的多个版本**
+
+    现象：来源链已成功验证官方 `InRelease` 与 `Packages.gz` 签名摘要，却在读取 `buf` 条目时因重复包名退出；实时索引同时含 `1.75.0` 与 `1.74.0-1`。真因：把 Debian/Termux 索引的多版本记录误判成签名索引损坏，未应用 apt 的版本候选选择。修法：限定 AArch64/`all` 记录，按 `dpkg --compare-versions` 选最高版本，同版本优先 native AArch64；同版本同架构重复项仍 fail closed。复验：新增多版本、架构无关同版本和冲突重复候选用例；PR #90 草稿构建首轮实测暴露，follow-up Linux CI 与来源构建需重验。

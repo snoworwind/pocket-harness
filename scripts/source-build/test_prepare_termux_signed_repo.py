@@ -25,6 +25,27 @@ class SignedTermuxRepoParserTest(unittest.TestCase):
         self.assertEqual(module._dependency_applies("target [!amd64]", "root", records), "target")
         self.assertEqual(module._dependency_applies("target [linux-any]", "root", records), "target")
 
+    @unittest.skipUnless(shutil.which("dpkg"), "package candidate selection requires dpkg; Linux CI provides it")
+    def test_signed_index_selects_newest_debian_version_and_native_tie(self):
+        records = module.select_package_records([
+            {"Package": "buf", "Version": "1.74.0-1", "Architecture": "aarch64", "Filename": "old.deb"},
+            {"Package": "buf", "Version": "1.75.0", "Architecture": "aarch64", "Filename": "new.deb"},
+            {"Package": "tie", "Version": "2.0", "Architecture": "all", "Filename": "all.deb"},
+            {"Package": "tie", "Version": "2.0", "Architecture": "aarch64", "Filename": "native.deb"},
+            {"Package": "foreign", "Version": "9.0", "Architecture": "amd64", "Filename": "foreign.deb"},
+        ])
+        self.assertEqual(records["buf"]["Filename"], "new.deb")
+        self.assertEqual(records["tie"]["Filename"], "native.deb")
+        self.assertNotIn("foreign", records)
+
+    @unittest.skipUnless(shutil.which("dpkg"), "package candidate selection requires dpkg; Linux CI provides it")
+    def test_same_version_and_architecture_duplicates_fail_closed(self):
+        with self.assertRaisesRegex(ValueError, "duplicate signed Termux package candidate: buf=1.75.0"):
+            module.select_package_records([
+                {"Package": "buf", "Version": "1.75.0", "Architecture": "aarch64", "Filename": "one.deb"},
+                {"Package": "buf", "Version": "1.75.0", "Architecture": "aarch64", "Filename": "two.deb"},
+            ])
+
     @unittest.skipUnless(shutil.which("dpkg"), "dependency version comparisons require dpkg; Linux CI provides it")
     def test_dependency_closure_honors_version_architecture_and_multiarch(self):
         records = {
