@@ -14,6 +14,7 @@
 ## 补丁清单（详见 registry.json）
 
 - **permission-auto-review-default-AR1（2026-10-23）**：新会话默认 Auto Review 并挂载对应审查插件；审查覆盖原生工具、PTC 外层程序和内层调用。high 风险结论直接硬拒绝并记录到单调 `tools.guard`，不会进入用户审批链；medium 拒绝仍可逐次询问。审查失败与集成缺席时 fail closed；reviewer 卸载时活跃会话回退到 `workspace-write`，Android Shell 在 spawn 前拒绝该受限档位。Android 没有路径级文件系统沙箱，工具仍在 app UID 权限下运行；切换当前会话权限档位会退出 Auto Review。三个固定 npm 包夹具、幂等、运行时拒绝/审批、完整补丁 runner 与损坏输入回归见 `tests/permission-auto-review-default.test.mjs`。
+- **workspace-write-boundary-warning-WW1（2026-10-23）**：用户选择 `workspace-write` 时先确认 Android 没有覆盖所有工具的路径级文件系统沙箱。当前会话选择器、新会话默认设置与 `/permission` 命令均给出确认；选中后设置说明和会话选择器提示持续可见。文案明确 Termux Shell 会在启动 bash 前拒绝该档位，其他原生工具/插件依各自实现、不能保证仅访问工作区，并仍受 app UID 权限边界约束。回归 `tests/workspace-write-boundary-warning.test.mjs`。
 - **sidebar-bubble-reorder-B1（2026-10-17）**：`dsh-client-ui-sidebar-right/lib/client.js` 增加 `reorderIn(session, tab, before)`。复用原 store 的 `placeTab`，恢复原活动标签；仅操作当前挂载会话的 dock 同分栏，拒绝失效会话、浮动页、跨分栏与无效/无变化目标。补丁接受本代 npm 发布包和 Android 源码构建的两条精确锚点；未知或部分损坏字节拒绝写入。真实夹具、幂等、损坏输入和 runner 集成测试见 `tests/sidebar-bubble-reorder.test.mjs`。
 
 - **dshmarketplace-plugin 0.1.5**：A pre-execute 守卫（全工具崩溃）、B execPath 安全化（apk#83/#89 bad ELF magic）、C 不可安装置灰（soft：锚点失配仅告警不拒打包）、D 移动兼容徽章 + `mobile:` 过滤（server/client 两侧）、**U2 exact 路由鉴权**（search/install 复用 `connection.requestRejection()`，缺服务也 401）。

@@ -39,6 +39,10 @@ import {
   patchAutoReviewDefaultBehavior,
   patchPermissionPresetsClientAutoDefault,
 } from './data/permission-auto-review-default.mjs'
+import {
+  WORKSPACE_WRITE_WARNING_MARKER,
+  patchWorkspaceWriteBoundaryWarning,
+} from './data/workspace-write-boundary-warning.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const registry = JSON.parse(readFileSync(join(HERE, 'registry.json'), 'utf8'))
@@ -191,6 +195,14 @@ const IMPLS = {
       IMPL_state[clientTarget] = patchPermissionPresetsClientAutoDefault(loadImpl(clientTarget, CURRENT_STAGE_ROOT))
       return patchPermissionPresetsAutoDefault(s)
     },
+  },
+
+  // Workspace Write is not a reliable path-level boundary for every Android
+  // tool. Keep its explicit acknowledgement as a separate, ordered client patch.
+  'workspace-write-boundary-warning-WW1': {
+    file: 'usr/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-client-ui-permission-presets/lib/client.js',
+    check: (s) => s.includes(WORKSPACE_WRITE_WARNING_MARKER) && patchWorkspaceWriteBoundaryWarning(s) === s,
+    apply: patchWorkspaceWriteBoundaryWarning,
   },
 
   'sidebar-bubble-reorder-B1': {

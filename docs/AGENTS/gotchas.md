@@ -3013,3 +3013,7 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 504. **新增 Cordis profile 顶层项后要更新真实工厂结构断言（2026-10-23）**
 
     现象：PR #103 中 Auto Review 已编译，但 Kotlin `FactoryProfilePatchTest.realFactoryFileSelfMergeIsByteIdentical` 与 `realFactoryMissingSiblingIsRestoredIntoItsOwnGroup` 仍按旧 profile 的 24 个块断言，导致 1359 个单测中 2 个失败。真因：这两个测试同时锁定 profile 的逐字节合并行为和顶层块数量；新增 `permission` 与 reviewer `insert` 各增加一个顶层块，数量断言没有随产品配置更新。修法：把结构基线更新为 26 个块（25 个顶层条目加注释头块），继续单独断言 `shell-termux` 与 `host-web-compat` 的组内关系。复验：本地 `./gradlew :app:testDebugUnitTest --tests 'com.snoworwind.pocketharness.FactoryProfilePatchTest' --no-daemon --stacktrace` 通过；PR #103 修复后的远端 Kotlin 门禁待重跑。
+
+505. **Workspace Write 名称不等于 Android 全工具路径隔离（2026-10-23）**
+
+    现象：用户可能把 `workspace-write` /「工作区内修改」理解成所有工具都被限制在工作区；Android 当前没有覆盖全部原生工具和插件的路径级文件系统沙箱。Termux Shell 对该档位会在启动 bash 前失败关闭，而其他工具按各自实现访问应用 UID 可达资源。真因：上游档位名称表达通用权限语义，不能证明 Android 每个执行器都提供路径围栏。修法：当前会话选择器、新会话默认设置和 `/permission` 命令在切换到该档位前弹出需勾选确认的有限性说明；选中后保留说明，并准确标出 Termux Shell 的失败关闭行为、其他工具的实现差异和 app UID 边界。复验：`scripts/patches/tests/workspace-write-boundary-warning.test.mjs` 覆盖三入口、双语文案、runner 顺序、幂等、语法和损坏锚点不写入；未构建 APK、未做 CDP/ADB 设备验证。

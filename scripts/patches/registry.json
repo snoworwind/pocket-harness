@@ -14,6 +14,15 @@
       "marker": "dsh-mobile auto review hard-denies high risk (AR1)"
     },
     {
+      "id": "workspace-write-boundary-warning-WW1",
+      "target": "usr/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-client-ui-permission-presets/lib/client.js",
+      "scope": "engine",
+      "requires": ["permission-auto-review-default-AR1"],
+      "summary": "选择 Workspace Write 时说明 Android 路径级沙箱不覆盖所有工具，并要求用户确认有限边界",
+      "provenance": "Pocket Harness Android sandbox audit: Termux Shell fails closed for workspace-write; native tools and plugins have tool-specific access boundaries",
+      "marker": "dsh-mobile workspace-write warns about incomplete Android sandboxing (WW1)"
+    },
+    {
       "id": "market-install-approval-R2",
       "target": "dshmarketplace-plugin/lib/index.js",
       "summary": "Every model plugin installation requires approval; catalogue errors deny installation",

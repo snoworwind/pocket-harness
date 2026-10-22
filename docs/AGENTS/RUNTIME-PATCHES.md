@@ -68,6 +68,7 @@
 | 活动补丁 ID | scope | 目标 |
 |---|---|---|
 | `permission-auto-review-default-AR1` | engine | `usr/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-permission-presets/lib/index.js`<br>`usr/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-experimental-auto-review/lib/index.js`<br>`usr/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-client-ui-permission-presets/lib/client.js` |
+| `workspace-write-boundary-warning-WW1` | engine | `usr/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-client-ui-permission-presets/lib/client.js` |
 | `market-install-approval-R2` | undefined | `dshmarketplace-plugin/lib/index.js` |
 | `sidebar-bubble-reorder-B1` | engine | `usr/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-client-ui-sidebar-right/lib/client.js` |
 | `market-B` | undefined | `dshmarketplace-plugin/lib/index.js` |
@@ -170,7 +171,8 @@
 | `mimo-thinking-toggle-056` | `dsh-llm-pi-ai/lib/index.js` + `@earendil-works/pi-ai/dist/api/openai-completions.js` | Issue #56：开放显式 `thinkingFormat=mimo`；仅精确官方 MiMo profile 或用户显式 compat 生成 off/low 二态映射，选择器显示“关闭思考/开启思考”，默认开启。Completions serializer 将状态编码为 `thinking.type=disabled|enabled`，不发送 `reasoning_effort`；保留 assistant 多轮 `reasoning_content`。固定 DSH 0.2.0-rc.2 / pi-ai 0.87.1 锚点；行为回归 `scripts/patches/tests/mimo-thinking-toggle-056.test.mjs`。 |
 
 
-| `permission-auto-review-default-AR1` | `dsh-permission-presets/lib/index.js`、`dsh-experimental-auto-review/lib/index.js`、`dsh-client-ui-permission-presets/lib/client.js` | 新会话默认 Auto Review，审查原生工具、PTC 外层 `run_code` 与内层调用；high 直接拒绝并由 `tools.guard` 防后续 hook 覆盖，不进入用户审批；medium 拒绝仍可逐次确认。审查故障/集成缺席 fail closed，插件卸载将活跃会话回退到 `workspace-write`。风险提示明确 app UID、无路径级沙箱与切换权限档位即退出 Auto。回归 `scripts/patches/tests/permission-auto-review-default.test.mjs`；未改 `assets/patched`，§2 字节数不变。
+| `permission-auto-review-default-AR1` | `dsh-permission-presets/lib/index.js`、`dsh-experimental-auto-review/lib/index.js`、`dsh-client-ui-permission-presets/lib/client.js` | 新会话默认 Auto Review，审查原生工具、PTC 外层 `run_code` 与内层调用；high 直接拒绝并由 `tools.guard` 防后续 hook 覆盖，不进入用户审批；medium 拒绝仍可逐次确认。审查故障/集成缺席 fail closed，插件卸载将活跃会话回退到 `workspace-write`。Auto 风险提示明确 app UID、无路径级沙箱与切换权限档位即退出 Auto。回归 `scripts/patches/tests/permission-auto-review-default.test.mjs`；未改 `assets/patched`，§2 字节数不变。
+| `workspace-write-boundary-warning-WW1` | `dsh-client-ui-permission-presets/lib/client.js` | 当前会话、设置默认值与 `/permission` 选择 `workspace-write` 前要求确认 Android 路径级沙箱不覆盖所有工具；说明 Termux Shell 会在 bash 启动前拒绝该档位，其他 native tools/plugins 的实际访问范围依实现且仍受 app UID 约束。选中后持续显示有限性说明。回归 `scripts/patches/tests/workspace-write-boundary-warning.test.mjs`；未改 `assets/patched`。
 ### 7.1a 0.14.3 新增/变更补丁与构建钩子（源码在场，未执行）
 
 | 补丁/文件 | 真实目标与职责 | 登记 / 回归状态 |
