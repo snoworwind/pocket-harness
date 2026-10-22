@@ -19,7 +19,7 @@
 
 - 2026-10-22：会话导出下载现仅接受 `shouldOverrideUrlLoading` 提供的真实用户手势；`DownloadListener` 无手势/frame 来源参数，命中导出端点即拒绝，不会触发带引擎 Cookie 的 HTTP 请求。[PR #99](https://github.com/snoworwind/pocket-harness/pull/99) 等待 CI；纯判据与 Kotlin 编译通过。WebView 上实际触发回调的路径仍待设备复现。**未构建 APK、未做设备验证**。
 
-- 2026-10-22：P2-2 源码修复已加入客户端 Session 删除收敛与 `workspaceClose` 窄桥命令：连续三次官方列表缺席后销毁对应 WebView、请求删除该 nonDefault profile，并重试失败；共享兼容 Cookie jar 保留。profile 磁盘清理可能异步，**未构建 APK、未做设备验证**，真实 BrowserHost/Sidebar/WebView 生命周期仍待设备复验。
+- 2026-10-22：P2-2 源码修复已加入客户端 Session 删除收敛与 `workspaceClose` 窄桥命令：连续三次官方列表缺席后销毁对应 WebView、请求删除该 nonDefault profile，并重试失败；共享兼容 Cookie jar 保留。[PR #100](https://github.com/snoworwind/pocket-harness/pull/100) 等待 CI。profile 磁盘清理可能异步，**未构建 APK、未做设备验证**，真实 BrowserHost/Sidebar/WebView 生命周期仍待设备复验。
 
 - 2026-10-18 在 main `187246a` 上的分区复审发现原生 relay 准入遗漏、屏幕范围内存/旧 XML 断链、路由门禁注释假绿，以及文件/虚拟屏/来源续跑等问题，见 [项目分区复审](PROJECT-AUDIT-2026-10-18.md)。**A01–A14 已在源码层修复**，实现、宿主反例与新增测试见 [修复账本](AUDIT-REMEDIATION-2026-10-18.md) 的「项目分区复审 A01–A14」一节。本轮未重建 APK、未做设备验证（无在线 ARM64 设备与 Android SDK）；L2/L3 面进入发版候选前仍须来源链新包的三层验收。与下方此前综合审查的 A01–A10 是不同编号集合。
 
