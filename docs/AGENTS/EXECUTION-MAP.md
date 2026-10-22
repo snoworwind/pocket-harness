@@ -735,7 +735,7 @@ Linux 发现补充（P04，坑 373）：bootstrap `index.js` 串行发现 → `g
 
 - **当前主 frame 桥调用链**：`MainActivity.configureWebView` 创建 `MainFrameBridge` 并只挂 `__dshNativeBridge`，`register` 登记 AndroidBridge 与 BackGateBridge。document-start 优先、`onPageStarted/onPageFinished` 顶层求值回退，脚本在执行时复查精确引擎 origin 与 top；facade 闭包保存 nonce，调用 `invoke → nonce 验证 → 声明方法/实参数量/类型验证 → 业务对象 → MainActivity callback`，同步结果返回页面。首次安装发布 `dsh-native-bridge-ready`，`useShellState` 监听后重读，`onDestroy` 调 `close` 撤销。HTML opaque 预览子帧无 nonce；真实同源子帧可依 SOP 调父 facade，预览不得加 `allow-same-origin`，完整边界见 `BRIDGE-API.md` §1。
 
-- **会话导出专用下载路径**：URL 拦截只允许 main-frame、真实手势的精确 GET `/api/session.export` 进入 `DownloadSaver`；DownloadListener 与保存函数再次检查同一精确 origin/path，不能因 query/fragment 命中或任意同源文件路径就附壳 Cookie。网络子帧导航被拒绝，blob/data/about 预览留在原 frame。
+- **会话导出专用下载路径**：`shouldOverrideUrlLoading` 只允许 main-frame 精确 GET `/api/session.export`，并把 `request.hasGesture()` 传给 `DownloadSaver`；保存函数再次要求该手势为真后才附壳 Cookie。Android `DownloadListener` 没有手势/frame 来源参数，命中该端点只记录拒绝、不下载。精确 origin/path 校验仍拒绝任意同源文件路径；网络子帧导航被拒绝，blob/data/about 预览留在原 frame。源码用例覆盖无手势拒绝；具体 WebView 触发路径未做设备复现。
 
 - **0.14.3当前桥增量**：browserHostCommand为session/uiTab/nativeTab窄导航，不暴露任意JS/controlExec；配置桥MainActivity→EngineManager→SnapshotUserData，不mounted legacy ConfigTransfer。root状态的ownership合并当前lease给honest pending，request不是repair已完成；v4 configuration追加回读完整UID/anchor、旧transaction不重排。当前签名与线程/结果语义见 [桥协议](<dsh-mobile-apk/docs/AGENTS/BRIDGE-API.md>)。下方旧坐标是原始历史协议描述，不作为本轮新head验证。
 

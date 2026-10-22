@@ -1000,8 +1000,7 @@ class MainActivity : ComponentActivity() {
         // （403 forbidden，防 DNS rebinding/跨站）。改为 app 内下载：
         // HttpURLConnection 无浏览器标记 → fence 放行（MuMu 实测验证）。
         if (isSessionExport(url, request.method)) {
-          if (!request.hasGesture()) return true
-          downloadSaver.downloadToDownloads(url, null)
+          downloadSaver.downloadToDownloads(url, null, hasUserGesture = request.hasGesture())
           return true
         }
         // 只允许引擎同源页面留在 WebView（特权桥 + 下载能力仅对引擎可信）；
@@ -1156,9 +1155,12 @@ class MainActivity : ComponentActivity() {
         if (isEngineSource(url)) deliverRecoveryNotice()
       }
     }
-    // WebView 下载：只接受精确的会话导出端点，其他响应不附带原生引擎 Cookie。
-    webView.setDownloadListener { url, _userAgent, contentDisposition, _mimeType, _contentLength ->
-      if (isSessionExport(url, "GET")) downloadSaver.downloadToDownloads(url, contentDisposition)
+    // DownloadListener 没有手势/frame 来源参数，不能证明导出由用户发起；会话导出只可由上方
+    // 携带 request.hasGesture() 的主 frame 导航入口启动，其他下载回调一律不附加引擎 Cookie。
+    webView.setDownloadListener { url, _userAgent, _contentDisposition, _mimeType, _contentLength ->
+      if (isSessionExport(url, "GET")) {
+        Log.w(TAG, "Rejected session export from DownloadListener; user gesture is unavailable")
+      }
     }
     webView.webChromeClient = object : WebChromeClient() {
       /**
