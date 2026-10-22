@@ -2972,4 +2972,8 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 
 494. **signed Termux 多版本索引的每个消费者都必须选同一候选**
 
-    现象：来源运行 39739105595 已通过验签、最高版本选择、epoch 路径检查与 Termux base 组装，随后在 PRoot backend 报 `duplicate package stanza in signed Termux index: buf`。真因：`prepare-proot-backend.py` 另有一份索引解析器仍假设每个包名只有一个 stanza，并重复维护一套更严格的包路径检查。修法：两端共用 `termux_signed_packages.py` 的 Debian 版本排序和安全路径校验；backend 继续将 provenance 与所选最高版本逐字段精确比较，禁止回退到较旧的有效签名版本。复验：后端集成夹具应包含多版本 `buf` 和多版本 `proot`，并验证旧候选 provenance 被拒绝；PR #93 Linux CI 与来源双构建需确认。
+    现象：来源运行 39739105595 已通过验签、最高版本选择、epoch 路径检查与 Termux base 组装，随后在 PRoot backend 报 `duplicate package stanza in signed Termux index: buf`。真因：`prepare-proot-backend.py` 另有一份索引解析器仍假设每个包名只有一个 stanza，并重复维护一套更严格的包路径检查。修法：两端共用 `termux_signed_packages.py` 的 Debian 版本排序和安全路径校验；backend 继续将 provenance 与所选最高版本逐字段精确比较，禁止回退到较旧的有效签名版本。复验：PR #93 Linux CI 的 54 项源码测试和 Linux 资产验证均通过，来源运行 39742450604 已越过索引处理后暴露新的通用许可证链接问题，见 #495。
+
+495. **Termux 通用许可证链接必须只从已校验的共享目录解析**
+
+    现象：草稿构建运行 39742450604 的 primary 与 reference 都通过签名索引和 Termux base 组装，在构建 PRoot 资产时 `copy_copyright()` 对 `share/doc/libtalloc/copyright` 调用严格解析，因目标 `/usr/share/LICENSES` 未随单个 `.deb` 解出而报 `FileNotFoundError`。真因：Termux 将通用许可证文本集中放在 `share/LICENSES`，各包的版权文件用相对链接引用；当前构建按包隔离解包，未安装完整依赖树。修法：只将规范化后仍位于包内 `share/LICENSES` 的缺失目标映射到经过校验、非符号链接且位于官方 bootstrap 内的 `share/LICENSES`；将复制结果记录为 official bootstrap 来源，并拒绝绝对/越界、其他缺失目标和缺失共享许可证。复验：PR #94 Linux CI 与完整签名资产运行 39745151541 均通过；产物 provenance 记录 libtalloc 和 PRoot 分别来源于官方 bootstrap 的 `GPL-3.0.txt`、`GPL-2.0.txt`，libtalloc 许可证 35,149 字节的 SHA-256 为 `3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986`，并与后端 tar 和 provenance 副本一致；本地共享链接正例、包路径逃逸负例、缺失共享文件负例与 bootstrap 目录链接负例通过。未做设备测试。
