@@ -7,11 +7,13 @@ import pathlib
 import shutil
 import struct
 import subprocess
+import sys
 import tempfile
 import unittest
 
 
 SCRIPT = pathlib.Path(__file__).with_name("prepare-proot-backend.py")
+sys.path.insert(0, str(SCRIPT.parent))
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 spec = importlib.util.spec_from_file_location("prepare_proot_backend", SCRIPT)
 module = importlib.util.module_from_spec(spec)
@@ -58,6 +60,26 @@ def elf64(elf_type, needed=(), interpreter=None):
     if interpreter:
         data[interp_offset:interp_offset + len(interp_bytes)] = interp_bytes
     return bytes(data)
+
+
+class SafeTermuxPackagePathTest(unittest.TestCase):
+    def test_epoch_package_filename_resolves_within_webroot(self):
+        with tempfile.TemporaryDirectory(prefix="termux-epoch-path-") as temporary:
+            webroot = pathlib.Path(temporary)
+            relative = pathlib.Path("pool/main/c/ca-certificates/ca-certificates_1:2026.10.20-1_all.deb")
+            package = webroot / relative
+            package.parent.mkdir(parents=True)
+            package.write_bytes(b"signed package fixture")
+            self.assertEqual(module.safe_package_file(webroot, relative.as_posix()), package.resolve())
+
+    def test_package_paths_still_reject_traversal_and_url_metacharacters(self):
+        with tempfile.TemporaryDirectory(prefix="termux-unsafe-path-") as temporary:
+            webroot = pathlib.Path(temporary)
+            for filename in ("../outside.deb", "pool/main/pkg:escape/pkg_1.deb",
+                             "pool/main/p/pkg/p_1.deb?mirror=evil", "pool/main/p/pkg/p_1.deb#fragment"):
+                with self.subTest(filename=filename):
+                    with self.assertRaisesRegex(ValueError, "unsafe Termux package filename"):
+                        module.safe_package_file(webroot, filename)
 
 
 @unittest.skipUnless(shutil.which("dpkg-deb") and shutil.which("gpg") and shutil.which("gpgv"),
@@ -123,17 +145,26 @@ class PrepareProotBackendTest(unittest.TestCase):
         self.package_files[name] = package_file
 
     def make_signed_repo(self):
+        index_records = [
+            {
+                "Package": item["package"], "Version": item["version"],
+                "Architecture": item["architecture"], "Source": item["source"],
+                "Filename": item["filename"], "SHA256": item["sha256"],
+            }
+            for item in self.provenance["packages"]
+        ]
+        index_records.extend([
+            {"Package": "buf", "Version": "1.74.0-1", "Architecture": "aarch64",
+             "Source": "buf", "Filename": "pool/main/b/buf/buf_1.74.0-1_aarch64.deb", "SHA256": "a" * 64},
+            {"Package": "buf", "Version": "1.75.0", "Architecture": "aarch64",
+             "Source": "buf", "Filename": "pool/main/b/buf/buf_1.75.0_aarch64.deb", "SHA256": "b" * 64},
+            {"Package": "proot", "Version": "5.1.100.1", "Architecture": "aarch64",
+             "Source": "proot", "Filename": "pool/main/p/proot/proot_5.1.100.1_aarch64.deb", "SHA256": "c" * 64},
+        ])
         packages_text = "\n\n".join(
-            "\n".join([
-                f"Package: {name}",
-                f"Version: {item['version']}",
-                f"Architecture: {item['architecture']}",
-                f"Source: {item['source']}",
-                f"Filename: {item['filename']}",
-                f"SHA256: {item['sha256']}",
-                "Description: signed test fixture",
-            ])
-            for name, item in sorted((item["package"], item) for item in self.provenance["packages"])
+            "\n".join([*(f"{key}: {value}" for key, value in record.items()),
+                      "Description: signed test fixture"])
+            for record in sorted(index_records, key=lambda item: (item["Package"], item["Version"]))
         ) + "\n"
         index_path = self.webroot / "dists/stable/main/binary-aarch64/Packages.gz"
         index_path.parent.mkdir(parents=True, exist_ok=True)
@@ -194,6 +225,20 @@ class PrepareProotBackendTest(unittest.TestCase):
         self.assertTrue((compat_licenses / "LICENSE").is_file())
         self.assertEqual((compat_licenses / "NOTICE.md").read_bytes(),
                          (ROOT / "vendor/linux-proot/compat/NOTICE.md").read_bytes())
+
+    def test_authenticated_index_selects_newest_signed_record_per_package(self):
+        records = module.authenticated_package_index(self.webroot, self.provenance, self.bootstrap_usr)
+        self.assertEqual(records["buf"]["Version"], "1.75.0")
+        self.assertEqual(records["proot"]["Version"], "5.1.107.98")
+
+    def test_provenance_cannot_select_an_older_signed_candidate(self):
+        proot = next(item for item in self.provenance["packages"] if item["package"] == "proot")
+        proot["version"] = "5.1.100.1"
+        proot["filename"] = "pool/main/p/proot/proot_5.1.100.1_aarch64.deb"
+        proot["sha256"] = "c" * 64
+        self.write_provenance()
+        with self.assertRaisesRegex(ValueError, "provenance differs from signed index: proot version"):
+            self.assemble()
 
     def test_signed_package_byte_mismatch_fails_closed(self):
         self.package_files["proot"].write_bytes(b"tampered package")

@@ -12,6 +12,8 @@ import sys
 import tempfile
 import urllib.request
 
+from termux_signed_packages import _version_satisfies, safe_termux_package_filename, select_package_records
+
 REPOSITORY = "https://packages.termux.dev/apt/termux-main"
 SUITE_REL = "main/binary-aarch64/Packages.gz"
 INDEX_REL = "dists/stable/" + SUITE_REL
@@ -46,56 +48,6 @@ DEPENDENCY_ATOM = re.compile(
     r"(?:\s*\((<<|<=|=|>=|>>)\s*([^()\s]+)\))?"
     r"(?:\s*\[([^]]+)\])?(?:\s*<([^>]+)>)?$"
 )
-
-
-def _version_satisfies(actual: str, operator: str, required: str) -> bool:
-    operators = {"<<": "lt", "<=": "le", "=": "eq", ">=": "ge", ">>": "gt"}
-    if operator not in operators:
-        raise ValueError(f"unsupported Debian version operator: {operator}")
-    result = subprocess.run(["dpkg", "--compare-versions", actual, operators[operator], required],
-                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    if result.returncode not in (0, 1):
-        raise ValueError(f"dpkg could not compare package versions {actual!r} and {required!r}")
-    return result.returncode == 0
-
-
-def _compare_versions(left: str, right: str) -> int:
-    if _version_satisfies(left, ">>", right):
-        return 1
-    if _version_satisfies(left, "<<", right):
-        return -1
-    return 0
-
-
-def select_package_records(stanzas) -> dict[str, dict]:
-    """Select apt's newest usable AArch64 candidate from the signed package index."""
-    selected = {}
-    for record in stanzas:
-        name = record.get("Package")
-        version = record.get("Version")
-        architecture = record.get("Architecture")
-        if not isinstance(name, str) or not name or not isinstance(version, str) or not version:
-            raise ValueError("signed Termux package stanza has no package name or version")
-        if architecture not in ("aarch64", "all"):
-            continue
-
-        current = selected.get(name)
-        if current is None:
-            selected[name] = record
-            continue
-        comparison = _compare_versions(version, current["Version"])
-        if comparison > 0:
-            selected[name] = record
-        elif comparison == 0:
-            current_architecture = current.get("Architecture")
-            # A native build wins an equal-version tie over an architecture-independent build.
-            if architecture == "aarch64" and current_architecture == "all":
-                selected[name] = record
-            elif architecture == current_architecture:
-                raise ValueError(
-                    f"duplicate signed Termux package candidate: {name}={version} [{architecture}]"
-                )
-    return selected
 
 
 def _dependency_applies(expression: str, owner: str, records: dict[str, dict]) -> str | None:
@@ -184,21 +136,6 @@ def signed_sha256(release_text: str, relative_path: str) -> tuple[str, int]:
         if not line.strip():
             break
     raise ValueError(f"signed Termux Release does not list {relative_path}")
-
-
-TERMUX_POOL_COMPONENT = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._+-]*$")
-TERMUX_DEB_FILENAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._+~:-]*\.deb$")
-
-
-def safe_termux_package_filename(filename: str) -> pathlib.PurePosixPath:
-    """Validate a signed pool path while allowing ':' only in Debian .deb basenames."""
-    parts = filename.split("/") if isinstance(filename, str) else []
-    if (len(parts) < 4 or parts[:2] != ["pool", "main"]
-            or any(part in ("", ".", "..") for part in parts)
-            or any(not TERMUX_POOL_COMPONENT.fullmatch(part) for part in parts[:-1])
-            or not TERMUX_DEB_FILENAME.fullmatch(parts[-1])):
-        raise ValueError(f"unsafe Termux package filename: {filename}")
-    return pathlib.PurePosixPath(*parts)
 
 
 def main() -> None:

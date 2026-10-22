@@ -42,6 +42,7 @@ export const COMPONENTS = Object.freeze({
     'scripts/snapshot-config/preinstall.json',
     'scripts/source-build/prepare-termux-bootstrap.py',
     'scripts/source-build/prepare-termux-signed-repo.py',
+    'scripts/source-build/termux_signed_packages.py',
     'scripts/source-build/build-node-pty-android.mjs',
   ],
   linux: [
@@ -52,6 +53,7 @@ export const COMPONENTS = Object.freeze({
     'scripts/source-build/prepare-linux-snapshot-bundle.mjs',
     'scripts/source-build/check-linux-sources.mjs',
     'scripts/source-build/prepare-termux-signed-repo.py',
+    'scripts/source-build/termux_signed_packages.py',
     'scripts/source-build/prepare-proot-backend.py',
     'scripts/source-build/ensure-no-rootfs-mounts.py',
     'scripts/source-build/linux-backend-packages.json',

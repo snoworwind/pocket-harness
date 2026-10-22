@@ -15,6 +15,7 @@ SOURCE_PROOF_INPUTS=(
   scripts/source-build/linux-backend-packages.json scripts/source-build/linux-source-manifest.json
   scripts/snapshot-config/preinstall.json scripts/lib/shell.mjs
   scripts/source-build/prepare-termux-bootstrap.py scripts/source-build/prepare-termux-signed-repo.py
+  scripts/source-build/termux_signed_packages.py
   scripts/source-build/prepare-proot-backend.py scripts/source-build/ensure-no-rootfs-mounts.py
   scripts/source-build/linux-assets-workflow.test.mjs
   scripts/source-build/package-linux-assets.py scripts/source-build/check-linux-sources.mjs
