@@ -1,6 +1,6 @@
 {
   "name": "@dsh-android/dsh-shell-termux",
-  "description": "Android/Termux service provider for the bash capability seam: explicit Termux environment injection, write-fence modes (workspace-write/danger-full-access), probe diagnostics, honest app-domain sandbox declaration",
+  "description": "Android/Termux bash provider with explicit environment injection, probe diagnostics, fail-closed restricted modes, and app-domain execution facts",
   "version": "0.2.0",
   "type": "module",
   "main": "lib/index.js",
@@ -18,7 +18,8 @@
   "license": "MIT",
   "private": true,
   "scripts": {
-    "build": "tsc -p ."
+    "build": "tsc -p .",
+    "test": "npm run build && node --test test/*.test.mjs"
   },
   "peerDependencies": {
     "@deepseek-ai/dsh-bash-local": "0.2.1-rc.2",

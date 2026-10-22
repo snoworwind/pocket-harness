@@ -11,7 +11,7 @@
 
 - 2026-10-20：继续比较上游源码后新增悬浮服务退出候选：本仓 OverlayService 缺少上游 #443 的服务自停/非粘性策略，现有 EngineService 的收尾不覆盖其未启动场景；实际任务划除复活仍待本仓设备复现。输入清空/回执与虚拟屏弹层差异也已细化反例。证据和静态推导见 [第二轮源码复核](UPSTREAM-SOURCE-REVIEW-2026-10-20.md)，实施依赖见 [吸收计划](UPSTREAM-ABSORPTION-PLAN-2026-10-20.md)。**本轮仅文档，未修复、未构建 APK、未做设备验证，不构成候选通过。**
 
-- 2026-10-19：Android `dsh-shell-termux` 的 `workspace-write`/`read-only` **没有路径级执行边界**；bash 以 app UID 直接运行，`spec.sandboxPolicy` 未被读取，`enforcement: partial` 不阻断、不触发审批、也不进入模型面。这是“模型可通过 bash 访问其他文件夹”的直接根因。详见 [dsh-shell-termux 沙箱边界审计](SHELL-TERMUX-SANDBOX-AUDIT-2026-10-19.md)。**未修复、未构建 APK、未做设备验证。**
+- 2026-10-22：Android `dsh-shell-termux` 尚无真实路径级执行围栏；源码现对 `read-only`/`workspace-write` 在 spawn 前 fail-closed，并要求每次会话策略显式选择 `danger-full-access` 才启动 bash。该档仍以应用 UID 运行，app-domain 不是工作区隔离；独立 UID/Landlock、秘密隔离与设备行为仍未验收。详见 [dsh-shell-termux 沙箱边界审计](SHELL-TERMUX-SANDBOX-AUDIT-2026-10-19.md)。本轮有宿主代码回归，**未构建 APK、未做设备验证**。
 
 - 2026-10-18 在 main `187246a` 上的分区复审发现原生 relay 准入遗漏、屏幕范围内存/旧 XML 断链、路由门禁注释假绿，以及文件/虚拟屏/来源续跑等问题，见 [项目分区复审](PROJECT-AUDIT-2026-10-18.md)。**A01–A14 已在源码层修复**，实现、宿主反例与新增测试见 [修复账本](AUDIT-REMEDIATION-2026-10-18.md) 的「项目分区复审 A01–A14」一节。本轮未重建 APK、未做设备验证（无在线 ARM64 设备与 Android SDK）；L2/L3 面进入发版候选前仍须来源链新包的三层验收。与下方此前综合审查的 A01–A10 是不同编号集合。
 

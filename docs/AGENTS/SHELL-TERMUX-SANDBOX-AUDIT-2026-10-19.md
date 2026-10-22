@@ -4,7 +4,9 @@
 
 审查对象：本仓 Android shell provider `@dsh-android/dsh-shell-termux` 0.2.0，及其装配、配置、Android 权限面与文档承诺。
 
-状态：源码级调查完成；**未修复产品代码、未重建插件 lib、未构建 APK、未做 Android 设备三层验收**。本报告只针对本仓 Android 实现，不评价桌面端 DSH 的进程沙箱，也不把宿主机探针当作设备证据。
+调查基线状态：源码级调查完成；**2026-10-19 时未修复产品代码、未重建插件 lib、未构建 APK、未做 Android 设备三层验收**。本报告只针对本仓 Android 实现，不评价桌面端 DSH 的进程沙箱，也不把宿主机探针当作设备证据。
+
+当前状态（2026-10-22）：`dsh-shell-termux` 已读取每次调用的 `sandboxPolicy.mode`；没有真实路径围栏时，在启动 bash 前拒绝 `read-only` 与 `workspace-write`，并要求本次会话策略显式选择 `danger-full-access` 才执行。插件宿主测试覆盖拒绝不 spawn、调用策略优先于默认配置/环境标签，以及显式完整访问事实。此为源码和宿主代码层证据；**未构建 APK、未做 Android/CDP/ADB 设备验收**。路径围栏、独立 UID、秘密隔离仍未实现。
 
 ## 1. 结论
 

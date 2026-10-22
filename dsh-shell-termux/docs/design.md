@@ -20,7 +20,7 @@
 ## 1. 设计原则
 
 1. **复用 seam，不发明新机制**：还是 `ctx.shell`（单 provider 服务）+ `ctx.subprocess` + `ctx.jobs` + `ctx.terminals`，只是提供一个**安卓原生实现**；
-2. **显式声明沙箱语义**：不做假沙箱——保护边界 = **Android SELinux + Termux app 域**（u0_aXXX），由 `sandbox-policy`（审批流）补策略决策；
+2. **受限档位失败关闭**：Android 没有可用的路径围栏；`read-only` 与 `workspace-write` 在 spawn 前拒绝，直到提供真实执行围栏。`danger-full-access` 依会话策略显式开启，并如实受 Android app-domain 限制；
 3. **探测优先**：bash 缺失/版本不符 → 友好错误 + 修复提示（`pkg install bash`），绝不静默降级；
 4. **与桌面行为对齐**：超时、输出上限、spill、进程组 SIGTERM→SIGKILL、后台任务、PTY——全部复用既有语义，只替换"执行环境"。
 
@@ -55,7 +55,7 @@
 | **Termux 环境探测** | `probe()`：bash 存在性 + 可执行 + 版本（≥4）；失败返回结构化错误（`bash-not-installed` / `termux-not-found`），UI 可展示修复引导 |
 | **受控环境构造** | 每次 spawn 显式注入：`PATH=$PREFIX/bin`、`LD_LIBRARY_PATH=$PREFIX/lib`、`HOME=$HOME`、`PREFIX`、`TERMUX_VERSION`、`SHELL`——**不依赖外部环境碰巧正确**（M0 教训：PATH 被 PowerShell 展开就崩） |
 | **spawn 生命周期** | 复用 `ctx.subprocess`（进程组 SIGTERM→SIGKILL、输出上限+spill、graceMs）——与 bash-local 同预算语义，继承测试 |
-| **沙箱语义声明** | `sandboxPolicy` 处理：安卓上映射为"app-domain"——文件效应受 Android SELinux 约束（Termux 域只能读写自身目录 + 已授权共享存储），策略决策走 `sandbox-policy` + `tools/pre-execute` 审批（`ask`）；拒绝语义与桌面一致（deny/ask），只是执行边界不同 |
+| **沙箱语义声明** | `sandboxPolicy` 按每次调用读取。缺少真实路径围栏时，`read-only` / `workspace-write` 以 `SANDBOX_UNAVAILABLE` 拒绝且不 spawn；只有 `danger-full-access` 可执行，实际范围仍是 Android app UID 可访问的资源。`DSH_WORKSPACE`/`DSH_SHARED_DIRS` 仅为子进程诊断变量，不是边界 |
 | **PTY/持久终端** | 可选子插件 `dsh-terminal-termux`：node-pty 已编译（M0 实证），验证 `openpty` + `/dev/ptmx`；实现 `ctx.terminals` 的安卓 provider |
 | **后台任务** | `run_in_background` → `ctx.jobs`：进程句柄生命周期 = subprocess 生命周期（与桌面一致） |
 | **shell-env** | 消费 host `ctx.shellEnv`（DSH_WEB_URL/DSH_WEB_MODE 注入），与桌面同 |
@@ -76,7 +76,7 @@
 | bash-local | 桌面（非安卓）继续用；termux 是并列实现，同 `ctx.shell` 契约 |
 | bash-sandbox | 安卓 disabled；桌面不变（条件式 patch，一包跨平台） |
 | sandbox-local | 保持装载（boot 不失败）；仅 `confine()` 显式调用才 fail-closed——termux executor 不调用它 |
-| sandbox-policy / approval | **策略面不变**：mode/workspaceRoot/ask 语义照旧，权限决策仍然有效 |
+| sandbox-policy / approval | shell provider 读取每次调用的 mode；受限档位没有 Android 路径围栏时 fail-closed。`danger-full-access` 仍由会话授权策略控制 |
 | tool-bash / tool-jobs / tool-terminal | 消费方零改动（seam 哲学） |
 | subprocess-local | 复用（node-pty 编译版仅 terminal 用） |
 
@@ -87,7 +87,7 @@
 | # | 步骤 | 预期 |
 |---|---|---|
 | 1 | 现状复现：给 MuMu 上 dsh 发消息 `跑一下 ls` | **预期被沙箱拒绝**（fail-closed 实证） |
-| 2 | 挂 dsh-shell-termux 最小版（patch + 环境注入 + 无沙箱包装） | bash 工具执行成功 |
+| 2 | 请求 `workspace-write` / `read-only`，并分别请求显式 `danger-full-access` | 前两项 spawn 前拒绝；完全访问档位按策略启动并如实标记 app-domain 边界 |
 | 3 | `run_in_background: true` 长任务 | 后台任务 + jobs 收集正常 |
 | 4 | PTY 终端（node-pty openpty） | persistent terminal 可用 |
 | 5 | 取消/超时：killpg 语义 | 与桌面一致（SIGTERM→SIGKILL） |
