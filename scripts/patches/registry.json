@@ -2,6 +2,18 @@
   "$comment": "vendor 固化插件补丁登记表（apply-patches.mjs 消费；id 必须与 IMPLS 一一对应，启动时交叉校验）。marker 语义见 README。",
   "patches": [
     {
+      "id": "permission-auto-review-default-AR1",
+      "target": "usr/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-permission-presets/lib/index.js",
+      "additionalTargets": [
+        "usr/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-experimental-auto-review/lib/index.js",
+        "usr/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-client-ui-permission-presets/lib/client.js"
+      ],
+      "scope": "engine",
+      "summary": "将 Auto review 设为新会话默认，检查 PTC 外层程序与内层调用，并对高风险结果实施不可覆盖的硬拒绝",
+      "provenance": "Pocket Harness security hardening: high-risk model decisions cannot be approved by users and remain denied through the monotonic tool guard; base policy from @deepseek-ai/dsh-experimental-auto-review 0.2.1-rc.2",
+      "marker": "dsh-mobile auto review hard-denies high risk (AR1)"
+    },
+    {
       "id": "market-install-approval-R2",
       "target": "dshmarketplace-plugin/lib/index.js",
       "summary": "Every model plugin installation requires approval; catalogue errors deny installation",

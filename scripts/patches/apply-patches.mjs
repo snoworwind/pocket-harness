@@ -28,6 +28,17 @@ import { CLIENT_INDEX_LOADER_BARRIER_MARKER, planClientIndexLoaderBarrier } from
 import { resolveEnginePatchFile } from './resolve-engine-patch-target.mjs'
 import { hasSidebarReorder, patchSidebarReorder } from './data/sidebar-bubble-reorder.mjs'
 import { MARKER as INSTALL_APPROVAL_MARKER, patchInstallApproval } from './data/market-install-approval.mjs'
+import {
+  PERMISSION_AUTO_DEFAULT_MARKER,
+  AUTO_REVIEW_RUN_CODE_MARKER,
+  AUTO_REVIEW_FALLBACK_MARKER,
+  AUTO_REVIEW_HIGH_DENY_MARKER,
+  AUTO_REVIEW_HIGH_GUARD_MARKER,
+  PERMISSION_AUTO_UI_MARKER,
+  patchPermissionPresetsAutoDefault,
+  patchAutoReviewDefaultBehavior,
+  patchPermissionPresetsClientAutoDefault,
+} from './data/permission-auto-review-default.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const registry = JSON.parse(readFileSync(join(HERE, 'registry.json'), 'utf8'))
@@ -148,6 +159,38 @@ const IMPLS = {
     file: 'dshmarketplace-plugin/lib/index.js',
     check: (s) => s.includes(INSTALL_APPROVAL_MARKER) && patchInstallApproval(s) === s,
     apply: patchInstallApproval,
+  },
+
+  // Android's Auto preset is the new-session default. The reviewer examines the
+  // PTC root program and every inner call; high-risk decisions are terminal and
+  // protected by the tool runner's monotonic guard.
+  'permission-auto-review-default-AR1': {
+    file: 'usr/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-permission-presets/lib/index.js',
+    additionalFiles: [
+      'usr/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-experimental-auto-review/lib/index.js',
+      'usr/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-client-ui-permission-presets/lib/client.js',
+    ],
+    scope: 'engine',
+    check: (s) => {
+      const autoReview = loadImpl('usr/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-experimental-auto-review/lib/index.js', CURRENT_STAGE_ROOT)
+      const client = loadImpl('usr/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-client-ui-permission-presets/lib/client.js', CURRENT_STAGE_ROOT)
+      return s.includes(PERMISSION_AUTO_DEFAULT_MARKER)
+        && autoReview.includes(AUTO_REVIEW_RUN_CODE_MARKER)
+        && autoReview.includes(AUTO_REVIEW_FALLBACK_MARKER)
+        && autoReview.includes(AUTO_REVIEW_HIGH_DENY_MARKER)
+        && autoReview.includes(AUTO_REVIEW_HIGH_GUARD_MARKER)
+        && client.includes(PERMISSION_AUTO_UI_MARKER)
+        && patchPermissionPresetsAutoDefault(s) === s
+        && patchAutoReviewDefaultBehavior(autoReview) === autoReview
+        && patchPermissionPresetsClientAutoDefault(client) === client
+    },
+    apply: (s) => {
+      const autoReviewTarget = 'usr/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-experimental-auto-review/lib/index.js'
+      const clientTarget = 'usr/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-client-ui-permission-presets/lib/client.js'
+      IMPL_state[autoReviewTarget] = patchAutoReviewDefaultBehavior(loadImpl(autoReviewTarget, CURRENT_STAGE_ROOT))
+      IMPL_state[clientTarget] = patchPermissionPresetsClientAutoDefault(loadImpl(clientTarget, CURRENT_STAGE_ROOT))
+      return patchPermissionPresetsAutoDefault(s)
+    },
   },
 
   'sidebar-bubble-reorder-B1': {

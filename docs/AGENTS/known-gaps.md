@@ -7,6 +7,7 @@
 
 ## 当前入口
 
+- **2026-10-23 Auto Review 默认策略，代码回归通过，CI 待跑**：新会话默认 Auto；模型审查覆盖原生工具、PTC 外层程序与内层调用。high 分类在执行边界硬拒绝，用户不能批准该调用；medium 拒绝可逐次确认；reviewer 错误和 Auto 集成缺席 fail closed。reviewer 卸载时活跃会话回退到 `workspace-write`，Android Shell 会在 spawn 前拒绝该受限档位。该决定基于模型提示分类，存在误判/漏判可能，不是确定性数据流分析；Android 工具仍以应用 UID 运行，没有路径级文件系统沙箱。切换当前会话的权限档位会停用 Auto Review，默认值只影响新会话。实现和测试边界见 [坑 503](gotchas.md#503-auto-review-高风险拒绝必须绕过用户审批并由单调守卫收口)；**未做 APK、CDP/ADB 设备验证**。
 - **2026-10-22 Linux 后端已改为 Termux PRoot，源码尚待构建/设备验收**：runtime/bootstrap `0.6.0`；Bionilux launcher/preload/native loader 构建链与 Cargo 许可收集器已移除，bootstrap 的历史来源仍保留。PRoot 资产来自 Termux 官方签名 ARM64 仓库包，Debian/Node/原生依赖的锁和 provenance 已改为对应来源。PRoot 不提供沙箱，guest 仍以 app UID 执行；宿主 `/proc` 不绑定进 guest，依赖 guest procfs 的工具可能不完整。硬链接拒绝最多复制 1 GiB，但副本不是共享 inode，dpkg 兼容性和磁盘行为仍待 ARM64 实机验收。本轮用户要求不做实机测试，且尚未执行 APK 构建或设备验收。原生 PRoot 版本探针已修为接受 Termux ASCII banner 中的精确版本 token，见 [坑 496](gotchas.md)。Termux InRelease 摘要和 recipe commit/hash 已加入仓内输入锁，[PR #102](https://github.com/snoworwind/pocket-harness/pull/102) 待检查；来源构建 runner 尚未实际验证该新锁，旧 `.deb` 是否继续可下载仍依赖外部仓库。此前 0.5.x Bionilux 记录仅作历史证据，不代表当前实现。
 
 - 2026-10-20：继续比较上游源码后新增悬浮服务退出候选：本仓 OverlayService 缺少上游 #443 的服务自停/非粘性策略，现有 EngineService 的收尾不覆盖其未启动场景；实际任务划除复活仍待本仓设备复现。输入清空/回执与虚拟屏弹层差异也已细化反例。证据和静态推导见 [第二轮源码复核](UPSTREAM-SOURCE-REVIEW-2026-10-20.md)，实施依赖见 [吸收计划](UPSTREAM-ABSORPTION-PLAN-2026-10-20.md)。**本轮仅文档，未修复、未构建 APK、未做设备验证，不构成候选通过。**

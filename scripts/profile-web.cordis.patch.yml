@@ -1,5 +1,29 @@
 # gateway/client 由继承的 base/typert-gateway 唯一行提供，不在此重复 insert。
 # 0.14.7 的 host-fiber 时序适配随 client-registry-scan-C4 注入；controllers 全部保留。
+# 新会话默认启用 Auto review：应用 UID 权限下运行，模型逐工具审查；高风险及审查失败硬拒绝。
+# `config` 整体替换上游对象，故完整保留三份权限档位及其文案，再显式设置 auto 默认值。
+- id: permission
+  config:
+    presets:
+      read-only:
+        sandbox: read-only
+        approval: ask
+        name: read-only
+        description: Read-only access; no file changes.
+      workspace-write:
+        sandbox: workspace-write
+        approval: ask
+        name: workspace-write
+        description: Write inside the workspace and permitted temporary directories; wider retries require approval.
+      danger-full-access:
+        sandbox: danger-full-access
+        approval: never
+        name: danger-full-access
+        description: Full file access without approval prompts.
+    defaultPreset: auto
+- insert:
+    - id: auto-review
+      name: '@deepseek-ai/dsh-experimental-auto-review'
 # Android adaptation (M1.1 final form): dsh-shell-termux replaces the temporary patch v2.
 # Android has no path-level bash confiner: read-only/workspace-write fail before spawn;
 # danger-full-access requires an explicit session selection and remains within the app UID domain.

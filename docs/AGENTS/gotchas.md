@@ -3005,3 +3005,11 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 502. **Termux 签名成功还不足以固定 Linux 来源输入（2026-10-22）**
 
     现象：同一 Pocket Harness 提交每次都能验证 Termux InRelease 与 `.deb` 来源，但滚动的 `stable` 索引可改变依赖闭包，`linux-backend-packages.json` 中 `termux-packages/master` recipe 也会随时间变化。真因：把“本轮输入可验签”当成“同一提交未来取得同一输入”。修法：`linux-inputs.json` 固定已审核 InRelease SHA-256 与 recipe commit；每个 PRoot 依赖 recipe 记录 commit 和文件 SHA-256；准备脚本在 gpgv 验签后还必须匹配仓内 InRelease pin，索引变化或旧 `.deb` 缺失时失败关闭。复验：Python 自测覆盖匹配摘要、错误摘要/格式及 mutable master 拒绝；实际官方签名验收须 Linux 来源 runner，Termux `.deb` 长期可用性仍依赖外部仓库。未构建 APK、未做设备验证。
+
+503. **Auto Review 高风险拒绝必须绕过用户审批并由单调守卫收口（2026-10-23）**
+
+    现象：项目把 Auto Review 设为默认后，上游实现允许一般 reviewer 拒绝进入用户审批，且原生工具之外的 PTC `run_code` 外层源码不经审查；reviewer 插件卸载时还会把活跃会话切到 `danger-full-access`。真因：上游按通用审批策略处理所有拒绝、把 PTC 外层视作传输层，并以全权限作为生命周期回退；这不符合本项目 Android 执行边界和用户对 high 风险的硬拒绝决定。修法：profile 显式挂载固定版 Auto reviewer；检查 Auto 为权限可用但在 reviewer 缺席时逐工具 fail-closed；审查 `run_code` 外层及原有内层调用；high 结论在 `tools/pre-execute` 直接拒绝，不调用 `next()` 或读取用户可覆盖审批策略，并将当前 exec 记入 `WeakMap`，以 `ctx.tools.guard` 在后续 hook 后再次拒绝；medium 拒绝保留逐次用户确认；reviewer 退出时回退到 Android shell fail-closed 的 `workspace-write`。风险提示说明 Auto 使用应用 UID、无路径级沙箱、模型可能误分类，且切换当前会话权限档位会停用 Auto。复验：Node 24 下 `node --test scripts/patches/tests/permission-auto-review-default.test.mjs` 3/3；`node scripts/check-patch-test-manifest.mjs` 31 个文件、72/72；`node scripts/check-patch-fixtures.mjs` 与 `--self-test`、`node scripts/check-code-map.mjs` 通过。测试覆盖三个固定 0.2.1-rc.2 npm 包、语法/幂等、high 无审批路径与 guard、medium ask、low allow、PTC 外层审查、runner 集成及保留 marker 但删 guard 的负控。环境无 `adb` 可执行文件；**未构建 APK、未做 CDP/ADB 设备验证**。
+
+504. **新增 Cordis profile 顶层项后要更新真实工厂结构断言（2026-10-23）**
+
+    现象：PR #103 中 Auto Review 已编译，但 Kotlin `FactoryProfilePatchTest.realFactoryFileSelfMergeIsByteIdentical` 与 `realFactoryMissingSiblingIsRestoredIntoItsOwnGroup` 仍按旧 profile 的 24 个块断言，导致 1359 个单测中 2 个失败。真因：这两个测试同时锁定 profile 的逐字节合并行为和顶层块数量；新增 `permission` 与 reviewer `insert` 各增加一个顶层块，数量断言没有随产品配置更新。修法：把结构基线更新为 26 个块（25 个顶层条目加注释头块），继续单独断言 `shell-termux` 与 `host-web-compat` 的组内关系。复验：本地 `./gradlew :app:testDebugUnitTest --tests 'com.snoworwind.pocketharness.FactoryProfilePatchTest' --no-daemon --stacktrace` 通过；PR #103 修复后的远端 Kotlin 门禁待重跑。
