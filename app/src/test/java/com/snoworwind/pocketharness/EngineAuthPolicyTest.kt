@@ -157,4 +157,13 @@ class EngineAuthPolicyTest {
     assertFalse(isSessionExport("http://127.0.0.1:30800/api/session.export", "GET"))
     assertFalse(isSessionExport("http://user@127.0.0.1:3080/api/session.export", "GET"))
   }
+
+  @Test
+  fun `session export fetch requires a verified user gesture`() {
+    val endpoint = "http://127.0.0.1:3080/api/session.export?sessionId=abc"
+    assertTrue(canStartSessionExportDownload(endpoint, "GET", hasUserGesture = true))
+    assertFalse(canStartSessionExportDownload(endpoint, "GET", hasUserGesture = false))
+    assertFalse(canStartSessionExportDownload("http://127.0.0.1:3080/api/file", "GET", hasUserGesture = true))
+    assertFalse(canStartSessionExportDownload(endpoint, "POST", hasUserGesture = true))
+  }
 }

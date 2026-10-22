@@ -42,6 +42,10 @@ internal fun isSessionExport(url: String, method: String): Boolean {
   }
 }
 
+/** Session exports may attach the engine cookie only after a WebView callback proves user intent. */
+internal fun canStartSessionExportDownload(url: String, method: String, hasUserGesture: Boolean): Boolean =
+  hasUserGesture && isSessionExport(url, method)
+
 /**
  * 浏览器下载落盘（自 MainActivity 拆出）：仅精确的会话日志导出（/api/session.export）
  * 走 app 内下载（优先 Documents/dshdata/exports，未授权回退
@@ -79,10 +83,15 @@ internal class DownloadSaver(private val activity: MainActivity, private val dsh
    * app 内 HttpURLConnection 请求无浏览器标记（Origin/sec-fetch-site），
    * 通过 dsh 的 /api browser-trust fence（浏览器导航 403 的修复路径）。
    */
-  fun downloadToDownloads(url: String, contentDisposition: String?) {
+  fun downloadToDownloads(url: String, contentDisposition: String?, hasUserGesture: Boolean) {
     if (!isSessionExport(url, "GET")) {
       activity.showTestNotification("下载被拒绝", "仅支持从本机引擎导出会话日志")
       pushExportResult(false, "仅支持从本机引擎导出会话日志")
+      return
+    }
+    if (!canStartSessionExportDownload(url, "GET", hasUserGesture)) {
+      // Do not reveal the endpoint response or attach EngineAuth when callback provenance is absent.
+      android.util.Log.w("DownloadSaver", "Rejected session export without a verified user gesture")
       return
     }
     if (!exportDownloading.compareAndSet(false, true)) return
