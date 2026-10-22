@@ -25,6 +25,27 @@ class SignedTermuxRepoParserTest(unittest.TestCase):
         self.assertEqual(module._dependency_applies("target [!amd64]", "root", records), "target")
         self.assertEqual(module._dependency_applies("target [linux-any]", "root", records), "target")
 
+    def test_debian_epoch_is_allowed_only_in_package_filename(self):
+        path = module.safe_termux_package_filename(
+            "pool/main/c/ca-certificates/ca-certificates_1:2026.10.20-1_all.deb"
+        )
+        self.assertEqual(path.parts[-1], "ca-certificates_1:2026.10.20-1_all.deb")
+
+    def test_unsafe_signed_package_paths_and_url_metacharacters_are_rejected(self):
+        unsafe_paths = [
+            "../outside.deb",
+            "/pool/main/a/pkg/pkg_1_aarch64.deb",
+            "pool/main/a/pkg/../../outside.deb",
+            "pool/main/a/pkg:escape/pkg_1_aarch64.deb",
+            "pool/main/a/pkg/pkg_1_aarch64.deb?mirror=evil",
+            "pool/main/a/pkg/pkg_1_aarch64.deb#fragment",
+            "pool/main/a/pkg/pkg_1_aarch64.rpm",
+        ]
+        for filename in unsafe_paths:
+            with self.subTest(filename=filename):
+                with self.assertRaisesRegex(ValueError, "unsafe Termux package filename"):
+                    module.safe_termux_package_filename(filename)
+
     @unittest.skipUnless(shutil.which("dpkg"), "package candidate selection requires dpkg; Linux CI provides it")
     def test_signed_index_selects_newest_debian_version_and_native_tie(self):
         records = module.select_package_records([

@@ -186,6 +186,21 @@ def signed_sha256(release_text: str, relative_path: str) -> tuple[str, int]:
     raise ValueError(f"signed Termux Release does not list {relative_path}")
 
 
+TERMUX_POOL_COMPONENT = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._+-]*$")
+TERMUX_DEB_FILENAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._+~:-]*\.deb$")
+
+
+def safe_termux_package_filename(filename: str) -> pathlib.PurePosixPath:
+    """Validate a signed pool path while allowing ':' only in Debian .deb basenames."""
+    parts = filename.split("/") if isinstance(filename, str) else []
+    if (len(parts) < 4 or parts[:2] != ["pool", "main"]
+            or any(part in ("", ".", "..") for part in parts)
+            or any(not TERMUX_POOL_COMPONENT.fullmatch(part) for part in parts[:-1])
+            or not TERMUX_DEB_FILENAME.fullmatch(parts[-1])):
+        raise ValueError(f"unsafe Termux package filename: {filename}")
+    return pathlib.PurePosixPath(*parts)
+
+
 def main() -> None:
     if len(sys.argv) != 4:
         raise SystemExit("usage: prepare-termux-signed-repo.py <extracted-bootstrap-usr> <webroot> <preinstall.json>")
@@ -259,9 +274,7 @@ def main() -> None:
         filename = record.get("Filename")
         if not filename:
             raise ValueError(f"signed package index has no Filename for {name}")
-        relative = pathlib.PurePosixPath(filename)
-        if relative.is_absolute() or ".." in relative.parts or "\\" in filename or ":" in filename or not relative.parts:
-            raise ValueError(f"unsafe Termux package filename: {filename}")
+        relative = safe_termux_package_filename(filename)
         expected = record.get("SHA256", "").lower()
         if len(expected) != 64:
             raise ValueError(f"signed package index has no SHA256 for {name}")
