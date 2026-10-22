@@ -2989,3 +2989,7 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 498. **能力组撤销与解锁必须等待持久状态写入成功**
 
     现象：`relock()` 先从内存集合删除授权，再调用吞掉异常的 `store.write()` 并报告成功；旧授权文件在写/rename 失败时仍在，重启会重新解锁。首次解锁写入失败也会先 dispose 当前锁，错误地承诺跨重启生效。真因：存储 API 不返回成功状态，调用方把“尝试写”当成“已原子提交”。修法：`UnlockStore.write()` 返回布尔结果；解锁先将新全集原子落盘，成功后才更新内存并释放锁；失败则保持锁定并回 `ok:false`。撤销即使落盘失败仍立即锁住当前 agent，但返回失败且明确提示旧授权可能在重启后恢复。复验：授权/撤销写失败、rename 失败及模拟重启用例通过；bridge `npm test` 167/167，完整 bridge 测试目录 173/173，**未做 APK/设备验收**。
+
+499. **浏览器权限档必须落到统一执行闸（2026-10-22）**
+
+    现象：`BROWSER_TOOL_CONTRACTS` 将网页操作标成 `approval`、身份切换标成 `confirm`、截图标成 `full-access`，但 `tools.ts` 的逐工具 `gate()` 恒返回允许，契约没有任何执行效力。真因：为避免把浏览器误当 ADB/无障碍设备控制而复用 `gateFor()`，实现把“不要套设备控制档位”错误扩展成“浏览器完全不做逐项授权”。修法：`index.ts` 在 `tools/pre-execute` 按契约向审批服务请求本次许可，身份切换必须连续两次 `allowed-once`；审批拒绝、取消、服务缺席/异常均不执行工具体；`tools.guard` 在所有可扩展 listener 后单调拒绝无批准记录的调用。截图单独校验当前会话的 `sandboxPolicy.overrideOf(session)` 和 `resolve({session})` 都是显式 `danger-full-access`，部署默认不够；运行时没有 monotonic guard 时，所有非只读浏览器工具在 pre-execute fail-closed。复验：`plugins/dsh-android-browser/npm test` 23/23，覆盖拒绝/允许、双重确认、guard、默认档不放行、服务缺席及无 guard 负控；**未构建 APK、未做 CDP/ADB 设备验证**。
