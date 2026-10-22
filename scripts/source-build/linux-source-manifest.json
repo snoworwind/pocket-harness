@@ -47,10 +47,10 @@
     "vendor/dsh-linux-runtime/README.md": "8504d5c6cc09c2ff36ea45827e2c185ed7da7ca1eef05bd7a6f8155660e4b507",
     "vendor/dsh-linux-runtime/lib/index.js": "94efd8bf0c99586dd2bf0516a8957ddc83492b08c6f5c1521ddd5e0e977d3a5a",
     "vendor/dsh-linux-runtime/modules/asset-installer.js": "036774735e016d605cecf91093384371903129ef15b17c7dd8927f9acdc8d7e1",
-    "vendor/dsh-linux-runtime/modules/manager.js": "ca236c3eb26bbb30b723d199ea7d8bdddb1870dabbad5bbf5805f83747b56d09",
+    "vendor/dsh-linux-runtime/modules/manager.js": "65e746b783afa925cb1676a86e75a30f8350cbc40d0973a25b99935ccd2f8f31",
     "vendor/dsh-linux-runtime/modules/manifest.js": "853ef14f547c07184f33e749679cc7f5d1c54f05878cd817f66d0556f50180d8",
     "vendor/dsh-linux-runtime/package.json": "cf84c7f5bae2ccf7474f19aeb625df57ddc235295045c07689fcbaf4935a055f",
-    "vendor/dsh-linux-runtime/test/manager.test.mjs": "fa8dbe36d1dffa3a189356cc9cd5049d1d7090b87fa2dcedace47b40ecf37a78",
+    "vendor/dsh-linux-runtime/test/manager.test.mjs": "d22a27aa306d9c84f0e55eb343204d4c9f8d2b268ce313dfbf67b7f7c91f0086",
     "vendor/linux-proot/SOURCE.json": "35a0f17f1231f37f24ac2e32c43b6ea09edc0ae418947e866b2200a3353da5f5",
     "vendor/linux-proot/compat/LICENSE": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
     "vendor/linux-proot/compat/NOTICE.md": "0126c519f02d3e3c524632919d785a8b4e099ea9022aaf9d35a56e86270af2f5",
@@ -93,7 +93,7 @@
     },
     "vendor/dsh-linux-runtime/modules/manager.js": {
       "upstreamSha256": "e7da654488bc9b26d500b2316e16c145a7239d0e8f052621bf3fc220ccad86d3",
-      "reason": "Replace the failed Bionilux exec path with Termux PRoot; select APK-native assets from the explicit Android native-library path even if ANDROID_ROOT is absent; pin environment, DNS/shared-memory binds and configured host-path handling; withhold host procfs from the guest; retain bounded output, process-group termination, health probes and installation rollback."
+      "reason": "Replace the failed Bionilux exec path with Termux PRoot; select APK-native assets from the explicit Android native-library path even if ANDROID_ROOT is absent; accept the pinned version in both Termux's plain ASCII banner and the upstream `PRoot v` form; pin environment, DNS/shared-memory binds and configured host-path handling; withhold host procfs from the guest; retain bounded output, process-group termination, health probes and installation rollback."
     },
     "vendor/dsh-linux-runtime/modules/manifest.js": {
       "upstreamSha256": "1722dd47005c62fad20ec22ddb710bbff72f4a1bc5fdbee7199bb73e31185971",

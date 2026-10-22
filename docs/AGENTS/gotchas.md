@@ -2977,3 +2977,7 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 495. **Termux 通用许可证链接必须只从已校验的共享目录解析**
 
     现象：草稿构建运行 39742450604 的 primary 与 reference 都通过签名索引和 Termux base 组装，在构建 PRoot 资产时 `copy_copyright()` 对 `share/doc/libtalloc/copyright` 调用严格解析，因目标 `/usr/share/LICENSES` 未随单个 `.deb` 解出而报 `FileNotFoundError`。真因：Termux 将通用许可证文本集中放在 `share/LICENSES`，各包的版权文件用相对链接引用；当前构建按包隔离解包，未安装完整依赖树。修法：只将规范化后仍位于包内 `share/LICENSES` 的缺失目标映射到经过校验、非符号链接且位于官方 bootstrap 内的 `share/LICENSES`；将复制结果记录为 official bootstrap 来源，并拒绝绝对/越界、其他缺失目标和缺失共享许可证。复验：PR #94 Linux CI 与完整签名资产运行 39745151541 均通过；产物 provenance 记录 libtalloc 和 PRoot 分别来源于官方 bootstrap 的 `GPL-3.0.txt`、`GPL-2.0.txt`，libtalloc 许可证 35,149 字节的 SHA-256 为 `3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986`，并与后端 tar 和 provenance 副本一致；本地共享链接正例、包路径逃逸负例、缺失共享文件负例与 bootstrap 目录链接负例通过。未做设备测试。
+
+496. **Termux PRoot 版本探针必须识别其 ASCII 横幅中的裸版本号（2026-10-22）**
+
+    现象：用户设备中的 APK-native PRoot 正常启动、退出码为 0，并输出带 `5.1.107.98` 的 Termux ASCII 横幅；Linux 安装仍在下载与解包之前报 `linux-host-exec-assets-unavailable`。真因：runtime 两处安装探针只查找字面文本 `PRoot v<version>`，将受信 APK 资产实际采用的横幅格式误判成版本不匹配。修法：校验输出中完整且与 release manifest 精确一致的四段版本 token，允许有无 `v` 前缀，并保留超时、非零退出码及错误版本的拒绝。复验：`node --test vendor/dsh-linux-runtime/test/manager.test.mjs` 33/33；新增实际 ASCII 横幅正例与 exit 0 错版本负控；Linux source manifest 摘要更新。未构建 APK、未做设备复验。

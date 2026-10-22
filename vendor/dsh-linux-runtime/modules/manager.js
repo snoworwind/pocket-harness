@@ -440,6 +440,15 @@ function linuxRuntimeError(code, message) {
   return error;
 }
 
+function reportsExpectedProotVersion(result, expectedVersion) {
+  const output = `${result.stdout ?? ''}\n${result.stderr ?? ''}`;
+  const escaped = expectedVersion.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  // Termux's Android PRoot package prints an ASCII banner ending in the plain
+  // version number (`5.1.107.98`), while other builds print `PRoot v5.1.107.98`.
+  // Match a complete version token instead of requiring one banner spelling.
+  return new RegExp(`(?:^|[^A-Za-z0-9.])v?${escaped}(?=$|[^A-Za-z0-9.])`, 'i').test(output);
+}
+
 function androidNativeFile(name) {
   const directory = process.env.DSH_LINUX_NATIVE_LIBRARY_DIR;
   if (typeof directory !== 'string' || !path.isAbsolute(directory)) {
@@ -747,8 +756,13 @@ export class LinuxRuntimeManager {
     );
     versionSpec.timeout = 10_000;
     const version = normaliseCommandResult(await this._runManaged(versionSpec));
-    if (version.timedOut || version.exitCode !== 0 || !`${version.stdout}\n${version.stderr}`.includes(`PRoot v${expectedProotVersion}`)) {
-      throw new Error(`PRoot launcher probe failed (exit ${version.exitCode ?? 'unknown'}): ${(version.stderr || version.stdout).trim().slice(0, 500)}`);
+    if (version.timedOut || version.exitCode !== 0 || !reportsExpectedProotVersion(version, expectedProotVersion)) {
+      const reason = version.timedOut
+        ? 'timed out'
+        : version.exitCode !== 0
+          ? `exit ${version.exitCode ?? 'unknown'}`
+          : `did not report expected version ${expectedProotVersion}`;
+      throw new Error(`PRoot launcher probe failed (${reason}): ${(version.stderr || version.stdout).trim().slice(0, 500)}`);
     }
 
     const resolverFile = await this._writeResolverFile(health.paths.instance);
@@ -1157,10 +1171,15 @@ export class LinuxRuntimeManager {
         `APK native PRoot probe failed: ${String(error?.message ?? error)}`,
       );
     }
-    if (result.timedOut || result.exitCode !== 0 || !`${result.stdout}\n${result.stderr}`.includes(`PRoot v${expectedProotVersion}`)) {
+    if (result.timedOut || result.exitCode !== 0 || !reportsExpectedProotVersion(result, expectedProotVersion)) {
+      const reason = result.timedOut
+        ? 'timed out'
+        : result.exitCode !== 0
+          ? `exit ${result.exitCode ?? 'unknown'}`
+          : `did not report expected version ${expectedProotVersion}`;
       throw linuxRuntimeError(
         'linux-host-exec-assets-unavailable',
-        `APK native PRoot probe failed (exit ${result.exitCode ?? 'unknown'}): ${(result.stderr || result.stdout).trim().slice(0, 500)}`,
+        `APK native PRoot probe failed (${reason}): ${(result.stderr || result.stdout).trim().slice(0, 500)}`,
       );
     }
   }
