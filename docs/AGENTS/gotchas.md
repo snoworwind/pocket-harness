@@ -2981,3 +2981,7 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 496. **Termux PRoot 版本探针必须识别其 ASCII 横幅中的裸版本号（2026-10-22）**
 
     现象：用户设备中的 APK-native PRoot 正常启动、退出码为 0，并输出带 `5.1.107.98` 的 Termux ASCII 横幅；Linux 安装仍在下载与解包之前报 `linux-host-exec-assets-unavailable`。真因：runtime 两处安装探针只查找字面文本 `PRoot v<version>`，将受信 APK 资产实际采用的横幅格式误判成版本不匹配。修法：校验输出中完整且与 release manifest 精确一致的四段版本 token，允许有无 `v` 前缀，并保留超时、非零退出码及错误版本的拒绝。复验：`node --test vendor/dsh-linux-runtime/test/manager.test.mjs` 33/33；新增实际 ASCII 横幅正例与 exit 0 错版本负控；Linux source manifest 摘要更新。未构建 APK、未做设备复验。
+
+497. **Android Shell 的受限档位没有真实围栏时必须在 spawn 前拒绝（2026-10-22）**
+
+    现象：`dsh-shell-termux` 曾将 `sandboxPolicy.mode`、工作区与共享目录写入环境变量后直接运行 `bash -c`；`read-only` 和 `workspace-write` 因而仍能访问 app UID 可达路径，返回的 `enforcement: partial` 没有执行门作用。真因：把诊断标签及 Android app-domain 边界当成了任意 Shell 命令的路径围栏。修法：`resolve()` 捕获每次调用的策略，`execute()` 在 bash 探测与 spawn 前拒绝无真实围栏的受限档位；`danger-full-access` 必须由本次会话显式选择，并如实标记 app-domain 部分边界。修正快照装配注释与插件文档，增加受控回归和 PR Gate。复验：`dsh-shell-termux/npm test` 4/4、`node scripts/check-code-map.mjs` 与维护文档门禁通过；**未构建 APK、未做 CDP/ADB 设备验证**，真实路径围栏与秘密隔离仍是缺口。
