@@ -8,6 +8,8 @@ Linux 执行后端由 Bionilux 改为 Termux PRoot。Bionilux 在目标 Android 
 
 本轮完成的是源码迁移和构建前静态/自动检查。**没有执行 APK 构建、CI 云端构建或 Android 设备验收**，因此 PRoot 是否能在目标 ROM 的 app 域启动、guest glibc、apt 和多级 `execve` 均未判为通过。
 
+2026-10-22 的用户安装报告显示，原生 PRoot 可正常启动并以 exit 0 输出版本横幅，但安装探针只接受字面串 `PRoot v<version>`，误拒 Termux 横幅。源码现已按 manifest 版本 token 校验两种横幅格式，并增加零退出但版本不匹配的负控；宿主测试通过，尚未以新 APK 在设备复验。实现与复验详见 [坑 496](../AGENTS/gotchas.md)。
+
 ## 运行边界
 
 - PRoot 通过 `ptrace` 翻译 guest 文件路径和进程视图；`-0` 只是 guest 内的 root 身份，不授予 Android root、mount 权限或内核隔离。runtime 以壳侧显式注入的 `DSH_LINUX_NATIVE_LIBRARY_DIR` 选择 APK 安装目录中的 launcher/loader；`ANDROID_ROOT` 仅作 Android 环境的辅助标记，不是选择原生执行路径的唯一条件。

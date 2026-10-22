@@ -727,6 +727,69 @@ test('Android install rejects an unlaunchable APK-native PRoot before downloadin
   }
 });
 
+test('Android install accepts Termux PRoot banner when it reports the pinned version', async () => {
+  const dataDir = tempDir();
+  const fixture = makeManifest();
+  const nativeLibraryDir = await makeAndroidNativeLibraries(dataDir);
+  const keys = ['DSH_FILES_DIR', 'DSH_LINUX_NATIVE_LIBRARY_DIR', 'ANDROID_ROOT'];
+  const previous = Object.fromEntries(keys.map(key => [key, process.env[key]]));
+  process.env.DSH_FILES_DIR = dataDir;
+  process.env.DSH_LINUX_NATIVE_LIBRARY_DIR = nativeLibraryDir;
+  process.env.ANDROID_ROOT = '/system';
+  try {
+    const banner = [
+      '_____ _____              ___',
+      '|  __ \\  __ \\_____  _____|   |_ ',
+      '|   __/     /  _  \\/  _  \\    _|',
+      '|__|  |__|__\\_____\\/\\_____\\/\\____| 5.1.107.98',
+      '',
+      'built-in accelerators: process_vm = yes, seccomp_filter = yes',
+    ].join('\n');
+    const { manager, io, runner } = makeManager(fixture, {
+      dataDir,
+      runnerOptions: { prootVersionResult: { stdout: banner, stderr: '', exitCode: 0 } },
+    });
+    await manager.install(fixture.manifest);
+    const versionProbes = runner.calls.filter(({ spec }) => spec.args?.[0] === '--version');
+    assert.ok(versionProbes.length >= 2, 'native and staged PRoot versions must both be checked');
+    assert.ok(io.stats.downloads.length > 0, 'a matching native PRoot banner must allow the install to continue');
+  } finally {
+    for (const [key, value] of Object.entries(previous)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+});
+
+test('Android install rejects a zero-exit PRoot probe that reports another version', async () => {
+  const dataDir = tempDir();
+  const fixture = makeManifest();
+  const nativeLibraryDir = await makeAndroidNativeLibraries(dataDir);
+  const keys = ['DSH_FILES_DIR', 'DSH_LINUX_NATIVE_LIBRARY_DIR', 'ANDROID_ROOT'];
+  const previous = Object.fromEntries(keys.map(key => [key, process.env[key]]));
+  process.env.DSH_FILES_DIR = dataDir;
+  process.env.DSH_LINUX_NATIVE_LIBRARY_DIR = nativeLibraryDir;
+  process.env.ANDROID_ROOT = '/system';
+  try {
+    const { manager, io, runner } = makeManager(fixture, {
+      dataDir,
+      runnerOptions: { prootVersionResult: { stdout: 'PRoot v5.1.107.97\n', stderr: '', exitCode: 0 } },
+    });
+    await assert.rejects(manager.install(fixture.manifest), error => {
+      assert.equal(error.code, 'linux-host-exec-assets-unavailable');
+      assert.ok(error.message.includes('did not report expected version 5.1.107.98'));
+      return true;
+    });
+    assert.equal(runner.calls.length, 1, 'the version mismatch must stop before runtime staging');
+    assert.equal(io.stats.downloads.length, 0, 'the version mismatch must stop before downloads');
+  } finally {
+    for (const [key, value] of Object.entries(previous)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+});
+
 test('rootfs preparation fails closed when the PRoot compatibility preload is missing', async () => {
   const dataDir = tempDir();
   const rootfsFiles = { ...ARCHIVE_FILES.rootfs };

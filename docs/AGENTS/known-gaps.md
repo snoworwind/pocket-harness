@@ -7,7 +7,7 @@
 
 ## 当前入口
 
-- **2026-10-22 Linux 后端已改为 Termux PRoot，源码尚待构建/设备验收**：runtime/bootstrap `0.6.0`；Bionilux launcher/preload/native loader 构建链与 Cargo 许可收集器已移除，bootstrap 的历史来源仍保留。PRoot 资产来自 Termux 官方签名 ARM64 仓库包，Debian/Node/原生依赖的锁和 provenance 已改为对应来源。PRoot 不提供沙箱，guest 仍以 app UID 执行；宿主 `/proc` 不绑定进 guest，依赖 guest procfs 的工具可能不完整。硬链接拒绝最多复制 1 GiB，但副本不是共享 inode，dpkg 兼容性和磁盘行为仍待 ARM64 实机验收。本轮用户要求不做实机测试，且尚未执行 APK 构建、云端 CI。**来源可复现性边界**：Termux InRelease、软件包索引与 `.deb` 摘要在每次构建时验证并写入 provenance，但摘要尚未固定在仓库锁中；recipe URL 也仍指向可变 `master`。这能验证某次构建的来源，不能保证同一提交在未来取到相同 `.deb` 或相同配方。此前 0.5.x Bionilux 记录仅作历史证据，不代表当前实现。
+- **2026-10-22 Linux 后端已改为 Termux PRoot，源码尚待构建/设备验收**：runtime/bootstrap `0.6.0`；Bionilux launcher/preload/native loader 构建链与 Cargo 许可收集器已移除，bootstrap 的历史来源仍保留。PRoot 资产来自 Termux 官方签名 ARM64 仓库包，Debian/Node/原生依赖的锁和 provenance 已改为对应来源。PRoot 不提供沙箱，guest 仍以 app UID 执行；宿主 `/proc` 不绑定进 guest，依赖 guest procfs 的工具可能不完整。硬链接拒绝最多复制 1 GiB，但副本不是共享 inode，dpkg 兼容性和磁盘行为仍待 ARM64 实机验收。本轮用户要求不做实机测试，且尚未执行 APK 构建、云端 CI。原生 PRoot 版本探针已修为接受 Termux ASCII banner 中的精确版本 token，见 [坑 496](gotchas.md)。**来源可复现性边界**：Termux InRelease、软件包索引与 `.deb` 摘要在每次构建时验证并写入 provenance，但摘要尚未固定在仓库锁中；recipe URL 也仍指向可变 `master`。这能验证某次构建的来源，不能保证同一提交在未来取到相同 `.deb` 或相同配方。此前 0.5.x Bionilux 记录仅作历史证据，不代表当前实现。
 
 - 2026-10-20：继续比较上游源码后新增悬浮服务退出候选：本仓 OverlayService 缺少上游 #443 的服务自停/非粘性策略，现有 EngineService 的收尾不覆盖其未启动场景；实际任务划除复活仍待本仓设备复现。输入清空/回执与虚拟屏弹层差异也已细化反例。证据和静态推导见 [第二轮源码复核](UPSTREAM-SOURCE-REVIEW-2026-10-20.md)，实施依赖见 [吸收计划](UPSTREAM-ABSORPTION-PLAN-2026-10-20.md)。**本轮仅文档，未修复、未构建 APK、未做设备验证，不构成候选通过。**
 
