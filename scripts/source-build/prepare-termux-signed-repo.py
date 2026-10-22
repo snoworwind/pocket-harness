@@ -59,6 +59,45 @@ def _version_satisfies(actual: str, operator: str, required: str) -> bool:
     return result.returncode == 0
 
 
+def _compare_versions(left: str, right: str) -> int:
+    if _version_satisfies(left, ">>", right):
+        return 1
+    if _version_satisfies(left, "<<", right):
+        return -1
+    return 0
+
+
+def select_package_records(stanzas) -> dict[str, dict]:
+    """Select apt's newest usable AArch64 candidate from the signed package index."""
+    selected = {}
+    for record in stanzas:
+        name = record.get("Package")
+        version = record.get("Version")
+        architecture = record.get("Architecture")
+        if not isinstance(name, str) or not name or not isinstance(version, str) or not version:
+            raise ValueError("signed Termux package stanza has no package name or version")
+        if architecture not in ("aarch64", "all"):
+            continue
+
+        current = selected.get(name)
+        if current is None:
+            selected[name] = record
+            continue
+        comparison = _compare_versions(version, current["Version"])
+        if comparison > 0:
+            selected[name] = record
+        elif comparison == 0:
+            current_architecture = current.get("Architecture")
+            # A native build wins an equal-version tie over an architecture-independent build.
+            if architecture == "aarch64" and current_architecture == "all":
+                selected[name] = record
+            elif architecture == current_architecture:
+                raise ValueError(
+                    f"duplicate signed Termux package candidate: {name}={version} [{architecture}]"
+                )
+    return selected
+
+
 def _dependency_applies(expression: str, owner: str, records: dict[str, dict]) -> str | None:
     match = DEPENDENCY_ATOM.fullmatch(expression.strip())
     if not match:
@@ -182,12 +221,7 @@ def main() -> None:
     actual_index_hash = hashlib.sha256(index_gz).hexdigest()
     if len(index_gz) != expected_index_size or actual_index_hash != expected_index_hash:
         raise ValueError("Termux Packages.gz does not match the signed Release file")
-    records = {}
-    for record in parse_stanzas(gzip.decompress(index_gz).decode("utf-8")):
-        name = record["Package"]
-        if name in records:
-            raise ValueError(f"duplicate package stanza in signed Termux index: {name}")
-        records[name] = record
+    records = select_package_records(parse_stanzas(gzip.decompress(index_gz).decode("utf-8")))
     config = json.loads(preinstall_file.read_text(encoding="utf-8"))
     backend_config_path = pathlib.Path(__file__).with_name("linux-backend-packages.json")
     backend_config = json.loads(backend_config_path.read_text(encoding="utf-8"))
