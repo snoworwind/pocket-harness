@@ -128,7 +128,7 @@ export function patchPermissionPresetsClientAutoDefault(source) {
     'current-session Auto review Chinese description')
   out = replaceOnce(out,
     '"auto.confirm.description": "自动审查不使用沙箱。每次原生工具调用和 PTC 内层调用前，都会由与当前 agent 相同的模型进行审查；审查拒绝的调用由你批准或拒绝。此功能仍属实验性，可能误放行或误拒绝，并会消耗额外 token。",',
-    '"auto.confirm.description": "此工作区会话没有路径级文件系统沙箱；工具可访问 Android 应用 UID 有权访问的文件与资源。Auto 会话中模型审查每次原生工具、PTC 外层程序及内层调用。低风险调用可能自动执行，中风险拒绝可请求用户确认；高风险拒绝和审查失败是用户无法放行的硬拒绝。切换当前会话的权限档位会停用 Auto 审查。模型仍可能误判并消耗额外 token；子 agent 可能按其权限策略直接拒绝。",',
+    '"auto.confirm.description": "Android 不提供路径级文件系统沙箱，工具在应用 UID 权限下运行。Auto 会话中模型审查每次原生工具、PTC 外层程序及内层调用。低风险可能自动执行，中风险拒绝可请求用户确认；高风险拒绝和审查失败是硬拒绝，用户无法放行。切换当前会话的权限档位会停用 Auto 审查。模型仍可能误判并消耗额外 token；子 agent 可能按其权限策略直接拒绝。",',
     'current-session Auto review Chinese confirmation')
   out = replaceOnce(out,
     '"auto.description": "Run without a sandbox after an experimental same-model review of every native tool call and PTC inner call.",',
@@ -136,7 +136,7 @@ export function patchPermissionPresetsClientAutoDefault(source) {
     'current-session Auto review English description')
   out = replaceOnce(out,
     '"auto.confirm.description": "Auto review runs without a sandbox. Before every native tool call and PTC inner call, the same model as the current agent reviews whether to allow it; you approve or reject each call it denies. This feature is experimental, can falsely allow or deny actions, and uses additional tokens.",',
-    '"auto.confirm.description": "This workspace session has no path-level filesystem sandbox; tools can access files and resources available to the Android app UID. Auto sessions review each native tool, outer PTC program, and inner call. Low-risk calls may run automatically; medium-risk denials can ask for your approval. High-risk denials and review failures are hard-denied and cannot be approved. Changing the current session\'s permission preset disables Auto review. The model may misclassify actions and reviews use extra tokens; child agents may apply non-interactive approval policy.",',
+    '"auto.confirm.description": "Android provides no path-level filesystem sandbox; tools run with the app UID access. Auto sessions review each native tool, outer PTC program, and inner call. Low-risk calls may run automatically; medium-risk denials can ask for your approval. High-risk denials and review failures are hard-denied and cannot be approved. Changing the current session\'s permission preset disables Auto review. The model may misclassify actions and uses extra tokens; child agents may apply non-interactive approval policy.",',
     'current-session Auto review English confirmation')
   out = replaceOnceInSection(out, 'const zh = {', 'const en = {',
     '\t\t\t"preset.fullAccess": "完全权限",',
