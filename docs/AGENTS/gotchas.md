@@ -3017,3 +3017,7 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 505. **Workspace Write 名称不等于 Android 全工具路径隔离（2026-10-23）**
 
     现象：用户可能把 `workspace-write` /「工作区内修改」理解成所有工具都被限制在工作区；Android 当前没有覆盖全部原生工具和插件的路径级文件系统沙箱。Termux Shell 对该档位会在启动 bash 前失败关闭，而其他工具按各自实现访问应用 UID 可达资源。真因：上游档位名称表达通用权限语义，不能证明 Android 每个执行器都提供路径围栏。修法：当前会话选择器、新会话默认设置和 `/permission` 命令在切换到该档位前弹出需勾选确认的有限性说明；选中后保留说明，并准确标出 Termux Shell 的失败关闭行为、其他工具的实现差异和 app UID 边界。复验：`scripts/patches/tests/workspace-write-boundary-warning.test.mjs` 覆盖三入口、双语文案、runner 顺序、幂等、语法和损坏锚点不写入；未构建 APK、未做 CDP/ADB 设备验证。
+
+506. **滚动 Termux stable 的 InRelease pin 会在仓库发布后过期（2026-10-23）**
+
+    现象：PR #102 固定的 Termux InRelease SHA-256 为 `317788…22f3f`；其后的两次来源草稿 CI 都在 `gpgv` 报告官方 Termux 签名有效后，于 pin 比较处失败。run 39809445254 的两路观测到摘要 `6b20f388…ce71d87`、签名时间 2026-10-22 13:30 UTC；run 39820055985 的两路观测到摘要 `04cb4d94…dbd1549`、签名时间 16:31 UTC。真因：仓内 pin 指向较早的 `stable` 发布，官方滚动索引在来源构建前已推进；验签成功并不代表锁定摘要仍匹配。修法：根据来源 runner 已验签的 InRelease 更新 `scripts/source-build/linux-inputs.json`，保留 recipe commit/hash 与包校验，不放宽签名和摘要门禁。复验：当前 pin 更新为 run 39820055985 两路验证的 `04cb4d94…dbd1549`；完整来源构建与后续 `.deb` 可用性复验待新 CI。
