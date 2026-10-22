@@ -2944,7 +2944,7 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 
 487. **Termux 包版本锁与可重复构建锁是两个层次**
 
-    现象：PRoot 依赖的精确版本受 `linux-backend-packages.json` 固定，构建时也校验 Termux InRelease、签名索引摘要和每个 `.deb` 摘要；但仓内不固定 InRelease 或 `.deb` 摘要，recipe 链接仍指向 `termux-packages/master`。因此某次构建有可核验 provenance，不代表同一仓库提交未来会取回相同软件包和配方。真因：把签名认证、版本选择与跨时间的输入复现视作同一保证。修法：在将跨时间可复现作为交付要求前，需把审核过的 InRelease/package 摘要与不可变 recipe 修订写入仓内锁，并为其变更加负控。复验：源码审查确认当前只在 build output provenance 记录这些摘要；未执行资产构建。
+    现象：Termux stable 会随上游发布推进；签名和 `.deb` 摘要能证明某轮输入可信，却不能保证同一提交跨时间取得相同包。真因：把签名认证、固定 recipe、每轮包版本选择和跨时间 artifact 归档混为一种锁。修法：recipe 固定在不可变 commit 并校验文件 SHA；每轮验签并记录精确包闭包，APK 两路 builder 共享本轮 artifact；跨时间复现仍需另建不可变包归档。复验：PR #105 实现与远端构建结论待回填，见坑 506。
 
 488. **Android 原生执行目录应由显式路径识别，不依赖系统环境标记**
 
@@ -3004,7 +3004,7 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 
 502. **Termux 签名成功还不足以固定 Linux 来源输入（2026-10-22）**
 
-    现象：同一 Pocket Harness 提交每次都能验证 Termux InRelease 与 `.deb` 来源，但滚动的 `stable` 索引可改变依赖闭包，`linux-backend-packages.json` 中 `termux-packages/master` recipe 也会随时间变化。真因：把“本轮输入可验签”当成“同一提交未来取得同一输入”。修法：`linux-inputs.json` 固定已审核 InRelease SHA-256 与 recipe commit；每个 PRoot 依赖 recipe 记录 commit 和文件 SHA-256；准备脚本在 gpgv 验签后还必须匹配仓内 InRelease pin，索引变化或旧 `.deb` 缺失时失败关闭。复验：Python 自测覆盖匹配摘要、错误摘要/格式及 mutable master 拒绝；实际官方签名验收须 Linux 来源 runner，Termux `.deb` 长期可用性仍依赖外部仓库。未构建 APK、未做设备验证。
+    现象：同一 Pocket Harness 提交重跑时，Termux `stable` 可以发布新索引并改变依赖闭包，`termux-packages/master` recipe 也会变化。真因：把本轮输入可验签误当成同一提交未来必然取得同一滚动输入。修法：recipe 使用固定 commit 和文件 SHA-256；InRelease 保持为每轮经过 bootstrap keyring 验证的输入，记录摘要与包闭包到 provenance，同一来源 workflow 的双路构建消费同一快照。每轮包输入可因上游发布而变化，跨时间复现需要另行归档这些输入。复验：由后续滚动仓库故障及修复记录见坑 506；Linux 来源 runner 执行真实签名与包验证。
 
 503. **Auto Review 高风险拒绝必须绕过用户审批并由单调守卫收口（2026-10-23）**
 
@@ -3018,6 +3018,6 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 
     现象：用户可能把 `workspace-write` /「工作区内修改」理解成所有工具都被限制在工作区；Android 当前没有覆盖全部原生工具和插件的路径级文件系统沙箱。Termux Shell 对该档位会在启动 bash 前失败关闭，而其他工具按各自实现访问应用 UID 可达资源。真因：上游档位名称表达通用权限语义，不能证明 Android 每个执行器都提供路径围栏。修法：当前会话选择器、新会话默认设置和 `/permission` 命令在切换到该档位前弹出需勾选确认的有限性说明；选中后保留说明，并准确标出 Termux Shell 的失败关闭行为、其他工具的实现差异和 app UID 边界。复验：`scripts/patches/tests/workspace-write-boundary-warning.test.mjs` 覆盖三入口、双语文案、runner 顺序、幂等、语法和损坏锚点不写入；未构建 APK、未做 CDP/ADB 设备验证。
 
-506. **滚动 Termux stable 的 InRelease pin 会在仓库发布后过期（2026-10-23）**
+506. **滚动 Termux stable 摘要不能作为提交级固定输入（2026-10-23）**
 
-    现象：PR #102 固定的 Termux InRelease SHA-256 为 `317788…22f3f`；其后的两次来源草稿 CI 都在 `gpgv` 报告官方 Termux 签名有效后，于 pin 比较处失败。run 39809445254 的两路观测到摘要 `6b20f388…ce71d87`、签名时间 2026-10-22 13:30 UTC；run 39820055985 的两路观测到摘要 `04cb4d94…dbd1549`、签名时间 16:31 UTC。真因：仓内 pin 指向较早的 `stable` 发布，官方滚动索引在来源构建前已推进；验签成功并不代表锁定摘要仍匹配。修法：根据来源 runner 已验签的 InRelease 更新 `scripts/source-build/linux-inputs.json`，保留 recipe commit/hash 与包校验，不放宽签名和摘要门禁。复验：当前 pin 更新为 run 39820055985 两路验证的 `04cb4d94…dbd1549`；完整来源构建与后续 `.deb` 可用性复验待新 CI。
+    现象：PR #102 固定的 Termux InRelease SHA-256 为 `317788…22f3f`；其后的两次来源草稿 CI 都在 `gpgv` 报告官方 Termux 签名有效后，于 pin 比较处失败。run 39809445254 的两路观测到摘要 `6b20f388…ce71d87`、签名时间 2026-10-22 13:30 UTC；run 39820055985 的两路观测到摘要 `04cb4d94…dbd1549`、签名时间 16:31 UTC。真因：仓内 pin 指向较早的 `stable` 发布，官方滚动索引在来源构建前已推进；正确验签的当前输入也会被过期摘要拒绝，双路构建各自取数还会遇到不同发布时点。修法：删除提交级 `termuxInReleaseSha256`；单独的 `termux-package-inputs` job 每轮固定 bootstrap、验签当前 InRelease、校验签名 Packages.gz 与所有目标 `.deb`，再上传带本轮 provenance 的快照；两路 ARM64 job 依赖该 job 并下载同一个 run/attempt artifact。recipe commit/hash 锁与签名、内容摘要校验均保留。复验：Python 用例确认 InRelease 摘要只记录为本轮 provenance；workflow 契约测试检查单次解析、job 依赖、同名 artifact 和禁止 replica 独立抓取，并带受控负控。PR #105 的本地/远端复验结果待补记；本机没有 `gpg/gpgv`，实际签名、包闭包和 ARM64 构建须由 Linux runner 完成；本轮未构建 APK、未做设备验证。
