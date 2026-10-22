@@ -2949,3 +2949,15 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 488. **Android 原生执行目录应由显式路径识别，不依赖系统环境标记**
 
     现象：壳侧总会注入 `DSH_LINUX_NATIVE_LIBRARY_DIR`，但 runtime 曾只在 `ANDROID_ROOT` 存在时选择 APK nativeLibraryDir；若系统启动环境缺少该标记，就会回退执行 app 私有目录中的 PRoot，撞回 Android 的 ELF exec 限制。真因：执行目录能力通过显式配置传入，平台判断却依赖另一份可缺失的隐式环境变量。修法：`ANDROID_ROOT` 或显式 native library 路径任一存在即按 Android 路径处理；native 路径不完整时在下载/安装前失败关闭。复验：runtime 回归用例删除 `ANDROID_ROOT` 后仍断言使用 APK 原生目录与当前 DNS；未做 APK/设备验证。
+
+489. **Linux 资产 CI 不得依赖本地忽略的插件 `lib/` 产物**
+
+    现象：PR 检查在开发机通过，但干净 runner 编译 `dsh-android-linux-env` 时找不到 `@dsh-android/dsh-android-bridge` 与 `dsh-shell-termux` 声明。真因：这些 `file:` 依赖的 `lib/` 被 `.gitignore` 排除，开发机残留构建物掩盖了 workflow 未构建依赖源码的缺口。修法：Linux assets workflow 按源代码分别 `npm ci`、`npm run build` 生成 shell-termux 与 bridge 产物，再编译 linux-env；路径过滤同时覆盖这两个上游输入。复验：PR #90 的干净 runner 暴露失败；需以修复提交后的 GitHub Actions `build-linux-assets / validate` 全绿确认。
+
+490. **Termux 签名索引里的 foreign-architecture 依赖分支应被跳过**
+
+    现象：解析有效的 Debian 依赖 `arch-native [aarch64] | arch-other [amd64]` 时，构建器把 `amd64` 当成未知语法并中止。真因：把目标架构白名单误用作整个 signed Packages 索引的语法白名单；其他架构的有效替代项在目标 AArch64 构建中应不适用，而非损坏。修法：校验架构 token 的语法，再按 AArch64/arm64 目标语义筛除 foreign 分支，并覆盖否定条件与 `linux-any`；未知语法仍 fail closed。复验：纯解析用例无需 `dpkg` 即覆盖 foreign、否定和 Linux wildcard；完整依赖闭包由 Linux CI 验证。
+
+491. **兼容层故障注入夹具必须先通过文件大小上限检查**
+
+    现象：Linux CI 的硬链接复制失败/中断用例立即返回 `EFBIG`，没有进入注入的写入错误或进程停止路径。真因：测试文件大于该测试库设置的 1 MiB 复制上限，预检提前拒绝，故障注入断言实际没有覆盖原子发布中断。修法：夹具保持大于注入阈值、同时低于复制上限；另为变更 provenance 的测试设置与 signed index 不同的版本。复验：PR #90 首轮 CI 失败已定位；需以修复提交后的 Linux preload 回归全绿确认。

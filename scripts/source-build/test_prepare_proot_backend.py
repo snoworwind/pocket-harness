@@ -12,6 +12,7 @@ import unittest
 
 
 SCRIPT = pathlib.Path(__file__).with_name("prepare-proot-backend.py")
+ROOT = pathlib.Path(__file__).resolve().parents[2]
 spec = importlib.util.spec_from_file_location("prepare_proot_backend", SCRIPT)
 module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
@@ -202,7 +203,7 @@ class PrepareProotBackendTest(unittest.TestCase):
     def test_unreviewed_package_version_fails_closed(self):
         for item in self.provenance["packages"]:
             if item["package"] == "libtalloc":
-                item["version"] = "2.5.0"
+                item["version"] = "2.5.1"
         self.write_provenance()
         with self.assertRaisesRegex(ValueError, "provenance differs from signed index: libtalloc version"):
             self.assemble()

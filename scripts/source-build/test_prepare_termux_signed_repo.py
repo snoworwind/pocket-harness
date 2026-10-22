@@ -15,6 +15,16 @@ class SignedTermuxRepoParserTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "duplicate field"):
             list(module.parse_stanzas("Package: proot\nVersion: 1\nVersion: 2\n"))
 
+    def test_foreign_architecture_alternative_is_skipped(self):
+        records = {
+            "target": {"Package": "target", "Version": "1", "Architecture": "aarch64"},
+            "foreign": {"Package": "foreign", "Version": "1", "Architecture": "aarch64"},
+        }
+        self.assertIsNone(module._dependency_applies("foreign [amd64]", "root", records))
+        self.assertIsNone(module._dependency_applies("target [!arm64]", "root", records))
+        self.assertEqual(module._dependency_applies("target [!amd64]", "root", records), "target")
+        self.assertEqual(module._dependency_applies("target [linux-any]", "root", records), "target")
+
     @unittest.skipUnless(shutil.which("dpkg"), "dependency version comparisons require dpkg; Linux CI provides it")
     def test_dependency_closure_honors_version_architecture_and_multiarch(self):
         records = {

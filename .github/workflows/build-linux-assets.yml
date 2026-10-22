@@ -7,6 +7,8 @@ on:
       - 'vendor/dsh-linux-runtime/**'
       - 'plugins/dsh-android-linux-env/**'
       - 'plugins/dsh-linux-bootstrap/**'
+      - 'plugins/dsh-android-bridge/**'
+      - 'dsh-shell-termux/**'
       - 'scripts/source-build/*linux*'
       - 'scripts/source-build/prepare-termux-bootstrap.py'
       - 'scripts/source-build/prepare-proot-backend.py'
@@ -65,6 +67,12 @@ jobs:
           npm ci --prefix plugins/dsh-linux-bootstrap --no-audit --no-fund
           npm run build --prefix plugins/dsh-linux-bootstrap
           node --test plugins/dsh-linux-bootstrap/test/*.test.mjs
+          # These file: dependencies publish TypeScript declarations through ignored lib/ outputs.
+          # Build them from the checked-in source before compiling linux-env on a clean runner.
+          npm ci --prefix dsh-shell-termux --no-audit --no-fund
+          npm run build --prefix dsh-shell-termux
+          npm ci --prefix plugins/dsh-android-bridge --no-audit --no-fund
+          npm run build --prefix plugins/dsh-android-bridge
           npm ci --prefix plugins/dsh-android-linux-env --no-audit --no-fund
           npm test --prefix plugins/dsh-android-linux-env
       - name: PRoot backend, rootfs and compatibility regressions

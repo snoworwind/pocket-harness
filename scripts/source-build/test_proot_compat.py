@@ -117,7 +117,7 @@ class ProotCompatTest(unittest.TestCase):
     def test_copy_error_never_publishes_partial_destination(self):
         source = self.root / "write-error-source"
         target = self.root / "write-error-target"
-        source.write_bytes(b"copy error fixture" * 100_000)
+        source.write_bytes(b"copy error fixture" * 20_000)
         result = self.run_python(
             "import errno,os,sys; "
             "\ntry: os.link(sys.argv[1],sys.argv[2]); raise AssertionError('EIO expected')\n"
@@ -131,7 +131,7 @@ class ProotCompatTest(unittest.TestCase):
     def test_killed_copy_never_publishes_partial_destination(self):
         source = self.root / "interrupted-source"
         target = self.root / "interrupted-target"
-        source.write_bytes(b"interrupted copy fixture" * 200_000)
+        source.write_bytes(b"interrupted copy fixture" * 20_000)
         env = dict(os.environ)
         env["LD_PRELOAD"] = str(self.stop_library)
         process = subprocess.Popen(

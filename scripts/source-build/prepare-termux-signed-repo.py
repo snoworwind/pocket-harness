@@ -68,14 +68,20 @@ def _dependency_applies(expression: str, owner: str, records: dict[str, dict]) -
         raise ValueError(f"unsupported build-profile dependency for {owner}: {expression!r}")
     if architecture_restriction:
         tokens = architecture_restriction.split()
-        supported = {"aarch64", "arm64", "!aarch64", "!arm64"}
-        if not tokens or any(token not in supported for token in tokens):
+        if not tokens or any(not re.fullmatch(r"!?[a-z0-9][a-z0-9-]*", token) for token in tokens):
             raise ValueError(f"unsupported architecture restriction for {owner}: {expression!r}")
+
+        def matches_target(token: str) -> bool:
+            # Termux calls the ABI aarch64; Debian dependency restrictions use arm64.
+            # Their Linux wildcards describe the same AArch64 guest.
+            return token in {"aarch64", "arm64", "any", "linux-any", "any-arm64", "any-aarch64",
+                             "linux-arm64", "linux-aarch64"}
+
         positive = [token for token in tokens if not token.startswith("!")]
-        excluded = {token[1:] for token in tokens if token.startswith("!")}
-        if "aarch64" in excluded or "arm64" in excluded:
+        excluded = [token[1:] for token in tokens if token.startswith("!")]
+        if any(matches_target(token) for token in excluded):
             return None
-        if positive and not ({"aarch64", "arm64"} & set(positive)):
+        if positive and not any(matches_target(token) for token in positive):
             return None
 
     record = records.get(name)
