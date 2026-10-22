@@ -12,19 +12,28 @@
       "license": "GPL-2.0",
       "sourceUrl": "https://github.com/termux/proot/archive/v5.1.107.98.zip",
       "sourceSha256": "9de61bddd6f5016d065e2755b72ff4747290e5f992562f031785b107b51d02ba",
-      "recipe": "https://github.com/termux/termux-packages/blob/master/packages/proot/build.sh"
+      "recipePath": "packages/proot/build.sh",
+      "recipe": "https://github.com/termux/termux-packages/blob/9aedff9c28af3ca93c42eb2c3074221893232ae9/packages/proot/build.sh",
+      "recipeCommit": "9aedff9c28af3ca93c42eb2c3074221893232ae9",
+      "recipeSha256": "dc7d47fe3fa5ae8676c2b96aaccb13998d16c4292bb5769514eea195ea4b05c7"
     },
     "libandroid-shmem": {
       "license": "BSD-3-Clause",
       "sourceUrl": "https://github.com/termux/libandroid-shmem/archive/refs/tags/v0.7.tar.gz",
       "sourceSha256": "1e5ff8459bc0a8c229dd8a94b27d119987e09ef3414331c2b5ebfff20b98e867",
-      "recipe": "https://github.com/termux/termux-packages/blob/master/packages/libandroid-shmem/build.sh"
+      "recipePath": "packages/libandroid-shmem/build.sh",
+      "recipe": "https://github.com/termux/termux-packages/blob/9aedff9c28af3ca93c42eb2c3074221893232ae9/packages/libandroid-shmem/build.sh",
+      "recipeCommit": "9aedff9c28af3ca93c42eb2c3074221893232ae9",
+      "recipeSha256": "db55b10b90c54dd4d39b76b5b074835c09c7c7534a84a12bc29c6a63717ff2fd"
     },
     "libtalloc": {
       "license": "LGPL-3.0-or-later (Termux package metadata: GPL-3.0)",
       "sourceUrl": "https://www.samba.org/ftp/talloc/talloc-2.5.0.tar.gz",
       "sourceSha256": "912afa237510ae542a7733998eb18a12bcda35ab6729c8e2ddb43e8d0ebab007",
-      "recipe": "https://github.com/termux/termux-packages/blob/master/packages/libtalloc/build.sh"
+      "recipePath": "packages/libtalloc/build.sh",
+      "recipe": "https://github.com/termux/termux-packages/blob/9aedff9c28af3ca93c42eb2c3074221893232ae9/packages/libtalloc/build.sh",
+      "recipeCommit": "9aedff9c28af3ca93c42eb2c3074221893232ae9",
+      "recipeSha256": "b722c5adb89e4d4ad4595dbba40be562d9894103a190777392c363b57b1a7201"
     }
   }
 }

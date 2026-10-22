@@ -239,6 +239,7 @@ Harness 与 vendor 源码均跟随当前官方目标；`prepare-harness-vendor-o
 | WSL（Windows 特有） | 快照构建必须在 WSL（tar 解压/符号链接/relocate 需 Linux 语义）；Windows 直读 WSL 9p 文件 = EACCES，校验走 `wsl tar -tvf` 视图；wsl.exe 输出前有 localhost 代理噪音行，解析时过滤 | 坑 6 |
 | ADB 真机特有步骤 | Pocket Harness 发布 APK 用同一独立证书才能覆盖升级；本地 debug 包签名不同。配对走真实 `adb pair`、码值只进 argv（第 4 节 AdbState.kt）；CDP 每次重启 pid 变 | 坑 10/14、第 2/4 节 |
 | run-as 限制 | run-as 裸环境无 termux-exec 钩子 → `not executable: 64-bit ELF` / `CANNOT LINK` 是**假错误**；验证快照内二进制须带全套引擎 env（`LD_PRELOAD` + `TERMUX_EXEC__*` + `LD_LIBRARY_PATH` + `OPENSSL_CONF`） | 坑 22 |
+| Linux PRoot 外部输入 | Termux InRelease SHA-256 与 Termux recipe commit/hash 由 `scripts/source-build/linux-inputs.json` / `linux-backend-packages.json` 固定；索引签名、Packages.gz 与 `.deb` 摘要仍须来源 runner 验证。上游索引变化时必须评审并追加新锁，缺失旧 `.deb` 时失败关闭 | 坑 502、Linux 环境迁移记录 |
 | PowerShell 转义 | 双引号内 `$var` 本地展开（引号地狱）；二进制经 `adb exec-out`/push 传输 | 坑 8 |
 | ABI 匹配 | debug 包默认 x86_64 快照，装 arm64 真机必崩；构建/安装前核对（3.2 步 4） | 坑 18 |
 | 工作树行尾噪声 | `git status` 的 ` M` 与 `check-patch-mirror` 的「仅行尾差异」WARN 常来自 autocrlf（一侧检出为 CRLF），**不是**内容漂移。先逐字节复核（`cmp a b` / `git diff --ignore-cr-at-eol`）再决定要不要动文件，别按噪声改内容 | 铁律 5/6 |

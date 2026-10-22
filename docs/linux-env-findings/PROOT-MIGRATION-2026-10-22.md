@@ -37,7 +37,7 @@ TermFold 派生的 glibc preload 只在内核拒绝普通文件 `link(2)`/`linka
 
 `linux-source-manifest.json` 锁住仓内 runtime、PRoot 适配源码和 bootstrap 实际打包输入；外部 PRoot/依赖按 signed repo provenance 与源归档 SHA 记录。来源构建另外核验 APK 中 native libraries 与许可证文件和输入逐字节一致。发行前仍需跑完整许可证门禁和 APK 资产核验。
 
-复现边界：Termux 签名索引和 `.deb` 摘要由每次构建生成并记录在 provenance；它们目前没有固定在仓内输入锁里，`recipe` 链接仍指向可变 `termux-packages/master`。签名验证可证明某次构建取自受信任 Termux 仓库，但不能让同一 Pocket Harness 提交在未来稳定取得相同 `.deb` 与构建配方。跨时间的输入复现仍需把审核过的 InRelease / package 摘要和不可变 recipe 修订纳入锁。
+复现边界：仓内输入锁固定 Termux `InRelease` 的 SHA-256；构建仍先用 bootstrap 内的官方密钥验签，再要求字节摘要完全相同。该 InRelease 认证 `Packages.gz` 的摘要与字节数，包记录认证每个 `.deb` 摘要。PRoot、libandroid-shmem、libtalloc 的 recipe 链接固定到同一个审核过的 `termux-packages` commit，并记录 recipe 文件 SHA-256；具体版本及摘要见 `linux-inputs.json` 与 `linux-backend-packages.json`。仓库更新后如果 InRelease 不再匹配，构建会失败关闭，必须评审并追加新的输入锁；本地下载不证明签名，签名判据由来源构建的 Linux runner 实际执行。该锁防止同一提交静默改用后续索引或 recipe；Termux 是否继续提供锁定索引引用的 `.deb` 仍是外部可用性条件，文件缺失时构建会失败而不会换包。
 
 ## 本轮可本机提前验证的项目
 

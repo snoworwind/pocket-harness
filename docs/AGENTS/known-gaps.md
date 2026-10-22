@@ -7,7 +7,7 @@
 
 ## 当前入口
 
-- **2026-10-22 Linux 后端已改为 Termux PRoot，源码尚待构建/设备验收**：runtime/bootstrap `0.6.0`；Bionilux launcher/preload/native loader 构建链与 Cargo 许可收集器已移除，bootstrap 的历史来源仍保留。PRoot 资产来自 Termux 官方签名 ARM64 仓库包，Debian/Node/原生依赖的锁和 provenance 已改为对应来源。PRoot 不提供沙箱，guest 仍以 app UID 执行；宿主 `/proc` 不绑定进 guest，依赖 guest procfs 的工具可能不完整。硬链接拒绝最多复制 1 GiB，但副本不是共享 inode，dpkg 兼容性和磁盘行为仍待 ARM64 实机验收。本轮用户要求不做实机测试，且尚未执行 APK 构建、云端 CI。原生 PRoot 版本探针已修为接受 Termux ASCII banner 中的精确版本 token，见 [坑 496](gotchas.md)。**来源可复现性边界**：Termux InRelease、软件包索引与 `.deb` 摘要在每次构建时验证并写入 provenance，但摘要尚未固定在仓库锁中；recipe URL 也仍指向可变 `master`。这能验证某次构建的来源，不能保证同一提交在未来取到相同 `.deb` 或相同配方。此前 0.5.x Bionilux 记录仅作历史证据，不代表当前实现。
+- **2026-10-22 Linux 后端已改为 Termux PRoot，源码尚待构建/设备验收**：runtime/bootstrap `0.6.0`；Bionilux launcher/preload/native loader 构建链与 Cargo 许可收集器已移除，bootstrap 的历史来源仍保留。PRoot 资产来自 Termux 官方签名 ARM64 仓库包，Debian/Node/原生依赖的锁和 provenance 已改为对应来源。PRoot 不提供沙箱，guest 仍以 app UID 执行；宿主 `/proc` 不绑定进 guest，依赖 guest procfs 的工具可能不完整。硬链接拒绝最多复制 1 GiB，但副本不是共享 inode，dpkg 兼容性和磁盘行为仍待 ARM64 实机验收。本轮用户要求不做实机测试，且尚未执行 APK 构建或设备验收。原生 PRoot 版本探针已修为接受 Termux ASCII banner 中的精确版本 token，见 [坑 496](gotchas.md)。Termux InRelease 摘要和 recipe commit/hash 已加入仓内输入锁，[PR #102](https://github.com/snoworwind/pocket-harness/pull/102) 待检查；来源构建 runner 尚未实际验证该新锁，旧 `.deb` 是否继续可下载仍依赖外部仓库。此前 0.5.x Bionilux 记录仅作历史证据，不代表当前实现。
 
 - 2026-10-20：继续比较上游源码后新增悬浮服务退出候选：本仓 OverlayService 缺少上游 #443 的服务自停/非粘性策略，现有 EngineService 的收尾不覆盖其未启动场景；实际任务划除复活仍待本仓设备复现。输入清空/回执与虚拟屏弹层差异也已细化反例。证据和静态推导见 [第二轮源码复核](UPSTREAM-SOURCE-REVIEW-2026-10-20.md)，实施依赖见 [吸收计划](UPSTREAM-ABSORPTION-PLAN-2026-10-20.md)。**本轮仅文档，未修复、未构建 APK、未做设备验证，不构成候选通过。**
 
@@ -20,6 +20,8 @@
 - 2026-10-22：会话导出下载现仅接受 `shouldOverrideUrlLoading` 提供的真实用户手势；`DownloadListener` 无手势/frame 来源参数，命中导出端点即拒绝，不会触发带引擎 Cookie 的 HTTP 请求。[PR #99](https://github.com/snoworwind/pocket-harness/pull/99) 等待 CI；纯判据与 Kotlin 编译通过。WebView 上实际触发回调的路径仍待设备复现。**未构建 APK、未做设备验证**。
 
 - 2026-10-22：P2-2 源码修复已加入客户端 Session 删除收敛与 `workspaceClose` 窄桥命令：连续三次官方列表缺席后销毁对应 WebView、请求删除该 nonDefault profile，并重试失败；共享兼容 Cookie jar 保留。[PR #100](https://github.com/snoworwind/pocket-harness/pull/100) 等待 CI。profile 磁盘清理可能异步，**未构建 APK、未做设备验证**，真实 BrowserHost/Sidebar/WebView 生命周期仍待设备复验。
+
+- 2026-10-22：P2-4 将 Termux 已验签但可变的仓库索引摘要与指向 `master` 的 recipe URL 固定为仓内 InRelease SHA-256、不可变 recipe commit 和 recipe 文件摘要；上游索引变化需评审更新，旧 `.deb` 不可用时失败关闭。[PR #102](https://github.com/snoworwind/pocket-harness/pull/102) 待来源 runner CI；本机没有 `gpg/gpgv`，未能本地验 Termux 签名；**未构建 APK、未做设备验证**。
 
 - 2026-10-18 在 main `187246a` 上的分区复审发现原生 relay 准入遗漏、屏幕范围内存/旧 XML 断链、路由门禁注释假绿，以及文件/虚拟屏/来源续跑等问题，见 [项目分区复审](PROJECT-AUDIT-2026-10-18.md)。**A01–A14 已在源码层修复**，实现、宿主反例与新增测试见 [修复账本](AUDIT-REMEDIATION-2026-10-18.md) 的「项目分区复审 A01–A14」一节。本轮未重建 APK、未做设备验证（无在线 ARM64 设备与 Android SDK）；L2/L3 面进入发版候选前仍须来源链新包的三层验收。与下方此前综合审查的 A01–A10 是不同编号集合。
 
