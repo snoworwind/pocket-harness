@@ -1,5 +1,5 @@
 export const MANIFEST_SCHEMA_VERSION = 1;
-export const PACKAGE_VERSION = '0.5.1';
+export const PACKAGE_VERSION = '0.6.0';
 export const MIN_MOBILE_VERSION = '0.14.0';
 export const SUPPORTED_ARCHITECTURES = new Set(['arm64', 'x64']);
 /** Manifest versions are semantic versions of the Linux release, not of this package. */
@@ -108,14 +108,19 @@ export function validateManifest(manifest) {
     if (!SUPPORTED_ARCHITECTURES.has(architecture)) {
       throw new TypeError(`${field}.architecture must be arm64 or x64`);
     }
-    if (runtime.backend !== 'bionilux') {
-      throw new TypeError(`${field}.backend must be bionilux`);
+    if (runtime.backend !== 'proot') {
+      throw new TypeError(`${field}.backend must be proot`);
+    }
+    const prootVersion = requireString(runtime.prootVersion, `${field}.prootVersion`);
+    if (!/^\d+\.\d+\.\d+\.\d+$/.test(prootVersion)) {
+      throw new TypeError(`${field}.prootVersion must be a pinned four-part PRoot version`);
     }
     return Object.freeze({
       id,
       label: requireString(runtime.label, `${field}.label`),
       architecture,
-      backend: 'bionilux',
+      backend: 'proot',
+      prootVersion,
       backendAsset: validateAsset(runtime.backendAsset, `${field}.backendAsset`),
       rootfsAsset: validateAsset(runtime.rootfsAsset, `${field}.rootfsAsset`),
       nodeAsset: validateAsset(runtime.nodeAsset, `${field}.nodeAsset`),

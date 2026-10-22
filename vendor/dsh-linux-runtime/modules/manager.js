@@ -1,7 +1,8 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { EventEmitter } from 'node:events';
-import { promises as fs, createReadStream, existsSync, lstatSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { promises as fs, createReadStream, existsSync, lstatSync, readFileSync, readdirSync, realpathSync, statSync } from 'node:fs';
+import { isIP } from 'node:net';
 import path from 'node:path';
 import { selectRuntime } from './manifest.js';
 import { assertOfficialAssetUrl, isAllowedAssetOrigin } from './asset-installer.js';
@@ -39,15 +40,21 @@ const HOST_ENV_ALLOWLIST = new Set([
   'https_proxy',
   'all_proxy',
   'no_proxy',
+  'DSH_LINUX_DNS_SERVERS',
 ]);
+const GUEST_ENV_ALLOWLIST = [
+  'LANG', 'LC_ALL', 'LC_CTYPE', 'TZ', 'TERM', 'COLORTERM', 'NO_COLOR', 'FORCE_COLOR',
+  'HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'NO_PROXY',
+  'http_proxy', 'https_proxy', 'all_proxy', 'no_proxy',
+];
 const MAX_CAPTURED_OUTPUT_BYTES = 256 * 1024;
 const TERMINATION_GRACE_MS = 1500;
-const HOST_TOOL_PROBE_TIMEOUT_MS = 5000;
-const GNU_HOST_TOOLS = Object.freeze({
-  find: /^find \(GNU findutils\) /m,
-  sed: /^sed \(GNU sed\) /m,
-  wc: /^wc \(GNU coreutils\) /m,
-});
+const ANDROID_NATIVE_PROOT = 'libpocketharness_proot.so';
+const ANDROID_NATIVE_PROOT_LOADER = 'libpocketharness_proot_loader.so';
+const ANDROID_NATIVE_TALLOC = 'libtalloc.so';
+const ANDROID_NATIVE_SHMEM = 'libandroid-shmem.so';
+const ROOTFS_COMPAT_LIBRARY = 'opt/pocket-harness/libpocket-linux-compat.so';
+const ROOTFS_PRELOAD_FILE = 'etc/ld.so.preload';
 const GUEST_PATH_PREFIXES_LIST = [
   '/bin',
   '/dev',
@@ -380,77 +387,150 @@ function cleanHostEnvironment() {
   return environment;
 }
 
+function isAndroidRuntimeHost() {
+  // ANDROID_ROOT is normally injected by Android, while the explicit native
+  // library path is supplied by EngineManager. Treat either as the platform
+  // marker so a missing system variable cannot select app-private executables.
+  return Boolean(process.env.ANDROID_ROOT || process.env.DSH_LINUX_NATIVE_LIBRARY_DIR);
+}
+
+function normalizeDnsServers(value) {
+  if (typeof value !== 'string' || value.trim() === '') return [];
+  if (value.length > 512) {
+    throw linuxRuntimeError('linux-host-dns-unavailable', 'Android DNS server state exceeds its size limit');
+  }
+  const servers = [...new Set(value.split(/[\s,]+/).filter(Boolean))];
+  if (servers.some((server) => isIP(server) === 0)) {
+    throw linuxRuntimeError('linux-host-dns-unavailable', 'Android supplied an invalid DNS server address');
+  }
+  return servers.slice(0, 4);
+}
+
+function hostDnsServers(environment) {
+  if (!isAndroidRuntimeHost()) return normalizeDnsServers(environment.DSH_LINUX_DNS_SERVERS);
+  const filesDir = process.env.DSH_FILES_DIR;
+  if (typeof filesDir !== 'string' || !path.isAbsolute(filesDir)) {
+    throw linuxRuntimeError('linux-host-dns-unavailable', 'Termux app files directory is unavailable for DNS lookup');
+  }
+  const dnsFile = path.join(path.resolve(filesDir), 'linux-dns-servers');
+  let info;
+  try {
+    info = lstatSync(dnsFile);
+  } catch (error) {
+    if (error?.code === 'ENOENT') return [];
+    throw linuxRuntimeError('linux-host-dns-unavailable', `Android DNS server state could not be read: ${String(error?.message ?? error)}`);
+  }
+  if (!info.isFile() || info.isSymbolicLink()) {
+    throw linuxRuntimeError('linux-host-dns-unavailable', 'Android DNS server state is not a regular file');
+  }
+  if (info.size > 512) {
+    throw linuxRuntimeError('linux-host-dns-unavailable', 'Android DNS server state exceeds its size limit');
+  }
+  try {
+    return normalizeDnsServers(readFileSync(dnsFile, 'utf8'));
+  } catch (error) {
+    if (typeof error?.code === 'string' && error.code.startsWith('linux-')) throw error;
+    throw linuxRuntimeError('linux-host-dns-unavailable', `Android DNS server state could not be read: ${String(error?.message ?? error)}`);
+  }
+}
+
 function linuxRuntimeError(code, message) {
   const error = new Error(message);
   error.code = code;
   return error;
 }
 
-function resolveHostLibraryPath(configuredPath) {
-  const filesDir = process.env.DSH_FILES_DIR;
-  const prefix = process.env.TERMUX__PREFIX ?? process.env.PREFIX;
-  const candidate = configuredPath ?? (filesDir ? path.join(filesDir, 'usr', 'lib') : prefix ? path.join(prefix, 'lib') : undefined);
-  if (!candidate) {
-    if (process.env.ANDROID_ROOT) {
-      throw linuxRuntimeError('linux-host-library-path-unavailable', 'Termux host library directory is not configured');
-    }
-    return undefined;
+function androidNativeFile(name) {
+  const directory = process.env.DSH_LINUX_NATIVE_LIBRARY_DIR;
+  if (typeof directory !== 'string' || !path.isAbsolute(directory)) {
+    throw linuxRuntimeError(
+      'linux-host-exec-assets-unavailable',
+      `APK native library directory is unavailable for ${name}`,
+    );
   }
-  if (typeof candidate !== 'string' || !path.isAbsolute(candidate)) {
-    throw linuxRuntimeError('linux-host-library-path-unavailable', 'Termux host library directory must be an absolute path');
+  const root = path.resolve(directory);
+  let rootInfo;
+  try { rootInfo = lstatSync(root); } catch { /* reported below */ }
+  if (!rootInfo?.isDirectory() || rootInfo.isSymbolicLink()) {
+    throw linuxRuntimeError('linux-host-exec-assets-unavailable', 'APK native library directory is not a real directory');
   }
-  const resolved = path.resolve(candidate);
-  if (!directoryExists(resolved)) {
-    throw linuxRuntimeError('linux-host-library-path-unavailable', 'Termux host library directory is unavailable');
+  const target = path.join(root, name);
+  let info;
+  try { info = lstatSync(target); } catch { /* reported below */ }
+  if (!info?.isFile() || info.isSymbolicLink() || (info.mode & 0o111) === 0) {
+    throw linuxRuntimeError(
+      'linux-host-exec-assets-unavailable',
+      `APK native PRoot asset is missing or not executable: ${name}`,
+    );
   }
-  return resolved;
+  return target;
 }
 
-function hostExecutionEnvironment(configuredLibraryPath) {
+function androidNativeProotLoader() {
+  return androidNativeFile(ANDROID_NATIVE_PROOT_LOADER);
+}
+
+function androidNativeProot() {
+  return androidNativeFile(ANDROID_NATIVE_PROOT);
+}
+
+function prootExecutionEnvironment(backend, instanceRoot) {
   const environment = cleanHostEnvironment();
-  const hostLibraryPath = resolveHostLibraryPath(configuredLibraryPath);
-  if (hostLibraryPath) environment.LD_LIBRARY_PATH = hostLibraryPath;
-
-  if (process.env.ANDROID_ROOT) {
-    const filesDir = process.env.DSH_FILES_DIR;
-    if (typeof filesDir !== 'string' || !path.isAbsolute(filesDir)) {
-      throw linuxRuntimeError(
-        'linux-termux-exec-environment-unavailable',
-        'Termux app files directory is missing or not an absolute path',
-      );
-    }
-    const appFilesDir = path.resolve(filesDir);
-    const prefix = path.join(appFilesDir, 'usr');
-    const libraryDirectory = path.join(prefix, 'lib');
-    const preload = path.join(libraryDirectory, 'libtermux-exec-ld-preload.so');
-    let preloadIsRegularFile = false;
-    try { preloadIsRegularFile = lstatSync(preload).isFile(); } catch { /* checked below */ }
-    if (!directoryExists(prefix) || !directoryExists(libraryDirectory) || !preloadIsRegularFile) {
-      throw linuxRuntimeError(
-        'linux-termux-exec-environment-unavailable',
-        `Termux exec shim is unavailable under the app prefix (${preload})`,
-      );
-    }
-    if (hostLibraryPath !== libraryDirectory) {
-      throw linuxRuntimeError(
-        'linux-host-library-path-unavailable',
-        'Termux host library directory does not match DSH_FILES_DIR/usr/lib',
-      );
-    }
-
-    // Derive these values from the in-app snapshot. Never trust inherited values:
-    // they control termux-exec's execve rewrite and the shell's /usr/bin mapping.
-    environment.PATH = `${path.join(prefix, 'bin')}${path.delimiter}/system/bin`;
-    environment.LD_LIBRARY_PATH = libraryDirectory;
-    environment.LD_PRELOAD = preload;
-    environment.TERMUX_EXEC__SYSTEM_LINKER_EXEC__MODE = 'force';
-    environment.TERMUX_EXEC__EXECVE_CALL__INTERCEPT = '1';
-    environment.TERMUX__ROOTFS = appFilesDir;
-    environment.TERMUX__PREFIX = prefix;
-    environment.TERMUX_APP__DATA_DIR = path.dirname(appFilesDir);
-  }
-
+  const nativeLibraryDir = isAndroidRuntimeHost()
+    ? path.dirname(androidNativeProot())
+    : undefined;
+  environment.LD_LIBRARY_PATH = nativeLibraryDir ?? path.join(backend, 'lib');
+  environment.PROOT_LOADER = nativeLibraryDir
+    ? path.join(nativeLibraryDir, ANDROID_NATIVE_PROOT_LOADER)
+    : path.join(backend, 'libexec', 'proot', 'loader');
+  environment.PROOT_TMP_DIR = path.join(instanceRoot, 'proot-tmp');
+  // PRoot reads this variable by presence. Keep its seccomp compatibility
+  // filter enabled so Android-blocked syscalls such as rename can be rewritten.
+  delete environment.PROOT_NO_SECCOMP;
   return environment;
+}
+
+function prootSpawnSpec(proot, args, cwd, env) {
+  return { file: proot, args, cwd, env };
+}
+
+function prootBind(hostPath, guestPath = hostPath) {
+  if (hostPath.includes(':') || guestPath.includes(':')) {
+    throw linuxRuntimeError('linux-host-path-unsupported', 'PRoot bind paths cannot contain a colon');
+  }
+  return `${hostPath}:${guestPath}`;
+}
+
+function prootArguments(paths, cwdInfo, resolverFile, guestCommand) {
+  const args = [
+    '-r', paths.rootfs,
+    '-0',
+    '-w', cwdInfo.guestCwd,
+    '--sysvipc',
+    '--kill-on-exit',
+  ];
+  for (const device of ['/dev/null', '/dev/zero', '/dev/random', '/dev/urandom']) {
+    if (existsSync(device)) args.push('-b', device);
+  }
+  args.push(
+    '-b', prootBind(paths.shm, '/dev/shm'),
+    '-b', prootBind(resolverFile, '/etc/resolv.conf'),
+    '-b', prootBind(paths.node, paths.node),
+  );
+  for (const hostPath of cwdInfo.hostPaths) args.push('-b', prootBind(hostPath));
+
+  const inherited = cleanHostEnvironment();
+  const guestEnvironment = [
+    `HOME=/root`,
+    `PATH=${path.join(paths.node, 'bin')}:${DEFAULT_GUEST_PATH}`,
+    'TMPDIR=/tmp',
+    `LANG=${inherited.LANG ?? 'C.UTF-8'}`,
+  ];
+  for (const key of GUEST_ENV_ALLOWLIST) {
+    if (inherited[key] !== undefined && !['LANG'].includes(key)) guestEnvironment.push(`${key}=${inherited[key]}`);
+  }
+  args.push('/usr/bin/env', '-i', ...guestEnvironment, ...guestCommand);
+  return args;
 }
 
 function executableFileExists(file) {
@@ -490,6 +570,15 @@ export class LinuxRuntimeManager {
       throw new TypeError('arch must be arm64 or x64');
     }
     this.dataDir = assertSafeDataDir(options.dataDir);
+    if (options.allowedHostPaths !== undefined && !Array.isArray(options.allowedHostPaths)) {
+      throw new TypeError('allowedHostPaths must be an array of absolute directories');
+    }
+    this.allowedHostPaths = (options.allowedHostPaths ?? []).map((entry, index) => {
+      if (typeof entry !== 'string' || !path.isAbsolute(entry) || entry.includes('\0')) {
+        throw new TypeError(`allowedHostPaths[${index}] must be an absolute path`);
+      }
+      return path.resolve(entry);
+    });
     this.arch = options.arch ?? 'arm64';
     this.fetchImpl = options.fetchImpl ?? globalThis.fetch;
     if (typeof this.fetchImpl !== 'function') throw new TypeError('fetchImpl must be a function');
@@ -497,10 +586,10 @@ export class LinuxRuntimeManager {
     this.extractArchive = options.extractArchive;
     this.runCommand = options.runCommand ?? spawnCommand;
     if (typeof this.runCommand !== 'function') throw new TypeError('runCommand must be a function');
-    this.hostLibraryPath = options.hostLibraryPath;
     this.onStateChange = typeof options.onStateChange === 'function' ? options.onStateChange : undefined;
     this.events = new EventEmitter();
     this.children = new Set();
+    this.pendingExecutions = new Set();
     this.gate = new ExecutionGate();
     this.disposed = false;
   }
@@ -584,10 +673,23 @@ export class LinuxRuntimeManager {
     } catch (error) {
       return { healthy: false, reason: error.message };
     }
+    const bundledProot = path.join(instance.backend, 'bin', 'proot');
+    let proot = bundledProot;
+    const bundledLoader = path.join(instance.backend, 'libexec', 'proot', 'loader');
+    let loader = bundledLoader;
+    if (isAndroidRuntimeHost()) {
+      try {
+        proot = androidNativeProot();
+        loader = androidNativeProotLoader();
+        androidNativeFile(ANDROID_NATIVE_TALLOC);
+        androidNativeFile(ANDROID_NATIVE_SHMEM);
+      }
+      catch (error) { return { healthy: false, reason: error.message }; }
+    }
     const required = [
-      ['backend executable', path.join(instance.backend, 'bin', 'bionilux'), true],
-      ['backend preload', path.join(instance.backend, 'lib', 'libbionilux_preload.so'), false],
-      ['rootfs preparation script', path.join(instance.backend, 'scripts', 'prepare-rootfs.sh'), false],
+      ['bundled PRoot executable', bundledProot, true],
+      ['bundled PRoot loader', bundledLoader, true],
+      ['PRoot dependency library directory', path.join(instance.backend, 'lib'), false],
       ['shared Linux Node', path.join(node, 'bin', 'node'), true],
       ['shared npm directory', path.join(node, 'lib', 'node_modules', 'npm'), false],
     ];
@@ -602,6 +704,19 @@ export class LinuxRuntimeManager {
         return { healthy: false, reason: `rootfs file is missing: /${relative}` };
       }
     }
+    const compatLibrary = path.join(instance.rootfs, ROOTFS_COMPAT_LIBRARY);
+    const preloadFile = path.join(instance.rootfs, ROOTFS_PRELOAD_FILE);
+    try {
+      const compatInfo = lstatSync(compatLibrary);
+      if (!compatInfo.isFile() || compatInfo.isSymbolicLink() || (compatInfo.mode & 0o111) === 0) {
+        return { healthy: false, reason: 'PRoot hard-link compatibility library is missing or unsafe' };
+      }
+      if (!readFileSync(preloadFile, 'utf8').split(/\r?\n/).includes('/opt/pocket-harness/libpocket-linux-compat.so')) {
+        return { healthy: false, reason: 'rootfs does not register the PRoot compatibility library' };
+      }
+    } catch {
+      return { healthy: false, reason: 'rootfs PRoot compatibility preload is incomplete' };
+    }
     if (!directoryExists(instance.root) || !directoryExists(instance.backend) || !directoryExists(instance.rootfs)) {
       return { healthy: false, reason: 'runtime instance is incomplete' };
     }
@@ -612,38 +727,50 @@ export class LinuxRuntimeManager {
         backend: instance.backend,
         rootfs: instance.rootfs,
         node,
-        launcher: path.join(instance.backend, 'bin', 'bionilux'),
-        preload: path.join(instance.backend, 'lib', 'libbionilux_preload.so'),
+        proot,
+        loader,
+        shm: path.join(instance.root, 'dev-shm'),
+        prootTmp: path.join(instance.root, 'proot-tmp'),
       },
     };
   }
 
-  async _probeRuntime(health) {
-    const nodeBin = path.join(health.paths.node, 'bin');
-    const hostEnvironment = hostExecutionEnvironment(this.hostLibraryPath);
-    const result = normaliseCommandResult(await this._runManaged({
-      file: health.paths.launcher,
-      args: ['node', '--version'],
-      cwd: this.dataDir,
-      env: {
-        ...hostEnvironment,
-        BIONILUX_ROOTFS: health.paths.rootfs,
-        BIONILUX_PRELOAD: health.paths.preload,
-        BIONILUX_GUEST_CWD: '/',
-        BIONILUX_GUEST_PATH: `${nodeBin}:${DEFAULT_GUEST_PATH}`,
-        BIONILUX_HOST_PATHS: nodeBin,
-        BIONILUX_FAKE_ROOT: '1',
-        BIONILUX_LENIENT: '0',
-        BIONILUX_ANDROID_PATHS: '1',
-        PATH: `${nodeBin}${path.delimiter}${hostEnvironment.PATH ?? ''}`,
-      },
-      timeout: 10_000,
-    }));
-    if (result.timedOut || result.exitCode !== 0 || !/^v\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(result.stdout.trim())) {
-      const reason = result.timedOut
-        ? 'runtime smoke probe timed out'
-        : `runtime smoke probe failed (exit ${result.exitCode ?? 'unknown'}): ${(result.stderr || result.stdout).trim().slice(0, 500)}`;
-      throw new Error(reason);
+  async _probeRuntime(health, expectedProotVersion) {
+    await fs.mkdir(health.paths.shm, { recursive: true });
+    await fs.mkdir(health.paths.prootTmp, { recursive: true });
+    const environment = prootExecutionEnvironment(health.paths.backend, health.paths.instance);
+    const versionSpec = prootSpawnSpec(
+      health.paths.proot,
+      ['--version'],
+      this.dataDir,
+      environment,
+    );
+    versionSpec.timeout = 10_000;
+    const version = normaliseCommandResult(await this._runManaged(versionSpec));
+    if (version.timedOut || version.exitCode !== 0 || !`${version.stdout}\n${version.stderr}`.includes(`PRoot v${expectedProotVersion}`)) {
+      throw new Error(`PRoot launcher probe failed (exit ${version.exitCode ?? 'unknown'}): ${(version.stderr || version.stdout).trim().slice(0, 500)}`);
+    }
+
+    const resolverFile = await this._writeResolverFile(health.paths.instance);
+    try {
+      const cwdInfo = { guestCwd: '/', hostPaths: [] };
+      const args = prootArguments(health.paths, cwdInfo, resolverFile, ['/bin/bash', '-lc', 'node --version']);
+      const probeSpec = prootSpawnSpec(
+        health.paths.proot,
+        args,
+        this.dataDir,
+        environment,
+      );
+      probeSpec.timeout = 10_000;
+      const result = normaliseCommandResult(await this._runManaged(probeSpec));
+      if (result.timedOut || result.exitCode !== 0 || !/^v\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(result.stdout.trim())) {
+        const reason = result.timedOut
+          ? 'PRoot guest smoke probe timed out'
+          : `PRoot guest smoke probe failed (exit ${result.exitCode ?? 'unknown'}): ${(result.stderr || result.stdout).trim().slice(0, 500)}`;
+        throw new Error(reason);
+      }
+    } finally {
+      await fs.rm(resolverFile, { force: true });
     }
   }
 
@@ -772,6 +899,9 @@ export class LinuxRuntimeManager {
   }
 
   async _stopChildren() {
+    for (const controller of this.pendingExecutions) {
+      try { controller.abort(new Error('Linux runtime operation stopped')); } catch { /* Continue stopping pending work. */ }
+    }
     const children = [...this.children];
     for (const child of children) {
       try {
@@ -800,62 +930,38 @@ export class LinuxRuntimeManager {
     }
   }
 
-  async _prepareRootfs(instance, signal) {
-    const script = path.join(instance.backend, 'scripts', 'prepare-rootfs.sh');
-    const hostEnvironment = hostExecutionEnvironment(this.hostLibraryPath);
-    if (process.env.ANDROID_ROOT) await this._probeTermuxHostTools(instance.root, hostEnvironment, signal);
-    let result;
+  async _prepareRootfs(instance) {
     try {
-      result = normaliseCommandResult(await this._runManaged({
-        file: 'sh',
-        args: [script, '--rootfs', instance.rootfs, '--relative-links'],
-        cwd: instance.root,
-        env: hostEnvironment,
-        timeout: 120_000,
-        signal,
-      }));
+      for (const relative of ['dev', 'proc', 'sys', 'tmp', 'var/tmp', 'dev/shm', 'etc']) {
+        if (!directoryExists(path.join(instance.rootfs, relative))) {
+          throw new Error(`rootfs directory is missing: /${relative}`);
+        }
+      }
+      for (const relative of ['etc/resolv.conf', ROOTFS_PRELOAD_FILE, ROOTFS_COMPAT_LIBRARY]) {
+        const file = path.join(instance.rootfs, relative);
+        const info = lstatSync(file);
+        if (!info.isFile() || info.isSymbolicLink()) throw new Error(`unsafe rootfs file: /${relative}`);
+      }
+      const compat = lstatSync(path.join(instance.rootfs, ROOTFS_COMPAT_LIBRARY));
+      if ((compat.mode & 0o111) === 0) throw new Error('PRoot compatibility preload is not executable');
+      const registered = readFileSync(path.join(instance.rootfs, ROOTFS_PRELOAD_FILE), 'utf8')
+        .split(/\r?\n/).includes('/opt/pocket-harness/libpocket-linux-compat.so');
+      if (!registered) throw new Error('rootfs does not register the PRoot compatibility preload');
     } catch (error) {
-      if (typeof error?.code === 'string' && error.code.startsWith('linux-')) throw error;
-      throw linuxRuntimeError(
-        'linux-rootfs-prepare-failed',
-        `prepare-rootfs.sh could not start: ${String(error?.message ?? error)}`,
-      );
-    }
-    if (result.exitCode !== 0) {
-      throw linuxRuntimeError(
-        'linux-rootfs-prepare-failed',
-        `prepare-rootfs.sh failed with exit code ${result.exitCode}: ${result.stderr}`.trim(),
-      );
+      throw linuxRuntimeError('linux-rootfs-prepare-failed', String(error?.message ?? error));
     }
   }
 
-  async _probeTermuxHostTools(cwd, environment, signal) {
-    for (const [tool, signature] of Object.entries(GNU_HOST_TOOLS)) {
-      let result;
-      try {
-        result = normaliseCommandResult(await this._runManaged({
-          file: tool,
-          args: ['--version'],
-          cwd,
-          env: environment,
-          timeout: HOST_TOOL_PROBE_TIMEOUT_MS,
-          signal,
-        }));
-      } catch (error) {
-        throw linuxRuntimeError(
-          'linux-host-toolchain-unavailable',
-          `Termux ${tool} probe could not start: ${String(error?.message ?? error)}`,
-        );
-      }
-      const output = `${result.stdout}\n${result.stderr}`;
-      if (result.timedOut || result.exitCode !== 0 || !signature.test(output)) {
-        const evidence = output.trim().slice(0, 300) || 'no version output';
-        throw linuxRuntimeError(
-          'linux-host-toolchain-unavailable',
-          `Termux ${tool} must be the GNU ${tool} utility (exit ${result.exitCode ?? 'unknown'}): ${evidence}`,
-        );
-      }
-    }
+  async _writeResolverFile(instanceRoot) {
+    const servers = hostDnsServers(cleanHostEnvironment());
+    const directory = path.join(instanceRoot, 'proot-network');
+    await fs.mkdir(directory, { recursive: true });
+    const resolver = path.join(directory, `${makeId('resolver')}.conf`);
+    const lines = servers.length > 0
+      ? ['# Resolvers supplied by the current Android network.', ...servers.map((server) => `nameserver ${server}`)]
+      : ['# No safe DNS resolver is available on the current Android network.'];
+    await fs.writeFile(resolver, `${lines.join('\n')}\n`, { flag: 'wx', mode: 0o600 });
+    return resolver;
   }
 
   async _ensureSharedNode(runtime, staging, activeRecord) {
@@ -942,6 +1048,10 @@ export class LinuxRuntimeManager {
   async _installLocked(manifest, runtimeId) {
     if (this.disposed) throw new Error('manager is disposed');
     const selection = selectRuntime(manifest, runtimeId, this.arch);
+    if (isAndroidRuntimeHost()) {
+      this._assertAndroidNativeProotLoader();
+      await this._probeAndroidNativeProot(selection.runtime.prootVersion);
+    }
     await this._ensureDirectories();
     const previous = this._readActive();
     const instanceId = makeId(runtimeId);
@@ -992,7 +1102,7 @@ export class LinuxRuntimeManager {
       finalPublished = true;
       const health = this._healthForRecord(record);
       if (!health.healthy) throw new Error(`staged runtime is unhealthy: ${health.reason}`);
-      await this._probeRuntime(health);
+      await this._probeRuntime(health, selection.runtime.prootVersion);
       await this._stopChildren();
       await this._writeActive(record);
       committedRecord = record;
@@ -1012,6 +1122,47 @@ export class LinuxRuntimeManager {
       catch (error) { this.lastCleanupError = String(error?.message ?? error); }
     }
     return this._emitState();
+  }
+
+  _assertAndroidNativeProotLoader() {
+    try {
+      androidNativeProot();
+      androidNativeProotLoader();
+      androidNativeFile(ANDROID_NATIVE_TALLOC);
+      androidNativeFile(ANDROID_NATIVE_SHMEM);
+    } catch (error) {
+      if (typeof error?.code === 'string' && error.code.startsWith('linux-')) throw error;
+      throw linuxRuntimeError(
+        'linux-host-exec-assets-unavailable',
+        `APK native PRoot loader could not be inspected: ${String(error?.message ?? error)}`,
+      );
+    }
+  }
+
+  async _probeAndroidNativeProot(expectedProotVersion) {
+    const proot = androidNativeProot();
+    const spec = prootSpawnSpec(
+      proot,
+      ['--version'],
+      this.dataDir,
+      prootExecutionEnvironment('', this.dataDir),
+    );
+    spec.timeout = 5000;
+    let result;
+    try {
+      result = normaliseCommandResult(await this._runManaged(spec));
+    } catch (error) {
+      throw linuxRuntimeError(
+        'linux-host-exec-assets-unavailable',
+        `APK native PRoot probe failed: ${String(error?.message ?? error)}`,
+      );
+    }
+    if (result.timedOut || result.exitCode !== 0 || !`${result.stdout}\n${result.stderr}`.includes(`PRoot v${expectedProotVersion}`)) {
+      throw linuxRuntimeError(
+        'linux-host-exec-assets-unavailable',
+        `APK native PRoot probe failed (exit ${result.exitCode ?? 'unknown'}): ${(result.stderr || result.stdout).trim().slice(0, 500)}`,
+      );
+    }
   }
 
   async reinstall(manifest, runtimeId = 'debian-minimal') {
@@ -1060,23 +1211,27 @@ export class LinuxRuntimeManager {
       // does not exist on the host is likewise only meaningful inside the guest.
       return { guestCwd: cwd, hostPaths: [] };
     }
-    return { guestCwd: cwd, hostPaths: [cwd] };
+    let realCwd;
+    try {
+      realCwd = realpathSync(resolved);
+      if (!statSync(realCwd).isDirectory()) throw new TypeError('cwd must be a directory');
+    } catch (error) {
+      throw linuxRuntimeError('linux-host-path-invalid', `Host cwd is not a readable directory: ${String(error.message ?? error)}`);
+    }
+    if (!this._isAllowedHostPath(realCwd)) {
+      throw linuxRuntimeError('linux-host-path-not-allowed', 'Host cwd is outside the configured Linux workspace and shared directories');
+    }
+    return { guestCwd: realCwd, hostPaths: [realCwd] };
   }
 
-  _executionEnvironment(paths, cwdInfo) {
-    const environment = hostExecutionEnvironment(this.hostLibraryPath);
-    const nodeBin = path.join(paths.node, 'bin');
-    const hostPaths = [nodeBin, ...cwdInfo.hostPaths];
-    environment.BIONILUX_ROOTFS = paths.rootfs;
-    environment.BIONILUX_PRELOAD = paths.preload;
-    environment.BIONILUX_GUEST_CWD = cwdInfo.guestCwd;
-    environment.BIONILUX_GUEST_PATH = `${nodeBin}:${DEFAULT_GUEST_PATH}`;
-    environment.BIONILUX_HOST_PATHS = [...new Set(hostPaths)].join(':');
-    environment.BIONILUX_FAKE_ROOT = '1';
-    environment.BIONILUX_LENIENT = '0';
-    environment.BIONILUX_ANDROID_PATHS = '1';
-    environment.PATH = `${nodeBin}${path.delimiter}${environment.PATH ?? ''}`;
-    return environment;
+  _isAllowedHostPath(realCandidate) {
+    return this.allowedHostPaths.some((root) => {
+      try {
+        return pathIsWithin(realpathSync(root), realCandidate);
+      } catch {
+        return false;
+      }
+    });
   }
 
   async execute({ command, cwd, timeout, signal } = {}) {
@@ -1084,31 +1239,49 @@ export class LinuxRuntimeManager {
       throw new TypeError('command must be a non-empty string');
     }
     await this.gate.acquireShared();
+    const execution = new AbortController();
+    const relayAbort = () => execution.abort(signal?.reason);
+    if (signal?.aborted) relayAbort();
+    else signal?.addEventListener('abort', relayAbort, { once: true });
+    this.pendingExecutions.add(execution);
     try {
       if (this.disposed) throw new Error('manager is disposed');
+      if (execution.signal.aborted) {
+        return { stdout: '', stderr: 'aborted', exitCode: 130, signal: null, timedOut: false, cwd: cwd ?? '/', runtimeId: undefined, architecture: this.arch };
+      }
       const current = this.status();
       if (!current.healthy) {
         throw new Error(`Linux runtime is unavailable: ${current.reason ?? 'unhealthy'}`);
       }
       const cwdInfo = this._resolveCwd(cwd, current.paths.rootfs);
-      const environment = this._executionEnvironment(current.paths, cwdInfo);
-      const result = normaliseCommandResult(
-        await this._runManaged({
-          file: current.paths.launcher,
-          args: ['/bin/bash', '-lc', command],
-          cwd: this.dataDir,
-          env: environment,
-          timeout,
-          signal,
-        }),
-      );
-      return {
-        ...result,
-        cwd: cwdInfo.guestCwd,
-        runtimeId: current.runtimeId,
-        architecture: current.architecture,
-      };
+      await fs.mkdir(current.paths.shm, { recursive: true });
+      await fs.mkdir(current.paths.prootTmp, { recursive: true });
+      if (execution.signal.aborted) {
+        return { stdout: '', stderr: 'aborted', exitCode: 130, signal: null, timedOut: false, cwd: cwdInfo.guestCwd, runtimeId: current.runtimeId, architecture: current.architecture };
+      }
+      const resolverFile = await this._writeResolverFile(current.paths.instance);
+      try {
+        if (execution.signal.aborted) {
+          return { stdout: '', stderr: 'aborted', exitCode: 130, signal: null, timedOut: false, cwd: cwdInfo.guestCwd, runtimeId: current.runtimeId, architecture: current.architecture };
+        }
+        const environment = prootExecutionEnvironment(current.paths.backend, current.paths.instance);
+        const args = prootArguments(current.paths, cwdInfo, resolverFile, ['/bin/bash', '-lc', command]);
+        const spec = prootSpawnSpec(current.paths.proot, args, this.dataDir, environment);
+        spec.timeout = timeout;
+        spec.signal = execution.signal;
+        const result = normaliseCommandResult(await this._runManaged(spec));
+        return {
+          ...result,
+          cwd: cwdInfo.guestCwd,
+          runtimeId: current.runtimeId,
+          architecture: current.architecture,
+        };
+      } finally {
+        await fs.rm(resolverFile, { force: true });
+      }
     } finally {
+      this.pendingExecutions.delete(execution);
+      signal?.removeEventListener('abort', relayAbort);
       this.gate.releaseShared();
     }
   }

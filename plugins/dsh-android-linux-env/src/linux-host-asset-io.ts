@@ -9,7 +9,7 @@ import { Readable, Transform } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 import xz from 'xz-decompress'
 import tar from 'tar-stream'
-import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
+import { basename, dirname, isAbsolute, join, parse, relative, resolve, sep } from 'node:path'
 import { createHash, randomUUID } from 'node:crypto'
 import { LINUX_MANIFEST_DIGEST_FILE } from './linux-release-pins.js'
 
@@ -35,7 +35,7 @@ function defaultBundleDirectory(): string {
 }
 const BUNDLED_ASSET_NAMES = new Set([
   'linux-bootstrap-plugin.tar.xz', 'linux-runtime-plugin.tar.xz',
-  'bionilux-backend-aarch64.tar.xz', 'debian-minimal-aarch64.tar.xz',
+  'proot-backend-aarch64.tar.xz', 'debian-minimal-aarch64.tar.xz',
 ])
 const NODE_ASSET_NAME = /^node-glibc-v\d+\.\d+\.\d+-linux-arm64\.tar\.xz$/
 
@@ -355,6 +355,14 @@ export function createLinuxBootstrapConfig(options: {
   const { filesDir, appVersion } = options
   const bundleDirectory = options.bundleDirectory ?? defaultBundleDirectory()
   const dataDir = linuxEnvironmentRoot(filesDir)
+  // PRoot is not a filesystem sandbox. Only the user's workspace and explicitly
+  // configured shared directories may be exposed as host binds. Never pass the
+  // app's whole filesDir/home tree as a convenient fallback.
+  const hostWorkspace = process.env.DSH_WORKSPACE || join(filesDir, 'home', '.dsh', 'workspaces')
+  const allowedHostPaths = [hostWorkspace, ...(process.env.DSH_SHARED_DIRS ?? '').split(':')]
+    .filter((item): item is string => typeof item === 'string' && isAbsolute(item) && resolve(item) !== parse(item).root)
+    .map(item => resolve(item))
+    .filter((item, index, all) => all.indexOf(item) === index)
   const assetIO = createHostAssetIO({ filesDir, bundleDirectory })
   let approvedDigest = ''
   const manifestProvider = async () => {
@@ -370,6 +378,7 @@ export function createLinuxBootstrapConfig(options: {
       typeof source?.sourceSha256 === 'string' && source.sourceSha256 === approvedDigest,
     linuxAssetIO: assetIO,
     runtimePluginConfig: {
+      allowedHostPaths,
       downloadAsset: async (asset: { sha256?: unknown }, destination: string) => {
         const source = await assetIO.downloadAsset(asset)
         await pipeline(createReadStream(source), createWriteStream(destination, { flags: 'wx', mode: 0o600 }))

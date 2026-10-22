@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "backend": "termux-proot-package",
+  "repository": "https://github.com/termux/proot",
+  "version": "5.1.107.98",
+  "sourceRef": "v5.1.107.98",
+  "sourceArchiveSha256": "9de61bddd6f5016d065e2755b72ff4747290e5f992562f031785b107b51d02ba",
+  "license": "GPL-2.0",
+  "distribution": "The ARM64 executable and loader are extracted from the official Termux signed repository package; this project does not compile an independent PRoot binary.",
+  "packageLock": "scripts/source-build/linux-backend-packages.json",
+  "packageClosure": [
+    "proot",
+    "libandroid-shmem",
+    "libtalloc"
+  ],
+  "compatibilityShim": "compat/termfold_compat.c"
+}

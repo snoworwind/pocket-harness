@@ -76,8 +76,7 @@ export function LinuxEnvironmentSection({ linuxBootstrap }) {
   const selectedRuntime = status?.installed && status?.runtime?.id ? status.runtime.id : runtimeId
   const confirmInstall = () =>
     window.confirm(
-      '安装 Linux 环境会下载 Bionilux、Debian minimal rootfs 与共享 glibc Node.js（数百 MB），' +
-        '并在应用私有目录中启用运行时插件。是否继续？',
+      '安装 Linux 环境会在应用私有目录准备 PRoot、Debian minimal rootfs 与共享 glibc Node.js（占用数百 MB）。PRoot 不提供安全隔离；其中运行的命令会以 Pocket Harness 应用身份访问 Android 允许该应用访问的数据与资源，并启用 Linux 运行时插件。是否继续？',
     )
   const confirmRemove = () => window.confirm('卸载会删除已安装的 Linux 运行时与其中的软件包和文件，是否继续？')
 

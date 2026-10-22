@@ -3,9 +3,14 @@ package com.snoworwind.pocketharness
 import android.app.ActivityManager
 import android.content.Context
 import android.media.MediaScannerConnection
+import android.net.ConnectivityManager
+import android.net.LinkProperties
+import android.net.Network
+import android.os.Build
 import android.os.Environment
 import android.util.Log
 import java.io.File
+import java.io.FileOutputStream
 import java.nio.file.Files
 
 /**
@@ -16,6 +21,7 @@ import java.nio.file.Files
 class EngineManager(private val context: Context, private val pickToken: String? = null) {
 
   init {
+    LinuxDnsServers.initialize(context.applicationContext)
     runCatching { EngineTransport.initialize(context.applicationContext) }
       .onFailure { Log.w(TAG, "engine transport unavailable: ${it.javaClass.simpleName}") }
   }
@@ -2274,6 +2280,9 @@ class EngineManager(private val context: Context, private val pickToken: String?
    * safe to call repeatedly (ensurePrivateDshData and the TMPDIR mkdirs are both idempotent).
    */
   fun shellEnv(): Map<String, String> {
+    // The runtime manager reads this atomically updated file for each guest
+    // process, so changing Wi-Fi/VPN networks does not require restarting DSH.
+    LinuxDnsServers.refresh(context.applicationContext)
     val preload = File(usrDir, "lib/libtermux-exec-ld-preload.so")
     // Cert paths hardcoded at Termux package build time (/data/data/com.termux/...) break after the
     // PREFIX relocation; relocate-snapshot.py doesn't rewrite ELF, so env vars cover the functional
@@ -2321,15 +2330,15 @@ class EngineManager(private val context: Context, private val pickToken: String?
       "npm_config_store_dir" to pnpmStoreDir(homeDir),
       // 0.13.8 #183：引擎子进程读取键盘广播 nonce 的路径基（manage 插件 --es auth 随广播携带）
       "DSH_FILES_DIR" to context.filesDir.absolutePath,
+      // PRoot, its static guest loader and dependencies are PackageManager-
+      // extracted native libraries. Android permits execution from this
+      // directory while denying direct execve of ELFs in writable filesDir.
+      "DSH_LINUX_NATIVE_LIBRARY_DIR" to context.applicationInfo.nativeLibraryDir,
       // os.tmpdir() falls back to the baked-in Termux tmp on Android
       // (unwritable from the app domain); keep spill inside filesDir.
       "TMPDIR" to File(homeDir, "tmp").apply { mkdirs() }.absolutePath,
-      // Android 16 forbids exec of app-data ELF regardless of targetSdk
-      // (observed on Android 16/vivo: direct exec EACCES even at targetSdk
-      // 34). Termux's execve hook re-routes denied execs through
-      // /system/bin/linker64 (same mechanism as JNI libs); the snapshot
-      // ships libtermux-exec-*-ld-preload.so. The hook only rewrites for
-      // untrusted_app_25/27 SELinux domains, so force mode is required.
+      // Host-side Termux commands use termux-exec for app-private Bionic tools.
+      // PRoot and its guest loader use PackageManager-installed native files.
       "LD_PRELOAD" to preload.absolutePath,
       "TERMUX_EXEC__SYSTEM_LINKER_EXEC__MODE" to "force",
       "TERMUX_EXEC__EXECVE_CALL__INTERCEPT" to "1",
@@ -2650,6 +2659,135 @@ internal fun mirrorLogBounded(src: File, dst: File, limitBytes: Long = MIRROR_LO
     true
   } catch (_: Throwable) {
     false
+  }
+}
+
+/**
+ * Tracks DNS servers from Android's active default network for the Linux runtime.
+ * The private file is read by the JS runtime manager for every new guest process;
+ * it is not a stale resolver snapshot baked into the Debian rootfs.
+ */
+internal fun selectLinuxDnsServers(
+  sdkInt: Int,
+  privateDnsActive: Boolean,
+  servers: List<java.net.InetAddress>,
+): List<java.net.InetAddress> =
+  if (sdkInt >= Build.VERSION_CODES.P && privateDnsActive) emptyList() else servers
+
+private object LinuxDnsServers {
+  private const val TAG = "LinuxDnsServers"
+  private const val FILE_NAME = "linux-dns-servers"
+  private val lock = Any()
+  @Volatile private var callbackRegistered = false
+
+  fun initialize(context: Context) {
+    val appContext = context.applicationContext
+    val connectivity = appContext.getSystemService(ConnectivityManager::class.java)
+    if (connectivity == null) {
+      publishAddresses(appContext, emptyList())
+      return
+    }
+    refresh(appContext, connectivity)
+    if (callbackRegistered) return
+    synchronized(lock) {
+      if (callbackRegistered) return
+      runCatching {
+        connectivity.registerDefaultNetworkCallback(object : ConnectivityManager.NetworkCallback() {
+          override fun onAvailable(network: Network) {
+            val linkProperties = runCatching { connectivity.getLinkProperties(network) }.getOrNull()
+            publishLinkPropertiesIfCurrent(appContext, connectivity, network, linkProperties)
+          }
+
+          override fun onLinkPropertiesChanged(network: Network, linkProperties: LinkProperties) {
+            publishLinkPropertiesIfCurrent(appContext, connectivity, network, linkProperties)
+          }
+
+          override fun onLost(network: Network) {
+            refresh(appContext, connectivity)
+          }
+        })
+        callbackRegistered = true
+      }
+    }
+  }
+
+  fun refresh(context: Context) {
+    // Re-enter initialize so a transient callback-registration failure can be
+    // retried on the next engine environment refresh.
+    initialize(context.applicationContext)
+  }
+
+  private fun refresh(context: Context, connectivity: ConnectivityManager) {
+    val linkProperties = runCatching {
+      val network = connectivity.activeNetwork
+      network?.let(connectivity::getLinkProperties)
+    }.getOrNull()
+    publishLinkProperties(context, linkProperties)
+  }
+
+  private fun publishLinkProperties(context: Context, linkProperties: LinkProperties?) {
+    // Android requires apps to keep DNS encrypted whenever Private DNS is in
+    // use. PRoot currently passes classic resolver traffic through the guest,
+    // so fail closed rather than bypass Android's encrypted DNS policy.
+    val addresses = selectLinuxDnsServers(
+      Build.VERSION.SDK_INT,
+      linkProperties?.isPrivateDnsActive == true,
+      linkProperties?.dnsServers.orEmpty(),
+    )
+    publishAddresses(context, addresses)
+  }
+
+  private fun publishLinkPropertiesIfCurrent(
+    context: Context,
+    connectivity: ConnectivityManager,
+    network: Network,
+    linkProperties: LinkProperties?,
+  ) {
+    // A callback already queued for the previous default network must not
+    // overwrite DNS published by the newly active network.
+    val isCurrent = try {
+      connectivity.activeNetwork == network
+    } catch (_: SecurityException) {
+      false
+    }
+    if (isCurrent) publishLinkProperties(context, linkProperties)
+  }
+
+  private fun publishAddresses(context: Context, addresses: List<java.net.InetAddress>) {
+    val value = addresses.asSequence()
+      .filterNot { it.isAnyLocalAddress || it.isLoopbackAddress || it.isMulticastAddress || it.isLinkLocalAddress }
+      .mapNotNull { it.hostAddress?.substringBefore('%')?.takeIf { address -> address.isNotBlank() } }
+      .distinct()
+      .take(4)
+      .joinToString(",")
+    synchronized(lock) {
+      val target = File(context.filesDir, FILE_NAME)
+      if (
+        target.isFile && !Files.isSymbolicLink(target.toPath()) &&
+        runCatching { target.readText() }.getOrNull() == value
+      ) return
+      val temporary = try {
+        File.createTempFile("linux-dns-", ".tmp", context.filesDir)
+      } catch (error: Throwable) {
+        clearStaleResolver(target, error)
+        return
+      }
+      try {
+        FileOutputStream(temporary).use { stream ->
+          stream.write(value.toByteArray(Charsets.UTF_8))
+          stream.fd.sync()
+        }
+        if (!SnapshotFs.atomicReplace(temporary, target)) throw java.io.IOException("DNS state publication failed")
+      } catch (error: Throwable) {
+        temporary.delete()
+        clearStaleResolver(target, error)
+      }
+    }
+  }
+
+  private fun clearStaleResolver(target: File, error: Throwable) {
+    val cleared = runCatching { Files.deleteIfExists(target.toPath()) }.getOrDefault(false)
+    Log.e(TAG, "Linux DNS state update failed; stale resolver ${if (cleared) "cleared" else "may remain"}", error)
   }
 }
 

@@ -20,7 +20,9 @@ class PackageLinuxAssetsTest(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
-        self.root = Path(self.temp.name)
+        # macOS exposes temporary directories through /var while realpath resolves /private/var.
+        # The production builder compares canonical paths, so the fixture root must too.
+        self.root = Path(self.temp.name).resolve()
         self.work = self.root / '.deploy-tmp/linux-build'
         (self.work / 'input').mkdir(parents=True)
         (self.work / 'assets').mkdir()
@@ -43,8 +45,8 @@ class PackageLinuxAssetsTest(unittest.TestCase):
                 self.put(directory + '/client/index.js', 'export const fixture = true')
                 self.put(directory + '/lib/index.js', 'export const fixture = true')
                 self.put(directory + '/lib/client.js', 'window.__ModuleLoader__ = true')
-        self.put('vendor/bionilux/LICENSE', 'fixture license')
-        for name in ['bionilux-backend-aarch64.tar.xz', 'debian-minimal-aarch64.tar.xz']:
+        self.put('LICENSES/GPL-2.0.txt', 'fixture license')
+        for name in ['proot-backend-aarch64.tar.xz', 'debian-minimal-aarch64.tar.xz']:
             self.archive(self.work / 'assets' / name, {'fixture': 'fixture archive, not a native runtime'})
 
     def put(self, relative, text):

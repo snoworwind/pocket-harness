@@ -8,8 +8,8 @@
 // 退出 0=通过；非 0=拒绝打包（build-apk-013.ps1 门禁接入）。
 //
 // 用法：node scripts/check-third-party.mjs <usrDir> [--write-notices <path>] [--licenses <dir>]
-import { readFileSync, existsSync, statSync, readdirSync, mkdirSync, writeFileSync } from 'node:fs'
-import { join, resolve, dirname } from 'node:path'
+import { readFileSync, existsSync, statSync, lstatSync, readdirSync, mkdirSync, writeFileSync } from 'node:fs'
+import { join, resolve, relative, dirname } from 'node:path'
 import { createHash } from 'node:crypto'
 import { wslPath, sh } from './lib/shell.mjs'
 
@@ -19,12 +19,124 @@ const writeIdx = process.argv.indexOf('--write-notices')
 const noticesPath = writeIdx >= 0 ? process.argv[writeIdx + 1] : null
 const tarIdx = process.argv.indexOf('--tar')
 const tarPath = tarIdx >= 0 ? process.argv[tarIdx + 1] : null
+const linuxBackendProvenancePath = process.argv.includes('--linux-backend-provenance')
+  ? process.argv[process.argv.indexOf('--linux-backend-provenance') + 1] : null
+const linuxBackendLicensesDir = process.argv.includes('--linux-backend-licenses')
+  ? process.argv[process.argv.indexOf('--linux-backend-licenses') + 1] : null
 if ((!usr && !tarPath) || (!tarPath && !existsSync(join(usr, 'var/lib/dpkg/status')))) {
   console.error('用法: node scripts/check-third-party.mjs <usrDir|--tar <snapshot.tar.xz>> [--write-notices <path>]')
   process.exit(2)
 }
 
 const matrix = JSON.parse(readFileSync('scripts/third-party-licenses.json', 'utf8'))
+
+function readLinuxBackendEvidence() {
+  if (!linuxBackendProvenancePath && !linuxBackendLicensesDir) return null
+  if (!linuxBackendProvenancePath || !linuxBackendLicensesDir) {
+    failures.push('PRoot 许可核验需要同时提供 provenance 和 license 目录')
+    return null
+  }
+  let report
+  let config
+  let shim
+  try {
+    report = JSON.parse(readFileSync(linuxBackendProvenancePath, 'utf8'))
+    config = JSON.parse(readFileSync('scripts/source-build/linux-backend-packages.json', 'utf8'))
+    shim = JSON.parse(readFileSync('vendor/linux-proot/compat/SOURCE.json', 'utf8'))
+  } catch (error) {
+    failures.push(`PRoot 许可 provenance 或组件锁不可读: ${String(error.message ?? error)}`)
+    return null
+  }
+  if (report.schemaVersion !== 1 || report.target !== 'proot'
+    || report.repository !== 'https://packages.termux.dev/apt/termux-main'
+    || report.targetVersion !== config.expectedVersions.proot) {
+    failures.push('PRoot provenance 的目标、来源或版本不符合锁定值')
+  }
+  const expectedPackages = config.requiredClosure ?? []
+  const packagesByName = new Map((Array.isArray(report.packages) ? report.packages : []).map(item => [item.package, item]))
+  if (packagesByName.size !== expectedPackages.length
+    || expectedPackages.some(name => !packagesByName.has(name))) {
+    failures.push('PRoot provenance 软件包集合与审核闭包不一致')
+  }
+  for (const name of expectedPackages) {
+    const item = packagesByName.get(name)
+    const source = config.packageSources?.[name]
+    if (!item || !source || item.version !== config.expectedVersions?.[name]
+      || item.license !== source.license || item.sourceUrl !== source.sourceUrl
+      || item.sourceSha256 !== source.sourceSha256 || item.recipe !== source.recipe
+      || !/^[a-f0-9]{64}$/.test(item.sha256 ?? '') || !/^[a-f0-9]{64}$/.test(item.sourceSha256 ?? '')) {
+      failures.push(`PRoot provenance 软件包信息与锁不一致: ${name}`)
+    }
+  }
+  const compatibilitySourceHash = createHash('sha256').update(readFileSync('vendor/linux-proot/compat/termfold_compat.c')).digest('hex')
+  if (report.compatibilityShim?.repository !== shim.repository
+    || report.compatibilityShim?.commit !== shim.commit
+    || report.compatibilityShim?.path !== shim.path
+    || report.compatibilityShim?.license !== shim.license
+    || report.compatibilityShim?.upstreamSha256 !== shim.upstreamSha256
+    || report.compatibilityShim?.localSourceSha256 !== compatibilitySourceHash
+    || !/^[a-f0-9]{64}$/.test(report.compatibilityShim?.localSourceSha256 ?? '')) {
+    failures.push('TermFold 兼容 shim 的许可证或来源 provenance 不一致')
+  }
+
+  const expectedFiles = new Map()
+  if (!Array.isArray(report.licenseFiles)) failures.push('PRoot license provenance 必须是文件记录数组')
+  for (const item of Array.isArray(report.licenseFiles) ? report.licenseFiles : []) {
+    const relative = item.path
+    if (typeof relative !== 'string' || relative.includes('\\') || relative.startsWith('/')
+      || relative.split('/').some(part => !part || part === '.' || part === '..')
+      || !Number.isSafeInteger(item.size) || item.size <= 0 || !/^[a-f0-9]{64}$/.test(item.sha256 ?? '')) {
+      failures.push(`PRoot license 清单路径或摘要无效: ${String(relative)}`)
+      continue
+    }
+    if (expectedFiles.has(relative)) {
+      failures.push(`PRoot license provenance 路径重复: ${relative}`)
+      continue
+    }
+    expectedFiles.set(relative, item)
+  }
+  const root = resolve(linuxBackendLicensesDir)
+  const actualFiles = []
+  const walk = directory => {
+    let directoryInfo
+    try { directoryInfo = lstatSync(directory) }
+    catch (error) { failures.push(`PRoot license 目录不可读: ${String(error.message ?? error)}`); return }
+    if (directoryInfo.isSymbolicLink() || !directoryInfo.isDirectory()) {
+      failures.push(`PRoot license 路径必须是普通目录: ${directory}`)
+      return
+    }
+    let entries
+    try { entries = readdirSync(directory, { withFileTypes: true }) }
+    catch (error) { failures.push(`PRoot license 目录不可读: ${String(error.message ?? error)}`); return }
+    for (const entry of entries) {
+      const file = join(directory, entry.name)
+      const info = lstatSync(file)
+      if (info.isSymbolicLink()) {
+        failures.push(`PRoot license 路径不允许符号链接: ${file}`)
+      } else if (info.isDirectory()) walk(file)
+      else if (info.isFile()) actualFiles.push(file)
+      else failures.push(`PRoot license 路径必须是普通文件或目录: ${file}`)
+    }
+  }
+  try { walk(root) }
+  catch (error) { failures.push(`PRoot license 目录检查失败: ${String(error.message ?? error)}`) }
+  const actualRel = actualFiles.map(file => relative(root, file).replace(/\\/g, '/')).sort()
+  const expectedRel = [...expectedFiles.keys()].sort()
+  if (JSON.stringify(actualRel) !== JSON.stringify(expectedRel)) failures.push('PRoot license 文件集合与 provenance 不一致')
+  for (const relativePath of expectedRel) {
+    const file = join(root, ...relativePath.split('/'))
+    try {
+      const bytes = readFileSync(file)
+      const expected = expectedFiles.get(relativePath)
+      if (bytes.length !== expected.size || createHash('sha256').update(bytes).digest('hex') !== expected.sha256) {
+        failures.push(`PRoot license 文件摘要不符: ${relativePath}`)
+      }
+    } catch (error) {
+      failures.push(`PRoot license 文件缺失或不可读: ${relativePath} (${String(error.message ?? error)})`)
+    }
+  }
+  return { report, shim }
+}
 
 /** 目标存在性视图：Windows 直接 stat 对 9p 上的 root-600 文件会 EACCES 误报，
  *  因此支持 --tar 经 WSL/原生 shell 列归档（tar -tvf 带大小），成员存在且 size>0 才算在场。 */
@@ -100,6 +212,7 @@ const failures = []
 const copyleft = []
 const rows = []
 const avail = availability()
+const linuxBackendEvidence = readLinuxBackendEvidence()
 
 for (const { pkg, version } of packages) {
   const license = matrix.packages[pkg]
@@ -207,6 +320,23 @@ if (noticesPath) {
     lines.push(`| ${pkg} | ${version} | ${license} | [termux-packages/${pkg}](${src}/${pkg}) |`)
   }
   lines.push('')
+  if (linuxBackendEvidence) {
+    const { report, shim } = linuxBackendEvidence
+    lines.push('## Linux PRoot backend')
+    lines.push('')
+    lines.push('PRoot launcher、loader 和依赖由 Termux 官方签名仓库包提供。来源链使用官方 Termux bootstrap keyring 验证 InRelease，再验证 Packages.gz 与每个 `.deb` 的签名索引摘要；完整签名、索引、包及拆分后 APK native library 摘要见 `proot-backend-inputs.json`。')
+    lines.push('')
+    lines.push('| 组件 | 版本 | 许可证 | 来源归档 SHA-256 | 上游源码 | Termux 构建配方 |')
+    lines.push('|---|---|---|---|---|---|')
+    for (const item of [...report.packages].sort((a, b) => a.package.localeCompare(b.package))) {
+      lines.push(`| ${item.package} | ${item.version} | ${item.license} | \`${item.sourceSha256}\` | [源码归档](${item.sourceUrl}) | [Termux 配方](${item.recipe}) |`)
+    }
+    lines.push('')
+    lines.push(`TermFold 兼容 shim：${shim.license}，来源 [${shim.repository}，commit ${shim.commit}](${shim.repository}/blob/${shim.commit}/${shim.path})；上游文件 SHA-256 \`${shim.upstreamSha256}\`。本仓适配源码及完整许可证一并随 APK 分发；源代码路径为 \`vendor/linux-proot/compat/\`。`)
+    lines.push('')
+    lines.push('Linux native 库及兼容 shim 的逐包 copyright / 许可证全文位于 APK `assets/licenses/linux-native/`；对应源码与本仓改写说明随本仓发布。PRoot 的 `-0` 只伪装 guest 身份，PRoot 不是安全沙箱。')
+    lines.push('')
+  }
   lines.push('## Android SDK')
   lines.push('')
   lines.push('| 组件 | 版本 | 许可证 | 许可全文 | 上游源码 |')
@@ -218,9 +348,10 @@ if (noticesPath) {
   lines.push('## 源码要约（GPL §3）')
   lines.push('')
   lines.push('上表各 copyleft 组件的对应源码及完整构建脚本，见 <https://github.com/termux/termux-packages>（按版本标签对应）。')
-  lines.push('本发行快递包含对上述二进制的再加工：Termux 包的前缀/编译期路径重写（`scripts/fix-shebang.py`、`scripts/inject-snapshot.py`、')
-  lines.push('`termux-elf-cleaner` 调用与 `build-snapshot-013.mjs` 中的 RUNPATH/shebang 处理）、快照归档与插件注入（`build-apk-013.ps1`）；')
-  lines.push('改写说明与工具随本仓库发布（见 `docs/RELEASE.md` 合规声明）。')
+  lines.push('PRoot Linux 资产由 `scripts/source-build/build-linux-assets.sh` 构建；Termux PRoot 及依赖来自经签名仓库索引验证的官方包。')
+  lines.push('本仓对 PRoot 的 `libtalloc.so.2` 动态依赖名作了受审查的 ELF 字符串修正，并将 launcher、loader 与依赖放入 APK native library 目录；')
+  lines.push('另由 `vendor/linux-proot/compat/` 构建 TermFold 派生的 Android 兼容 preload，并由同一来源链生成 Debian rootfs 与许可证 provenance。')
+  lines.push('对应源码、改写点、依赖锁与构建脚本随本仓发布；APK 从本仓 `main` 的源码来源链生成（见 `docs/RELEASE.md` 合规声明）。')
   mkdirSync(join(noticesPath, '..'), { recursive: true })
   writeFileSync(noticesPath, lines.join('\n'))
   console.log(`notices written: ${noticesPath}（${rows.length} 组件，${copyleft.length} copyleft）`)

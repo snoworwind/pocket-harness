@@ -14,6 +14,8 @@
  * is sealed. It deliberately keeps:
  *   - .deploy-tmp/snapshot-013/arm64/stage (check-contract reads semantic
  *     version data from it during the APK gate),
+ *   - .deploy-tmp/linux-build/native-libs (the APK build packages and verifies
+ *     the source-authenticated PRoot launcher, loader and dependencies),
  *   - .deploy-tmp/linux-build/provenance (uploaded as evidence),
  *   - .deploy-tmp/engine-overlay (the checker's hash-bound source tarballs),
  *   - .deploy-tmp/source-build (reports/manifests consumed by later gates).
@@ -148,13 +150,14 @@ function runProduction() {
   ]
   for (const [rel, rootOwned] of removals) removePath(deployReal, join(deployReal, rel), { checkOnly, rootOwned })
 
-  // The Linux provenance is uploaded; all other linux-build products are only
-  // consumed while assembling the snapshot.
+  // The Linux provenance is uploaded. Native libraries are consumed later by
+  // APK assembly; other linux-build products are only consumed while assembling
+  // the snapshot.
   const linuxBuild = join(deployReal, 'linux-build')
   if (existsSync(linuxBuild)) {
     const safeLinuxBuild = safeTarget(deployReal, linuxBuild)
     for (const entry of readdirSync(safeLinuxBuild)) {
-      if (entry === 'provenance') continue
+      if (entry === 'provenance' || entry === 'native-libs') continue
       removePath(deployReal, join(safeLinuxBuild, entry), { checkOnly, rootOwned: entry === 'rootfs' })
     }
   }
@@ -215,6 +218,7 @@ function runSelfTest() {
       'linux-build/rootfs', 'linux-build/cargo']) {
       write(join(deploy, rel, 'marker'), `${rel}\n`)
     }
+    write(join(deploy, 'linux-build', 'native-libs', 'arm64-v8a', 'libpocketharness_proot.so'), 'launcher\n')
     write(join(deploy, 'linux-build', 'provenance', 'keep.txt'), 'keep provenance\n')
     makeHarnessCheckout(root)
 
@@ -227,6 +231,9 @@ function runSelfTest() {
     }
     if (!existsSync(join(deploy, 'linux-build', 'provenance', 'keep.txt'))) {
       throw new Error('positive cleanup removed linux-build/provenance')
+    }
+    if (readFileSync(join(deploy, 'linux-build', 'native-libs', 'arm64-v8a', 'libpocketharness_proot.so'), 'utf8') !== 'launcher\n') {
+      throw new Error('positive cleanup removed APK native Linux libraries')
     }
     if (existsSync(join(deploy, 'deepseek-harness'))) {
       throw new Error('positive cleanup left the no-longer-needed Harness source tree')

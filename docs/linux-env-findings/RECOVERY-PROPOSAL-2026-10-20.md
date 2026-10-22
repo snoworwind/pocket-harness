@@ -1,6 +1,6 @@
 # Linux 环境恢复方案（2026-10-20）
 
-> 状态：完整恢复方案尚未实施。bootstrap `apply()` 对 `ctx.filesDir` 的访问已由 PR #77 修复并合入；真实 Cordis 回归、来源双构建、APK payload 比对、签名与资产校验通过，草稿 `hardening-source-f37eaafe887c-39424480383-1` 已生成。修复后 APK SHA-256 为 `a2d1d85735b98a7168c0c5ea406a542518e5b9c1b82802a6ed0b2860d39d63dd`，尚未做设备复验；修复前 APK `862e17cffc7bb4a5395ae960eec3f364c953ce73f476ac754f69bcd2166cadbf` 上的 loader / noexec 证据仍未取得。
+> 状态：**本方案已被 [2026-10-22 PRoot 迁移记录](PROOT-MIGRATION-2026-10-22.md) 取代，不再代表当前实现或推荐路线。**以下内容保留当时基于 Bionilux 的分析与决策背景。
 > 复核基线：`5aad44537881ebe27e7485bbe54158fb7e8f71cd`。
 > 目标：恢复用户主动安装、使用、升级和卸载本机 Debian/glibc 环境，保留 `linux_bash` 插件入口。
 > 本文更新路线选择与证据要求；10-19 原始报告仍保留为历史实验记录，不能作为当前 APK 的验收。
@@ -9,7 +9,7 @@
 
 优先验证 **APK 原生库目录中的 bionilux launcher + 与 rootfs 同源的 glibc loader**。rootfs 与用户文件继续放应用私有目录，runtime manager 统一使用壳侧提供的可信执行配置。
 
-先取得真实 app 进程中的执行证据，再投入完整安装链修复。主线通过后只实现这一条后端；若失败，根据执行与映射的具体失败点选择备选，不同时维护多条试验后端。
+本轮已按这条路线把来源链、Gradle 和 runtime 接线实现为候选；没有设备证据前它仍不算可用实现。设备主线通过后只保留这一条后端；若失败，根据执行与映射的具体失败点选择备选，不同时维护多条试验后端。
 
 成立条件：APK 原生目录内的两个入口可执行，私有目录中的 guest 程序、libc 和 preload 可作可执行映射，且多级子进程能继续使用同一执行配置。任一条件未证实，都不能声称方案已经可用。
 
@@ -26,7 +26,7 @@
 
 因此，旧实验中“二进制没有 BIONILUX_LOADER”的观察只能描述当时被测产物，不能推出当前源码缺少接口。需核对最终 APK 中二进制、来源回执与执行结果；版本号同为 0.4.2 不足以证明字节相同。
 
-当前实际缺口是 `vendor/dsh-linux-runtime/modules/manager.js` 的 `_probeRuntime` 与 `_executionEnvironment` 都没有接入可信外部 loader。
+2026-10-22 前的实际缺口是 `manager.js` 的 `_probeRuntime` 与 `_executionEnvironment` 未接入外部 loader。候选源码现分别使用 `bioniluxExecutionEnvironment()` 和壳侧提供的 `DSH_LINUX_NATIVE_LIBRARY_DIR`；来源 APK 字节、nativeLibraryDir 安装结果及设备执行仍须验。
 
 ### 2.2 直接执行失败已观察到，noexec 的唯一归因尚未证实
 
@@ -54,16 +54,16 @@ Termux PRoot 的 `enter.c` 会把内核 exec 目标替换成自己的 `PROOT_LOA
 | 多级执行 | glibc Node、bash，以及 Node → shell → 外部程序；shebang 脚本 | 不能只用 `node --version` |
 | 进程控制 | cwd、环境、退出码、信号、超时取消后的子进程回收 | probe 和正式调用必须一致 |
 
-这一步需要来源链 APK：原生入口、Manifest/Gradle 打包配置改变不能用 JS 热推代验。按本仓规则在 `main` 合入原子 PR 后出来源候选；在取得证据前阻止该候选发布。
+这一步需要来源链 APK：原生入口、Gradle 打包配置改变不能用 JS 热推代验。本轮用户暂不要求实机测试，因此来源 APK/CI 只能证明构建接线和包内字节，不替代此处真实 app 身份下的执行证据；设备门禁完成前不得把 Linux 环境标记为恢复或把候选转正式发布。
 
-停止条件：若 guest 文件的可执行映射本身被拒，单独迁移 loader 不能解决问题，应停止这条实现并选择备选。只有私有目录入口直接 exec 失败，而 APK 原生目录两入口 exec、guest 可执行映射及多级执行均已通过，才继续主线实现。
+停止条件：若 guest 文件的可执行映射本身被拒，单独迁移 loader 不能解决问题，应停止这条实现并选择备选。候选源码的 Node smoke 会在安装提交前覆盖一条 guest ELF 路径；设备仍须证明 launcher/loader 直接执行、guest 可执行映射、bash/shebang 与多级子进程。
 
 ## 4. 第二阶段：固定 APK 执行入口
 
-1. 把 bionilux launcher 和匹配 glibc loader 作为 `jniLibs/arm64-v8a/lib*.so` 形态的原生资产交给 Android 安装器，显式配置 native library extraction，并核验最终合并 Manifest、安装后的文件 mode、SELinux、ELF 与哈希。它们作为可执行入口使用，不通过 JNI `dlopen` glibc loader。
+1. **源码已实现，设备未验**：把同一来源构建的 Bionilux launcher 和 rootfs glibc loader 作为 `jniLibs/arm64-v8a/lib*.so` 交给 Android 安装器；Gradle legacy packaging 要求 native libraries 在安装时提取，构建结束校验 APK 成员未丢失、未被 strip 且字节与来源完全一致。设备侧仍须核对合并 Manifest、实际文件 mode、SELinux、ELF 与哈希。它们作为可执行入口使用，不通过 JNI `dlopen` glibc loader。
 2. 两者都必须迁移。`vendor/bionilux/src/preload/hooks.c` 的 guest exec 路由会直接 `real_execve(launcher)`；只迁 loader 会出现“初次探测成功，子进程失败”。
 3. 壳侧每次启动从 `ApplicationInfo.nativeLibraryDir` 读取路径，经现有宿主配置提供给插件；不持久化安装目录绝对路径，不允许模型或 HTTP 请求指定 loader 路径。AI 能力继续由插件提供。
-4. runtime manager 建立一份执行配置，供 install probe、健康检查和 `linux_bash` 共用，显式配置 launcher、`BIONILUX_LOADER`、rootfs、preload 和 guest 环境。
+4. **源码已实现**：runtime manager 分离 Termux host 工具环境与 Bionilux 执行环境；安装前从 APK nativeLibraryDir 探测 launcher，安装后用同一 launcher/loader 跑 rootfs Node `--version`，而 `linux_bash` 也使用同一执行入口。详细实现与 source checks 见 [2026-10-22 执行入口修复](REMEDIATION-ANDROID-EXEC-2026-10-22.md)。
 5. 保留宿主/guest 环境隔离，不向 guest 整组透传 Termux 的 `LD_PRELOAD` 与 `TERMUX_EXEC__*`；验证 guest → launcher → loader 的环境切换。
 6. loader 与 rootfs glibc 建立受信版本/摘要对应关系。应用更新后重新解析入口并验证组合；不允许 `apt` 静默更新 libc6 后继续配旧 loader。首版需约束这些核心包升级并向用户说明，后续随 APK/运行时协调更新；普通包安装仍须通过验收。
 7. 原生资产纳入现有来源双构建、签名、provenance、payload 比对与许可证清单，复用同一 Linux 资产来源，避免 APK 与快照各自产出一份无绑定的 loader。

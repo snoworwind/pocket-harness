@@ -24,7 +24,7 @@ import org.junit.Test
 class LinuxAssetIOTest {
 
   private val goodUrl =
-    "https://github.com/kelai141/dsh-bionilux/releases/download/v1.2.0/linux-runtime-plugin.tar.xz"
+    "https://github.com/snoworwind/pocket-harness/releases/download/v0.6.0/linux-runtime-plugin.tar.xz"
 
   private fun tempRoot(): File = Files.createTempDirectory("linux-asset-io-test").toFile()
 
@@ -107,15 +107,15 @@ class LinuxAssetIOTest {
     // 负控：白名单主机但不是本仓 Releases 资产路径（latest/download 不是版本化资产）
     assertNotNull(
       LinuxAssetIO.urlVerdict(
-        "https://github.com/kelai141/dsh-bionilux/releases/latest/download/linux-runtime-plugin.tar.xz",
+        "https://github.com/snoworwind/pocket-harness/releases/latest/download/linux-runtime-plugin.tar.xz",
       ),
     )
     // 负控：其它仓的 Releases（跨仓来源不得放行）
-    assertNotNull(LinuxAssetIO.urlVerdict(goodUrl.replace("dsh-bionilux", "dsh-mobile-apk")))
+    assertNotNull(LinuxAssetIO.urlVerdict(goodUrl.replace("pocket-harness", "dsh-mobile-apk")))
     // 负控：带 query（可被用来改写后续跳转）
     assertNotNull(LinuxAssetIO.urlVerdict(goodUrl + "?x=1"))
     // 负控：资产路径多一段目录（不是恰好 <tag>/<asset>）
-    assertNotNull(LinuxAssetIO.urlVerdict(goodUrl.replace("v1.2.0/", "v1.2.0/extra/")))
+    assertNotNull(LinuxAssetIO.urlVerdict(goodUrl.replace("v0.6.0/", "v0.6.0/extra/")))
     // GitHub 资产 CDN 是合法重定向落点（路径/query 由 CDN 生成，只守主机）
     assertNull(LinuxAssetIO.hopVerdict("https://objects.githubusercontent.com/github-production-release-asset/x?y=1"))
     assertNull(LinuxAssetIO.hopVerdict("https://release-assets.githubusercontent.com/x"))

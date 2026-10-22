@@ -54,6 +54,9 @@ jobs:
         run: |
           python3 -m unittest discover -s scripts/source-build -p 'test_*.py' -v
           node --test scripts/source-build/*.test.mjs scripts/check-apk-signatures.test.mjs scripts/resolve-version-suffix.test.mjs scripts/tests/main-frame-bridge.test.mjs scripts/tests/engine-private-transport.test.mjs
+          node scripts/source-build/check-linux-native-libraries.mjs --self-test
+          python3 scripts/source-build/verify-linux-native-apk.py --self-test
+          node --test vendor/dsh-linux-runtime/test/manager.test.mjs
           node scripts/source-build/restore-effective-engine-overlay.mjs --self-test
           node scripts/source-build/restore-effective-engine-overlay.mjs --self-test-negative
           node scripts/source-build/reclaim-build-disk.mjs --self-test
@@ -452,10 +455,14 @@ jobs:
 
       - name: Build source-owned offline ARM64 Linux assets
         shell: bash
+        env:
+          DEBIAN_KEYRING: ${{ github.workspace }}/.deploy-tmp/linux-keyring/debian-archive-keyring.gpg
+          TERMUX_WEBROOT: ${{ github.workspace }}/.deploy-tmp/source-build/termux-webroot
+          TERMUX_PROVENANCE: ${{ github.workspace }}/.deploy-tmp/source-build/termux-packages-provenance.json
+          TERMUX_BOOTSTRAP_USR: ${{ github.workspace }}/.deploy-tmp/source-build/bootstrap-extracted/usr
         run: |
           set -euo pipefail
-          ndk=$(node -p 'require("./scripts/source-build/linux-inputs.json").ndk')
-          NDK="$GITHUB_WORKSPACE/.deploy-tmp/source-build/ndk/android-ndk-$ndk" DEBIAN_KEYRING="$GITHUB_WORKSPACE/.deploy-tmp/linux-keyring/debian-archive-keyring.gpg" bash scripts/source-build/build-linux-assets.sh
+          bash scripts/source-build/build-linux-assets.sh
 
       - name: Build runtime snapshot from verified inputs
         shell: bash

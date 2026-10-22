@@ -36,7 +36,7 @@ import {
 const RUNTIME_PACKAGE_NAME = '@dsh-android/linux-runtime'
 const MANIFEST_NAME = 'linux-release.json'
 const REPO = 'https://github.com/snoworwind/pocket-harness'
-const TAG = 'v1.2.0'
+const TAG = 'v0.6.0'
 /** 宿主已解包树里的入口内容；正控与「篡改不得存活」都对着它断言。 */
 const GENUINE_ENTRY = 'export const apply = () => {}\n'
 
@@ -103,14 +103,14 @@ async function stageBundle(filesDir, { archiveBytes, declaredDigest, packageName
   const tree = unpackedTreeFor(filesDir, digest)
   await mkdir(join(tree, 'package', 'lib'), { recursive: true })
   await writeFile(join(staged, RETAINED_ARCHIVE), bytes)
-  await writeFile(join(tree, 'package', 'package.json'), `${JSON.stringify({ name: packageName, version: '1.0.0' })}\n`)
+  await writeFile(join(tree, 'package', 'package.json'), `${JSON.stringify({ name: packageName, version: '1.0.0', type: 'module' })}\n`)
   await writeFile(join(tree, 'package', 'lib', 'index.js'), entryBody)
   const packageJson = await readFile(join(tree, 'package', 'package.json'))
   const entry = await readFile(join(tree, 'package', 'lib', 'index.js'))
   return { sha256: digest, size: bytes.length, unpackedSize: packageJson.length + entry.length }
 }
 
-function makeManifest({ asset, minMobileVersion = '0.14.0', version = '1.2.0' } = {}) {
+function makeManifest({ asset, minMobileVersion = '0.14.0', version = '0.6.0' } = {}) {
   const assetUrl = (name) => `${REPO}/releases/download/${TAG}/${name}`
   const bootstrapAsset = { url: assetUrl('linux-bootstrap-plugin.tar.xz'), sha256: 'b'.repeat(64), size: 1, unpackedSize: 1 }
   return {
@@ -118,7 +118,7 @@ function makeManifest({ asset, minMobileVersion = '0.14.0', version = '1.2.0' } 
     version,
     minMobileVersion,
     plugins: { bootstrap: bootstrapAsset, runtime: { url: assetUrl('linux-runtime-plugin.tar.xz'), ...asset } },
-    runtimes: [{ id: 'debian-minimal', label: 'Debian minimal', architecture: 'arm64', backend: 'bionilux' }],
+    runtimes: [{ id: 'debian-minimal', label: 'Debian minimal', architecture: 'arm64', backend: 'proot', prootVersion: '5.1.107.98' }],
   }
 }
 
@@ -127,7 +127,7 @@ function makeFetch(manifest) {
   const fetched = []
   const fetchImpl = async (url) => {
     fetched.push(url)
-    if (url === `https://api.github.com/repos/kelai141/dsh-bionilux/releases/latest`) {
+    if (url === `https://api.github.com/repos/snoworwind/pocket-harness/releases/latest`) {
       return new Response(JSON.stringify({
           tag_name: TAG,
           assets: [{ name: MANIFEST_NAME, browser_download_url: `${REPO}/releases/download/${TAG}/${MANIFEST_NAME}` }],
@@ -186,18 +186,43 @@ test('production trust policy refuses a self-declared release before activation'
   } finally { await rm(filesDir, { recursive: true, force: true }) }
 })
 
+test('PRoot host binds are limited to the configured workspace and shared directories', async () => {
+  const filesDir = await tempFilesDir()
+  const previousWorkspace = process.env.DSH_WORKSPACE
+  const previousSharedDirs = process.env.DSH_SHARED_DIRS
+  try {
+    delete process.env.DSH_WORKSPACE
+    process.env.DSH_SHARED_DIRS = join(filesDir, 'selected-share')
+    const config = createLinuxBootstrapConfig({ filesDir, appVersion: '0.15.0' })
+    assert.deepEqual(config.runtimePluginConfig.allowedHostPaths, [
+      join(filesDir, 'home', '.dsh', 'workspaces'),
+      join(filesDir, 'selected-share'),
+    ])
+    process.env.DSH_WORKSPACE = '/'
+    delete process.env.DSH_SHARED_DIRS
+    const rootRejected = createLinuxBootstrapConfig({ filesDir, appVersion: '0.15.0' })
+    assert.deepEqual(rootRejected.runtimePluginConfig.allowedHostPaths, [], 'filesystem root must never become a host bind allowlist')
+  } finally {
+    if (previousWorkspace === undefined) delete process.env.DSH_WORKSPACE
+    else process.env.DSH_WORKSPACE = previousWorkspace
+    if (previousSharedDirs === undefined) delete process.env.DSH_SHARED_DIRS
+    else process.env.DSH_SHARED_DIRS = previousSharedDirs
+    await rm(filesDir, { recursive: true, force: true })
+  }
+})
+
 test('bundled source manifest is read as raw pinned bytes without network access', async () => {
   const filesDir = await tempFilesDir()
   const bundleDirectory = join(filesDir, 'bundle')
   try {
     await mkdir(bundleDirectory, { recursive: true })
-    const manifestBytes = await readFile(new URL('./fixtures/linux-release.v0.5.0.json', import.meta.url))
+    const manifestBytes = await readFile(new URL('./fixtures/linux-release.v0.6.0.json', import.meta.url))
     await writeFile(join(bundleDirectory, MANIFEST_NAME), manifestBytes)
     await writeFile(join(bundleDirectory, 'linux-runtime-manifest.sha256'), `${sha256(manifestBytes)}\n`)
     const config = createLinuxBootstrapConfig({ filesDir, appVersion: '0.15.0', bundleDirectory })
     const supplied = await config.manifestProvider()
-    assert.equal(supplied.releaseTag, 'v0.5.0')
-    assert.equal(supplied.sha256, 'bafb6a434718295e3769b7dce59b725231f7c507ac51ce99d52b41d89d3e8797')
+    assert.equal(supplied.releaseTag, 'v0.6.0')
+    assert.equal(supplied.sha256, sha256(manifestBytes))
     assert.equal(config.verifyManifest(supplied.manifest, { sourceSha256: supplied.sha256 }), true)
     await writeFile(join(bundleDirectory, MANIFEST_NAME), '{}\n')
     await assert.rejects(config.manifestProvider(), /does not match its sidecar/)
@@ -212,17 +237,17 @@ test('offline asset adapter stages only a digest- and size-matched APK bundle fi
   const digest = sha256(bytes)
   try {
     await mkdir(bundle, { recursive: true })
-    await writeFile(join(bundle, 'bionilux-backend-aarch64.tar.xz'), bytes)
+    await writeFile(join(bundle, 'proot-backend-aarch64.tar.xz'), bytes)
     const host = createHostAssetIO({ filesDir, bundleDirectory: bundle })
     const asset = {
-      url: 'https://github.com/snoworwind/pocket-harness/releases/download/v0.5.0/bionilux-backend-aarch64.tar.xz',
+      url: 'https://github.com/snoworwind/pocket-harness/releases/download/v0.6.0/proot-backend-aarch64.tar.xz',
       sha256: digest,
       size: bytes.length,
     }
     const staged = await host.downloadAsset(asset)
     assert.deepEqual(await readFile(staged), bytes)
     assert.deepEqual(await readdir(dirname(staged)), [RETAINED_ARCHIVE], 'staging must not leave temporary copies behind')
-    await writeFile(join(bundle, 'bionilux-backend-aarch64.tar.xz'), Buffer.alloc(bytes.length, 0x78))
+    await writeFile(join(bundle, 'proot-backend-aarch64.tar.xz'), Buffer.alloc(bytes.length, 0x78))
     await rm(staged, { force: true })
     await assert.rejects(host.downloadAsset(asset), /摘要不符/)
   } finally {
@@ -241,7 +266,7 @@ test('a genuine host-staged bundle activates', async () => {
 
     const status = await installConfirmed(service)
     assert.equal(status.installed, true, '真实暂存的包必须能装上')
-    assert.equal(status.version, '1.2.0')
+    assert.equal(status.version, '0.6.0')
     assert.equal(pluginHost.activations.length, 1, '必须恰好激活一次')
     assert.equal(status.enabled, true)
   } finally {
@@ -411,7 +436,7 @@ test('refuses a malicious digest and touches nothing outside the environment roo
 /**
  * 复用分支必须**复验**，而不是信任槽位里已有的内容或它自己写下的标记。
  *
- * 上游把这条缺口补上后（`dsh-bionilux@3f86a85`），篡改过的槽位不会被复用：它按 manifest 的
+ * vendored bootstrap 把这条缺口补上后（历史来源 `dsh-bionilux@3f86a85`），篡改过的槽位不会被复用：它按 manifest 的
  * `unpackedSize` 重新丈量已发布树，不匹配就从**已复验的宿主暂存**重建。
  *
  * 判据落在**内容事实**上：安装后再读槽位入口，必须是宿主暂存里的真品，篡改内容不得存活。

@@ -74,7 +74,7 @@ def package_assets(work, epoch):
             shutil.copytree(source / 'src', target / 'src')
             shutil.copytree(source / 'client', target / 'client')
             shutil.copyfile(source / 'package.json', target / 'package.json')
-            shutil.copyfile(ROOT / 'vendor/bionilux/LICENSE', target / 'LICENSE')
+            shutil.copyfile(ROOT / 'LICENSES/GPL-2.0.txt', target / 'LICENSE')
         pack(target, package + '-plugin.tar.xz')
 
     repository = os.environ.get('GITHUB_REPOSITORY')
@@ -98,8 +98,8 @@ def package_assets(work, epoch):
 
     manifest = dict(schemaVersion=1, version=inputs['runtimeVersion'], minMobileVersion=inputs['minimumAppVersion'],
                     plugins=dict(bootstrap=describe('linux-bootstrap-plugin.tar.xz'), runtime=describe('linux-runtime-plugin.tar.xz')),
-                    runtimes=[dict(id='debian-minimal', label='Debian 13 ARM64', architecture='arm64', backend='bionilux',
-                                   backendAsset=describe('bionilux-backend-aarch64.tar.xz'),
+                    runtimes=[dict(id='debian-minimal', label='Debian 13 ARM64', architecture='arm64', backend='proot',
+                    prootVersion=inputs['prootVersion'], backendAsset=describe('proot-backend-aarch64.tar.xz'),
                                    rootfsAsset=describe('debian-minimal-aarch64.tar.xz'),
                                    nodeAsset=describe(f'node-glibc-v{inputs["node"]}-linux-arm64.tar.xz'))])
     body = (json.dumps(manifest, ensure_ascii=False, indent=2) + '\n').encode()

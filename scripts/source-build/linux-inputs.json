@@ -1,5 +1,4 @@
 {
-  "rust": "1.90.0",
   "node": "24.22.0",
   "nodeSha256": "fef00bb4d36e1c50104a9775a10359beee98f162b4104dd12472c75065c6a143",
   "debianSnapshot": "https://snapshot.debian.org/archive/debian/20261016T000000Z",
@@ -10,6 +9,10 @@
   "debianReleaseKey13Fingerprint": "41587F7DB8C774BCCF131416762F67A0B2C39DE4",
   "ndk": "r30",
   "ndkSha1": "5107f898313790e449e87eee2183d9a20602dee9",
-  "runtimeVersion": "0.5.1",
+  "prootVersion": "5.1.107.98",
+  "prootRepository": "https://github.com/termux/proot",
+  "prootSourceUrl": "https://github.com/termux/proot/archive/v5.1.107.98.zip",
+  "prootSourceSha256": "9de61bddd6f5016d065e2755b72ff4747290e5f992562f031785b107b51d02ba",
+  "runtimeVersion": "0.6.0",
   "minimumAppVersion": "0.14.0"
 }

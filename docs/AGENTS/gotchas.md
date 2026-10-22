@@ -2901,3 +2901,63 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 476. **Android 宿主 `spawn` 必须携带 termux-exec，exit 0 也不证明 GNU 工具执行成功（2026-10-21）**
 
     现象：第二份实机日志显示资产和插件 SHA 已变、`LD_LIBRARY_PATH` 已补，但 `prepare-rootfs.sh` 仍在 `find` 报 `Permission denied`；用户给出的矩阵确认只有完整 shim 环境才执行到 GNU findutils 4.11.0。仅传 `TERMUX_APP__DATA_DIR` 会 exit 0，却实际调用 toybox `find`。真因：壳侧 `EngineManager.shellEnv()` 已设置 `LD_PRELOAD`、`TERMUX_EXEC__EXECVE_CALL__INTERCEPT=1`、`TERMUX_EXEC__SYSTEM_LINKER_EXEC__MODE=force`、`TERMUX__PREFIX` 和 `TERMUX_APP__DATA_DIR`；runtime manager 的白名单重建环境时仍全部丢弃，Android 不允许直接 exec app-private ELF。Bionilux 也未清理新增宿主变量，且 shebang overrides 在清理后应用。修法：`hostExecutionEnvironment()` 从 `DSH_FILES_DIR/usr` 派生并校验 preload/库目录、固定 Termux PATH 与完整拦截变量；rootfs 前识别 GNU `find`/`sed`/`wc`，toybox 假成功即以 `linux-host-toolchain-unavailable` 失败；Bionilux 对 guest overrides 再执行宿主变量清理并强制保留 glibc preload、过滤 termux-exec preload。错误提示改指 `files/linux-environment/linux-bootstrap-state.json` 的 `lastError`；Linux release/bootstrap/runtime 版本升至 0.5.1。复验：manager 30/30；route 错误文案定向用例 1/1；code-map、37 文件 Linux source hash、自检与 bootstrap vendored 自检通过；Rustfmt 与插件 TypeScript build 通过。Rust tests 未能编译（本机缺 `clap` 缓存且 crates.io DNS 不可达）；本机完整 Linux-env/Python 资产套件仍有既知 macOS `/var` 别名、ESM fixture、非 GNU tar 环境失败。未做实机测试，不能据此宣称恢复。
+
+477. **GNU 工具版本行可能以绝对 `argv[0]` 开头，Android DNS 必须跟随当前默认网络（2026-10-22）**
+
+    现象：`sed --version` exit 0 且正文含 `sed (GNU sed) 4.10`，但宿主预检仍报 `linux-host-toolchain-unavailable`；预检通过后，rootfs 也没有 `/etc/resolv.conf`，guest 的 `apt update` 无法解析域名。真因：termux-exec linker 把 `argv[0]` 改成 app-private ELF 的绝对路径，`^sed` 误判真正的 GNU sed；`_prepareRootfs` 没有把 Android DNS 传给已有 `prepare-rootfs.sh --dns`，虽 Bionilux 有 `BIONILUX_DNS_SERVERS` 通道，壳侧从未提供当前 resolver，且 preload 只解析 IPv4。修法：三个 GNU 正则允许可选路径前缀；`LinuxDnsServers` 读取并跟踪 Android 默认网络 DNS，通过原子替换写私有状态文件，写入前核对回调仍属于当前默认网络，runtime 在 rootfs 准备与每次 guest spawn 时重新读取；Bionilux resolver 支持 IPv4/IPv6。Android API 28+ 的 Private DNS 活跃时遵守系统要求，不向明文 resolver 发查询，而是清空旧 rootfs nameserver 并 fail-closed；状态更新失败时删除旧 resolver 文件并记录错误，防止静默沿用前一网络地址。当前 guest 暂不支持 Private DNS 网络解析。runtime、Linux 资产版本升至 0.5.2。复核状态与设备边界见 [2026-10-22 修复记录](../linux-env-findings/REMEDIATION-HOST-TOOLS-DNS-2026-10-22.md)。
+
+478. **targetSdk 29+ 不能直接执行 app 私有目录 ELF，glibc loader 不能交给 Bionic linker64（2026-10-22）**
+
+    现象：同 APK 解出的 Bionilux 能 `--print-config`，但一旦运行 Debian ELF 就在 `execve(rootfs/lib/ld-linux-aarch64.so.1)` 报 EACCES；用 `/system/bin/linker64` 包 glibc loader 又报 `Could not find a PHDR`。直接从 app 私有目录执行 toybox 也失败。真因：Android 对 targetSdk 29+ 的 app 私有可写目录禁止直接 exec；Termux 的 linker64 代理只适用于 Bionic ELF，Debian glibc loader 的 PHDR 布局不能被 Bionic linker 装载。降 targetSdk 会放宽整个应用的执行安全策略，与项目基线不符。修法：来源链把同一构建的 Bionilux launcher 和 rootfs glibc loader 放进 APK `jniLibs/arm64-v8a`；legacy packaging 让 PackageManager 安装到 `nativeLibraryDir`；manager 区分 host Termux 子进程与 Bionilux 执行环境，先 probe native launcher，再以 `BIONILUX_LOADER` 指定同源 loader；安装后的 Node `--version` smoke 证明 guest ELF 动态装载前不交换 active。rootfs 将 `libc6:arm64` 与 `libc-bin:arm64` 设为 apt hold，版本随 provenance 留证，常规 apt 不会把 loader 与 guest glibc 拆开；强制绕过 hold 仍可能造成不匹配。最终 APK checker 对照两份 `.so` 的成员、压缩/提取条件、大小与 SHA-256，拒绝 strip 或改写。受控 hard-link copy fallback 仅对普通文件生效；O_NOFOLLOW 加设备/inode 复核抵御源路径替换，Linux 资产 workflow 增加跨文件系统集成用例并等待 CI。复验：runtime manager 33/33；Linux native ELF checker 自检和 APK payload checker 的篡改、未提取与非普通文件负控通过；本轮尚无真实 APK CI 或设备证据。未解决前不降低 targetSdk、不宣称 Linux 已恢复；nativeLibraryDir exec、guest 映射、多级子进程与 dpkg 实机仍需 ARM64 验收。详见 [执行入口修复记录](../linux-env-findings/REMEDIATION-ANDROID-EXEC-2026-10-22.md)。
+
+479. **APK 新输入必须跨过来源链磁盘回收点（2026-10-22）**
+
+    现象：APK 组装新增依赖 `.deploy-tmp/linux-build/native-libs`，但来源链在快照封包后运行 `reclaim-build-disk.mjs`，该工具原先删除 `linux-build` 下除 provenance 外的所有内容，后续组装会因 native launcher/loader 缺失而中止。真因：磁盘回收清单按旧消费者边界把整个 Linux 构建目录都视为 snapshot-only，未随 APK 新输入更新。修法：清理时明确保留 `native-libs` 与 provenance；self-test 构造并断言 native launcher 穿过清理点；Linux asset workflow 的 path filter 显式包含新增 preload 集成测试文件。复验：`reclaim-build-disk.mjs --self-test` 与来源链相关 workflow 用例通过；没有设备验证。引用：本轮 Linux nativeLibraryDir APK 接入。
+
+480. **BSD `stat` 的 `%Lp` 会丢掉 sticky bit，rootfs 自检误拒绝模式正确的 `/tmp`（2026-10-22）**
+
+    现象：在 macOS 上运行 `prepare-rootfs.sh --verify`，Debian rootfs 的 `/tmp` 实为 `1777`，却被报告模式错误；GNU/Linux 上同一检查通过。真因：BSD `stat -f %Lp` 输出 `777`，不包含 sticky bit。修法：BSD fallback 改读 `%p`，剥去目录文件类型位后再比较权限；GNU stat 路径保持不变。复验：rootfs prepare/verify Python 测试在 macOS 通过，并覆盖 sticky bit 缺失的负控；Linux CI 仍须复核。
+
+481. **删除 rootfs 前必须检查其全部后代挂载点（2026-10-22）**
+
+    现象：rootfs 重试清理只检查 `/dev`、`/proc` 两个预期挂载点；若上次运行在其他深层目录留下 bind mount，递归删除会进入仍挂载的树并可能删错数据。真因：固定点检查把「预期挂载清理」误当成「目标目录无任何 mount」。修法：从 `/proc/self/mountinfo` 解码转义路径，按路径祖先关系检查 rootfs 本身及全部后代；mountinfo 不可读或格式异常一律拒绝删除。复验：纯函数用例覆盖 rootfs 本身、深层挂载、空格转义、相似前缀和损坏输入；未做 Android/PRoot 设备验证。
+
+482. **PRoot 许可 provenance 检查必须自身有可执行测试**
+
+    现象：Linux backend 第三方许可检查遍历 provenance 指定的 license 文件时调用 `lstatSync` 与 `relative`，但模块未导入这两个符号；旧测试只运行快照 dpkg 许可路径，不带 PRoot provenance，因此此发布路径会在构建期触发 `ReferenceError`。修法：显式导入文件与路径原语，增加完整 PRoot provenance 正控和 license 符号链接负控，并把测试纳入 Linux assets PR workflow。复验：`node --test scripts/check-third-party.test.mjs`；设备验证不适用。
+
+483. **硬链接降级复制必须原子发布，且复制上限要约束实时字节数**
+
+    现象：TermFold 兼容层原先直接以 `O_EXCL` 创建最终目标后再拷贝；普通错误会 unlink，但 guest 进程若在写入期间被杀，半文件会留在目标名下，使 dpkg 重试撞 `EEXIST`。源文件若在复制期间增长，初始 `st_size` 上限也不能限制实际写入量。修法：副本改写入同目录隐藏临时文件，按累计读取字节执行 1 GiB 上限，源 inode/元数据复核及权限/时间戳完成后 fsync，再以 `renameat2(RENAME_NOREPLACE)` 发布；普通失败清理临时文件，进程中断至多留下不占目标名的隐藏残片。复验：Linux preload 集成测试覆盖成功发布、写入失败清理及复制中 SIGKILL 后最终目标仍不存在；设备/PRoot 侧 renameat2 与 dpkg 重试待 ARM64 验收。
+
+484. **APK native payload 核验要拒绝符号链接输入，并把生成资产的脚本带入来源证明**
+
+    现象：APK 核验脚本先对 native library 根目录调用 `realpath`，会把符号链接静默规范化；Linux 资产 provenance 包也未包含生成签名 Termux 软件包闭包所需的引导、索引验证脚本和回归测试，拿到该包无法完整复查构建步骤。来源归档原先还把 bootstrap 插件整个目录归档；该步骤在 `npm ci` 后执行，可能混入未审阅且不由来源清单固定的 `node_modules`。真因：校验信任了路径规范化后的目标，来源归档清单覆盖不足且将运行目录当作源码目录。修法：核验 provenance、native root 与 ARM64 子目录必须为普通文件/目录；来源证明包明确纳入 Termux bootstrap、签名索引验证、后端组装、ELF/APK 核验、许可矩阵及关联测试；bootstrap 只归档明确的插件源码、元数据和测试路径，不含安装依赖目录。Linux 资产 workflow 的路径过滤同时覆盖构建链实际读取的预装清单、shell helper、Termux bootstrap、profile seeder、许可矩阵和发布来源 workflow。复验：APK 核验 self-test 加入符号链接 native root/ABI 负控；来源归档内容和 Linux asset workflow 过滤仍待验证。
+
+485. **PRoot guest 不能绑定整个宿主 `/proc`**
+
+    现象：runtime 将 Android 宿主 `/proc` 整棵映射进 guest，而引擎父进程环境含 `DSH_PICK_TOKEN`、`DASHSCOPE_API_KEY`、`DEEPSEEK_API_KEY`。在允许同 UID 进程读取的设备策略下，guest 可尝试从 `/proc/<pid>/environ` 或 `/proc/<pid>/root` 越过显式 workspace bind，接触引擎环境或 app 私有路径；本轮只有源码证据，未在设备上证明特定 ROM 的访问结果。真因：把 PRoot 的 `-b /proc` 当作普通 Linux 功能补齐，忽略了它是宿主路径映射，不会创建隔离 procfs。修法：移除 guest 的宿主 `/proc` bind，并在 runtime 命令构造回归中断言它缺席；兼容 preload 的 `/proc/self/fd/N` 分支从已有 fd 复制，不要求 guest 能浏览宿主 procfs。明确记录依赖 guest procfs 的程序可能不完整；PRoot 内部为翻译被跟踪文件描述符仍使用宿主 procfs。复验：`node --test vendor/dsh-linux-runtime/test/*.test.mjs` 31/31、Linux 来源哈希与 code-map 通过；未做 APK、云端 CI 或设备验收。
+
+486. **Termux provenance 必须与生成脚本的输出目录一致**
+
+    现象：Linux 资产专用 workflow 将 `TERMUX_PROVENANCE` 指向 `webroot/termux-packages-provenance.json`，但签名仓库准备脚本把文件写在 `webroot.parent`；PR 检查通过后，手动资产构建会在 PRoot 包组装阶段因 provenance 缺失而失败。真因：workflow 输入路径与生成脚本输出路径分开维护，没有跨文件契约检查。修法：workflow 与 APK 来源链都把 provenance 指向 webroot 的同级目录；`linux-assets-workflow.test.mjs` 对两个 workflow 的 webroot/provenance 关系加正向断言，并以嵌套进 webroot 的旧路径做负控。复验：本地 workflow 契约测试与 YAML 解析通过；未触发 CI、资产构建或设备测试。
+
+487. **Termux 包版本锁与可重复构建锁是两个层次**
+
+    现象：PRoot 依赖的精确版本受 `linux-backend-packages.json` 固定，构建时也校验 Termux InRelease、签名索引摘要和每个 `.deb` 摘要；但仓内不固定 InRelease 或 `.deb` 摘要，recipe 链接仍指向 `termux-packages/master`。因此某次构建有可核验 provenance，不代表同一仓库提交未来会取回相同软件包和配方。真因：把签名认证、版本选择与跨时间的输入复现视作同一保证。修法：在将跨时间可复现作为交付要求前，需把审核过的 InRelease/package 摘要与不可变 recipe 修订写入仓内锁，并为其变更加负控。复验：源码审查确认当前只在 build output provenance 记录这些摘要；未执行资产构建。
+
+488. **Android 原生执行目录应由显式路径识别，不依赖系统环境标记**
+
+    现象：壳侧总会注入 `DSH_LINUX_NATIVE_LIBRARY_DIR`，但 runtime 曾只在 `ANDROID_ROOT` 存在时选择 APK nativeLibraryDir；若系统启动环境缺少该标记，就会回退执行 app 私有目录中的 PRoot，撞回 Android 的 ELF exec 限制。真因：执行目录能力通过显式配置传入，平台判断却依赖另一份可缺失的隐式环境变量。修法：`ANDROID_ROOT` 或显式 native library 路径任一存在即按 Android 路径处理；native 路径不完整时在下载/安装前失败关闭。复验：runtime 回归用例删除 `ANDROID_ROOT` 后仍断言使用 APK 原生目录与当前 DNS；未做 APK/设备验证。
+
+489. **Linux 资产 CI 不得依赖本地忽略的插件 `lib/` 产物**
+
+    现象：PR 检查在开发机通过，但干净 runner 编译 `dsh-android-linux-env` 时找不到 `@dsh-android/dsh-android-bridge` 与 `dsh-shell-termux` 声明。真因：这些 `file:` 依赖的 `lib/` 被 `.gitignore` 排除，开发机残留构建物掩盖了 workflow 未构建依赖源码的缺口。修法：Linux assets workflow 按源代码分别 `npm ci`、`npm run build` 生成 shell-termux 与 bridge 产物，再编译 linux-env；路径过滤同时覆盖这两个上游输入。复验：PR #90 的干净 runner 暴露失败；需以修复提交后的 GitHub Actions `build-linux-assets / validate` 全绿确认。
+
+490. **Termux 签名索引里的 foreign-architecture 依赖分支应被跳过**
+
+    现象：解析有效的 Debian 依赖 `arch-native [aarch64] | arch-other [amd64]` 时，构建器把 `amd64` 当成未知语法并中止。真因：把目标架构白名单误用作整个 signed Packages 索引的语法白名单；其他架构的有效替代项在目标 AArch64 构建中应不适用，而非损坏。修法：校验架构 token 的语法，再按 AArch64/arm64 目标语义筛除 foreign 分支，并覆盖否定条件与 `linux-any`；未知语法仍 fail closed。复验：纯解析用例无需 `dpkg` 即覆盖 foreign、否定和 Linux wildcard；完整依赖闭包由 Linux CI 验证。
+
+491. **兼容层故障注入夹具必须先通过文件大小上限检查**
+
+    现象：Linux CI 的硬链接复制失败/中断用例立即返回 `EFBIG`，没有进入注入的写入错误或进程停止路径。真因：测试文件大于该测试库设置的 1 MiB 复制上限，预检提前拒绝，故障注入断言实际没有覆盖原子发布中断。修法：夹具保持大于注入阈值、同时低于复制上限；另为变更 provenance 的测试设置与 signed index 不同的版本。复验：PR #90 首轮 CI 失败已定位；需以修复提交后的 Linux preload 回归全绿确认。

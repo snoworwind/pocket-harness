@@ -83,7 +83,7 @@ test('engine-only locks do not require unrelated component inputs', () => {
   try {
     const full = lockFor(root)
     const lock = { schema: SCHEMA, components: { engine: { ...full.components.engine, toolchain: TOOLCHAIN } } }
-    rmSync(join(root, 'vendor/bionilux'), { recursive: true })
+    rmSync(join(root, 'vendor/linux-proot'), { recursive: true })
     assert.deepEqual(verifyLock(root, lock), { engine: computeComponentKeys(root, TOOLCHAIN, ['engine']).engine })
     assert.throws(() => verifyLock(root, { schema: 1, components: {} }), /components missing/)
     assert.throws(() => verifyLock(root, { schema: 1, components: { unknown: {} } }), /unknown component/)

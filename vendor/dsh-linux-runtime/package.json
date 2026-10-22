@@ -1,9 +1,9 @@
 {
   "name": "@dsh-android/linux-runtime",
-  "version": "0.5.1",
+  "version": "0.6.0",
   "private": false,
   "type": "module",
-  "description": "DSH Mobile Linux runtime plugin: Bionilux + Debian minimal rootfs install/execute lifecycle and the linux_bash tool",
+  "description": "DSH Mobile Linux runtime plugin: Termux PRoot + Debian minimal rootfs install/execute lifecycle and the linux_bash tool",
   "exports": {
     ".": "./lib/index.js",
     "./modules/*": "./modules/*"
