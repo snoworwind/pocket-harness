@@ -8,16 +8,16 @@
       "sourceCommit": "3f86a853e346b4f2c268fbf6a76216294b5c4382",
       "sourcePath": "packages/linux-bootstrap",
       "files": {
-        "plugins/dsh-linux-bootstrap/package.json": "45bd0545566fbaa489ca88a64d2f4d61310c5ac199236e5a15d4997ae91f20fb",
+        "plugins/dsh-linux-bootstrap/package.json": "4c6b8ae1aac2741a355331bd27a7b5d24006ceee67f5ed14bd5b665260c623e7",
         "plugins/dsh-linux-bootstrap/client/index.js": "4576301803d5eda59b76dfff62c7a2cd67cd05d65a25c58df12f3769e3f382cc",
         "plugins/dsh-linux-bootstrap/src/asset-bundle.js": "7e32ce0f57ee0a7f75dfd2d2af6ff61357d63b6c34e4f0dbf7aa23cf4300e416",
         "plugins/dsh-linux-bootstrap/src/github.js": "7b6369b5910ecb3e8b49f75a4dae3ca60ceac2d4164bf7f05f71c81803aa110c",
-        "plugins/dsh-linux-bootstrap/src/index.js": "ff442ded7b91de67f48b383d95260312cf484bd1367c8c09f3d584e6da3ab1c2",
+        "plugins/dsh-linux-bootstrap/src/index.js": "ac2dbb4aee91eef1fed59c6829a694a83be4990393dfc42240e366d14f6f9767",
         "plugins/dsh-linux-bootstrap/src/manifest.js": "a9b8512e24dfbb1b225c2bc260d3d0496b7e8834ef975d17c69355baf1911067",
         "plugins/dsh-linux-bootstrap/src/routes.js": "678391176bcd81ba6cbbbab293a4731d07e37e99c51178d7605821eac6aa5bb9",
         "plugins/dsh-linux-bootstrap/src/status.js": "494238e39094999e44105d1c56ca562f88ce3e65146bd3070806d4c82dd98f7b",
         "plugins/dsh-linux-bootstrap/src/version.js": "d0131f71b60ff38183070ddd3ef7142a98ae8a2cb54e2a57b725fa2e0d6b3636",
-        "plugins/dsh-linux-bootstrap/package-lock.json": "3a2222cddbde59a7bfb0ad851230133ff841d294e23c9b06a0fa83811de79ba3",
+        "plugins/dsh-linux-bootstrap/package-lock.json": "d03ed77469a70eb3248d9c64575ba8b490c02c417497e86e724acd663bf99267",
         "plugins/dsh-linux-bootstrap/build.mjs": "5f416603bd54c216ef30bc2e9211c38373b2b967e92fb2e7ccb72e332e5b03bc",
         "plugins/dsh-linux-bootstrap/build-client.mjs": "43e1a6469c3244ccd6baad3b13ced28dc379f843d6e902670315af0b8ad64c20",
         "plugins/dsh-linux-bootstrap/README.md": "b6a54ef5116942484304b8ea31da9bf514a22dcb6496ce2cd99aaadc82db8fb2"
@@ -29,7 +29,7 @@
     "vendor/bionilux/Cargo.toml": "ee1fd047a1459a873518cdab392ee393342c8dec90c7cf25a20dc28323d0f762",
     "vendor/bionilux/LICENSE": "e9f4502fb52418dcd3e320d8d15e1bd7b43094ec3f2fdd5c33dd88f5a2ba85d9",
     "vendor/bionilux/SOURCE.json": "95299d144f940dbcbe66c994276c2e796d4fe3e1055ee29e7844e63bc7ad7365",
-    "vendor/bionilux/scripts/prepare-rootfs.sh": "3de09edf3aeeb31cfdf7cba5cb2de4fc91758bc5ea37b19294b64cb1573c92f3",
+    "vendor/bionilux/scripts/prepare-rootfs.sh": "6a8ceb3c7118f0443a493e609d907265ea84198f5608498136bcf42c2d23b414",
     "vendor/bionilux/src/analyzer/elf.rs": "d040eb75e64d3d10a892c7730afd980b73057bc1bcdc1fb6edb37decf0e67562",
     "vendor/bionilux/src/analyzer/mod.rs": "fb46815d79f679a9cb4760f954ce86948fb0225f7e53133ac5a7ec090582acfe",
     "vendor/bionilux/src/debug.rs": "67aa794fe894a5275c982f01e235deb0fd4cd657f89701f660980d0b8ea6652e",
@@ -40,25 +40,25 @@
     "vendor/bionilux/src/launcher/resolve.rs": "3728160952c6e4fd566aba8fe0167db7311247c59d8f70dac1c9efc01c560e55",
     "vendor/bionilux/src/launcher/rootfs.rs": "bac13a04957bedd3925a8c5c330f1cf22881b386af96e15cc37fd7da1ceeef7e",
     "vendor/bionilux/src/main.rs": "57f1483a9a255719af882f6e21b380e23957f48864021f2342648bd13af3bdf2",
-    "vendor/bionilux/src/preload/hooks.c": "79fd840efe3d6b36ba24c845e3a49e34918209a01f48e3a70a08986dca41ec3e",
+    "vendor/bionilux/src/preload/hooks.c": "82bbdd5ca18c9c02e353f5b82c7984616f5a1999fbbf1f4f00cdb24f013bd63a",
     "vendor/dsh-linux-runtime/LICENSE": "e9f4502fb52418dcd3e320d8d15e1bd7b43094ec3f2fdd5c33dd88f5a2ba85d9",
     "vendor/dsh-linux-runtime/README.md": "66eff69403664f1aa1986f86a6099625223bd8990fc34af3eed98e4ee050bc51",
     "vendor/dsh-linux-runtime/lib/index.js": "be6fd25835287096cfeafc3e0a0a67ea2f8d9b208db3c20388fed2b80ce8fb49",
     "vendor/dsh-linux-runtime/modules/asset-installer.js": "036774735e016d605cecf91093384371903129ef15b17c7dd8927f9acdc8d7e1",
-    "vendor/dsh-linux-runtime/modules/manager.js": "a08f884fedf1e1bd908a626964f33e4adc75ce9666c346b91118d90c07ef3ea1",
-    "vendor/dsh-linux-runtime/modules/manifest.js": "c16d3ea1bce648b4f8d806b8c54b77b438307761c5b7e4f982e3eb1b10104133",
-    "vendor/dsh-linux-runtime/package.json": "c955c49379319ffbe7402de1a58e3907d60c5d5355f714de4b011cbd50910158",
-    "vendor/dsh-linux-runtime/test/manager.test.mjs": "6e84568bdefcf042ce9d8b2a3ddb42d81bfa09f66848c4ff8ff1cfdf09bc7a81",
-    "plugins/dsh-linux-bootstrap/package.json": "45bd0545566fbaa489ca88a64d2f4d61310c5ac199236e5a15d4997ae91f20fb",
+    "vendor/dsh-linux-runtime/modules/manager.js": "9e655e1804381a31b81c50e9301ec912972ebe5739ad6d035d5125988ad72e23",
+    "vendor/dsh-linux-runtime/modules/manifest.js": "81845a1258b64d76b6406070db36e2c6b3e62fe57a19a3c0393df6f2e31f53bd",
+    "vendor/dsh-linux-runtime/package.json": "80d7309bf0ec9a57491d9faeb09164ce5dc1f0199c2d46ab34dbe89c4d801aa5",
+    "vendor/dsh-linux-runtime/test/manager.test.mjs": "e6bc8aafe95d7435d86111ca63a68fb4f69cb0613c6eca8c1ee89b68110fbad4",
+    "plugins/dsh-linux-bootstrap/package.json": "4c6b8ae1aac2741a355331bd27a7b5d24006ceee67f5ed14bd5b665260c623e7",
     "plugins/dsh-linux-bootstrap/client/index.js": "4576301803d5eda59b76dfff62c7a2cd67cd05d65a25c58df12f3769e3f382cc",
     "plugins/dsh-linux-bootstrap/src/asset-bundle.js": "7e32ce0f57ee0a7f75dfd2d2af6ff61357d63b6c34e4f0dbf7aa23cf4300e416",
     "plugins/dsh-linux-bootstrap/src/github.js": "7b6369b5910ecb3e8b49f75a4dae3ca60ceac2d4164bf7f05f71c81803aa110c",
-    "plugins/dsh-linux-bootstrap/src/index.js": "ff442ded7b91de67f48b383d95260312cf484bd1367c8c09f3d584e6da3ab1c2",
+    "plugins/dsh-linux-bootstrap/src/index.js": "ac2dbb4aee91eef1fed59c6829a694a83be4990393dfc42240e366d14f6f9767",
     "plugins/dsh-linux-bootstrap/src/manifest.js": "a9b8512e24dfbb1b225c2bc260d3d0496b7e8834ef975d17c69355baf1911067",
     "plugins/dsh-linux-bootstrap/src/routes.js": "678391176bcd81ba6cbbbab293a4731d07e37e99c51178d7605821eac6aa5bb9",
     "plugins/dsh-linux-bootstrap/src/status.js": "494238e39094999e44105d1c56ca562f88ce3e65146bd3070806d4c82dd98f7b",
     "plugins/dsh-linux-bootstrap/src/version.js": "d0131f71b60ff38183070ddd3ef7142a98ae8a2cb54e2a57b725fa2e0d6b3636",
-    "plugins/dsh-linux-bootstrap/package-lock.json": "3a2222cddbde59a7bfb0ad851230133ff841d294e23c9b06a0fa83811de79ba3",
+    "plugins/dsh-linux-bootstrap/package-lock.json": "d03ed77469a70eb3248d9c64575ba8b490c02c417497e86e724acd663bf99267",
     "plugins/dsh-linux-bootstrap/build.mjs": "5f416603bd54c216ef30bc2e9211c38373b2b967e92fb2e7ccb72e332e5b03bc",
     "plugins/dsh-linux-bootstrap/build-client.mjs": "43e1a6469c3244ccd6baad3b13ced28dc379f843d6e902670315af0b8ad64c20",
     "plugins/dsh-linux-bootstrap/README.md": "b6a54ef5116942484304b8ea31da9bf514a22dcb6496ce2cd99aaadc82db8fb2"
@@ -70,11 +70,11 @@
     },
     "vendor/dsh-linux-runtime/modules/manager.js": {
       "upstreamSha256": "e7da654488bc9b26d500b2316e16c145a7239d0e8f052621bf3fc220ccad86d3",
-      "reason": "Bound captured output and process-group termination; validate the in-app Termux library path, derive the complete termux-exec host environment, and positively identify GNU find/sed/wc before Android rootfs preparation."
+      "reason": "Bound captured output and process-group termination; separate Termux host-tool setup from direct APK nativeLibraryDir Bionilux execution; validate the packaged launcher and matching glibc loader before asset downloads; preserve the native launcher path for guest re-entry; identify GNU host tools even when argv[0] is an absolute path; and pass current safe Android DNS into rootfs preparation and each guest process."
     },
     "vendor/dsh-linux-runtime/test/manager.test.mjs": {
       "upstreamSha256": "4549fefea91b30dfceefab3a2a0418270da4f5ce7c5ecb9b4264081ec2607c02",
-      "reason": "Cover bounded subprocess behavior, all three host environment entry points, fail-closed missing shim behavior, and toybox false-success rejection."
+      "reason": "Cover bounded subprocess behavior, Termux host environment and the separate APK nativeLibraryDir launcher/loader environment, missing native asset and EACCES preflight negatives before downloads, GNU tool identity, current IPv4/IPv6 DNS propagation, network changes, and no-resolver clearing."
     },
     "vendor/dsh-linux-runtime/README.md": {
       "upstreamSha256": "91a18de24c9ceb4f5aba6ce7b28d0e769ae26e1178d529d14e139b437214b187",
@@ -82,15 +82,15 @@
     },
     "plugins/dsh-linux-bootstrap/package.json": {
       "upstreamSha256": "350dbe6b61e96c4723aec5414a1b7d33fd7ad249852f95908178ad4085dfd0db",
-      "reason": "Register the built-in client bundle and exact esbuild dependency; retain the local 0.5.1 version bump while upstream provenance remains 0.5.0."
+      "reason": "Bump the local bootstrap package identity to 0.5.3 alongside the source-built Linux release while retaining its internal-only packaging policy and dependency set."
     },
     "plugins/dsh-linux-bootstrap/src/index.js": {
       "upstreamSha256": "27708c714ba0a102a89a72611443c144a107307686146acc49b9fa4b4c1ba4b2",
-      "reason": "Persist sanitized install diagnostics; direct users to linux-bootstrap-state.json for detailed failures and report the local bootstrap version as 0.5.1."
+      "reason": "Persist sanitized Linux install diagnostics and report the local bootstrap identity as 0.5.3 for the matching source-built Linux release; behavior is unchanged in this release."
     },
     "plugins/dsh-linux-bootstrap/package-lock.json": {
       "upstreamSha256": "0000000000000000000000000000000000000000000000000000000000000000",
-      "reason": "Keep deterministic internal package lock and synchronize its root version with the local 0.5.1 bootstrap package."
+      "reason": "Keep the deterministic internal package lock and synchronize its root package version to 0.5.3 without changing dependencies."
     },
     "plugins/dsh-linux-bootstrap/build.mjs": {
       "upstreamSha256": "0000000000000000000000000000000000000000000000000000000000000000",
@@ -110,15 +110,23 @@
     },
     "vendor/dsh-linux-runtime/package.json": {
       "upstreamSha256": "1d65abf96889a13f9bfce9266f44839c1957ffc5bc6691fa047cb6061041c476",
-      "reason": "Bump the locally built Linux runtime package identity to 0.5.1 with the matching source-built Linux asset release."
+      "reason": "Bump the locally built Linux runtime package identity to 0.5.3 for the APK native launcher/loader execution entry and matching Linux release assets."
     },
     "vendor/dsh-linux-runtime/modules/manifest.js": {
       "upstreamSha256": "1722dd47005c62fad20ec22ddb710bbff72f4a1bc5fdbee7199bb73e31185971",
-      "reason": "Bump the runtime package metadata to 0.5.1 with the matching source-built Linux asset release."
+      "reason": "Bump the runtime package metadata to 0.5.3 for the APK native launcher/loader execution entry and matching Linux release assets."
     },
     "vendor/bionilux/src/launcher/config.rs": {
       "upstreamSha256": "9eb9451d020a44281547e08b60e1f223814eeb15e148fdbf4bf7477d00066184",
       "reason": "Classify Termux app paths and exec-interception controls as host-only variables so they cannot leak into the guest."
+    },
+    "vendor/bionilux/src/preload/hooks.c": {
+      "upstreamSha256": "79fd840efe3d6b36ba24c845e3a49e34918209a01f48e3a70a08986dca41ec3e",
+      "reason": "Support IPv4/IPv6 Android DNS, fail closed when no current resolver exists, and copy regular guest files when Android refuses link/linkat; use O_NOFOLLOW and verify the opened inode before copying, while preserving exclusive creation, metadata, and failure semantics for unsupported link cases."
+    },
+    "vendor/bionilux/scripts/prepare-rootfs.sh": {
+      "upstreamSha256": "3de09edf3aeeb31cfdf7cba5cb2de4fc91758bc5ea37b19294b64cb1573c92f3",
+      "reason": "Add explicit DNS input and no-DNS modes so Android can install current resolvers or clear stale rootfs resolver entries when no safe resolver is available."
     }
   }
 }

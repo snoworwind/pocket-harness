@@ -54,6 +54,9 @@ jobs:
         run: |
           python3 -m unittest discover -s scripts/source-build -p 'test_*.py' -v
           node --test scripts/source-build/*.test.mjs scripts/check-apk-signatures.test.mjs scripts/resolve-version-suffix.test.mjs scripts/tests/main-frame-bridge.test.mjs scripts/tests/engine-private-transport.test.mjs
+          node scripts/source-build/check-linux-native-libraries.mjs --self-test
+          python3 scripts/source-build/verify-linux-native-apk.py --self-test
+          node --test vendor/dsh-linux-runtime/test/manager.test.mjs
           node scripts/source-build/restore-effective-engine-overlay.mjs --self-test
           node scripts/source-build/restore-effective-engine-overlay.mjs --self-test-negative
           node scripts/source-build/reclaim-build-disk.mjs --self-test

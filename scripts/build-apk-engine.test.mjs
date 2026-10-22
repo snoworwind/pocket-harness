@@ -123,6 +123,25 @@ test('release mode preserves existing intermediates when clean is not requested'
   assert.equal(readFileSync(marker, 'utf8'), 'existing')
 })
 
+test('source-built Linux native library directory is passed to Gradle as an absolute path', (t) => {
+  const f = fixture(t)
+  const nativeLibraryDir = join(f.root, 'linux-build', 'native-libs')
+  let gradleArgs
+  assembleApk({
+    snapshot: f.snapshot, apkDir: f.apkDir, outputDir: f.outputDir,
+    artifactName: 'native-loader.apk', linuxNativeLibraryDir: nativeLibraryDir, log() {},
+  }, (_command, args) => {
+    if (args[0]?.endsWith('check-snapshot-fingerprint.mjs')) return { status: 0 }
+    if (args[0]?.endsWith('build-hard-manifest.mjs')) return { status: 0 }
+    gradleArgs = args
+    const built = join(f.apkDir, 'app', 'build', 'outputs', 'apk', 'release', 'app-release.apk')
+    mkdirSync(join(built, '..'), { recursive: true })
+    writeFileSync(built, 'release-apk')
+    return { status: 0 }
+  })
+  assert.ok(gradleArgs.includes(`-PlinuxNativeLibraryDir=${resolve(nativeLibraryDir)}`))
+})
+
 test('every assemble removes stale APK output before Gradle so a zero-work success cannot deliver it', (t) => {
   const f = fixture(t)
   const releaseOutput = join(f.apkDir, 'app', 'build', 'outputs', 'apk', 'release')

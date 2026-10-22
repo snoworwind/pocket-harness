@@ -52,6 +52,8 @@ export const COMPONENTS = Object.freeze({
     'scripts/source-build/collect-linux-licenses.py',
     'scripts/source-build/prepare-linux-snapshot-bundle.mjs',
     'scripts/source-build/check-linux-sources.mjs',
+    'scripts/source-build/check-linux-native-libraries.mjs',
+    'scripts/source-build/verify-linux-native-apk.py',
     'vendor/bionilux',
     'vendor/dsh-linux-runtime',
   ],

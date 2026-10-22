@@ -9,7 +9,7 @@ import { compareVersions, parseVersion } from './version.js'
 export const name = 'dsh-linux-bootstrap'
 export const inject = ['linuxPluginHost', 'linuxBootstrapConfig']
 export const DEFAULT_RUNTIME_ID = 'debian-minimal'
-export const BOOTSTRAP_VERSION = '0.5.1'
+export const BOOTSTRAP_VERSION = '0.5.3'
 export const STATE_FILE_NAME = 'linux-bootstrap-state.json'
 const SOURCE_MANIFEST_SHA256 = Symbol('source-manifest-sha256')
 const isManager = (value) => value && typeof value.install === 'function' && typeof value.uninstall === 'function'

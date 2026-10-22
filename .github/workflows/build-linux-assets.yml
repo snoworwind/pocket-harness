@@ -7,6 +7,8 @@ on:
       - 'vendor/dsh-linux-runtime/**'
       - 'plugins/dsh-linux-bootstrap/**'
       - 'scripts/source-build/*linux*'
+      - 'scripts/source-build/test_prepare_rootfs_dns.py'
+      - 'scripts/source-build/test_bionilux_preload_links.py'
       - '.github/workflows/build-linux-assets.yml'
 permissions:
   contents: read
@@ -19,6 +21,13 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with: { node-version: '24' }
+      - name: Compile Bionilux preload hooks for Android ARM64
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu
+          aarch64-linux-gnu-gcc -shared -fPIC -O2 -Wall -Wextra -Werror \
+            -o "$RUNNER_TEMP/libbionilux_preload.so" \
+            vendor/bionilux/src/preload/hooks.c -pthread -ldl
       - name: Verify source import and controlled tamper rejection
         run: |
           node scripts/source-build/check-linux-sources.mjs --self-test
@@ -29,8 +38,12 @@ jobs:
           CARGO_TARGET_DIR="$RUNNER_TEMP/linux-host-target" CARGO_PROFILE_DEV_CODEGEN_UNITS=1 rustup run "$rust" cargo test --locked --jobs 8 --manifest-path vendor/bionilux/Cargo.toml
       - name: Runtime manager and manifest regressions
         run: node --test vendor/dsh-linux-runtime/test/*.test.mjs
-      - name: Linux asset packager and license collection regressions
-        run: python3 -m unittest discover -s scripts/source-build -p 'test_*linux*.py' -v
+      - name: Linux asset, preload hook, DNS and license regressions
+        run: |
+          python3 -m unittest discover -s scripts/source-build -p 'test_*linux*.py' -v
+          python3 -m unittest \
+            scripts.source-build.test_prepare_rootfs_dns \
+            scripts.source-build.test_bionilux_preload_links -v
   build:
     if: github.event_name == 'workflow_dispatch'
     needs: validate

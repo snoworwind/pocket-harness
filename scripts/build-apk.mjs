@@ -136,6 +136,7 @@ const SUFFIX = opt('suffix', SUFFIX_DEFAULT)
 const SKIP_INJECT = args.includes('--skip-inject')
 const DRY_RUN = args.includes('--dry-run')
 const SNAP = opt('snapshot', '')
+const linuxNativeLibraryDir = join(ROOT, '.deploy-tmp', 'linux-build', 'native-libs')
 
 if (!['arm64', 'x86_64'].includes(ABI)) { console.error(`未知 ABI: ${ABI}`); process.exit(2) }
 
@@ -171,6 +172,10 @@ try {
 
   // ---- 1. 前置：基座/插件/vendor 在场 ----
   requires('snapshot 源', snapSrc)
+  if (ABI === 'arm64') {
+    requires('Linux APK native libraries', join(linuxNativeLibraryDir, 'arm64-v8a', 'libpocketharness_bionilux.so'))
+    run('node', [gate('source-build/check-linux-native-libraries.mjs'), linuxNativeLibraryDir])
+  }
   pluginDirs.forEach((p) => requires('插件', p))
   requires('vendor undo', join(undo, 'package.json'))
   requires('vendor market', join(market, 'package.json'))
@@ -379,11 +384,16 @@ try {
     apkDir,
     outputDir: OUT,
     artifactName: name,
+    linuxNativeLibraryDir: ABI === 'arm64' ? linuxNativeLibraryDir : undefined,
     suffix: SUFFIX,
     clean: true,
     fingerprintGate: gate('check-snapshot-fingerprint.mjs'),
     log,
   }, (cmd, argv, opts) => spawnSync(cmd, argv, { cwd: ROOT, encoding: 'utf8', stdio: 'inherit', ...opts }))
+  if (ABI === 'arm64') {
+    log('核对 APK 内原生 Linux launcher/loader 字节…')
+    run(PYTHON, [gate('source-build/verify-linux-native-apk.py'), finalApk, linuxNativeLibraryDir])
+  }
   // 内嵌快照「真的能解压」门禁（0.14.7 / task-9 D-4）：必须紧跟 assembleApk —— 那时
   // assets/snapshot.tar.xz 正是本次被复制进 APK 的字节。判据与本地链同源（同一份脚本）。
   log('门禁：内嵌快照可解压（设备同源 streaming 解码器全量解压）…')

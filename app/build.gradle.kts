@@ -5,6 +5,7 @@ plugins {
 
 val pocketReleaseSigningAvailable = !providers.environmentVariable("POCKET_SIGNING_KEYSTORE_PATH").orNull.isNullOrBlank() &&
   !providers.environmentVariable("POCKET_SIGNING_KEYSTORE_PASSWORD").orNull.isNullOrBlank()
+val linuxNativeLibraryDir = providers.gradleProperty("linuxNativeLibraryDir").orNull
 
 android {
   namespace = "com.snoworwind.pocketharness"
@@ -13,9 +14,9 @@ android {
   defaultConfig {
     applicationId = "com.snoworwind.pocketharness"
     minSdk = 26
-    // targetSdk 34: Android 15+ forbids exec of app-data ELF for targetSdk 35+
-    // (the embedded engine, bash, and every child command would need linker64
-    // wrappers); 34 keeps native exec working on Android 15/16 devices.
+    // Keep targetSdk 34 for the product's Android compatibility/security baseline.
+    // Linux guest ELFs live in writable app data, so Bionilux enters through the
+    // APK-installed native library directory and the matching glibc loader.
     targetSdk = 34
     // 0.14.8: the source-built engine moves to 0.2.1-rc.2; preserve monotonic upgrade identity.
     // All delivered APKs still require v1/v2/v3 signatures.
@@ -41,6 +42,16 @@ android {
   androidResources {
     // snapshot.tar.xz is already xz-compressed; double-compressing it breaks openFd.
     noCompress += "xz"
+  }
+
+  // Package the source-built ARM64 Bionilux launcher and matching glibc loader
+  // as extracted APK native libraries. Android permits app execution from this
+  // PackageManager-owned location while blocking direct execve from filesDir.
+  packaging {
+    jniLibs {
+      useLegacyPackaging = true
+      keepDebugSymbols += "**/libpocketharness_*.so"
+    }
   }
 
   signingConfigs {
@@ -97,7 +108,22 @@ android {
   }
 }
 
+if (!linuxNativeLibraryDir.isNullOrBlank()) {
+  android.sourceSets.getByName("main").jniLibs.srcDir(file(linuxNativeLibraryDir))
+}
+
 tasks.configureEach {
+  if (name == "mergeReleaseNativeLibs" && !linuxNativeLibraryDir.isNullOrBlank()) {
+    doFirst {
+      val libraryRoot = file(linuxNativeLibraryDir)
+      for (name in listOf("libpocketharness_bionilux.so", "libpocketharness_glibc_loader.so")) {
+        val library = libraryRoot.resolve("arm64-v8a/$name")
+        if (!library.isFile || !library.canExecute()) {
+          throw GradleException("Missing executable Linux APK native library: $library")
+        }
+      }
+    }
+  }
   if (name == "validateSigningRelease") {
     doFirst {
       if (!pocketReleaseSigningAvailable) {

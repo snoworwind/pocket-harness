@@ -10,6 +10,6 @@
   "debianReleaseKey13Fingerprint": "41587F7DB8C774BCCF131416762F67A0B2C39DE4",
   "ndk": "r30",
   "ndkSha1": "5107f898313790e449e87eee2183d9a20602dee9",
-  "runtimeVersion": "0.5.1",
+  "runtimeVersion": "0.5.3",
   "minimumAppVersion": "0.14.0"
 }

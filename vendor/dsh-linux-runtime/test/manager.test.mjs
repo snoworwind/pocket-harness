@@ -1,7 +1,7 @@
 import test, { after } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 
@@ -124,7 +124,7 @@ function makeIo(fixture, { onExtract } = {}) {
  * cancels it — that is what the cutover gate has to do before it replaces an
  * active rootfs.
  */
-function makeRunner({ instant, healthProbeResult = { stdout: 'v24.22.0', stderr: '', exitCode: 0 }, commandResult = { stdout: 'ok', stderr: '', exitCode: 0 }, hostToolProbeResults = {}, onHealthProbe } = {}) {
+function makeRunner({ instant, healthProbeResult = { stdout: 'v24.22.0', stderr: '', exitCode: 0 }, nativeLauncherResult = { stdout: 'BIONILUX_VERSION=0.4.2 | HOST_ARCH=Aarch64\n', stderr: '', exitCode: 0 }, commandResult = { stdout: 'ok', stderr: '', exitCode: 0 }, hostToolProbeResults = {}, onHealthProbe } = {}) {
   const calls = [];
   const defaultHostToolProbeResults = {
     find: { stdout: 'find (GNU findutils) 4.11.0\n', stderr: '', exitCode: 0 },
@@ -157,9 +157,10 @@ function makeRunner({ instant, healthProbeResult = { stdout: 'v24.22.0', stderr:
           );
           if (isInstant(spec)) {
             const healthProbe = spec.args?.[0] === 'node' && spec.args?.[1] === '--version';
+            const nativeLauncherProbe = spec.args?.[0] === '--print-config';
             const hostToolProbe = spec.args?.[0] === '--version' ? toolProbeResults[spec.file] : undefined;
             if (healthProbe) onHealthProbe?.(spec);
-            settle(healthProbe ? healthProbeResult : hostToolProbe ?? commandResult);
+            settle(healthProbe ? healthProbeResult : nativeLauncherProbe ? nativeLauncherResult : hostToolProbe ?? commandResult);
           }
         }),
         cancel: () => {
@@ -193,6 +194,17 @@ let counter = 0;
 function tempDir() {
   counter += 1;
   return path.join(temporaryRoot, `case-${counter}`);
+}
+
+async function makeAndroidNativeLibraries(dataDir) {
+  const directory = path.join(dataDir, 'native-libs');
+  await mkdir(directory, { recursive: true });
+  for (const name of ['libpocketharness_bionilux.so', 'libpocketharness_glibc_loader.so']) {
+    const file = path.join(directory, name);
+    await writeFile(file, 'test native executable');
+    await chmod(file, 0o755);
+  }
+  return directory;
 }
 
 after(async () => {
@@ -536,20 +548,23 @@ test('the guest environment is derived, not inherited from the host', async () =
   assert.equal(spec.args[2], 'echo hi');
 });
 
-test('Termux exec environment reaches host tools and launcher from the in-app snapshot', async () => {
+test('Termux exec environment reaches host tools while Bionilux uses APK native entrypoints', async () => {
   const dataDir = tempDir();
   const fixture = makeManifest();
   const hostLibraryPath = path.join(dataDir, 'usr', 'lib');
   await mkdir(hostLibraryPath, { recursive: true });
   const preload = path.join(hostLibraryPath, 'libtermux-exec-ld-preload.so');
   await writeFile(preload, 'test preload');
+  const nativeLibraryDir = await makeAndroidNativeLibraries(dataDir);
   const keys = [
-    'DSH_FILES_DIR', 'ANDROID_ROOT', 'LD_LIBRARY_PATH', 'LD_PRELOAD', 'PATH',
+    'DSH_FILES_DIR', 'DSH_LINUX_NATIVE_LIBRARY_DIR', 'ANDROID_ROOT', 'LD_LIBRARY_PATH', 'LD_PRELOAD', 'PATH',
     'TERMUX__ROOTFS', 'TERMUX__PREFIX', 'TERMUX_APP__DATA_DIR',
     'TERMUX_EXEC__SYSTEM_LINKER_EXEC__MODE', 'TERMUX_EXEC__EXECVE_CALL__INTERCEPT',
+    'BIONILUX_DNS_SERVERS',
   ];
   const previous = Object.fromEntries(keys.map(key => [key, process.env[key]]));
   process.env.DSH_FILES_DIR = dataDir;
+  process.env.DSH_LINUX_NATIVE_LIBRARY_DIR = nativeLibraryDir;
   process.env.ANDROID_ROOT = '/system';
   process.env.LD_LIBRARY_PATH = '/untrusted/inherited/lib';
   process.env.LD_PRELOAD = '/untrusted/inherited/preload.so';
@@ -558,13 +573,23 @@ test('Termux exec environment reaches host tools and launcher from the in-app sn
   process.env.TERMUX_APP__DATA_DIR = '/untrusted/app-data';
   process.env.TERMUX_EXEC__SYSTEM_LINKER_EXEC__MODE = 'never';
   process.env.TERMUX_EXEC__EXECVE_CALL__INTERCEPT = '0';
+  process.env.BIONILUX_DNS_SERVERS = '203.0.113.99';
   try {
-    const { manager, runner } = makeManager(fixture, { dataDir });
+    await writeFile(path.join(dataDir, 'linux-dns-servers'), '1.1.1.1\n2001:4860:4860::8888\n');
+    const { manager, runner } = makeManager(fixture, {
+      dataDir,
+      runnerOptions: {
+        hostToolProbeResults: {
+          sed: { stdout: '/data/user/0/com.example/files/usr/bin/sed (GNU sed) 4.10\n', stderr: '', exitCode: 0 },
+        },
+      },
+    });
     await manager.install(fixture.manifest);
 
     const prepare = runner.calls.find(({ spec }) => spec.file === 'sh')?.spec;
     const findProbe = runner.calls.find(({ spec }) => spec.file === 'find' && spec.args?.[0] === '--version')?.spec;
     const probe = runner.calls.find(({ spec }) => spec.args?.[0] === 'node' && spec.args?.[1] === '--version')?.spec;
+    const nativeLauncherProbe = runner.calls.find(({ spec }) => spec.args?.[0] === '--print-config')?.spec;
     assert.ok(prepare, 'rootfs preparation must invoke the host shell');
     assert.ok(findProbe, 'Android install must positively identify GNU find before rootfs preparation');
     for (const tool of ['find', 'sed', 'wc']) {
@@ -574,6 +599,11 @@ test('Termux exec environment reaches host tools and launcher from the in-app sn
       );
     }
     assert.ok(probe, 'installation must probe the runtime through Bionilux');
+    assert.ok(nativeLauncherProbe, 'installation must prove the APK native Bionilux launcher starts before downloading assets');
+    assert.equal(nativeLauncherProbe.file, path.join(nativeLibraryDir, 'libpocketharness_bionilux.so'));
+    assert.equal(nativeLauncherProbe.env.BIONILUX_LOADER, path.join(nativeLibraryDir, 'libpocketharness_glibc_loader.so'));
+    assert.ok(prepare.args.includes('--dns'), 'rootfs preparation must receive current Android DNS servers');
+    assert.ok(prepare.args.includes('1.1.1.1 2001:4860:4860::8888'));
     assert.equal(prepare.env.LD_LIBRARY_PATH, hostLibraryPath, 'derive the library directory from DSH_FILES_DIR');
     assert.equal(prepare.env.LD_PRELOAD, preload);
     assert.equal(prepare.env.TERMUX_EXEC__SYSTEM_LINKER_EXEC__MODE, 'force');
@@ -581,18 +611,125 @@ test('Termux exec environment reaches host tools and launcher from the in-app sn
     assert.equal(prepare.env.TERMUX__ROOTFS, dataDir);
     assert.equal(prepare.env.TERMUX__PREFIX, path.join(dataDir, 'usr'));
     assert.equal(prepare.env.TERMUX_APP__DATA_DIR, path.dirname(dataDir));
+    assert.equal(prepare.env.BIONILUX_DNS_SERVERS, '1.1.1.1,2001:4860:4860::8888');
     assert.equal(prepare.env.PATH, `${path.join(dataDir, 'usr', 'bin')}${path.delimiter}/system/bin`);
-    assert.equal(probe.env.LD_LIBRARY_PATH, hostLibraryPath);
-    assert.equal(probe.env.LD_PRELOAD, preload);
-    assert.equal(probe.env.TERMUX__PREFIX, path.join(dataDir, 'usr'));
+    assert.equal(probe.file, path.join(nativeLibraryDir, 'libpocketharness_bionilux.so'));
+    assert.equal(probe.env.BIONILUX_LOADER, path.join(nativeLibraryDir, 'libpocketharness_glibc_loader.so'));
+    for (const leaked of ['LD_LIBRARY_PATH', 'LD_PRELOAD', 'TERMUX__ROOTFS', 'TERMUX__PREFIX', 'TERMUX_APP__DATA_DIR', 'TERMUX_EXEC__EXECVE_CALL__INTERCEPT']) {
+      assert.equal(probe.env[leaked], undefined, `${leaked} must not intercept the APK native Bionilux launcher`);
+    }
 
     runner.calls.length = 0;
     await manager.execute({ command: 'echo guest' });
     const launcher = runner.calls.at(-1).spec;
-    assert.equal(launcher.env.LD_LIBRARY_PATH, hostLibraryPath, 'the launcher itself needs the host loader path');
-    assert.equal(launcher.env.LD_PRELOAD, preload, 'the launcher needs termux-exec for host-side execve interception');
-    assert.equal(launcher.env.TERMUX_EXEC__EXECVE_CALL__INTERCEPT, '1');
-    assert.equal(launcher.env.TERMUX_APP__DATA_DIR, path.dirname(dataDir));
+    assert.equal(launcher.file, path.join(nativeLibraryDir, 'libpocketharness_bionilux.so'));
+    assert.equal(launcher.env.BIONILUX_LOADER, path.join(nativeLibraryDir, 'libpocketharness_glibc_loader.so'));
+    for (const leaked of ['LD_LIBRARY_PATH', 'LD_PRELOAD', 'TERMUX__ROOTFS', 'TERMUX__PREFIX', 'TERMUX_APP__DATA_DIR', 'TERMUX_EXEC__EXECVE_CALL__INTERCEPT']) {
+      assert.equal(launcher.env[leaked], undefined, `${leaked} must not intercept the APK native Bionilux launcher`);
+    }
+    assert.equal(launcher.env.BIONILUX_DNS_SERVERS, '1.1.1.1,2001:4860:4860::8888');
+
+    await writeFile(path.join(dataDir, 'linux-dns-servers'), '9.9.9.9\n');
+    runner.calls.length = 0;
+    await manager.execute({ command: 'echo updated dns' });
+    assert.equal(runner.calls.at(-1).spec.env.BIONILUX_DNS_SERVERS, '9.9.9.9', 'guest spawn must reread DNS after network changes');
+  } finally {
+    for (const [key, value] of Object.entries(previous)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+});
+
+test('Android Linux install explicitly clears stale rootfs DNS when no safe resolver is available', async () => {
+  const dataDir = tempDir();
+  const fixture = makeManifest({
+    rootfsFiles: {
+      ...ARCHIVE_FILES.rootfs,
+      'etc/resolv.conf': 'nameserver 203.0.113.53\n',
+    },
+  });
+  const hostLibraryPath = path.join(dataDir, 'usr', 'lib');
+  await mkdir(hostLibraryPath, { recursive: true });
+  await writeFile(path.join(hostLibraryPath, 'libtermux-exec-ld-preload.so'), 'test preload');
+  const nativeLibraryDir = await makeAndroidNativeLibraries(dataDir);
+  const keys = ['DSH_FILES_DIR', 'DSH_LINUX_NATIVE_LIBRARY_DIR', 'ANDROID_ROOT', 'BIONILUX_DNS_SERVERS'];
+  const previous = Object.fromEntries(keys.map(key => [key, process.env[key]]));
+  process.env.DSH_FILES_DIR = dataDir;
+  process.env.DSH_LINUX_NATIVE_LIBRARY_DIR = nativeLibraryDir;
+  process.env.ANDROID_ROOT = '/system';
+  process.env.BIONILUX_DNS_SERVERS = '203.0.113.99';
+  try {
+    const { manager, runner } = makeManager(fixture, { dataDir });
+    await manager.install(fixture.manifest);
+    const prepare = runner.calls.find(({ spec }) => spec.file === 'sh')?.spec;
+    assert.ok(prepare?.args.includes('--no-dns'), 'do not preserve a resolver from a prior network or asset');
+    assert.equal(prepare.env.BIONILUX_DNS_SERVERS, 'none', 'Bionilux must fail closed without a current resolver');
+
+    runner.calls.length = 0;
+    await manager.execute({ command: 'echo guest' });
+    assert.equal(runner.calls.at(-1).spec.env.BIONILUX_DNS_SERVERS, 'none');
+  } finally {
+    for (const [key, value] of Object.entries(previous)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+});
+
+test('Android install fails before downloading when APK native execution assets are missing', async () => {
+  const dataDir = tempDir();
+  const fixture = makeManifest();
+  const hostLibraryPath = path.join(dataDir, 'usr', 'lib');
+  await mkdir(hostLibraryPath, { recursive: true });
+  await writeFile(path.join(hostLibraryPath, 'libtermux-exec-ld-preload.so'), 'test preload');
+  const keys = ['DSH_FILES_DIR', 'DSH_LINUX_NATIVE_LIBRARY_DIR', 'ANDROID_ROOT'];
+  const previous = Object.fromEntries(keys.map(key => [key, process.env[key]]));
+  process.env.DSH_FILES_DIR = dataDir;
+  delete process.env.DSH_LINUX_NATIVE_LIBRARY_DIR;
+  process.env.ANDROID_ROOT = '/system';
+  try {
+    const { manager, io, runner } = makeManager(fixture, { dataDir });
+    await assert.rejects(manager.install(fixture.manifest), error => {
+      assert.equal(error.code, 'linux-host-exec-assets-unavailable');
+      assert.match(error.message, /APK native library directory is unavailable/);
+      return true;
+    });
+    assert.equal(runner.calls.length, 0, 'do not try app-private ELF execution when packaged native assets are missing');
+    assert.equal(io.stats.downloads.length, 0, 'fail before downloading Linux assets');
+  } finally {
+    for (const [key, value] of Object.entries(previous)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+});
+
+test('Android install fails before downloading when the packaged Bionilux launcher cannot execute', async () => {
+  const dataDir = tempDir();
+  const fixture = makeManifest();
+  const hostLibraryPath = path.join(dataDir, 'usr', 'lib');
+  await mkdir(hostLibraryPath, { recursive: true });
+  await writeFile(path.join(hostLibraryPath, 'libtermux-exec-ld-preload.so'), 'test preload');
+  const nativeLibraryDir = await makeAndroidNativeLibraries(dataDir);
+  const keys = ['DSH_FILES_DIR', 'DSH_LINUX_NATIVE_LIBRARY_DIR', 'ANDROID_ROOT'];
+  const previous = Object.fromEntries(keys.map(key => [key, process.env[key]]));
+  process.env.DSH_FILES_DIR = dataDir;
+  process.env.DSH_LINUX_NATIVE_LIBRARY_DIR = nativeLibraryDir;
+  process.env.ANDROID_ROOT = '/system';
+  try {
+    const { manager, io, runner } = makeManager(fixture, {
+      dataDir,
+      runnerOptions: { nativeLauncherResult: { stdout: '', stderr: 'EACCES: Permission denied', exitCode: 126 } },
+    });
+    await assert.rejects(manager.install(fixture.manifest), error => {
+      assert.equal(error.code, 'linux-host-exec-assets-unavailable');
+      assert.match(error.message, /native Bionilux launcher probe failed/);
+      assert.match(error.message, /Permission denied/);
+      return true;
+    });
+    assert.equal(runner.calls.length, 1, 'the APK native launcher probe is the only process attempted');
+    assert.equal(io.stats.downloads.length, 0, 'do not download assets before proving the APK native launcher works');
   } finally {
     for (const [key, value] of Object.entries(previous)) {
       if (value === undefined) delete process.env[key];
@@ -605,14 +742,16 @@ test('Android Linux install fails closed when the termux-exec shim is missing', 
   const dataDir = tempDir();
   const fixture = makeManifest();
   await mkdir(path.join(dataDir, 'usr', 'lib'), { recursive: true });
-  const keys = ['DSH_FILES_DIR', 'ANDROID_ROOT'];
+  const nativeLibraryDir = await makeAndroidNativeLibraries(dataDir);
+  const keys = ['DSH_FILES_DIR', 'DSH_LINUX_NATIVE_LIBRARY_DIR', 'ANDROID_ROOT'];
   const previous = Object.fromEntries(keys.map(key => [key, process.env[key]]));
   process.env.DSH_FILES_DIR = dataDir;
+  process.env.DSH_LINUX_NATIVE_LIBRARY_DIR = nativeLibraryDir;
   process.env.ANDROID_ROOT = '/system';
   try {
     const { manager, runner } = makeManager(fixture, { dataDir });
     await assert.rejects(manager.install(fixture.manifest), error => {
-      assert.equal(error.code, 'linux-termux-exec-environment-unavailable');
+      assert.equal(error.code, 'linux-termux-exec-environment-unavailable', error.message);
       assert.match(error.message, /Termux exec shim is unavailable/);
       return true;
     });
@@ -631,9 +770,11 @@ test('Android Linux install rejects toybox success instead of accepting false GN
   const hostLibraryPath = path.join(dataDir, 'usr', 'lib');
   await mkdir(hostLibraryPath, { recursive: true });
   await writeFile(path.join(hostLibraryPath, 'libtermux-exec-ld-preload.so'), 'test preload');
-  const keys = ['DSH_FILES_DIR', 'ANDROID_ROOT'];
+  const nativeLibraryDir = await makeAndroidNativeLibraries(dataDir);
+  const keys = ['DSH_FILES_DIR', 'DSH_LINUX_NATIVE_LIBRARY_DIR', 'ANDROID_ROOT'];
   const previous = Object.fromEntries(keys.map(key => [key, process.env[key]]));
   process.env.DSH_FILES_DIR = dataDir;
+  process.env.DSH_LINUX_NATIVE_LIBRARY_DIR = nativeLibraryDir;
   process.env.ANDROID_ROOT = '/system';
   try {
     const { manager, runner } = makeManager(fixture, {

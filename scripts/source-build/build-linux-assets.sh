@@ -40,6 +40,9 @@ rustup run "$RUST_VERSION" cargo metadata --locked --format-version=1 --filter-p
 python3 scripts/source-build/collect-linux-licenses.py "$WORK/provenance/cargo-metadata.json" "$WORK/backend/share/licenses"
 mkdir -p "$WORK/backend/bin" "$WORK/backend/lib" "$WORK/backend/scripts"
 install -m755 "$CARGO_TARGET_DIR/aarch64-linux-android/release/bionilux" "$WORK/backend/bin/bionilux"
+NATIVE_LIBS="$WORK/native-libs/arm64-v8a"
+mkdir -p "$NATIVE_LIBS"
+install -m755 "$WORK/backend/bin/bionilux" "$NATIVE_LIBS/libpocketharness_bionilux.so"
 aarch64-linux-gnu-gcc -shared -fPIC -O2 -Wall -Wextra -Werror -Wl,-soname,libbionilux_preload.so \
   -ffile-prefix-map="$ROOT"=/usr/src/pocket-harness -fdebug-prefix-map="$ROOT"=/usr/src/pocket-harness \
   -Wl,-rpath,/usr/lib/aarch64-linux-gnu -o "$WORK/backend/lib/libbionilux_preload.so" vendor/bionilux/src/preload/hooks.c -pthread -ldl
@@ -73,10 +76,43 @@ sudo mount -t proc proc "$ROOTFS/proc"
 sudo chroot "$ROOTFS" /debootstrap/debootstrap --second-stage
 test "$(sudo chroot "$ROOTFS" dpkg --print-architecture)" = arm64
 sudo chroot "$ROOTFS" /bin/bash -ec '/lib/ld-linux-aarch64.so.1 --version; /usr/bin/apt-get --version'
+sudo chroot "$ROOTFS" apt-mark hold libc6:arm64 libc-bin:arm64
+for package in libc6:arm64 libc-bin:arm64; do
+  if ! sudo chroot "$ROOTFS" dpkg --get-selections "$package" | awk '$2 == "hold" { found=1 } END { exit !found }'; then
+    echo "glibc loader package was not held: $package" >&2
+    exit 1
+  fi
+done
+libc6_version=$(sudo chroot "$ROOTFS" dpkg-query -W -f='${Version}' libc6:arm64)
+libc_bin_version=$(sudo chroot "$ROOTFS" dpkg-query -W -f='${Version}' libc-bin:arm64)
+test "$libc6_version" = "$libc_bin_version"
+printf 'libc6:arm64\t%s\theld\nlibc-bin:arm64\t%s\theld\n' \
+  "$libc6_version" "$libc_bin_version" > "$WORK/provenance/linux-loader-apt-holds.txt"
 cleanup_mounts
 trap - EXIT
 sudo rm -f "$ROOTFS/usr/bin/qemu-aarch64-static"
 sudo chroot "$ROOTFS" dpkg-query -W '-f=${binary:Package}\t${Version}\t${source:Package}\t${source:Version}\n' > "$WORK/provenance/debian-packages.tsv"
+# Android denies direct execve from the writable app files directory for the
+# app's target SDK. Package the matched glibc loader under APK nativeLibraryDir,
+# where Android labels installed native libraries as apk_data_file. Bionilux's
+# initial launcher is packaged there too so guest re-exec uses the same trusted
+# executable location instead of its private backend copy.
+ROOTFS_LOADER=$(realpath "$ROOTFS/lib/ld-linux-aarch64.so.1")
+case "$ROOTFS_LOADER" in
+  "$ROOTFS"/*) ;;
+  *) echo 'glibc loader resolved outside the built rootfs' >&2; exit 1 ;;
+esac
+test -f "$ROOTFS_LOADER"
+install -m755 "$ROOTFS_LOADER" "$NATIVE_LIBS/libpocketharness_glibc_loader.so"
+"$TC/bin/llvm-readelf" -h "$NATIVE_LIBS/libpocketharness_bionilux.so" | grep 'Machine:.*AArch64'
+"$TC/bin/llvm-readelf" -l "$NATIVE_LIBS/libpocketharness_bionilux.so" | grep '/system/bin/linker64'
+aarch64-linux-gnu-readelf -h "$NATIVE_LIBS/libpocketharness_glibc_loader.so" | grep 'Machine:.*AArch64'
+if aarch64-linux-gnu-readelf -l "$NATIVE_LIBS/libpocketharness_glibc_loader.so" | grep -q 'Requesting program interpreter'; then
+  echo 'glibc loader must be directly executable and have no PT_INTERP' >&2
+  exit 1
+fi
+sha256sum "$NATIVE_LIBS"/*.so > "$WORK/provenance/linux-native-libraries.sha256"
+node scripts/source-build/check-linux-native-libraries.mjs "$WORK/native-libs"
 find "$ROOTFS/var/cache/apt/archives" -type f -name '*.deb' -print0 | sort -z | xargs -0 -r sha256sum > "$WORK/provenance/debian-debs.sha256"
 # Keep future apt updates explicit, separate from the reproducible factory image.
 sudo tee "$ROOTFS/etc/apt/sources.list" >/dev/null <<'SOURCES'
@@ -119,5 +155,5 @@ cp "$WORK/input/debian-InRelease" "$WORK/provenance/"
 cp scripts/source-build/linux-inputs.json scripts/source-build/linux-source-manifest.json "$WORK/provenance/"
 printf '%s\n' "$(git rev-parse HEAD)" > "$WORK/provenance/project-source-commit.txt"
 tar --sort=name --mtime="@$EPOCH" --owner=0 --group=0 --numeric-owner -cJf "$WORK/provenance/linux-component-source.tar.xz" \
-  vendor/bionilux vendor/dsh-linux-runtime plugins/dsh-linux-bootstrap scripts/source-build/build-linux-assets.sh scripts/source-build/linux-inputs.json scripts/source-build/package-linux-assets.py
+  vendor/bionilux vendor/dsh-linux-runtime plugins/dsh-linux-bootstrap scripts/source-build/build-linux-assets.sh scripts/source-build/linux-inputs.json scripts/source-build/package-linux-assets.py scripts/source-build/check-linux-native-libraries.mjs
 echo "Built verified ARM64 Linux assets: $STAGE"

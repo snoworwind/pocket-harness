@@ -1260,8 +1260,23 @@ static int bn_copy_file(int fromfd, const char *from, int tofd, const char *to,
     static _Thread_local unlink_fn ru;
     REAL(ro, "openat"); REAL(ru, "unlinkat");
     if (!ro || !ru) { errno = ENOSYS; return -1; }
-    int in = ro(fromfd, from, O_RDONLY | O_CLOEXEC);
+    // The source was checked with fstatat before this open. Refuse a symlink
+    // swap and verify the opened inode still matches that checked file, so a
+    // concurrent guest cannot redirect the compatibility copy to another path.
+    int in = ro(fromfd, from, O_RDONLY | O_CLOEXEC | O_NOFOLLOW);
     if (in < 0) return -1;
+    struct stat opened;
+    if (fstat(in, &opened) != 0) {
+        int saved = errno;
+        close(in);
+        errno = saved;
+        return -1;
+    }
+    if (!S_ISREG(opened.st_mode) || opened.st_dev != st->st_dev || opened.st_ino != st->st_ino) {
+        close(in);
+        errno = ESTALE;
+        return -1;
+    }
     int out = ro(tofd, to, O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, 0600);
     if (out < 0) { int saved = errno; close(in); errno = saved; return -1; }
     char buf[65536];
@@ -1955,7 +1970,7 @@ typedef struct {
     unsigned long mtime_nsec;
     int check_countdown;
     int server_count;
-    struct sockaddr_in server[BN_DNS_MAXSRV];
+    struct sockaddr_storage server[BN_DNS_MAXSRV];
     int timeout_ms;
     int attempts;
     int ndots;
@@ -2012,13 +2027,36 @@ static void bn_mtime_of(const char *guest, unsigned long *sec, unsigned long *ns
     }
 }
 
-static void bn_dns_add_server(bn_dns_config *c, struct in_addr v4) {
-    if (c->server_count >= BN_DNS_MAXSRV) return;
-    struct sockaddr_in *s = &c->server[c->server_count++];
-    memset(s, 0, sizeof *s);
-    s->sin_family = AF_INET;
-    s->sin_port = htons(53);
-    s->sin_addr = v4;
+static int bn_dns_add_server(bn_dns_config *c, const char *address) {
+    if (c->server_count >= BN_DNS_MAXSRV) return 0;
+    struct sockaddr_in v4;
+    memset(&v4, 0, sizeof v4);
+    v4.sin_family = AF_INET;
+    v4.sin_port = htons(53);
+    if (inet_pton(AF_INET, address, &v4.sin_addr) == 1) {
+        struct sockaddr_storage *server = &c->server[c->server_count++];
+        memset(server, 0, sizeof *server);
+        memcpy(server, &v4, sizeof v4);
+        return 1;
+    }
+
+    struct sockaddr_in6 v6;
+    memset(&v6, 0, sizeof v6);
+    v6.sin6_family = AF_INET6;
+    v6.sin6_port = htons(53);
+    if (inet_pton(AF_INET6, address, &v6.sin6_addr) == 1) {
+        struct sockaddr_storage *server = &c->server[c->server_count++];
+        memset(server, 0, sizeof *server);
+        memcpy(server, &v6, sizeof v6);
+        return 1;
+    }
+    return 0;
+}
+
+static socklen_t bn_dns_server_len(const struct sockaddr_storage *server) {
+    if (server->ss_family == AF_INET) return sizeof(struct sockaddr_in);
+    if (server->ss_family == AF_INET6) return sizeof(struct sockaddr_in6);
+    return 0;
 }
 
 // Longest-prefix-free parse of the guest's resolver configuration. Only the
@@ -2037,11 +2075,9 @@ static void bn_dns_parse_config(bn_dns_config *c, char *text) {
         while (*arg == ' ' || *arg == '\t') arg++;
 
         if (strcmp(line, "nameserver") == 0 && more) {
-            struct in_addr v4;
-            if (inet_pton(AF_INET, arg, &v4) == 1)
-                bn_dns_add_server(c, v4);
-            // IPv6 nameservers are ignored: a working IPv4 resolver is
-            // universally available on Android and is enough for the lookup.
+            // Android can expose IPv6-only resolver lists (for example on a
+            // 464xlat or IPv6-only network), so retain either address family.
+            (void)bn_dns_add_server(c, arg);
         } else if (strcmp(line, "options") == 0 && more) {
             char *s2 = NULL;
             for (char *o = strtok_r(arg, " \t", &s2); o; o = strtok_r(NULL, " \t", &s2)) {
@@ -2091,16 +2127,24 @@ static void bn_dns_load(int force) {
     // The launcher may know better (it can see Android's per-network resolvers,
     // which are not in any file we can read from inside the guest).
     const char *env = bn_env("BIONILUX_DNS_SERVERS");
-    if (env) {
+    if (env && strcmp(env, "none") == 0) {
+        // Android currently has no usable DNS server. Do not fall back to the
+        // rootfs file, which may contain a resolver from the previous network.
+        bn_dns.server_count = 0;
+    } else if (env) {
         int had = 0;
         char *s2 = NULL;
         char copy[512];
         snprintf(copy, sizeof copy, "%s", env);
         for (char *t = strtok_r(copy, ", \t", &s2); t; t = strtok_r(NULL, ", \t", &s2)) {
-            struct in_addr v4;
-            if (inet_pton(AF_INET, t, &v4) == 1) {
-                if (!had) { bn_dns.server_count = 0; had = 1; }
-                bn_dns_add_server(&bn_dns, v4);
+            // Parse into a temporary config first so invalid tokens never
+            // clear the rootfs resolver configuration.
+            bn_dns_config parsed = {0};
+            if (!bn_dns_add_server(&parsed, t)) continue;
+            if (!had) { bn_dns.server_count = 0; had = 1; }
+            for (int i = 0; i < parsed.server_count; i++) {
+                if (bn_dns.server_count >= BN_DNS_MAXSRV) break;
+                bn_dns.server[bn_dns.server_count++] = parsed.server[i];
             }
         }
     }
@@ -2108,8 +2152,13 @@ static void bn_dns_load(int force) {
     DBG("dns: servers=%d timeout=%dms attempts=%d search=%d\n", bn_dns.server_count,
         bn_dns.timeout_ms, bn_dns.attempts, bn_dns.search_count);
     for (int i = 0; i < bn_dns.server_count; i++) {
-        char ip[INET_ADDRSTRLEN] = "?";
-        inet_ntop(AF_INET, &bn_dns.server[i].sin_addr, ip, sizeof ip);
+        char ip[INET6_ADDRSTRLEN] = "?";
+        const void *address = NULL;
+        if (bn_dns.server[i].ss_family == AF_INET)
+            address = &((struct sockaddr_in *)&bn_dns.server[i])->sin_addr;
+        else if (bn_dns.server[i].ss_family == AF_INET6)
+            address = &((struct sockaddr_in6 *)&bn_dns.server[i])->sin6_addr;
+        if (address) inet_ntop(bn_dns.server[i].ss_family, address, ip, sizeof ip);
         DBG("dns: server[%d]=%s\n", i, ip);
     }
 }
@@ -2205,7 +2254,7 @@ static uint16_t bn_dns_id(void) {
 }
 
 // One UDP attempt against one server.
-static int bn_dns_udp(const struct sockaddr_in *srv, const unsigned char *q, int qlen,
+static int bn_dns_udp(const struct sockaddr_storage *srv, const unsigned char *q, int qlen,
                       unsigned char *r, int rcap, int timeout_ms) {
     typedef int (*sock_fn)(int, int, int);
     typedef int (*conn_fn)(int, const struct sockaddr *, socklen_t);
@@ -2222,9 +2271,11 @@ static int bn_dns_udp(const struct sockaddr_in *srv, const unsigned char *q, int
         return -1;
     }
 
-    int fd = rs(AF_INET, SOCK_DGRAM | SOCK_CLOEXEC | SOCK_NONBLOCK, 0);
+    socklen_t server_len = bn_dns_server_len(srv);
+    if (!server_len) return -1;
+    int fd = rs(srv->ss_family, SOCK_DGRAM | SOCK_CLOEXEC | SOCK_NONBLOCK, 0);
     if (fd < 0) return -1;
-    int rc = rc_(fd, (const struct sockaddr *)srv, sizeof *srv);
+    int rc = rc_(fd, (const struct sockaddr *)srv, server_len);
     if (rc == 0) rc = (int)(rsnd(fd, q, (size_t)qlen, 0) == (ssize_t)qlen ? 0 : -1);
     if (rc == 0) {
         struct pollfd pfd;
@@ -2274,12 +2325,14 @@ static int bn_dns_transfer(int fd, void *buf, size_t size, int writing, int64_t 
 
 // One deadline covers connect, partial writes, the length prefix and the body.
 // A connected DNS peer must not hang a long-lived agent indefinitely.
-static int bn_dns_tcp(const struct sockaddr_in *srv, const unsigned char *q, int qlen,
+static int bn_dns_tcp(const struct sockaddr_storage *srv, const unsigned char *q, int qlen,
                       unsigned char *r, int rcap, int timeout_ms) {
-    int fd = socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC | SOCK_NONBLOCK, 0);
+    socklen_t server_len = bn_dns_server_len(srv);
+    if (!server_len) return -1;
+    int fd = socket(srv->ss_family, SOCK_STREAM | SOCK_CLOEXEC | SOCK_NONBLOCK, 0);
     if (fd < 0) return -1;
     int64_t deadline = bn_dns_now() + timeout_ms;
-    int rc = connect(fd, (const struct sockaddr *)srv, sizeof *srv);
+    int rc = connect(fd, (const struct sockaddr *)srv, server_len);
     if (rc < 0 && errno == EINPROGRESS) {
         rc = bn_dns_ready(fd, POLLOUT, deadline);
         if (rc == 0) {

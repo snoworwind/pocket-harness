@@ -95,7 +95,7 @@
 
 本仓交付实验性、默认不启用的宿主服务/API 与条件设置入口。bootstrap 与 runtime 是**我们自己的实验性内部插件**：按用户口径应随应用放入**内置（hard）插件目录**，但**默认不启用（存在不等于启用）**；应用更新或插件新版本发布都不得启用插件，也不得重新启用用户停用的插件。
 
-现状与缺口（如实登记）：bootstrap 源码 vendored 于 `plugins/dsh-linux-bootstrap/`（`@dsh-android/linux-bootstrap` 0.5.1，源 `kelai141/dsh-bionilux@3f86a85` `packages/linux-bootstrap`）。它现在已进入 `scripts/plugin-dirs.json`、`scripts/contract.json` 与 profile 插件挂载；来源链先编译 `lib/index.js` 和 `lib/client.js`，再同运行时、Bionilux、Debian ARM64 rootfs、glibc Node 一起嵌入快照的 `usr/share/pocket-harness/linux-assets`。插件服务由 `linux-env` 以函数配置注入 APK 签名保护下的快照资产、原始 manifest SHA-256 sidecar 和应用版本。配置只提供资产和信任校验；运行时仍默认禁用，安装/激活必须用户明确确认。工厂资产 workflow 的 artifact 仅保留为独立检查产物，APK 来源 workflow 会对当前提交重新构建，避免依赖短期 artifact。
+现状与缺口（如实登记）：bootstrap 源码 vendored 于 `plugins/dsh-linux-bootstrap/`（`@dsh-android/linux-bootstrap` 0.5.3，源 `kelai141/dsh-bionilux@3f86a85` `packages/linux-bootstrap`）。它现在已进入 `scripts/plugin-dirs.json`、`scripts/contract.json` 与 profile 插件挂载；来源链先编译 `lib/index.js` 和 `lib/client.js`，再同运行时、Bionilux、Debian ARM64 rootfs、glibc Node 一起嵌入快照的 `usr/share/pocket-harness/linux-assets`。插件服务由 `linux-env` 以函数配置注入 APK 签名保护下的快照资产、原始 manifest SHA-256 sidecar 和应用版本。配置只提供资产和信任校验；运行时仍默认禁用，安装/激活必须用户明确确认。工厂资产 workflow 的 artifact 仅保留为独立检查产物，APK 来源 workflow 会对当前提交重新构建，避免依赖短期 artifact。
 
 漂移由 `scripts/check-vendored-linux-bootstrap.mjs` 守（`--self-test` 含 1 正控 + 3 负控）：断言 vendored 文件集 == 上游包去掉 `test/` 加本仓两个文件、9 个上游一致文件的 EOL 归一秒摘要、以及三条刻意偏差（`exports` 指 `./lib`、保留 `build` 脚本、去掉 `test` 脚本、`private:true`）。它**不进** `check-release-gates.mjs` 的 `GATES`（进册即要求本地链与云端链同时接线，而那是镜像面文件），故以文档化命令 + 自检形式提供。
 
@@ -112,6 +112,10 @@
 **接入与验收边界**：壳侧 `LinuxAssetPrepare` 的网络准备面继续保留原有职责；离线 Linux bootstrap 使用另一条受 APK 签名保护的内置资产路径，不回退到网络下载。离线构建接线、自检与插件单测已经落地；来源 APK 云端全链已由 run [39374235296](https://github.com/snoworwind/pocket-harness/actions/runs/39374235296) 验证通过，Android 设备端到端验收仍未完成，不能记为 Linux 功能可用。
 
 **2026-10-21 子进程环境复修**：新版实机日志仍在 `prepare-rootfs.sh` 报 `find: Permission denied`。第二轮复核发现上一修复仅传 `LD_LIBRARY_PATH`，Linux runtime manager 的环境白名单仍过滤 termux-exec preload 与拦截变量；仅加 `TERMUX_APP__DATA_DIR` 还可能让 toybox `find` 返回 0。当前源码改为从 `DSH_FILES_DIR/usr` 推导完整 host env，安装前验证 GNU `find`/`sed`/`wc`，并由 Bionilux 在 guest 环境剔除 Termux 变量。详细原因改指向 `files/linux-environment/linux-bootstrap-state.json`。插件/资产版本统一 bump 至 0.5.1；本轮按用户要求未做实机测试，不能据源码通过宣称恢复，见 [最新修复记录](../linux-env-findings/REMEDIATION-TERMUX-EXEC-2026-10-21.md)。
+
+**2026-10-22 新日志与后续 DNS 修复**：`sed --version` exit 0 且为 GNU sed，但 Termux linker 让版本首行以绝对 `argv[0]` 路径开头，旧 `^sed` 正则误判；同时 rootfs 准备没传 `--dns`，Debian 资产没有 `/etc/resolv.conf`。当前 PR 源码放宽 `find/sed/wc` 身份正则，壳侧持续记录 Android 默认网络 DNS，rootfs 初始化与每次 guest spawn 都读取最新值，Bionilux resolver 支持 IPv6 nameserver 并避免沿用旧 resolver。Android API 28+ Private DNS 活跃时 fail-closed：rootfs 清除旧 nameserver，guest 暂不具备外网解析能力，避免绕过系统加密 DNS。Linux/runtime 版本升至 0.5.2。源码构建、自动测试和设备验证状态见 [修复记录](../linux-env-findings/REMEDIATION-HOST-TOOLS-DNS-2026-10-22.md)；旧 APK 不含本修复。
+
+**2026-10-22 Android app-data ELF 执行限制**：新设备证据确认 Bionilux 直接 `execve` 私有目录 glibc loader 被 Android 拒绝，linker64 又因 Debian loader 的 ELF PHDR 布局拒载。runtime `0.5.3` 把同源 Bionilux launcher 和 glibc loader 从 APK nativeLibraryDir 启动；来源链结构校验 ELF 并在最终 APK 核对两个成员字节。安装前 probe launcher，安装后以真实 guest Node `--version` 检查 loader/guest ELF 映射，失败不提交 active。rootfs 构建 hold `libc6:arm64` 和 `libc-bin:arm64`，且检查两者版本相同，避免常规 apt 操作更新 guest glibc 却不更新 APK loader；用户强制绕过 hold 仍可能破坏配对。targetSdk 34 保持不变。manager 33/33、ELF checker 与 APK payload checker 自检通过；CI APK 构建和设备层执行仍未验证。硬链接的受限复制兜底已由坑 466 记录，dpkg 实机回滚场景仍待测。详情见 [Android 执行入口修复](../linux-env-findings/REMEDIATION-ANDROID-EXEC-2026-10-22.md)。
 
 **工具链边界**：APK workflow 的 Linux 交叉编译宿主工具由 Ubuntu runner 的 apt 仓库提供，目前未按每个 deb 固定版本与 SHA-256；NDK 官方 Linux 包只有 SHA-1 发布摘要可用，provenance 会披露该事实。离线 bundle 的用户侧信任锚仍是 APK 签名保护的原始 manifest 字节与 sidecar，逐项匹配内嵌资产的 SHA-256 和长度。主机工具链可复现性还需后续提高，不能把 source commit 相同直接等同于 bit-for-bit 可复现。
 

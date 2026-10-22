@@ -18,11 +18,12 @@
 #     passing them here.
 #
 # Usage:
-#   prepare-rootfs.sh --rootfs DIR [--dns "1.2.3.4 5.6.7.8"] [--relative-links]
+#   prepare-rootfs.sh --rootfs DIR [--dns "1.2.3.4 5.6.7.8" | --no-dns] [--relative-links]
 #                     [--dry-run] [--verify]
 #
 #   --rootfs DIR        rootfs to modify (required)
 #   --dns "A B"         write /etc/resolv.conf with these nameservers
+#   --no-dns            clear any old nameservers when the host has no safe resolver
 #   --relative-links    rewrite absolute links as relative instead of
 #                       rootfs-absolute. Keeps the rootfs relocatable, but the
 #                       guest then sees a relative link target.
@@ -32,6 +33,7 @@ set -eu
 
 ROOTFS=""
 DNS=""
+DNS_MODE=unset
 MODE=absolute
 DRY=0
 VERIFY=0
@@ -40,8 +42,19 @@ while [ $# -gt 0 ]; do
     case "$1" in
         --rootfs|--dns)
             [ $# -ge 2 ] && [ -n "$2" ] || { echo "$1 requires a value" >&2; exit 2; }
-            case "$1" in --rootfs) ROOTFS="$2" ;; --dns) DNS="$2" ;; esac
+            case "$1" in
+                --rootfs) ROOTFS="$2" ;;
+                --dns)
+                    [ "$DNS_MODE" != none ] || { echo "--dns and --no-dns are mutually exclusive" >&2; exit 2; }
+                    DNS="$2"
+                    DNS_MODE=servers
+                    ;;
+            esac
             shift 2 ;;
+        --no-dns)
+            [ "$DNS_MODE" != servers ] || { echo "--dns and --no-dns are mutually exclusive" >&2; exit 2; }
+            DNS_MODE=none
+            shift ;;
         --relative-links)  MODE=relative; shift ;;
         --dry-run)         DRY=1; shift ;;
         --verify)          VERIFY=1; shift ;;
@@ -108,7 +121,24 @@ else
 fi
 
 # ── 2. resolver configuration ───────────────────────────────────────
-if [ -n "$DNS" ]; then
+if [ "$DNS_MODE" = none ]; then
+    if [ "$VERIFY" = 1 ]; then
+        if awk '$1 == "nameserver" { found=1 } END { exit !found }' "$ROOTFS/etc/resolv.conf" 2>/dev/null; then
+            echo "NEEDS-FIX /etc/resolv.conf contains a DNS server while DNS is disabled" >&2
+            exit 1
+        fi
+        echo "/etc/resolv.conf has no nameservers"
+    elif [ "$DRY" = 1 ]; then
+        echo "would clear /etc/resolv.conf nameservers"
+    else
+        mkdir -p "$ROOTFS/etc"
+        {
+            echo "# Written by bionilux prepare-rootfs.sh."
+            echo "# No usable Android DNS resolver is available."
+        } > "$ROOTFS/etc/resolv.conf"
+        echo "cleared /etc/resolv.conf nameservers"
+    fi
+elif [ "$DNS_MODE" = servers ] && [ -n "$DNS" ]; then
     if [ "$VERIFY" = 1 ]; then
         for ns in $DNS; do
             awk -v ns="$ns" '$1 == "nameserver" && $2 == ns { found=1 } END { exit !found }' \

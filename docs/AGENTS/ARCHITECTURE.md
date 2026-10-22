@@ -147,7 +147,7 @@
 | androidx FileProvider | provider（${applicationId}.fileprovider） | （框架类） | 路径白名单 @xml/file_paths，不映射 .credentials.yaml 等机密区 |
 | rikka.shizuku.ShizukuProvider | provider（${applicationId}.shizuku，`android:permission=INTERACT_ACROSS_USERS_FULL`） | （Shizuku 框架类） | Shizuku binder bootstrap；Shizuku 仍是唯一授权方；check-manifest-hardening 显式白名单放行 |
 
-权限以 AndroidManifest.xml 实际声明为准（INTERNET / MANAGE_EXTERNAL_STORAGE / READ_EXTERNAL_STORAGE maxSdk32 / WRITE_EXTERNAL_STORAGE maxSdk29 / POST_NOTIFICATIONS / FOREGROUND_SERVICE(+DATA_SYNC) / RECEIVE_BOOT_COMPLETED / WAKE_LOCK / REQUEST_IGNORE_BATTERY_OPTIMIZATIONS / QUERY_ALL_PACKAGES / SYSTEM_ALERT_WINDOW），逐条理由见清单注释；本分支已撤销应用内 APK 安装权限。
+权限以 AndroidManifest.xml 实际声明为准（INTERNET / ACCESS_NETWORK_STATE / MANAGE_EXTERNAL_STORAGE / READ_EXTERNAL_STORAGE maxSdk32 / WRITE_EXTERNAL_STORAGE maxSdk29 / POST_NOTIFICATIONS / FOREGROUND_SERVICE(+DATA_SYNC) / RECEIVE_BOOT_COMPLETED / WAKE_LOCK / REQUEST_IGNORE_BATTERY_OPTIMIZATIONS / QUERY_ALL_PACKAGES / SYSTEM_ALERT_WINDOW），逐条理由见清单注释；本分支已撤销应用内 APK 安装权限。
 
 ## 8. 0.14 当前屏幕控制构造（施工中）
 

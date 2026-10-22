@@ -2,6 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { EventEmitter } from 'node:events';
 import { promises as fs, createReadStream, existsSync, lstatSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { isIP } from 'node:net';
 import path from 'node:path';
 import { selectRuntime } from './manifest.js';
 import { assertOfficialAssetUrl, isAllowedAssetOrigin } from './asset-installer.js';
@@ -39,14 +40,17 @@ const HOST_ENV_ALLOWLIST = new Set([
   'https_proxy',
   'all_proxy',
   'no_proxy',
+  'BIONILUX_DNS_SERVERS',
 ]);
 const MAX_CAPTURED_OUTPUT_BYTES = 256 * 1024;
 const TERMINATION_GRACE_MS = 1500;
 const HOST_TOOL_PROBE_TIMEOUT_MS = 5000;
+const ANDROID_NATIVE_LAUNCHER = 'libpocketharness_bionilux.so';
+const ANDROID_NATIVE_GLIBC_LOADER = 'libpocketharness_glibc_loader.so';
 const GNU_HOST_TOOLS = Object.freeze({
-  find: /^find \(GNU findutils\) /m,
-  sed: /^sed \(GNU sed\) /m,
-  wc: /^wc \(GNU coreutils\) /m,
+  find: /^(?:\S*\/)?find \(GNU findutils\) /m,
+  sed: /^(?:\S*\/)?sed \(GNU sed\) /m,
+  wc: /^(?:\S*\/)?wc \(GNU coreutils\) /m,
 });
 const GUEST_PATH_PREFIXES_LIST = [
   '/bin',
@@ -380,6 +384,46 @@ function cleanHostEnvironment() {
   return environment;
 }
 
+function normalizeDnsServers(value) {
+  if (typeof value !== 'string' || value.trim() === '') return [];
+  if (value.length > 512) {
+    throw linuxRuntimeError('linux-host-dns-unavailable', 'Android DNS server state exceeds its size limit');
+  }
+  const servers = [...new Set(value.split(/[\s,]+/).filter(Boolean))];
+  if (servers.some((server) => isIP(server) === 0)) {
+    throw linuxRuntimeError('linux-host-dns-unavailable', 'Android supplied an invalid DNS server address');
+  }
+  return servers.slice(0, 4);
+}
+
+function hostDnsServers(environment) {
+  if (!process.env.ANDROID_ROOT) return normalizeDnsServers(environment.BIONILUX_DNS_SERVERS);
+  const filesDir = process.env.DSH_FILES_DIR;
+  if (typeof filesDir !== 'string' || !path.isAbsolute(filesDir)) {
+    throw linuxRuntimeError('linux-host-dns-unavailable', 'Termux app files directory is unavailable for DNS lookup');
+  }
+  const dnsFile = path.join(path.resolve(filesDir), 'linux-dns-servers');
+  let info;
+  try {
+    info = lstatSync(dnsFile);
+  } catch (error) {
+    if (error?.code === 'ENOENT') return [];
+    throw linuxRuntimeError('linux-host-dns-unavailable', `Android DNS server state could not be read: ${String(error?.message ?? error)}`);
+  }
+  if (!info.isFile() || info.isSymbolicLink()) {
+    throw linuxRuntimeError('linux-host-dns-unavailable', 'Android DNS server state is not a regular file');
+  }
+  if (info.size > 512) {
+    throw linuxRuntimeError('linux-host-dns-unavailable', 'Android DNS server state exceeds its size limit');
+  }
+  try {
+    return normalizeDnsServers(readFileSync(dnsFile, 'utf8'));
+  } catch (error) {
+    if (typeof error?.code === 'string' && error.code.startsWith('linux-')) throw error;
+    throw linuxRuntimeError('linux-host-dns-unavailable', `Android DNS server state could not be read: ${String(error?.message ?? error)}`);
+  }
+}
+
 function linuxRuntimeError(code, message) {
   const error = new Error(message);
   error.code = code;
@@ -406,10 +450,49 @@ function resolveHostLibraryPath(configuredPath) {
   return resolved;
 }
 
-function hostExecutionEnvironment(configuredLibraryPath) {
+function androidNativeRuntimeEntrypoints() {
+  const directory = process.env.DSH_LINUX_NATIVE_LIBRARY_DIR;
+  if (typeof directory !== 'string' || !path.isAbsolute(directory)) {
+    throw linuxRuntimeError(
+      'linux-host-exec-assets-unavailable',
+      'APK native library directory is unavailable for the Linux launcher and glibc loader',
+    );
+  }
+  const root = path.resolve(directory);
+  let rootInfo;
+  try { rootInfo = lstatSync(root); } catch { /* reported below */ }
+  if (!rootInfo?.isDirectory() || rootInfo.isSymbolicLink()) {
+    throw linuxRuntimeError('linux-host-exec-assets-unavailable', 'APK native library directory is not a real directory');
+  }
+  const files = {};
+  for (const [key, name] of [['launcher', ANDROID_NATIVE_LAUNCHER], ['loader', ANDROID_NATIVE_GLIBC_LOADER]]) {
+    const target = path.join(root, name);
+    let info;
+    try { info = lstatSync(target); } catch { /* reported below */ }
+    if (!info?.isFile() || info.isSymbolicLink() || (info.mode & 0o111) === 0) {
+      throw linuxRuntimeError(
+        'linux-host-exec-assets-unavailable',
+        `APK native Linux executable is missing or not executable: ${name}`,
+      );
+    }
+    files[key] = target;
+  }
+  return files;
+}
+
+function baseExecutionEnvironment(configuredLibraryPath) {
   const environment = cleanHostEnvironment();
+  const dnsServers = hostDnsServers(environment);
+  if (dnsServers.length > 0) environment.BIONILUX_DNS_SERVERS = dnsServers.join(',');
+  else if (process.env.ANDROID_ROOT) environment.BIONILUX_DNS_SERVERS = 'none';
+  else delete environment.BIONILUX_DNS_SERVERS;
   const hostLibraryPath = resolveHostLibraryPath(configuredLibraryPath);
   if (hostLibraryPath) environment.LD_LIBRARY_PATH = hostLibraryPath;
+  return { environment, hostLibraryPath };
+}
+
+function hostExecutionEnvironment(configuredLibraryPath) {
+  const { environment, hostLibraryPath } = baseExecutionEnvironment(configuredLibraryPath);
 
   if (process.env.ANDROID_ROOT) {
     const filesDir = process.env.DSH_FILES_DIR;
@@ -451,6 +534,23 @@ function hostExecutionEnvironment(configuredLibraryPath) {
   }
 
   return environment;
+}
+
+function bioniluxExecutionEnvironment(configuredLibraryPath) {
+  const { environment } = baseExecutionEnvironment(configuredLibraryPath);
+  if (process.env.ANDROID_ROOT) {
+    const nativeRuntime = androidNativeRuntimeEntrypoints();
+    environment.BIONILUX_LOADER = nativeRuntime.loader;
+    // Spawn the package-installed Bionic launcher directly. If termux-exec
+    // rewrites this spawn through linker64, /proc/self/exe becomes linker64;
+    // Bionilux then records the wrong re-entry path for guest exec children.
+    delete environment.LD_LIBRARY_PATH;
+  }
+  return environment;
+}
+
+function nativeLauncherProbePassed(result) {
+  return !result.timedOut && result.exitCode === 0 && /(?:^|\n)BIONILUX_VERSION=\S+/m.test(result.stdout);
 }
 
 function executableFileExists(file) {
@@ -584,6 +684,11 @@ export class LinuxRuntimeManager {
     } catch (error) {
       return { healthy: false, reason: error.message };
     }
+    let launcher = path.join(instance.backend, 'bin', 'bionilux');
+    if (process.env.ANDROID_ROOT) {
+      try { launcher = androidNativeRuntimeEntrypoints().launcher; }
+      catch (error) { return { healthy: false, reason: error.message }; }
+    }
     const required = [
       ['backend executable', path.join(instance.backend, 'bin', 'bionilux'), true],
       ['backend preload', path.join(instance.backend, 'lib', 'libbionilux_preload.so'), false],
@@ -612,7 +717,7 @@ export class LinuxRuntimeManager {
         backend: instance.backend,
         rootfs: instance.rootfs,
         node,
-        launcher: path.join(instance.backend, 'bin', 'bionilux'),
+        launcher,
         preload: path.join(instance.backend, 'lib', 'libbionilux_preload.so'),
       },
     };
@@ -620,7 +725,7 @@ export class LinuxRuntimeManager {
 
   async _probeRuntime(health) {
     const nodeBin = path.join(health.paths.node, 'bin');
-    const hostEnvironment = hostExecutionEnvironment(this.hostLibraryPath);
+    const hostEnvironment = bioniluxExecutionEnvironment(this.hostLibraryPath);
     const result = normaliseCommandResult(await this._runManaged({
       file: health.paths.launcher,
       args: ['node', '--version'],
@@ -808,7 +913,16 @@ export class LinuxRuntimeManager {
     try {
       result = normaliseCommandResult(await this._runManaged({
         file: 'sh',
-        args: [script, '--rootfs', instance.rootfs, '--relative-links'],
+        args: [
+          script,
+          '--rootfs', instance.rootfs,
+          '--relative-links',
+          ...(hostEnvironment.BIONILUX_DNS_SERVERS === 'none'
+            ? ['--no-dns']
+            : hostEnvironment.BIONILUX_DNS_SERVERS
+              ? ['--dns', hostEnvironment.BIONILUX_DNS_SERVERS.replaceAll(',', ' ')]
+              : []),
+        ],
         cwd: instance.root,
         env: hostEnvironment,
         timeout: 120_000,
@@ -942,6 +1056,10 @@ export class LinuxRuntimeManager {
   async _installLocked(manifest, runtimeId) {
     if (this.disposed) throw new Error('manager is disposed');
     const selection = selectRuntime(manifest, runtimeId, this.arch);
+    if (process.env.ANDROID_ROOT) {
+      hostExecutionEnvironment(this.hostLibraryPath);
+      await this._probeAndroidNativeLauncher();
+    }
     await this._ensureDirectories();
     const previous = this._readActive();
     const instanceId = makeId(runtimeId);
@@ -1014,6 +1132,32 @@ export class LinuxRuntimeManager {
     return this._emitState();
   }
 
+  async _probeAndroidNativeLauncher() {
+    const { launcher } = androidNativeRuntimeEntrypoints();
+    let result;
+    try {
+      result = normaliseCommandResult(await this._runManaged({
+        file: launcher,
+        args: ['--print-config'],
+        cwd: this.dataDir,
+        env: bioniluxExecutionEnvironment(this.hostLibraryPath),
+        timeout: HOST_TOOL_PROBE_TIMEOUT_MS,
+      }));
+    } catch (error) {
+      throw linuxRuntimeError(
+        'linux-host-exec-assets-unavailable',
+        `APK native Bionilux launcher could not start: ${String(error?.message ?? error)}`,
+      );
+    }
+    if (!nativeLauncherProbePassed(result)) {
+      const evidence = (result.stderr || result.stdout).trim().slice(0, 300) || 'no launcher output';
+      throw linuxRuntimeError(
+        'linux-host-exec-assets-unavailable',
+        `APK native Bionilux launcher probe failed (exit ${result.exitCode ?? 'unknown'}): ${evidence}`,
+      );
+    }
+  }
+
   async reinstall(manifest, runtimeId = 'debian-minimal') {
     return this.install(manifest, runtimeId);
   }
@@ -1064,7 +1208,7 @@ export class LinuxRuntimeManager {
   }
 
   _executionEnvironment(paths, cwdInfo) {
-    const environment = hostExecutionEnvironment(this.hostLibraryPath);
+    const environment = bioniluxExecutionEnvironment(this.hostLibraryPath);
     const nodeBin = path.join(paths.node, 'bin');
     const hostPaths = [nodeBin, ...cwdInfo.hostPaths];
     environment.BIONILUX_ROOTFS = paths.rootfs;
