@@ -7,6 +7,7 @@
  *  - **URL 准入门在原生 BrowserHost**（只允许非本地 http(s)/about:blank）；本层不复制准入逻辑，
  *    但会把拒绝原因原样透传给模型。
  *  - 会话/标签页隔离：快照记忆与控制参数保留所属会话及 tabId，不借用前台 UI 的当前页。
+ *  - 权限档由 index.ts 的统一 pre-execute 审批和 monotonic guard 强制执行；工具执行体不重复判权。
  *  - 每个动作写审计（经 bridge 服务的 audit 面；缺失时静默降级，审计不是主流程门禁）。
  */
 import { defineTool } from '@deepseek-ai/dsh-tools'
@@ -16,7 +17,6 @@ import type { ControlFace } from './facts.js'
 
 /** 浏览器工具需要的控制面（bridge 服务；browser* 由控制队列承载）。 */
 export interface BrowserControlFace extends ControlFace {
-  gateFor?(session?: unknown): { ok: true; via?: string } | { ok: false; guidance: string }
   audit?(action: string, detail: Record<string, unknown>, ok: boolean): void
 }
 
@@ -206,7 +206,7 @@ export function browserTools(face: () => BrowserControlFace | undefined): unknow
    * 工具面统一包裹（2026-09-15）：
    * - 失败渲染兜底：拒绝/失败对象（denied(...)）此前仍被 render 渲染，字段取不到就输出 undefined，
    *   snapshot 的 render 还会在 undefined 上抛错——真实 error/guidance 被吞掉；现 ok:false 一律渲染原文；
-   * - 会话注入：execute 期间把归属会话放进作用域，`call` 自动附加到控制 op 参数上（壳侧归属校验）。
+   * - 会话注入：execute 期间把调用 agent 的会话放进作用域，`call` 自动附加到控制 op 参数，供 BrowserHost 选择对应 Workspace；这不是权限证明，工具权限由 index.ts 的统一执行闸负责。
    */
   const withFailureText = (tool: unknown): unknown => {
     const definition = tool as {
@@ -278,21 +278,6 @@ export function browserTools(face: () => BrowserControlFace | undefined): unknow
     }
   }
 
-  // 浏览器面**不做任何授权校验**（0.14.0 实锤缺陷修复）。
-  //
-  // 原实现复用 bridge 的 device-control gateFor()：它要求会话档位 danger-full-access 且
-  // a11y / Shizuku / adb 三条至少有其一。于是「无障碍未开 + Shizuku 未就绪」的机器上
-  // browser_open 直接报 session-not-full-access，引导用户去开无障碍或装 Shizuku——而浏览器是
-  // **应用内隔离 WebView**（壳侧 BrowserHost 自持一个 WebView），既不碰无障碍、也不碰 Shizuku、
-  // 也不碰 adb，与设备控制完全无关。这条误门把本来可用的能力锁死（用户实测三个站点全部失败）。
-  //
-  // 为什么校验**不放在工具层**：这是权限/归属问题，不是工具能力问题。真正要守的两件事都在
-  // 原生 BrowserHost 内强制执行、且与工具层无关：
-  //   ① 会话归属——bindOwner/requireOwner 按 args.session 判定，非归属会话结构化拒绝；
-  //   ② URL 准入——只允许非本地 http(s)/about:blank，拒 loopback/file/content/data/javascript。
-  // 因此本层直接透传，由原生执行点做它该做的校验（单一真源，避免两处各写一份漂移）。
-  const gate = (_exec: unknown): { ok: true } | { ok: false; guidance: string } => ({ ok: true })
-
   const audit = (tool: string, args: Payload, ok: boolean): void => {
     try { face()?.audit?.(tool, { tool, args }, ok) } catch { /* 审计缺失不阻塞 */ }
   }
@@ -361,8 +346,6 @@ export function browserTools(face: () => BrowserControlFace | undefined): unknow
         }],
       },
       execute: async ({ url, viewport, identity, tabId }: { url: string; viewport?: string; identity?: string; tabId?: string }, exec) => {
-        const session = gate(exec)
-        if (!session.ok) return { ok: false, error: 'browser-not-authorized', guidance: session.guidance } as never
         // Validate both options before one atomic open; pre-setters would mutate/reload the old tab.
         let viewportConfig: Payload | undefined
         let identityConfig: Payload | undefined
@@ -466,8 +449,6 @@ export function browserTools(face: () => BrowserControlFace | undefined): unknow
         },
       },
       execute: async (_args, exec) => {
-        const session = gate(exec)
-        if (!session.ok) return { ok: false, error: 'session-not-full-access', guidance: session.guidance } as never
         const result = await call(BROWSER_OPS.js, { snapshot: true }, 15_000)
         if (!result.ok) return denied(result) as never
         const nodes = Array.isArray(result.data.nodes) ? (result.data.nodes as Payload[]) : []
@@ -508,8 +489,6 @@ export function browserTools(face: () => BrowserControlFace | undefined): unknow
           + renderTitle(v) + renderLoadState(v) }],
       },
       execute: async ({ ref }: { ref: string }, exec) => {
-        const session = gate(exec)
-        if (!session.ok) return { ok: false, error: 'session-not-full-access', guidance: session.guidance } as never
         const memory = requireSnapshot()
         if (memory === undefined) {
           return { ok: false, error: 'snapshot-required', guidance: '先调用 browser_snapshot 拿到 ref，再点击；不猜测坐标。' } as never
@@ -554,8 +533,6 @@ export function browserTools(face: () => BrowserControlFace | undefined): unknow
           + renderTitle(v) + renderLoadState(v) }],
       },
       execute: async ({ ref, text, replace }: { ref: string; text: string; replace?: boolean }, exec) => {
-        const session = gate(exec)
-        if (!session.ok) return { ok: false, error: 'session-not-full-access', guidance: session.guidance } as never
         const memory = requireSnapshot()
         if (memory === undefined) {
           return { ok: false, error: 'snapshot-required', guidance: '先调用 browser_snapshot 拿到 ref，再输入。' } as never
@@ -594,8 +571,6 @@ export function browserTools(face: () => BrowserControlFace | undefined): unknow
           + renderTitle(v) + renderLoadState(v) }],
       },
       execute: async ({ key }: { key: string }, exec) => {
-        const session = gate(exec)
-        if (!session.ok) return { ok: false, error: 'session-not-full-access', guidance: session.guidance } as never
         audit(BROWSER_TOOLS.press, { key }, true)
         const memory = requireSnapshot()
         const result = await call(BROWSER_OPS.input, {
@@ -629,8 +604,6 @@ export function browserTools(face: () => BrowserControlFace | undefined): unknow
         render: (_args, v: Record<string, unknown>) => [{ type: 'text', text: 'scrollY=' + String(v.scrollY) + (v.atEnd === true ? '（已到底）' : '') }],
       },
       execute: async ({ direction, amount }: { direction: string; amount?: number }, exec) => {
-        const session = gate(exec)
-        if (!session.ok) return { ok: false, error: 'session-not-full-access', guidance: session.guidance } as never
         const step = typeof amount === 'number' && Number.isFinite(amount) ? Math.max(1, Math.min(4000, Math.abs(amount))) : 600
         const dx = direction === 'left' ? -step : direction === 'right' ? step : 0
         const dy = direction === 'up' ? -step : direction === 'down' ? step : 0
@@ -666,8 +639,6 @@ export function browserTools(face: () => BrowserControlFace | undefined): unknow
         },
       },
       execute: async ({ region }: { region?: { x?: number; y?: number; w?: number; h?: number } }, exec) => {
-        const session = gate(exec)
-        if (!session.ok) return { ok: false, error: 'session-not-full-access', guidance: session.guidance } as never
         const hasRegion = region !== undefined && typeof region.x === 'number' && typeof region.y === 'number'
         const cx = hasRegion ? Number(region!.x) + (typeof region!.w === 'number' ? Number(region!.w) / 2 : 0) : 0
         const cy = hasRegion ? Number(region!.y) + (typeof region!.h === 'number' ? Number(region!.h) / 2 : 0) : 0
@@ -702,8 +673,6 @@ export function browserTools(face: () => BrowserControlFace | undefined): unknow
         render: (_args, v: Record<string, unknown>) => [{ type: 'text', text: '等待结束：' + String(v.reason) + '（' + String(v.waited) + 'ms）' }],
       },
       execute: async ({ selector, stable, timeoutMs }: { selector?: string; stable?: boolean; timeoutMs?: number }, exec) => {
-        const session = gate(exec)
-        if (!session.ok) return { ok: false, error: 'session-not-full-access', guidance: session.guidance } as never
         const budget = typeof timeoutMs === 'number' && Number.isFinite(timeoutMs) ? Math.max(500, Math.min(20_000, timeoutMs)) : 8_000
         const started = Date.now()
         const wantStable = stable !== false && (selector === undefined || selector === '')
@@ -754,8 +723,6 @@ export function browserTools(face: () => BrowserControlFace | undefined): unknow
         }],
       },
       execute: async ({ url }: { url: string }, exec) => {
-        const session = gate(exec)
-        if (!session.ok) return { ok: false, error: 'session-not-full-access', guidance: session.guidance } as never
         audit(BROWSER_TOOLS.navigate, { url }, true)
         const result = await call(BROWSER_OPS.open, { url }, 20_000)
         if (!result.ok) return denied(result) as never
@@ -790,8 +757,6 @@ export function browserTools(face: () => BrowserControlFace | undefined): unknow
           + renderTitle(v) + renderLoadState(v) }],
       },
       execute: async (_args, exec) => {
-        const session = gate(exec)
-        if (!session.ok) return { ok: false, error: 'session-not-full-access', guidance: session.guidance } as never
         const result = await call(BROWSER_OPS.js, { expr: 'history.back();JSON.stringify({ok:true})' }, 10_000)
         if (!result.ok) return denied(result) as never
         resetSessionMemory()
@@ -824,8 +789,6 @@ export function browserTools(face: () => BrowserControlFace | undefined): unknow
           + renderTitle(v) + renderLoadState(v) }],
       },
       execute: async (_args, exec) => {
-        const session = gate(exec)
-        if (!session.ok) return { ok: false, error: 'session-not-full-access', guidance: session.guidance } as never
         const result = await call(BROWSER_OPS.js, { expr: 'history.forward();JSON.stringify({ok:true})' }, 10_000)
         if (!result.ok) return denied(result) as never
         resetSessionMemory()
@@ -858,8 +821,6 @@ export function browserTools(face: () => BrowserControlFace | undefined): unknow
           + renderTitle(v) + renderLoadState(v) }],
       },
       execute: async (_args, exec) => {
-        const session = gate(exec)
-        if (!session.ok) return { ok: false, error: 'session-not-full-access', guidance: session.guidance } as never
         const result = await call(BROWSER_OPS.js, { expr: 'location.reload();JSON.stringify({ok:true})' }, 10_000)
         if (!result.ok) return denied(result) as never
         resetSessionMemory()
@@ -889,8 +850,6 @@ export function browserTools(face: () => BrowserControlFace | undefined): unknow
         render: (_args, v: Record<string, unknown>) => [{ type: 'text', text: renderTabLines(v) }],
       },
       execute: async (_args, exec) => {
-        const session = gate(exec)
-        if (!session.ok) return { ok: false, error: 'browser-not-authorized', guidance: session.guidance } as never
         const result = await call(BROWSER_OPS.tabs, {}, 8_000)
         if (!result.ok) return denied(result) as never
         const tabs = Array.isArray(result.data.tabs) ? (result.data.tabs as Payload[]) : []
@@ -924,8 +883,6 @@ export function browserTools(face: () => BrowserControlFace | undefined): unknow
         },
       },
       execute: async ({ tabId }: { tabId: string }, exec: unknown) => {
-        const session = gate(exec)
-        if (!session.ok) return { ok: false, error: 'browser-not-authorized', guidance: session.guidance } as never
         const result = await call(BROWSER_OPS.followTab, { tabId }, 8_000)
         if (!result.ok) return denied(result) as never
         resetSessionMemory()
@@ -953,8 +910,6 @@ export function browserTools(face: () => BrowserControlFace | undefined): unknow
         render: (_args: unknown, v: Record<string, unknown>) => [{ type: 'text', text: '已关闭 ' + String(v.closedTabId) + '\n' + renderTabLines(v) }],
       },
       execute: async ({ tabId }: { tabId?: string }, exec: unknown) => {
-        const session = gate(exec)
-        if (!session.ok) return { ok: false, error: 'browser-not-authorized', guidance: session.guidance } as never
         const result = await call(BROWSER_OPS.closeTab, tabId === undefined ? {} : { tabId }, 8_000)
         if (!result.ok) return denied(result) as never
         resetSessionMemory()
@@ -981,8 +936,6 @@ export function browserTools(face: () => BrowserControlFace | undefined): unknow
         render: (_args: unknown, v: Record<string, unknown>) => [{ type: 'text', text: '身份档 ' + String(v.profile) + (v.uaChApplied === true ? '' : '（UA 串模式）') }],
       },
       execute: async ({ profile }: { profile: string }, exec: unknown) => {
-        const session = gate(exec)
-        if (!session.ok) return { ok: false, error: 'session-not-full-access', guidance: session.guidance } as never
         const selected = IDENTITY_PROFILES.find((p) => p.id === profile)
         if (selected === undefined) {
           return { ok: false, error: 'unknown-identity', guidance: '可用身份：' + IDENTITY_PROFILES.map((p) => p.id).join(', ') } as never
@@ -1019,8 +972,6 @@ export function browserTools(face: () => BrowserControlFace | undefined): unknow
         render: (_args: unknown, v: Record<string, unknown>) => [{ type: 'text', text: '视口 ' + String(v.preset) + '（' + String(v.width) + '×' + String(v.height) + '）' }],
       },
       execute: async ({ preset, fit }: { preset: string; fit?: string }, exec: unknown) => {
-        const session = gate(exec)
-        if (!session.ok) return { ok: false, error: 'session-not-full-access', guidance: session.guidance } as never
         const selected = VIEWPORT_PRESETS.find((p) => p.id === preset || (preset === 'follow-screen' && p.id === 'device'))
         if (selected === undefined) {
           return { ok: false, error: 'unknown-viewport', guidance: '可用视口：' + VIEWPORT_PRESETS.map((p) => p.id).join(', ') } as never
@@ -1064,8 +1015,6 @@ export function browserTools(face: () => BrowserControlFace | undefined): unknow
         },
       },
       execute: async ({ inline }: { inline?: boolean }, exec: unknown) => {
-        const session = gate(exec)
-        if (!session.ok) return { ok: false, error: 'session-not-full-access', guidance: session.guidance } as never
         audit(BROWSER_TOOLS.screenshot, { inline: inline === true }, true)
         const result = await call(BROWSER_OPS.shot, { inline: inline === true }, 15_000)
         if (!result.ok) return denied(result) as never

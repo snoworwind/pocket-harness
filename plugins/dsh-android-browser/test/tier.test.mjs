@@ -10,14 +10,25 @@ const TOKEN = 'browser-test-token-0123456789'
 process.env.DSH_CONTROL_TOKEN_TEST = '1'
 process.env.DSH_CONTROL_TOKEN = TOKEN
 
-function makeCtx(connection) {
+function makeCtx(connection, extraServices = {}) {
   const routes = new Map()
   const disposers = []
   const registered = []
-  const services = { connection, androidPrivilege: undefined }
+  const listeners = new Map()
+  const guards = []
+  const services = { connection, androidPrivilege: undefined, ...extraServices }
   const target = {
     logger: () => ({ warn() {}, info() {} }),
-    tools: { register(t) { registered.push(t) } },
+    tools: {
+      register(t) { registered.push(t) },
+      guard(fn) { guards.push(fn); return () => { const i = guards.indexOf(fn); if (i >= 0) guards.splice(i, 1) } },
+    },
+    on(name, listener) {
+      const entries = listeners.get(name) ?? []
+      entries.push(listener)
+      listeners.set(name, entries)
+      return () => { const i = entries.indexOf(listener); if (i >= 0) entries.splice(i, 1) }
+    },
     effect(cb) { const d = cb(); if (typeof d === 'function') disposers.push(d); return d },
     get(name) { return services[name] },
     webServer: {
@@ -27,7 +38,33 @@ function makeCtx(connection) {
       },
     },
   }
-  return { ctx: target, routes, disposers, registered, services }
+  return { ctx: target, routes, disposers, registered, services, listeners, guards }
+}
+
+async function runToolGate(harness, execution) {
+  const entries = harness.listeners.get('tools/pre-execute') ?? []
+  let dispatch = async () => ({ kind: 'allow' })
+  for (const listener of [...entries].reverse()) {
+    const next = dispatch
+    dispatch = () => listener(execution, next)
+  }
+  const decision = await dispatch()
+  if (decision.kind !== 'allow') return decision
+  for (const guard of harness.guards) {
+    const reason = guard(execution)
+    if (reason !== undefined) return { kind: 'deny', reason }
+  }
+  return decision
+}
+
+function toolExecution(name) {
+  return {
+    name,
+    callId: 'browser-gate-test-call',
+    arguments: {},
+    agent: { session: { id: 'browser-gate-test-session' } },
+    signal: new AbortController().signal,
+  }
 }
 
 async function call(harness, { method = 'GET', headers = {}, token = TOKEN } = {}) {
@@ -199,7 +236,7 @@ test('卸载回收路由；重新装载只有一份注册（无重复 handler）
   const first = makeCtx(undefined)
   apply(first.ctx)
   assert.equal(first.routes.size, 1)
-  assert.equal(first.disposers.length, 1, '路由注册必须包一层 ctx.effect')
+  assert.equal(first.disposers.length, 3, '审批 listener、monotonic guard 与路由都必须登记 effect disposer')
   for (const d of first.disposers) d()
   assert.equal(first.routes.size, 0)
   const second = makeCtx(undefined)
@@ -211,6 +248,92 @@ test('卸载回收路由；重新装载只有一份注册（无重复 handler）
   for (const name of Object.values(BROWSER_TOOLS)) {
     assert.ok(registeredNames.has(name), '契约工具未注册：' + name)
   }
+})
+
+test('浏览器 approval 档逐次询问；拒绝、缺少审批服务均在工具执行前失败关闭', async () => {
+  const requests = []
+  const h = makeCtx(undefined, { approval: { request: async (request) => { requests.push(request); return 'allowed-once' } } })
+  apply(h.ctx)
+  const exec = toolExecution(BROWSER_TOOLS.open)
+  assert.deepEqual(await runToolGate(h, exec), { kind: 'allow' })
+  assert.equal(requests.length, 1)
+  assert.equal(requests[0].agent, exec.agent)
+  assert.equal(requests[0].toolName, BROWSER_TOOLS.open)
+  assert.equal(requests[0].callId, exec.callId)
+  assert.equal(requests[0].signal, exec.signal)
+
+  const rejected = makeCtx(undefined, { approval: { request: async () => 'rejected' } })
+  apply(rejected.ctx)
+  assert.equal((await runToolGate(rejected, toolExecution(BROWSER_TOOLS.navigate))).kind, 'deny')
+
+  const unavailable = makeCtx(undefined)
+  apply(unavailable.ctx)
+  assert.match((await runToolGate(unavailable, toolExecution(BROWSER_TOOLS.click))).reason, /用户审批服务不可用/)
+})
+
+test('confirm 档需要两次独立允许；任一次拒绝都不放行动作', async () => {
+  const requests = []
+  const approved = makeCtx(undefined, { approval: { request: async (request) => { requests.push(request); return 'allowed-once' } } })
+  apply(approved.ctx)
+  assert.deepEqual(await runToolGate(approved, toolExecution(BROWSER_TOOLS.setIdentity)), { kind: 'allow' })
+  assert.equal(requests.length, 2)
+  assert.notEqual(requests[0].reason, requests[1].reason)
+
+  let count = 0
+  const rejected = makeCtx(undefined, { approval: { request: async () => (++count === 1 ? 'allowed-once' : 'rejected') } })
+  apply(rejected.ctx)
+  const decision = await runToolGate(rejected, toolExecution(BROWSER_TOOLS.setIdentity))
+  assert.equal(decision.kind, 'deny')
+  assert.equal(count, 2)
+})
+
+test('monotonic guard 拦截绕过 pre-execute 的放行；截图只认会话显式完全访问档', async () => {
+  const h = makeCtx(undefined)
+  apply(h.ctx)
+  assert.match(h.guards[0](toolExecution(BROWSER_TOOLS.open)), /用户审批未完成/)
+  assert.match((await runToolGate(h, toolExecution(BROWSER_TOOLS.screenshot))).reason, /会话沙箱策略不可用/)
+
+  const defaultOnly = makeCtx(undefined, {
+    sandboxPolicy: {
+      defaultMode: 'danger-full-access',
+      resolve: () => ({ mode: 'danger-full-access' }),
+      overrideOf: () => undefined,
+    },
+  })
+  apply(defaultOnly.ctx)
+  assert.match((await runToolGate(defaultOnly, toolExecution(BROWSER_TOOLS.screenshot))).reason, /当前会话显式选择 danger-full-access/)
+
+  const explicitlySelected = makeCtx(undefined, {
+    sandboxPolicy: {
+      defaultMode: 'workspace-write',
+      resolve: () => ({ mode: 'danger-full-access' }),
+      overrideOf: () => 'danger-full-access',
+    },
+  })
+  apply(explicitlySelected.ctx)
+  assert.deepEqual(await runToolGate(explicitlySelected, toolExecution(BROWSER_TOOLS.screenshot)), { kind: 'allow' })
+
+  const notEffective = makeCtx(undefined, {
+    sandboxPolicy: {
+      resolve: () => ({ mode: 'workspace-write' }),
+      overrideOf: () => 'danger-full-access',
+    },
+  })
+  apply(notEffective.ctx)
+  assert.match((await runToolGate(notEffective, toolExecution(BROWSER_TOOLS.screenshot))).reason, /当前会话显式选择 danger-full-access/)
+})
+
+test('只读浏览器工具不弹审批；没有 monotonic guard API 时授权工具逐项 fail-closed', async () => {
+  const h = makeCtx(undefined)
+  apply(h.ctx)
+  assert.deepEqual(await runToolGate(h, toolExecution(BROWSER_TOOLS.getText)), { kind: 'allow' })
+  assert.equal(h.listeners.get('tools/pre-execute').length, 1)
+
+  const unsafe = makeCtx(undefined)
+  delete unsafe.ctx.tools.guard
+  apply(unsafe.ctx)
+  assert.match((await runToolGate(unsafe, toolExecution(BROWSER_TOOLS.open))).reason, /单调权限 guard 不可用/)
+  assert.match((await runToolGate(unsafe, toolExecution(BROWSER_TOOLS.screenshot))).reason, /单调权限 guard 不可用/)
 })
 
 test('契约冻结：工具名 / op 名 / 路由名 / 档位 id 与方案口径一致', () => {

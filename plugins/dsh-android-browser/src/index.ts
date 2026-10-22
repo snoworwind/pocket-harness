@@ -1,15 +1,17 @@
 /**
  * dsh-android-browser — 侧边栏 AI 专用浏览器（host 半）。
  *
- * 本轮范围：
+ * 职责：
  *  - 档位判定（P0 探针的可执行化）+ 设备实测基线；
  *  - **面板数据面**：只读 `/api/android/browser/status`（exact 路由 → **自带插件侧鉴权**，
  *    复用 dsh-android-file-open 的 route-auth 实现：Host 白名单 + Origin 同源 + 控制令牌/浏览器会话；
  *    这是 FX-205 批的既有教训：exact 路由绕过 /api 前缀栅栏，上游零兜底）；
- *  - 事实来源三档（壳桥 browserCaps → env 临时通道 → 实测基线），来源标签原样下发。
+ *  - 事实来源三档（壳桥 browserCaps → env 临时通道 → 实测基线），来源标签原样下发；
+ *  - `browser_*` 工具权限按 `contract.ts` 执行：approval/confirm 经用户审批服务，
+ *    `tools.guard` 作最终单调拒绝；截图仅允许当前会话显式选择 danger-full-access。
  *
- * 不做（等窗口）：壳侧 BrowserHost 与 browser* op（MainActivity.kt 归 Lead/dev-gesture）；
- * 插件挂载五处（scripts/** 属 dev-chain）；本插件不注册任何 AI 操作面（browser_* 工具在 P3）。
+ * 壳侧 BrowserHost 与 browser* op 是 Android 平台执行面；本插件只翻译 AI 工具并执行工具权限，
+ * 不在壳侧注册 AI 能力。插件挂载清单由 `scripts/**` 的构建链管理。
  *
  * 依据：docs/SIDEBAR-BROWSER-PLAN-2026-09-12.md、docs/IMPLEMENTATION-ACCEPTANCE-PLAN-2026-09-12.md、
  * 用户约束 docs/0.14.0-preview-USER-CONSTRAINTS.md U-1（入口 = 与「工作区文件」同级的右侧栏 tab 类型）。
@@ -17,7 +19,7 @@
 import { Context } from '@deepseek-ai/cordis'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { readFileSync } from 'node:fs'
-import { BROWSER_OPS, BROWSER_ROUTES, BROWSER_TOOLS, IDENTITY_PROFILES, VIEWPORT_PRESETS } from './contract.js'
+import { BROWSER_OPS, BROWSER_ROUTES, BROWSER_TOOL_CONTRACTS, BROWSER_TOOLS, IDENTITY_PROFILES, VIEWPORT_PRESETS } from './contract.js'
 import { factsFromEnv, factsCacheReset, pickFacts, readFacts, type ControlFace, type FactsRead } from './facts.js'
 // ── 插件侧路由鉴权（**自包含 + 不新增文件**）────────────────────────────────
 // 两道 P0 教训都落在这一段：
@@ -267,14 +269,127 @@ function bridgeFace(): ControlFace | undefined {
 
 let ctxRef: Context | undefined
 
+type BrowserPolicyExecution = {
+  name: string
+  callId?: unknown
+  agent?: { session?: unknown }
+  signal?: AbortSignal
+}
+type BrowserApprovalFace = {
+  request(request: {
+    agent: unknown
+    toolName: string
+    callId?: unknown
+    reason: string
+    signal?: AbortSignal
+  }): Promise<unknown>
+}
+type BrowserSandboxPolicyFace = {
+  resolve?(request: { session: unknown }): { mode?: unknown } | undefined
+  overrideOf?(session: unknown): unknown
+}
+
+/** Executions whose contract-required user approvals completed in pre-execute. */
+const approvedBrowserExecutions = new WeakSet<object>()
+
+function optionalService<T>(ctx: Context, name: string): T | undefined {
+  try {
+    return (ctx as unknown as { get(name: string): unknown }).get(name) as T | undefined
+  } catch {
+    return undefined
+  }
+}
+
+function browserPermissionDenial(ctx: Context, execution: BrowserPolicyExecution): string | undefined {
+  const contract = BROWSER_TOOL_CONTRACTS.find((entry) => entry.name === execution.name)
+  if (contract === undefined || contract.permission === 'read') return undefined
+  if (contract.permission === 'approval' || contract.permission === 'confirm') {
+    return approvedBrowserExecutions.has(execution as object)
+      ? undefined
+      : '浏览器操作已拒绝：本次用户审批未完成。'
+  }
+  if (contract.permission === 'full-access') {
+    const session = execution.agent?.session
+    if (session === undefined) return '截图已拒绝：需要活动会话。'
+    const policy = optionalService<BrowserSandboxPolicyFace>(ctx, 'sandboxPolicy')
+    const overrideOf = policy?.overrideOf
+    const resolve = policy?.resolve
+    if (typeof overrideOf !== 'function' || typeof resolve !== 'function') {
+      return '截图已拒绝：会话沙箱策略不可用。'
+    }
+    try {
+      // resolve() includes the deployment default; overrideOf() proves the user selected this mode in this session.
+      if (overrideOf.call(policy, session) !== 'danger-full-access' || resolve.call(policy, { session })?.mode !== 'danger-full-access') {
+        return '截图需要当前会话显式选择 danger-full-access。'
+      }
+    } catch {
+      return '截图已拒绝：无法读取当前会话沙箱策略。'
+    }
+  }
+  return undefined
+}
+
 /**
- * 装配：档位工具 + 只读面板状态路由。
+ * 装配：浏览器权限闸、档位/浏览器工具 + 只读面板状态路由。
  * @param ctx - 宿主上下文（tools + webServer）。
  */
 export function apply(ctx: Context, _config: Record<string, unknown> = {}): void {
   ctxRef = ctx
   factsCacheReset()
   resetBrowserMemory()
+  const runtime = ctx.tools as unknown as {
+    register(tool: unknown): void
+    guard?: (guard: (execution: Readonly<BrowserPolicyExecution>) => string | undefined) => () => void
+  }
+  const hasMonotonicGuard = typeof runtime.guard === 'function'
+  if (hasMonotonicGuard) ctx.effect(() => runtime.guard!((execution) => browserPermissionDenial(ctx, execution)))
+  ctx.effect(() => ctx.on('tools/pre-execute', async (exec, next) => {
+    const execution = exec as unknown as BrowserPolicyExecution
+    const contract = BROWSER_TOOL_CONTRACTS.find((entry) => entry.name === execution.name)
+    if (contract === undefined || contract.permission === 'read') return next()
+    if (!hasMonotonicGuard) {
+      return { kind: 'deny', reason: '浏览器操作已拒绝：单调权限 guard 不可用。' }
+    }
+    if (contract.permission === 'full-access') return next()
+
+    if (execution.signal?.aborted) return { kind: 'cancel' }
+    if (execution.agent === undefined) {
+      return { kind: 'deny', reason: '浏览器操作已拒绝：审批需要活动会话。' }
+    }
+    const approval = optionalService<BrowserApprovalFace>(ctx, 'approval')
+    if (typeof approval?.request !== 'function') {
+      return { kind: 'deny', reason: '浏览器操作已拒绝：用户审批服务不可用。' }
+    }
+    const reasons = contract.permission === 'confirm'
+      ? [
+          '浏览器身份档切换需要本次用户批准。',
+          '再次确认：身份档切换会改变网页看到的设备与平台标识。',
+        ]
+      : ['浏览器操作 ' + execution.name + ' 需要本次用户批准。']
+    for (const reason of reasons) {
+      if (execution.signal?.aborted) return { kind: 'cancel' }
+      let outcome: unknown
+      try {
+        outcome = await approval.request({
+          agent: execution.agent,
+          toolName: execution.name,
+          ...(execution.callId === undefined ? {} : { callId: execution.callId }),
+          reason,
+          ...(execution.signal === undefined ? {} : { signal: execution.signal }),
+        })
+      } catch {
+        return execution.signal?.aborted
+          ? { kind: 'cancel' }
+          : { kind: 'deny', reason: '浏览器操作已拒绝：无法完成用户审批请求。' }
+      }
+      if (execution.signal?.aborted || outcome === 'cancelled') return { kind: 'cancel' }
+      if (outcome !== 'allowed-once') {
+        return { kind: 'deny', reason: '浏览器操作已拒绝：用户未批准本次请求。' }
+      }
+    }
+    approvedBrowserExecutions.add(exec as object)
+    return next()
+  }))
   for (const t of tools()) (ctx.tools as unknown as { register(tool: unknown): void }).register(t)
   // 动作工具面（0.14.0 批）：契约里的 browser_* 全部落地，经同一控制队列调壳侧 browser* op。
   for (const t of browserTools(() => bridgeFace() as BrowserControlFace | undefined)) {

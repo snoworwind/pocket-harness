@@ -187,8 +187,7 @@ Linux 发现补充（P04，坑 373）：bootstrap `index.js` 串行发现 → `g
 | 高 | K03 | 整份配置回滚会**静默吞掉用户在最后一次健康启动之后装的插件**（挂载清单是一整份文件） | `app/src/main/java/com/snoworwind/pocketharness/PluginMounts.kt:41`、`UndoGate.kt:279` | 用一个坏插件换掉用户全部插件的装配状态 | **已改（2026-09-21 用户拍板）**：清单式——硬清单随版本并集（强制保留）+ 软清单记「当前清单被证明可用」；能点名则**只拔那一块**（其余条目与注释逐字节不动），点不出名且清单变过则拒绝回滚 |
 | 高 | K03 | 刷新失败路径不判 `rollback` 返回值即清 marker；残留 `previous` 会被下次失败路径当回滚源 | `app/src/main/java/com/snoworwind/pocketharness/EngineManager.kt:196-198` | 回滚结果被掩盖，坏树可能被「回滚」成更坏状态 | 未修（D-3 实效性缺口） |
 | 高 | P01 | `sh -c "屏幕命令"` 后接重定向/位置参数曾绕过屏幕范围门 | `plugins/dsh-android-bridge/src/screen-scope.ts`、`app/src/main/java/com/snoworwind/pocketharness/ShellOps.kt` | 旧解析要求 `-c` 载荷直到段尾；尾随内容会使载荷不展开 | 已修：按 shell 规则只解析 `-c` 后第一个参数，后续重定向/位置参数不再隐藏命令体 |
-| 高 | P03 | 工具层以「壳侧按 session 判定」为由不做归属校验，而该锁已在 0.14 移除 | `plugins/dsh-android-browser/src/tools.ts:281-294` | 跨会话操作浏览器成为可能 | 未修 |
-| 高 | P03 | `lastSnapshot` 是模块级单槽且不含页维度 | `plugins/dsh-android-browser/src/tools.ts:33` | B 会话的 `browser_click` 会消费 A 会话的 ref 与代次（新页首快照极易同码） | 未修（H-6） |
+| 高 | P03 | 浏览器契约的 approval/confirm/full-access 曾只有声明，没有工具执行闸 | `plugins/dsh-android-browser/src/contract.ts`、`src/index.ts`、`src/tools.ts` | 导航/输入无逐项审批、身份切换无二次确认、截图未受会话完全访问档约束 | **源码已修（[PR #98](https://github.com/snoworwind/pocket-harness/pull/98) 待 CI）**：统一 pre-execute 审批 + 单调 guard；截图只认当前会话显式 danger-full-access；未构建 APK、未做设备验证 |
 | 高 | B02 | Kotlin 单测数量门禁可被**整类删除**绕过（A 判据只看现存类，B 判据对缺席类直接 continue） | `scripts/check-kotlin-test-count.mjs:129`、`scripts/check-kotlin-test-count.mjs:153` | 「防防线删失」被部分架空 | 未修 |
 | 高 | B03 | `verify-vdisplay-float` 的「非法档位必须被拒」是**永久假通过**，且顺手改设备档位 | `scripts/verify-vdisplay-float.mjs:95-103` | 该断言永远绿；跑一次就把设备 scale 写成 `coerce` 后的值 | 未修 |
 | 高 | B03 | `verify-browser-panel` 的 `newTab:true` 是死参数（壳侧不解析） | `scripts/verify-browser-panel.mjs:123-128`、`app/src/main/java/com/snoworwind/pocketharness/BrowserHost.kt:384-394` | 「多页签」断言实际没建页签，属假覆盖 | 未修 |
@@ -358,8 +357,8 @@ Linux 发现补充（P04，坑 373）：bootstrap `index.js` 串行发现 → `g
 - [P02] 漂移：`docs/AGENTS/gotchas.md:178` 说坑 72 的锚点是 `plugins/dsh-android-manage/src/lossless-json.ts` 与 `plugins/dsh-android-manage/test/privilege-status.test.mjs`，源码里这两个文件只在 bridge 插件下（`plugins/dsh-android-bridge/src/lossless-json.ts:1`、`plugins/dsh-android-bridge/test/privilege-status.test.mjs:1`），manage 的 `src/` 只有 index/ui-tree/protocol-v2/detail-store/vd-shot 五个文件。
 - [P02] 漂移：`plugins/dsh-android-manage/src/index.ts:7` 的文件头工具集注释只列 8 个工具（screenshot/ui_tree/device_info/act_input/ui_dump/ui_click/ui_scroll/ui_input），源码 `plugins/dsh-android-manage/src/index.ts:2283` 实际注册 14 个（另有 screen_list/ui_detail/web_dump/env_prepare/app_launch/ui_global）。
 - [P02] 漂移：`scripts/check-code-map.mjs:152` 的注释说耦合边右端可以是「外部角色」文字，同文件 `scripts/check-code-map.mjs:103` 的解析正则却要求两端都形如查点 ID，凡右端写外部角色的边一律判 `bad-coupling`。（**已修·本轮**：解析已改为「右端只有形如查点 ID 时才要求登记」。）
-- [P03] 1. 已确认（注释与壳侧事实相反，权限面）：`tools.ts:281-294` 以「壳侧 `bindOwner/requireOwner` 按 `args.session` 判定、非归属会话结构化拒绝」作为工具层不加校验的理由，而壳侧明写该锁已在 0.14.0 移除、`controlOp` 不再做归属校验（`BrowserHost.kt:396`、`:501`），改为按会话隔离 Workspace。影响：读者据此以为存在归属门，实际唯一边界是 URL 准入（`BrowserHost.kt:625-628`）；同时 `contract.ts:136-156` 的 `permission` 档（approval/full-access/confirm）没有任何执行点，与实现不符（H-8 已登记为本轮未做）。
-- [P03] 2. 已确认（跨会话/跨页记忆）：`tools.ts:33` 的 `lastSnapshot` 是模块级单槽（评审 §M5、H-6 未修），B 会话的 `browser_click` 会直接消费 A 会话的 ref + 代次；新页首快照都是 `bx1` 起、代次 1-2 极易相同，壳侧只验代次与 ref、自述不校验 tab（`BrowserHost.kt:1412-1415`、`:1432-1447`）。引擎侧 `SnapshotMemory.tabId/refs`（`tools.ts:26-30`、`:470`）从不被读，页维度全程无校验 → 症状是「点在了本会话的另一页上但仍报成功」。
+- [P03] 1. 已修（浏览器权限面）：旧 `tools.ts` 曾以已移除的壳侧 owner 锁作为不加授权闸的理由，同时 `contract.ts` 的 approval/full-access/confirm 只有声明。当前 `index.ts` 在 `tools/pre-execute` 调用户审批服务，confirm 连续请求两次；`tools.guard` 在 waterfall 后单调拒绝未批准调用；截图要求 `sandboxPolicy.overrideOf(session)` 与 `resolve({session})` 都指向显式 danger-full-access。宿主用例覆盖拒绝、缺少服务、二次确认、默认档不算显式选择和 monotonic guard；**未构建 APK、未做设备验证**。
+- [P03] 2. 评审报告复核未将快照跨会话串扰列为现行问题；当前源码用 `lastSnapshots` 按 `sessionScope` 键控，每条记忆同时携带 `tabId/pageGeneration/refs`，动作将该 tabId 与代次回传壳侧校验。后续若改这条路径，应按源码与 `browser-target.test.mjs` 复核，勿沿用旧版「模块级单槽」结论。
 - [P03] 3. 已确认（同一事实两种读数）：`status.ts:135` 的 `ops` 恒为静态 `VD_OPS`（7 条），`snapshotFromRaw` 全程忽略壳侧回执里的 `ops`；面板路径 `mapStatusPayload:299` 读的却是壳侧值，而壳侧 `VdisplayController.ops():124` 只列 5 条（缺 `vdLaunchApp`/`vdInput`）。于是 `android_vdisplay_status` 报 7 条可用、面板报 5 条。F-13（`ops()` 由 `SUPPORTED_OPS` 派生、==7 条）本轮未做，H-14（消费 `caps.ops`）同源。
 - [P03] 4. 已确认（回执丢字段，同 issue #232 族）：`plugins/dsh-android-vdisplay/src/index.ts:140` 的 render 只输出 `guidance`，失败时模型看不到 `code`（工具说明却让模型「看 code/guidance」），active 时看不到 `screens` 里的 alias（`screenId` 需要 `virtual-N`）；`execute` 里算好的 `text`（`:157`）从不被渲染。判据同 `tools.ts:73-87` 记的「能力声明与可用通道不一致」。
 - [P03] 5. 已确认（客户端声明与壳侧不符且不在门禁面内）：`plugins/dsh-android-vdisplay/src/client/index.ts:83` 声明 `vdisplayDestroy(target?: string)`、`:284` 按别名调用，壳侧 `AndroidBridge.kt:325` 是无参方法、`MainActivity.kt:784` 不传 target → 别名被 JS 桥静默丢弃，「关闭全部」的兜底路径（`:281-287`）实际按壳侧默认顺序（选中→本会话→任意）销毁一块。该声明不在 `scripts/bridge-symmetry-baseline.json` 的 surfaces（只覆盖 androidBridge/backGateBridge），门禁看不见；注入层同名声明是无参形态（`dsh-client-ui-responsive/src/client/android-bridge.ts:82`）。同处 `:40` 的 `VD_POLL_MS=10_000` 与真实 1s 轮询（`:252`）不符，是死常量。
@@ -539,6 +538,7 @@ Linux 发现补充（P04，坑 373）：bootstrap `index.js` 串行发现 → `g
 | P02 | vdisplay 工具面 | 失败文案把模型引到 android_vdisplay_input 与 android_vdisplay_status 承接坐标与状态 | plugins/dsh-android-manage/src/index.ts:1268 |
 | P02 | 引擎 WebView 面 | android_web_dump 与 webAction 读壳自有 WebView 而非设备屏，故刻意不进 SCREEN_ACTIONS | plugins/dsh-android-manage/src/index.ts:114 |
 | P03 | K08 | 每个 browser_* 工具最终落到壳侧 BrowserHost 的 browser* op，loadState/title/reason 由它产出 | plugins/dsh-android-browser/src/tools.ts:254 |
+| P03 | 浏览器工具权限契约 | BROWSER_TOOL_CONTRACTS 经 approval 服务与 monotonic tools.guard 执行；截图另要求当前会话显式 danger-full-access | plugins/dsh-android-browser/src/index.ts:336 |
 | P03 | K08 | op 分发分支与六面登记（handle 逐行分支 + SUPPORTED_OPS）决定工具可达性 | app/src/main/java/com/snoworwind/pocketharness/DeviceControlService.kt:634 |
 | P03 | K07 | vd* 工具经同一控制队列落到 VdisplayController，状态真源与建销幂等都在壳侧 | plugins/dsh-android-vdisplay/src/index.ts:198 |
 | P03 | K07 | 面板两阶段契约：先 vdisplayBounds 落 bounds 记录，Surface 创建后再仲裁 attach | plugins/dsh-android-vdisplay/src/client/index.ts:194 |
@@ -661,7 +661,7 @@ Linux 发现补充（P04，坑 373）：bootstrap `index.js` 串行发现 → `g
 | ref 点不动或回「不在最近一次 dump 中」 | P02 | 查单槽缓存是否被后续 dump 覆盖：grep `UI_CACHE_TTL`、`uiCache =`；用 `android_ui_detail all=true` 取全量核对后重新 dump。 |
 | 虚拟屏截图失败（`Failed to take screenshot. Status: -2` 或 token 解析不到） | P02 | `adb shell "dumpsys SurfaceFlinger | grep -E '^(Virtual Display |    name=)'"` 找 `name="DSH virtual-N"`；用 `android_screen_list` 与 `android_vdisplay_status` 复核别名；文案来自 `vdTokenMissingText`。 |
 | 中文或长文本输入丢字/被汉字化 | P02 | `adb shell settings get secure default_input_method`（注入前后应还原一致）、`adb shell ime list -s`（按 `ime-component.ts/isInputMethodEnabled` 规范化后精确匹配本应用组件，兼容同包简写）；grep `ADB_INPUT_TEXT`、`adbKeyboardAuthArg`、`nodeText`；壳侧凭据文件 `files/adb-keyboard-nonce`，插件日志 tag `dsh-android-manage`。 |
-| 1. 模型说「ref 点不动 / 点错元素」：先 grep 壳侧拒绝码 `stale-ref|stale-page-generation|snapshot-required|ref-not-found`，再看是否换页后没重新 snapshot；并发两个会话时怀疑单槽记忆（`tools.ts:33`），`browser_list_tabs` 核对当前活动页。 | P03 | （待补） |
+| 1. 模型说「ref 点不动 / 点错元素」：先 grep 壳侧拒绝码 `stale-ref|stale-page-generation|snapshot-required|ref-not-found`，再看是否换页后没重新 snapshot；`browser_list_tabs` 核对当前活动页。 | P03 | （待补） |
 | 2. 回执「已打开」但页面是错误页：看 `loadState` 与 `reason`（壳侧值形如 `load-error:-1`）；`renderLoadState`（`tools.ts:136`）已把 error 态渲染成失败动词 + 指引，若看不到说明工具路径走了失败渲染兜底（`tools.ts:225-236`）。`browser_get_text` 读正文核对。 | P03 | （待补） |
 | 3. 虚拟屏「模型说不可用但面板有屏」：对比两条通路——`android_vdisplay_status` 走 `vdInfo`，面板走 `vdisplayStatus`；grep code `vdisplay-control-failed|vdisplay-control-unavailable|vdisplay-shell-not-wired`，并跑 `node plugins/dsh-android-vdisplay/test/tools-callable.test.mjs`（严格接收者校验，专门抓「方法摘出来裸调」）。 | P03 | （待补） |
 | 4. 档位/事实来源可疑：`android_browser_tier` 的 `factsSource` 若为 `measured-baseline(...)` 说明 `browserCaps` 没取到；对照 `capsNote`（注意它把所有失败都归因成「壳侧 op 待落地」，见可疑点之外的注释 `facts.ts:104-110`，真实原因常是壳侧 `browser-host-unavailable`——工作台尚未创建）。设备侧可 `adb logcat | grep BrowserHost`。 | P03 | （待补） |
@@ -1382,15 +1382,16 @@ flowchart TD
   - 只读 HTTP：`GET /api/android/browser/status`（`index.ts:295`，自带令牌/同源鉴权）、`GET /api/android/vdisplay/status`（vdisplay `index.ts:298`，exact 路由 + 回环栅栏 + 405/403）。
   - 侧栏面板：浏览器面板与虚拟屏 Tab 在注入层/客户端侧（`dsh-client-ui-responsive/src/client/mobile/native-browser-presentation.ts:61`、`plugins/dsh-android-vdisplay/src/client/index.ts:171`），数据面走 `window.androidBridge` 直连壳侧，不经控制队列。
 
-- **运行顺序**：`稳态控制`阶段，与快照/更新无关，引擎起来即注册完毕。每次工具调用自成一轮：工具 `execute` → `withFailureText` 包裹（失败文本兜底 + 会话注入）→ `call()` 经 `androidPrivilege.controlExec` 入控制队列 → 壳侧 `DeviceControlService.handle` 分支 →（browser）`BrowserHostHolder.control` → `BrowserHost.controlOp` 按 `args.session` 切 Workspace 后执行 op → 回填 `{ok,data|error}` → 动作/导航类工具（open/navigate/click/type/press/back/forward/reload）再补一次 `browserState` 取 `loadState/title/reason`（snapshot/scroll/get_text/wait/screenshot/页签类不补）→ `render` 出模型可见文本。vdisplay 的生命周期工具同路（`callVdOp`），状态工具优先 `vdInfo`、面板/端点也读同一真源。跑完把控制权交回模型，无后续阶段。
+- **运行顺序**：`稳态控制`阶段，与快照/更新无关，引擎起来即注册完毕。浏览器工具先经过统一 `tools/pre-execute`：read 直接继续；approval 向 `approval.request` 请求一次本次授权；confirm 顺序请求两次；取消、拒绝、服务缺席或异常均不进入工具体。后续 `tools.guard` 再作单调拒绝，阻止其它 listener 把未获批调用改成放行；截图还须当前会话的 `sandboxPolicy.overrideOf(session)` 与 `resolve({session})` 都为 `danger-full-access`。每次获准工具调用随后执行 `execute` → `withFailureText` 包裹（失败文本兜底 + 会话注入）→ `call()` 经 `androidPrivilege.controlExec` 入控制队列 → 壳侧 `DeviceControlService.handle` 分支 →（browser）`BrowserHostHolder.control` → `BrowserHost.controlOp` 按 `args.session` 切 Workspace 后执行 op → 回填 `{ok,data|error}` → 动作/导航类工具（open/navigate/click/type/press/back/forward/reload）再补一次 `browserState` 取 `loadState/title/reason`（snapshot/scroll/get_text/wait/screenshot/页签类不补）→ `render` 出模型可见文本。vdisplay 的生命周期工具同路（`callVdOp`），状态工具优先 `vdInfo`、面板/端点也读同一真源。跑完把控制权交回模型，无后续阶段。
 
 - **嵌套与线程**（三层）：
-  1. 引擎进程（Node 事件循环）：`execute` → `withFailureText.execute` 里 `sessionScope.run(session, ...)`（`tools.ts:245-250`）→ `call()`（`tools.ts:254`）→ `browserTools()` 返回的工具数组（`tools.ts:1075`）。
+  1. 引擎进程（Node 事件循环）：`tools/pre-execute` 按权限契约完成批准 → 单调 guard 复核 → `execute` → `withFailureText.execute` 里 `sessionScope.run(session, ...)`（`tools.ts:204-243`）→ `call()`（`tools.ts:254`）→ `browserTools()` 返回的工具数组（`tools.ts:1036`）。
   2. 壳侧服务线程：`ControlPoller.runOp` 由轮询线程执行 `handle(op,args)`（`app/src/main/java/com/snoworwind/pocketharness/ControlPoller.kt:158`），把 `__error` 归一成 `{ok:false,error}`；`BrowserHost.controlOp` 内部再用 `onMain`（`BrowserHost.kt` 主线程 Handler）跑 WebView 操作，`awaitNavigation` 在调用线程等代次前进（`BrowserHost.kt:1085`）。
   3. WebView/原生回调（主线程）：`onPageStarted/onPageFinished/onReceivedError` 写 `tab.loadState`、`lastError`（`BrowserHost.kt:677/686/699`）；vdisplay 侧 `VdisplayHost.setStageBounds` 走 `onMain`，`surfaceCreated/Changed` 回调里 `attachViewerSurface` 做仲裁（`VdisplayHost.kt:54/120-123/134`），`VdisplayController` 内部 `synchronized(lock)`。
 
 - **耦合**（点名符号）：
   - 契约面：`BROWSER_OPS`/`BROWSER_TOOLS`/`VIEWPORT_PRESETS`/`IDENTITY_PROFILES`（`contract.ts:41/14/75/96`）是插件内唯一 op 名与档位表；`VD_OPS`/`VD_STATUS_PATH`（`status.ts:14/21`）与壳侧 `ControlProtocolV2.SUPPORTED_OPS`、`DeviceControlService.handle` 分支、`scripts/control-ops-pending.json` 的 families 三方对齐（`scripts/check-control-ops.mjs` 守）。
+  - 权限面：`BROWSER_TOOL_CONTRACTS`（`contract.ts:138-156`）是每个 `browser_*` 工具权限的唯一表；`index.ts` 的 `tools/pre-execute` 请求 `approval` 服务并记录当前 execution 的批准事实，`tools.guard` 在 waterfall 后强制检查；截图另实时读取会话 `sandboxPolicy.overrideOf/resolve`，部署默认不构成用户显式选择。
   - 控制面：`androidPrivilege.controlExec`（`plugins/dsh-android-bridge/src/index.ts:949`）是唯一通路；它内部按 `TIER_REQUIRED_OPS`（`index.ts:428`）判档位——`browser*` 与 `vdInfo/vdCreate/vdDestroy` 刻意不在列，`vdInput/vdLaunch/vdLaunchApp/vdMoveTask` 在列。
   - 会话键：`sessionScope`（`AsyncLocalStorage`，`tools.ts:193`）自动把 `session` 塞进每个 op 参数；vdisplay 用 `sessionOf(exec)`（`plugins/dsh-android-vdisplay/src/index.ts:162`）。
   - 壳侧真源字段：`BrowserHost.status()` 的 `url/title/loadState/pageGeneration/canGoBack/canGoForward/tabId/tabs/reason`（`BrowserHost.kt:908-939`）、`tabSummaries()` 五字段（`BrowserHost.kt:91-101`）、`lastError`（`BrowserHost.kt:304`）；`VdisplayController.status()` 的 `state/code/guidance/ops/screens/viewers/ownerSessionId`（`VdisplayController.kt:233-268`）。
@@ -1398,9 +1399,10 @@ flowchart TD
   - 环境/事实：`DSH_BROWSER_FACTS`（`facts.ts:50`）、`DSH_ADB_PREFS_PATH`/`TERMUX__PREFIX`/`DSH_HOME` 决定控制令牌读取路径（`index.ts:69-74`），令牌头 `x-dsh-control-token`（`index.ts:31`）。
   - 门禁：`scripts/check-tool-output-schema.mjs`（VARIANTS 覆盖全部 `browser_*`，`scripts/check-tool-output-schema.mjs:153`）、`scripts/check-control-ops.mjs`、`scripts/check-bridge-symmetry.mjs`。
 
-- **关键坐标**：`plugins/dsh-android-browser/src/tools.ts:254`（`call()` 唯一出口与超时表）、`plugins/dsh-android-browser/src/tools.ts:281-294`（gate 恒放行及其理由）、`plugins/dsh-android-browser/src/tools.ts:33`（单槽快照记忆，写入点 `:470`）、`plugins/dsh-android-browser/src/tools.ts:136-145`（loadState/reason 回执渲染）、`plugins/dsh-android-browser/src/facts.ts:99-113`（事实三源与 5s 缓存）、`plugins/dsh-android-browser/src/tier.ts:57-118`（档位/视口/身份判定）、`plugins/dsh-android-vdisplay/src/status.ts:131-162`（四态映射与 fail-closed 回落）、`plugins/dsh-android-vdisplay/src/status.ts:186-212`（`readVdToolSnapshot` 优先 vdInfo）。
+- **关键坐标**：`plugins/dsh-android-browser/src/index.ts`（统一审批 listener、截图会话档位门与单调 guard）、`plugins/dsh-android-browser/src/contract.ts:138-156`（工具权限唯一契约）、`plugins/dsh-android-browser/src/tools.ts:242-252`（`withFailureText` 会话注入）、`:254`（`call()` 唯一出口与超时表）、`:33`（按会话键控的快照记忆，写入点 `:470`）、`:136-145`（loadState/reason 回执渲染）、`plugins/dsh-android-browser/src/facts.ts:99-113`（事实三源与 5s 缓存）、`plugins/dsh-android-browser/src/tier.ts:57-118`（档位/视口/身份判定）、`plugins/dsh-android-vdisplay/src/status.ts:131-162`（四态映射与 fail-closed 回落）、`:186-212`（`readVdToolSnapshot` 优先 vdInfo）。
 
 - **不变量**：
+  - 浏览器权限严格跟随 `BROWSER_TOOL_CONTRACTS`：read 不询问；approval 每次调用仅认一个 `allowed-once`；confirm 必须两个顺序 `allowed-once`；取消/拒绝/审批缺席/异常都不执行工具体；截图仅认本会话显式 `danger-full-access`，部署默认不足以放行。`tools.guard` 缺失时所有非只读浏览器工具均在 pre-execute fail-closed。
   - 壳侧 `loadState` 取值域只有 `idle/loading/loaded/error`（`BrowserHost.kt:128/677/686/699`）；引擎侧 `unknown` 只表示「这一次没读到状态」（`tools.ts:119-121`），永不等于成功。`browser_open` 只等「导航已开始」（调用点 `BrowserHost.kt:1087`，判据说明 `:1098`），故回执 `loadState=loading` 是正常态，不是失败。
   - 动作工具必须先 `browser_snapshot`：无记忆即 `snapshot-required`（`tools.ts:505-507`、`:551-553`）；壳侧再验代次与 ref（`BrowserHost.kt:1432-1447`，`stale-page-generation`/`stale-ref`）。换页类工具会清记忆（`resetBrowserMemory()` 在 open/navigate/back/forward/reload/follow/closeTab/setIdentity/setViewport）。
   - 单工位：`MAX_TABS=8`（`BrowserHost.kt:75`），超限 `tab-limit`；`browser_close_tab` 关最后一页等价于关整个工作台（`BrowserHost.kt:1336`、`:1343`）。
@@ -1409,23 +1411,26 @@ flowchart TD
   - viewer 两阶段契约：① 可信页面下发 `vdisplayBounds`（几何 + `visible` + `target` + `viewerId`）先落 bounds 记录；② Surface 创建后 `attachViewerSurface` 单独仲裁（同一 Surface 只归一个 viewer，冲突 `viewer-target-occupied`）。`visible:false` 立即 `releaseSurface`（`VdisplayHost.kt:70-73`）。
 
 - **症状 → 排查**：
-  1. 模型说「ref 点不动 / 点错元素」：先 grep 壳侧拒绝码 `stale-ref|stale-page-generation|snapshot-required|ref-not-found`，再看是否换页后没重新 snapshot；并发两个会话时怀疑单槽记忆（`tools.ts:33`），`browser_list_tabs` 核对当前活动页。
-  2. 回执「已打开」但页面是错误页：看 `loadState` 与 `reason`（壳侧值形如 `load-error:-1`）；`renderLoadState`（`tools.ts:136`）已把 error 态渲染成失败动词 + 指引，若看不到说明工具路径走了失败渲染兜底（`tools.ts:225-236`）。`browser_get_text` 读正文核对。
-  3. 虚拟屏「模型说不可用但面板有屏」：对比两条通路——`android_vdisplay_status` 走 `vdInfo`，面板走 `vdisplayStatus`；grep code `vdisplay-control-failed|vdisplay-control-unavailable|vdisplay-shell-not-wired`，并跑 `node plugins/dsh-android-vdisplay/test/tools-callable.test.mjs`（严格接收者校验，专门抓「方法摘出来裸调」）。
-  4. 档位/事实来源可疑：`android_browser_tier` 的 `factsSource` 若为 `measured-baseline(...)` 说明 `browserCaps` 没取到；对照 `capsNote`（注意它把所有失败都归因成「壳侧 op 待落地」，见可疑点之外的注释 `facts.ts:104-110`，真实原因常是壳侧 `browser-host-unavailable`——工作台尚未创建）。设备侧可 `adb logcat | grep BrowserHost`。
-  5. 门禁自证：`node scripts/check-tool-output-schema.mjs`（含 G2a 语义可区分性判据）、`node scripts/check-control-ops.mjs`（六面登记差集）、`node scripts/check-bridge-symmetry.mjs`（桥面方法对称）；插件单测 `node --test plugins/dsh-android-browser/test/browser-receipt.test.mjs`。注意本块源码注释里的壳侧行号锚点部分是 0.14.0 基线已漂（见漂移行），排查以 `grep -n` 现场结果为准。
+  1. `browser_*` 在落控制队列前回审批拒绝：核对该工具的 `permission` 契约、当前 `approval.request` 结果及审批服务是否装配；截图另核对会话 `sandbox/mode` 事件（`overrideOf(session)`）与实时 `resolve({session})`，不要用部署默认值代替会话显式选择。
+  2. 模型说「ref 点不动 / 点错元素」：先 grep 壳侧拒绝码 `stale-ref|stale-page-generation|snapshot-required|ref-not-found`，再看是否换页后没重新 snapshot；`browser_list_tabs` 核对当前活动页。
+  3. 回执「已打开」但页面是错误页：看 `loadState` 与 `reason`（壳侧值形如 `load-error:-1`）；`renderLoadState`（`tools.ts:136`）已把 error 态渲染成失败动词 + 指引，若看不到说明工具路径走了失败渲染兜底（`tools.ts:225-236`）。`browser_get_text` 读正文核对。
+  4. 虚拟屏「模型说不可用但面板有屏」：对比两条通路——`android_vdisplay_status` 走 `vdInfo`，面板走 `vdisplayStatus`；grep code `vdisplay-control-failed|vdisplay-control-unavailable|vdisplay-shell-not-wired`，并跑 `node plugins/dsh-android-vdisplay/test/tools-callable.test.mjs`（严格接收者校验，专门抓「方法摘出来裸调」）。
+  5. 档位/事实来源可疑：`android_browser_tier` 的 `factsSource` 若为 `measured-baseline(...)` 说明 `browserCaps` 没取到；对照 `capsNote`（真实原因常是壳侧 `browser-host-unavailable`——工作台尚未创建）。设备侧可 `adb logcat | grep BrowserHost`。
+  6. 门禁自证：`node scripts/check-tool-output-schema.mjs`、`node scripts/check-control-ops.mjs`、`node scripts/check-bridge-symmetry.mjs`；浏览器插件 `npm test` 覆盖审批服务缺席、拒绝/允许、confirm 两次批准、单调 guard 与截图档位 fail-closed。
 
 - **可疑点**：
-  1. 已确认（注释与壳侧事实相反，权限面）：`tools.ts:281-294` 以「壳侧 `bindOwner/requireOwner` 按 `args.session` 判定、非归属会话结构化拒绝」作为工具层不加校验的理由，而壳侧明写该锁已在 0.14.0 移除、`controlOp` 不再做归属校验（`BrowserHost.kt:396`、`:501`），改为按会话隔离 Workspace。影响：读者据此以为存在归属门，实际唯一边界是 URL 准入（`BrowserHost.kt:625-628`）；同时 `contract.ts:136-156` 的 `permission` 档（approval/full-access/confirm）没有任何执行点，与实现不符（H-8 已登记为本轮未做）。
-  2. 已确认（跨会话/跨页记忆）：`tools.ts:33` 的 `lastSnapshot` 是模块级单槽（评审 §M5、H-6 未修），B 会话的 `browser_click` 会直接消费 A 会话的 ref + 代次；新页首快照都是 `bx1` 起、代次 1-2 极易相同，壳侧只验代次与 ref、自述不校验 tab（`BrowserHost.kt:1412-1415`、`:1432-1447`）。引擎侧 `SnapshotMemory.tabId/refs`（`tools.ts:26-30`、`:470`）从不被读，页维度全程无校验 → 症状是「点在了本会话的另一页上但仍报成功」。
+  1. 已修（浏览器权限面）：旧 `tools.ts` 曾以已移除的壳侧 owner 锁作为不加授权闸的理由，同时 `contract.ts` 的 approval/full-access/confirm 只有声明。当前 `index.ts` 在 `tools/pre-execute` 调用户审批服务，confirm 连续请求两次；`tools.guard` 在 waterfall 后单调拒绝未批准调用；截图要求 `sandboxPolicy.overrideOf(session)` 与 `resolve({session})` 都指向显式 danger-full-access。宿主用例覆盖拒绝、缺少服务、二次确认、默认档不算显式选择和 monotonic guard；**未构建 APK、未做设备验证**。
+  2. 评审报告复核未将快照跨会话串扰列为现行问题；当前源码用 `lastSnapshots` 按 `sessionScope` 键控，每条记忆同时携带 `tabId/pageGeneration/refs`，动作将该 tabId 与代次回传壳侧校验。后续若改这条路径，应按源码与 `browser-target.test.mjs` 复核，勿沿用旧版「模块级单槽」结论。
   3. 已确认（同一事实两种读数）：`status.ts:135` 的 `ops` 恒为静态 `VD_OPS`（7 条），`snapshotFromRaw` 全程忽略壳侧回执里的 `ops`；面板路径 `mapStatusPayload:299` 读的却是壳侧值，而壳侧 `VdisplayController.ops():124` 只列 5 条（缺 `vdLaunchApp`/`vdInput`）。于是 `android_vdisplay_status` 报 7 条可用、面板报 5 条。F-13（`ops()` 由 `SUPPORTED_OPS` 派生、==7 条）本轮未做，H-14（消费 `caps.ops`）同源。
   4. 已确认（回执丢字段，同 issue #232 族）：`plugins/dsh-android-vdisplay/src/index.ts:140` 的 render 只输出 `guidance`，失败时模型看不到 `code`（工具说明却让模型「看 code/guidance」），active 时看不到 `screens` 里的 alias（`screenId` 需要 `virtual-N`）；`execute` 里算好的 `text`（`:157`）从不被渲染。判据同 `tools.ts:73-87` 记的「能力声明与可用通道不一致」。
   5. 已确认（客户端声明与壳侧不符且不在门禁面内）：`plugins/dsh-android-vdisplay/src/client/index.ts:83` 声明 `vdisplayDestroy(target?: string)`、`:284` 按别名调用，壳侧 `AndroidBridge.kt:325` 是无参方法、`MainActivity.kt:784` 不传 target → 别名被 JS 桥静默丢弃，「关闭全部」的兜底路径（`:281-287`）实际按壳侧默认顺序（选中→本会话→任意）销毁一块。该声明不在 `scripts/bridge-symmetry-baseline.json` 的 surfaces（只覆盖 androidBridge/backGateBridge），门禁看不见；注入层同名声明是无参形态（`dsh-client-ui-responsive/src/client/android-bridge.ts:82`）。同处 `:40` 的 `VD_POLL_MS=10_000` 与真实 1s 轮询（`:252`）不符，是死常量。
 
 ```mermaid
 flowchart TD
-  A["模型调用 browser 工具集"] --> B["tools.ts 统一包裹 gate 恒放行 注入归属会话"]
-  B --> C["call 经 androidPrivilege controlExec 投控制队列"]
+  A["模型调用 browser 工具集"] --> B["pre-execute 按 BROWSER_TOOL_CONTRACTS 请求审批"]
+  B --> B2["confirm 连续两次批准；取消/拒绝/缺服务即止"]
+  B2 --> B3["monotonic tools.guard 防绕过；截图检查会话显式 danger-full-access"]
+  B3 --> C["tools.ts 会话注入后 call 经 androidPrivilege controlExec 投控制队列"]
   C --> D["壳侧轮询线程执行 browser 操作"]
   D --> E["BrowserHost controlOp 按会话切 Workspace"]
   E --> F["browserState 回 url title loadState reason"]
@@ -1433,7 +1438,7 @@ flowchart TD
   G --> H["browserOpen 只等导航已开始 不等整页加载完"]
   H --> I["回执 loadState 常为 loading 读不到时为 unknown"]
   G --> J["snapshot 经 browserJs 得 refs 与 pageGeneration"]
-  J --> K["lastSnapshot 单槽记忆"]
+  J --> K["lastSnapshots 按会话保存 tabId/pageGeneration/refs"]
   K --> L["click 或 type 带 ref 与代次"]
   L --> M["壳侧 resolveRef 双校验代次与 ref"]
   M -->|"代次或 ref 不符"| N["结构化拒绝 stale-page-generation 或 stale-ref"]
