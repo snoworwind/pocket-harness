@@ -12,6 +12,7 @@ on:
       - 'scripts/source-build/*linux*'
       - 'scripts/source-build/prepare-termux-bootstrap.py'
       - 'scripts/source-build/prepare-proot-backend.py'
+      - 'scripts/source-build/termux_signed_packages.py'
       - 'scripts/source-build/prepare-termux-signed-repo.py'
       - 'scripts/source-build/test_prepare_termux_bootstrap.py'
       - 'scripts/source-build/test_prepare_termux_signed_repo.py'

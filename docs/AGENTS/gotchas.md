@@ -2968,4 +2968,8 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 
 493. **Debian epoch 冒号只应在签名包文件名中放行**
 
-    现象：PR #91 的 Linux CI 已验证签名与多版本选择后，来源构建在有效路径 `pool/main/c/ca-certificates/ca-certificates_1:2026.10.20-1_all.deb` 被“unsafe”拒绝。真因：路径防护把目录分隔与遍历风险和 Debian 版本 epoch 共用的 `:` 混为一谈。修法：只接受 `pool/main/` 下安全字符组成的相对目录和 `.deb` 文件名；允许 `:` 出现在最终文件名中，目录、URL 查询/片段、绝对路径和 `..` 仍拒绝。复验：新增 epoch 正例及路径遍历、目录冒号、URL 特殊字符负例；PR #92 Linux CI 与来源双构建需确认。
+    现象：PR #91 的 Linux CI 已验证签名与多版本选择后，来源构建在有效路径 `pool/main/c/ca-certificates/ca-certificates_1:2026.10.20-1_all.deb` 被“unsafe”拒绝。真因：路径防护把目录分隔与遍历风险和 Debian 版本 epoch 共用的 `:` 混为一谈。修法：只接受 `pool/main/` 下安全字符组成的相对目录和 `.deb` 文件名；允许 `:` 出现在最终文件名中，目录、URL 查询/片段、绝对路径和 `..` 仍拒绝。复验：PR #92 Linux CI 的 epoch 正例及路径负例通过；来源运行 39739105595 证明下载器路径校验已通过，但暴露 backend 有独立索引解析器，见 #494。
+
+494. **signed Termux 多版本索引的每个消费者都必须选同一候选**
+
+    现象：来源运行 39739105595 已通过验签、最高版本选择、epoch 路径检查与 Termux base 组装，随后在 PRoot backend 报 `duplicate package stanza in signed Termux index: buf`。真因：`prepare-proot-backend.py` 另有一份索引解析器仍假设每个包名只有一个 stanza，并重复维护一套更严格的包路径检查。修法：两端共用 `termux_signed_packages.py` 的 Debian 版本排序和安全路径校验；backend 继续将 provenance 与所选最高版本逐字段精确比较，禁止回退到较旧的有效签名版本。复验：后端集成夹具应包含多版本 `buf` 和多版本 `proot`，并验证旧候选 provenance 被拒绝；PR #93 Linux CI 与来源双构建需确认。

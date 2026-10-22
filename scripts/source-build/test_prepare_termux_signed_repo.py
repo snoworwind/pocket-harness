@@ -1,10 +1,12 @@
 import importlib.util
 import pathlib
 import shutil
+import sys
 import unittest
 
 
 SCRIPT = pathlib.Path(__file__).with_name("prepare-termux-signed-repo.py")
+sys.path.insert(0, str(SCRIPT.parent))
 spec = importlib.util.spec_from_file_location("prepare_termux_signed_repo", SCRIPT)
 module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)

@@ -13,6 +13,8 @@ import subprocess
 import sys
 import tempfile
 
+from termux_signed_packages import safe_termux_package_filename, select_package_records
+
 PREFIX = PurePosixPath("data/data/com.termux/files/usr")
 SHARED_OBJECT_MARKER = ".so"
 TERMUX_REPOSITORY = "https://packages.termux.dev/apt/termux-main"
@@ -28,9 +30,7 @@ def sha256(path: Path) -> str:
 
 
 def safe_package_file(webroot: Path, filename: str) -> Path:
-    relative = PurePosixPath(filename)
-    if relative.is_absolute() or ".." in relative.parts or "\\" in filename or ":" in filename or not relative.parts:
-        raise ValueError(f"unsafe Termux package path: {filename}")
+    relative = safe_termux_package_filename(filename)
     root = webroot.resolve(strict=True)
     package = root.joinpath(*relative.parts)
     resolved = package.resolve(strict=True)
@@ -122,13 +122,7 @@ def authenticated_package_index(webroot: Path, provenance: dict, bootstrap_usr: 
         text = gzip.decompress(index_bytes).decode("utf-8")
     except (OSError, UnicodeDecodeError) as error:
         raise ValueError(f"authenticated Termux Packages.gz is invalid: {error}") from error
-    records = {}
-    for record in parse_stanzas(text):
-        name = record["Package"]
-        if name in records:
-            raise ValueError(f"duplicate package stanza in signed Termux index: {name}")
-        records[name] = record
-    return records
+    return select_package_records(parse_stanzas(text))
 
 
 def package_prefix(extracted: Path) -> Path:
