@@ -2985,3 +2985,7 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 497. **Android Shell 的受限档位没有真实围栏时必须在 spawn 前拒绝（2026-10-22）**
 
     现象：`dsh-shell-termux` 曾将 `sandboxPolicy.mode`、工作区与共享目录写入环境变量后直接运行 `bash -c`；`read-only` 和 `workspace-write` 因而仍能访问 app UID 可达路径，返回的 `enforcement: partial` 没有执行门作用。真因：把诊断标签及 Android app-domain 边界当成了任意 Shell 命令的路径围栏。修法：`resolve()` 捕获每次调用的策略，`execute()` 在 bash 探测与 spawn 前拒绝无真实围栏的受限档位；`danger-full-access` 必须由本次会话显式选择，并如实标记 app-domain 部分边界。修正快照装配注释与插件文档，增加受控回归和 PR Gate。复验：`dsh-shell-termux/npm test` 4/4、`node scripts/check-code-map.mjs` 与维护文档门禁通过；**未构建 APK、未做 CDP/ADB 设备验证**，真实路径围栏与秘密隔离仍是缺口。
+
+498. **能力组撤销与解锁必须等待持久状态写入成功**
+
+    现象：`relock()` 先从内存集合删除授权，再调用吞掉异常的 `store.write()` 并报告成功；旧授权文件在写/rename 失败时仍在，重启会重新解锁。首次解锁写入失败也会先 dispose 当前锁，错误地承诺跨重启生效。真因：存储 API 不返回成功状态，调用方把“尝试写”当成“已原子提交”。修法：`UnlockStore.write()` 返回布尔结果；解锁先将新全集原子落盘，成功后才更新内存并释放锁；失败则保持锁定并回 `ok:false`。撤销即使落盘失败仍立即锁住当前 agent，但返回失败且明确提示旧授权可能在重启后恢复。复验：授权/撤销写失败、rename 失败及模拟重启用例通过；bridge `npm test` 167/167，完整 bridge 测试目录 173/173，**未做 APK/设备验收**。

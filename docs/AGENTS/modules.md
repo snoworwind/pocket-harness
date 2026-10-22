@@ -143,7 +143,7 @@
 | 引擎 → 插件 | cordis 服务面 | androidPrivilege（状态机/execAdbShell/execAdbLine/gateFor 会话级 danger/screenScope/screenAccess）；dsh-shell-termux 执行器 |
 | 插件 → 页面 | dsh.client 模块 + slots | ui-responsive（移动形态、DevSection/屏幕与 Shizuku 控制、F5 消费端轮询）；bridge client（授权 UI）；undo/marketplace 注册 |
 
-**授权模型（定稿）**：引擎级 = 门1 All Files Access（**live prefs 键 `fullAccess`，壳 syncFullAccess 写入；env DSH_ADB_FULLACCESS 仅兜底**——0.13.0 Q8 不再重启生效）+ 门2 允许开关（live prefs）+ 门3 真实配对（adb pair 握手）；会话级 = `gateFor(exec.agent.session)` 实时 resolve，**ADB 能力（含观察类）仅 danger-full-access**，自动审批不参与；写面唯一在壳侧原生 AdbState（桥/引擎只读 live `dsh-adb.xml`）。0.13.8 #172：部署默认写面档位（tier）**只是视图字段，不参与任何能力门**——ADB 能力门 = 引擎级三道门 + 会话档位实时 resolve（出厂 workspace-write 默认不再钉死 ADB 通道，坑 29 定例）。**0.14.0（U-4 方向）**：正式特权 transport 转 Shizuku，ADB 三道人门保留为迁移/诊断面。
+**授权模型（定稿）**：引擎级 = 门1 All Files Access（**live prefs 键 `fullAccess`，壳 syncFullAccess 写入；env DSH_ADB_FULLACCESS 仅兜底**——0.13.0 Q8 不再重启生效）+ 门2 允许开关（live prefs）+ 门3 真实配对（adb pair 握手）；会话级 = `gateFor(exec.agent.session)` 实时 resolve，**ADB 能力（含观察类）仅 danger-full-access**，自动审批不参与；写面唯一在壳侧原生 AdbState（桥/引擎只读 live `dsh-adb.xml`）。`android_capabilities` 另外持久化工具组的显隐授权：解锁先原子写新全集，成功后才 dispose 当前锁；撤销立即重锁当前进程，只有原子写成功才承诺重启后保持锁定，失败返回 `ok:false` 并提示旧授权可能恢复。0.13.8 #172：部署默认写面档位（tier）**只是视图字段，不参与任何能力门**——ADB 能力门 = 引擎级三道门 + 会话档位实时 resolve（出厂 workspace-write 默认不再钉死 ADB 通道，坑 29 定例）。**0.14.0（U-4 方向）**：正式特权 transport 转 Shizuku，ADB 三道人门保留为迁移/诊断面。
 
 
 ## 6. 关键实现细节与坑（每次踩坑必须登记）

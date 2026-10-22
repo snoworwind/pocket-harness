@@ -18,7 +18,7 @@ import {
  */
 function isolatedStore() {
   let saved = []
-  return { read: () => [...saved], write: (groups) => { saved = [...groups] } }
+  return { read: () => [...saved], write: (groups) => { saved = [...groups]; return true } }
 }
 
 function harness() {
