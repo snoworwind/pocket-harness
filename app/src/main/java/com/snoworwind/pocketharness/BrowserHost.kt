@@ -264,10 +264,11 @@ internal class BrowserHost(
 
   /**
    * 清空并移除某会话的工作台（销毁它自己的 WebView；不影响其它会话）。
+   * Session 删除时额外请求删除其隔离 profile；显式关闭浏览器仍保留登录数据供会话复用。
    * 匿名工作台例外：它永远保留在表里（旧调用/设备脚本会反复复用同一份状态，
    * 若被移除则每次调用都会新建，页面凭空丢失）。
    */
-  private fun dropWorkspace(workspace: Workspace) {
+  private fun dropWorkspace(workspace: Workspace, deleteSessionData: Boolean = false): Boolean {
     for (tab in workspace.tabs.values) {
       tab.generation.incrementAndGet()
       releaseTabScripts(tab)
@@ -279,8 +280,12 @@ internal class BrowserHost(
       tab.view = null
       tab.snapshotGeneration = -1L
     }
-    try { workspace.profile.dispose() } catch (_: Throwable) {
-      workspace.profileError = "browser-profile-dispose-failed"
+    val profileReleased = try {
+      if (deleteSessionData) workspace.profile.deleteSessionData()
+      else { workspace.profile.dispose(); true }
+    } catch (_: Throwable) { false }
+    if (!profileReleased) {
+      workspace.profileError = if (deleteSessionData) "browser-profile-delete-failed" else "browser-profile-dispose-failed"
       lastError = workspace.profileError
     }
     workspace.tabs.clear()
@@ -292,7 +297,9 @@ internal class BrowserHost(
     workspace.stageBounds = null
     if (workspace.sessionKey != ANONYMOUS_SESSION) workspaces.remove(workspace.sessionKey)
     if (currentWorkspace === workspace) currentWorkspace = null
+    if (viewerSessionId == workspace.sessionKey) viewerSessionId = null
     applyVisibility()
+    return profileReleased
   }
 
   /**
@@ -417,7 +424,7 @@ internal class BrowserHost(
   /** BrowserHost is ready once the owner has a root; no second WebView exists until show/open. */
   fun statusJson(): String = onMain { status().toString() } ?: unavailable("main-thread-timeout")
 
-  /** Trusted UI command vocabulary only: no page JavaScript, shell, or arbitrary native dispatch. */
+  /** Trusted UI command vocabulary only: workspaceClose destroys only the validated payload Session. */
   fun command(raw: String): String = onMain {
     if (raw.length > 20_480) return@onMain commandUnavailable("", "browser-command-too-large")
     val args = try { JSONObject(raw) } catch (_: Throwable) {
@@ -426,11 +433,17 @@ internal class BrowserHost(
     val session = args.opt("session") as? String ?: ""
     if (!validUiId(session, 2048)) return@onMain commandUnavailable(session, "browser-session-invalid")
     val action = args.opt("action") as? String ?: ""
-    if (action !in setOf("open", "back", "forward", "reload", "select", "close", "status", "tabs", "compat")) {
+    if (action !in setOf("open", "back", "forward", "reload", "select", "close", "status", "tabs", "compat", "workspaceClose")) {
       return@onMain commandUnavailable(session, "browser-command-unknown")
     }
     if (action == "compat") {
       return@onMain setCompatibility(session, args.optBoolean("enabled", false)).toString()
+    }
+    if (action == "workspaceClose") {
+      val workspace = workspaces[session]
+      val deleted = if (workspace == null) BrowserHostProfile.deleteProfileForSession(session)
+        else dropWorkspace(workspace, deleteSessionData = true)
+      return@onMain workspaceCloseReply(session, deleted).toString()
     }
     for (key in listOf("tabId", "uiTabId")) {
       if (args.has(key) && !validUiId(args.opt(key) as? String ?: "", 256)) {
@@ -502,6 +515,15 @@ internal class BrowserHost(
   private fun commandUnavailable(session: String, reason: String): String = JSONObject()
     .put("ok", false).put("available", false).put("session", session)
     .put("profileAvailable", false).put("profileReason", reason).put("reason", reason).toString()
+
+  private fun workspaceCloseReply(session: String, deleted: Boolean): JSONObject {
+    val reason = if (deleted) "" else "browser-profile-delete-failed"
+    return JSONObject().put("ok", deleted).put("available", deleted).put("session", session)
+      .put("ownerSessionId", session).put("profileAvailable", false)
+      .put("profileReason", if (deleted) "browser-session-closed" else reason)
+      .put("profileIsolation", "unavailable").put("reason", reason)
+      .put("tabs", JSONArray()).put("activeTabId", "").put("workspaceClosed", deleted)
+  }
 
   /**
    * Explicit user choice for providers without MULTI_PROFILE. Rebuild every workspace so

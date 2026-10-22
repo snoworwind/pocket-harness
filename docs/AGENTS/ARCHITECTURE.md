@@ -30,7 +30,7 @@
 | FileIncoming.kt | 外部来件（VIEW/SEND）校验净化→临时工作区→通知引擎；queued source 保留到浏览器草稿 claim 或 TTL | MainActivity、EngineService |
 | AndroidBridge.kt | `window.androidBridge` 同步业务方法声明（计数由 check-bridge-symmetry 守）；不直接挂到 WebView，由 MainFrameBridge 认证分派 | MainActivity、MainFrameBridge |
 | MainFrameBridge.kt | 主 WebView 唯一原生 transport：nonce 认证、声明方法与实参类型校验、可信顶层同步 facade；Activity 销毁时撤销 | MainActivity（唯一主 WebView addJavascriptInterface 点）、AndroidBridge、BackGateBridge |
-| BrowserHost.kt / BrowserHostNavigationPolicy.kt / BrowserOverlayPolicy.kt / BrowserHostProfile.kt | Session/tab 捕获目标与 model/UI focus 分离；每tab无桥WebView先验证nonDefault profile，再允许HTTP/loopback并保留受保护控制origin拒绝；stage/letterbox/TTL租约（客户端可见时1000ms续租、原生4000ms过期）；前台只重放新鲜舞台；不支持profile默认拒绝、不回Default；用户显式启用兼容模式时改用 BrowserSharedFallback（共享jar、status=shared、loopback仍拒） | MainActivity、可信browserHostCommand、模型controlOp |
+| BrowserHost.kt / BrowserHostNavigationPolicy.kt / BrowserOverlayPolicy.kt / BrowserHostProfile.kt | Session/tab 捕获目标与 model/UI focus 分离；每tab无桥WebView先验证nonDefault profile，再允许HTTP/loopback并保留受保护控制origin拒绝；stage/letterbox/TTL租约（客户端可见时1000ms续租、原生4000ms过期）；前台只重放新鲜舞台；不支持profile默认拒绝、不回Default；用户显式启用兼容模式时改用 BrowserSharedFallback（共享jar、status=shared、loopback仍拒）；Session 删除经窄 `workspaceClose` 销毁本会话WebView并请求删除nonDefault profile，共享兼容jar保留 | MainActivity、可信browserHostCommand、模型controlOp |
 | ScreenScope.kt | 0.14 新增：ScreenScope/ScreenTargets/ScreenScopePrefs——用户屏幕范围的 native 真源（损坏/未知回落 virtual-only） | AndroidBridge、DeviceControlService |
 | WebViewShim.kt | WebView 版本敏感面唯一入口：provider 回读（`getCurrentWebViewPackage`+major 解析单实现）、androidx.webkit 特性门、settings 两档（baseline=引擎页/控制台，+isolation=BrowserHost）；LocalDocs 静态文档面刻意不走 baseline | MainActivity、BrowserHost、ConsoleActivity、EngineManager |
 
@@ -116,7 +116,7 @@
 
 维护实现与限制的唯一详述见 [Root维护](ROOT-MAINTENANCE.md)：RootGrant策略不向固定helper暴露任意shell；RootMaintenanceLease先持久化再UID0派发；RootOwnershipJobs共享worker不归某Activity/Service caller所有。ProcIo/ShizukuCaptureIo的本地有界返回与远端确定完成是两件事，不完整capture不发布ready spool。
 
-浏览器UI私有复用官方MIT BrowserBody/Title/controller契约，官方Sidebar指南/标签框架通过注册消费，不拷Electron/Iframe后端。NativeBrowserSession把GUI occurrence绑定native tab，自定义菜单使用真实sidebar.right.tab.menu.item扩展点；HMR/unmount hide而非销毁AI页。BrowserHostProfile按Session隔离cookie/storage/worker，UI geometry focus不替代模型captured Session/tab。Windows UA字符串、JS platform与UA-CH均按目标identity选择；是否实际生效依赖provider能力并在回执如实标注，未设备验证。
+浏览器UI私有复用官方MIT BrowserBody/Title/controller契约，官方Sidebar指南/标签框架通过注册消费，不拷Electron/Iframe后端。NativeBrowserSession把GUI occurrence绑定native tab，自定义菜单使用真实sidebar.right.tab.menu.item扩展点；HMR/unmount hide而非销毁AI页。NativeBrowserPlacement连续三次观察到官方会话列表移除某Session后，关闭其Sidebar浏览条目并调 `workspaceClose`；壳侧先销毁该Session所有WebView，再请求ProfileStore删除其nonDefault profile。共享兼容jar不清理；ProfileStore磁盘清理可能异步，设备验收未完成。BrowserHostProfile按Session隔离cookie/storage/worker，UI geometry focus不替代模型captured Session/tab。Windows UA字符串、JS platform与UA-CH均按目标identity选择；是否实际生效依赖provider能力并在回执如实标注，未设备验证。
 
 ## 6. assets/ 结构（app/src/main/assets/）
 

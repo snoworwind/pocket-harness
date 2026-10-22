@@ -39,7 +39,7 @@ export interface NativeBrowserControlsInjected {
   closeBrowserTab(tabId: TabId): void
 }
 
-/** Native tabs outlive DOM mounts and plugin HMR; explicit layout close owns destruction. */
+/** Native tabs outlive DOM mounts and plugin HMR; explicit close or confirmed Session removal destroys them. */
 export class NativeBrowserSession {
   private snapshot: NativeBrowserSnapshot
   private readonly bindings = new Map<string, string>()
@@ -200,6 +200,16 @@ export class NativeBrowserSession {
     this.listeners.clear()
     this.controls.clear()
     this.visible.clear()
+  }
+
+  /** Destroy this Session's native WebViews and isolated profile after its Session was removed. */
+  closeWorkspace(): boolean {
+    if (this.disposed) return true
+    const result = nativeBrowserCommand(this.session, 'workspaceClose')
+    if (!result.ok || !result.available) return false
+    this.snapshot = result
+    this.dispose()
+    return true
   }
 
   private setting(uiTabId: string, kind: 'identity' | 'viewport', value: Record<string, string | number>): void {

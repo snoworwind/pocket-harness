@@ -21,8 +21,13 @@ export interface NativeBrowserPlacementOptions {
 export class NativeBrowserPlacement {
   private readonly workspaces = new Map<SessionId, NativeBrowserSession>()
   private readonly pending = new Map<SessionId, Map<string, TabId>>()
+  private readonly observedSessions = new Set<SessionId>()
+  private readonly missingSessionPolls = new Map<SessionId, number>()
+  private readonly retiredSessions = new Set<SessionId>()
   private timer: number | undefined
   private disposed = false
+
+  private static readonly SESSION_REMOVAL_CONFIRMATION_POLLS = 3
 
   constructor(private readonly options: NativeBrowserPlacementOptions) {}
 
@@ -53,16 +58,35 @@ export class NativeBrowserPlacement {
     for (const workspace of this.workspaces.values()) workspace.dispose()
     this.workspaces.clear()
     this.pending.clear()
+    this.observedSessions.clear()
+    this.missingSessionPolls.clear()
+    this.retiredSessions.clear()
     document.documentElement.removeAttribute(BROWSER_PENDING_ATTR)
   }
 
   private tick(): void {
     if (this.disposed) return
+    let sessionIds: readonly SessionId[]
+    let tabs: readonly SidebarRightOpenTab[]
+    try {
+      sessionIds = this.options.sessions()
+      tabs = this.options.tabs()
+    } catch (_sessionInventoryUnavailable) {
+      return
+    }
+    if (!Array.isArray(sessionIds) || !Array.isArray(tabs)) return
+    const activeSessions = new Set(sessionIds)
+    const cleanupPending = this.reconcileRemovedSessions(activeSessions, tabs)
     const mounted = this.options.mounted()
-    const ids = new Set([...this.options.sessions(), ...this.options.tabs().map(tab => tab.sessionId), ...this.workspaces.keys()])
+    const ids = new Set([...sessionIds, ...tabs.map(tab => tab.sessionId), ...this.workspaces.keys()])
     if (mounted !== undefined) ids.add(mounted)
     let mountedPending = false
     for (const session of ids) {
+      if (this.retiredSessions.has(session)) continue
+      if (activeSessions.has(session)) {
+        this.observedSessions.add(session)
+        this.missingSessionPolls.delete(session)
+      }
       const workspace = this.for(session)
       try {
         const snapshot = workspace.refresh()
@@ -117,7 +141,51 @@ export class NativeBrowserPlacement {
         if (session === mounted) mountedPending = true
       }
     }
-    if (mountedPending) document.documentElement.setAttribute(BROWSER_PENDING_ATTR, 'true')
+    if (mountedPending || cleanupPending) document.documentElement.setAttribute(BROWSER_PENDING_ATTR, 'true')
     else document.documentElement.removeAttribute(BROWSER_PENDING_ATTR)
+  }
+
+  /** Require three successful inventory polls before destroying a removed Session's native data. */
+  private reconcileRemovedSessions(activeSessions: ReadonlySet<SessionId>, tabs: readonly SidebarRightOpenTab[]): boolean {
+    for (const session of activeSessions) {
+      this.observedSessions.add(session)
+      this.missingSessionPolls.delete(session)
+      this.retiredSessions.delete(session)
+    }
+    for (const session of this.observedSessions) {
+      if (activeSessions.has(session)) continue
+      const misses = (this.missingSessionPolls.get(session) ?? 0) + 1
+      this.missingSessionPolls.set(session, misses)
+      if (misses >= NativeBrowserPlacement.SESSION_REMOVAL_CONFIRMATION_POLLS) this.retiredSessions.add(session)
+    }
+
+    let cleanupPending = false
+    for (const session of this.retiredSessions) {
+      const records = tabs.filter(tab => tab.sessionId === session
+        && (tab.kind === this.options.kind || tab.kind === this.options.legacyKind))
+      for (const record of records) {
+        try { this.options.close(session, record.tabId) } catch (_staleSidebarOccurrence) { /* retry on the next poll */ }
+      }
+      const workspace = this.workspaces.get(session) ?? new NativeBrowserSession(session)
+      if (!workspace.closeWorkspace()) {
+        this.workspaces.set(session, workspace)
+        cleanupPending = true
+        continue
+      }
+      this.workspaces.delete(session)
+      this.pending.delete(session)
+      let stillOpen = true
+      try {
+        stillOpen = this.options.tabs().some(tab => tab.sessionId === session
+          && (tab.kind === this.options.kind || tab.kind === this.options.legacyKind))
+      } catch (_sidebarInventoryUnavailable) { /* keep the tombstone and retry */ }
+      if (stillOpen) cleanupPending = true
+      else {
+        this.observedSessions.delete(session)
+        this.missingSessionPolls.delete(session)
+        this.retiredSessions.delete(session)
+      }
+    }
+    return cleanupPending
   }
 }
