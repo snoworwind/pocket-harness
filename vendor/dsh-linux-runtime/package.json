@@ -1,6 +1,6 @@
 {
   "name": "@dsh-android/linux-runtime",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "private": false,
   "type": "module",
   "description": "DSH Mobile Linux runtime plugin: Termux PRoot + Debian minimal rootfs install/execute lifecycle and the linux_bash tool",

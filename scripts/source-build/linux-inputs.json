@@ -14,6 +14,6 @@
   "prootSourceUrl": "https://github.com/termux/proot/archive/v5.1.107.98.zip",
   "prootSourceSha256": "9de61bddd6f5016d065e2755b72ff4747290e5f992562f031785b107b51d02ba",
   "termuxPackagesRecipeCommit": "9aedff9c28af3ca93c42eb2c3074221893232ae9",
-  "runtimeVersion": "0.6.0",
+  "runtimeVersion": "0.6.1",
   "minimumAppVersion": "0.14.0"
 }
