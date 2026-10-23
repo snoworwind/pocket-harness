@@ -3025,3 +3025,7 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 507. **GitHub Actions artifact 路径不能直接携带 Debian epoch 冒号**
 
     现象：main run 39825699738 的 Termux 签名包预检已验证 82 个包，上传同轮快照时被 `actions/upload-artifact` 拒绝：`ca-certificates_1:2026.10.20-1_all.deb` 路径含不支持的 `:`。真因：Debian epoch 冒号是合法包文件名的一部分，但 Actions artifact 为跨平台文件系统安全会拒绝该字符；这不是签名仓库或包下载错误。修法：预检 job 将已验签的 webroot 与 provenance 原样打成一个 tar 文件上传，artifact 自身只含无冒号归档名；两路构建下载后用 Python `tarfile` 的 `data` filter 解包，并显式拒绝绝对/越界路径、链接、重复项和非预期根目录，保留 Packages 索引、包文件名及摘要。复验：`cloud-workflow.test.mjs` 检查归档上传/解包契约并以旧目录上传和移除安全 filter 为负控；完整证据以修复后的 main 来源 workflow 成功运行补记。未做设备验证。
+
+508. **多文件引擎补丁必须按每个 target 的真实 marker 对账**
+
+    现象：main run 39883817637 的 reference 已完成 ARM64 runtime snapshot 封包，在 `reconcile-engine-patch-copies.mjs` 因 `permission-auto-review-default-AR1` 的主 target 缺少 registry marker 失败；同一步前 `apply-patches --apply` 与 `--check` 均为 26/26。真因：AR1 把高风险拒绝 marker 登记为补丁级 `marker`，但它实际位于 `dsh-experimental-auto-review/lib/index.js`；主 `dsh-permission-presets/lib/index.js` 和 client companion 有各自不同 marker。副本对账器将补丁级 marker 重复套到三个 target，误把正确产物判为补丁未应用。修法：来源链按 AR1 的三个确切 target 分别使用补丁实现导出的 marker；未登记的新 target fail closed。复验：`node --test scripts/source-build/reconcile-engine-patch-copies.test.mjs` 7/7，覆盖三文件目标 marker、正常对账和未知 target 负控；`node scripts/check-code-map.mjs` 通过。main 重跑全链结果待补记；未做设备验证。

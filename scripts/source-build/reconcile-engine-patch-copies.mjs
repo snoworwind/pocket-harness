@@ -19,6 +19,11 @@ import { join, posix, relative, resolve, sep } from 'node:path'
 import { planPiStreaming } from '../patches/pi-upstream-streaming-020.mjs'
 import { planPatch as planPtcAndroid } from '../patches/ptc-android-native-A1.mjs'
 import { planMimoThinking } from '../patches/mimo-thinking-toggle-056.mjs'
+import {
+  AUTO_REVIEW_HIGH_DENY_MARKER,
+  PERMISSION_AUTO_DEFAULT_MARKER,
+  PERMISSION_AUTO_UI_MARKER,
+} from '../patches/data/permission-auto-review-default.mjs'
 import { resolveEnginePatchTarget } from '../patches/resolve-engine-patch-target.mjs'
 
 // 登记表里的 target 是**归档内路径**；本模块与调用方一律用「相对引擎根」的路径对话，
@@ -73,8 +78,20 @@ export function enginePatchTargets(patch, engineRoot = undefined) {
   if (paths.some(path => typeof path !== 'string' || !path.startsWith(TARGET_PREFIX)) || new Set(paths).size !== paths.length) {
     throw new Error('invalid/duplicate engine patch targets: ' + patch.id)
   }
-  return paths.map((target, i) => ({ ...patch, target,
-    marker: i === 0 ? patch.marker : patch.targetMarkers?.[target] ?? patch.marker }))
+  // AR1's registry marker identifies the high-risk decision in one companion
+  // file, while its three targets each carry a distinct reviewed marker.
+  const autoReviewMarkers = patch.id === 'permission-auto-review-default-AR1' ? {
+    'usr/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-permission-presets/lib/index.js': PERMISSION_AUTO_DEFAULT_MARKER,
+    'usr/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-experimental-auto-review/lib/index.js': AUTO_REVIEW_HIGH_DENY_MARKER,
+    'usr/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-client-ui-permission-presets/lib/client.js': PERMISSION_AUTO_UI_MARKER,
+  } : null
+  return paths.map((target) => {
+    const targetMarker = patch.targetMarkers?.[target] ?? autoReviewMarkers?.[target]
+    if (patch.id === 'permission-auto-review-default-AR1' && !targetMarker) {
+      throw new Error('Auto Review target has no reviewed target-specific marker: ' + target)
+    }
+    return { ...patch, target, marker: targetMarker ?? patch.marker }
+  })
 }
 
 /** Exact reviewed verifiers supplement markers for unchanged upstream bytes and two-file PTC state. */
