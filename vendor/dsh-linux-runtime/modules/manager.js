@@ -946,11 +946,18 @@ export class LinuxRuntimeManager {
 
   async _prepareRootfs(instance) {
     try {
-      for (const relative of ['dev', 'proc', 'sys', 'tmp', 'var/tmp', 'dev/shm', 'etc']) {
+      for (const relative of ['dev', 'proc', 'sys', 'tmp', 'var/tmp', 'etc']) {
         if (!directoryExists(path.join(instance.rootfs, relative))) {
           throw new Error(`rootfs directory is missing: /${relative}`);
         }
       }
+      // Debian's base rootfs intentionally omits /dev/shm; it is normally
+      // created by init. PRoot binds the app-private shm directory there, so
+      // provide the guest-side target before the bind rather than requiring it
+      // to be present in the offline rootfs archive.
+      const shmMountPoint = path.join(instance.rootfs, 'dev/shm');
+      if (!directoryExists(shmMountPoint)) await fs.mkdir(shmMountPoint, { recursive: true });
+      if (!directoryExists(shmMountPoint)) throw new Error('rootfs directory is missing: /dev/shm');
       for (const relative of ['etc/resolv.conf', ROOTFS_PRELOAD_FILE, ROOTFS_COMPAT_LIBRARY]) {
         const file = path.join(instance.rootfs, relative);
         const info = lstatSync(file);

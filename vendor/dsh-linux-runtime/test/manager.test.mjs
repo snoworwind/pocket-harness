@@ -1,7 +1,7 @@
 import test, { after } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { chmod, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
+import { chmod, lstat, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { readFileSync, realpathSync } from 'node:fs';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
@@ -29,7 +29,6 @@ const ARCHIVE_FILES = {
   },
   rootfs: {
     'dev/.keep': '',
-    'dev/shm/.keep': '',
     'proc/.keep': '',
     'sys/.keep': '',
     'tmp/.keep': '',
@@ -52,7 +51,7 @@ function makeAsset(name, { body = `archive:${name}`, digestBody = null } = {}) {
   return {
     bytes,
     asset: {
-      url: `https://github.com/snoworwind/pocket-harness/releases/download/v0.6.0/${name}`,
+      url: `https://github.com/snoworwind/pocket-harness/releases/download/v0.6.1/${name}`,
       sha256: sha256(digestBody ? Buffer.from(digestBody) : bytes),
       size: bytes.length,
       unpackedSize: 1024,
@@ -60,7 +59,7 @@ function makeAsset(name, { body = `archive:${name}`, digestBody = null } = {}) {
   };
 }
 
-function makeManifest({ nodeAsset, rootfsFiles = ARCHIVE_FILES.rootfs, version = '0.6.0' } = {}) {
+function makeManifest({ nodeAsset, rootfsFiles = ARCHIVE_FILES.rootfs, version = '0.6.1' } = {}) {
   const backend = makeAsset('proot-backend-aarch64.tar.xz');
   const rootfs = makeAsset('debian-minimal-aarch64.tar.xz');
   const node = nodeAsset ?? makeAsset('node-glibc-v24.22.0-linux-arm64.tar.xz');
@@ -294,7 +293,7 @@ test('install stages, proves health, then activates the runtime', async () => {
   assert.equal(status.healthy, true);
   assert.equal(status.installed, true);
   assert.equal(status.runtimeId, 'debian-minimal');
-  assert.equal(status.version, '0.6.0');
+  assert.equal(status.version, '0.6.1');
   assert.equal(activeDuringProbe, false, 'the new runtime is not active until the smoke probe succeeds');
 
   const record = JSON.parse(await readFile(path.join(dataDir, 'active.json'), 'utf8'));
@@ -319,9 +318,9 @@ test('a failing install leaves the previous active runtime untouched', async () 
 
   const after = second.status();
   assert.equal(after.healthy, true, 'the previously active instance must stay active');
-  assert.equal(after.version, '0.6.0');
+  assert.equal(after.version, '0.6.1');
   const record = JSON.parse(await readFile(path.join(dataDir, 'active.json'), 'utf8'));
-  assert.equal(record.version, '0.6.0');
+  assert.equal(record.version, '0.6.1');
 });
 
 test('a runtime that fails the launch smoke probe cannot replace the active instance', async () => {
@@ -804,6 +803,18 @@ test('rootfs preparation fails closed when the PRoot compatibility preload is mi
   assert.equal(runner.calls.some(({ spec }) => spec.args?.at(-1) === 'node --version'), false);
 });
 
+test('rootfs preparation creates Debian-omitted /dev/shm for the app-private PRoot bind', async () => {
+  const dataDir = tempDir();
+  const fixture = makeManifest();
+  const { manager, runner } = makeManager(fixture, { dataDir });
+  await manager.install(fixture.manifest);
+  const { paths } = manager.status();
+  const rootfsShm = path.join(paths.rootfs, 'dev/shm');
+  assert.equal((await lstat(rootfsShm)).isDirectory(), true);
+  await manager.execute({ command: 'true' });
+  assert.ok(runner.calls.at(-1).spec.args.includes(`${paths.shm}:/dev/shm`));
+});
+
 test('cwd inside the rootfs becomes a guest path, and relative cwd is rejected', async () => {
   const dataDir = tempDir();
   const fixture = makeManifest();
@@ -927,7 +938,7 @@ test('manifest validation rejects unsafe assets and unsupported selections', () 
   assert.equal(validateManifest(fixture.manifest).runtimes[0].id, 'debian-minimal');
 
   const httpUrl = structuredClone(fixture.manifest);
-  httpUrl.plugins.runtime.url = 'http://github.com/snoworwind/pocket-harness/releases/download/v0.6.0/linux-runtime-plugin.tar.xz';
+  httpUrl.plugins.runtime.url = 'http://github.com/snoworwind/pocket-harness/releases/download/v0.6.1/linux-runtime-plugin.tar.xz';
   assert.throws(() => validateManifest(httpUrl), /HTTPS/i);
 
   const badDigest = structuredClone(fixture.manifest);

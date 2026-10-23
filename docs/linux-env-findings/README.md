@@ -1,6 +1,6 @@
 # DSH Linux 环境调查 · 文档索引
 
-> 当前实现已从 Bionilux 迁移到 Termux PRoot，runtime/bootstrap 为 `0.6.0`。源码和本机前置检查不等于 APK/设备验收；本轮未构建 APK、未跑云端 CI、未做实机测试。当前架构、安全限制、来源与待验项目见[PRoot 迁移记录](PROOT-MIGRATION-2026-10-22.md)。
+> main 已构建的实现从 Bionilux 迁移到 Termux PRoot，runtime/bootstrap 为 `0.6.0`；当前分支含 `0.6.1` rootfs `/dev/shm` 修复候选，云端 APK 来源构建/草稿发布与 ARM64 设备验收待完成。当前架构、安全限制、来源与待验项目见[PRoot 迁移记录](PROOT-MIGRATION-2026-10-22.md)。
 
 ## 当前结论
 
