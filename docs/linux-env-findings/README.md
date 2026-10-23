@@ -1,6 +1,6 @@
 # DSH Linux 环境调查 · 文档索引
 
-> main 已构建的实现从 Bionilux 迁移到 Termux PRoot，runtime/bootstrap 为 `0.6.0`；当前分支含 `0.6.1` rootfs `/dev/shm` 修复候选，云端 APK 来源构建/草稿发布与 ARM64 设备验收待完成。当前架构、安全限制、来源与待验项目见[PRoot 迁移记录](PROOT-MIGRATION-2026-10-22.md)。
+> main 已集成 Termux PRoot runtime/bootstrap `0.6.1` 的 rootfs `/dev/shm` 修复。云端 ARM64 来源构建、双构建产物比对和签名均已通过 run [39899439859](https://github.com/snoworwind/pocket-harness/actions/runs/39899439859)，并生成草稿预发布标签 [`hardening-source-511b7e38e237-39899439859-1`](https://github.com/snoworwind/pocket-harness/releases/tag/hardening-source-511b7e38e237-39899439859-1)；ARM64 设备验收仍待完成。当前架构、安全限制、来源与待验项目见[PRoot 迁移记录](PROOT-MIGRATION-2026-10-22.md)。
 
 ## 当前结论
 
