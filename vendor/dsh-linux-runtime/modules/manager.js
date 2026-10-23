@@ -444,7 +444,7 @@ function reportsExpectedProotVersion(result, expectedVersion) {
   const output = `${result.stdout ?? ''}\n${result.stderr ?? ''}`;
   const escaped = expectedVersion.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   // Termux's Android PRoot package prints an ASCII banner ending in the plain
-  // version number (`5.1.107.98`), while other builds print `PRoot v5.1.107.98`.
+  // four-part version number, while other builds print `PRoot v<version>`.
   // Match a complete version token instead of requiring one banner spelling.
   return new RegExp(`(?:^|[^A-Za-z0-9.])v?${escaped}(?=$|[^A-Za-z0-9.])`, 'i').test(output);
 }

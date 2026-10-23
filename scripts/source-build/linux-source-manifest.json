@@ -47,11 +47,11 @@
     "vendor/dsh-linux-runtime/README.md": "2f0833dadde43cf651001be55b22ef7937af20fdfc5d0a849a0581f7fd0aca58",
     "vendor/dsh-linux-runtime/lib/index.js": "94efd8bf0c99586dd2bf0516a8957ddc83492b08c6f5c1521ddd5e0e977d3a5a",
     "vendor/dsh-linux-runtime/modules/asset-installer.js": "036774735e016d605cecf91093384371903129ef15b17c7dd8927f9acdc8d7e1",
-    "vendor/dsh-linux-runtime/modules/manager.js": "7aad3aba8a24817984b5561c133dbf5180291a0500a392dc4ce8131da0218118",
+    "vendor/dsh-linux-runtime/modules/manager.js": "73c90336046c4c0564accaa180a9c8b274ce850245ade199335122302d12dc1b",
     "vendor/dsh-linux-runtime/modules/manifest.js": "36b8a2fcf7f305b89aeabd18bc950ebe84f308d739c20382c40ada04f8071c1a",
     "vendor/dsh-linux-runtime/package.json": "df2dfc91344ce4daa8fb4753be6de1163574354f57758363b3c022095393c375",
-    "vendor/dsh-linux-runtime/test/manager.test.mjs": "37df54b83af9b5b62cde08aec0437a8424e95cc80234e9fad9b41354f3bf68b9",
-    "vendor/linux-proot/SOURCE.json": "35a0f17f1231f37f24ac2e32c43b6ea09edc0ae418947e866b2200a3353da5f5",
+    "vendor/dsh-linux-runtime/test/manager.test.mjs": "cfff83b50a7524794a139a525481b7ba7cc59a76849f19e13f34da8b30020203",
+    "vendor/linux-proot/SOURCE.json": "fd1802ee494772fb73a66d411098f48750f403c36796d7ba8adf752f0e93acf8",
     "vendor/linux-proot/compat/LICENSE": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
     "vendor/linux-proot/compat/NOTICE.md": "0126c519f02d3e3c524632919d785a8b4e099ea9022aaf9d35a56e86270af2f5",
     "vendor/linux-proot/compat/SOURCE.json": "b77d9aa4fdc117253c4eb1245cded2aedd74735c65bff17e9264188afd52ed7b",
@@ -108,14 +108,14 @@
       "reason": "Cover Android PRoot environment selection, non-login shared Node PATH, both output streams and cwd/environment diagnostics, silent exit 182, rootfs preparation and installation rollback."
     }
   },
-  "sourceRef": "v5.1.107.98",
-  "sourceArchiveSha256": "9de61bddd6f5016d065e2755b72ff4747290e5f992562f031785b107b51d02ba",
+  "sourceRef": "v5.1.107.99",
+  "sourceArchiveSha256": "49951a8f35245eaf8e5b300b237ffb10a328f42641a9cbcd1e285d45e95d84e8",
   "sourceLicense": "GPL-2.0",
   "externalSources": [
     {
       "component": "Termux PRoot ARM64 package closure",
       "packageLock": "scripts/source-build/linux-backend-packages.json",
-      "recipeCommit": "9aedff9c28af3ca93c42eb2c3074221893232ae9",
+      "recipeCommit": "5b90c229de8e674a890d723b100cfcc5d6054ea5",
       "recipeCommitSource": "scripts/source-build/linux-inputs.json",
       "trust": "Termux bootstrap key verifies the per-run InRelease -> signed Packages.gz hash/size -> exact .deb hash -> extracted ELF hash; provenance records the InRelease digest and the same-run package snapshot is shared by both ARM64 replicas"
     },
