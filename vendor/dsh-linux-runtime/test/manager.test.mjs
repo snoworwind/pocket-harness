@@ -80,7 +80,7 @@ function makeManifest({ nodeAsset, rootfsFiles = ARCHIVE_FILES.rootfs, version =
           label: 'Debian minimal',
           architecture: 'arm64',
           backend: 'proot',
-          prootVersion: '5.1.107.98',
+          prootVersion: '5.1.107.99',
           backendAsset: backend.asset,
           rootfsAsset: rootfs.asset,
           nodeAsset: node.asset,
@@ -137,7 +137,7 @@ function makeIo(fixture, { onExtract } = {}) {
  * cancels it — that is what the cutover gate has to do before it replaces an
  * active rootfs.
  */
-function makeRunner({ instant, prootVersionResult = { stdout: 'PRoot v5.1.107.98\n', stderr: '', exitCode: 0 }, healthProbeResult = { stdout: 'v24.22.0', stderr: '', exitCode: 0 }, commandResult = { stdout: 'ok', stderr: '', exitCode: 0 }, onHealthProbe, onRun } = {}) {
+function makeRunner({ instant, prootVersionResult = { stdout: 'PRoot v5.1.107.99\n', stderr: '', exitCode: 0 }, healthProbeResult = { stdout: 'v24.22.0', stderr: '', exitCode: 0 }, commandResult = { stdout: 'ok', stderr: '', exitCode: 0 }, onHealthProbe, onRun } = {}) {
   const calls = [];
   const isInstant =
     instant ?? ((spec) => !String(spec.args?.at(-1) ?? '').includes('sleep'));
@@ -789,7 +789,7 @@ test('Android install accepts Termux PRoot banner when it reports the pinned ver
       '_____ _____              ___',
       '|  __ \\  __ \\_____  _____|   |_ ',
       '|   __/     /  _  \\/  _  \\    _|',
-      '|__|  |__|__\\_____\\/\\_____\\/\\____| 5.1.107.98',
+      '|__|  |__|__\\_____\\/\\_____\\/\\____| 5.1.107.99',
       '',
       'built-in accelerators: process_vm = yes, seccomp_filter = yes',
     ].join('\n');
@@ -825,7 +825,7 @@ test('Android install rejects a zero-exit PRoot probe that reports another versi
     });
     await assert.rejects(manager.install(fixture.manifest), error => {
       assert.equal(error.code, 'linux-host-exec-assets-unavailable');
-      assert.ok(error.message.includes('did not report expected version 5.1.107.98'));
+      assert.ok(error.message.includes('did not report expected version 5.1.107.99'));
       return true;
     });
     assert.equal(runner.calls.length, 1, 'the version mismatch must stop before runtime staging');
