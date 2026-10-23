@@ -10,8 +10,13 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { collectPhysicalFiles, matchesPatchTarget, reconcileEnginePatchCopies, verifyCanonicalEnginePatch } from './reconcile-engine-patch-copies.mjs'
+import { collectPhysicalFiles, enginePatchTargets, matchesPatchTarget, reconcileEnginePatchCopies, verifyCanonicalEnginePatch } from './reconcile-engine-patch-copies.mjs'
 import { planMimoThinking } from '../patches/mimo-thinking-toggle-056.mjs'
+import {
+  AUTO_REVIEW_HIGH_DENY_MARKER,
+  PERMISSION_AUTO_DEFAULT_MARKER,
+  PERMISSION_AUTO_UI_MARKER,
+} from '../patches/data/permission-auto-review-default.mjs'
 import { versionedFixture } from '../patches/tests/lib/fixture.mjs'
 
 const PREFIX = 'usr/lib/node_modules/@deepseek-ai/dsh'
@@ -49,6 +54,38 @@ test('MiMo canonical verifier accepts both patched files and rejects a partial p
     writeFileSync(join(engine, inputs[0][0]), inputs[0][1])
     assert.throws(() => verifyCanonicalEnginePatch(engine, patch), /incomplete canonical engine patch/)
     assert.throws(() => verifyCanonicalEnginePatch(engine, { id: 'unknown', verifier: 'unknown' }), /unknown engine patch verifier/)
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('Auto Review multi-file reconciliation checks each target with its own marker', () => {
+  const root = mkdtempSync(join(tmpdir(), 'reconcile-auto-review-targets-'))
+  try {
+    const engine = join(root, PREFIX)
+    const patch = JSON.parse(readFileSync('scripts/patches/registry.json', 'utf8')).patches
+      .find((item) => item.id === 'permission-auto-review-default-AR1')
+    assert.ok(patch)
+    const expanded = enginePatchTargets(patch)
+    assert.deepEqual(expanded.map(({ target, marker }) => [target, marker]), [
+      [patch.target, PERMISSION_AUTO_DEFAULT_MARKER],
+      [patch.additionalTargets[0], AUTO_REVIEW_HIGH_DENY_MARKER],
+      [patch.additionalTargets[1], PERMISSION_AUTO_UI_MARKER],
+    ])
+
+    for (const { target, marker } of expanded) {
+      const file = join(engine, target.slice(PREFIX.length + 1))
+      mkdirSync(join(file, '..'), { recursive: true })
+      writeFileSync(file, `// ${marker}\n`)
+    }
+    const report = reconcileEnginePatchCopies(engine, { patches: [patch] })
+    assert.equal(report.patchCount, 3)
+    assert.equal(report.reconciledCopyCount, 0)
+
+    assert.throws(() => enginePatchTargets({
+      ...patch,
+      additionalTargets: [...patch.additionalTargets, `${PREFIX}/node_modules/@deepseek-ai/dsh-experimental-auto-review/lib/new.js`],
+    }), /target-specific marker/)
   } finally {
     rmSync(root, { recursive: true, force: true })
   }
