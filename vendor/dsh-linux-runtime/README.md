@@ -16,10 +16,18 @@ The shared Node.js package is content-addressed by its archive SHA-256 and is
 removed only when no installed instance references it.
 
 `execute({ command, cwd, timeout, signal })` starts PRoot directly and runs
-`/bin/bash -lc <command>` inside the selected rootfs. It returns stdout,
-stderr, exit status, signal, timeout state, cwd, runtime id and architecture.
-There is no fallback to the Termux host shell. The Agent sees this through
-`linux_bash` only after the runtime health check passes.
+`/bin/bash -c <command>` inside the selected rootfs. This preserves the
+explicit shared Node.js path instead of letting Debian's `/etc/profile`
+replace it in a login shell. On Android, PRoot is launched with
+`PROOT_NO_SECCOMP=1` to disable PRoot's seccomp accelerator; Android's own
+seccomp policy remains in force. The target Android 16 / Linux 6.6.98 ROM
+intermittently exited 182 in the accelerator before guest output. Failed install
+probes persist host/guest cwd, the relevant guest and PRoot environment,
+stdout and stderr to the private bootstrap state file, with each stream bounded
+to 4096 characters. `execute` returns stdout, stderr, exit status, signal,
+timeout state, cwd, runtime id and architecture. There is no fallback to the
+Termux host shell. The Agent sees this through `linux_bash` only after the
+runtime health check passes.
 
 On Android, the PRoot launcher, static loader and dependencies are duplicated
 from verified Termux packages into APK `nativeLibraryDir`, where Android can

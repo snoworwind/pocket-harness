@@ -11,11 +11,11 @@
         "plugins/dsh-linux-bootstrap/build-client.mjs": "43e1a6469c3244ccd6baad3b13ced28dc379f843d6e902670315af0b8ad64c20",
         "plugins/dsh-linux-bootstrap/build.mjs": "5f416603bd54c216ef30bc2e9211c38373b2b967e92fb2e7ccb72e332e5b03bc",
         "plugins/dsh-linux-bootstrap/client/index.js": "2098d477559bd1113cd75e08c1ad042c5ccfc07882d2f8fab3d939320e40d20f",
-        "plugins/dsh-linux-bootstrap/package-lock.json": "39cd58e246eaca570fb885d0fb322eb7a98b421ae58239ad4c17a2b9c304121f",
-        "plugins/dsh-linux-bootstrap/package.json": "0ad697e689c53d9cd31cb304a896bcd8dfaa6ad867c820c9f7cfb18d13bc2910",
+        "plugins/dsh-linux-bootstrap/package-lock.json": "070420f82f175e1758bc7e445626e3f36b71ca448f1f26dd28bf155ab59ed130",
+        "plugins/dsh-linux-bootstrap/package.json": "1570af4871f5ee60d6cb926635d9390b4955535fe7ed8caf6a83a7456363d087",
         "plugins/dsh-linux-bootstrap/src/asset-bundle.js": "7e32ce0f57ee0a7f75dfd2d2af6ff61357d63b6c34e4f0dbf7aa23cf4300e416",
         "plugins/dsh-linux-bootstrap/src/github.js": "7b6369b5910ecb3e8b49f75a4dae3ca60ceac2d4164bf7f05f71c81803aa110c",
-        "plugins/dsh-linux-bootstrap/src/index.js": "6a43bee2e1b2a0d44ee673dfd08513092950d6fe5f62d43ba453cc1e3f9cb87d",
+        "plugins/dsh-linux-bootstrap/src/index.js": "de54c95989799da58c3830e2d56d69ab61dae5e3cb716269b5d73eade07d9da4",
         "plugins/dsh-linux-bootstrap/src/manifest.js": "a9b8512e24dfbb1b225c2bc260d3d0496b7e8834ef975d17c69355baf1911067",
         "plugins/dsh-linux-bootstrap/src/routes.js": "678391176bcd81ba6cbbbab293a4731d07e37e99c51178d7605821eac6aa5bb9",
         "plugins/dsh-linux-bootstrap/src/status.js": "494238e39094999e44105d1c56ca562f88ce3e65146bd3070806d4c82dd98f7b",
@@ -31,11 +31,11 @@
     "plugins/dsh-linux-bootstrap/build-client.mjs": "43e1a6469c3244ccd6baad3b13ced28dc379f843d6e902670315af0b8ad64c20",
     "plugins/dsh-linux-bootstrap/build.mjs": "5f416603bd54c216ef30bc2e9211c38373b2b967e92fb2e7ccb72e332e5b03bc",
     "plugins/dsh-linux-bootstrap/client/index.js": "2098d477559bd1113cd75e08c1ad042c5ccfc07882d2f8fab3d939320e40d20f",
-    "plugins/dsh-linux-bootstrap/package-lock.json": "39cd58e246eaca570fb885d0fb322eb7a98b421ae58239ad4c17a2b9c304121f",
-    "plugins/dsh-linux-bootstrap/package.json": "0ad697e689c53d9cd31cb304a896bcd8dfaa6ad867c820c9f7cfb18d13bc2910",
+    "plugins/dsh-linux-bootstrap/package-lock.json": "070420f82f175e1758bc7e445626e3f36b71ca448f1f26dd28bf155ab59ed130",
+    "plugins/dsh-linux-bootstrap/package.json": "1570af4871f5ee60d6cb926635d9390b4955535fe7ed8caf6a83a7456363d087",
     "plugins/dsh-linux-bootstrap/src/asset-bundle.js": "7e32ce0f57ee0a7f75dfd2d2af6ff61357d63b6c34e4f0dbf7aa23cf4300e416",
     "plugins/dsh-linux-bootstrap/src/github.js": "7b6369b5910ecb3e8b49f75a4dae3ca60ceac2d4164bf7f05f71c81803aa110c",
-    "plugins/dsh-linux-bootstrap/src/index.js": "6a43bee2e1b2a0d44ee673dfd08513092950d6fe5f62d43ba453cc1e3f9cb87d",
+    "plugins/dsh-linux-bootstrap/src/index.js": "de54c95989799da58c3830e2d56d69ab61dae5e3cb716269b5d73eade07d9da4",
     "plugins/dsh-linux-bootstrap/src/manifest.js": "a9b8512e24dfbb1b225c2bc260d3d0496b7e8834ef975d17c69355baf1911067",
     "plugins/dsh-linux-bootstrap/src/routes.js": "678391176bcd81ba6cbbbab293a4731d07e37e99c51178d7605821eac6aa5bb9",
     "plugins/dsh-linux-bootstrap/src/status.js": "494238e39094999e44105d1c56ca562f88ce3e65146bd3070806d4c82dd98f7b",
@@ -44,13 +44,13 @@
     "plugins/dsh-linux-bootstrap/test/github-limits-negative-control.mjs": "464a2c6290e5521c72a834c228d9f72d5096c29c92b807183c30a1a11a1ad6a0",
     "plugins/dsh-linux-bootstrap/test/github-limits.test.mjs": "5668b2ab5ac13751616850f0d366f8e2aa9647ab767c293e2fa91cdc379bfb22",
     "vendor/dsh-linux-runtime/LICENSE": "e9f4502fb52418dcd3e320d8d15e1bd7b43094ec3f2fdd5c33dd88f5a2ba85d9",
-    "vendor/dsh-linux-runtime/README.md": "8504d5c6cc09c2ff36ea45827e2c185ed7da7ca1eef05bd7a6f8155660e4b507",
+    "vendor/dsh-linux-runtime/README.md": "2f0833dadde43cf651001be55b22ef7937af20fdfc5d0a849a0581f7fd0aca58",
     "vendor/dsh-linux-runtime/lib/index.js": "94efd8bf0c99586dd2bf0516a8957ddc83492b08c6f5c1521ddd5e0e977d3a5a",
     "vendor/dsh-linux-runtime/modules/asset-installer.js": "036774735e016d605cecf91093384371903129ef15b17c7dd8927f9acdc8d7e1",
-    "vendor/dsh-linux-runtime/modules/manager.js": "07d9b9f08b88b5bfea9469e6810578cc15de71259c33048b9838982ba41ade2f",
-    "vendor/dsh-linux-runtime/modules/manifest.js": "b56619a46ac98b9e3310c9f2d6e3df895b7df06c0084f27ed18242f154419fe8",
-    "vendor/dsh-linux-runtime/package.json": "90ed84bdd0d760ee138b058b2e214b4a287e874a9e9dd4c7b87a52b1c515ea1a",
-    "vendor/dsh-linux-runtime/test/manager.test.mjs": "3466e8497142f18dccef6fa36e702fe925030ec70aebc02eb7ff9aefa22bdfee",
+    "vendor/dsh-linux-runtime/modules/manager.js": "7aad3aba8a24817984b5561c133dbf5180291a0500a392dc4ce8131da0218118",
+    "vendor/dsh-linux-runtime/modules/manifest.js": "36b8a2fcf7f305b89aeabd18bc950ebe84f308d739c20382c40ada04f8071c1a",
+    "vendor/dsh-linux-runtime/package.json": "df2dfc91344ce4daa8fb4753be6de1163574354f57758363b3c022095393c375",
+    "vendor/dsh-linux-runtime/test/manager.test.mjs": "37df54b83af9b5b62cde08aec0437a8424e95cc80234e9fad9b41354f3bf68b9",
     "vendor/linux-proot/SOURCE.json": "35a0f17f1231f37f24ac2e32c43b6ea09edc0ae418947e866b2200a3353da5f5",
     "vendor/linux-proot/compat/LICENSE": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
     "vendor/linux-proot/compat/NOTICE.md": "0126c519f02d3e3c524632919d785a8b4e099ea9022aaf9d35a56e86270af2f5",
@@ -73,19 +73,19 @@
     },
     "plugins/dsh-linux-bootstrap/package-lock.json": {
       "upstreamSha256": "0000000000000000000000000000000000000000000000000000000000000000",
-      "reason": "Synchronize the deterministic internal package lock identity to 0.6.1 without changing dependencies."
+      "reason": "Synchronize the deterministic internal package lock identity to 0.6.2 without changing dependencies."
     },
     "plugins/dsh-linux-bootstrap/package.json": {
       "upstreamSha256": "350dbe6b61e96c4723aec5414a1b7d33fd7ad249852f95908178ad4085dfd0db",
-      "reason": "Bump the internal bootstrap package identity to 0.6.1 for the Linux runtime rootfs mountpoint fix."
+      "reason": "Bump the internal bootstrap package identity to 0.6.2 for the Android PRoot smoke-probe fix."
     },
     "plugins/dsh-linux-bootstrap/src/index.js": {
       "upstreamSha256": "27708c714ba0a102a89a72611443c144a107307686146acc49b9fa4b4c1ba4b2",
-      "reason": "Report the internal bootstrap identity as 0.6.1 for the repaired offline Linux asset release."
+      "reason": "Report the internal bootstrap identity as 0.6.2 for the Android PRoot smoke-probe fix."
     },
     "vendor/dsh-linux-runtime/README.md": {
       "upstreamSha256": "91a18de24c9ceb4f5aba6ce7b28d0e769ae26e1178d529d14e139b437214b187",
-      "reason": "Document the PRoot architecture, app-UID security boundary, withheld host procfs, hard-link fallback, source/license evidence and outstanding Android device acceptance."
+      "reason": "Document the PRoot architecture, Android seccomp mode, non-login shell PATH, install-probe diagnostics, app-UID boundary, withheld host procfs, hard-link fallback, source/license evidence and outstanding device acceptance."
     },
     "vendor/dsh-linux-runtime/lib/index.js": {
       "upstreamSha256": "4cbe776c5079e445e47cd3949f907d304659573a3d448b629a1c1de0630109bc",
@@ -93,19 +93,19 @@
     },
     "vendor/dsh-linux-runtime/modules/manager.js": {
       "upstreamSha256": "e7da654488bc9b26d500b2316e16c145a7239d0e8f052621bf3fc220ccad86d3",
-      "reason": "Replace the failed Bionilux exec path with Termux PRoot; select APK-native assets from the explicit Android native-library path even if ANDROID_ROOT is absent; accept the pinned version in both Termux banner forms; pin environment, DNS/shared-memory binds and configured host-path handling; create Debian base images' omitted /dev/shm bind target; withhold host procfs; retain bounded output, process-group termination, health probes and installation rollback."
+      "reason": "Use the Android PRoot mode proven on the target ROM; run the smoke probe and linux_bash with non-login bash to preserve the explicit shared Node PATH; persist bounded cwd, environment, stdout and stderr diagnostics; retain the Termux PRoot migration, rootfs preparation, constrained binds, process limits and installation rollback."
     },
     "vendor/dsh-linux-runtime/modules/manifest.js": {
       "upstreamSha256": "1722dd47005c62fad20ec22ddb710bbff72f4a1bc5fdbee7199bb73e31185971",
-      "reason": "Require the PRoot backend identifier, pinned four-part PRoot version and internal Linux runtime package version 0.6.1 in the release manifest."
+      "reason": "Require the PRoot backend identifier, pinned four-part PRoot version and internal Linux runtime package version 0.6.2 in the release manifest."
     },
     "vendor/dsh-linux-runtime/package.json": {
       "upstreamSha256": "1d65abf96889a13f9bfce9266f44839c1957ffc5bc6691fa047cb6061041c476",
-      "reason": "Bump the internal Linux runtime package identity to 0.6.1 for the Debian /dev/shm mountpoint fix."
+      "reason": "Bump the internal Linux runtime package identity to 0.6.2 for the Android PRoot smoke-probe fix."
     },
     "vendor/dsh-linux-runtime/test/manager.test.mjs": {
       "upstreamSha256": "4549fefea91b30dfceefab3a2a0418270da4f5ce7c5ecb9b4264081ec2607c02",
-      "reason": "Cover PRoot launch/probe contracts, Android-native assets, configured host-path allowlist, withheld host procfs, current DNS binding, creation of Debian-omitted /dev/shm, rootfs preparation and failure-before-commit behavior."
+      "reason": "Cover Android PRoot environment selection, non-login shared Node PATH, both output streams and cwd/environment diagnostics, silent exit 182, rootfs preparation and installation rollback."
     }
   },
   "sourceRef": "v5.1.107.98",

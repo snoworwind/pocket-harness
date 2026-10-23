@@ -1,5 +1,5 @@
 export const MANIFEST_SCHEMA_VERSION = 1;
-export const PACKAGE_VERSION = '0.6.1';
+export const PACKAGE_VERSION = '0.6.2';
 export const MIN_MOBILE_VERSION = '0.14.0';
 export const SUPPORTED_ARCHITECTURES = new Set(['arm64', 'x64']);
 /** Manifest versions are semantic versions of the Linux release, not of this package. */

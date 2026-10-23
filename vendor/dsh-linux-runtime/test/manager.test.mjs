@@ -51,7 +51,7 @@ function makeAsset(name, { body = `archive:${name}`, digestBody = null } = {}) {
   return {
     bytes,
     asset: {
-      url: `https://github.com/snoworwind/pocket-harness/releases/download/v0.6.1/${name}`,
+      url: `https://github.com/snoworwind/pocket-harness/releases/download/v0.6.2/${name}`,
       sha256: sha256(digestBody ? Buffer.from(digestBody) : bytes),
       size: bytes.length,
       unpackedSize: 1024,
@@ -59,7 +59,7 @@ function makeAsset(name, { body = `archive:${name}`, digestBody = null } = {}) {
   };
 }
 
-function makeManifest({ nodeAsset, rootfsFiles = ARCHIVE_FILES.rootfs, version = '0.6.1' } = {}) {
+function makeManifest({ nodeAsset, rootfsFiles = ARCHIVE_FILES.rootfs, version = '0.6.2' } = {}) {
   const backend = makeAsset('proot-backend-aarch64.tar.xz');
   const rootfs = makeAsset('debian-minimal-aarch64.tar.xz');
   const node = nodeAsset ?? makeAsset('node-glibc-v24.22.0-linux-arm64.tar.xz');
@@ -280,7 +280,7 @@ test('install stages, proves health, then activates the runtime', async () => {
   const dataDir = tempDir();
   const fixture = makeManifest();
   let activeDuringProbe;
-  const { manager, io } = makeManager(fixture, {
+  const { manager, io, runner } = makeManager(fixture, {
     dataDir,
     runnerOptions: { onHealthProbe: () => { activeDuringProbe = existsSync(path.join(dataDir, 'active.json')); } },
   });
@@ -293,8 +293,13 @@ test('install stages, proves health, then activates the runtime', async () => {
   assert.equal(status.healthy, true);
   assert.equal(status.installed, true);
   assert.equal(status.runtimeId, 'debian-minimal');
-  assert.equal(status.version, '0.6.1');
+  assert.equal(status.version, '0.6.2');
   assert.equal(activeDuringProbe, false, 'the new runtime is not active until the smoke probe succeeds');
+  const smokeProbe = runner.calls.find(({ spec }) => spec.args?.at(-1) === 'node --version');
+  assert.ok(smokeProbe, 'installation must execute the guest Node smoke probe');
+  assert.deepEqual(smokeProbe.spec.args.slice(-3), ['/bin/bash', '-c', 'node --version'],
+    'the controlled guest PATH must not be overwritten by Debian /etc/profile');
+  assert.ok(smokeProbe.spec.args.includes(`PATH=${manager.status().paths.node}/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin`));
 
   const record = JSON.parse(await readFile(path.join(dataDir, 'active.json'), 'utf8'));
   assert.equal(record.runtimeId, 'debian-minimal');
@@ -318,9 +323,9 @@ test('a failing install leaves the previous active runtime untouched', async () 
 
   const after = second.status();
   assert.equal(after.healthy, true, 'the previously active instance must stay active');
-  assert.equal(after.version, '0.6.1');
+  assert.equal(after.version, '0.6.2');
   const record = JSON.parse(await readFile(path.join(dataDir, 'active.json'), 'utf8'));
-  assert.equal(record.version, '0.6.1');
+  assert.equal(record.version, '0.6.2');
 });
 
 test('a runtime that fails the launch smoke probe cannot replace the active instance', async () => {
@@ -332,12 +337,51 @@ test('a runtime that fails the launch smoke probe cannot replace the active inst
   const secondFixture = makeManifest({ version: '1.0.1' });
   const second = makeManager(secondFixture, {
     dataDir,
-    runnerOptions: { healthProbeResult: { stdout: '', stderr: 'ELF load failed', exitCode: 1 } },
+    runnerOptions: { healthProbeResult: { stdout: 'profile diagnostic', stderr: 'node: command not found', exitCode: 127 } },
   });
 
-  await assert.rejects(() => second.manager.install(secondFixture.manifest), /PRoot guest smoke probe failed/);
+  await assert.rejects(() => second.manager.install(secondFixture.manifest), error => {
+    assert.match(error.message, /PRoot guest smoke probe failed \(exit 127\)/);
+    assert.ok(error.message.includes(`hostCwd=${JSON.stringify(dataDir)}`));
+    assert.match(error.message, /guestCwd="\/"/);
+    assert.match(error.message, /guestCommand=\["\/bin\/bash","-c","node --version"\]/);
+    assert.match(error.message, /"PATH":"[^\"]*\/shared\/node\/[^\"]*\/bin:/);
+    assert.match(error.message, /stdout="profile diagnostic"/);
+    assert.match(error.message, /stderr="node: command not found"/);
+    return true;
+  });
   assert.equal(await readFile(path.join(dataDir, 'active.json'), 'utf8'), activeBefore);
   assert.equal(second.manager.status().instanceId, installed.instanceId);
+});
+
+test('a silent PRoot exit 182 diagnostic records empty streams and the selected Android environment', async () => {
+  const dataDir = tempDir();
+  const fixture = makeManifest();
+  const nativeLibraryDir = await makeAndroidNativeLibraries(dataDir);
+  const keys = ['DSH_FILES_DIR', 'DSH_LINUX_NATIVE_LIBRARY_DIR', 'ANDROID_ROOT'];
+  const previous = Object.fromEntries(keys.map(key => [key, process.env[key]]));
+  process.env.DSH_FILES_DIR = dataDir;
+  process.env.DSH_LINUX_NATIVE_LIBRARY_DIR = nativeLibraryDir;
+  process.env.ANDROID_ROOT = '/system';
+  try {
+    const { manager } = makeManager(fixture, {
+      dataDir,
+      runnerOptions: { healthProbeResult: { stdout: '', stderr: '', exitCode: 182 } },
+    });
+    await assert.rejects(manager.install(fixture.manifest), error => {
+      assert.match(error.message, /PRoot guest smoke probe failed \(exit 182\)/);
+      assert.match(error.message, /"PROOT_NO_SECCOMP":"1"/);
+      assert.match(error.message, /stdout=""/);
+      assert.match(error.message, /stderr=""/);
+      assert.match(error.message, /"PATH":"[^\"]*\/bin:/);
+      return true;
+    });
+  } finally {
+    for (const [key, value] of Object.entries(previous)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
 });
 
 test('old-instance cleanup failure preserves the committed runtime across manager restart', async () => {
@@ -548,9 +592,9 @@ test('the guest environment is derived, not inherited from the host', async () =
   }
   assert.equal(env.PROOT_LOADER, path.join(manager.status().paths.backend, 'libexec', 'proot', 'loader'));
   assert.equal(env.LD_LIBRARY_PATH, path.join(manager.status().paths.backend, 'lib'));
-  assert.equal(env.PROOT_NO_SECCOMP, undefined, 'PRoot seccomp compatibility must remain enabled');
+  assert.equal(env.PROOT_NO_SECCOMP, undefined, 'the host test runner does not force Android PRoot mode');
   assert.equal(spec.args[spec.args.length - 3], '/bin/bash');
-  assert.equal(spec.args[spec.args.length - 2], '-lc');
+  assert.equal(spec.args[spec.args.length - 2], '-c');
   assert.equal(spec.args[spec.args.length - 1], 'echo hi');
   assert.ok(spec.args.includes('-r'));
   assert.equal(spec.args[spec.args.indexOf('-r') + 1], manager.status().paths.rootfs);
@@ -604,7 +648,12 @@ test('Android PRoot uses APK-native assets, hides host procfs, and binds current
       assert.equal(spec.env.TERMUX__ROOTFS, undefined);
       assert.equal(spec.env.TERMUX__PREFIX, undefined);
       assert.equal(spec.env.TERMUX_EXEC__EXECVE_CALL__INTERCEPT, undefined);
+      assert.equal(spec.env.PROOT_NO_SECCOMP, '1', 'Android must bypass the unreliable PRoot seccomp accelerator');
     }
+    const smokeProbe = runner.calls.find(({ spec }) => spec.args?.at(-1) === 'node --version');
+    assert.ok(smokeProbe);
+    assert.equal(smokeProbe.spec.env.PROOT_NO_SECCOMP, '1');
+    assert.deepEqual(smokeProbe.spec.args.slice(-3), ['/bin/bash', '-c', 'node --version']);
 
     runner.calls.length = 0;
     await manager.execute({ command: 'echo guest' });
@@ -612,7 +661,7 @@ test('Android PRoot uses APK-native assets, hides host procfs, and binds current
     assert.equal(command.file, proot);
     assert.equal(command.env.LD_LIBRARY_PATH, nativeLibraryDir);
     assert.equal(command.env.PROOT_LOADER, loader);
-    assert.equal(command.env.PROOT_NO_SECCOMP, undefined, 'PRoot seccomp compatibility must stay enabled');
+    assert.equal(command.env.PROOT_NO_SECCOMP, '1', 'Android PRoot must use the reliable non-seccomp path');
     assert.equal(command.env.LD_PRELOAD, undefined);
     assert.equal(command.env.TERMUX__ROOTFS, undefined);
     assert.equal(command.args.some((value, index) => value === '-b' && command.args[index + 1] === '/proc'), false,
@@ -622,7 +671,7 @@ test('Android PRoot uses APK-native assets, hides host procfs, and binds current
     assert.ok(command.args.includes('/usr/bin/env'));
     assert.ok(command.args.includes('-i'));
     assert.equal(command.args.at(-3), '/bin/bash');
-    assert.equal(command.args.at(-2), '-lc');
+    assert.equal(command.args.at(-2), '-c');
     assert.equal(command.args.at(-1), 'echo guest');
     assert.equal(resolverReads.at(-1), '# Resolvers supplied by the current Android network.\nnameserver 1.1.1.1\nnameserver 2001:4860:4860::8888\n');
 
@@ -938,7 +987,7 @@ test('manifest validation rejects unsafe assets and unsupported selections', () 
   assert.equal(validateManifest(fixture.manifest).runtimes[0].id, 'debian-minimal');
 
   const httpUrl = structuredClone(fixture.manifest);
-  httpUrl.plugins.runtime.url = 'http://github.com/snoworwind/pocket-harness/releases/download/v0.6.1/linux-runtime-plugin.tar.xz';
+  httpUrl.plugins.runtime.url = 'http://github.com/snoworwind/pocket-harness/releases/download/v0.6.2/linux-runtime-plugin.tar.xz';
   assert.throws(() => validateManifest(httpUrl), /HTTPS/i);
 
   const badDigest = structuredClone(fixture.manifest);
