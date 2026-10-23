@@ -3021,3 +3021,7 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 506. **滚动 Termux stable 摘要不能作为提交级固定输入（2026-10-23）**
 
     现象：PR #102 固定的 Termux InRelease SHA-256 为 `317788…22f3f`；其后的两次来源草稿 CI 都在 `gpgv` 报告官方 Termux 签名有效后，于 pin 比较处失败。run 39809445254 的两路观测到摘要 `6b20f388…ce71d87`、签名时间 2026-10-22 13:30 UTC；run 39820055985 的两路观测到摘要 `04cb4d94…dbd1549`、签名时间 16:31 UTC。真因：仓内 pin 指向较早的 `stable` 发布，官方滚动索引在来源构建前已推进；正确验签的当前输入也会被过期摘要拒绝，双路构建各自取数还会遇到不同发布时点。修法：删除提交级 `termuxInReleaseSha256`；单独的 `termux-package-inputs` job 每轮固定 bootstrap、验签当前 InRelease、校验签名 Packages.gz 与所有目标 `.deb`，再上传带本轮 provenance 的快照；两路 ARM64 job 依赖该 job 并下载同一个 run/attempt artifact。recipe commit/hash 锁与签名、内容摘要校验均保留。复验：Python 用例确认 InRelease 摘要只记录为本轮 provenance；workflow 契约测试检查单次解析、job 依赖、同名 artifact 和禁止 replica 独立抓取，并带受控负控。PR #105 的本地/远端复验结果待补记；本机没有 `gpg/gpgv`，实际签名、包闭包和 ARM64 构建须由 Linux runner 完成；本轮未构建 APK、未做设备验证。
+
+507. **GitHub Actions artifact 路径不能直接携带 Debian epoch 冒号**
+
+    现象：main run 39825699738 的 Termux 签名包预检已验证 82 个包，上传同轮快照时被 `actions/upload-artifact` 拒绝：`ca-certificates_1:2026.10.20-1_all.deb` 路径含不支持的 `:`。真因：Debian epoch 冒号是合法包文件名的一部分，但 Actions artifact 为跨平台文件系统安全会拒绝该字符；这不是签名仓库或包下载错误。修法：预检 job 将已验签的 webroot 与 provenance 原样打成一个 tar 文件上传，artifact 自身只含无冒号归档名；两路构建下载后用 Python `tarfile` 的 `data` filter 解包，并显式拒绝绝对/越界路径、链接、重复项和非预期根目录，保留 Packages 索引、包文件名及摘要。复验：`cloud-workflow.test.mjs` 检查归档上传/解包契约并以旧目录上传和移除安全 filter 为负控；完整证据以修复后的 main 来源 workflow 成功运行补记。未做设备验证。

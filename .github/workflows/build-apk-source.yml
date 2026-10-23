@@ -76,13 +76,20 @@ jobs:
             "$artifact_root/termux-webroot" \
             "$bootstrap_root/preinstall.json"
 
+          # Debian epoch versions put ':' in valid package filenames, but the
+          # Actions artifact service rejects that character in archived paths.
+          # Keep the authenticated repository byte-for-byte inside one tar file.
+          COPYFILE_DISABLE=1 tar --create --file=.deploy-tmp/termux-package-inputs.tar \
+            --directory="$artifact_root" termux-webroot termux-packages-provenance.json
+
       - name: Upload the authenticated Termux package snapshot for this workflow run
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: termux-package-inputs-${{ github.run_id }}-${{ github.run_attempt }}
-          path: .deploy-tmp/termux-package-artifact/
+          path: .deploy-tmp/termux-package-inputs.tar
           include-hidden-files: true
           if-no-files-found: error
+          compression-level: 0
           retention-days: 7
 
   build-arm64:
@@ -431,7 +438,54 @@ jobs:
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: termux-package-inputs-${{ github.run_id }}-${{ github.run_attempt }}
-          path: .deploy-tmp/source-build
+          path: .deploy-tmp/source-build/termux-package-artifact
+
+      - name: Safely restore the authenticated Termux package snapshot
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import pathlib
+          import tarfile
+
+          archive = pathlib.Path('.deploy-tmp/source-build/termux-package-artifact/termux-package-inputs.tar')
+          destination = pathlib.Path('.deploy-tmp/source-build').resolve()
+          expected_roots = {'termux-webroot', 'termux-packages-provenance.json'}
+          seen = set()
+
+          with tarfile.open(archive, mode='r:') as bundle:
+              members = bundle.getmembers()
+              roots = {pathlib.PurePosixPath(member.name).parts[0]
+                       for member in members if pathlib.PurePosixPath(member.name).parts}
+              if roots != expected_roots:
+                  raise SystemExit(f'unexpected Termux snapshot archive roots: {sorted(roots)}')
+              for member in members:
+                  relative = pathlib.PurePosixPath(member.name)
+                  normalized_name = relative.as_posix()
+                  directory_name = member.isdir() and member.name == normalized_name + '/'
+                  if (relative.is_absolute() or not relative.parts or '..' in relative.parts
+                          or (member.name != normalized_name and not directory_name)):
+                      raise SystemExit(f'unsafe Termux snapshot archive path: {member.name!r}')
+                  if not (member.isfile() or member.isdir()):
+                      raise SystemExit(f'unsupported Termux snapshot archive entry: {member.name!r}')
+                  if normalized_name in seen:
+                      raise SystemExit(f'duplicate Termux snapshot archive path: {member.name!r}')
+                  seen.add(normalized_name)
+                  target = destination.joinpath(*relative.parts)
+                  if not target.resolve().is_relative_to(destination):
+                      raise SystemExit(f'Termux snapshot archive path escapes destination: {member.name!r}')
+                  cursor = destination
+                  for part in relative.parts[:-1]:
+                      cursor = cursor / part
+                      if cursor.is_symlink():
+                          raise SystemExit(f'Termux snapshot extraction crosses a symlink: {member.name!r}')
+                  if target.exists() or target.is_symlink():
+                      raise SystemExit(f'Termux snapshot destination already exists: {member.name!r}')
+              bundle.extractall(destination, members=members, filter='data')
+
+          archive.unlink()
+          archive.parent.rmdir()
+          PY
 
       - name: Cross-compile node-pty Android binding from pinned source
         shell: bash
