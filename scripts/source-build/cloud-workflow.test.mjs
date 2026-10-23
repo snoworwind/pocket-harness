@@ -90,13 +90,23 @@ function checkTermuxPackageSnapshotFlow(source) {
   assert.match(preflight, /python3 scripts\/source-build\/prepare-termux-signed-repo\.py/)
   assert.equal((preflight.match(/prepare-termux-signed-repo\.py/g) ?? []).length, 1,
     'the rolling Termux repository must be resolved exactly once per workflow run')
+  assert.match(preflight, /tar --create --file=\.deploy-tmp\/termux-package-inputs\.tar/)
+  assert.match(preflight, /--directory="\$artifact_root" termux-webroot termux-packages-provenance\.json/)
   assert.match(preflight, /name: termux-package-inputs-\$\{\{ github\.run_id \}\}-\$\{\{ github\.run_attempt \}\}/)
-  assert.match(preflight, /path: \.deploy-tmp\/termux-package-artifact\//)
+  assert.match(preflight, /path: \.deploy-tmp\/termux-package-inputs\.tar/)
+  assert.match(preflight, /compression-level: 0/)
   assert.match(readFileSync(new URL('./prepare-termux-signed-repo.py', import.meta.url), 'utf8'),
     /webroot\.parent \/ "termux-packages-provenance\.json"/)
   assert.match(build, /needs: termux-package-inputs/)
   assert.match(build, /name: termux-package-inputs-\$\{\{ github\.run_id \}\}-\$\{\{ github\.run_attempt \}\}/)
-  assert.match(build, /path: \.deploy-tmp\/source-build/)
+  assert.match(build, /path: \.deploy-tmp\/source-build\/termux-package-artifact/)
+  assert.match(build, /tarfile\.open\(archive, mode='r:'\)/)
+  assert.match(build, /bundle\.extractall\(destination, members=members, filter='data'\)/)
+  assert.match(build, /expected_roots = \{'termux-webroot', 'termux-packages-provenance\.json'\}/)
+  assert.match(build, /not \(member\.isfile\(\) or member\.isdir\(\)\)/)
+  assert.match(build, /'\.\.' in relative\.parts/)
+  assert.match(build, /member\.name == normalized_name \+ '\/'/)
+  assert.match(build, /cursor\.is_symlink\(\)/)
   assert.equal((build.match(/prepare-termux-signed-repo\.py/g) ?? []).length, 0,
     'build replicas must consume the shared snapshot instead of independently resolving stable')
   assert.match(build, /Download this run's authenticated Termux package snapshot/)
@@ -110,6 +120,10 @@ test('negative controls reject independent repo fetches, missing dependency, or 
     source.replace('    needs: termux-package-inputs\n', ''),
     source.replace('          name: termux-package-inputs-${{ github.run_id }}-${{ github.run_attempt }}\n          path: .deploy-tmp/source-build',
       '          name: termux-package-inputs-stale-run\n          path: .deploy-tmp/source-build'),
+    source.replace('          path: .deploy-tmp/termux-package-inputs.tar',
+      '          path: .deploy-tmp/termux-package-artifact/'),
+    source.replace("bundle.extractall(destination, members=members, filter='data')",
+      'bundle.extractall(destination, members=members)'),
     source.replace('      - name: Download this run\'s authenticated Termux package snapshot\n        uses:',
       '      - name: Download this run\'s authenticated Termux package snapshot\n        run: python3 scripts/source-build/prepare-termux-signed-repo.py\n        uses:'),
   ]) assert.throws(() => checkTermuxPackageSnapshotFlow(bad), assert.AssertionError)
