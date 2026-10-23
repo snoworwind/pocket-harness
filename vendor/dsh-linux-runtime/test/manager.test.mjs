@@ -51,7 +51,7 @@ function makeAsset(name, { body = `archive:${name}`, digestBody = null } = {}) {
   return {
     bytes,
     asset: {
-      url: `https://github.com/snoworwind/pocket-harness/releases/download/v0.6.2/${name}`,
+      url: `https://github.com/snoworwind/pocket-harness/releases/download/v0.6.3/${name}`,
       sha256: sha256(digestBody ? Buffer.from(digestBody) : bytes),
       size: bytes.length,
       unpackedSize: 1024,
@@ -59,7 +59,7 @@ function makeAsset(name, { body = `archive:${name}`, digestBody = null } = {}) {
   };
 }
 
-function makeManifest({ nodeAsset, rootfsFiles = ARCHIVE_FILES.rootfs, version = '0.6.2' } = {}) {
+function makeManifest({ nodeAsset, rootfsFiles = ARCHIVE_FILES.rootfs, version = '0.6.3' } = {}) {
   const backend = makeAsset('proot-backend-aarch64.tar.xz');
   const rootfs = makeAsset('debian-minimal-aarch64.tar.xz');
   const node = nodeAsset ?? makeAsset('node-glibc-v24.22.0-linux-arm64.tar.xz');
@@ -293,7 +293,7 @@ test('install stages, proves health, then activates the runtime', async () => {
   assert.equal(status.healthy, true);
   assert.equal(status.installed, true);
   assert.equal(status.runtimeId, 'debian-minimal');
-  assert.equal(status.version, '0.6.2');
+  assert.equal(status.version, '0.6.3');
   assert.equal(activeDuringProbe, false, 'the new runtime is not active until the smoke probe succeeds');
   const smokeProbe = runner.calls.find(({ spec }) => spec.args?.at(-1) === 'node --version');
   assert.ok(smokeProbe, 'installation must execute the guest Node smoke probe');
@@ -323,9 +323,9 @@ test('a failing install leaves the previous active runtime untouched', async () 
 
   const after = second.status();
   assert.equal(after.healthy, true, 'the previously active instance must stay active');
-  assert.equal(after.version, '0.6.2');
+  assert.equal(after.version, '0.6.3');
   const record = JSON.parse(await readFile(path.join(dataDir, 'active.json'), 'utf8'));
-  assert.equal(record.version, '0.6.2');
+  assert.equal(record.version, '0.6.3');
 });
 
 test('a runtime that fails the launch smoke probe cannot replace the active instance', async () => {
@@ -369,8 +369,8 @@ test('a silent PRoot exit 182 diagnostic records empty streams and the selected 
       runnerOptions: { healthProbeResult: { stdout: '', stderr: '', exitCode: 182 } },
     });
     await assert.rejects(manager.install(fixture.manifest), error => {
-      assert.match(error.message, /PRoot guest smoke probe failed \(exit 182\)/);
-      assert.match(error.message, /"PROOT_NO_SECCOMP":"1"/);
+      assert.match(error.message, /PRoot guest smoke probe failed \(exit 182 after 3 attempts\)/);
+      assert.match(error.message, /"PROOT_NO_SECCOMP":null/);
       assert.match(error.message, /stdout=""/);
       assert.match(error.message, /stderr=""/);
       assert.match(error.message, /"PATH":"[^\"]*\/bin:/);
@@ -648,11 +648,11 @@ test('Android PRoot uses APK-native assets, hides host procfs, and binds current
       assert.equal(spec.env.TERMUX__ROOTFS, undefined);
       assert.equal(spec.env.TERMUX__PREFIX, undefined);
       assert.equal(spec.env.TERMUX_EXEC__EXECVE_CALL__INTERCEPT, undefined);
-      assert.equal(spec.env.PROOT_NO_SECCOMP, '1', 'Android must bypass the unreliable PRoot seccomp accelerator');
+      assert.equal(spec.env.PROOT_NO_SECCOMP, undefined, 'Android must not force the ineffective seccomp bypass');
     }
     const smokeProbe = runner.calls.find(({ spec }) => spec.args?.at(-1) === 'node --version');
     assert.ok(smokeProbe);
-    assert.equal(smokeProbe.spec.env.PROOT_NO_SECCOMP, '1');
+    assert.equal(smokeProbe.spec.env.PROOT_NO_SECCOMP, undefined);
     assert.deepEqual(smokeProbe.spec.args.slice(-3), ['/bin/bash', '-c', 'node --version']);
 
     runner.calls.length = 0;
@@ -661,7 +661,7 @@ test('Android PRoot uses APK-native assets, hides host procfs, and binds current
     assert.equal(command.file, proot);
     assert.equal(command.env.LD_LIBRARY_PATH, nativeLibraryDir);
     assert.equal(command.env.PROOT_LOADER, loader);
-    assert.equal(command.env.PROOT_NO_SECCOMP, '1', 'Android PRoot must use the reliable non-seccomp path');
+    assert.equal(command.env.PROOT_NO_SECCOMP, undefined, 'Android PRoot keeps its normal syscall translation mode');
     assert.equal(command.env.LD_PRELOAD, undefined);
     assert.equal(command.env.TERMUX__ROOTFS, undefined);
     assert.equal(command.args.some((value, index) => value === '-b' && command.args[index + 1] === '/proc'), false,
@@ -987,7 +987,7 @@ test('manifest validation rejects unsafe assets and unsupported selections', () 
   assert.equal(validateManifest(fixture.manifest).runtimes[0].id, 'debian-minimal');
 
   const httpUrl = structuredClone(fixture.manifest);
-  httpUrl.plugins.runtime.url = 'http://github.com/snoworwind/pocket-harness/releases/download/v0.6.2/linux-runtime-plugin.tar.xz';
+  httpUrl.plugins.runtime.url = 'http://github.com/snoworwind/pocket-harness/releases/download/v0.6.3/linux-runtime-plugin.tar.xz';
   assert.throws(() => validateManifest(httpUrl), /HTTPS/i);
 
   const badDigest = structuredClone(fixture.manifest);

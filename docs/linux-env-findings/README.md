@@ -1,6 +1,6 @@
 # DSH Linux 环境调查 · 文档索引
 
-> main 已集成 Termux PRoot runtime/bootstrap `0.6.1` 的 rootfs `/dev/shm` 修复，来源构建和签名已通过 run [39899439859](https://github.com/snoworwind/pocket-harness/actions/runs/39899439859)，草稿标签为 [`hardening-source-511b7e38e237-39899439859-1`](https://github.com/snoworwind/pocket-harness/releases/tag/hardening-source-511b7e38e237-39899439859-1)。用户提供的新设备复现还发现 PRoot seccomp exit 182 和 Debian login profile 覆盖共享 Node PATH；当前源码推进 0.6.2 候选修复，尚待来源 APK 构建与 ARM64 设备验收，详见[修复记录](REMEDIATION-ANDROID-PROOT-2026-10-23.md)。当前架构、安全限制、来源与待验项目见[PRoot 迁移记录](PROOT-MIGRATION-2026-10-22.md)。
+> main 已集成 Termux PRoot runtime/bootstrap `0.6.1` 的 rootfs `/dev/shm` 修复，来源构建和签名已通过 run [39899439859](https://github.com/snoworwind/pocket-harness/actions/runs/39899439859)，草稿标签为 [`hardening-source-511b7e38e237-39899439859-1`](https://github.com/snoworwind/pocket-harness/releases/tag/hardening-source-511b7e38e237-39899439859-1)。后续 syscall trace 已推翻 0.6.2 关于 seccomp 的根因判断；0.6.3 候选仅对空输出 exit 182 重试，保留 `/bin/bash -c` 的 Node PATH 修复与诊断。源码行、复验状态和设备边界见[syscall 调查记录](PROOT-SYSCALL-EXIT-182-2026-10-23.md)；来源 APK 构建与 ARM64 设备验收待完成。当前架构、安全限制、来源与待验项目见[PRoot 迁移记录](PROOT-MIGRATION-2026-10-22.md)。
 
 ## 当前结论
 

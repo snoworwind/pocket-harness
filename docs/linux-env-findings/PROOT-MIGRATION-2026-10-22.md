@@ -4,7 +4,7 @@
 
 Linux 执行后端由 Bionilux 改为 Termux PRoot。Bionilux 在目标 Android app 域中无法直接执行 Debian glibc loader；改为进程内装载还需要补齐完整的后续 `execve` 链，工程量接近重写 PRoot。本轮不继续维护这条自研 loader 路线。
 
-当前源码版本为 Linux runtime/bootstrap `0.6.2`，PRoot pin 为 `5.1.107.99`。APK 资产工厂从 Termux 官方签名仓库取得 ARM64 PRoot 包及依赖，创建 Debian 13 ARM64 rootfs，打包 glibc Node；来源链在资产嵌入前验证仓库签名、签名索引摘要、精确软件包版本与 `.deb` 摘要。APK 内的 PRoot launcher/loader 与依赖逐字节复核。Bionilux launcher、loader、preload 与 Cargo 许可收集器已从活跃源码和资产构建路径删除；bootstrap 包的历史上游来源仍保留为来源记录。
+当前源码候选为 Linux runtime/bootstrap `0.6.3`，PRoot pin 为 `5.1.107.99`。APK 资产工厂从 Termux 官方签名仓库取得 ARM64 PRoot 包及依赖，创建 Debian 13 ARM64 rootfs，打包 glibc Node；来源链在资产嵌入前验证仓库签名、签名索引摘要、精确软件包版本与 `.deb` 摘要。APK 内的 PRoot launcher/loader 与依赖逐字节复核。Bionilux launcher、loader、preload 与 Cargo 许可收集器已从活跃源码和资产构建路径删除；bootstrap 包的历史上游来源仍保留为来源记录。
 
 本轮完成的是源码迁移和构建前静态/自动检查。2026-10-23 的第一次 `draft_release=true` 来源 run [39922474317](https://github.com/snoworwind/pocket-harness/actions/runs/39922474317) 在两路 ARM64 builder 的 Linux PRoot 资产组装阶段 fail-closed：官方签名 Termux 索引已提供 PRoot `5.1.107.99`，提交锁仍是 `5.1.107.98`，该次没有产出 APK 或草稿 Release。当前 follow-up 将 PRoot 源码、recipe 与归档摘要锁同步到 `5.1.107.99`。**目标 ROM 的 Android 设备验收仍未完成**，不能据 CI 构建证明 PRoot 能在 app 域启动、guest glibc、apt 和多级 `execve`。
 

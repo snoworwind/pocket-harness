@@ -49,6 +49,7 @@ const GUEST_ENV_ALLOWLIST = [
 ];
 const MAX_CAPTURED_OUTPUT_BYTES = 256 * 1024;
 const TERMINATION_GRACE_MS = 1500;
+const MAX_GUEST_SMOKE_PROBE_ATTEMPTS = 3;
 const ANDROID_NATIVE_PROOT = 'libpocketharness_proot.so';
 const ANDROID_NATIVE_PROOT_LOADER = 'libpocketharness_proot_loader.so';
 const ANDROID_NATIVE_TALLOC = 'libtalloc.so';
@@ -485,8 +486,7 @@ function androidNativeProot() {
 
 function prootExecutionEnvironment(backend, instanceRoot) {
   const environment = cleanHostEnvironment();
-  const androidHost = isAndroidRuntimeHost();
-  const nativeLibraryDir = androidHost
+  const nativeLibraryDir = isAndroidRuntimeHost()
     ? path.dirname(androidNativeProot())
     : undefined;
   environment.LD_LIBRARY_PATH = nativeLibraryDir ?? path.join(backend, 'lib');
@@ -494,11 +494,10 @@ function prootExecutionEnvironment(backend, instanceRoot) {
     ? path.join(nativeLibraryDir, ANDROID_NATIVE_PROOT_LOADER)
     : path.join(backend, 'libexec', 'proot', 'loader');
   environment.PROOT_TMP_DIR = path.join(instanceRoot, 'proot-tmp');
-  // The target Android 16 / 6.6.98 ROM intermittently exits 182 in PRoot's
-  // seccomp accelerator before the guest emits anything. Use one consistent
-  // execution mode for install probes and linux_bash on Android.
-  if (androidHost) environment.PROOT_NO_SECCOMP = '1';
-  else delete environment.PROOT_NO_SECCOMP;
+  // PRoot reads this variable by presence. Keep its seccomp compatibility
+  // filter available; the observed silent exit 182 is handled at the narrow
+  // guest smoke-probe boundary rather than by changing runtime execution mode.
+  delete environment.PROOT_NO_SECCOMP;
   return environment;
 }
 
@@ -812,11 +811,23 @@ export class LinuxRuntimeManager {
         environment,
       );
       probeSpec.timeout = 10_000;
-      const result = normaliseCommandResult(await this._runManaged(probeSpec));
+      let result;
+      let attempts = 0;
+      do {
+        attempts += 1;
+        result = normaliseCommandResult(await this._runManaged(probeSpec));
+        if (
+          result.timedOut ||
+          result.exitCode !== 182 ||
+          result.stdout !== '' ||
+          result.stderr !== ''
+        ) break;
+      } while (attempts < MAX_GUEST_SMOKE_PROBE_ATTEMPTS);
+
       if (result.timedOut || result.exitCode !== 0 || !/^v\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(result.stdout.trim())) {
         const reason = result.timedOut
           ? 'PRoot guest smoke probe timed out'
-          : `PRoot guest smoke probe failed (exit ${result.exitCode ?? 'unknown'})`;
+          : `PRoot guest smoke probe failed (exit ${result.exitCode ?? 'unknown'}${attempts > 1 ? ` after ${attempts} attempts` : ''})`;
         const diagnostics = smokeProbeDiagnostics({ result, health, environment, hostCwd: this.dataDir });
         throw new Error(`${reason}; ${diagnostics}`);
       }

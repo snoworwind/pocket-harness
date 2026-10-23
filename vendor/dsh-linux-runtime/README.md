@@ -18,13 +18,15 @@ removed only when no installed instance references it.
 `execute({ command, cwd, timeout, signal })` starts PRoot directly and runs
 `/bin/bash -c <command>` inside the selected rootfs. This preserves the
 explicit shared Node.js path instead of letting Debian's `/etc/profile`
-replace it in a login shell. On Android, PRoot is launched with
-`PROOT_NO_SECCOMP=1` to disable PRoot's seccomp accelerator; Android's own
-seccomp policy remains in force. The target Android 16 / Linux 6.6.98 ROM
-intermittently exited 182 in the accelerator before guest output. Failed install
-probes persist host/guest cwd, the relevant guest and PRoot environment,
-stdout and stderr to the private bootstrap state file, with each stream bounded
-to 4096 characters. `execute` returns stdout, stderr, exit status, signal,
+replace it in a login shell. A guest smoke probe retries at most twice after its
+first attempt, and only when PRoot exits 182 with both output streams empty.
+Other failures, timeouts, and malformed Node versions fail immediately. This
+handles an observed intermittent PRoot loader failure without changing the
+normal PRoot syscall translation mode; the exact PRoot source line remains
+unconfirmed. Failed install probes persist host/guest cwd, the relevant guest
+and PRoot environment, stdout and stderr to the private bootstrap state file,
+with each stream bounded to 4096 characters. `execute` returns stdout,
+stderr, exit status, signal,
 timeout state, cwd, runtime id and architecture. There is no fallback to the
 Termux host shell. The Agent sees this through `linux_bash` only after the
 runtime health check passes.
