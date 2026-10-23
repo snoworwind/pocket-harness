@@ -253,3 +253,35 @@ APK/快照 OTA、旧包身份/签名、协调仓构建入口与壳侧模型工�
 | 5 | 工厂 profile 备份与原子修复 | [#84](https://github.com/snoworwind/pocket-harness/pull/84) | `255806b` |
 
 五项 PR 均按表中依赖顺序通过必需 CI 后，以 merge commit 合入 `main`。本轮按用户明确要求先行合并；#80、#82、#84 的 L2 与 #83 的 L3 实机三层验收未做，这些改动仍未验收，合并不表示设备验证通过。进入发版候选前必须补齐相应三层证据；不得因后续分支的 Kotlin 通过结果而倒推前序 PR 的设备验收通过。#81 为 L1 门禁改动，`--self-test` 和受控负控通过；没有执行实机验收。证据摘要见 [上游跟踪账本](UPSTREAM-TRACKING.md#2026-10-21-吸收-pr-与验证状态)。
+
+## 13. 2026-10-23 上游增量复核与处置
+
+### 13.1 固定比较点与检查范围
+
+先从用户现有工作树外建立隔离检出，再核实远端尖端并快进至本仓 `origin/main` `99edec7cc5ba2dcf64fde4b7b2705153fc950dca`。本仓从上一已检查上游游标 `1a8f9fb309580c8c1a3c826272c8da17c9e4877b` 继续检查至 `kelai141/dsh-mobile-apk` main `a8d79b5e861574b6a0229767629eded577c55766`；该区间共有 13 个提交。对照包含 Atom 提交说明/差异文件、本仓 Shizuku/启动/locale/插件测试与包锁；上游提交正文中的设备和 CI 结论只作定位线索，不作为本仓验收证据。
+
+本仓远端自缓存基线 `511b7e38e237487fc5394979000f5044a5d76121` 到 `99edec7` 只新增 PR #111 的 4 处文档证据更新，插件目录和产品源码未变。因此在同步主线前执行的插件依赖安装/测试仍对应相同的产品和 package-lock 输入。
+
+### 13.2 逐项对照与决定
+
+| 上游提交 | 上游变化 | 本仓对应面与判断 | 处置 |
+|---|---|---|---|
+| [`7a40c41`](https://github.com/kelai141/dsh-mobile-apk/commit/7a40c41e307db35adff61346fdfeab8088ebd1bf) #468 | 上游版本改为 0.14.9 / versionCode 53。 | 仅属上游发布版本；Pocket Harness 独立包身份、签名、来源和发布节奏。 | 不吸收版本号或发布元数据。 |
+| [`08bddce`](https://github.com/kelai141/dsh-mobile-apk/commit/08bddce3047ffa666bbe9524c0dbeaaec4c73919) #469 | 把不存在的 `--dsw-alias-label-on-emphasis` 改成强调背景文字令牌。 | 在本仓应用、响应式插件、patch 与快照配置中均找不到该令牌；没有同一坏引用可修。 | 不改。 |
+| [`1f6405c`](https://github.com/kelai141/dsh-mobile-apk/commit/1f6405ccf8744b6c5fba1ff7f1146d482922a903) #470 | 修复刷新并发误报、启动偏好优先级、开屏开关绘制/状态及视频回落；增加临时探针。 | 刷新并发让行已由 `EngineManager.lastRefreshDeferred` 和 `DeferredEngineStartTest` 覆盖；其余依赖上游新增的开屏视频/自动启动功能，本仓无对应产品路径。 | 不重复修复，不引入启动页功能或临时探针。 |
+| [`8312343`](https://github.com/kelai141/dsh-mobile-apk/commit/8312343c2653d2ec6fe05080121ab52a944e8636) #473 | 为文件/文本/计划等面板增加分栏、浮窗、旋转后约束与恢复。 | 本仓响应式插件提供窄屏导航与现有手机控制，不拥有分栏/多窗产品功能；这不是对现有平台桥缺陷的窄修复。 | 作为产品扩展排除。 |
+| [`4d0a4a4`](https://github.com/kelai141/dsh-mobile-apk/commit/4d0a4a4eb7b5e33a954d97a31a92616e7d8acf23) #474 | Shizuku 连续启动失败计数、`start-failed` 状态、15–300 秒自动退避、有界 logcat 诊断，并允许失败后转 `su`。 | 本仓已有绑定三态、attempt/age、20 秒 watchdog 和 `kickBind`；未复现连续启动失败。整体移植会扩大诊断数据面，且 `su` 回退会改变特权执行路径；该桥属 L2。 | 本轮不改。出现可复现的连续失败后再拆成状态/退避与诊断/权限回退分别评估，并即时做三层验收。 |
+| [`0a8943c`](https://github.com/kelai141/dsh-mobile-apk/commit/0a8943c18cb32ec21101bb995cf7273e0f47b87f) #475 | 仅为 inspector Worker 恢复 `--expose-internals`，避免清空 `execArgv` 后无法加载内部 Node 模块。 | 本仓 Node 主进程已有 `--expose-internals`，但检查到的 inspector 包不在当前产品 web bundle/profile 的活动插入路径；本地 JSONL worker 的空 `execArgv` 属于另一补丁和另一依赖面。 | 不把补丁扩散到未激活包或其他 worker。 |
+| [`f7b4f8d`](https://github.com/kelai141/dsh-mobile-apk/commit/f7b4f8dc9ce5ab35f29f4b69b9098441137aa9e2) #476 | 修复分栏顶栏手势跟随、全屏代理、新标签入口、中轴线可见及拖动换位。 | 依赖上游分栏/右栏手势功能；本仓没有同一拆分窗格交互，且 UI 几何/手势属于 L3。 | 不引入新交互；有明确本地需求时单独评估并设备验收。 |
+| [`8216b28`](https://github.com/kelai141/dsh-mobile-apk/commit/8216b28ca16626780921c5a1e87a99a1a61e3cd9) #477 | README 新增社群二维码和标记。 | 上游社群运营素材，不属于 Pocket Harness 平台能力或维护所需文件。 | 不吸收。 |
+| [`40b3be4`](https://github.com/kelai141/dsh-mobile-apk/commit/40b3be401ec8921b8d147e1bb00fa982f93fb635) #479 | 更正上游自身子仓镜像规则。 | 本仓已明确收归树内副本权威、与协调仓永久分叉；依赖上游镜像规则会反转本仓既定独立性。 | 不改本仓镜像边界。 |
+| [`9ebd4dd`](https://github.com/kelai141/dsh-mobile-apk/commit/9ebd4dd9851893e05adf74ca92d45a48546fd93b) #481 | 引擎语言变化经桥同步到壳侧，并在启动页重建 Activity 刷新原生文案。 | 本地响应式插件已订阅 locale 变化并刷新自身词条，但本仓没有 `setUiLanguage` 壳桥或原生语言选择流程；此提交建立一条新跨层能力，不是本地已有链路的窄修复。 | 暂不增加语言桥；若明确需要壳侧随引擎语言切换，独立定真源、生命周期和桥反证后实施。 |
+| [`6a0da78`](https://github.com/kelai141/dsh-mobile-apk/commit/6a0da78b5ab6a2109c4e1d7aea3a378fc361d409) #482 | 删除 #470 的一次性 splash 排查探针。 | 本仓未发现该探针、常量或日志。 | 无对应清理项。 |
+| [`1d5d9f1`](https://github.com/kelai141/dsh-mobile-apk/commit/1d5d9f1a7b14127e58c3193a3d7e0a70692fef2f) #483 | 为 ui-responsive 测试补 shiki、micromark、mdast、katex 等 primitives 间接运行包，并更新 lock。 | 本仓 `browser-tab.spec.tsx` 对 primitives 做了 mock；当前 52 个文件 / 757 项在无历史 `node_modules` 的干净 `npm ci` 后全绿，`npm ls ... --depth=0` 也确认这些包不是当前直接依赖。上游新增依赖所修的本地失败没有复现。 | 不增加当前测试未使用的直接依赖；若以后新增真实 primitives 渲染用例，再按实际解析失败最小补包并更新锁。 |
+| [`a8d79b5`](https://github.com/kelai141/dsh-mobile-apk/commit/a8d79b5e861574b6a0229767629eded577c55766) | 同步上游 v0.14.9 Pages 发布清单和环境标签说明。 | 属于上游 Pages 发布设施；本仓来源链、身份和发布页面独立。 | 不吸收发布配置。 |
+
+### 13.3 执行与验证结论
+
+本轮符合本仓宗旨且有本地缺陷证据的代码项为零；因此没有复制/改写产品代码，也没有新增生产依赖。吸收动作是完成 13 个提交的全量增量审阅、把比较游标推进至 `a8d79b5`，并将覆盖、排除与暂缓原因登记到本账本。最接近可直接吸收的 #483 已用干净安装反证：在 Node `v24.22.1` 下从无 `node_modules` 执行 `npm ci --no-audit --no-fund` 成功，随后 `npm test` 得 52/52 个文件和 757/757 项通过。该测试未覆盖真实 primitives 浏览器渲染；如新增此类用例，要重新评估依赖闭包。
+
+当前环境没有 `adb` 命令。#474 的 Shizuku bridge、#481 的语言桥和 Activity 生命周期改动分别属于 L2/L3，因未复现必要缺陷且无法完成即时三层验收，本轮不实施，不报告为通过。此次交付是 L0 文档比较更新；PR 描述需显式写明“未做设备验证”。文档本身用 `git diff --check` 校验，合并仍以本仓必检 CI 通过为条件。
