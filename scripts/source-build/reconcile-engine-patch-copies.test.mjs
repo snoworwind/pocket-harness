@@ -10,13 +10,27 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { collectPhysicalFiles, enginePatchTargets, matchesPatchTarget, reconcileEnginePatchCopies, verifyCanonicalEnginePatch } from './reconcile-engine-patch-copies.mjs'
+import {
+  ARKWEB_RESOURCE_UI_SNAPSHOT_ANCHOR,
+  collectPhysicalFiles,
+  enginePatchTargets,
+  EXTERNAL_DRAFT_UI_SNAPSHOT_ANCHOR,
+  matchesPatchTarget,
+  PERMISSION_AUTO_UI_SNAPSHOT_ANCHOR,
+  REFERENCE_DRILL_UI_SNAPSHOT_ANCHOR,
+  reconcileEnginePatchCopies,
+  SIDEBAR_REORDER_UI_SNAPSHOT_ANCHOR,
+  verifyCanonicalEnginePatch,
+  WORKSPACE_WRITE_UI_SNAPSHOT_ANCHOR,
+} from './reconcile-engine-patch-copies.mjs'
 import { planMimoThinking } from '../patches/mimo-thinking-toggle-056.mjs'
 import {
   AUTO_REVIEW_HIGH_DENY_MARKER,
   PERMISSION_AUTO_DEFAULT_MARKER,
   PERMISSION_AUTO_UI_MARKER,
+  patchPermissionPresetsClientAutoDefault,
 } from '../patches/data/permission-auto-review-default.mjs'
+import { patchWorkspaceWriteBoundaryWarning, WORKSPACE_WRITE_WARNING_MARKER } from '../patches/data/workspace-write-boundary-warning.mjs'
 import { versionedFixture } from '../patches/tests/lib/fixture.mjs'
 
 const PREFIX = 'usr/lib/node_modules/@deepseek-ai/dsh'
@@ -70,22 +84,79 @@ test('Auto Review multi-file reconciliation checks each target with its own mark
     assert.deepEqual(expanded.map(({ target, marker }) => [target, marker]), [
       [patch.target, PERMISSION_AUTO_DEFAULT_MARKER],
       [patch.additionalTargets[0], AUTO_REVIEW_HIGH_DENY_MARKER],
-      [patch.additionalTargets[1], PERMISSION_AUTO_UI_MARKER],
+      [patch.additionalTargets[1], PERMISSION_AUTO_UI_SNAPSHOT_ANCHOR],
     ])
+
+    const clientFixture = versionedFixture('dsh-client-ui-permission-presets', 'lib', 'client.js')
+    const patchedClient = patchWorkspaceWriteBoundaryWarning(
+      patchPermissionPresetsClientAutoDefault(readFileSync(clientFixture, 'utf8')),
+    )
+    // The browser syntax-floor transform removes explanatory comments. Model
+    // that output shape without requiring esbuild during the early source-test job.
+    const transformedClient = patchedClient.split('\n')
+      .filter(line => !line.includes(PERMISSION_AUTO_UI_MARKER) && !line.includes(WORKSPACE_WRITE_WARNING_MARKER))
+      .join('\n')
+    assert.ok(patchedClient.includes(PERMISSION_AUTO_UI_MARKER), 'apply-patches marker is present before browser syntax transform')
+    assert.ok(patchedClient.includes(WORKSPACE_WRITE_WARNING_MARKER))
+    assert.ok(!transformedClient.includes(PERMISSION_AUTO_UI_MARKER), 'post-transform snapshot omits the Auto UI comment marker')
+    assert.ok(!transformedClient.includes(WORKSPACE_WRITE_WARNING_MARKER), 'post-transform snapshot omits the Workspace Write comment marker')
+    assert.ok(transformedClient.includes(PERMISSION_AUTO_UI_SNAPSHOT_ANCHOR), 'the reviewed behavior anchor survives the transform')
+    assert.ok(transformedClient.includes(WORKSPACE_WRITE_UI_SNAPSHOT_ANCHOR))
 
     for (const { target, marker } of expanded) {
       const file = join(engine, target.slice(PREFIX.length + 1))
       mkdirSync(join(file, '..'), { recursive: true })
-      writeFileSync(file, `// ${marker}\n`)
+      writeFileSync(file, target === patch.additionalTargets[1] ? transformedClient : `// ${marker}\n`)
     }
-    const report = reconcileEnginePatchCopies(engine, { patches: [patch] })
-    assert.equal(report.patchCount, 3)
+    const workspacePatch = JSON.parse(readFileSync('scripts/patches/registry.json', 'utf8')).patches
+      .find((item) => item.id === 'workspace-write-boundary-warning-WW1')
+    assert.ok(workspacePatch)
+    const browserPatchIds = {
+      'sidebar-bubble-reorder-B1': [
+        `${PREFIX}/node_modules/@deepseek-ai/dsh-client-ui-sidebar-right/lib/client.js`,
+        SIDEBAR_REORDER_UI_SNAPSHOT_ANCHOR,
+      ],
+      'external-draft-conversation-seam-J1': [
+        `${PREFIX}/node_modules/@deepseek-ai/dsh-client-ui-conversation/lib/client.js`,
+        EXTERNAL_DRAFT_UI_SNAPSHOT_ANCHOR,
+      ],
+      'arkweb-resource-protocol-H1': [
+        `${PREFIX}/node_modules/@deepseek-ai/dsh-client-resources/lib/client.js`,
+        ARKWEB_RESOURCE_UI_SNAPSHOT_ANCHOR,
+      ],
+      'reference-drill-F6': [
+        `${PREFIX}/node_modules/@deepseek-ai/dsh-client-ui-reference/lib/client.js`,
+        REFERENCE_DRILL_UI_SNAPSHOT_ANCHOR,
+      ],
+    }
+    const allPatches = JSON.parse(readFileSync('scripts/patches/registry.json', 'utf8')).patches
+    for (const [id, [target, anchor]] of Object.entries(browserPatchIds)) {
+      const browserPatch = allPatches.find((item) => item.id === id)
+      assert.ok(browserPatch, `missing registered browser patch ${id}`)
+      assert.deepEqual(enginePatchTargets(browserPatch).map(({ target: found, marker }) => [found, marker]), [[target, anchor]])
+    }
+
+    const report = reconcileEnginePatchCopies(engine, { patches: [patch, workspacePatch] })
+    assert.equal(report.patchCount, 4)
     assert.equal(report.reconciledCopyCount, 0)
+
+    const uiTarget = join(engine, patch.additionalTargets[1].slice(PREFIX.length + 1))
+    writeFileSync(uiTarget, transformedClient.replace(PERMISSION_AUTO_UI_SNAPSHOT_ANCHOR, 'select(AUTO_REVIEW_PRESET)'))
+    assert.throws(() => reconcileEnginePatchCopies(engine, { patches: [patch] }), /补丁完全没打上/)
+
+    writeFileSync(uiTarget, transformedClient.replace(WORKSPACE_WRITE_UI_SNAPSHOT_ANCHOR, 'if (false)'))
+    assert.throws(() => reconcileEnginePatchCopies(engine, { patches: [workspacePatch] }), /补丁完全没打上/)
 
     assert.throws(() => enginePatchTargets({
       ...patch,
       additionalTargets: [...patch.additionalTargets, `${PREFIX}/node_modules/@deepseek-ai/dsh-experimental-auto-review/lib/new.js`],
     }), /target-specific marker/)
+    assert.throws(() => enginePatchTargets({
+      id: 'unreviewed-browser-client-patch',
+      target: `${PREFIX}/node_modules/example/lib/client.js`,
+      scope: 'engine',
+      marker: 'comment marker removed by syntax transform',
+    }), /no reviewed post-transform anchor/)
   } finally {
     rmSync(root, { recursive: true, force: true })
   }

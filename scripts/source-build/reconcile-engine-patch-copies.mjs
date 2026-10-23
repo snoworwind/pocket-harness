@@ -22,9 +22,18 @@ import { planMimoThinking } from '../patches/mimo-thinking-toggle-056.mjs'
 import {
   AUTO_REVIEW_HIGH_DENY_MARKER,
   PERMISSION_AUTO_DEFAULT_MARKER,
-  PERMISSION_AUTO_UI_MARKER,
 } from '../patches/data/permission-auto-review-default.mjs'
 import { resolveEnginePatchTarget } from '../patches/resolve-engine-patch-target.mjs'
+
+// check-browser-syntax-floor transforms every browser lib/client.js with esbuild
+// and removes explanatory comments. Post-transform snapshot checks therefore
+// use reviewed behavior anchors for those targets, never their comment markers.
+export const PERMISSION_AUTO_UI_SNAPSHOT_ANCHOR = 'select(AUTO_REVIEW_PRESET);'
+export const WORKSPACE_WRITE_UI_SNAPSHOT_ANCHOR = 'if (id === "danger-full-access" || id === "auto" || id === "workspace-write")'
+export const SIDEBAR_REORDER_UI_SNAPSHOT_ANCHOR = 'reorderIn(sessionId, '
+export const EXTERNAL_DRAFT_UI_SNAPSHOT_ANCHOR = 'this.input.shell(sessionId);'
+export const ARKWEB_RESOURCE_UI_SNAPSHOT_ANCHOR = 'return authority === null ? void 0 : authority[1].toLowerCase();'
+export const REFERENCE_DRILL_UI_SNAPSHOT_ANCHOR = 'document.documentElement.hasAttribute("data-dsh-mobile-form")'
 
 // 登记表里的 target 是**归档内路径**；本模块与调用方一律用「相对引擎根」的路径对话，
 // 引擎根 = `usr/lib/node_modules/@deepseek-ai/dsh` 目录本身（与 check-dsh-source-snapshot.mjs 同约定）。
@@ -79,16 +88,37 @@ export function enginePatchTargets(patch, engineRoot = undefined) {
     throw new Error('invalid/duplicate engine patch targets: ' + patch.id)
   }
   // AR1's registry marker identifies the high-risk decision in one companion
-  // file, while its three targets each carry a distinct reviewed marker.
-  const autoReviewMarkers = patch.id === 'permission-auto-review-default-AR1' ? {
-    'usr/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-permission-presets/lib/index.js': PERMISSION_AUTO_DEFAULT_MARKER,
-    'usr/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-experimental-auto-review/lib/index.js': AUTO_REVIEW_HIGH_DENY_MARKER,
-    'usr/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-client-ui-permission-presets/lib/client.js': PERMISSION_AUTO_UI_MARKER,
-  } : null
+  // file; all three targets have separate reviewed checks. Browser client
+  // markers are comments, so their snapshot checks use code that survives esbuild.
+  const reviewedTargetMarkers = {
+    'permission-auto-review-default-AR1': {
+      'usr/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-permission-presets/lib/index.js': PERMISSION_AUTO_DEFAULT_MARKER,
+      'usr/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-experimental-auto-review/lib/index.js': AUTO_REVIEW_HIGH_DENY_MARKER,
+      'usr/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-client-ui-permission-presets/lib/client.js': PERMISSION_AUTO_UI_SNAPSHOT_ANCHOR,
+    },
+    'workspace-write-boundary-warning-WW1': {
+      'usr/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-client-ui-permission-presets/lib/client.js': WORKSPACE_WRITE_UI_SNAPSHOT_ANCHOR,
+    },
+    'sidebar-bubble-reorder-B1': {
+      'usr/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-client-ui-sidebar-right/lib/client.js': SIDEBAR_REORDER_UI_SNAPSHOT_ANCHOR,
+    },
+    'external-draft-conversation-seam-J1': {
+      'usr/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-client-ui-conversation/lib/client.js': EXTERNAL_DRAFT_UI_SNAPSHOT_ANCHOR,
+    },
+    'arkweb-resource-protocol-H1': {
+      'usr/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-client-resources/lib/client.js': ARKWEB_RESOURCE_UI_SNAPSHOT_ANCHOR,
+    },
+    'reference-drill-F6': {
+      'usr/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-client-ui-reference/lib/client.js': REFERENCE_DRILL_UI_SNAPSHOT_ANCHOR,
+    },
+  }
   return paths.map((target) => {
-    const targetMarker = patch.targetMarkers?.[target] ?? autoReviewMarkers?.[target]
+    const targetMarker = patch.targetMarkers?.[target] ?? reviewedTargetMarkers[patch.id]?.[target]
     if (patch.id === 'permission-auto-review-default-AR1' && !targetMarker) {
       throw new Error('Auto Review target has no reviewed target-specific marker: ' + target)
+    }
+    if (target.endsWith('/lib/client.js') && !targetMarker) {
+      throw new Error('browser client target has no reviewed post-transform anchor: ' + patch.id + ' ' + target)
     }
     return { ...patch, target, marker: targetMarker ?? patch.marker }
   })
