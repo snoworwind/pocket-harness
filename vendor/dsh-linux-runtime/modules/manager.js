@@ -485,7 +485,8 @@ function androidNativeProot() {
 
 function prootExecutionEnvironment(backend, instanceRoot) {
   const environment = cleanHostEnvironment();
-  const nativeLibraryDir = isAndroidRuntimeHost()
+  const androidHost = isAndroidRuntimeHost();
+  const nativeLibraryDir = androidHost
     ? path.dirname(androidNativeProot())
     : undefined;
   environment.LD_LIBRARY_PATH = nativeLibraryDir ?? path.join(backend, 'lib');
@@ -493,9 +494,11 @@ function prootExecutionEnvironment(backend, instanceRoot) {
     ? path.join(nativeLibraryDir, ANDROID_NATIVE_PROOT_LOADER)
     : path.join(backend, 'libexec', 'proot', 'loader');
   environment.PROOT_TMP_DIR = path.join(instanceRoot, 'proot-tmp');
-  // PRoot reads this variable by presence. Keep its seccomp compatibility
-  // filter enabled so Android-blocked syscalls such as rename can be rewritten.
-  delete environment.PROOT_NO_SECCOMP;
+  // The target Android 16 / 6.6.98 ROM intermittently exits 182 in PRoot's
+  // seccomp accelerator before the guest emits anything. Use one consistent
+  // execution mode for install probes and linux_bash on Android.
+  if (androidHost) environment.PROOT_NO_SECCOMP = '1';
+  else delete environment.PROOT_NO_SECCOMP;
   return environment;
 }
 
@@ -531,7 +534,7 @@ function prootArguments(paths, cwdInfo, resolverFile, guestCommand) {
   const inherited = cleanHostEnvironment();
   const guestEnvironment = [
     `HOME=/root`,
-    `PATH=${path.join(paths.node, 'bin')}:${DEFAULT_GUEST_PATH}`,
+    `PATH=${guestPath(paths)}`,
     'TMPDIR=/tmp',
     `LANG=${inherited.LANG ?? 'C.UTF-8'}`,
   ];
@@ -540,6 +543,39 @@ function prootArguments(paths, cwdInfo, resolverFile, guestCommand) {
   }
   args.push('/usr/bin/env', '-i', ...guestEnvironment, ...guestCommand);
   return args;
+}
+
+function guestPath(paths) {
+  return `${path.join(paths.node, 'bin')}:${DEFAULT_GUEST_PATH}`;
+}
+
+function smokeProbeDiagnostics({ result, health, environment, hostCwd }) {
+  const limit = value => {
+    const text = String(value ?? '');
+    return text.length > 4096 ? `${text.slice(0, 4096)} [truncated]` : text;
+  };
+  const inherited = cleanHostEnvironment();
+  const guestEnv = {
+    HOME: '/root',
+    PATH: guestPath(health.paths),
+    TMPDIR: '/tmp',
+    LANG: inherited.LANG ?? 'C.UTF-8',
+    forwardedVariableNames: GUEST_ENV_ALLOWLIST.filter(key => key !== 'LANG' && inherited[key] !== undefined),
+  };
+  const prootEnv = {
+    LD_LIBRARY_PATH: environment.LD_LIBRARY_PATH,
+    PROOT_LOADER: environment.PROOT_LOADER,
+    PROOT_TMP_DIR: environment.PROOT_TMP_DIR,
+    PROOT_NO_SECCOMP: environment.PROOT_NO_SECCOMP ?? null,
+  };
+  return [
+    `hostCwd=${JSON.stringify(hostCwd)}`,
+    'guestCwd="/"',
+    'guestCommand=["/bin/bash","-c","node --version"]',
+    `env=${JSON.stringify({ guest: guestEnv, proot: prootEnv })}`,
+    `stdout=${JSON.stringify(limit(result.stdout))}`,
+    `stderr=${JSON.stringify(limit(result.stderr))}`,
+  ].join('; ');
 }
 
 function executableFileExists(file) {
@@ -768,7 +804,7 @@ export class LinuxRuntimeManager {
     const resolverFile = await this._writeResolverFile(health.paths.instance);
     try {
       const cwdInfo = { guestCwd: '/', hostPaths: [] };
-      const args = prootArguments(health.paths, cwdInfo, resolverFile, ['/bin/bash', '-lc', 'node --version']);
+      const args = prootArguments(health.paths, cwdInfo, resolverFile, ['/bin/bash', '-c', 'node --version']);
       const probeSpec = prootSpawnSpec(
         health.paths.proot,
         args,
@@ -780,8 +816,9 @@ export class LinuxRuntimeManager {
       if (result.timedOut || result.exitCode !== 0 || !/^v\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(result.stdout.trim())) {
         const reason = result.timedOut
           ? 'PRoot guest smoke probe timed out'
-          : `PRoot guest smoke probe failed (exit ${result.exitCode ?? 'unknown'}): ${(result.stderr || result.stdout).trim().slice(0, 500)}`;
-        throw new Error(reason);
+          : `PRoot guest smoke probe failed (exit ${result.exitCode ?? 'unknown'})`;
+        const diagnostics = smokeProbeDiagnostics({ result, health, environment, hostCwd: this.dataDir });
+        throw new Error(`${reason}; ${diagnostics}`);
       }
     } finally {
       await fs.rm(resolverFile, { force: true });
@@ -1291,7 +1328,7 @@ export class LinuxRuntimeManager {
           return { stdout: '', stderr: 'aborted', exitCode: 130, signal: null, timedOut: false, cwd: cwdInfo.guestCwd, runtimeId: current.runtimeId, architecture: current.architecture };
         }
         const environment = prootExecutionEnvironment(current.paths.backend, current.paths.instance);
-        const args = prootArguments(current.paths, cwdInfo, resolverFile, ['/bin/bash', '-lc', command]);
+        const args = prootArguments(current.paths, cwdInfo, resolverFile, ['/bin/bash', '-c', command]);
         const spec = prootSpawnSpec(current.paths.proot, args, this.dataDir, environment);
         spec.timeout = timeout;
         spec.signal = execution.signal;

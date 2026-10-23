@@ -1,6 +1,6 @@
 # DSH Linux 环境调查 · 文档索引
 
-> main 已集成 Termux PRoot runtime/bootstrap `0.6.1` 的 rootfs `/dev/shm` 修复。云端 ARM64 来源构建、双构建产物比对和签名均已通过 run [39899439859](https://github.com/snoworwind/pocket-harness/actions/runs/39899439859)，并生成草稿预发布标签 [`hardening-source-511b7e38e237-39899439859-1`](https://github.com/snoworwind/pocket-harness/releases/tag/hardening-source-511b7e38e237-39899439859-1)；ARM64 设备验收仍待完成。当前架构、安全限制、来源与待验项目见[PRoot 迁移记录](PROOT-MIGRATION-2026-10-22.md)。
+> main 已集成 Termux PRoot runtime/bootstrap `0.6.1` 的 rootfs `/dev/shm` 修复，来源构建和签名已通过 run [39899439859](https://github.com/snoworwind/pocket-harness/actions/runs/39899439859)，草稿标签为 [`hardening-source-511b7e38e237-39899439859-1`](https://github.com/snoworwind/pocket-harness/releases/tag/hardening-source-511b7e38e237-39899439859-1)。用户提供的新设备复现还发现 PRoot seccomp exit 182 和 Debian login profile 覆盖共享 Node PATH；当前源码推进 0.6.2 候选修复，尚待来源 APK 构建与 ARM64 设备验收，详见[修复记录](REMEDIATION-ANDROID-PROOT-2026-10-23.md)。当前架构、安全限制、来源与待验项目见[PRoot 迁移记录](PROOT-MIGRATION-2026-10-22.md)。
 
 ## 当前结论
 
@@ -13,10 +13,11 @@
 | # | 文档 | 内容 | 状态 |
 |---|---|---|---|
 | 1 | [PROOT-MIGRATION-2026-10-22.md](PROOT-MIGRATION-2026-10-22.md) | 当前后端、Android 权限边界、proc/DNS/文件系统策略、来源和许可证 | 当前实现；APK/设备待验 |
-| 2 | [ORIGINAL-REPORT-2026-10-19.md](ORIGINAL-REPORT-2026-10-19.md) | 实机 agent 原始报告 | 历史证据；部分归因已被后续修正 |
-| 3 | [INVESTIGATION-2026-10-19-pocketharness.md](INVESTIGATION-2026-10-19-pocketharness.md) | Bionilux 阶段的源码复核和实机调查 | 历史调查 |
-| 4 | [LINUX-ENV-COMPLETE-RECORD-2026-10-19.md](LINUX-ENV-COMPLETE-RECORD-2026-10-19.md) | Bionilux 旧路线的实机结论、保留决策 | 历史记录；路线已被 PRoot 迁移取代 |
-| 5 | [REMEDIATION-ANDROID-EXEC-2026-10-22.md](REMEDIATION-ANDROID-EXEC-2026-10-22.md) | Bionilux 原生 loader 方案和后续证据 | 历史方案；不代表当前 PRoot 路线 |
-| 6 | [REMEDIATION-HOST-TOOLS-DNS-2026-10-22.md](REMEDIATION-HOST-TOOLS-DNS-2026-10-22.md) | Bionilux 阶段 GNU 工具识别与 Android DNS 接线 | 历史实现记录；DNS 约束由 PRoot 迁移记录重新描述 |
+| 2 | [REMEDIATION-ANDROID-PROOT-2026-10-23.md](REMEDIATION-ANDROID-PROOT-2026-10-23.md) | Android PRoot seccomp 与 Debian login PATH 导致的 Linux 安装失败 | 源码候选已修；设备复验待做 |
+| 3 | [ORIGINAL-REPORT-2026-10-19.md](ORIGINAL-REPORT-2026-10-19.md) | 实机 agent 原始报告 | 历史证据；部分归因已被后续修正 |
+| 4 | [INVESTIGATION-2026-10-19-pocketharness.md](INVESTIGATION-2026-10-19-pocketharness.md) | Bionilux 阶段的源码复核和实机调查 | 历史调查 |
+| 5 | [LINUX-ENV-COMPLETE-RECORD-2026-10-19.md](LINUX-ENV-COMPLETE-RECORD-2026-10-19.md) | Bionilux 旧路线的实机结论、保留决策 | 历史记录；路线已被 PRoot 迁移取代 |
+| 6 | [REMEDIATION-ANDROID-EXEC-2026-10-22.md](REMEDIATION-ANDROID-EXEC-2026-10-22.md) | Bionilux 原生 loader 方案和后续证据 | 历史方案；不代表当前 PRoot 路线 |
+| 7 | [REMEDIATION-HOST-TOOLS-DNS-2026-10-22.md](REMEDIATION-HOST-TOOLS-DNS-2026-10-22.md) | Bionilux 阶段 GNU 工具识别与 Android DNS 接线 | 历史实现记录；DNS 约束由 PRoot 迁移记录重新描述 |
 
 其余 `ORIGINAL-*`、`REMEDIATION-*`、`RECOVERY-PROPOSAL-*` 文档保留原始问题与当时方案，不能当作当前后端实现说明。
