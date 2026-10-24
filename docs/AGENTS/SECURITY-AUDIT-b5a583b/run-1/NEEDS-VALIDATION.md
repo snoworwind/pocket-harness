@@ -1,5 +1,7 @@
 # Needs Validation — Pocket Harness
 
+> Audit date: 2026-10-25. Reviewed source commit (full SHA): `b5a583be458c8ed10a914f4486932b15af7c7182`.
+
 The records below passed independent final-record review as source-grounded leads. Their verdict remains needs_validation: this audit did not establish the missing runtime, deployment, identity, or resource effect. No severity is assigned.
 
 ## 1. Linux asset preparation retains one staging tree per digest

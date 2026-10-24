@@ -29,6 +29,9 @@ webpages/dist/
 # 本地临时工作区（排查截图与中间产物）：0.14.0 两次误入提交后固化
 .deploy-tmp/
 
+# security-audit-skill 的用户指定仓内输出根；完整审计目录需先验证并由主审显式归档最终材料。
+/docs/AGENTS/SECURITY-AUDIT-*/
+
 # 两条打包链与来源审计的 APK 产物目录（云端与本地共用，不入库）
 out/
 

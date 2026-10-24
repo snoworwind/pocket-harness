@@ -1,5 +1,7 @@
 # Pocket Harness Security Audit
 
+> Audit date: 2026-10-25. Reviewed source commit (full SHA): `b5a583be458c8ed10a914f4486932b15af7c7182`.
+
 > **Status: INCOMPLETE — validation_budget_exhausted.** The strict budget was fully spent (80/80 agent invocations). Six candidates received material Phase 5 correction requests and were withheld because no fresh independent verifier remained. Do not treat those candidates as findings.
 
 ## Run scope and method
