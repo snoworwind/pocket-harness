@@ -1,0 +1,55 @@
+{
+  "verdict": "needs_validation",
+  "fingerprint": "model-capability:active-probe-level-cardinality",
+  "title": "Active capability probes lack a plugin-side request-count cap",
+  "description": "The tool schema accepts a levels array without maxItems, preserves duplicate recognized values, and sends one provider request per surviving level plus a negative control. Dispatcher argument bounds and provider quotas are not established.",
+  "claimed_root_cause": "The plugin accepts model-controlled active-probe levels without truncation/deduplication and issues a request for each; any outer request-count cap is unknown.",
+  "trace": [
+    {
+      "kind": "entrypoint",
+      "file": "plugins/dsh-model-capability/src/index.ts",
+      "line": 873,
+      "scope": "model probe schema",
+      "description": "The levels argument is an array without a visible maximum item count."
+    },
+    {
+      "kind": "propagation",
+      "file": "plugins/dsh-model-capability/src/index.ts",
+      "line": 326,
+      "scope": "active probe selection",
+      "description": "A nonempty supplied levels array is retained."
+    },
+    {
+      "kind": "sink",
+      "file": "plugins/dsh-model-capability/src/capability-probe.ts",
+      "line": 578,
+      "scope": "provider request loop",
+      "description": "The probe sends one request for each accepted level."
+    }
+  ],
+  "evidence": [
+    {
+      "file": "plugins/dsh-model-capability/src/capability-probe.ts",
+      "line": 621,
+      "description": "Filtering recognized levels does not remove duplicate entries."
+    },
+    {
+      "file": "plugins/dsh-model-capability/src/capability-probe.ts",
+      "line": 578,
+      "description": "Each retained entry triggers a separate request."
+    },
+    {
+      "file": "plugins/dsh-model-capability/src/index.ts",
+      "line": 310,
+      "description": "The local gate requires active=true and confirm=true."
+    }
+  ],
+  "blockers": [
+    "The shipped dispatcher may cap argument cardinality or require approval bound to final arguments; that implementation is not in this checkout.",
+    "Provider billing and quota limits are outside this source review; no provider-backed request was made."
+  ],
+  "validation_plan": {
+    "local": "In a bounded isolated fixture, use duplicate recognized levels and fake fetch/provider configuration, then count fake requests through the registered tool. Inspect shipped dispatcher argument limits without contacting a provider.",
+    "deployment": "Have the owner inspect dispatcher argument/approval limits and configured route quotas without sending probe traffic."
+  }
+}

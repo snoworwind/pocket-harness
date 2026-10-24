@@ -1,0 +1,978 @@
+[
+  {
+    "verdict": "needs_validation",
+    "fingerprint": "LinuxAssetPrepare/per-digest-staging-aggregate",
+    "title": "Linux asset preparation retains one staging tree per digest",
+    "description": "Asset preparation removes the staging path for the current digest and publishes the validated archive and unpacked tree under that digest. No aggregate quota or cleanup of other digest directories is visible. Lower-trust reachability and practical storage impact remain unresolved.",
+    "claimed_root_cause": "Successful distinct asset digests accumulate in separate staging directories without a source-visible aggregate quota or pruning policy.",
+    "trace": [
+      {
+        "kind": "entrypoint",
+        "file": "app/src/main/java/com/snoworwind/pocketharness/AndroidBridge.kt",
+        "line": 199,
+        "scope": "linuxAssetPrepare bridge",
+        "description": "The bridge passes an asset specification to the native preparation path."
+      },
+      {
+        "kind": "sink",
+        "file": "app/src/main/java/com/snoworwind/pocketharness/LinuxAssetPrepare.kt",
+        "line": 177,
+        "scope": "digest staging publication",
+        "description": "A successful preparation renames the work tree into the digest-specific staging directory."
+      }
+    ],
+    "evidence": [
+      {
+        "file": "app/src/main/java/com/snoworwind/pocketharness/LinuxAssetPrepare.kt",
+        "line": 161,
+        "description": "Preparation deletes only the current digest staging directory before doing work."
+      },
+      {
+        "file": "app/src/main/java/com/snoworwind/pocketharness/LinuxAssetPrepare.kt",
+        "line": 151,
+        "description": "The validated archive is deliberately retained alongside the unpacked tree."
+      },
+      {
+        "file": "app/src/main/java/com/snoworwind/pocketharness/LinuxAssetPrepare.kt",
+        "line": 177,
+        "description": "The completed work tree is published as staging/<sha256>."
+      }
+    ],
+    "blockers": [
+      "Whether a lower-trust principal can repeatedly reach the bridge is unresolved; the source describes a main-WebView facade and the Linux feature is not enabled by default.",
+      "The number and size of distinct valid assets reachable in deployment, and any resulting availability impact, are not established.",
+      "No isolated build or device runtime was available for a bounded fixture."
+    ],
+    "validation_plan": {
+      "local": "In an approved OS-enforced sandbox, use a fake asset opener and two small synthetic manifests with distinct digests, then inspect only the temporary staging directory to see whether both archive/tree pairs remain and whether any aggregate limit applies.",
+      "deployment": "Have the owner confirm whether lower-trust content can invoke the bridge and what asset size/cardinality limits apply in the shipped Linux environment. Do not fetch real assets or fill device storage."
+    }
+  },
+  {
+    "verdict": "needs_validation",
+    "fingerprint": "android-backup:active-profile-secret-in-transfer",
+    "title": "Device-transfer rules omit the active profile configuration",
+    "description": "Backup rules exclude credential, session, and workspace paths but do not list the active profile patch or legacy settings path. EngineManager notes that profile patches can contain provider keys. The manifest also sets allowBackup=false; source does not establish OEM/device-transfer behavior.",
+    "claimed_root_cause": "The device-transfer exclusion list omits active profile configuration files that may contain provider credentials, while the actual platform transfer behavior is not represented in the repository.",
+    "trace": [
+      {
+        "kind": "entrypoint",
+        "file": "app/src/main/AndroidManifest.xml",
+        "line": 29,
+        "scope": "application backup configuration",
+        "description": "The application points to backup and data-extraction rule files while setting its backup policy."
+      },
+      {
+        "kind": "sink",
+        "file": "app/src/main/res/xml/data_extraction_rules.xml",
+        "line": 18,
+        "scope": "device-transfer exclusions",
+        "description": "The transfer exclusions list sensitive runtime paths but not profiles/<profile>/cordis.patch.yml or settings.yaml."
+      }
+    ],
+    "evidence": [
+      {
+        "file": "app/src/main/AndroidManifest.xml",
+        "line": 29,
+        "description": "The manifest declares allowBackup=false."
+      },
+      {
+        "file": "app/src/main/res/xml/data_extraction_rules.xml",
+        "line": 18,
+        "description": "The device-transfer rule block begins without an exclusion for profile configuration."
+      },
+      {
+        "file": "app/src/main/java/com/snoworwind/pocketharness/EngineManager.kt",
+        "line": 1535,
+        "description": "The source notes that profile patches can contain provider keys."
+      }
+    ],
+    "blockers": [
+      "Whether the supported Android/OEM transfer path copies these app-private files despite allowBackup=false is a platform and device fact outside this checkout.",
+      "No approved transfer device or disposable profile was available; no real profile configuration was inspected."
+    ],
+    "validation_plan": {
+      "deployment": "Have the Android owner verify the exact supported Android and OEM transfer behavior using a disposable profile with a synthetic nonsecret marker, and report whether the omitted profile path is copied. Do not inspect or transfer real credentials."
+    }
+  },
+  {
+    "verdict": "needs_validation",
+    "fingerprint": "android-config-export:unredacted-active-profile-copy",
+    "title": "Configuration export may copy provider keys to shared Documents",
+    "description": "The user-initiated export selects the active profile patch or legacy settings file and copies it without redaction into the public Documents export directory. The engine warns that the configuration may contain provider keys; the UI displays the destination but says the export contains no API keys. Whether this exposes credentials depends on the active file contents and who can read the shared copy.",
+    "claimed_root_cause": "The active configuration is copied to public Documents without redaction while the UI gives an unconditional no-keys assurance; actual secret presence and external readability depend on runtime and device state.",
+    "trace": [
+      {
+        "kind": "entrypoint",
+        "file": "dsh-client-ui-responsive/src/client/dev-section/DevSection.tsx",
+        "line": 334,
+        "scope": "Developer settings export control",
+        "description": "The user can invoke the configuration export from the settings UI."
+      },
+      {
+        "kind": "propagation",
+        "file": "app/src/main/java/com/snoworwind/pocketharness/EngineManager.kt",
+        "line": 1550,
+        "scope": "configurationTransfer",
+        "description": "The export branch passes the active configuration to SnapshotUserData for export."
+      },
+      {
+        "kind": "sink",
+        "file": "app/src/main/java/com/snoworwind/pocketharness/SnapshotUserData.kt",
+        "line": 147,
+        "scope": "replaceConfiguration",
+        "description": "The unredacted temporary copy is atomically moved to the export destination."
+      }
+    ],
+    "evidence": [
+      {
+        "file": "app/src/main/java/com/snoworwind/pocketharness/SnapshotUserData.kt",
+        "line": 109,
+        "description": "The selected source is the active profile patch when present or migrated, otherwise the legacy settings file."
+      },
+      {
+        "file": "app/src/main/java/com/snoworwind/pocketharness/SnapshotUserData.kt",
+        "line": 146,
+        "description": "The source bytes are copied to a temporary file without content redaction."
+      },
+      {
+        "file": "app/src/main/java/com/snoworwind/pocketharness/SnapshotUserData.kt",
+        "line": 147,
+        "description": "The temporary copy is moved to the export destination."
+      },
+      {
+        "file": "app/src/main/java/com/snoworwind/pocketharness/EngineManager.kt",
+        "line": 39,
+        "description": "The export root is Android's public Documents directory."
+      },
+      {
+        "file": "app/src/main/java/com/snoworwind/pocketharness/EngineManager.kt",
+        "line": 1554,
+        "description": "The native result warns that the active configuration may contain provider keys and advises protecting the shared copy."
+      },
+      {
+        "file": "dsh-client-ui-responsive/src/client/dev-section/DevSection.tsx",
+        "line": 258,
+        "description": "The UI displays only the exported path or error and does not display the returned warning hint."
+      },
+      {
+        "file": "dsh-client-ui-responsive/src/client/dev-section/DevSection.tsx",
+        "line": 340,
+        "description": "The UI unconditionally states that the export contains no API keys."
+      }
+    ],
+    "blockers": [
+      "The checked-in source does not establish whether an installed active configuration contains provider credentials.",
+      "No particular unauthorized reader is evidenced; Android storage policy and other-app permissions determine access.",
+      "No approved isolated Android device was available for a synthetic export and cross-principal read check."
+    ],
+    "validation_plan": {
+      "local": "On an approved isolated device, export a synthetic configuration containing a nonsecret marker and compare source and exported bytes. Check readability using ordinary and broad-storage test apps only. Do not read or copy real provider credentials.",
+      "deployment": "Have the owner verify whether the active profile contains credentials without recording their values, then check what the UI displays and which test identities can read a synthetic exported file on the supported Android version."
+    }
+  },
+  {
+    "verdict": "needs_validation",
+    "fingerprint": "android:incoming-share:aggregate-storage-budget",
+    "title": "Repeated incoming shares lack an aggregate storage budget",
+    "description": "The exported VIEW/SEND intake copies accepted files into private incoming storage with a 200 MiB per-file cap. A single-thread queue has no visible aggregate request bound, and session-referenced files are exempt from cleanup. Practical repeated-share impact is unobserved.",
+    "claimed_root_cause": "Incoming-share processing has only a per-file limit and no source-visible aggregate quota for queued or retained files.",
+    "trace": [
+      {
+        "kind": "entrypoint",
+        "file": "app/src/main/AndroidManifest.xml",
+        "line": 110,
+        "scope": "exported MainActivity intent filters",
+        "description": "MainActivity is exported; the activity declaration below also includes VIEW and SEND filters."
+      },
+      {
+        "kind": "propagation",
+        "file": "app/src/main/java/com/snoworwind/pocketharness/FileIncoming.kt",
+        "line": 561,
+        "scope": "processIncomingIntent",
+        "description": "Accepted intents queue asynchronous work."
+      },
+      {
+        "kind": "sink",
+        "file": "app/src/main/java/com/snoworwind/pocketharness/FileIncoming.kt",
+        "line": 179,
+        "scope": "copyIn",
+        "description": "Each accepted file is copied into the private incoming workspace under its individual limit."
+      }
+    ],
+    "evidence": [
+      {
+        "file": "app/src/main/java/com/snoworwind/pocketharness/FileIncoming.kt",
+        "line": 163,
+        "description": "The copy limit is 200 MiB per file."
+      },
+      {
+        "file": "app/src/main/java/com/snoworwind/pocketharness/FileIncoming.kt",
+        "line": 179,
+        "description": "Accepted input bytes are copied into the private incoming workspace."
+      },
+      {
+        "file": "app/src/main/java/com/snoworwind/pocketharness/FileIncoming.kt",
+        "line": 386,
+        "description": "Incoming IO uses a single-thread executor with no source-visible queue bound."
+      },
+      {
+        "file": "app/src/main/java/com/snoworwind/pocketharness/FileIncoming.kt",
+        "line": 312,
+        "description": "TTL cleanup derives deletion candidates using both pending and queued session paths."
+      }
+    ],
+    "blockers": [
+      "No isolated device check established that a separate app can repeatedly invoke the packaged activity with valid read grants to its provider.",
+      "The practical retained byte total and any meaningful app-storage availability effect have not been observed."
+    ],
+    "validation_plan": {
+      "local": "On an isolated emulator, use a dummy content provider and separate caller app to send at most eight harmless files of at most 1 MiB each (8 MiB total). Record accepted bytes, queued work, and session references; verify cleanup behavior without applying storage pressure.",
+      "deployment": "Have the owner verify the final merged manifest and retention behavior with dummy shared files in a disposable test profile, using a predetermined low total-byte cap and stopping before storage pressure."
+    }
+  },
+  {
+    "verdict": "needs_validation",
+    "fingerprint": "github.github/workflows/pr-gate.yml/pr-workflow-secret-isolation",
+    "title": "PR workflow secret exposure depends on GitHub settings",
+    "description": "The checked-in PR Gate has contents:read, disables checkout credential persistence, and does not reference secrets. A separate main-branch signer maps repository secrets. Whether a PR revision can access those secrets depends on GitHub workflow semantics, contributor trust, and repository policy.",
+    "claimed_root_cause": "If GitHub executes a PR-proposed workflow revision with signing secrets available, a same-repository PR author outside the trusted signer group could disclose them; those external conditions are unknown.",
+    "trace": [
+      {
+        "kind": "entrypoint",
+        "file": ".github/workflows/pr-gate.yml",
+        "line": 6,
+        "scope": "pull_request trigger",
+        "description": "A pull request triggers the PR Gate workflow."
+      },
+      {
+        "kind": "sink",
+        "file": ".github/workflows/build-apk-source.yml",
+        "line": 987,
+        "scope": "isolated signing step",
+        "description": "The signing step maps signing secrets into its environment."
+      }
+    ],
+    "evidence": [
+      {
+        "file": ".github/workflows/pr-gate.yml",
+        "line": 13,
+        "description": "The PR workflow declares contents:read."
+      },
+      {
+        "file": ".github/workflows/pr-gate.yml",
+        "line": 42,
+        "description": "Checkout disables persisted credentials."
+      },
+      {
+        "file": ".github/workflows/build-apk-source.yml",
+        "line": 969,
+        "description": "Signing is conditioned on refs/heads/main."
+      },
+      {
+        "file": ".github/workflows/build-apk-source.yml",
+        "line": 987,
+        "description": "Signing credentials are passed to the signing step."
+      }
+    ],
+    "blockers": [
+      "The checkout cannot establish whether GitHub executes a PR-proposed workflow revision with repository/organization secrets available.",
+      "The identities permitted to create same-repository PRs and their authorization for the signing key are unknown."
+    ],
+    "validation_plan": {
+      "deployment": "Have a repository owner inspect GitHub Actions PR workflow and secret policies, the identities who can create same-repository PRs, and the scope/approval controls for signing secrets. Do not run a test workflow or expose secret values."
+    }
+  },
+  {
+    "verdict": "needs_validation",
+    "fingerprint": "linux-bash:session-policy-bypass",
+    "title": "Linux shell callback does not visibly enforce session policy",
+    "description": "The linux_bash callback forwards command, cwd, and timeout to a PRoot manager without passing session context. Sibling shell paths check session policy. The active engine dispatcher is absent, so an outer enforcement gate cannot be ruled out.",
+    "claimed_root_cause": "The Linux shell callback has no source-visible session-policy check before launching commands, unlike the Android and Termux shell paths.",
+    "trace": [
+      {
+        "kind": "entrypoint",
+        "file": "vendor/dsh-linux-runtime/lib/index.js",
+        "line": 56,
+        "scope": "registered linux_bash tool",
+        "description": "The plugin registers the model-facing Linux shell tool."
+      },
+      {
+        "kind": "propagation",
+        "file": "vendor/dsh-linux-runtime/lib/index.js",
+        "line": 89,
+        "scope": "execute callback",
+        "description": "The callback forwards command, cwd, and timeout without session context."
+      },
+      {
+        "kind": "sink",
+        "file": "vendor/dsh-linux-runtime/modules/manager.js",
+        "line": 1335,
+        "scope": "managed PRoot execution",
+        "description": "The manager passes the generated PRoot specification to _runManaged to execute the supplied bash command."
+      }
+    ],
+    "evidence": [
+      {
+        "file": "vendor/dsh-linux-runtime/lib/index.js",
+        "line": 89,
+        "description": "The callback does not pass execution context or sandbox policy."
+      },
+      {
+        "file": "vendor/dsh-linux-runtime/modules/manager.js",
+        "line": 1331,
+        "description": "The manager builds PRoot arguments using the supplied command."
+      },
+      {
+        "file": "plugins/dsh-android-bridge/src/index.ts",
+        "line": 1669,
+        "description": "Android shell explicitly checks session policy."
+      },
+      {
+        "file": "dsh-shell-termux/src/index.ts",
+        "line": 266,
+        "description": "Termux shell rejects non-full-access sessions before starting bash."
+      }
+    ],
+    "blockers": [
+      "The active engine tool dispatcher and pre-execute middleware are absent, so source review cannot establish whether a global session gate runs first.",
+      "No bounded dispatcher-to-callback observation was possible under the required sandbox."
+    ],
+    "validation_plan": {
+      "local": "When an approved OS-enforced sandbox is available, use the engine dispatcher with a synthetic read-only session and a fake Linux manager that only records invocations. Verify whether the dispatcher rejects before the fake runner is called; do not invoke a real shell.",
+      "deployment": "Have the engine owner inspect the active dispatcher and pre-execute middleware for linux_bash and report whether a synthetic read-only session is rejected before the callback."
+    }
+  },
+  {
+    "verdict": "needs_validation",
+    "fingerprint": "model-capability:active-probe-level-cardinality",
+    "title": "Active capability probes lack a plugin-side request-count cap",
+    "description": "The tool schema accepts a levels array without maxItems, preserves duplicate recognized values, and sends one provider request per surviving level plus a negative control. Dispatcher argument bounds and provider quotas are not established.",
+    "claimed_root_cause": "The plugin accepts model-controlled active-probe levels without truncation/deduplication and issues a request for each; any outer request-count cap is unknown.",
+    "trace": [
+      {
+        "kind": "entrypoint",
+        "file": "plugins/dsh-model-capability/src/index.ts",
+        "line": 873,
+        "scope": "model probe schema",
+        "description": "The levels argument is an array without a visible maximum item count."
+      },
+      {
+        "kind": "propagation",
+        "file": "plugins/dsh-model-capability/src/index.ts",
+        "line": 326,
+        "scope": "active probe selection",
+        "description": "A nonempty supplied levels array is retained."
+      },
+      {
+        "kind": "sink",
+        "file": "plugins/dsh-model-capability/src/capability-probe.ts",
+        "line": 578,
+        "scope": "provider request loop",
+        "description": "The probe sends one request for each accepted level."
+      }
+    ],
+    "evidence": [
+      {
+        "file": "plugins/dsh-model-capability/src/capability-probe.ts",
+        "line": 621,
+        "description": "Filtering recognized levels does not remove duplicate entries."
+      },
+      {
+        "file": "plugins/dsh-model-capability/src/capability-probe.ts",
+        "line": 578,
+        "description": "Each retained entry triggers a separate request."
+      },
+      {
+        "file": "plugins/dsh-model-capability/src/index.ts",
+        "line": 310,
+        "description": "The local gate requires active=true and confirm=true."
+      }
+    ],
+    "blockers": [
+      "The shipped dispatcher may cap argument cardinality or require approval bound to final arguments; that implementation is not in this checkout.",
+      "Provider billing and quota limits are outside this source review; no provider-backed request was made."
+    ],
+    "validation_plan": {
+      "local": "In a bounded isolated fixture, use duplicate recognized levels and fake fetch/provider configuration, then count fake requests through the registered tool. Inspect shipped dispatcher argument limits without contacting a provider.",
+      "deployment": "Have the owner inspect dispatcher argument/approval limits and configured route quotas without sending probe traffic."
+    }
+  },
+  {
+    "verdict": "needs_validation",
+    "fingerprint": "model-capability:active-probe-user-approval",
+    "title": "Active provider probes rely on model-supplied confirmation flags",
+    "description": "Plugin-local checks accept active=true and confirm=true, then may issue authenticated provider requests. The source does not establish whether the host dispatcher requires separate human approval bound to the final full arguments.",
+    "claimed_root_cause": "Plugin-local active-probe authorization treats model-controlled booleans as sufficient; a host dispatcher may add a distinct approval boundary.",
+    "trace": [
+      {
+        "kind": "entrypoint",
+        "file": "plugins/dsh-model-capability/src/index.ts",
+        "line": 862,
+        "scope": "model-visible probe tool",
+        "description": "The tool schema exposes active and confirm arguments."
+      },
+      {
+        "kind": "propagation",
+        "file": "plugins/dsh-model-capability/src/index.ts",
+        "line": 310,
+        "scope": "plugin-local gate",
+        "description": "The function proceeds when active is true and confirm equals true."
+      },
+      {
+        "kind": "sink",
+        "file": "plugins/dsh-model-capability/src/capability-probe.ts",
+        "line": 578,
+        "scope": "provider request",
+        "description": "The active probe sends requests to the configured provider endpoint."
+      }
+    ],
+    "evidence": [
+      {
+        "file": "plugins/dsh-model-capability/src/index.ts",
+        "line": 871,
+        "description": "The schema accepts a model-controlled active boolean."
+      },
+      {
+        "file": "plugins/dsh-model-capability/src/index.ts",
+        "line": 872,
+        "description": "The schema accepts a model-controlled confirm boolean."
+      },
+      {
+        "file": "plugins/dsh-model-capability/src/index.ts",
+        "line": 311,
+        "description": "The local gate does not call an approval service."
+      }
+    ],
+    "blockers": [
+      "The shipped dispatcher approval policy and argument binding are absent from the checkout and are decisive to whether model booleans can cause a request without user intent."
+    ],
+    "validation_plan": {
+      "deployment": "Have the owner verify the shipped engine version and confirm that active probe calls cannot reach a provider unless a human approves the final normalized tool name and complete argument object. Use source/configuration inspection only; do not send audit traffic."
+    }
+  },
+  {
+    "verdict": "needs_validation",
+    "fingerprint": "plugins/dsh-android-bridge/src/capability-gate.ts/global-relock-scope",
+    "title": "Global capability revoke may leave another agent's tools visible",
+    "description": "The off revoke clears shared persisted unlock state but appears to rebuild restrictions only for the requesting agent. Another active agent may retain stale tool visibility. Separate execution checks remain, and no consequential bypass was established.",
+    "claimed_root_cause": "The shared unlock state is globally cleared while in-memory restriction fibers are updated only for the caller agent.",
+    "trace": [
+      {
+        "kind": "entrypoint",
+        "file": "plugins/dsh-android-bridge/src/capability-gate.ts",
+        "line": 385,
+        "scope": "capability tool execute",
+        "description": "The revoke call is associated with the current agent."
+      },
+      {
+        "kind": "propagation",
+        "file": "plugins/dsh-android-bridge/src/capability-gate.ts",
+        "line": 293,
+        "scope": "relock",
+        "description": "The off path clears shared groups and looks up only the supplied agent's lock table."
+      },
+      {
+        "kind": "sink",
+        "file": "plugins/dsh-android-bridge/src/capability-gate.ts",
+        "line": 315,
+        "scope": "lockAgent rebuild",
+        "description": "The restrictions are rebuilt for that agent alone."
+      }
+    ],
+    "evidence": [
+      {
+        "file": "plugins/dsh-android-bridge/src/capability-gate.ts",
+        "line": 203,
+        "description": "Active restriction fibers are tracked in a WeakMap by agent."
+      },
+      {
+        "file": "plugins/dsh-android-bridge/src/capability-gate.ts",
+        "line": 315,
+        "description": "The relock path visits only the current agent."
+      },
+      {
+        "file": "plugins/dsh-android-bridge/src/index.ts",
+        "line": 1038,
+        "description": "Device execution separately checks danger-full-access mode."
+      }
+    ],
+    "blockers": [
+      "Cordis fiber disposal and model tool-list/dispatch behavior across concurrent agents are not resolved by source.",
+      "Stale visibility alone does not prove execution bypass because separate session/channel gates remain."
+    ],
+    "validation_plan": {
+      "local": "In a bounded Cordis fixture, create two agents with a harmless synthetic gated tool, unlock both, revoke group off from one, then inspect the other agent's tool list and attempt only the side-effect-free test dispatch.",
+      "deployment": "Have the owner observe the same two-agent case using only a harmless no-op tool and separately verify execution session/channel checks."
+    }
+  },
+  {
+    "verdict": "needs_validation",
+    "fingerprint": "scripts/build-snapshot-013.mjs/overlay-integrity",
+    "title": "Overlay tarballs lack source-controlled integrity verification",
+    "description": "The overlay resolver accepts bytes when registry SHA-512 metadata is absent and returns existing cache files without verification before extraction. The intended registry trust root and cache-writer boundary are unknown.",
+    "claimed_root_cause": "The overlay resolver trusts optional registry-provided integrity and unverified cached tarball bytes rather than a source-controlled digest.",
+    "trace": [
+      {
+        "kind": "entrypoint",
+        "file": "scripts/build-snapshot-013.mjs",
+        "line": 225,
+        "scope": "registry metadata fetch",
+        "description": "The builder obtains package metadata from a configured registry."
+      },
+      {
+        "kind": "propagation",
+        "file": "scripts/build-snapshot-013.mjs",
+        "line": 233,
+        "scope": "overlay tarball resolution",
+        "description": "It fetches tarball bytes from the metadata URL."
+      },
+      {
+        "kind": "sink",
+        "file": "scripts/build-snapshot-013.mjs",
+        "line": 257,
+        "scope": "staged engine extraction",
+        "description": "The resolved tarball is extracted into the staged runtime tree."
+      }
+    ],
+    "evidence": [
+      {
+        "file": "scripts/build-snapshot-013.mjs",
+        "line": 218,
+        "description": "The cache-hit branch returns existing bytes without verification."
+      },
+      {
+        "file": "scripts/build-snapshot-013.mjs",
+        "line": 234,
+        "description": "The digest check is conditional on registry-provided dist.sha512."
+      },
+      {
+        "file": "scripts/snapshot-config/engine-overlay.json",
+        "line": 25,
+        "description": "The source manifest pins package names/versions but lacks a per-package tarball digest."
+      }
+    ],
+    "blockers": [
+      "The required isolated registry fixture could not run because the OS-enforced sandbox is unavailable.",
+      "Source does not establish the intended registry integrity root or who can write the actual build worker cache before consumption."
+    ],
+    "validation_plan": {
+      "local": "In an approved network-denied sandbox with a stub registry and scratch-only cache, use a harmless dummy tarball and confirm whether omitted registry digest and cache-hit bytes are accepted and extracted. Do not use a real registry or publish artifacts.",
+      "deployment": "Have the build owner confirm the documented integrity root and who can write any shared engine-overlay cache on actual build workers."
+    }
+  },
+  {
+    "verdict": "needs_validation",
+    "fingerprint": "scripts/source-build/run-local-source-chain.mjs/corepack-mirror-bootstrap",
+    "title": "Configured npm mirror reaches package-manager bootstrap",
+    "description": "The local source chain propagates a caller-supplied mirror into npm and Corepack registry settings, then installs and invokes Corepack. Whether pinned tool versions accept plain HTTP or independently authenticate bootstrap bytes is unknown.",
+    "claimed_root_cause": "The local build chain propagates a configurable registry to package-manager bootstrap without a source-visible scheme allowlist or Corepack digest.",
+    "trace": [
+      {
+        "kind": "entrypoint",
+        "file": "scripts/source-build/run-local-source-chain.mjs",
+        "line": 280,
+        "scope": "mirror CLI/environment input",
+        "description": "The caller mirror is read from --npm-mirror or DSH_NPM_MIRROR."
+      },
+      {
+        "kind": "propagation",
+        "file": "scripts/source-build/run-local-source-chain.mjs",
+        "line": 298,
+        "scope": "child environment",
+        "description": "The mirror populates npm_config_registry and COREPACK_NPM_REGISTRY."
+      },
+      {
+        "kind": "sink",
+        "file": "scripts/source-build/build-engine.sh",
+        "line": 67,
+        "scope": "Corepack bootstrap install",
+        "description": "The script installs Corepack through npm in the inherited environment."
+      }
+    ],
+    "evidence": [
+      {
+        "file": "scripts/source-build/run-local-source-chain.mjs",
+        "line": 280,
+        "description": "Mirror input is accepted without source-visible scheme validation."
+      },
+      {
+        "file": "scripts/source-build/run-local-source-chain.mjs",
+        "line": 338,
+        "description": "Workflow shell steps receive the constructed environment."
+      },
+      {
+        "file": "scripts/source-build/build-engine.sh",
+        "line": 67,
+        "description": "Corepack is installed globally before enabling/invoking it."
+      }
+    ],
+    "blockers": [
+      "The checkout does not establish whether the pinned npm accepts a plain-HTTP registry or its integrity checks for Corepack.",
+      "The checkout does not establish whether Corepack authenticates pnpm bootstrap independently; the isolated tool behavior check did not run."
+    ],
+    "validation_plan": {
+      "local": "In an approved network-denied sandbox, use a loopback-only registry fixture and harmless dummy packages to check exact pinned npm/Corepack handling and integrity. Do not contact external registries or create deliverable artifacts."
+    }
+  },
+  {
+    "verdict": "needs_validation",
+    "fingerprint": "undo-restore:sync-deps-action-confirmation",
+    "title": "Dependency sync approval depends on the external tool dispatcher",
+    "description": "The model-visible undo_restore option sync_deps reaches pnpm install when dependency files are restored. The plugin prompt asks for confirmation, but the checked-out source does not establish whether the installed dispatcher requires and binds actual approval.",
+    "claimed_root_cause": "The plugin handler has no source-visible check that approval covers the final undo_restore mode, snapshot ID, and sync_deps option before dependency installation.",
+    "trace": [
+      {
+        "kind": "entrypoint",
+        "file": "vendor/dsh-undo-savepoint/lib/index.js",
+        "line": 481,
+        "scope": "undo_restore execute handler",
+        "description": "The handler receives mode, snapshot ID, and sync_deps arguments."
+      },
+      {
+        "kind": "propagation",
+        "file": "vendor/dsh-undo-savepoint/lib/index.js",
+        "line": 485,
+        "scope": "restore dispatch",
+        "description": "The handler forwards sync_deps into restore without a visible approval check."
+      },
+      {
+        "kind": "sink",
+        "file": "vendor/dsh-undo-savepoint/lib/core.mjs",
+        "line": 2103,
+        "scope": "dependency installation",
+        "description": "When dependency files were restored and syncDeps is true, reconciliation calls pnpm."
+      }
+    ],
+    "evidence": [
+      {
+        "file": "vendor/dsh-undo-savepoint/lib/index.js",
+        "line": 197,
+        "description": "The plugin prompt requests user confirmation but is not a deterministic handler check."
+      },
+      {
+        "file": "vendor/dsh-undo-savepoint/lib/index.js",
+        "line": 477,
+        "description": "The schema exposes sync_deps as a boolean."
+      },
+      {
+        "file": "vendor/dsh-undo-savepoint/lib/core.mjs",
+        "line": 2103,
+        "description": "The install path invokes runPnpm under the dependency-file and syncDeps conditions."
+      }
+    ],
+    "blockers": [
+      "The installed @deepseek-ai/dsh-tools dispatcher and active approval configuration are absent, so approval requirement and final-argument binding are unknown."
+    ],
+    "validation_plan": {
+      "local": "In a disposable isolated profile with dummy dependency manifests, dispatch undo_restore through the exact installed dispatcher and use a stub pnpm executable that only records arguments. Compare no approval, mismatched approval, and exact approval; allow no package installation or network.",
+      "deployment": "Have the DSH owner inspect the deployed dispatcher and confirm approval is required and bound to requester plus the final normalized tool and complete arguments."
+    }
+  },
+  {
+    "verdict": "needs_validation",
+    "fingerprint": "undo.import.aggregate-buffer-cap",
+    "title": "Snapshot import retains a large aggregate of decoded ZIP entries",
+    "description": "Import accepts archives up to 1 GiB, and the custom parser can retain decoded entries up to a 4 GiB aggregate cap in memory. Source does not establish lower-trust archive selection or actual process impact.",
+    "claimed_root_cause": "The parser retains all decoded entry buffers before import completes, with an aggregate cap not tied to the deployed process memory limit.",
+    "trace": [
+      {
+        "kind": "entrypoint",
+        "file": "vendor/dsh-undo-savepoint/lib/index.js",
+        "line": 620,
+        "scope": "undo_import tool handler",
+        "description": "The handler passes a caller-selected archive path to importSnapshots."
+      },
+      {
+        "kind": "propagation",
+        "file": "vendor/dsh-undo-savepoint/lib/core.mjs",
+        "line": 2907,
+        "scope": "archive read",
+        "description": "The archive is read into a Buffer after a 1 GiB size check."
+      },
+      {
+        "kind": "sink",
+        "file": "vendor/dsh-undo-savepoint/lib/zip.mjs",
+        "line": 184,
+        "scope": "decoded buffer retention",
+        "description": "Each decoded entry is retained in an output array up to the aggregate limit."
+      }
+    ],
+    "evidence": [
+      {
+        "file": "vendor/dsh-undo-savepoint/lib/core.mjs",
+        "line": 2900,
+        "description": "Import defines a 1 GiB compressed archive size limit."
+      },
+      {
+        "file": "vendor/dsh-undo-savepoint/lib/zip.mjs",
+        "line": 133,
+        "description": "The parser caps aggregate decoded output at 4 GiB."
+      },
+      {
+        "file": "vendor/dsh-undo-savepoint/lib/zip.mjs",
+        "line": 184,
+        "description": "Decoded buffers remain in the returned array until parsing completes."
+      }
+    ],
+    "blockers": [
+      "The deployed Node memory limit and supervisor/process isolation are unknown.",
+      "The source does not establish whether a lower-trust party can cause archive selection without meaningful user authorization.",
+      "No sandboxed memory measurement was possible."
+    ],
+    "validation_plan": {
+      "local": "When the required sandbox is available, use a synthetic archive fixture under strict memory/time limits and record peak memory and failure scope without writing imported entries or using a live engine.",
+      "deployment": "Have the runtime owner report Node memory limits and whether a lower-trust party can cause archive import without user authorization; do not submit an archive to a deployed service."
+    }
+  },
+  {
+    "verdict": "needs_validation",
+    "fingerprint": "vdisplay-destroy-session-mode-bypass",
+    "title": "A lower-tier session may reach virtual-display destruction",
+    "description": "The destroy tool passes the caller session to the control service, but vdDestroy is absent from the tier-required operation set. Native destroy may select and release a display belonging to another session. Device impact on content running there is unobserved.",
+    "claimed_root_cause": "vdDestroy is omitted from the session-tier gate and native destroy lacks caller ownership enforcement, possibly allowing a lower-tier session to destroy another session's virtual display.",
+    "trace": [
+      {
+        "kind": "entrypoint",
+        "file": "plugins/dsh-android-vdisplay/src/index.ts",
+        "line": 291,
+        "scope": "android_vdisplay_destroy tool",
+        "description": "The model tool calls vdDestroy with its execution context."
+      },
+      {
+        "kind": "propagation",
+        "file": "plugins/dsh-android-bridge/src/index.ts",
+        "line": 1233,
+        "scope": "controlExec tier authorization",
+        "description": "The service checks session tier only for operations listed in TIER_REQUIRED_OPS."
+      },
+      {
+        "kind": "sink",
+        "file": "app/src/main/java/com/snoworwind/pocketharness/VdisplayController.kt",
+        "line": 491,
+        "scope": "display release",
+        "description": "After selecting a registered display, the controller removes its record and releases the display without checking caller ownership."
+      }
+    ],
+    "evidence": [
+      {
+        "file": "plugins/dsh-android-bridge/src/index.ts",
+        "line": 548,
+        "description": "TIER_REQUIRED_OPS omits vdDestroy."
+      },
+      {
+        "file": "app/src/main/java/com/snoworwind/pocketharness/VdisplayController.kt",
+        "line": 478,
+        "description": "The controller explicitly allows any session to destroy a display."
+      },
+      {
+        "file": "app/src/main/java/com/snoworwind/pocketharness/VdisplayController.kt",
+        "line": 488,
+        "description": "If no caller-owned display is selected, destruction falls back to the first registered display."
+      },
+      {
+        "file": "app/src/main/java/com/snoworwind/pocketharness/VdisplayController.kt",
+        "line": 431,
+        "description": "Display creation configures FLAG_DESTROY_CONTENT_ON_REMOVAL; its runtime effect on a running task is unobserved."
+      }
+    ],
+    "blockers": [
+      "No isolated Android observation established that a lower-tier session can invoke destroy against another session's display and disrupt a running dummy app."
+    ],
+    "validation_plan": {
+      "local": "In an isolated emulator, create a display for dummy session A, launch a disposable app there, and invoke only android_vdisplay_destroy from session B below danger-full-access. Record display state and app behavior; do not use real apps or data."
+    }
+  },
+  {
+    "verdict": "needs_validation",
+    "fingerprint": "vendor-dsh-undo-savepoint:global-settings-overrides-profile-store",
+    "title": "Persisted snapshot paths may expose snapshots across profiles",
+    "description": "One shared DSH_HOME settings file can persist manualDir/autoDir values that override profile-specific default roots. Listing and restore do not compare the manifest profile with the active profile. Whether profiles are distinct security principals or shared paths are intended remains unresolved.",
+    "claimed_root_cause": "Shared persisted store overrides can point multiple profiles at the same snapshot roots, while listing and restore omit profile identity checks.",
+    "trace": [
+      {
+        "kind": "entrypoint",
+        "file": "vendor/dsh-undo-savepoint/lib/index.js",
+        "line": 485,
+        "scope": "undo_restore tool",
+        "description": "The tool invokes restore using configuration for the active profile."
+      },
+      {
+        "kind": "propagation",
+        "file": "vendor/dsh-undo-savepoint/lib/index.js",
+        "line": 253,
+        "scope": "profile configuration",
+        "description": "Persisted store paths take precedence over profile-specific defaults."
+      },
+      {
+        "kind": "propagation",
+        "file": "vendor/dsh-undo-savepoint/lib/core.mjs",
+        "line": 1534,
+        "scope": "snapshot listing",
+        "description": "Listing scans configured roots without filtering manifest profile."
+      },
+      {
+        "kind": "sink",
+        "file": "vendor/dsh-undo-savepoint/lib/core.mjs",
+        "line": 2052,
+        "scope": "restore destination",
+        "description": "Restore targets the current profile root without comparing the recorded snapshot profile."
+      }
+    ],
+    "evidence": [
+      {
+        "file": "vendor/dsh-undo-savepoint/lib/core.mjs",
+        "line": 55,
+        "description": "The default settings path is under DSH_HOME, shared across profiles using that home."
+      },
+      {
+        "file": "vendor/dsh-undo-savepoint/lib/index.js",
+        "line": 1133,
+        "description": "Settings updates persist the manual and auto roots to the settings file."
+      },
+      {
+        "file": "vendor/dsh-undo-savepoint/lib/index.js",
+        "line": 253,
+        "description": "Persisted manual/auto roots override profile-specific roots."
+      },
+      {
+        "file": "vendor/dsh-undo-savepoint/lib/core.mjs",
+        "line": 1534,
+        "description": "Listing scans configured roots without filtering on the manifest profile field."
+      },
+      {
+        "file": "vendor/dsh-undo-savepoint/lib/core.mjs",
+        "line": 2052,
+        "description": "Restore targets the active profile root without comparing the snapshot profile."
+      }
+    ],
+    "blockers": [
+      "The source does not establish whether profiles are security principals with isolated model/API access or whether a shared configured snapshot directory is intended."
+    ],
+    "validation_plan": {
+      "local": "In a disposable fixture with a temporary DSH_HOME, configure profiles A and B to use the same persisted manualDir/autoDir, create a harmless profile-A snapshot, then inspect profile B listing and restore destination using temporary files only.",
+      "deployment": "Ask the product owner whether profiles are separate security principals and whether persisted shared snapshot directories are intended; do not access deployed user data."
+    }
+  },
+  {
+    "verdict": "needs_validation",
+    "fingerprint": "vendor-dsh-undo-savepoint:prune-auto-deletes-message-undo-blobs",
+    "title": "Automatic pruning may delete blobs still used by message undo",
+    "description": "Message hooks store beforeHash content in the shared blob store. Automatic pruning builds live references only from snapshot manifests and deletes blobs outside that set; a later undoMessage reports missing content. The practical result was not observed.",
+    "claimed_root_cause": "pruneOrphanBlobs omits message-batch beforeHash references when deciding which blob files to delete.",
+    "trace": [
+      {
+        "kind": "entrypoint",
+        "file": "vendor/dsh-undo-savepoint/lib/index.js",
+        "line": 945,
+        "scope": "pre-execution hook",
+        "description": "The hook captures eligible workspace file contents before a tool operation."
+      },
+      {
+        "kind": "propagation",
+        "file": "vendor/dsh-undo-savepoint/lib/core.mjs",
+        "line": 2265,
+        "scope": "prune reference set",
+        "description": "Automatic pruning collects snapshot hashes but does not read message batches."
+      },
+      {
+        "kind": "propagation",
+        "file": "vendor/dsh-undo-savepoint/lib/core.mjs",
+        "line": 2276,
+        "scope": "blob deletion",
+        "description": "Automatic pruning removes a blob after its hash is absent from the snapshot-only reference set."
+      },
+      {
+        "kind": "sink",
+        "file": "vendor/dsh-undo-savepoint/lib/core.mjs",
+        "line": 2586,
+        "scope": "message undo restore",
+        "description": "undoMessage later attempts to read the missing beforeHash blob."
+      }
+    ],
+    "evidence": [
+      {
+        "file": "vendor/dsh-undo-savepoint/lib/index.js",
+        "line": 968,
+        "description": "The pre-execution hook persists beforeHash in the message batch."
+      },
+      {
+        "file": "vendor/dsh-undo-savepoint/lib/core.mjs",
+        "line": 2266,
+        "description": "pruneOrphanBlobs adds only snapshot file hashes."
+      },
+      {
+        "file": "vendor/dsh-undo-savepoint/lib/core.mjs",
+        "line": 2276,
+        "description": "An unreferenced blob is removed."
+      },
+      {
+        "file": "vendor/dsh-undo-savepoint/lib/core.mjs",
+        "line": 2587,
+        "description": "A failed blob read skips restoring original content."
+      }
+    ],
+    "blockers": [
+      "The claimed prune-then-undo behavior was not observed in a bounded local fixture because the required OS-enforced sandbox is unavailable."
+    ],
+    "validation_plan": {
+      "local": "In an approved isolated DSH_UNDO_ROOT fixture, create a message batch and dummy beforeHash blob with no snapshot reference, call pruneAuto, then undoMessage. Record whether the blob is removed and undo reports missing content; stop after that result."
+    }
+  },
+  {
+    "verdict": "needs_validation",
+    "fingerprint": "vendor/dshmarketplace-plugin/lib/index.js/install-source-approval-binding",
+    "title": "Approval does not visibly bind the marketplace package source",
+    "description": "The approval hook displays descriptive catalogue metadata keyed by fullName. Installation later performs another lookup by fullName and derives the command target from the returned install field. Source does not show immutable source/digest binding; host approval and package-manager integrity are unknown.",
+    "claimed_root_cause": "The approval decision is not visibly bound to the catalogue install locator or an immutable digest used by the later install execution.",
+    "trace": [
+      {
+        "kind": "entrypoint",
+        "file": "vendor/dshmarketplace-plugin/lib/index.js",
+        "line": 1,
+        "scope": "pre-execute approval and install registration",
+        "description": "The module registers a pre-execute approval hook and a model-visible install tool."
+      },
+      {
+        "kind": "propagation",
+        "file": "vendor/dshmarketplace-plugin/lib/index.js",
+        "line": 1,
+        "scope": "approval prompt construction",
+        "description": "The approval prompt includes descriptive metadata and URL but not the installation locator or digest."
+      },
+      {
+        "kind": "sink",
+        "file": "vendor/dshmarketplace-plugin/lib/index.js",
+        "line": 1,
+        "scope": "package manager invocation",
+        "description": "Execution re-looks up fullName, derives the install target, and invokes dsh plugin add."
+      }
+    ],
+    "evidence": [
+      {
+        "file": "vendor/dshmarketplace-plugin/lib/index.js",
+        "line": 1,
+        "description": "The approval hook returns an ask decision from catalogue metadata."
+      },
+      {
+        "file": "vendor/dshmarketplace-plugin/lib/index.js",
+        "line": 1,
+        "description": "The catalogue cache expires after 300 seconds; execution performs a later lookup and invokes the selected install command."
+      },
+      {
+        "file": "vendor/dshmarketplace-plugin/lib/index.js",
+        "line": 1,
+        "description": "The command syntax is checked, but the source does not bind a digest or approved row locator."
+      }
+    ],
+    "blockers": [
+      "The host approval dispatcher is outside this source path; it is unknown whether acceptance binds to the same invocation/arguments and catalogue data.",
+      "The package manager's source resolution and integrity behavior are outside the reviewed source.",
+      "No isolated approval-to-execution harness ran because the required OS-enforced sandbox is unavailable."
+    ],
+    "validation_plan": {
+      "local": "When compliant sandboxing is available, mock the catalogue and use a dummy runner to capture the approval prompt, change the locator after cache expiry, and observe whether the real dispatcher can invoke the dummy runner with changed data. Do not run the package manager or contact external services.",
+      "deployment": "Have the owner inspect the pinned host approval dispatcher and package-manager configuration to confirm exact tool-argument binding and source integrity through installation."
+    }
+  }
+]

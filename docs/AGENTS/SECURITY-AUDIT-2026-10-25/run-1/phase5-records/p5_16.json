@@ -1,0 +1,54 @@
+{
+  "verdict": "needs_validation",
+  "fingerprint": "scripts/source-build/run-local-source-chain.mjs/corepack-mirror-bootstrap",
+  "title": "Configured npm mirror reaches package-manager bootstrap",
+  "description": "The local source chain propagates a caller-supplied mirror into npm and Corepack registry settings, then installs and invokes Corepack. Whether pinned tool versions accept plain HTTP or independently authenticate bootstrap bytes is unknown.",
+  "claimed_root_cause": "The local build chain propagates a configurable registry to package-manager bootstrap without a source-visible scheme allowlist or Corepack digest.",
+  "trace": [
+    {
+      "kind": "entrypoint",
+      "file": "scripts/source-build/run-local-source-chain.mjs",
+      "line": 280,
+      "scope": "mirror CLI/environment input",
+      "description": "The caller mirror is read from --npm-mirror or DSH_NPM_MIRROR."
+    },
+    {
+      "kind": "propagation",
+      "file": "scripts/source-build/run-local-source-chain.mjs",
+      "line": 298,
+      "scope": "child environment",
+      "description": "The mirror populates npm_config_registry and COREPACK_NPM_REGISTRY."
+    },
+    {
+      "kind": "sink",
+      "file": "scripts/source-build/build-engine.sh",
+      "line": 67,
+      "scope": "Corepack bootstrap install",
+      "description": "The script installs Corepack through npm in the inherited environment."
+    }
+  ],
+  "evidence": [
+    {
+      "file": "scripts/source-build/run-local-source-chain.mjs",
+      "line": 280,
+      "description": "Mirror input is accepted without source-visible scheme validation."
+    },
+    {
+      "file": "scripts/source-build/run-local-source-chain.mjs",
+      "line": 338,
+      "description": "Workflow shell steps receive the constructed environment."
+    },
+    {
+      "file": "scripts/source-build/build-engine.sh",
+      "line": 67,
+      "description": "Corepack is installed globally before enabling/invoking it."
+    }
+  ],
+  "blockers": [
+    "The checkout does not establish whether the pinned npm accepts a plain-HTTP registry or its integrity checks for Corepack.",
+    "The checkout does not establish whether Corepack authenticates pnpm bootstrap independently; the isolated tool behavior check did not run."
+  ],
+  "validation_plan": {
+    "local": "In an approved network-denied sandbox, use a loopback-only registry fixture and harmless dummy packages to check exact pinned npm/Corepack handling and integrity. Do not contact external registries or create deliverable artifacts."
+  }
+}

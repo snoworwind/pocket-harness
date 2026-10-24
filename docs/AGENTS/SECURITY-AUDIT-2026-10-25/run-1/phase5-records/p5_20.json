@@ -1,0 +1,53 @@
+{
+  "verdict": "needs_validation",
+  "fingerprint": "vdisplay-destroy-session-mode-bypass",
+  "title": "A lower-tier session may reach virtual-display destruction",
+  "description": "The destroy tool passes the caller session to the control service, but vdDestroy is absent from the tier-required operation set. Native destroy may select and release a display belonging to another session. Device impact on content running there is unobserved.",
+  "claimed_root_cause": "vdDestroy is omitted from the session-tier gate and native destroy lacks caller ownership enforcement, possibly allowing a lower-tier session to destroy another session's virtual display.",
+  "trace": [
+    {
+      "kind": "entrypoint",
+      "file": "plugins/dsh-android-vdisplay/src/index.ts",
+      "line": 291,
+      "scope": "android_vdisplay_destroy tool",
+      "description": "The model tool calls vdDestroy with its execution context."
+    },
+    {
+      "kind": "propagation",
+      "file": "plugins/dsh-android-bridge/src/index.ts",
+      "line": 1233,
+      "scope": "controlExec tier authorization",
+      "description": "The service checks session tier only for operations listed in TIER_REQUIRED_OPS."
+    },
+    {
+      "kind": "sink",
+      "file": "app/src/main/java/com/snoworwind/pocketharness/VdisplayController.kt",
+      "line": 484,
+      "scope": "display release",
+      "description": "The controller can select a display outside the caller's own registration and remove/release it."
+    }
+  ],
+  "evidence": [
+    {
+      "file": "plugins/dsh-android-bridge/src/index.ts",
+      "line": 548,
+      "description": "TIER_REQUIRED_OPS omits vdDestroy."
+    },
+    {
+      "file": "app/src/main/java/com/snoworwind/pocketharness/VdisplayController.kt",
+      "line": 478,
+      "description": "The controller permits destruction without caller ownership checks."
+    },
+    {
+      "file": "app/src/main/java/com/snoworwind/pocketharness/VdisplayController.kt",
+      "line": 475,
+      "description": "The method uses DESTROY_CONTENT_ON_REMOVAL; actual task effect is not observed."
+    }
+  ],
+  "blockers": [
+    "No isolated Android observation established that a lower-tier session can invoke destroy against another session's display and disrupt a running dummy app."
+  ],
+  "validation_plan": {
+    "local": "In an isolated emulator, create a display for dummy session A, launch a disposable app there, and invoke only android_vdisplay_destroy from session B below danger-full-access. Record display state and app behavior; do not use real apps or data."
+  }
+}
