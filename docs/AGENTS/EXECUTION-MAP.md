@@ -2367,7 +2367,6 @@ scripts/build-apk.mjs
 scripts/build-hard-manifest.mjs
 scripts/build-hard-manifest.test.mjs
 scripts/build-release.ps1
-scripts/build-snapshot-arm64.mjs
 glob:scripts/check-*.mjs
 scripts/check-snapshot-asset.ps1
 scripts/check-snapshot-secrets.ps1
