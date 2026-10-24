@@ -138,9 +138,11 @@ object NotifyDecisionQueue {
     canonical(d.requestId, d.eventId, d.kind, d.outcomeJson, d.ts, d.state, d.attempts, d.waitAttempts)
 
   /**
-   * 生产实现：Android Keystore 非导出 HMAC 密钥（同 UID 原生代码理论上可经 keystore2 用钥，
-   * 但 Node/Termux 运行时不可达——威胁边界见 R3-01）。Keystore 初始化或自检失败时回退进程内
-   * 临时密钥：决策仍然即时投递，跨进程死亡的持久行按验签失败丢弃（fail-closed 方向）。
+   * 生产实现：Android Keystore 非导出 HMAC 密钥为主。**Keystore 不可用（初始化/自检失败）时
+   * 回退进程内 SecureRandom 临时密钥**——此时决策仍即时签名与投递（fail-closed 的对象是
+   * 「不可信输入的伪造行」，不是「放弃持久化本进程自己的合法决策」）；临时密钥不落盘，
+   * 跨进程死亡后旧行按验签失败丢弃。验签对两把钥匙都接受（同进程内 Keystore 恢复/劣化
+   * 的混合历史不误伤）。
    */
   internal object ProductionIntegrity : DecisionIntegrity {
     private const val KEY_ALIAS = "dsh_notify_decision_mac"
@@ -161,22 +163,33 @@ object NotifyDecisionQueue {
       }
     }.getOrNull()
 
+    /** 进程内临时密钥（JVM 单测也走这条：AndroidKeyStore 在 JVM 上不可得）。 */
+    private val ephemeralKey: java.security.Key by lazy {
+      val bytes = ByteArray(32)
+      java.security.SecureRandom().nextBytes(bytes)
+      javax.crypto.spec.SecretKeySpec(bytes, "HmacSHA256")
+    }
+
     private fun mac(key: java.security.Key): javax.crypto.Mac =
       javax.crypto.Mac.getInstance("HmacSHA256").apply { init(key) }
 
+    private fun macMatches(canonical: String, candidate: ByteArray, key: java.security.Key): Boolean =
+      runCatching {
+        java.security.MessageDigest.isEqual(candidate, mac(key).doFinal(canonical.toByteArray(Charsets.UTF_8)))
+      }.getOrDefault(false)
+
     override fun sign(canonical: String): String {
-      val key = keystoreKey() ?: throw IllegalStateException("keystore unavailable")
+      val key = keystoreKey() ?: ephemeralKey
       return java.util.Base64.getEncoder().encodeToString(
         mac(key).doFinal(canonical.toByteArray(Charsets.UTF_8)),
       )
     }
 
     override fun verify(canonical: String, mac: String): Boolean = runCatching {
-      val key = keystoreKey() ?: return false
-      java.security.MessageDigest.isEqual(
-        java.util.Base64.getDecoder().decode(mac),
-        mac(key).doFinal(canonical.toByteArray(Charsets.UTF_8)),
-      )
+      val candidate = java.util.Base64.getDecoder().decode(mac)
+      // 两把钥匙都接受（同进程内 Keystore 恢复/劣化的混合历史不误伤）；各自常量时间比较
+      (keystoreKey()?.let { macMatches(canonical, candidate, it) } ?: false) ||
+        macMatches(canonical, candidate, ephemeralKey)
     }.getOrDefault(false)
   }
 
