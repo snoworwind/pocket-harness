@@ -308,11 +308,16 @@ for (const pos of POSITIONS) {
       '缺聚合入口调用：发布链不得只跑机密/elf 门禁')
     continue
   }
-  // 坑 517（R3-06）：workflow 文件的接线断言必须落在**可执行行**上——注释里留门禁名不算接线
-  // （实测 pr-gate.yml 的注释本就含门禁名，纯子串匹配会把「挪进注释」判成绿）。pwsh/node 链文件
-  // 的 gate() 调用点由 check-gate-skips 的 executionSites 反向断言守，这里对 yml 面补同级判据。
+  // 坑 517（R3-06；自审补行尾形态）：workflow 文件的接线断言必须落在**可执行行**上——注释里留
+  // 门禁名不算接线。整行注释（`^\s*#`）与行尾内联注释（yml 语义要求 ` #` 前有空白）都要剥：
+  // `run: node x.mjs # check-y.mjs` 这类「门禁名只活在行尾注释」的伪接线不得判绿（实测
+  // pr-gate.yml 的注释本就含门禁名，纯子串匹配会把「挪进注释」判成绿）。pwsh/node 链文件的
+  // gate() 调用点由 check-gate-skips 的 executionSites 反向断言守，这里对 yml 面补同级判据。
   const effectiveText = pos.file.endsWith('.yml')
-    ? text.split('\n').filter((l) => !/^\s*#/.test(l)).join('\n')
+    ? text.split('\n')
+      .map((l) => l.replace(/\s#.*$/, ''))
+      .filter((l) => !/^\s*#/.test(l))
+      .join('\n')
     : text
   const missing = pos.gates.filter((g) => !effectiveText.includes(g))
   check(pos.id + ' 门禁集 ⊇ 声明集合（' + pos.gates.length + ' 项，yml 面按可执行行判定）', missing.length === 0,
