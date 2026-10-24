@@ -108,6 +108,14 @@ class ConsoleActivity : ComponentActivity() {
         lastStatus?.let { pushStatus(lastState, it) }
         pushInsets()
       }
+
+      // 导航来源锁定（坑 528 / R3-17）：本 WebView 挂着能写 bash stdin 的 consoleBridge，
+      // 一旦发生任何导航，接口会继续暴露给新 origin。当前 console.html 不产生链接，但
+      // 该约束必须与页面现状解耦——非本 asset 的导航一律拒绝（与主 WebView 的来源纪律对称）。
+      override fun shouldOverrideUrlLoading(
+        view: android.webkit.WebView,
+        request: android.webkit.WebResourceRequest,
+      ): Boolean = request.url.toString() != "file:///android_asset/console.html"
     }
     webView.addJavascriptInterface(ConsoleBridge(), "consoleBridge")
     setContentView(webView)

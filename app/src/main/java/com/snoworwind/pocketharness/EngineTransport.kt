@@ -34,12 +34,19 @@ object EngineTransport {
     connection.setRequestProperty("X-DSH-Relay", admissionToken)
   }
 
+  /** 常量时间等值（坑 525）：admission 令牌对全机 loopback 可达，短路比较的关闭时机差可被测时利用。 */
+  private fun tokenEquals(candidate: String, expected: String): Boolean =
+    java.security.MessageDigest.isEqual(
+      candidate.toByteArray(Charsets.ISO_8859_1),
+      expected.toByteArray(Charsets.ISO_8859_1),
+    )
+
   internal fun admissionAuthorized(header: String, token: String): Boolean =
     header.split("\r\n").drop(1).any { line ->
       val name = line.substringBefore(':').lowercase()
       val value = line.substringAfter(':', "").trim()
-      (name == "x-dsh-relay" && value == token) ||
-        (name == "cookie" && value.split(';').any { it.trim() == "dsh-relay=$token" })
+      (name == "x-dsh-relay" && tokenEquals(value, token)) ||
+        (name == "cookie" && value.split(';').any { tokenEquals(it.trim(), "dsh-relay=$token") })
     }
 
   @Synchronized fun initialize(context: Context) {

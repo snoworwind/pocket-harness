@@ -19,9 +19,11 @@ import android.widget.TextView
  * shell uid），本服务把文本提交到当前输入连接（全 Unicode）。
  *
  * 设计约束：
- * - 不抢用户默认输入法：仅当本 IME 被系统选为当前输入法时才提交文本
- *   （广播到达时校验 currentInputMethodId + 实例存在）；`ime enable` 由引擎侧
- *   android_ui_input 自动执行（只加入输入法列表，不设默认）。
+ * - 不抢用户默认输入法：提交前提是「本 IME 实例存在 + 当前输入连接存在」（handle() 校验）。
+ *   实例生命周期即信任锚：系统只在把本 IME 选为当前输入法时实例化该服务（onCreate→onDestroy），
+ *   因此「实例在场」蕴含「本 IME 被选中」——广播到达时**不做** currentInputMethodId 二次比对
+ *   （旧注释声称有这道校验，实现里从未存在，2026-10-24 R3-29 按现状更正文档）；
+ *   `ime enable` 由引擎侧 android_ui_input 自动执行（只加入输入法列表，不设默认）。
  * - 输入视图仅一个「收起键盘」按钮（与经典 ADBKeyboard 观感一致）。
  * - 文本只在「本 IME 活跃 + 当前输入连接存在」时写入——注入面封闭。
  *

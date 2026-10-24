@@ -604,6 +604,13 @@ class MainActivity : ComponentActivity() {
   private fun consumeNotifyRoute(intent: Intent?) {
     val session = intent?.getStringExtra(NotifyCenter.EXTRA_TARGET_SESSION).orEmpty()
     if (session.isEmpty()) return
+    // 形态白名单（坑 529 / R3-18）：本入口 exported=true，任意第三方应用可带该 extra 拉起。
+    // 值经 jsString 编码无注入面，但合法会话 id 不含白名单外字符——形状不对的值只可能是
+    // 伪造的，直接丢弃而不是送进页面触发一次注定失败的打开。
+    if (!Regex("[A-Za-z0-9_.\\-:]{1,128}").matches(session)) {
+      Log.w("dsh-notify", "notify route dropped (session id shape)")
+      return
+    }
     pendingNotifySession = session
     deliverNotifyRoute()
   }

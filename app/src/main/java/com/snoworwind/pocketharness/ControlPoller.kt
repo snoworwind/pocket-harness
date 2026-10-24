@@ -209,7 +209,12 @@ class ControlPoller(
       OutputStreamWriter(connection.outputStream, Charsets.UTF_8).use { it.write(body.toString()) }
       val code = connection.responseCode
       if (code !in 200..299) {
-        val errText = connection.errorStream?.bufferedReader()?.use { it.readText() } ?: ""
+        // 错误体只读一小段够日志用（坑 526）：readText 整读会把失控对端的无界错误体灌进壳进程。
+        val errText = connection.errorStream?.bufferedReader()?.use { r ->
+          val buf = CharArray(1024)
+          val n = r.read(buf)
+          if (n <= 0) "" else String(buf, 0, n)
+        } ?: ""
         val ctrlCode = connection.headerFields?.get("x-dsh-control-code")?.firstOrNull() ?: ""
         val bytes = connection.headerFields?.get("x-dsh-control-bytes")?.firstOrNull() ?: ""
         val limit = connection.headerFields?.get("x-dsh-control-limit")?.firstOrNull() ?: ""

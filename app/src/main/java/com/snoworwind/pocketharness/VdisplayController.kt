@@ -383,6 +383,15 @@ object VdisplayController {
       ?: Math.round(real.heightPixels * scale).toInt().coerceIn(MIN_EDGE, MAX_EDGE)
 
     synchronized(lock) {
+      // 并发重查（坑 515 / R3-04）：上面的 existing 是锁外快照，ensureBound 的 binder 往返是
+      // 竞态窗口——控制队列线程、JavaBridge 线程与 binder 线程同时到达会双双通过上限检查，
+      // 特权资源（VirtualDisplay+ImageReader+HandlerThread）上限被绕过。查空 + 上限 + 创建
+      // 必须在同一临界区内原子完成（monitor 可重入，锁内调 status 安全）。
+      if (records.isNotEmpty()) return status(appContext)
+      if (records.size >= MAX_VIRTUAL_DISPLAYS) {
+        return status(appContext).put("ok", false).put("code", "vdisplay-limit")
+          .put("guidance", "已达到本机虚拟屏上限（$MAX_VIRTUAL_DISPLAYS 块）；先销毁一块再创建。")
+      }
       var nextReader: ImageReader? = null
       var nextThread: HandlerThread? = null
       try {

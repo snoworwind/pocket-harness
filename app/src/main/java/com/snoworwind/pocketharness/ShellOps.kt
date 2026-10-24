@@ -136,10 +136,14 @@ internal object ShellOps {
       audit(context, "shExec", command, ControlAudit.RESULT_DENIED)
       return it
     }
+    // timeoutMs 有界（坑 530）：args 模型可控，超大/负值会长期占用串行特权 shell 通道。
+    // 下界 1s（低于它没有意义），上界 120s（覆盖属主自愈一类长任务；与 VdisplayController.input
+    // 的 coerceIn 同一纪律）。
+    val timeoutMs = args.optInt("timeoutMs", 20_000).coerceIn(1_000, 120_000)
     val result = ShizukuTransport.runShell(
       context,
       command,
-      timeoutMs = args.optInt("timeoutMs", 20_000),
+      timeoutMs = timeoutMs,
       capture = args.optBoolean("capture", false),
     )
     // 2026-09-30（主人定例「我们不是做 root 适配吗」）：**su 直连回退**。
@@ -153,7 +157,7 @@ internal object ShellOps {
     // Policy refusals and ambiguous post-dispatch Binder failures must never replay a command.
     val channelBroken = !result.optBoolean("ok") && !result.optBoolean("noReplay") && canFallbackBeforeDispatch(code)
     if (channelBroken && RootGrant.isGranted(context) && RootAccess.isGranted(context)) {
-      val viaSu = RootAccess.execRoot(context, command, args.optInt("timeoutMs", 20_000))
+      val viaSu = RootAccess.execRoot(context, command, timeoutMs)
       if (viaSu.optBoolean("ok") || viaSu.optString("code") != "no-su") {
         audit(context, "shExec", command, resultOf(viaSu))
         return viaSu.put("op", "shExec").put("transport", "su")
