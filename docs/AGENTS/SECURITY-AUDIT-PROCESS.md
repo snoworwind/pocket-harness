@@ -37,6 +37,6 @@ npx skills add https://github.com/cloudflare/security-audit-skill --skill securi
 
 同一源提交的多轮或不同范围审计共用短哈希目录，并为每轮新建 `run-<N>/`，不得覆盖已有记录。完整审计按 skill 的产物清单保存 `run-metadata.json`、`architecture.md`、`coverage-ledger.json`、`findings.json`、三个报告及必要的 validator 结果。
 
-仓库根 `.gitignore` 忽略 `docs/AGENTS/SECURITY-AUDIT-*/`，以满足 skill 对用户指定仓内输出目录的条件。full audit 启动前须用 `git check-ignore` 确认整个新目录受忽略规则保护；scratch 按 skill 的隔离要求管理。validators 通过并经主审复核后，才显式提交用户要求归档的最终材料；绝不提交 scratch、未验证候选或秘密。
+仓库根 `.gitignore` 忽略 `docs/AGENTS/SECURITY-AUDIT-*/`，以满足 skill 对用户指定仓内输出目录的条件。full audit 启动前须用 `git check-ignore` 确认整个新目录受忽略规则保护；scratch 按 skill 的隔离要求管理。审计产物只保存在审计者本机的忽略目录中，禁止 `git add`、提交或推送报告、结构化证据、handoff、scratch、未验证候选或秘密。需协作续审时，由审计者按 skill 安全地提供所需材料，不得通过将该目录纳入版本控制来共享。
 
 仅归档经验证的最终材料，不归档 agent scratch、原始环境变量、凭据、令牌、用户数据或未经核验的目标进程输出。既有平铺审计与修复记录保留原路径，除明确迁移任务外；后续审计在对应短哈希目录中按轮次新增文件或子目录，不覆盖历史记录。

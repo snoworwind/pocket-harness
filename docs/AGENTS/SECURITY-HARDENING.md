@@ -10,7 +10,7 @@
 
 第三轮全仓逐行审计（2026-10-24，基线 `8c99c00`）：[发现清单](SECURITY-AUDIT-2026-10-24-R3.md)（坑位 512-537），修复状态以 [修复账本](SECURITY-REMEDIATION-2026-10-24-R3.md) 为准。
 
-最新一轮 deep 全仓安全审查（2026-10-25，基线 `b5a583be458c8ed10a914f4486932b15af7c7182`）未完成，不能作为全仓通过结论；审查报告、结构化覆盖账本和续审步骤见[本轮交接文档](SECURITY-AUDIT-b5a583b/HANDOFF.md)。
+最新一轮 deep 全仓安全审查（2026-10-25，基线 `b5a583be458c8ed10a914f4486932b15af7c7182`）未完成，不能作为全仓通过结论；报告及结构化证据按 [安全审计流程](SECURITY-AUDIT-PROCESS.md) 保存在审计者本地被忽略的 `docs/AGENTS/SECURITY-AUDIT-b5a583b/`，不进入版本库。
 
 `main`（原 `security/hardening`）的宗旨是：**最大程度提高软件的安全性和可验证性**。
 
