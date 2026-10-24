@@ -3041,3 +3041,107 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 511. **滚动 Termux stable 的 PRoot 版本必须同步推进来源锁（2026-10-23）**
 
     现象：PR #113 的 `draft_release=true` run 39922474317 中，primary 与 reference 均在 `Build source-owned offline ARM64 Linux assets` 报 `Termux proot version is not reviewed: '5.1.107.99'`，未生成 APK 或草稿 Release。真因：Termux stable 是滚动签名仓库，官方仓库通过 recipe commit `5b90c229de8e674a890d723b100cfcc5d6054ea5` 将 proot 更新到 5.1.107.99，而 `linux-inputs.json`、`linux-backend-packages.json` 与 `vendor/linux-proot/SOURCE.json` 仍锁在 5.1.107.98。fail-closed 行为正确，旧 pin 已失效。修法：审核 Termux recipe 中的 PRoot source URL/SHA-256，并独立复核归档字节；同步更新版本、recipe commit/file hash、source hash、包 fixture、runtime banner 测试和 `linux-source-manifest.json`，保留精确版本拒绝。依赖 recipe 在新 commit 下字节未变，继续使用原摘要。复验：recipe hash 与 GitHub source archive SHA 均核对；PR Linux 资产门禁与后续来源草稿待 follow-up 提交验证。**该更新尚未做 ARM64 设备验收**。
+
+512. **审批决策耐久队列可被同 UID 运行时伪造「用户已批准」（R3-01，2026-10-24 登记）**
+
+    现象：`NotifyDecisionQueue` 的落盘文件 `filesDir/notify-decisions.ndjson` 在 filesDir 根，而引擎 home 在 `filesDir/home`——被提示注入驱动的模型 bash（同 app UID、无路径级沙箱，与坑 376/503 口径一致）可直接追加任意行。`parse()`（NotifyDecisionQueue.kt:132-146）只验 requestId 非空，任何行都成为一条决策；`flush()`（:297-354）把 `outcomeJson` 原样 POST 给引擎 `$events/result`。真因：该文件按「投递耐久性」设计、未按「授权数据」对待，违反 ScreenScope.kt:53 的既有纪律（不得从同 UID 可写文件恢复授权）；坑 376 修了 prefs 三键，本文件是同族残留面。攻击链：模型写伪造 pending 行（eventId 是它自己发出的待审批请求）→ 重启自身网关使 NotifyBridge 掉线重连 → ready 帧 flush → 伪造 `allowed-once` 被引擎当作用户批准。修法：HMAC-SHA256 完整性绑定（Android Keystore 非导出密钥、JVM 测试可注入），parse/load 对缺签或验签失败 fail-closed 丢弃。修复见 [R3 修复账本](SECURITY-REMEDIATION-2026-10-24-R3.md)。**登记，修复后本条更新复验证据。**
+
+513. **安全模式 prompt / 401 兜底把未脱敏日志尾巴（含引擎启动令牌）写入系统剪贴板（R3-02，2026-10-24 登记）**
+
+    现象：`buildSafeModePrompt`（SafeMode.kt:685-708）把 `logTail` 逐字拼进 prompt，`SafeMode.copyToClipboard` 直写系统剪贴板；两条调用链（GuidePageRenderer.kt:489-512 的安全模式按钮、MainActivity.kt:1461-1468 的 401 兜底）的 logTail 都来自 `readFailureContext`/`PluginMounts.readEngineLogTail` 原文。engine.log 含 `dsh web: ...?token=`（EngineAuth.kt:51），违反 #184「令牌行不得进入外发文本」——该纪律只覆盖了 copyGuideLog/tailEngineLog，漏了这两条外发出口。真因：脱敏只挂在个别出口而非 prompt 构造咽喉。修法：`buildSafeModePrompt` 内统一 `EngineAuth.redact` + 单测反证。**登记，未修复。**
+
+514. **调试日志日文件出口只脱敏令牌、不过 LogSanitizer（R3-03，2026-10-24 登记）**
+
+    现象：`LogCollector.appendToDayFile`（LogCollector.kt:1025-1034）只过 `EngineAuth.redact`（仅 `?token=` 形态）就把全部采集内容（logcat 自进程 + engine.log 尾巴，含命令与模型对话）写入共享存储 `Documents/dshdata/log/dsh-<date>.log`；对照 LogShare 打包出口对同内容全条目 `LogSanitizer.sanitizeOrNull` fail-closed。用户对话中粘贴的 `sk-` 密钥/Cookie/PEM 明文沉淀在共享存储，持存储权限的应用可离线收割。真因：LogSanitizer（0.14.6）落地晚于日文件出口，未回灌；两个出口口径双标。修法：appendToDayFile 复用 LogSanitizer（失败丢条计数）。**登记，未修复。**
+
+515. **VdisplayController.create 资源上限 TOCTOU，并发可突破 MAX_VIRTUAL_DISPLAYS=1（R3-04，2026-10-24 登记）**
+
+    现象：`create()` 先锁外快照 `records.size`（VdisplayController.kt:364），再 `ShizukuTransport.ensureBound`（binder 往返拉大窗口），锁内创建块（:385）不重查——`:371` 的上限检查用的是陈旧快照（死代码）。三条真实并发入口：控制队列线程（ControlPoller.kt:67）、WebView JavaBridge 线程（MainActivity.kt:1340）、binder 线程（DeviceControlService.kt:669）。真因：上限判定与资源创建分属两个临界区。后果是特权资源（VirtualDisplay+ImageReader+HandlerThread）上限被绕过，非范围绕过。修法：查空+创建合并进同一临界区、锁内重查。**登记，未修复。**
+
+516. **引擎 overlay 第三方闭包 sha512 取自同信道元数据且缓存命中免复核（R3-05，2026-10-24 登记）**
+
+    现象：`build-snapshot-013.mjs` 的 `overlayTgz`（:218-239）对 `engine-overlay.json` 登记的约 100 个第三方包（commander/got/undici/openai/@anthropic-ai/sdk/@modelcontextprotocol/* 等）只钉 `(name, version)`；sha512 来自与字节同一 fetch 的 registry 元数据且可缺席；本地缓存 `.deploy-tmp/engine-overlay/*.tgz` 命中零校验。对照同文件 pnpm/canvas 走 `PREINSTALL.npmIntegrity` 源控 pin 且缓存命中复验、deb 走签名 webroot。真因：钉哈希基建已存在但未覆盖 overlay 路径。registry 级妥协（维护者账号/同版本重发）即可把任意代码送进引擎树进 APK。修法：每包 sha512 pin + 下载与缓存命中两条路都 `verifyPinnedNpm` + sha512 必需 + 解包后 name/version 复核。**登记，未修复；修复需逐包生成 pin（需 registry 访问）。**
+
+517. **门禁接线断言是子串匹配，注释留名即可假绿（R3-06，2026-10-24 登记）**
+
+    现象：`check-release-gates.mjs` 对 ci-apk/source-chain 两类 POSITION 的接线断言用 `text.includes(gateName)`（:311/499/306），而 `pr-gate.yml:125` 的**注释**本就含门禁名——把 run 行删掉、名字留在注释里，`check-release-gates` 与 `check-gate-skips`（executionSites 只审两条构建链的 gate() 调用点，:78）双双 PASS，CI 从此不跑该门禁。真因：workflow 文件没有可执行行级断言。修法：`executionSites()` 扩展到 workflow POSITION + 负控自检。**登记，未修复。**
+
+518. **check-api-route-auth 只认字面量 kind，动态 kind 注册可逃逸路由清单（R3-07，2026-10-24 登记）**
+
+    现象：路由发现把 `kind: 'exact'|'prefix'` 字面量当候选门槛（check-api-route-auth.mjs:70-78），`kind: COND ? 'exact' : 'prefix'` 形态的 `register({...})` 整条丢弃；unlistedSources 与字面量反向断言只遍历 discovered（:198-220），新文件里只有动态 kind 注册时整个文件不进判据。恶意 PR 可在 mobile-owned 插件加无鉴权路由且门禁全绿，与文件头「cannot hide a route」自述矛盾；self-test 无动态 kind 反例。修法：有 path 缺 kind 字面量也计为候选（fail-closed）+ 反例进 self-test。**登记，未修复。**
+
+519. **check-browser-syntax-floor 的 esbuild sha512 条件性校验且镜像仓内可控（R3-08，2026-10-24 登记）**
+
+    现象：`extractNpmTgz` 在 `dist.sha512` 缺席时**不校验**直接解包（check-browser-syntax-floor.mjs:185-200），随后在门禁进程内 spawnSync 执行 esbuild 二进制（:210-214）；镜像清单来自仓内 `preinstall.json` 的 npmMirrors（:144-147）。镜像被劫持 + 元数据省略 sha512 → 恶意二进制在构建链执行。真因：把「registry 给了才校验」当默认，而非「无 pin 即拒」。修法：sha512 缺席即 die（同 lib/pinned-npm.mjs 纪律）。**登记，未修复。**
+
+520. **linux_bash 工具无会话档位门且不受渐进披露掩蔽（R3-09，2026-10-24 登记）**
+
+    现象：`vendor/dsh-linux-runtime/lib/index.js` 的 `registerLinuxBash` execute 直连 `manager.execute`（:56-112/126-168），全链无 `gateFor`/`sandboxPolicy.resolve`；`DEVICE_TOOL_GROUPS` 三个掩蔽组均不含 linux_bash。read-only 档位会话的模型调 `android_shell_exec` 会被档位门拒绝，换 `linux_bash` 畅通，可直接读写应用私有目录（PRoot guest 即 app UID）——会话档位语义被旁路。真因：runtime 插件由 bootstrap 独立装配，未接入 bridge 的服务面档位门与 capability-gate。修法：注入与 android 家族同源的档位门 + 纳入掩蔽组。**登记，未修复。**
+
+521. **兼容模式未装 ServiceWorkerClient，SW 上下文请求绕过回环拦截（R3-10，2026-10-24 登记）**
+
+    现象：`BrowserSharedFallback.attach`（:31-35）只配 CookieManager，不装 ServiceWorkerClient；隔离路径专门装了（BrowserHostProfile.kt:101-119）。兼容模式 WebView 里站点注册 SW 后，SW 内 fetch/WebSocket 不经过 WebViewClient，可达回环任意端口。既有防线（引擎 cookie SameSite=Lax + /api browser-trust fence）压制了对 3080 引擎面的实际收益；残余是非 /api 端点与回环其他本地服务。`BrowserSharedFallback` 类注释「Loopback is still denied」对 SW 上下文不成立。修法：兼容模式激活时装窄门 SW client（仅放行 127.0.0.1:3080 精确 origin）。**登记，未修复。**
+
+522. **遗留 build-snapshot-arm64.mjs 零校验下载且索引名未消毒（R3-11，2026-10-24 登记）**
+
+    现象：`scripts/build-snapshot-arm64.mjs` 下载 deb 后直接 writeFileSync 无任何哈希/签名校验（:44-58），`tar -xf` 命令串与文件路径直接拼远端 index 的包名（:70/75，无字符集约束）。全仓 grep 确认不被来源链/workflow/门禁调用（唯一引用 EXECUTION-MAP.md），属链下遗留，但名字暗示「正式的 arm64 快照构建」，一旦执行可命令注入开发机、写出工作区外。修法：按 build-apk-013.ps1 同口径退役 + EXECUTION-MAP 摘除。**登记，未修复。**
+
+523. **--npm-mirror 把 corepack/pnpm 执行体也交给镜像（R3-12，2026-10-24 登记）**
+
+    现象：`run-local-source-chain.mjs` 的 `npmMirror`（:278-305）把 `COREPACK_NPM_REGISTRY` 也指向镜像，`build-engine.sh` 里 `npm install -g corepack` 与 `corepack pnpm install` 的执行体 integrity 都来自同一镜像；文件头「镜像不改字节」声明只对 lockfile 校验的依赖 tarball 成立。恶意镜像可投递恶意 pnpm → 构建机 RCE。opt-in 面（CI 不设）。修法：corepack 通道不走镜像或钉 integrity 预下载。**登记，未修复。**
+
+524. **隔离浏览器允许 LAN 私有地址且不防 DNS rebinding（R3-13，2026-10-24 登记为已接受取舍）**
+
+    现象：`BrowserHostNavigationPolicy.verdictForIpv4`（:200-211）只拒 0.x 与 link-local，RFC1918 直接放行；注释自认「literal-host policy, not a DNS firewall」。用户批准的域名可被解析到内网地址，模型经 browser_snapshot 读内网内容。这是移动端内网调试的有意取舍（loopback 与 3080 已封死）。处置：登记为已接受；后续可加「解析到私有段时回执警示」或设置开关，本轮不改准入语义。
+
+525. **relay 准入令牌非常量时间比较（R3-14，2026-10-24 登记）**
+
+    现象：`EngineTransport.admissionAuthorized`（:37-43）用字符串 `==` 逐字符短路比较 admission token（header 与 cookie 两分支）。本机任意 app 可连 127.0.0.1:3080 以关闭时机差异测时逐前缀猜测。实际增量有限（引擎 /api 全部还需签名 cookie 401 围栏），但修复成本一行。修法：`MessageDigest.isEqual`。**登记，未修复。**
+
+526. **MuxClient 分片消息无总量上限；ControlPoller 错误体整读（R3-15，2026-10-24 登记）**
+
+    现象：`MuxClient` 的 MAX_FRAME 只约束单帧，continuation 帧对 textBuf 无界追加（:153-185）；`ControlPoller.post` 对 errorStream `readText()` 整读后才 take(200)（:212）。失控/被攻陷引擎（同 UID）可把壳进程 OOM。违反 ProcIo.kt:21「一切子进程输出必须 readBounded」纪律。修法：continuation 累计超 MAX_FRAME 即断开；错误体走有界读。**登记，未修复。**
+
+527. **LinuxAssetIO 来源白名单未钉端口（R3-16，2026-10-24 登记）**
+
+    现象：`urlVerdict`/`hopVerdict`（LinuxAssetIO.kt:91-120）只查 host 白名单与路径前缀，不查 `url.port == 443`，`https://github.com:8443/...` 可过。现实不可达（HTTPS 主机名校验），纵深补齐。修法：非默认端口一律拒绝。**登记，未修复。**
+
+528. **ConsoleActivity 特权 consoleBridge WebView 无导航来源锁定（R3-17，2026-10-24 登记）**
+
+    现象：ConsoleActivity 的 WebView 只覆写 onPageFinished（:104-112），无 `shouldOverrideUrlLoading`——一旦页面发生任何导航，持有 bash stdin 桥（consoleBridge）的接口会继续暴露给新 origin。当前 console.html 无链接化输出、Activity 未导出，无触发路径；属回归面。修法：非 asset console.html 导航一律拒绝或先 removeJavascriptInterface。**登记，未修复。**
+
+529. **MainActivity dsh.notify.session extra 无形态校验（R3-18，2026-10-24 登记）**
+
+    现象：`consumeNotifyRoute` 读 `getStringExtra("dsh.notify.session")` 无校验直达页面 JS 路由（MainActivity.kt:604-638）；经 jsString 编码无注入面，影响≈恶意应用代发一次会话打开请求。修法：字符白名单后再路由。**登记，未修复。**
+
+530. **ShellOps/RootAccess timeoutMs 无上界钳制（R3-19，2026-10-24 登记）**
+
+    现象：`args.optInt("timeoutMs", 20_000)` 直接透传 `runShell`/`execRoot`（ShellOps.kt:139-143/156），模型可传超大/负值长期占用串行特权 shell 通道。同仓 VdisplayController.input 有 `coerceIn(1, 20_000)` 先例。修法：coerceIn 下界钳制。**登记，未修复。**
+
+531. **build-snapshot-013.mjs 对 Termux 索引字段不消毒（R3-20，2026-10-24 登记）**
+
+    现象：包名直入 `join(DEBPOOL, n + '.deb')` 与 wsl shell 串（:524/553/562）；postinst 提取的 altlink 路径 `join(U, relPath)` 可被 `../` 逃出 stage、target 仅前缀检查不拒 `NEW_PREFIX/../..`（:566-576）。同仓 `termux_signed_packages.py` 对同一数据源有严格 `safe_termux_package_filename`，快照构建器自己零校验。来源链内有验签 webroot 前置 + 设备侧 SnapshotExtractor 兜底，纵深缺口。修法：复用同款包名/路径判据。**登记，未修复。**
+
+532. **check-mcp-client-deps 严格档未被聚合入口传播（R3-21，2026-10-24 登记）**
+
+    现象：支持 `--require` 的 check-mcp-client-deps 不在 `check-release-gates.mjs:620` 的 STRICT 传播白名单；gate-skips-declared.json 的申报理由却写「发布链以 --require 强制齐全」——申报与接线漂移。实际可达性被前置 check-snapshot-secrets 收敛，降级 low。修法：加入传播清单 + check-gate-skips 对全部 --require 支持者一致性断言。**登记，未修复。**
+
+533. **snapshot-server.mjs 无鉴权监听 0.0.0.0（R3-22，2026-10-24 登记）**
+
+    现象：`createServer(...).listen(8899)`（:26）把内嵌引擎快照完整 tar 分发到所有网卡、无 token。修法：绑 127.0.0.1。**登记，未修复。**
+
+534. **三处脚本 sh()/execSync 字符串内插 CLI 路径可 shell 注入（R3-23，2026-10-24 登记）**
+
+    现象：`check-third-party.mjs:147/196`（tar -tvf）、`check-engine-overlay.mjs:230`（JSON.stringify 包路径不转义 `$`/反引号）、`pi-catalog-diff.mjs:66`——路径来自 CLI 参数或构建链，无远程可达性，本地自伤面。修法：统一 execFileSync argv 形态。**登记，未修复。**
+
+535. **桥审计与 .live.ndjson 可携带命令内联凭据（R3-24，2026-10-24 登记）**
+
+    现象：`writeAudit` 记录完整 `args.command`（plugins/dsh-android-bridge/src/index.ts:148-162）、`.live.ndjson` 记 args 前 240 字符（:1833），不做脱敏——模型在 shell 命令中内联的 API key 明文落 files/audit/ 与悬浮球实时流（同 UID 本机文件）。对照 model-capability 已建立 diagnosticText 全量 redact 先例。修法：写入前按已知凭据形状掩码。**登记，未修复。**
+
+536. **undo-savepoint 导出加密固定 salt（R3-25，2026-10-24 登记）**
+
+    现象：`ENC_SALT = 'dsh-undo-savepoint/export/v1'` 固定（vendor/dsh-undo-savepoint/lib/core.mjs:2805-2825），同一密码跨所有导出派生同一密钥，可离线预计算字典。AES-256-GCM 本身正确。修法：随机 per-file salt 入导出头 + 版本字段区分旧格式。**登记，未修复。**
+
+537. **杂项加固批（R3-26/27/28/29/30/31/32/33/34/35/36/37，2026-10-24 登记）**
+
+    一次登记十二项 low：浏览器「外部打开」对持久化恢复地址跳过协议白名单复验（BrowserBody.tsx:59,73,99-101）；shell-termux fence 漏 dshEnv 通道（src/index.ts:141-150/200，受信调用方面）；host-web-compat 字符串替换注入遇 `$&` 序列会被替换语义改写（lib/index.js:1118-1120/960，当前模板无此序列）；AdbKeyboardService 注释描述的「当前输入法校验」不存在（:22-26 vs :113-121）；SafeMode.newId 用 java.util.Random（:548-550）；check-patch-test-manifest 白名单缺 stale 方向（:104）；check-tool-name-promises 只扫 plugins/*/src（:63-84）；NDK 以 SHA-1 钉定（build-apk-source.yml:496-505）；auto-approve.mjs 无条件自动批准无确认 gate；pr-gate 敏感信息扫描模式窄（pr-gate.yml:73-79）；托管 PR Gate 可被单个仓库变量休眠且 skipped 满足 required checks；FileProvider external_shared 全盘映射无门禁断言。各项修法与状态见 [R3 修复账本](SECURITY-REMEDIATION-2026-10-24-R3.md)。**登记，未修复。**
