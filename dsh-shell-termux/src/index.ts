@@ -206,8 +206,16 @@ export class TermuxBashExecutor extends LocalBashExecutor {
     const user = { ...request.env }
     for (const k of TermuxBashExecutor.FENCE_KEYS) delete user[k]
     const spec = super.resolve({ ...request, env: { ...fence, ...user } })
-    this.resolvedModes.set(spec, { mode, explicit: hasExplicitPolicyMode(request) })
-    return spec
+    // 坑 537（R3-27）：父类 spawnSpec 的合并序是 {…overrides, …spec.env, …spec.dshEnv}——
+    // dshEnv（in-process hooks 的受信通道，类型允许任意 DSH_* 键）合并最晚，能把 fence
+    // 三个标签整体顶掉，使「自包含环境」声明与诊断标签真实性失守。真实授权门不读环境
+    // 变量（execute 只信 sandboxPolicy），但标签必须不可伪造：在 spec 层重盖，fence 恒胜。
+    // 返回的是新对象，WeakMap 键必须落在返回值上（消费方按 resolve 的产物查 execute）。
+    const dshEnv: Record<string, string> = { ...(spec.dshEnv ?? {}) }
+    for (const k of TermuxBashExecutor.FENCE_KEYS) delete dshEnv[k]
+    const stamped: ShellExecSpec = { ...spec, dshEnv: { ...dshEnv, ...fence } }
+    this.resolvedModes.set(stamped, { mode, explicit: hasExplicitPolicyMode(request) })
+    return stamped
   }
 
   /** Reject with repair guidance when the configured bash is not executable. */

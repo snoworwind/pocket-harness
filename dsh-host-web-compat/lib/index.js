@@ -957,7 +957,8 @@ const STATIC_FALLBACK_MARK = 'id="dsh-static-fallback"';
 function injectStaticFallback(html) {
   if (typeof html !== 'string' || !html.includes('</head>')) return html
   if (html.includes(STATIC_FALLBACK_MARK)) return html
-  return html.replace('</head>', STATIC_FALLBACK_SCRIPT + '</head>')
+  // 函数替换（坑 537 / R3-28，理由同 tapIndex 注入点）
+  return html.replace('</head>', () => STATIC_FALLBACK_SCRIPT + '</head>')
 }
 
 /**
@@ -1115,8 +1116,10 @@ export function apply(ctx) {
   // guard would wrongly skip the whole POLYFILL_SCRIPT (including PICKER_SCRIPT: the dir-pick poll
   // loop + upload buttons), breaking directory picking and file upload (measured on device/MuMu,
   // 2026-08-16).
+  // 坑 537（R3-28）：注入块必须走**函数替换**——字符串替换会把替换串里的 `$&`/`` $` ``/`$'`/`$$`
+  // 当替换语义解释（编译期常量今天不含这些序列，但这类「装配期静默改写」没有判据能抓）。
   ctx.webServer.tapIndex((html) =>
-    html.replace('</head>', POLYFILL_SCRIPT + '</head>')
+    html.replace('</head>', () => POLYFILL_SCRIPT + '</head>')
   );
 
   // §2.3（0.14.1 块C）静态失败占位：**独立于**上面的 pick-token 幂等判据注入。
