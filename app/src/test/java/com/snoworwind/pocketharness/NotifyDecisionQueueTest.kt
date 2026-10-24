@@ -1,17 +1,49 @@
 package com.snoworwind.pocketharness
 
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Test
+import javax.crypto.Mac
+import javax.crypto.spec.SecretKeySpec
 
 /**
  * 决策耐久队列回归（§6.3.1 / NT-14、NT-17）：requestId 幂等、指数退避 <=60s、
  * append-only 状态折叠（后写覆盖前写）。
+ *
+ * 坑 512（R3-01）：决策行必须带 HMAC 完整性——伪造行、被篡改行与旧版无签行在 parse 一律丢弃。
+ * JVM 单测注入固定密钥替身（Android Keystore 在 JVM 不可用，见 [ProductionIntegrity] 的回退语义）。
  */
 class NotifyDecisionQueueTest {
+
+  /** 固定密钥 HMAC 替身：与生产同语义（签/验、常时比较），密钥来源换成测试常量。 */
+  private class FakeIntegrity : NotifyDecisionQueue.DecisionIntegrity {
+    private val key = SecretKeySpec("notify-decision-test-key".toByteArray(Charsets.UTF_8), "HmacSHA256")
+    private fun mac(data: ByteArray): ByteArray =
+      Mac.getInstance("HmacSHA256").apply { init(key) }.doFinal(data)
+    override fun sign(canonical: String): String =
+      java.util.Base64.getEncoder().encodeToString(mac(canonical.toByteArray(Charsets.UTF_8)))
+    override fun verify(canonical: String, mac: String): Boolean = runCatching {
+      java.security.MessageDigest.isEqual(
+        java.util.Base64.getDecoder().decode(mac),
+        mac(canonical.toByteArray(Charsets.UTF_8)),
+      )
+    }.getOrDefault(false)
+  }
+
+  @Before
+  fun injectTestIntegrity() {
+    NotifyDecisionQueue.integrity = FakeIntegrity()
+  }
+
+  @After
+  fun restoreIntegrity() {
+    NotifyDecisionQueue.integrity = NotifyDecisionQueue.ProductionIntegrity
+  }
 
   @Test
   fun requestId_同决策恒同ID_不同决策不同ID() {
@@ -42,24 +74,79 @@ class NotifyDecisionQueueTest {
 
   @Test
   fun 序列化解析往返() {
-    val d = NotifyDecisionQueue.Decision("rid", "e1", "question", "{\"kind\":\"result\"}", 123L, "pending", 2)
+    val d = NotifyDecisionQueue.Decision("0123456789abcdef", "e1", "question", "{\"kind\":\"result\"}", 123L, "pending", 2)
     val back = NotifyDecisionQueue.parse(NotifyDecisionQueue.serialize(d))
     assertNotNull(back)
     assertEquals(d, back)
     assertNull(NotifyDecisionQueue.parse("garbage"))
     assertNull(NotifyDecisionQueue.parse("{\"eventId\":\"e1\"}"))
+    assertTrue("序列化行必须带 mac 字段", NotifyDecisionQueue.serialize(d).contains("\"mac\":"))
+  }
+
+  // ── 坑 512（R3-01）：决策行完整性——伪造/篡改/无签一律 fail-closed ─────────
+
+  @Test
+  fun 无签行_旧版本格式_必须丢弃() {
+    val line = "{\"requestId\":\"0123456789abcdef\",\"eventId\":\"e1\",\"kind\":\"approval\"," +
+      "\"outcome\":\"{\\\"kind\\\":\\\"result\\\",\\\"value\\\":\\\"allowed-once\\\"}\"," +
+      "\"ts\":1,\"state\":\"pending\",\"attempts\":0,\"waitAttempts\":0}"
+    assertNull("旧版无 mac 的行不得再成为可投递决策", NotifyDecisionQueue.parse(line))
+  }
+
+  @Test
+  fun 空mac行必须丢弃() {
+    val d = NotifyDecisionQueue.Decision("0123456789abcdef", "e1", "approval", "{}", 1L)
+    val line = NotifyDecisionQueue.serialize(d).replace(Regex("\"mac\":\"[^\"]*\""), "\"mac\":\"\"")
+    assertNull(NotifyDecisionQueue.parse(line))
+  }
+
+  @Test
+  fun 篡改任意字段必须验签失败丢弃() {
+    val signed = NotifyDecisionQueue.serialize(
+      NotifyDecisionQueue.Decision("0123456789abcdef", "e1", "approval", "{\"kind\":\"result\",\"value\":\"rejected\"}", 1L),
+    )
+    // 攻击者的目标：把 rejected 换成 allowed-once（同 requestId 形状、同字段结构）
+    val forged = signed.replace("rejected", "allowed-once")
+    assertNull("被篡改的 outcome 不得通过验签", NotifyDecisionQueue.parse(forged))
+    val tamperedState = signed.replace("\"state\":\"pending\"", "\"state\":\"settled\"")
+    assertNull("被篡改的 state 不得通过验签", NotifyDecisionQueue.parse(tamperedState))
+    val tamperedEvent = signed.replace("\"eventId\":\"e1\"", "\"eventId\":\"e2\"")
+    assertNull("被篡改的 eventId 不得通过验签", NotifyDecisionQueue.parse(tamperedEvent))
+  }
+
+  @Test
+  fun 错误密钥签出的行必须丢弃() {
+    val d = NotifyDecisionQueue.Decision("0123456789abcdef", "e1", "approval", "{}", 1L)
+    val foreign = FakeIntegrityWithDifferentKey().sign(NotifyDecisionQueue.canonical(d))
+    val line = NotifyDecisionQueue.serialize(d).replace(Regex("\"mac\":\"[^\"]*\""), "\"mac\":\"$foreign\"")
+    assertNull("非本进程密钥签出的行不得通过验签", NotifyDecisionQueue.parse(line))
+  }
+
+  @Test
+  fun requestId形状不对的行不必验签即丢() {
+    val d = NotifyDecisionQueue.Decision("not-hex-shape!!", "e1", "approval", "{}", 1L)
+    assertNull(NotifyDecisionQueue.parse(NotifyDecisionQueue.serialize(d)))
+  }
+
+  private class FakeIntegrityWithDifferentKey : NotifyDecisionQueue.DecisionIntegrity {
+    private val key = SecretKeySpec("attacker-held-key".toByteArray(Charsets.UTF_8), "HmacSHA256")
+    private fun mac(data: ByteArray): ByteArray =
+      Mac.getInstance("HmacSHA256").apply { init(key) }.doFinal(data)
+    override fun sign(canonical: String): String =
+      java.util.Base64.getEncoder().encodeToString(mac(canonical.toByteArray(Charsets.UTF_8)))
+    override fun verify(canonical: String, mac: String): Boolean = false
   }
 
   @Test
   fun fold_同requestId后写覆盖前写() {
     val lines = listOf(
-      NotifyDecisionQueue.serialize(NotifyDecisionQueue.Decision("r1", "e1", "question", "{}", 1L, "pending", 0)),
-      NotifyDecisionQueue.serialize(NotifyDecisionQueue.Decision("r2", "e2", "approval", "{}", 2L, "pending", 0)),
-      NotifyDecisionQueue.serialize(NotifyDecisionQueue.Decision("r1", "e1", "question", "{}", 1L, "submitted", 1)),
+      NotifyDecisionQueue.serialize(NotifyDecisionQueue.Decision("1111111111111111", "e1", "question", "{}", 1L, "pending", 0)),
+      NotifyDecisionQueue.serialize(NotifyDecisionQueue.Decision("2222222222222222", "e2", "approval", "{}", 2L, "pending", 0)),
+      NotifyDecisionQueue.serialize(NotifyDecisionQueue.Decision("1111111111111111", "e1", "question", "{}", 1L, "submitted", 1)),
     )
     val folded = NotifyDecisionQueue.fold(lines)
     assertEquals(2, folded.size)
-    val r1 = folded.first { it.requestId == "r1" }
+    val r1 = folded.first { it.requestId == "1111111111111111" }
     assertEquals("submitted", r1.state)
     assertEquals(1, r1.attempts)
   }
@@ -140,15 +227,15 @@ class NotifyDecisionQueueTest {
 
   @Test
   fun waitAttempts_序列化往返与默认值() {
-    val d = NotifyDecisionQueue.Decision("rid2", "e2", "question", "{}", 42L, "pending", 1, 3)
+    val d = NotifyDecisionQueue.Decision("ffffffffffffffff", "e2", "question", "{}", 42L, "pending", 1, 3)
     val back = NotifyDecisionQueue.parse(NotifyDecisionQueue.serialize(d))
     assertNotNull(back)
     assertEquals(3, back!!.waitAttempts)
     assertEquals(1, back.attempts)
     assertEquals(d, back)
-    // 老行（无 waitAttempts 字段）必须默认 0，不得解析失败
+    // 老行（无 waitAttempts 字段）必须默认 0，不得解析失败；waitAttempts 参与验签
     val legacy = NotifyDecisionQueue.parse(
-      "{\"requestId\":\"r\",\"eventId\":\"e\",\"kind\":\"question\",\"outcome\":\"{}\",\"ts\":1,\"state\":\"pending\",\"attempts\":2}",
+      NotifyDecisionQueue.serialize(NotifyDecisionQueue.Decision("0123456789abcdef", "e", "question", "{}", 1L, "pending", 2)),
     )
     assertEquals(0, legacy!!.waitAttempts)
     assertEquals(2, legacy.attempts)
