@@ -110,6 +110,10 @@ internal object LogSanitizer {
       val m = PRIVATE_KEY_BLOCK.find(out) ?: break
       out = out.substring(0, m.range.first) + PRIVATE_KEY_MASK + out.substring(m.range.last + 1)
     }
-    return out
+    // 分块边界的截断块（坑 514 自审补口）：日文件出口按 chunk 脱敏，PEM 块可能被切在
+    // chunk 边界——只有 BEGIN 没有 END 的头必须连同行文一起打掉到文本末尾（fail-closed：
+    // 宁可把后续普通内容一起掩掉，也不能让密钥材料裸露；完整块的路径不受影响）。
+    val orphan = Regex("""-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----""").find(out) ?: return out
+    return out.substring(0, orphan.range.first) + PRIVATE_KEY_MASK
   }
 }

@@ -1031,8 +1031,7 @@ object LogCollector {
     val dir = currentDir(ctx)
     val safe = LogSanitizer.sanitizeOrNull(text)
     if (safe == null) {
-      sanitizeFailedChunks += 1
-      Log.w(TAG, "day-file chunk dropped (sanitize failed), dropped=$sanitizeFailedChunks")
+      Log.w(TAG, "day-file chunk dropped (sanitize failed), dropped=" + sanitizeFailedChunks.incrementAndGet())
       return
     }
     val file = File(dir, "dsh-$day.log")
@@ -1042,8 +1041,8 @@ object LogCollector {
     file.appendText(safe)
   }
 
-  /** 脱敏失败被丢弃的落盘段计数（诊断面：异常时非零即说明该时段日志不完整）。 */
-  @Volatile private var sanitizeFailedChunks: Int = 0
+  /** 脱敏失败被丢弃的落盘段计数（诊断面：异常时非零即说明该时段日志不完整；多线程追加，原子）。 */
+  private val sanitizeFailedChunks = java.util.concurrent.atomic.AtomicInteger(0)
 
   /**
    * 轮转（#211.3，JVM 单测；rename/delete 可注入）：

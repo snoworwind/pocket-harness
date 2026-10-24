@@ -128,6 +128,22 @@ class NotifyDecisionQueueTest {
     assertNull(NotifyDecisionQueue.parse(NotifyDecisionQueue.serialize(d)))
   }
 
+  /**
+   * 生产实现直测（JVM 上 AndroidKeyStore 不可得 → 走临时密钥回退，坑 512 自审补口：
+   * sign 不得因 Keystore 缺席抛异常——那会让 Keystore 故障设备上的全部通知决策无法落盘）。
+   */
+  @Test
+  fun 生产实现_Keystore缺席时走临时密钥_签名验签往返() {
+    val d = NotifyDecisionQueue.Decision("0123456789abcdef", "e1", "approval", "{}", 1L)
+    NotifyDecisionQueue.integrity = NotifyDecisionQueue.ProductionIntegrity // 先切生产实现（JVM=临时密钥回退）
+    val line = NotifyDecisionQueue.serialize(d)
+    val parsed = NotifyDecisionQueue.parse(line)
+    assertNotNull("Keystore 缺席（JVM）时 serialize 必须成功且可验签", parsed)
+    assertEquals(d, parsed)
+    val tampered = line.replace("approval", "question")
+    assertNull("篡改行必须丢弃", NotifyDecisionQueue.parse(tampered))
+  }
+
   private class FakeIntegrityWithDifferentKey : NotifyDecisionQueue.DecisionIntegrity {
     private val key = SecretKeySpec("attacker-held-key".toByteArray(Charsets.UTF_8), "HmacSHA256")
     private fun mac(data: ByteArray): ByteArray =

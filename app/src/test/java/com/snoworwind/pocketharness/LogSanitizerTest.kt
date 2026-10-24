@@ -165,4 +165,16 @@ class LogSanitizerTest {
     // 幂等：已打码的文本再打一次不得再变动（避免二次处理把正文吃掉）。
     assertEquals(out, LogSanitizer.redactPrivateKeyBlocks(out))
   }
+  /** 坑 514 自审补口：只有 BEGIN 没有 END 的截断块（分块边界切开）必须连后续内容一起打掉。 */
+  @Test
+  fun 截断的私钥头_分块边界_必须掩到文本末尾() {
+    val chunk = "before\n-----BEGIN RSA PRIVATE KEY-----\nMIIEowIBAAKCAQEA7HalfKeyMaterial\nmore"
+    val out = LogSanitizer.sanitizeOrNull(chunk)
+    assertNotNull(out)
+    assertFalse("截断 BEGIN 不得残留", out!!.contains("BEGIN RSA PRIVATE KEY"))
+    assertFalse("截断块后的密钥材料不得残留", out.contains("MIIEowIBAAKCAQEA7HalfKeyMaterial"))
+    assertTrue("BEGIN 之前的普通内容保留", out.contains("before"))
+    assertTrue("打码占位在场", out.contains(LogSanitizer.PRIVATE_KEY_MASK))
+  }
+
 }
