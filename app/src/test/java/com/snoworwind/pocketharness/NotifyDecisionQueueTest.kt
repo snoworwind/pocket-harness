@@ -1,8 +1,10 @@
 package com.snoworwind.pocketharness
 
 import org.junit.After
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -144,6 +146,39 @@ class NotifyDecisionQueueTest {
     assertNull("篡改行必须丢弃", NotifyDecisionQueue.parse(tampered))
   }
 
+  /**
+   * 坑 545 反证：密钥「在场但不可用」也必须回退——Mac.init 失败（这里用 null 编码的 Key
+   * 构造，任何 Mac 实现都必然拒绝；SunJCE 对「算法名不匹配」反而会照常 init，测不到这条
+   * 路径），sign 只在 null 时回退的话这类设备上每个决策都会静默丢失。
+   */
+  @Test
+  fun 生产实现_主密钥在场但不可用时回退临时密钥() {
+    val bogus = object : java.security.Key {
+      override fun getAlgorithm(): String = "HmacSHA256"
+      override fun getFormat(): String = "RAW"
+      override fun getEncoded(): ByteArray? = null
+    }
+    val ephemeral = SecretKeySpec("ephemeral-key".toByteArray(Charsets.UTF_8), "HmacSHA256")
+    val bytes = "v2|3:req|2:e1".toByteArray(Charsets.UTF_8)
+    val expected = Mac.getInstance("HmacSHA256").apply { init(ephemeral) }.doFinal(bytes)
+    val viaBogus = NotifyDecisionQueue.ProductionIntegrity.signWithFallback(bogus, ephemeral, bytes)
+    assertArrayEquals("主密钥失效必须落到临时密钥且结果即临时密钥的 MAC", expected, viaBogus)
+    val viaNull = NotifyDecisionQueue.ProductionIntegrity.signWithFallback(null, ephemeral, bytes)
+    assertArrayEquals("Keystore 整体缺席（null）同样走临时密钥", expected, viaNull)
+  }
+
+  /** 坑 544 反证：字段值含 `|` 时 canonical 必须不可重切（长度前缀让切分唯一）。 */
+  @Test
+  fun canonical_字段含竖线时不同决策不得同串() {
+    val d1 = NotifyDecisionQueue.Decision("0123456789abcdef", "a|b", "c", "{}", 1L)
+    val d2 = NotifyDecisionQueue.Decision("0123456789abcdef", "a", "b|c", "{}", 1L)
+    // v1 裸拼接下两者 canonical 字节相同（合法签名行可被重切成另一条 Decision）；v2 必须不同
+    assertNotEquals(NotifyDecisionQueue.canonical(d1), NotifyDecisionQueue.canonical(d2))
+    // 含竖线字段的往返仍精确
+    val back = NotifyDecisionQueue.parse(NotifyDecisionQueue.serialize(d1))
+    assertEquals(d1, back)
+  }
+
   private class FakeIntegrityWithDifferentKey : NotifyDecisionQueue.DecisionIntegrity {
     private val key = SecretKeySpec("attacker-held-key".toByteArray(Charsets.UTF_8), "HmacSHA256")
     private fun mac(data: ByteArray): ByteArray =
@@ -249,7 +284,8 @@ class NotifyDecisionQueueTest {
     assertEquals(3, back!!.waitAttempts)
     assertEquals(1, back.attempts)
     assertEquals(d, back)
-    // 老行（无 waitAttempts 字段）必须默认 0，不得解析失败；waitAttempts 参与验签
+    // 构造缺省 waitAttempts=0 的往返（optInt 默认链路）。真·旧格式无签行走「无签行丢弃」用例；
+    // v1 有签行在坑 544 的 v2 canonical 下同样按验签失败丢弃（fail-closed 升级语义）。
     val legacy = NotifyDecisionQueue.parse(
       NotifyDecisionQueue.serialize(NotifyDecisionQueue.Decision("0123456789abcdef", "e", "question", "{}", 1L, "pending", 2)),
     )

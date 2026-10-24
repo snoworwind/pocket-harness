@@ -122,7 +122,9 @@ internal object LogSanitizer {
     // - 只有 END 没有 BEGIN（后半段先到的 chunk）：密钥材料从本 chunk 的哪一行开始不可知，
     //   从文本开头掩到 END 为止。两个方向的取舍同源：宁可把相邻普通内容一起掩掉，
     //   也不能让密钥材料裸露；完整块的路径不受影响。同一 chunk 里两个方向同时在场（上一块
-    //   的尾 + 下一块的头）也闭合：先掩尾再掩头，中间只剩占位符。
+    //   的截尾 + 下一块的截头）也闭合：先掩头（BEGIN 起截到文本末尾）、再掩尾（文本开头截到
+    //   END），两段边界不可知的密钥材料都换成占位符；END 与 BEGIN **之间**的普通内容得以
+    //   保留——它不属于任何一个截断块（坑 540 复审：原注释把这两点都写反了）。
     val orphanBegin = ORPHAN_BEGIN.find(out)
     if (orphanBegin != null) out = out.substring(0, orphanBegin.range.first) + PRIVATE_KEY_MASK
     val orphanEnd = ORPHAN_END.find(out)

@@ -93,6 +93,9 @@ internal object LinuxAssetIO {
     if (!url.protocol.equals("https", ignoreCase = true)) return "只接受 https（实际 ${url.protocol}）"
     // 端口钉死 443（坑 527）：白名单按主机建模不等于按 endpoint 建模，非默认端口不放行
     if (url.port != -1 && url.port != 443) return "只接受 443 端口（实际 ${url.port}）"
+    // userInfo（https://x@github.com/... 形态，坑 527 复审）会把「凭据」随请求原样送到白名单
+    // 主机——白名单按**纯主机**建模，与坑 541 给 ConsoleActivity 补的 authority 纪律同源。
+    if (url.userInfo != null) return "资产 URL 不得携带 userInfo（user:pass@ 形态）"
     if (url.host?.lowercase() !in ALLOWED_HOSTS) return "主机不在白名单：${url.host}"
     if (!url.path.startsWith(REQUIRED_PATH_PREFIX)) return "路径不是本仓 Releases 资产：${url.path}"
     if (url.query != null || url.ref != null) return "资产 URL 不得带 query/fragment"
@@ -118,6 +121,7 @@ internal object LinuxAssetIO {
     val url = try { URL(location) } catch (_: Exception) { return "不是合法 URL" }
     if (!url.protocol.equals("https", ignoreCase = true)) return "重定向落点必须仍是 https（实际 ${url.protocol}）"
     if (url.port != -1 && url.port != 443) return "重定向落点只接受 443 端口（实际 ${url.port}）"
+    if (url.userInfo != null) return "重定向落点不得携带 userInfo（user:pass@ 形态）"
     if (url.host?.lowercase() !in ALLOWED_HOSTS) return "重定向落点主机不在白名单：${url.host}"
     return null
   }

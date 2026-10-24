@@ -677,11 +677,13 @@ internal object SafeMode {
  *  - 无数字/百分比口径与本轮其它进度文案一致（不涉及进度，但同样避免编造量）。
  *
  * @param stage 失败阶段（`LogCollector.writeBootFail` 的 stage，如 engine-start-false）。
- * @param detail 失败详情（含异常类名/消息；可为空）。
+ * @param detail 失败详情（壳侧固定文案：writeBootFail 的失败消息或 SafeMode.enter 的 result.message；可为空）。
  * @param logTail `boot-fail.log` / `engine.log` 的尾巴（可为空字符串）。**在本函数内脱敏**
- *  （坑 513 / R3-02）：engine.log 含 `dsh web: ...?token=` 启动令牌行，本 prompt 的交付物是
- *  系统剪贴板（Android 任意获焦应用可读、且设计用途就是粘给外部渠道），令牌行不得随行——
- *  与 #184「令牌行不得进入外发文本」同纪律，且必须在构造咽喉处套（个别出口套会再漏）。
+ *  （坑 513 / R3-02 + 坑 546）：engine.log 会回显模型命令与配置内容（`?token=` 启动令牌、
+ *  `Authorization: Bearer` 头、`sk-` 密钥、PEM 块……），本 prompt 的交付物是**系统剪贴板**
+ *  （Android 任意获焦应用可读、且设计用途就是粘给外部渠道），必须过 [LogSanitizer] 全七类——
+ *  与日文件/诊断包出口同一口径，不再只掩令牌一类。脱敏失败按 fail-closed 纪律**不附带尾巴**
+ *  （可见说明），绝不回退原文；必须在构造咽喉处套（个别出口套会再漏）。
  * @param safeModeActive 生成 prompt 时安全模式是否已开启（决定写「已开启」还是「即将开启」）。
  * @returns 可直接写入剪贴板的 prompt；**非空**（即使输入全空也给出可用的最小指令）。
  */
@@ -703,9 +705,16 @@ internal fun buildSafeModePrompt(
   sb.append("【启动失败现场】").append('\n')
   sb.append("stage: ").append(stage?.takeIf { it.isNotBlank() } ?: "(未记录)").append('\n')
   sb.append("detail: ").append(detail?.takeIf { it.isNotBlank() } ?: "(未记录)").append('\n')
-  val tail = EngineAuth.redact(logTail?.trim().orEmpty())
+  val rawTail = logTail?.trim().orEmpty()
+  val tail = if (rawTail.isEmpty()) null else LogSanitizer.sanitizeOrNull(rawTail)
   sb.append('\n')
   sb.append("【日志尾巴】").append('\n')
-  sb.append(if (tail.isEmpty()) "(未取到日志尾巴；可打开控制台执行 dsh safe status 后再取一次)" else tail).append('\n')
+  when {
+    tail != null -> sb.append(tail)
+    // 非空尾巴但脱敏失败：fail-closed 不附带原文，可见说明（不冒充「未取到」）
+    rawTail.isNotEmpty() -> sb.append("(日志尾巴脱敏失败，已按安全纪律不附带；可打开控制台执行 dsh safe status 后再取一次)")
+    else -> sb.append("(未取到日志尾巴；可打开控制台执行 dsh safe status 后再取一次)")
+  }
+  sb.append('\n')
   return sb.toString()
 }

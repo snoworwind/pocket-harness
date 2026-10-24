@@ -4,11 +4,11 @@ name: PR Gate
 
 on:
   pull_request:
-  # No `push: main` trigger: this is a private repo where every change lands through a PR,
-  # so the merge commit's tree was already validated by the PR run of the same HEAD. A
-  # post-merge duplicate run only spends minutes on a tree that cannot differ. Direct
-  # pushes to main are forbidden (AGENTS.md 铁律 4), and the release/build workflows are
-  # dispatched explicitly rather than by push.
+  # No `push: main` trigger: this is a public repo where every change lands through a PR
+  # (branch protection since 2026-10-20 forbids direct pushes, AGENTS.md 铁律 4), so the
+  # merge commit's tree was already validated by the PR run of the same HEAD. A
+  # post-merge duplicate run only spends minutes on a tree that cannot differ. The
+  # release/build workflows are dispatched explicitly rather than by push.
 
 permissions:
   contents: read
@@ -21,9 +21,10 @@ concurrency:
 jobs:
   changes:
     name: 变更范围分类
-    # Dormant by default: runner allocation is unavailable, and the merge gate is
-    # `node scripts/ci/local-gate.mjs`. Set the repository variable PR_GATE_MODE=on to
-    # re-enable the hosted pipeline without editing this file.
+    # 公开仓恢复托管门禁（2026-10-20 起 PR_GATE_MODE=on）。各 job 仍统一挂
+    # `vars.PR_GATE_MODE == 'on'` 前置：变量被误删/误关时由恒跑的 gate-sentinel 哨兵
+    # 显式标红（skipped 的 required check 会被 GitHub 当作通过，静默休眠是最坏形态），
+    # 恢复必须是显式可审计的编辑，而不是「悄悄又绿了」。
     if: vars.PR_GATE_MODE == 'on'
     runs-on: ubuntu-latest
     outputs:
@@ -68,9 +69,22 @@ jobs:
         # 把冲突标记合进了 docs/AGENTS/SECURITY-REMEDIATION-2026-10-24-R3.md 而本检查全绿
         # （旧扫描面只有 app/src .github 的代码扩展名）。`=======` 单行不扫：markdown 分隔线
         # 误报率高，`<<<<<<< `/`>>>>>>> ` 两个锚点足以判定未解决冲突。
+        # 坑 548（复审）：扩展名补 .py/.sh/.txt/.patch/.svg（scripts/source-build 32 个 .py 是
+        # 与门禁同权重的执行面）；且 grep 退出码必须三分支判——exit 0=命中、1=干净、>1=扫描出错
+        # （路径缺席等）。旧 `if grep` 把 >1 当「无命中」放行，删掉一个被扫目录就能整体静默。
         run: |
-          if grep -rEn '^(<<<<<<< |>>>>>>> )' app/src scripts .github docs --include='*.kt' --include='*.java' --include='*.xml' --include='*.html' --include='*.js' --include='*.mjs' --include='*.ts' --include='*.tsx' --include='*.css' --include='*.json' --include='*.yml' --include='*.yaml' --include='*.md' --include='*.ps1'; then
+          rc=0
+          grep -rEn '^(<<<<<<< |>>>>>>> )' app/src scripts .github docs \
+            --include='*.kt' --include='*.java' --include='*.xml' --include='*.html' \
+            --include='*.js' --include='*.mjs' --include='*.ts' --include='*.tsx' \
+            --include='*.css' --include='*.json' --include='*.yml' --include='*.yaml' \
+            --include='*.md' --include='*.ps1' --include='*.py' --include='*.sh' \
+            --include='*.txt' --include='*.patch' --include='*.svg' || rc=$?
+          if [ "$rc" -eq 0 ]; then
             echo "::error::检测到未解决的 merge conflict 标记"
+            exit 1
+          elif [ "$rc" -gt 1 ]; then
+            echo "::error::冲突标记扫描出错（grep exit $rc；扫描面路径可能缺席——不得静默放行）"
             exit 1
           fi
           echo "无冲突标记"
@@ -78,14 +92,24 @@ jobs:
         # 坑 537（R3-35）：模式族与目录面扩充——sk-ant-（连字符断开旧式 sk- 匹配）、gho_、
         # github_pat_、AIza（Google）、xai-（xAI）、PEM 私钥块、Slack/Discord webhook；
         # 目录补 release/、final-acceptance/、webpages/、根级 notes.md。
-        # 测试文件排除：脱敏器单测必须内置**字面假密钥**夹具（LogSanitizerTest 等），
-        # 扫它们只会打假靶；真实泄漏审计面在非测试源码与文档。
+        # 测试排除按**具名文件**收窄（坑 548 复审）：只有必须内置字面凭据形状的脱敏/出口单测
+        # 在列（LogSanitizerTest / LogShareTest / SafeModeTest / e2e-provider-ui-security），
+        # 整类通配（*Test.kt 等）会把「真实密钥粘进任意测试文件」变成扫描盲区。
+        # sk-/xai- 加左边界 `(^|[^A-Za-z0-9_-])`：`task-management-infrastructure` 一类英文
+        # 连字符词会撞中无锚模式（risk-/flask-/disk- 同族），属潜伏性假红。
+        # grep 退出码三分支判（坑 548）：>1 是扫描出错（如被扫路径被删），不得当干净放行。
         run: |
-          PAT='(sk-(ant-)?[A-Za-z0-9_-]{16,}|ghp_[A-Za-z0-9]{20,}|gho_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{30,}|xox[baprs]-[A-Za-z0-9-]{10,}|xai-[A-Za-z0-9]{20,}|-----BEGIN (RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----|hooks\.slack\.com/services/|discord(app)?\.com/api/webhooks/)'
-          if grep -rEn "$PAT" \
-              --exclude='*Test.kt' --exclude='*.test.mjs' --exclude='*.test.ts' --exclude='*.spec.ts' --exclude='*.spec.tsx' --exclude='*.test.ps1' \
-              docs app/src scripts .github release final-acceptance webpages notes.md 2>/dev/null; then
+          PAT='((^|[^A-Za-z0-9_-])sk-(ant-)?[A-Za-z0-9_-]{16,}|ghp_[A-Za-z0-9]{20,}|gho_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{30,}|xox[baprs]-[A-Za-z0-9-]{10,}|(^|[^A-Za-z0-9_-])xai-[A-Za-z0-9]{20,}|-----BEGIN (RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----|hooks\.slack\.com/services/|discord(app)?\.com/api/webhooks/)'
+          rc=0
+          grep -rEn "$PAT" \
+              --exclude='LogSanitizerTest.kt' --exclude='LogShareTest.kt' --exclude='SafeModeTest.kt' \
+              --exclude='e2e-provider-ui-security.test.ps1' \
+              docs app/src scripts .github release final-acceptance webpages notes.md || rc=$?
+          if [ "$rc" -eq 0 ]; then
             echo "::error::检测到疑似密钥/令牌"
+            exit 1
+          elif [ "$rc" -gt 1 ]; then
+            echo "::error::敏感信息扫描出错（grep exit $rc；扫描面路径可能缺席——不得静默放行）"
             exit 1
           fi
           echo "无敏感信息"

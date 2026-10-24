@@ -126,6 +126,10 @@ class LinuxAssetIOTest {
     // 负控（坑 527 / R3-16）：白名单主机的非默认端口不放行（endpoint 面收窄到 443）
     assertNotNull("非 443 端口的资产 URL 不得放行", LinuxAssetIO.urlVerdict("https://github.com:8443/snoworwind/pocket-harness/releases/download/v0.6.0/linux-runtime-plugin.tar.xz"))
     assertNotNull("非 443 端口的重定向落点不得放行", LinuxAssetIO.hopVerdict("https://objects.githubusercontent.com:8443/x"))
+    // 负控（坑 527 复审 / R3-16 残余）：白名单主机但 URL 带 userInfo——凭据会随请求
+    // 原样送达，白名单按「纯主机」建模，user:pass@ 形态两个判据都拒
+    assertNotNull("带 userInfo 的资产 URL 不得放行", LinuxAssetIO.urlVerdict("https://leak%40evil.example@google.com@github.com/snoworwind/pocket-harness/releases/download/v0.6.0/linux-runtime-plugin.tar.xz"))
+    assertNotNull("带 userInfo 的重定向落点不得放行", LinuxAssetIO.hopVerdict("https://anything@objects.githubusercontent.com/x"))
   }
 
   // ── 落点面 ────────────────────────────────────────────────────────────────
