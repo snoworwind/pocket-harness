@@ -177,4 +177,33 @@ class LogSanitizerTest {
     assertTrue("打码占位在场", out.contains(LogSanitizer.PRIVATE_KEY_MASK))
   }
 
+  /**
+   * 坑 514 自审补口（尾方向，readEngineLog 分块的另一半）：块的前半留在上一 chunk、本 chunk
+   * 只有「密钥材料后半 + END」时，材料从本 chunk 哪一行开始不可知——必须从文本开头掩到 END，
+   * 不得让后半段密钥材料裸露（首方向修复只覆盖了 BEGIN 在场的情形）。
+   */
+  @Test
+  fun 截断的私钥尾_分块边界_必须从头掩到END() {
+    val chunk = "SecondHalfKeyMaterialAAAA\nmoreMaterialBBB\n-----END RSA PRIVATE KEY-----\nafter"
+    val out = LogSanitizer.sanitizeOrNull(chunk)
+    assertNotNull(out)
+    assertFalse("END 标记不得残留", out!!.contains("END RSA PRIVATE KEY"))
+    assertFalse("截断块的密钥材料（后半段）不得残留", out.contains("SecondHalfKeyMaterialAAAA"))
+    assertFalse(out.contains("moreMaterialBBB"))
+    assertTrue("END 之后的普通内容保留", out.contains("after"))
+    assertTrue("打码占位在场", out.contains(LogSanitizer.PRIVATE_KEY_MASK))
+  }
+
+  /** 同一 chunk 同时装着「上一块的尾 + 下一块的头」（两个截断方向叠加）也必须全掩。 */
+  @Test
+  fun 尾截断与头截断同场_两侧都必须闭合() {
+    val chunk = "tailOfPreviousKey\n-----END PRIVATE KEY-----\nmid普通行\n-----BEGIN PRIVATE KEY-----\nheadOfNextKey"
+    val out = LogSanitizer.redactPrivateKeyBlocks(chunk)
+    assertFalse(out.contains("tailOfPreviousKey"))
+    assertFalse(out.contains("headOfNextKey"))
+    assertFalse(out.contains("END PRIVATE KEY"))
+    assertFalse(out.contains("BEGIN PRIVATE KEY"))
+    assertTrue(out.contains(LogSanitizer.PRIVATE_KEY_MASK))
+  }
+
 }

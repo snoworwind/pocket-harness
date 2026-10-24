@@ -109,15 +109,18 @@ class ConsoleActivity : ComponentActivity() {
         pushInsets()
       }
 
-      // 导航来源锁定（坑 528 / R3-17）：本 WebView 挂着能写 bash stdin 的 consoleBridge，
-      // 一旦发生任何导航，接口会继续暴露给新 origin。当前 console.html 不产生链接，但
-      // 该约束必须与页面现状解耦——只放行本 asset 的**路径**（fragment/query 变化不出页，
-      // 误杀页内锚点导航），其余一律拒绝（与主 WebView 的来源纪律对称）。
+      // 导航来源锁定（坑 528 / R3-17；自审补 authority 钉死）：本 WebView 挂着能写 bash stdin 的
+      // consoleBridge，一旦发生任何导航，接口会继续暴露给新 origin。当前 console.html 不产生链接，
+      // 但该约束必须与页面现状解耦——只放行本 asset 的**路径**且 authority 必须为空
+      // （`file://<host>/android_asset/console.html` 不放行：只对 scheme+path 匹配会把带 host 的
+      // file URL 放进来，与主 WebView isEngineOrigin 钉 host/port/userinfo 的纪律不对称；
+      // fragment/query 变化不出页，误杀页内锚点导航），其余一律拒绝。
       override fun shouldOverrideUrlLoading(
         view: android.webkit.WebView,
         request: android.webkit.WebResourceRequest,
       ): Boolean = request.url.let { u ->
-        u.scheme == "file" && u.path == "/android_asset/console.html"
+        u.scheme == "file" && u.host.isNullOrEmpty() && u.userInfo == null &&
+          u.path == "/android_asset/console.html"
       }.not()
     }
     webView.addJavascriptInterface(ConsoleBridge(), "consoleBridge")

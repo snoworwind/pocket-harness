@@ -64,8 +64,12 @@ jobs:
         with:
           persist-credentials: false
       - name: 冲突标记检查
+        # 坑 543（R3 复审）：扫描面必须覆盖 docs/ 与 scripts/ 及 md/mjs 等扩展名——实测 4efd96a
+        # 把冲突标记合进了 docs/AGENTS/SECURITY-REMEDIATION-2026-10-24-R3.md 而本检查全绿
+        # （旧扫描面只有 app/src .github 的代码扩展名）。`=======` 单行不扫：markdown 分隔线
+        # 误报率高，`<<<<<<< `/`>>>>>>> ` 两个锚点足以判定未解决冲突。
         run: |
-          if grep -rEn '^(<<<<<<< |>>>>>>> )' app/src .github --include='*.kt' --include='*.java' --include='*.xml' --include='*.html' --include='*.js' --include='*.yml' --include='*.yaml'; then
+          if grep -rEn '^(<<<<<<< |>>>>>>> )' app/src scripts .github docs --include='*.kt' --include='*.java' --include='*.xml' --include='*.html' --include='*.js' --include='*.mjs' --include='*.ts' --include='*.tsx' --include='*.css' --include='*.json' --include='*.yml' --include='*.yaml' --include='*.md' --include='*.ps1'; then
             echo "::error::检测到未解决的 merge conflict 标记"
             exit 1
           fi

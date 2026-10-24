@@ -103,6 +103,12 @@ internal object LogSanitizer {
     null
   }
 
+  /** 分块边界的截断头（只有 BEGIN 没有 END；完整块已被上面的循环摘除）。 */
+  private val ORPHAN_BEGIN = Regex("""-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----""")
+
+  /** 分块边界的截断尾（只有 END 没有 BEGIN——块的前半在上一 chunk，本 chunk 的文本头就是密钥材料）。 */
+  private val ORPHAN_END = Regex("""-----END [A-Z0-9 ]*PRIVATE KEY-----""")
+
   /** 私钥整块替换（纯函数；循环处理，支持一份文本里多个块）。 */
   internal fun redactPrivateKeyBlocks(text: String): String {
     var out = text
@@ -110,10 +116,17 @@ internal object LogSanitizer {
       val m = PRIVATE_KEY_BLOCK.find(out) ?: break
       out = out.substring(0, m.range.first) + PRIVATE_KEY_MASK + out.substring(m.range.last + 1)
     }
-    // 分块边界的截断块（坑 514 自审补口）：日文件出口按 chunk 脱敏，PEM 块可能被切在
-    // chunk 边界——只有 BEGIN 没有 END 的头必须连同行文一起打掉到文本末尾（fail-closed：
-    // 宁可把后续普通内容一起掩掉，也不能让密钥材料裸露；完整块的路径不受影响）。
-    val orphan = Regex("""-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----""").find(out) ?: return out
-    return out.substring(0, orphan.range.first) + PRIVATE_KEY_MASK
+    // 分块边界的截断块（坑 514 自审补口，**两个方向都 fail-closed**）：日文件出口按 chunk 脱敏
+    // （readEngineLog 按 MAX_ENGINE_CHUNK 切 engine.log），PEM 块可能被切在 chunk 边界——
+    // - 只有 BEGIN 没有 END：从 BEGIN 起连同行文一起掩到文本末尾；
+    // - 只有 END 没有 BEGIN（后半段先到的 chunk）：密钥材料从本 chunk 的哪一行开始不可知，
+    //   从文本开头掩到 END 为止。两个方向的取舍同源：宁可把相邻普通内容一起掩掉，
+    //   也不能让密钥材料裸露；完整块的路径不受影响。同一 chunk 里两个方向同时在场（上一块
+    //   的尾 + 下一块的头）也闭合：先掩尾再掩头，中间只剩占位符。
+    val orphanBegin = ORPHAN_BEGIN.find(out)
+    if (orphanBegin != null) out = out.substring(0, orphanBegin.range.first) + PRIVATE_KEY_MASK
+    val orphanEnd = ORPHAN_END.find(out)
+    if (orphanEnd != null) out = PRIVATE_KEY_MASK + out.substring(orphanEnd.range.last + 1)
+    return out
   }
 }

@@ -3153,3 +3153,19 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 539. **跨平台脚本的引号语义必须按 shell 分流（cmd.exe 不认 POSIX 单引号，R3 自审，2026-10-24）**
 
     现象：坑 534 修复把 `check-engine-overlay.mjs` 的 python 调用参数全部改 `shellQuote`（POSIX 单引号）；win32 下 `execSync` 走 cmd.exe，单引号被当**字面量**传给 python，全部路径参数带引号失效。真因：引号是 shell 语义而非字符串语法——同一份内插在 `/bin/sh` 与 `cmd.exe` 下合法形态不同；R3-23 只按 POSIX 威胁模型改写，漏看该脚本存在 win32 分支（`process.platform === 'win32' ? 'python' : 'python3'`）。修法：`q = win32 ? JSON.stringify : shellQuote` 平台分流；POSIX 侧用含空格/单引号/`$(…)`/反引号的路径合成用例证明 python argv 精确还原（实测 EXACT）。
+
+540. **PEM 截断块的两个分块方向只堵了一个（坑 514 自审续，2026-10-24 复审发现）**
+
+    现象：坑 514 的修复（orphan BEGIN 连同后续行文掩到文本末尾）只覆盖「前半段先到」的 chunk；`readEngineLog` 按 `MAX_ENGINE_CHUNK` 切 `engine.log`，若块被切在「后半段先到」的边界——本 chunk 只有「密钥材料后半 + END」而无 BEGIN——完整块正则不匹配、orphan BEGIN 不在场，密钥材料原样落进共享存储日文件。真因：截断是**两个方向**的（头截断/尾截断），修复时只推演了 BEGIN 一侧；fail-closed 的声明（宁可掩掉普通内容不让材料裸露）在尾方向失守。修法：`redactPrivateKeyBlocks` 补 ORPHAN_END 分支——END 无 BEGIN 时密钥材料从本 chunk 哪行开始不可知，从文本开头掩到 END 为止；同 chunk 两个方向叠加（上块尾 + 下块头）先掩尾再掩头，幂等性不变。复验：LogSanitizerTest 新增尾方向与双方向叠加两组反证（旧实现对尾方向用例必红），`testDebugUnitTest` 全绿。
+
+541. **Console 来源锁定只对 scheme+path 匹配，漏 authority（坑 528 自审续，2026-10-24 复审发现）**
+
+    现象：坑 528 给 ConsoleActivity 补的 `shouldOverrideUrlLoading` 判据是 `scheme == "file" && path == "/android_asset/console.html"`——`file://<任意host>/android_asset/console.html` 也放行，带 host 的 file URL 绕过路径钉死。真因：与主 WebView 的来源纪律不对称——`isEngineOrigin` 钉 scheme+host+port+`rawUserInfo == null`，而 console 侧只钉了 scheme+path；注释声称「与主 WebView 的来源纪律对称」但缺 authority 面。修法：判据补 `host.isNullOrEmpty() && userInfo == null`（file 资产 URL 的 authority 恒为空）。复验：`testDebugUnitTest` 编译与全量单测绿；宿主侧 `file://host/...` 导航现被拒（shouldOverrideUrlLoading 返回 true）。**未做设备验证**（改动为防御纵深收紧，合法初始 loadUrl 不经该回调，页内无链接；进发版候选前须按 §2.1 补三层）。
+
+542. **yml 接线断言剥了整行注释，行尾内联注释仍可伪接线（坑 517 自审续，2026-10-24 复审发现）**
+
+    现象：坑 517 的修复只剥 `^\s*#` 整行注释；`run: node a.mjs # check-x.mjs` 这类门禁名只活在**行尾注释**的形态仍被子串匹配计为接线。真因：yml 注释有两种形态（整行/行尾），修复时只对照实测样本（整行）收窄，没按 yml 语义枚举完。修法：`check-release-gates.mjs` 的 effectiveText 先 `replace(/\s#.*$/, '')` 剥行尾注释（yml 语义要求 ` #` 前有空白，不会误伤无空格的 `a#b` 字面量）再滤整行注释。复验：受控负控（node -e 合成「行尾注释门禁名/整行注释门禁名/可执行行门禁名」三形态）证明只有可执行行计入；改后 `check-release-gates.mjs` 与 `check-gate-skips.mjs` 全绿——即现网 yml 的门禁接线全部真实落在可执行行，无一处依赖注释形态。
+
+543. **合并冲突标记合进了 main，而门禁的冲突检查面只有代码文件（2026-10-24 复审发现）**
+
+    现象：`docs/AGENTS/SECURITY-REMEDIATION-2026-10-24-R3.md:44-51` 带着 `<<<<<<< HEAD`/`=======`/`>>>>>>> origin/main` 三段标记合入 main（引入者 4efd96a「merge main: union fixed-item markers in gotchas 537 and R3 ledger」——手工合并账本时只 union 了 gotchas 537，账本一侧的冲突没解完就提交），此后 5 个 PR 的 CI 全绿放行。真因：pr-gate 的冲突标记检查只扫 `app/src .github` 的 `*.kt/java/xml/html/js/yml/yaml`——docs/ 与 scripts/ 不在扫描面，`*.md/*.mjs` 等扩展名也不在；「检查存在」不等于「检查覆盖全部会被人读/会被工具消费的内容」。修法：账本按 union 语义解冲突（两侧条目都保留，与该 merge commit 的意图一致）+ 计划表去掉合并残留的重复行；pr-gate 冲突检查扫描面扩为 `app/src scripts .github docs` × `kt/java/xml/html/js/mjs/ts/tsx/css/json/yml/yaml/md/ps1`（`=======` 单行不扫：markdown 分隔线误报率高，两个锚点足以判定）。复验：新 grep 在修复后的树上 exit 1（无标记）；受控负控（临时目录放 `<<<<<<< HEAD`/`>>>>>>> origin/main` 的 .md）命中两条。
