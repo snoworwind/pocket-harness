@@ -11,7 +11,7 @@
 import { readFileSync, existsSync, statSync, lstatSync, readdirSync, mkdirSync, writeFileSync } from 'node:fs'
 import { join, resolve, relative, dirname } from 'node:path'
 import { createHash } from 'node:crypto'
-import { wslPath, sh } from './lib/shell.mjs'
+import { wslPath, sh, shellQuote } from './lib/shell.mjs'
 
 const usr = process.argv[2]?.startsWith('--') ? null : process.argv[2]
 const licensesDir = process.argv.includes('--licenses') ? process.argv[process.argv.indexOf('--licenses') + 1] : 'LICENSES'
@@ -144,7 +144,7 @@ function availability() {
   const map = new Map()
   if (tarPath) {
     const abs = wslPath(resolve(tarPath))
-    const out = sh(`tar -tvf "${abs}" 2>/dev/null | grep -E 'usr/share/LICENSES/|usr/share/doc/[^/]+/copyright'`, { maxBuffer: 96 * 1024 * 1024 })
+    const out = sh(`tar -tvf ${shellQuote(abs)} 2>/dev/null | grep -E 'usr/share/LICENSES/|usr/share/doc/[^/]+/copyright'`, { maxBuffer: 96 * 1024 * 1024 })
     for (const line of out.split('\n')) {
       if (!line.includes('usr/share/LICENSES/') && !/usr\/share\/doc\/[^/]+\/copyright/.test(line)) continue
       const parts = line.trim().split(/\s+/)
@@ -193,7 +193,7 @@ function readPackages() {
   let text
   if (tarPath) {
     const abs = wslPath(resolve(tarPath))
-    text = sh(`tar -xOf "${abs}" usr/var/lib/dpkg/status`, { maxBuffer: 32 * 1024 * 1024 })
+    text = sh(`tar -xOf ${shellQuote(abs)} usr/var/lib/dpkg/status`, { maxBuffer: 32 * 1024 * 1024 })
   } else {
     text = readFileSync(join(usr, 'var/lib/dpkg/status'), 'utf8')
   }

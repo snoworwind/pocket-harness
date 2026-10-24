@@ -70,6 +70,17 @@ function isAllowed(name, platform) {
   return KNOWN_FAIL.some((k) => k.match.test(name) && k.platforms.includes(platform))
 }
 
+/**
+ * stale 方向（坑 537 / R3-31）：本平台匹配、但本轮没有真实失败对应的白名单条目。
+ * 只做单向「fails ⊆ KNOWN_FAIL」会让修复后的条目永留清单（宣称仍失败而实际已绿）。
+ * 纯函数（self-test 正反证）；真实档对 stale 条目打 WARN 提示维护者移除。
+ */
+function staleKnownFails(knownFail, realFails, platform) {
+  return knownFail
+    .filter((k) => k.platforms.includes(platform))
+    .filter((k) => !realFails.some((f) => k.match.test(f)))
+}
+
 function selfTest() {
   let checks = 0, failed = 0
   const ok = (c, l) => { checks++; if (!c) { failed++; console.error('  FAIL ' + l) } else console.log('  ok   ' + l) }
@@ -90,6 +101,12 @@ function selfTest() {
   const symlinkCase = 'emergency CLI keeps recovery marker across interrupted writes and round-trips fixture'
   ok(isAllowed(symlinkCase, 'win32') === true, 'symlink 失败仅豁免受影响的 Windows 用例')
   ok(isAllowed(symlinkCase, 'linux') === false, 'Linux 上 symlink 用例失败仍判红')
+  // 反证（R3-31）：stale 判定两个方向——没有真实失败对应才 stale；有对应不 stale
+  const neverMatches = { match: /^never matches any real failure$/, platforms: [process.platform], reason: 'x', since: 'x' }
+  const matchesReal = { match: /^some brand new breakage$/, platforms: [process.platform], reason: 'x', since: 'x' }
+  ok(staleKnownFails([neverMatches], [], process.platform).length === 1, '本平台无真实失败对应的条目判 stale')
+  ok(staleKnownFails([neverMatches], [], 'other-platform').length === 0, '非本平台条目不参与 stale 判定')
+  ok(staleKnownFails([matchesReal], ['some brand new breakage'], process.platform).length === 0, '有真实失败对应的条目不 stale')
   console.log('')
   console.log('CHECK-PATCH-TEST-MANIFEST ' + (failed === 0 ? 'PASSED' : 'FAILED') + '（' + checks + ' 项检查，' + failed + ' 项失败）')
   process.exitCode = failed === 0 ? 0 : 1
@@ -114,6 +131,10 @@ else {
     for (const f of unexpected) console.error('  - ' + f)
     console.error('补丁回归是行为防线；新失败必须修，或按既有格式加入带 reason/since 的白名单。')
     process.exit(1)
+  }
+  // 坑 537（R3-31）：stale 方向 WARN（纯函数判定见 staleKnownFails；self-test 有正反证）。
+  for (const k of staleKnownFails(KNOWN_FAIL, fails, process.platform)) {
+    console.log('WARN  白名单条目在本平台本轮无真实失败对应（stale，考虑移除）: ' + k.match.source.slice(0, 80))
   }
   console.log('')
   console.log('CHECK-PATCH-TEST-MANIFEST PASSED（' + files.length + ' 个文件均已纳入自动化执行；'

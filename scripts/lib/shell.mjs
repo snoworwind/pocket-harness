@@ -116,6 +116,13 @@ export function wslPath(p) {
   return '/mnt/' + m[1].toLowerCase() + m[2].replace(/\\/g, '/')
 }
 
+/** POSIX 单引号包裹（' → '\''）：把路径等不可信片段安全内插进 sh() 命令串。
+ *  坑 534（R3-23）：JSON.stringify 不转义 `$` 与反引号，POSIX shell 下 `$(…)` 仍可执行；
+ *  shell 内插的参数一律用它，能走 argv 形态的优先 argv。 */
+export function shellQuote(s) {
+  return "'" + String(s).replace(/'/g, `'\\''`) + "'"
+}
+
 /** 在 shell 执行一行命令并捕获 stdout（Windows 走 wsl.exe -e bash -lc；Linux 直接 /bin/bash -c）。 */
 export function sh(cmd, opts = {}) {
   const oneLine = String(cmd).trim().replace(/\s*\n+\s*/g, ' ; ')

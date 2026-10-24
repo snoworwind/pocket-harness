@@ -13,6 +13,7 @@ import { readFileSync, writeFileSync, rmSync } from 'node:fs'
 import { join, dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { execSync } from 'node:child_process'
+import { shellQuote } from './lib/shell.mjs'
 import { resolveEnginePatchTarget } from './patches/resolve-engine-patch-target.mjs'
 import { planPiStreaming } from './patches/pi-upstream-streaming-020.mjs'
 import { planPatch as planPtcAndroid } from './patches/ptc-android-native-A1.mjs'
@@ -227,7 +228,9 @@ try {
   writeFileSync(mountFile, JSON.stringify(ROW_FILES))
   try {
     const snapWin = snap.replace(/\\/g, '/')
-    res = JSON.parse(execSync(`${process.platform === 'win32' ? 'python' : 'python3'} ${JSON.stringify(tmpPy)} ${JSON.stringify(snapWin)} ${JSON.stringify(wantFile)} ${JSON.stringify(NM)} ${JSON.stringify(carrierFile)} ${JSON.stringify(mountFile)} ${JSON.stringify(discoveryFile)}`, { encoding: 'utf8', maxBuffer: 128 * 1024 * 1024 }))
+    // 坑 534（R3-23）：JSON.stringify 不转义 `$`/反引号，POSIX shell 内插下 `$(…)` 仍可执行；
+    // 全部参数改 shellQuote（POSIX 单引号）。
+    res = JSON.parse(execSync(`${process.platform === 'win32' ? 'python' : 'python3'} ${shellQuote(tmpPy)} ${shellQuote(snapWin)} ${shellQuote(wantFile)} ${shellQuote(NM)} ${shellQuote(carrierFile)} ${shellQuote(mountFile)} ${shellQuote(discoveryFile)}`, { encoding: 'utf8', maxBuffer: 128 * 1024 * 1024 }))
   } finally {
     rmSync(tmpPy, { force: true })
     rmSync(wantFile, { force: true })

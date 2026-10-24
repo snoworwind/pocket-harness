@@ -8,7 +8,7 @@
 |---|---|---|---|---|
 | PR-1 | 通知决策队列完整性绑定（R3-01） | 壳侧 L2 | Kotlin 单测 + 伪造/篡改/无签三方反证 | |
 | PR-2 | 壳侧凭据出口与传输小加固（R3-02/03/04/14/15/16/17/18/19/29/30） | 壳侧 L2/L3 | Kotlin 单测（可测项）+ 静态门禁 | |
-| PR-4 | 门禁判据批（R3-06/07/08/21/22/23/31/32/34） | L1 门禁自身 | 各脚本 --self-test + 受控负控（铁律 2 L1 档） | |
+| PR-3 | 门禁判据批（R3-06/07/08/21/22/23/31/32/34） | L1 门禁自身 | 各脚本 --self-test + 受控负控（铁律 2 L1 档） | |
 | PR-5 | 插件面批（R3-09/24/25/26） | 插件 L2 | 插件 npm test + lib 同步 | |
 | PR-6 | 子仓批（R3-27/28） | L1/L3 | 各子仓测试 | |
 | PR-7 | 构建链批（R3-05/11/12/20/33） | L1 供应链 | 来源链自检/负控 | |
@@ -19,5 +19,6 @@
 
 ## 已完成
 
+- **PR-3（R3-06/07/08/21/22/23/31/32/34；坑 517/518/519/532/533/534 + 537 三子项）门禁判据批**：workflow 接线断言可执行行判定（负控：注释 11 条 run 行后 FAIL、恢复后 PASS）；动态 kind 路由 fail-closed 计为候选 + self-test 反例；esbuild sha512 必需；STRICT 传播全白名单断言；snapshot-server 绑 127.0.0.1；shellQuote/argv 消除三处 shell 内插；patch-test-manifest stale 方向纯函数 + 正反证；tool-name-promises 扫描面边界如实登记；auto-approve 显式确认门。各门禁 --self-test 与全跑通过。**本机 local-gate.mjs 因宿主条件（bash 3.2 / node 20 / bsdtar）不可整跑，属坑 335 族环境限制；CI 为权威跑点。**
 - **PR-1（R3-01，坑 512）通知决策队列完整性绑定**：serialize 每行 HMAC-SHA256（canonical 定序串；密钥 Android Keystore 非导出，不可用回退进程内临时密钥），parse 对缺签/验签失败/形状不符 fail-closed 丢弃。反证五组（无签/空 mac/篡改 outcome·state·eventId/异钥/非 hex）+ 往返全过；`:app:testDebugUnitTest` 全量 1364 例 0 失败；check-kotlin-comments / check-code-map 通过。**未做设备验证**；升级时旧无签行一次性丢弃（引擎侧审批超时、用户重新作答）。
 - **文档（R3 全部）**：发现清单 + 修复账本 + 坑位 512-537（PR #116 已合入）。

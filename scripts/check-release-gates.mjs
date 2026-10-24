@@ -308,8 +308,14 @@ for (const pos of POSITIONS) {
       '缺聚合入口调用：发布链不得只跑机密/elf 门禁')
     continue
   }
-  const missing = pos.gates.filter((g) => !text.includes(g))
-  check(pos.id + ' 门禁集 ⊇ 声明集合（' + pos.gates.length + ' 项）', missing.length === 0,
+  // 坑 517（R3-06）：workflow 文件的接线断言必须落在**可执行行**上——注释里留门禁名不算接线
+  // （实测 pr-gate.yml 的注释本就含门禁名，纯子串匹配会把「挪进注释」判成绿）。pwsh/node 链文件
+  // 的 gate() 调用点由 check-gate-skips 的 executionSites 反向断言守，这里对 yml 面补同级判据。
+  const effectiveText = pos.file.endsWith('.yml')
+    ? text.split('\n').filter((l) => !/^\s*#/.test(l)).join('\n')
+    : text
+  const missing = pos.gates.filter((g) => !effectiveText.includes(g))
+  check(pos.id + ' 门禁集 ⊇ 声明集合（' + pos.gates.length + ' 项，yml 面按可执行行判定）', missing.length === 0,
     '未接线: ' + missing.join(', '))
 }
 
@@ -617,7 +623,7 @@ for (const gate of RELEASE_GATES) {
   // check-tool-output-schema 自 0.14.1 W1 起支持 --require：宿主缺 peer 依赖（净检出无 node_modules 的
   // 必然后果）在严格档下判红——此前该情形是**未捕获异常直接终止进程**，聚合链在第 6 条就死，
   // 后面 20 多条一条没跑，而没有任何一层把它报成失败。
-  if (STRICT && ['check-snapshot-fingerprint.mjs', 'check-perf-instrumentation.mjs', 'check-snapshot-secrets.mjs', 'check-contract.mjs', 'check-tool-output-schema.mjs', 'check-dead-tokens.mjs'].includes(gate)) argvFor.push('--require')
+  if (STRICT && ['check-snapshot-fingerprint.mjs', 'check-perf-instrumentation.mjs', 'check-snapshot-secrets.mjs', 'check-contract.mjs', 'check-tool-output-schema.mjs', 'check-dead-tokens.mjs', 'check-mcp-client-deps.mjs'].includes(gate)) argvFor.push('--require')
   // 冷启动预算（0.14.1 块F P0-2）：真检需要**设备原始产物**（boot-segments.log + 引擎探针输出），
   // 冷启动预算（0.14.1 块F P0-2）：**不再强制 --self-test**。默认档会先找设备真产物
   // （`--segments/--probe` > `DSH_BOOT_SEGMENTS`/`DSH_BOOT_PROBE` > `.deploy-tmp/boot-budget/`）：

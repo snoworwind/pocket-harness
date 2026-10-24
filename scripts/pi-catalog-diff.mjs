@@ -13,7 +13,7 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, rmSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { execSync } from 'node:child_process'
+import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)))
@@ -63,7 +63,8 @@ async function resolveDir(spec) {
     }
     rmSync(dest, { recursive: true, force: true })
     mkdirSync(dest, { recursive: true })
-    execSync(`tar -xzf "${tgz}" -C "${dest}" --strip-components=1`)
+    // 坑 534（R3-23）：路径来自 registry 元数据派生的缓存路径，argv 形态消除 shell 内插面。
+    execFileSync('tar', ['-xzf', tgz, '-C', dest, '--strip-components=1'])
   }
   return dest
 }
