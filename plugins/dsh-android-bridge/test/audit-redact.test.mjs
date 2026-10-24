@@ -23,6 +23,36 @@ test('Bearer 与敏感键值被打码', () => {
   assert.equal(maskCredentialShapes('token="abcdef123456"'), 'token="[redacted]"')
 })
 
+test('JSON 引号键形态被打码（坑 549：与壳侧 LogSanitizer SENSITIVE_KV 同口径）', () => {
+  // writeAudit 的 maskDeep 递归到 args.command 时看到的是原始命令串——模型内联 JSON 载荷
+  // 是最常见形态；旧规则只在裸键上匹配，这一族整族漏掩（与「口径与壳侧一致」的声明相悖，
+  // 壳侧 LogSanitizerTest 的 {"token":"…"} 夹具早已钉住该形态）。
+  assert.equal(
+    maskCredentialShapes('curl --data \'{"password":"hunter2secret"}\' https://api.example.com'),
+    'curl --data \'{"password":"[redacted]"}\' https://api.example.com',
+  )
+  assert.equal(
+    maskCredentialShapes('curl --data \'{"api_key":"abcdef1234567890xyz"}\''),
+    'curl --data \'{"api_key":"[redacted]"}\'',
+  )
+  assert.equal(
+    maskCredentialShapes('echo \'{"client_secret":"supersecretvalue123"}\''),
+    'echo \'{"client_secret":"[redacted]"}\'',
+  )
+})
+
+test('引号串值（含空格）与既有形态回归（坑 549）', () => {
+  // 旧裸 token 字符集 [^\s"'\,;&] 吃不下含空格的引号串值；壳侧用 "[^"]*" 整段掩
+  assert.equal(maskCredentialShapes('password: "my secret phrase"'), 'password: "[redacted]"')
+  assert.equal(maskCredentialShapes('password=hunter2crypto'), 'password=[redacted]')
+  assert.equal(maskCredentialShapes('token="abcdef123456"'), 'token="[redacted]"')
+})
+
+test('掩码幂等（已打码文本再掩不变，坑 549）', () => {
+  const once = maskCredentialShapes('curl --data \'{"password":"hunter2secret"}\' && token="abcdef123456"')
+  assert.equal(maskCredentialShapes(once), once)
+})
+
 test('PEM 私钥整块被打码（含 JSON 转义形态）', () => {
   const raw = '-----BEGIN RSA PRIVATE KEY-----\nMIIEowIBAAKCAQEA\n-----END RSA PRIVATE KEY-----\nnext'
   const out = maskCredentialShapes(raw)
