@@ -31,6 +31,11 @@
 
 ## 已完成
 
+## 全量复审轮（2026-10-24 晚，对当日全部合入 `git diff 8c99c00..238275e`（#116-#127）的收口复审；坑 549）
+
+- **坑 549（P2）**：bridge `maskCredentialShapes` 键值规则漏掉 JSON 引号键形态（`{"password":"x"}` 整族）与含空格引号串值（`password: "my secret phrase"`）——`{"api_key":"…"}` 原样落 audit.ndjson，「口径与壳侧 LogSanitizer 一致」的声明失守（壳侧 `["']?…["']?` + `"[^"]*"` 早已覆盖，LogSanitizerTest 夹具钉住）。前两轮复审只验了规则序/幂等/保引号，没拿壳侧已覆盖形态族做差集。已修：键值规则拆两条（引号串值整段 + 裸 token 兜底，键清单逐项对齐壳侧 SENSITIVE_KV 含 id_token/credentials），audit-redact 新增三组反证 + 幂等用例，bridge `npm test` 175/175。**残余（双方共有，如实登记）**：JSON 转义形态（`\"password\":\"x\"`）键与冒号间被反斜杠隔开，桥侧与壳侧规则都不掩——只影响瞬态 .live.ndjson 显示路径（持久化审计路径掩解析后的原始值，已覆盖），厂商密钥/Bearer 形态仍被各自规则掩住；与 known-gaps 的 LogSanitizer 分块残余同族，待独立 PR。**未做设备验证**（纯字符串规则，无设备行为面）。
+- 本轮同时复核确认无缺陷的点（不另开条目）：NotifyDecisionQueue HMAC 全链（canonical v2 长度前缀、双钥匙验签、compact 经 serialize 重签、requestId 形状门与 requestIdFor 产出一致）、VdisplayController 锁内重查（monitor 可重入、判据同源）、LinuxAssetIO 443/userInfo 双判据、LogSanitizer 孤儿 PEM 双方向闭合（含同场叠加）、ConsoleActivity authority 钉死、ShellOps timeoutMs 钳制、MuxClient 分片总量上限、ControlPoller 错误体截读、EngineTransport 常时比较、shell-termux fence 重盖与 WeakMap 键同步、host-web-compat 函数替换、BrowserBody 恢复地址复验三元链、子仓/插件 lib 构建产物同步状态（termux/client-ui/bridge 的 lib 均为 gitignore 构建产物不入树，host-web-compat lib 即源码已跟踪）、被删 build-snapshot-arm64 无活引用、pr-gate 三态退出码与哨兵、check-gate-skips 白名单与聚合入口实际传参一致、门禁脚本 shellQuote/argv 改造、docs 台账与 changelog 记账一致。
+
 ## 复审二轮（2026-10-24 深夜，对当日全部合入 `git diff 8c99c00..5ce2613` 的三路独立复审；坑 544-548）
 
 - **坑 544（P2）**：canonical 裸 `|` 拼接可被字段重切——合法签名行在字段值含 `|` 时可构造出 canonical 字节相同的另一条 Decision。已升 v2 长度前缀（切分唯一）；v1 行 fail-closed 丢弃（未发布无存量）。反证：两 Decision v1 同串/v2 不同 + 含竖线往返精确。

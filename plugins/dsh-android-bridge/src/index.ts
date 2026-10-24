@@ -160,7 +160,16 @@ const CREDENTIAL_SHAPE_RULES: Array<[RegExp, string]> = [
   [/\bAKIA[0-9A-Z]{16}/g, '[redacted]'],
   // token 字符集排除引号与反斜杠：外层引号必须原样保留，JSON 转义边界不被吃掉
   [/\b(Bearer\s+)[^\s"'\\]+/gi, '$1[redacted]'],
-  [/((?:api[_-]?key|apikey|access[_-]?token|auth[_-]?token|refresh[_-]?token|client[_-]?secret|secret|password|passwd|credential|token)\s*[:=：]\s*)(["']?)([^\s"'\\,;&]{4,})\2/gi, '$1$2[redacted]$2'],
+  // 敏感键名键值（坑 549）：键名允许带引号——`{"password":"x"}` 这类 JSON 载荷是模型在
+  // 命令里内联凭据的最常见形态（writeAudit 的 maskDeep 看到的正是这种原始串），旧规则只在
+  // 裸键上匹配，引号键整族漏掩。键清单与壳侧 LogSanitizer SENSITIVE_KV 逐项对齐（含
+  // id_token/credentials）。值先按引号串整段处理（支持含空格的 "my secret phrase"——裸
+  // token 字符集吃不下），引号原样保留；裸 token 走第二条。
+  [
+    /((["']?)(?:api[_-]?key|apikey|access[_-]?token|refresh[_-]?token|auth[_-]?token|id[_-]?token|client[_-]?secret|secret|password|passwd|credential|credentials|token)\2\s*[:=：]\s*)(["'])(?:(?!\3)[^\\]|\\.)*\3/gi,
+    '$1$3[redacted]$3',
+  ],
+  [/((["']?)(?:api[_-]?key|apikey|access[_-]?token|refresh[_-]?token|auth[_-]?token|id[_-]?token|client[_-]?secret|secret|password|passwd|credential|credentials|token)\2\s*[:=：]\s*)[^\s"'\\,;&]+/gi, '$1[redacted]'],
   [/-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z0-9 ]*PRIVATE KEY-----/g, '[redacted-private-key]'],
 ]
 
