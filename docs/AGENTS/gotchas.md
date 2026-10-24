@@ -3048,15 +3048,15 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 
 513. **安全模式 prompt / 401 兜底把未脱敏日志尾巴（含引擎启动令牌）写入系统剪贴板（R3-02，2026-10-24 登记）**
 
-    现象：`buildSafeModePrompt`（SafeMode.kt:685-708）把 `logTail` 逐字拼进 prompt，`SafeMode.copyToClipboard` 直写系统剪贴板；两条调用链（GuidePageRenderer.kt:489-512 的安全模式按钮、MainActivity.kt:1461-1468 的 401 兜底）的 logTail 都来自 `readFailureContext`/`PluginMounts.readEngineLogTail` 原文。engine.log 含 `dsh web: ...?token=`（EngineAuth.kt:51），违反 #184「令牌行不得进入外发文本」——该纪律只覆盖了 copyGuideLog/tailEngineLog，漏了这两条外发出口。真因：脱敏只挂在个别出口而非 prompt 构造咽喉。修法：`buildSafeModePrompt` 内统一 `EngineAuth.redact` + 单测反证。**登记，未修复。**
+    现象：`buildSafeModePrompt`（SafeMode.kt:685-708）把 `logTail` 逐字拼进 prompt，`SafeMode.copyToClipboard` 直写系统剪贴板；两条调用链（GuidePageRenderer.kt:489-512 的安全模式按钮、MainActivity.kt:1461-1468 的 401 兜底）的 logTail 都来自 `readFailureContext`/`PluginMounts.readEngineLogTail` 原文。engine.log 含 `dsh web: ...?token=`（EngineAuth.kt:51），违反 #184「令牌行不得进入外发文本」——该纪律只覆盖了 copyGuideLog/tailEngineLog，漏了这两条外发出口。真因：脱敏只挂在个别出口而非 prompt 构造咽喉。`buildSafeModePrompt` 在构造咽喉统一 `EngineAuth.redact`，两条剪贴板出口（安全模式按钮 / 401 兜底）同时收口。复验：SafeModeTest 新增「令牌行必须打码、非敏感行保留」反证通过；壳侧批全量单测通过。**未做设备验证。**
 
 514. **调试日志日文件出口只脱敏令牌、不过 LogSanitizer（R3-03，2026-10-24 登记）**
 
-    现象：`LogCollector.appendToDayFile`（LogCollector.kt:1025-1034）只过 `EngineAuth.redact`（仅 `?token=` 形态）就把全部采集内容（logcat 自进程 + engine.log 尾巴，含命令与模型对话）写入共享存储 `Documents/dshdata/log/dsh-<date>.log`；对照 LogShare 打包出口对同内容全条目 `LogSanitizer.sanitizeOrNull` fail-closed。用户对话中粘贴的 `sk-` 密钥/Cookie/PEM 明文沉淀在共享存储，持存储权限的应用可离线收割。真因：LogSanitizer（0.14.6）落地晚于日文件出口，未回灌；两个出口口径双标。修法：appendToDayFile 复用 LogSanitizer（失败丢条计数）。**登记，未修复。**
+    现象：`LogCollector.appendToDayFile`（LogCollector.kt:1025-1034）只过 `EngineAuth.redact`（仅 `?token=` 形态）就把全部采集内容（logcat 自进程 + engine.log 尾巴，含命令与模型对话）写入共享存储 `Documents/dshdata/log/dsh-<date>.log`；对照 LogShare 打包出口对同内容全条目 `LogSanitizer.sanitizeOrNull` fail-closed。用户对话中粘贴的 `sk-` 密钥/Cookie/PEM 明文沉淀在共享存储，持存储权限的应用可离线收割。真因：LogSanitizer（0.14.6）落地晚于日文件出口，未回灌；两个出口口径双标。`appendToDayFile` 改过 `LogSanitizer.sanitizeOrNull`（其内部已复用 EngineAuth.redact），失败 fail-closed 丢段并走 logcat 留痕计数。复验：LogSanitizerTest 既有七类正反例覆盖 + 壳侧批全量单测通过。**未做设备验证。**
 
 515. **VdisplayController.create 资源上限 TOCTOU，并发可突破 MAX_VIRTUAL_DISPLAYS=1（R3-04，2026-10-24 登记）**
 
-    现象：`create()` 先锁外快照 `records.size`（VdisplayController.kt:364），再 `ShizukuTransport.ensureBound`（binder 往返拉大窗口），锁内创建块（:385）不重查——`:371` 的上限检查用的是陈旧快照（死代码）。三条真实并发入口：控制队列线程（ControlPoller.kt:67）、WebView JavaBridge 线程（MainActivity.kt:1340）、binder 线程（DeviceControlService.kt:669）。真因：上限判定与资源创建分属两个临界区。后果是特权资源（VirtualDisplay+ImageReader+HandlerThread）上限被绕过，非范围绕过。修法：查空+创建合并进同一临界区、锁内重查。**登记，未修复。**
+    现象：`create()` 先锁外快照 `records.size`（VdisplayController.kt:364），再 `ShizukuTransport.ensureBound`（binder 往返拉大窗口），锁内创建块（:385）不重查——`:371` 的上限检查用的是陈旧快照（死代码）。三条真实并发入口：控制队列线程（ControlPoller.kt:67）、WebView JavaBridge 线程（MainActivity.kt:1340）、binder 线程（DeviceControlService.kt:669）。真因：上限判定与资源创建分属两个临界区。后果是特权资源（VirtualDisplay+ImageReader+HandlerThread）上限被绕过，非范围绕过。查空 + 上限 + 创建合并进同一 `synchronized(lock)` 临界区、锁内重查，竞态窗口由代码结构消除。复验：编译与全量单测通过。**设备侧三入口并发未做设备验证。**
 
 516. **引擎 overlay 第三方闭包 sha512 取自同信道元数据且缓存命中免复核（R3-05，2026-10-24 登记）**
 
@@ -3096,27 +3096,27 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 
 525. **relay 准入令牌非常量时间比较（R3-14，2026-10-24 登记）**
 
-    现象：`EngineTransport.admissionAuthorized`（:37-43）用字符串 `==` 逐字符短路比较 admission token（header 与 cookie 两分支）。本机任意 app 可连 127.0.0.1:3080 以关闭时机差异测时逐前缀猜测。实际增量有限（引擎 /api 全部还需签名 cookie 401 围栏），但修复成本一行。修法：`MessageDigest.isEqual`。**登记，未修复。**
+    现象：`EngineTransport.admissionAuthorized`（:37-43）用字符串 `==` 逐字符短路比较 admission token（header 与 cookie 两分支）。本机任意 app 可连 127.0.0.1:3080 以关闭时机差异测时逐前缀猜测。实际增量有限（引擎 /api 全部还需签名 cookie 401 围栏），但修复成本一行。两分支改 `MessageDigest.isEqual` 常量时间比较。复验：EngineTransportPolicyTest 既有正反例（含前缀/后缀变体）通过。
 
 526. **MuxClient 分片消息无总量上限；ControlPoller 错误体整读（R3-15，2026-10-24 登记）**
 
-    现象：`MuxClient` 的 MAX_FRAME 只约束单帧，continuation 帧对 textBuf 无界追加（:153-185）；`ControlPoller.post` 对 errorStream `readText()` 整读后才 take(200)（:212）。失控/被攻陷引擎（同 UID）可把壳进程 OOM。违反 ProcIo.kt:21「一切子进程输出必须 readBounded」纪律。修法：continuation 累计超 MAX_FRAME 即断开；错误体走有界读。**登记，未修复。**
+    现象：`MuxClient` 的 MAX_FRAME 只约束单帧，continuation 帧对 textBuf 无界追加（:153-185）；`ControlPoller.post` 对 errorStream `readText()` 整读后才 take(200)（:212）。失控/被攻陷引擎（同 UID）可把壳进程 OOM。违反 ProcIo.kt:21「一切子进程输出必须 readBounded」纪律。continuation 累计超 MAX_FRAME 即断开重连；ControlPoller 错误体改有界读。复验：编译与全量单测通过。
 
 527. **LinuxAssetIO 来源白名单未钉端口（R3-16，2026-10-24 登记）**
 
-    现象：`urlVerdict`/`hopVerdict`（LinuxAssetIO.kt:91-120）只查 host 白名单与路径前缀，不查 `url.port == 443`，`https://github.com:8443/...` 可过。现实不可达（HTTPS 主机名校验），纵深补齐。修法：非默认端口一律拒绝。**登记，未修复。**
+    现象：`urlVerdict`/`hopVerdict`（LinuxAssetIO.kt:91-120）只查 host 白名单与路径前缀，不查 `url.port == 443`，`https://github.com:8443/...` 可过。现实不可达（HTTPS 主机名校验），纵深补齐。urlVerdict/hopVerdict 钉死 443。复验：LinuxAssetIOTest 新增非 443 正反两端负控通过。
 
 528. **ConsoleActivity 特权 consoleBridge WebView 无导航来源锁定（R3-17，2026-10-24 登记）**
 
-    现象：ConsoleActivity 的 WebView 只覆写 onPageFinished（:104-112），无 `shouldOverrideUrlLoading`——一旦页面发生任何导航，持有 bash stdin 桥（consoleBridge）的接口会继续暴露给新 origin。当前 console.html 无链接化输出、Activity 未导出，无触发路径；属回归面。修法：非 asset console.html 导航一律拒绝或先 removeJavascriptInterface。**登记，未修复。**
+    现象：ConsoleActivity 的 WebView 只覆写 onPageFinished（:104-112），无 `shouldOverrideUrlLoading`——一旦页面发生任何导航，持有 bash stdin 桥（consoleBridge）的接口会继续暴露给新 origin。当前 console.html 无链接化输出、Activity 未导出，无触发路径；属回归面。ConsoleActivity 加 `shouldOverrideUrlLoading`，非 `file:///android_asset/console.html` 导航一律拒绝。复验：编译通过。**设备侧触发路径未验（当前页面本无链接）。**
 
 529. **MainActivity dsh.notify.session extra 无形态校验（R3-18，2026-10-24 登记）**
 
-    现象：`consumeNotifyRoute` 读 `getStringExtra("dsh.notify.session")` 无校验直达页面 JS 路由（MainActivity.kt:604-638）；经 jsString 编码无注入面，影响≈恶意应用代发一次会话打开请求。修法：字符白名单后再路由。**登记，未修复。**
+    现象：`consumeNotifyRoute` 读 `getStringExtra("dsh.notify.session")` 无校验直达页面 JS 路由（MainActivity.kt:604-638）；经 jsString 编码无注入面，影响≈恶意应用代发一次会话打开请求。session extra 加 `[A-Za-z0-9_.\-:]{1,128}` 形态白名单。复验：编译与全量单测通过。
 
 530. **ShellOps/RootAccess timeoutMs 无上界钳制（R3-19，2026-10-24 登记）**
 
-    现象：`args.optInt("timeoutMs", 20_000)` 直接透传 `runShell`/`execRoot`（ShellOps.kt:139-143/156），模型可传超大/负值长期占用串行特权 shell 通道。同仓 VdisplayController.input 有 `coerceIn(1, 20_000)` 先例。修法：coerceIn 下界钳制。**登记，未修复。**
+    现象：`args.optInt("timeoutMs", 20_000)` 直接透传 `runShell`/`execRoot`（ShellOps.kt:139-143/156），模型可传超大/负值长期占用串行特权 shell 通道。同仓 VdisplayController.input 有 `coerceIn(1, 20_000)` 先例。`timeoutMs` coerceIn(1_000, 120_000)，su 回退共用同一钳制值。复验：编译与全量单测通过。
 
 531. **build-snapshot-013.mjs 对 Termux 索引字段不消毒（R3-20，2026-10-24 登记）**
 
@@ -3144,4 +3144,4 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 
 537. **杂项加固批（R3-26/27/28/29/30/31/32/33/34/35/36/37，2026-10-24 登记）**
 
-    一次登记十二项 low：浏览器「外部打开」对持久化恢复地址跳过协议白名单复验（BrowserBody.tsx:59,73,99-101）；shell-termux fence 漏 dshEnv 通道（src/index.ts:141-150/200，受信调用方面）；host-web-compat 字符串替换注入遇 `$&` 序列会被替换语义改写（lib/index.js:1118-1120/960，当前模板无此序列）；AdbKeyboardService 注释描述的「当前输入法校验」不存在（:22-26 vs :113-121）；SafeMode.newId 用 java.util.Random（:548-550）；check-patch-test-manifest 白名单缺 stale 方向（:104）；check-tool-name-promises 只扫 plugins/*/src（:63-84）；NDK 以 SHA-1 钉定（build-apk-source.yml:496-505）；auto-approve.mjs 无条件自动批准无确认 gate；pr-gate 敏感信息扫描模式窄（pr-gate.yml:73-79）；托管 PR Gate 可被单个仓库变量休眠且 skipped 满足 required checks；FileProvider external_shared 全盘映射无门禁断言。各项修法与状态见 [R3 修复账本](SECURITY-REMEDIATION-2026-10-24-R3.md)。**登记，未修复。**
+    一次登记十二项 low：浏览器「外部打开」对持久化恢复地址跳过协议白名单复验（BrowserBody.tsx:59,73,99-101）；shell-termux fence 漏 dshEnv 通道（src/index.ts:141-150/200，受信调用方面）；host-web-compat 字符串替换注入遇 `$&` 序列会被替换语义改写（lib/index.js:1118-1120/960，当前模板无此序列）；AdbKeyboardService 注释描述的「当前输入法校验」不存在（:22-26 vs :113-121，已按实现现状更正注释与 Manifest 引用）；SafeMode.newId 用 java.util.Random（:548-550，已改 SecureRandom）；check-patch-test-manifest 白名单缺 stale 方向（:104）；check-tool-name-promises 只扫 plugins/*/src（:63-84）；NDK 以 SHA-1 钉定（build-apk-source.yml:496-505）；auto-approve.mjs 无条件自动批准无确认 gate；pr-gate 敏感信息扫描模式窄（pr-gate.yml:73-79）；托管 PR Gate 可被单个仓库变量休眠且 skipped 满足 required checks；FileProvider external_shared 全盘映射无门禁断言。各项修法与状态见 [R3 修复账本](SECURITY-REMEDIATION-2026-10-24-R3.md)。**登记，未修复。**
