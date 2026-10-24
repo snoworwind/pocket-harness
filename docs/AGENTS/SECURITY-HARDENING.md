@@ -16,6 +16,8 @@
 
 这是持续加固目标。完成一批修复后，仍需记录剩余风险、检查覆盖和证据缺口；文档中的目标不构成“没有漏洞”或“已经全面验收”的结论。
 
+安全审计与漏洞研究统一采用 Cloudflare 的 [`security-audit` skill](SECURITY-AUDIT-PROCESS.md)，其原始仓库为 [cloudflare/security-audit-skill](https://github.com/cloudflare/security-audit-skill)。本项目审计材料归档在 `docs/AGENTS/security-audit/`，具体阶段、证据约束与归档清单见流程文档。
+
 ## 铁律：APK 只能从源码构建
 
 本仓**任何 APK 都必须由来源链产出**，禁止用 `build-apk-013.ps1`、`build-release.ps1` 或其他本地/协调仓链产出、归集或发布 APK。理由：只有来源链的输入面可从源码复核——它只构建**已提交 HEAD**、在**隔离检出**内执行、**不读 `base/*.tar.xz` LFS 底座**（Termux 基座由官方验签仓库包组装）、不使用协调仓，并把 `project-component-provenance` / `component-source-provenance` 写进产物。

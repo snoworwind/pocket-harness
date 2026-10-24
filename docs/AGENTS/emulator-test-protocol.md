@@ -1,6 +1,6 @@
 # emulator-test-protocol.md — 模拟器验收规范（代码层 + CDP 层 + ADB 用户实际体验层，三层必跑）
 
-> **现行设备范围（2026-10-18 用户决定）**：仅支持 ARM64。在同一 ARM64 真机完成横竖方向及三层验收；下文 MuMu/x86_64 是历史操作参考，不作为当前候选要求。当前无设备，设备层不得记 PASS。
+> **现行模拟器范围（2026-10-25 用户决定）**：模拟器验收统一使用 Android Studio 的 Google 官方 Android Emulator，运行 Android 16（API 36）Pixel AVD，并选 ARM64-v8a Google APIs 系统映像以匹配本仓 ARM64 产品 APK。MuMu/x86_64 记录仅供历史追溯，不作为当前验收证据。发版候选仍须补充 ARM64 真机验收；缺设备时设备层不得记 PASS。
 
 > 本文件是 `AGENTS.md` §2.1「模拟器测试规范」的**详档**：AGENTS.md 只放强制条款，命令与判据在这里。
 > 一句话：**任一层红都说明这个系统有问题**——代码层红是代码有问题，CDP 层绿而人做不到是交互逻辑错，
@@ -80,11 +80,13 @@ Coordination-only tools and delivery plans are external prerequisites, not files
 
 ## 3. 设备与前置检查（跑之前先过一遍）
 
-设备矩阵、装机命令、CDP 端口与探活见 `AGENTS.md` §2 与 `docs/AGENTS/adb-chain.md`。本规范只列**跑验收前**必须确认的前置：
+设备矩阵、装机命令、CDP 端口与探活见 `AGENTS.md` §2 与 `docs/AGENTS/adb-chain.md`。使用 Android Studio Device Manager 创建 Pixel Phone AVD，在 SDK Manager 安装 Android 16（API 36）官方 ARM64-v8a Google APIs 系统映像及最新 Android Emulator。Android 官方步骤见 [Get Android 16](https://developer.android.com/about/versions/16/get)；系统映像按 ABI 的说明见 [SDK Platform release notes](https://developer.android.com/tools/releases/platforms)。本规范只列**跑验收前**必须确认的前置：
 
 ```bash
-# 0. 设备在线（MuMu 开发主用 16416 竖屏 / 16384 横屏）
+# 0. Android 16 AVD 在线；serial 从设备清单读取，不硬编码
 adb devices -l
+adb -s <serial> shell getprop ro.build.version.sdk       # 必须为 36
+adb -s <serial> shell getprop ro.product.cpu.abi         # 必须为 arm64-v8a
 
 # 1. 快照就绪：唯一完成标志 = 指纹在场且 marker 已消失；刷新期间禁跑（假失败）
 #    指纹与 marker 都在 filesDir 根（context.filesDir），不在 files/home/ 下
@@ -113,8 +115,7 @@ adb -s <s> shell appops reset com.snoworwind.pocketharness                 # 兜
 
 ## 4. B 轨操作原语（可直接复制）
 
-坐标基准：MuMu x86_64 **900x1600 / density 320**（竖屏 16416）；横屏 16384 为真 1600x900。
-**换机型/分辨率必须重新校准**，并把每步截图落到证据目录（脚本先例：`scripts/e2e-provider-ui.ps1` 的 `Shot` / `Tap` / `TypeText` 三原语）。
+坐标没有通用固定值。每个 Android 16 AVD 都须按当前 Pixel 设备定义、分辨率、density 和方向重新校准；MuMu 脚本中的旧坐标只作操作原语示例，不能直接复用。记录 AVD profile、ABI、分辨率、density 与方向，并把每步截图落到证据目录（脚本先例：`scripts/e2e-provider-ui.ps1` 的 `Shot` / `Tap` / `TypeText` 三原语）。
 
 ```bash
 # 截图（B 轨核心证据；每步一张）
@@ -176,12 +177,12 @@ PR 描述里贴**结论表**（每行一条用户动作）：
 
 ## 7. 方向与 ABI 矩阵
 
-| 阶段 | 竖屏 16416 | 横屏 16384 | arm64 真机 |
+| 阶段 | Android 16 AVD 竖屏 | Android 16 AVD 横屏 | arm64 真机 |
 |---|---|---|---|
-| 开发循环（每次改 UI 可见行为） | 必跑 | 几何/布局类改动必跑 | 不要求 |
+| 开发循环（每次改 UI 可见行为） | 必跑 | 几何/布局类改动必跑 | 必跑（同一设备竖横屏 tap + 截图） |
 | 发布前 | 必跑 | 必跑 | 必跑（V2425A，arm64 产物） |
 
-说明：debug 包内嵌快照决定 ABI（坑见 `AGENTS.md` §6），x86_64 快照装 arm64 真机必崩——矩阵里「真机」一栏只能用 `-arm64.apk`。
+说明：debug 包内嵌快照决定 ABI（坑见 `AGENTS.md` §6）；AVD 与真机都必须使用 ARM64-v8a 系统/设备并安装 `-arm64.apk`。x86_64 系统映像或旧 x86_64 包不能代替 ARM64 验收。
 
 ## 8. 已知陷阱（会制造假通过/假失败）
 
