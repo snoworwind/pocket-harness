@@ -123,6 +123,9 @@ class LinuxAssetIOTest {
     assertNotNull(LinuxAssetIO.hopVerdict("https://evil.example.com/payload.tar.xz"))
     // 负控：重定向降级到 http 必须被拒
     assertNotNull(LinuxAssetIO.hopVerdict("http://objects.githubusercontent.com/x"))
+    // 负控（坑 527 / R3-16）：白名单主机的非默认端口不放行（endpoint 面收窄到 443）
+    assertNotNull("非 443 端口的资产 URL 不得放行", LinuxAssetIO.urlVerdict("https://github.com:8443/snoworwind/pocket-harness/releases/download/v0.6.0/linux-runtime-plugin.tar.xz"))
+    assertNotNull("非 443 端口的重定向落点不得放行", LinuxAssetIO.hopVerdict("https://objects.githubusercontent.com:8443/x"))
   }
 
   // ── 落点面 ────────────────────────────────────────────────────────────────

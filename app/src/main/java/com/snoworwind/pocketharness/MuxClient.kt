@@ -175,7 +175,13 @@ class MuxClient(
       if (mask != null) for (i in payload.indices) payload[i] = (payload[i].toInt() xor mask[i % 4].toInt()).toByte()
       when (opcode) {
         0x1 -> { textBuf.reset(); textBuf.write(payload); if (fin) emitText() }
-        0x0 -> { textBuf.write(payload); if (fin) emitText() }
+        0x0 -> {
+          textBuf.write(payload)
+          // 分片聚合也要有总量上限（坑 526）：MAX_FRAME 只约束单帧，失控对端可持续发
+          // continuation 帧把壳进程内存耗尽。超限即断开重连，与单帧超限同一处置。
+          if (textBuf.size() > MAX_FRAME) throw Exception("fragmented message too big: ${textBuf.size()}")
+          if (fin) emitText()
+        }
         0x8 -> { sendFrame(out, 0x8, payload); throw Exception("server close") }
         0x9 -> sendFrame(out, 0xA, payload) // ping → pong（网关心跳，缺席会被 terminate）
         0xA -> {} // pong：忽略

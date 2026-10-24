@@ -760,6 +760,20 @@ class SafeModeTest {
   }
 
   /**
+   * 坑 513（R3-02）：engine.log 尾巴含启动令牌行，prompt 的交付物是系统剪贴板（任意获焦
+   * 应用可读、且用途就是粘给外部渠道）——令牌行必须在构造咽喉处打码，非敏感行保留。
+   */
+  @Test
+  fun `prompt 日志尾巴必须先脱敏令牌行`() {
+    val tail = "dsh web: http://127.0.0.1:3080/?token=abcdef1234567890abcdef1234567890abcdef12\n" +
+      "java.lang.IllegalStateException: boom"
+    val p = buildSafeModePrompt("engine-start-false", "detail", tail, safeModeActive = true)
+    assertFalse("启动令牌不得进入剪贴板 prompt", p.contains("abcdef1234567890"))
+    assertTrue("打码痕迹必须在场", p.contains("token=***"))
+    assertTrue("非敏感行必须保留（不得整段吞掉）", p.contains("IllegalStateException: boom"))
+  }
+
+  /**
    * 安全关键：safe 态下 **7 条 `disabled: true` 一条都不能少**（lead 实测清单）。
    *
    * 其中 `client-hmr` 是安全关键项：漏掉它会重开 `/plugins/events` 无鉴权 SSE

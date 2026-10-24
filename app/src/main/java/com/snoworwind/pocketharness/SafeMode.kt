@@ -544,10 +544,10 @@ internal object SafeMode {
   /** 急救/快照共用目录：`<home>/.dsh/undo-snapshots/auto`（平铺，与 `UndoGate` 同源）。 */
   internal fun autoDir(engine: EngineManager): File = File(File(File(engine.homeDir, ".dsh"), "undo-snapshots"), "auto")
 
-  /** 入档 id（生产用；时间戳 + 短随机，与离线 CLI 同形）。 */
+  /** 入档 id（生产用；时间戳 + 短随机，与离线 CLI 同形）。id 不承担安全职能，随机源仍与仓内纪律对齐。 */
   internal fun newId(): String =
     java.time.Instant.now().toString().replace(Regex("[^0-9]"), "").take(14) +
-      "-" + Integer.toHexString(java.util.Random().nextInt(0x10000)).padStart(4, '0')
+      "-" + Integer.toHexString(java.security.SecureRandom().nextInt(0x10000)).padStart(4, '0')
 
   /**
    * 读 `boot-fail.log` 尾巴（启动失败的唯一现场快照；失败即回空串，不抛）。
@@ -678,7 +678,10 @@ internal object SafeMode {
  *
  * @param stage 失败阶段（`LogCollector.writeBootFail` 的 stage，如 engine-start-false）。
  * @param detail 失败详情（含异常类名/消息；可为空）。
- * @param logTail `boot-fail.log` / `engine.log` 的尾巴（可为空字符串）。
+ * @param logTail `boot-fail.log` / `engine.log` 的尾巴（可为空字符串）。**在本函数内脱敏**
+ *  （坑 513 / R3-02）：engine.log 含 `dsh web: ...?token=` 启动令牌行，本 prompt 的交付物是
+ *  系统剪贴板（Android 任意获焦应用可读、且设计用途就是粘给外部渠道），令牌行不得随行——
+ *  与 #184「令牌行不得进入外发文本」同纪律，且必须在构造咽喉处套（个别出口套会再漏）。
  * @param safeModeActive 生成 prompt 时安全模式是否已开启（决定写「已开启」还是「即将开启」）。
  * @returns 可直接写入剪贴板的 prompt；**非空**（即使输入全空也给出可用的最小指令）。
  */
@@ -700,7 +703,7 @@ internal fun buildSafeModePrompt(
   sb.append("【启动失败现场】").append('\n')
   sb.append("stage: ").append(stage?.takeIf { it.isNotBlank() } ?: "(未记录)").append('\n')
   sb.append("detail: ").append(detail?.takeIf { it.isNotBlank() } ?: "(未记录)").append('\n')
-  val tail = logTail?.trim().orEmpty()
+  val tail = EngineAuth.redact(logTail?.trim().orEmpty())
   sb.append('\n')
   sb.append("【日志尾巴】").append('\n')
   sb.append(if (tail.isEmpty()) "(未取到日志尾巴；可打开控制台执行 dsh safe status 后再取一次)" else tail).append('\n')

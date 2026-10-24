@@ -1020,18 +1020,30 @@ object LogCollector {
   }
 
   /** Daily rotation: dsh-<date>.log, rotating to dsh-<date>.1.log when over the size limit.
-   *  出口脱敏（0.13.8 #184）：本函数是所有日志落盘（事件/logcat/engine.log 尾巴）的唯一
-   *  咽喉，写前过 EngineAuth.redact——engine.log 本体不动（鉴权链依赖），脱敏只作用于这份副本。 */
+   *  出口脱敏（0.13.8 #184；坑 514 / R3-03 补全）：本函数是所有日志落盘（事件/logcat/engine.log
+   *  尾巴）的唯一咽喉。这份副本落在共享存储 Documents/dshdata/log/，持存储权限的应用可读，而采集
+   *  内容含命令与模型对话——因此除 EngineAuth.redact（由 LogSanitizer 内部复用）外，还必须过
+   *  LogSanitizer 七类规则（PEM/授权头/Cookie/厂商密钥/敏感键值/环境变量导出/URL 敏感参数），
+   *  与 LogShare 打包出口同一口径，不再双标。engine.log 本体不动（鉴权链依赖）。
+   *  fail-closed：脱敏抛异常整段丢弃并走 logcat 留痕（不得递归回本咽喉，也不得原样落盘）。 */
   private fun appendToDayFile(ctx: Context, text: String) {
     val day = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
     val dir = currentDir(ctx)
-    val safe = EngineAuth.redact(text)
+    val safe = LogSanitizer.sanitizeOrNull(text)
+    if (safe == null) {
+      sanitizeFailedChunks += 1
+      Log.w(TAG, "day-file chunk dropped (sanitize failed), dropped=$sanitizeFailedChunks")
+      return
+    }
     val file = File(dir, "dsh-$day.log")
     if (file.exists() && file.length() > MAX_FILE_BYTES) {
       rotateDayFile(file, File(dir, "dsh-$day.1.log"), File(dir, "dsh-$day.2.log"))
     }
     file.appendText(safe)
   }
+
+  /** 脱敏失败被丢弃的落盘段计数（诊断面：异常时非零即说明该时段日志不完整）。 */
+  @Volatile private var sanitizeFailedChunks: Int = 0
 
   /**
    * 轮转（#211.3，JVM 单测；rename/delete 可注入）：

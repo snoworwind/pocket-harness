@@ -38,7 +38,7 @@
       android:foregroundServiceType="dataSync" />
 
     <!-- 0.13.2 ADB 输入通道 IME（ADBKeyboard 协议；android_ui_input 中文输入；
-         仅在被选为当前输入法时提交文本，见 AdbKeyboardService.canCommit）。 -->
+         实例在场即本 IME 被选中（系统按需实例化 IME 服务），handle() 校验实例与输入连接，见 AdbKeyboardService）。 -->
     <service
       android:name=".AdbKeyboardService"
       android:exported="true"
