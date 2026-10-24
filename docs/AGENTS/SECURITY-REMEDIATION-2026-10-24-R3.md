@@ -14,12 +14,14 @@
 | PR-5 | 插件面批（R3-09/24/25/26） | 插件 L2 | 插件 npm test + lib 同步 | |
 | PR-5 | 子仓批（R3-27/28） | L1/L3 | 各子仓测试 | |
 | PR-7 | 构建链批（R3-05/11/12/20/33） | L1 供应链 | 来源链自检/负控 | |
-| PR-8 | CI/配置批（R3-35/36/37） | L1 | 静态门禁 | |
+| PR-6 | 清理与 CI 批（R3-11/35/36/37） | L1 | 静态门禁 + 负控 | |
 | 延后 | Gradle dependency verification（C1-F3）、浏览器 LAN 警示（R3-13 缓解面） | — | 需网络/设计评审，独立 PR | |
 
 每批合入前：`node scripts/ci/local-gate.mjs` 本地自查（CI 亦自动跑）。涉及壳侧 Kotlin 的批次属高风险面即时验档，**当前无在线 ARM64 设备：三层验收缺失，PR 描述显式标注「未做设备验证」**，进入发版候选前必须补验。
 
 ## 已完成
+
+- **PR-6（R3-11/35/36/37）清理与 CI 批**：遗留 build-snapshot-arm64.mjs 删除（EXECUTION-MAP 摘行，code-map 通过）；pr-gate 敏感信息扫描扩模式族与目录面（测试文件排除——脱敏器单测必须内置字面假键）；gate-sentinel 恒跑 job（PR_GATE_MODE != on 即红）；check-manifest-hardening 加 FileProvider 调用方 allowlist（负控：移出即 FAIL）。
 
 <<<<<<< HEAD
 - **PR-5（R3-27 + R3-28）子仓批**：shell-termux 的 resolve 在 spec 层重盖 fence 三键（父类合并序 dshEnv 最晚，受信通道可顶掉标签；返回新对象并同步 WeakMap 键），`node --test` 4/4；host-web-compat 两处注入改函数替换（消除 `$&` 替换语义整类风险），`smoke-injections` 全过。

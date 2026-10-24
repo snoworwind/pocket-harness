@@ -295,6 +295,33 @@ const checkExcludes = (label, file, groups) => {
 checkExcludes('backup_rules.xml', join(MAIN, 'res', 'xml', 'backup_rules.xml'), [null])
 checkExcludes('data_extraction_rules.xml', join(MAIN, 'res', 'xml', 'data_extraction_rules.xml'), ['cloud-backup', 'device-transfer'])
 
+// ── FileProvider external_shared 全盘映射的调用方封口（坑 537 / R3-37）──────
+// file_paths.xml 把整个外部存储根映射为 external_shared（0.13.7 有意设计，运行时白名单
+// 在 PathOpen/FileIncoming）。宽映射本身不收窄，但**生成 content:// 的调用方**必须锁定：
+// 任何新代码直接对映射面发 URI 都会把全盘爆炸半径带进来。allowlist 之外的调用方即判红。
+const FILE_PROVIDER_URI_ALLOWLIST = new Set([
+  'FileIncoming.kt',   // 来件/阅读器（引擎驱动，运行时窄白名单）
+  'LogShare.kt',       // 诊断包分享（只读候选白名单 + LogSanitizer fail-closed）
+  'PathOpen.kt',       // Files 面用户介导 chooser（isChooserAllowed 判据）
+])
+{
+  const { readdirSync } = await import('node:fs')
+  const ktDir = join(MAIN, 'java', 'com', 'snoworwind', 'pocketharness')
+  const callers = []
+  const walkKt = (dir) => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const p2 = join(dir, entry.name)
+      if (entry.isDirectory()) { walkKt(p2); continue }
+      if (!entry.name.endsWith('.kt')) continue
+      if (read(p2).includes('getUriForFile')) callers.push(entry.name)
+    }
+  }
+  walkKt(ktDir)
+  const rogue = callers.filter((f) => !FILE_PROVIDER_URI_ALLOWLIST.has(f))
+  check('FileProvider content:// 调用方 ⊆ allowlist（' + FILE_PROVIDER_URI_ALLOWLIST.size + ' 项）',
+    rogue.length === 0, '映射面外泄: ' + rogue.join(', '))
+}
+
 if (failures.length > 0) {
   console.error('MANIFEST-HARDENING FAILED: ' + failures.join('；'))
   process.exit(1)

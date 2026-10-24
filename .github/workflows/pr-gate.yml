@@ -71,8 +71,16 @@ jobs:
           fi
           echo "无冲突标记"
       - name: 敏感信息扫描
+        # 坑 537（R3-35）：模式族与目录面扩充——sk-ant-（连字符断开旧式 sk- 匹配）、gho_、
+        # github_pat_、AIza（Google）、xai-（xAI）、PEM 私钥块、Slack/Discord webhook；
+        # 目录补 release/、final-acceptance/、webpages/、根级 notes.md。
+        # 测试文件排除：脱敏器单测必须内置**字面假密钥**夹具（LogSanitizerTest 等），
+        # 扫它们只会打假靶；真实泄漏审计面在非测试源码与文档。
         run: |
-          if grep -rEn '(sk-[A-Za-z0-9]{16,}|ghp_[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16}|xox[baprs]-[A-Za-z0-9-]{10,})' docs app/src scripts .github 2>/dev/null; then
+          PAT='(sk-(ant-)?[A-Za-z0-9_-]{16,}|ghp_[A-Za-z0-9]{20,}|gho_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{30,}|xox[baprs]-[A-Za-z0-9-]{10,}|xai-[A-Za-z0-9]{20,}|-----BEGIN (RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----|hooks\.slack\.com/services/|discord(app)?\.com/api/webhooks/)'
+          if grep -rEn "$PAT" \
+              --exclude='*Test.kt' --exclude='*.test.mjs' --exclude='*.test.ts' --exclude='*.spec.ts' --exclude='*.spec.tsx' --exclude='*.test.ps1' \
+              docs app/src scripts .github release final-acceptance webpages notes.md 2>/dev/null; then
             echo "::error::检测到疑似密钥/令牌"
             exit 1
           fi
@@ -320,3 +328,21 @@ jobs:
         run: |
           node --test scripts/tests/maintenance-docs.test.mjs
           node scripts/check-maintenance-docs.mjs
+
+  # 在岗哨兵（坑 537 / R3-36）：其余 job 全部以 vars.PR_GATE_MODE == 'on' 为前提——变量被误删
+  # 或被关闭时它们显示 Skipped，而 GitHub 把 skipped 计为 required check 通过，托管门禁整体
+  # 静默休眠。本 job 恒跑（不受变量控制）：门禁被关时它必须红，恢复必须是一个显式可审计的编辑。
+  gate-sentinel:
+    name: 门禁在岗哨兵（PR_GATE_MODE 必须 on）
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: assert
+        env:
+          PR_GATE_MODE: ${{ vars.PR_GATE_MODE }}
+        run: |
+          if [ "$PR_GATE_MODE" != "on" ]; then
+            echo "::error::PR_GATE_MODE != on：托管门禁整体休眠（skipped 的 job 会被 required checks 当作通过）。恢复：仓库 Settings → Variables and secrets → Variables → PR_GATE_MODE=on"
+            exit 1
+          fi
+          echo "PR_GATE_MODE=on，托管门禁在岗"
