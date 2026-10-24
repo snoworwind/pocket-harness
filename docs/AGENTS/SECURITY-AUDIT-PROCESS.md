@@ -33,10 +33,10 @@ npx skills add https://github.com/cloudflare/security-audit-skill --skill securi
 
 ## 归档位置
 
-每次审计在 `docs/AGENTS/` 下新建 `SECURITY-AUDIT-<短哈希>/run-<N>/`，其中 `<短哈希>` 是被审查提交完整 SHA 的前 7 位，`<N>` 是该提交目录下下一个未使用的轮次序号；必须以被审查提交为准，不得使用当前分支 HEAD 或审计结束时的提交。每份报告正文都要明确记录**审查日期**与**被审查提交完整 SHA**。`run-metadata.json` 也必须记录完整 source ref、审计日期与范围。
+每次审计在仓库同级目录 `../pocket-harness-security-audits/` 下新建 `SECURITY-AUDIT-<短哈希>/run-<N>/`，其中 `<短哈希>` 是被审查提交完整 SHA 的前 7 位，`<N>` 是该提交目录下下一个未使用的轮次序号；必须以被审查提交为准，不得使用当前分支 HEAD 或审计结束时的提交。每份报告正文都要明确记录**审查日期**与**被审查提交完整 SHA**。`run-metadata.json` 也必须记录完整 source ref、审计日期与范围。
 
 同一源提交的多轮或不同范围审计共用短哈希目录，并为每轮新建 `run-<N>/`，不得覆盖已有记录。完整审计按 skill 的产物清单保存 `run-metadata.json`、`architecture.md`、`coverage-ledger.json`、`findings.json`、三个报告及必要的 validator 结果。
 
-仓库根 `.gitignore` 忽略 `docs/AGENTS/SECURITY-AUDIT-*/`，以满足 skill 对用户指定仓内输出目录的条件。full audit 启动前须用 `git check-ignore` 确认整个新目录受忽略规则保护；scratch 按 skill 的隔离要求管理。审计产物只保存在审计者本机的忽略目录中，禁止 `git add`、提交或推送报告、结构化证据、handoff、scratch、未验证候选或秘密。需协作续审时，由审计者按 skill 安全地提供所需材料，不得通过将该目录纳入版本控制来共享。
+审计输出必须位于仓库工作树之外。full audit 启动前解析仓库根与输出根的真实路径，确认输出根不是仓库根或其子目录；不得依赖 `.gitignore` 将仓内路径当作外部存储。根 `.gitignore` 对 `docs/AGENTS/SECURITY-AUDIT-*/` 的规则仅作误写防护，正式产物不得写入该位置。scratch 按 skill 的隔离要求管理。报告、结构化证据、handoff、scratch、未验证候选或秘密均不得加入或推送到任何项目 Git 仓库。需协作续审时，由审计者按 skill 安全地提供所需材料。
 
-仅归档经验证的最终材料，不归档 agent scratch、原始环境变量、凭据、令牌、用户数据或未经核验的目标进程输出。既有平铺审计与修复记录保留原路径，除明确迁移任务外；后续审计在对应短哈希目录中按轮次新增文件或子目录，不覆盖历史记录。
+在仓库外的审计根目录仅归档经验证的最终材料，不归档 agent scratch、原始环境变量、凭据、令牌、用户数据或未经核验的目标进程输出。已提交的历史 Markdown 审计/修复说明作为旧版项目文档保留；新 skill run 的报告和结构化审计数据一律保存在仓库外，并在对应短哈希目录中按轮次新增文件或子目录，不覆盖历史记录。

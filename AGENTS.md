@@ -105,7 +105,7 @@ adb -s <serial> install -r -t out\v<版本>\pocket-harness-v<版本>-arm64.apk
 |---|---|
 | fx2 阶段计划 / 开发候选与验收交接 | `docs/HANDOFF-0.14.5-FX-2-PLAN-2026-10-09.md` / `docs/HANDOFF-0.14.5-FX-2-DEVELOPMENT-2026-10-09.md` |
 | **项目基线 / 未迁移标识** | `docs/AGENTS/BASELINE.md` |
-| **安全审计方法 / 结果归档** | `docs/AGENTS/SECURITY-AUDIT-PROCESS.md`（Cloudflare `security-audit` skill；每次审计存于 `docs/AGENTS/SECURITY-AUDIT-<被审查提交短哈希>/`） |
+| **安全审计方法 / 仓库外结果归档** | `docs/AGENTS/SECURITY-AUDIT-PROCESS.md`（Cloudflare `security-audit` skill；审计输出保存到仓库同级的 `../pocket-harness-security-audits/SECURITY-AUDIT-<被审查提交短哈希>/`） |
 | **Linux 环境调查 / 保留决策（2026-10-19）** | `docs/linux-env-findings/README.md`（原始报告、源码复核、两轮实机、迁移/保留决策） |
 | **构建拆分 / 复用架构（2026-10-19）** | `docs/AGENTS/BUILD-DECOMPOSITION-2026-10-19.md`（组件键、base-lock、双构建、分阶段） |
 | **坑位（历史实锤，权威）** | `docs/AGENTS/gotchas.md`（递增编号，允许空缺；grep 关键词） |
@@ -121,7 +121,7 @@ adb -s <serial> install -r -t out\v<版本>\pocket-harness-v<版本>-arm64.apk
 | 运行顺序 / 嵌套 / 耦合 / 流程图（排查入口） | `docs/AGENTS/EXECUTION-MAP.md` |
 | 模拟器验收规范（代码/CDP/adb 三层 + 真实任务） | `docs/AGENTS/emulator-test-protocol.md` |
 | **版本历史（全量）** | `docs/AGENTS/changelog-archive.md` |
-| **安全审计流程 / 本地归档规则** | `docs/AGENTS/SECURITY-AUDIT-PROCESS.md`（审计产物存于被忽略的本地目录，不提交到仓库） |
+| **安全审计流程 / 仓库外归档规则** | `docs/AGENTS/SECURITY-AUDIT-PROCESS.md`（审计产物存于仓库外，不提交到仓库） |
 | 安全加固分支宗旨、原则与证据要求 | `docs/AGENTS/SECURITY-HARDENING.md` |
 | Hard / Soft / Data 持久化路径、SharedPreferences keys、恢复来源 | `docs/AGENTS/PERSISTENT-DATA.md` |
 

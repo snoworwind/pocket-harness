@@ -29,7 +29,7 @@ webpages/dist/
 # 本地临时工作区（排查截图与中间产物）：0.14.0 两次误入提交后固化
 .deploy-tmp/
 
-# security-audit-skill 的本地输出根；审计产物只留在本机，禁止加入版本库。
+# 防止 skill 审计产物误写入仓库；正式输出必须保存在仓库外。
 /docs/AGENTS/SECURITY-AUDIT-*/
 
 # 两条打包链与来源审计的 APK 产物目录（云端与本地共用，不入库）
