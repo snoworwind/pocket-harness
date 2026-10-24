@@ -15,6 +15,7 @@ import type { InjectFace, PropsLocale, PropsRuntime, PropsStore } from '@deepsee
 import type { BrowserInjected } from '../browser/BrowserController.ts'
 import { emptyBrowserFrame } from '../browser/BrowserFrame.ts'
 import { currentBrowserTarget } from '../browser/BrowserPersistence.ts'
+import { parseBrowserAddress } from '../browser/url.ts'
 import type { BrowserStore } from '../browser/store.ts'
 import css from './Browser.module.css'
 
@@ -70,7 +71,13 @@ export function BrowserBody(props: BrowserBodyProps): ReactNode {
   }, [mount, tab.id, tab.signal, tab.actions, viewportId, props.actions])
 
   const unknown = frame.address === 'unknown'
-  const externalUrl = unknown ? undefined : target?.url
+  // 坑 537（R3-26）：「外部打开」与 loadUrl 同口径——store 里恢复出来的地址也要过
+  // parseBrowserAddress 复验（协议白名单 / 拒凭据 / 拒应用自身 origin）。store 内形状按构造
+  // 应由 parseBrowserAddress 产出，但持久化数据是独立信任边界，运行时不复核就是让
+  // 「写入者可信」变成不变量假设。
+  const externalUrl = unknown || target?.url === undefined ? undefined
+    : parseBrowserAddress(target.url, window.location.origin).ok === true ? target.url
+      : undefined
   const sandboxed = frame.sandboxEnabled
   const failure = state?.addressFailure
   const error = frame.error
