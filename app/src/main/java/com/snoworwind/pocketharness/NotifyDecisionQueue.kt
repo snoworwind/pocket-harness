@@ -21,6 +21,13 @@ import java.security.MessageDigest
  *
  * 落盘格式：files/notify-decisions.ndjson，逐行 JSON 追加；状态变更也追加一行（同 requestId
  * 后写覆盖前写），load 时折叠；文件超限时压缩为「未完成项」。
+ *
+ * 完整性（坑 512，R3-01）：决策文件是「用户已批准」这一授权事实的载体，而引擎 home 在
+ * filesDir/home 下、同 UID 运行时可写整个 filesDir——任何能写盘的进程都不得让壳代为投递它
+ * 自己没有作出的决策。因此每行带 HMAC-SHA256（密钥 Android Keystore 非导出；Keystore 不可用
+ * 时回退进程内临时密钥，跨进程死亡即失效，方向 fail-closed）。parse/load 对缺签或验签失败的
+ * 行直接丢弃：伪造行、篡改行与旧版本无签行一律不可投递。升级时旧无签行一次性丢弃，表现为
+ * 引擎侧审批超时、用户重新作答（fail-closed 方向）。
  */
 object NotifyDecisionQueue {
 
@@ -98,6 +105,81 @@ object NotifyDecisionQueue {
     val waitAttempts: Int = 0,
   )
 
+  // ── 完整性（坑 512）：决策行必须可归属到本进程，写盘者不等于授权者 ─────────
+
+  /** 决策行完整性（JVM 单测注入替身；生产走 [ProductionIntegrity]）。 */
+  interface DecisionIntegrity {
+    fun sign(canonical: String): String
+    fun verify(canonical: String, mac: String): Boolean
+  }
+
+  /** 可注入替身（单测）；生产默认由 [ProductionIntegrity] 提供。 */
+  @Volatile
+  internal var integrity: DecisionIntegrity = ProductionIntegrity
+
+  /**
+   * MAC 覆盖的规范串：字段定序拼接而非对 JSON 全文签（org.json 的成员序不构成稳定承诺）。
+   * 版本前缀 v1 为将来格式变更留位；outcomeJson 是完整 payload（含审批闭集取值）。
+   */
+  internal fun canonical(
+    requestId: String,
+    eventId: String,
+    kind: String,
+    outcomeJson: String,
+    ts: Long,
+    state: String,
+    attempts: Int,
+    waitAttempts: Int,
+  ): String =
+    "v1|" + requestId + "|" + eventId + "|" + kind + "|" + outcomeJson + "|" +
+      ts + "|" + state + "|" + attempts + "|" + waitAttempts
+
+  internal fun canonical(d: Decision): String =
+    canonical(d.requestId, d.eventId, d.kind, d.outcomeJson, d.ts, d.state, d.attempts, d.waitAttempts)
+
+  /**
+   * 生产实现：Android Keystore 非导出 HMAC 密钥（同 UID 原生代码理论上可经 keystore2 用钥，
+   * 但 Node/Termux 运行时不可达——威胁边界见 R3-01）。Keystore 初始化或自检失败时回退进程内
+   * 临时密钥：决策仍然即时投递，跨进程死亡的持久行按验签失败丢弃（fail-closed 方向）。
+   */
+  internal object ProductionIntegrity : DecisionIntegrity {
+    private const val KEY_ALIAS = "dsh_notify_decision_mac"
+
+    private fun keystoreKey(): java.security.Key? = runCatching {
+      val ks = java.security.KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+      (ks.getKey(KEY_ALIAS, null) as? javax.crypto.SecretKey) ?: run {
+        val kg = javax.crypto.KeyGenerator.getInstance("HmacSHA256", "AndroidKeyStore")
+        kg.init(
+          android.security.keystore.KeyGenParameterSpec.Builder(
+            KEY_ALIAS,
+            android.security.keystore.KeyProperties.PURPOSE_SIGN or
+              android.security.keystore.KeyProperties.PURPOSE_VERIFY,
+          ).setDigests(android.security.keystore.KeyProperties.DIGEST_SHA256).build(),
+        )
+        kg.generateKey()
+        ks.getKey(KEY_ALIAS, null) as? javax.crypto.SecretKey
+      }
+    }.getOrNull()
+
+    private fun mac(key: java.security.Key): javax.crypto.Mac =
+      javax.crypto.Mac.getInstance("HmacSHA256").apply { init(key) }
+
+    override fun sign(canonical: String): String {
+      val key = keystoreKey() ?: throw IllegalStateException("keystore unavailable")
+      return java.util.Base64.getEncoder().encodeToString(
+        mac(key).doFinal(canonical.toByteArray(Charsets.UTF_8)),
+      )
+    }
+
+    override fun verify(canonical: String, mac: String): Boolean = runCatching {
+      val key = keystoreKey() ?: return false
+      java.security.MessageDigest.isEqual(
+        java.util.Base64.getDecoder().decode(mac),
+        mac(key).doFinal(canonical.toByteArray(Charsets.UTF_8)),
+      )
+    }.getOrDefault(false)
+  }
+
   // ── 纯逻辑（JVM 单测）──────────────────────────────────────────────────
 
   /** requestId = sha1(eventId|kind|outcome) 前 16 位十六进制（同决策恒同 ID -> LRU 语义成立）。 */
@@ -127,13 +209,15 @@ object NotifyDecisionQueue {
     .put("state", d.state)
     .put("attempts", d.attempts)
     .put("waitAttempts", d.waitAttempts)
+    .put("mac", integrity.sign(canonical(d)))
     .toString()
 
   fun parse(line: String): Decision? {
     val j = try { JSONObject(line) } catch (_: Exception) { return null }
     val id = j.optString("requestId", "")
-    if (id.isEmpty()) return null
-    return Decision(
+    // requestId 由 requestIdFor 产出（sha1 前 16 位十六进制）；形状不对的行不值得验签
+    if (!Regex("[0-9a-f]{16}").matches(id)) return null
+    val d = Decision(
       requestId = id,
       eventId = j.optString("eventId", ""),
       kind = j.optString("kind", ""),
@@ -143,6 +227,11 @@ object NotifyDecisionQueue {
       attempts = j.optInt("attempts", 0),
       waitAttempts = j.optInt("waitAttempts", 0),
     )
+    // 缺签/验签失败一律丢弃（旧版本无签行、伪造行、被篡改行同一去向：fail-closed）
+    val mac = j.optString("mac", "")
+    if (mac.isEmpty()) return null
+    if (!integrity.verify(canonical(d), mac)) return null
+    return d
   }
 
   /** 逐行折叠：同 requestId 后写覆盖前写（append-only 状态机的读侧）。 */

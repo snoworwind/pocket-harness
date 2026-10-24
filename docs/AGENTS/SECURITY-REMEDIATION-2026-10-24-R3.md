@@ -19,4 +19,5 @@
 
 ## 已完成
 
-（随修复登记）
+- **PR-1（R3-01，坑 512）通知决策队列完整性绑定**：serialize 每行 HMAC-SHA256（canonical 定序串；密钥 Android Keystore 非导出，不可用回退进程内临时密钥），parse 对缺签/验签失败/形状不符 fail-closed 丢弃。反证五组（无签/空 mac/篡改 outcome·state·eventId/异钥/非 hex）+ 往返全过；`:app:testDebugUnitTest` 全量 1364 例 0 失败；check-kotlin-comments / check-code-map 通过。**未做设备验证**；升级时旧无签行一次性丢弃（引擎侧审批超时、用户重新作答）。
+- **文档（R3 全部）**：发现清单 + 修复账本 + 坑位 512-537（PR #116 已合入）。
