@@ -3064,15 +3064,15 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 
 517. **门禁接线断言是子串匹配，注释留名即可假绿（R3-06，2026-10-24 登记）**
 
-    现象：`check-release-gates.mjs` 对 ci-apk/source-chain 两类 POSITION 的接线断言用 `text.includes(gateName)`（:311/499/306），而 `pr-gate.yml:125` 的**注释**本就含门禁名——把 run 行删掉、名字留在注释里，`check-release-gates` 与 `check-gate-skips`（executionSites 只审两条构建链的 gate() 调用点，:78）双双 PASS，CI 从此不跑该门禁。真因：workflow 文件没有可执行行级断言。修法：`executionSites()` 扩展到 workflow POSITION + 负控自检。**登记，未修复。**
+    现象：`check-release-gates.mjs` 对 ci-apk/source-chain 两类 POSITION 的接线断言用 `text.includes(gateName)`（:311/499/306），而 `pr-gate.yml:125` 的**注释**本就含门禁名——把 run 行删掉、名字留在注释里，`check-release-gates` 与 `check-gate-skips`（executionSites 只审两条构建链的 gate() 调用点，:78）双双 PASS，CI 从此不跑该门禁。真因：workflow 文件没有可执行行级断言。修法（已落地）：workflow 文件（ci-coord/ci-apk/source-chain 三类 POSITION）的接线断言改为**可执行行**判定（剥注释行后仍须含门禁名）；聚合器与 build-release.ps1 的 `--run --require` 断言同步收紧。复验：`check-release-gates` 全绿；受控负控——把 pr-gate.yml 的 11 条 run 行注释、门禁名留注释，修复前 PASS、修复后 FAIL（未接线清单如实列出），恢复后 PASS。check-gate-skips 的严格档传播断言从抽查一项改为全白名单 7 项一致。
 
 518. **check-api-route-auth 只认字面量 kind，动态 kind 注册可逃逸路由清单（R3-07，2026-10-24 登记）**
 
-    现象：路由发现把 `kind: 'exact'|'prefix'` 字面量当候选门槛（check-api-route-auth.mjs:70-78），`kind: COND ? 'exact' : 'prefix'` 形态的 `register({...})` 整条丢弃；unlistedSources 与字面量反向断言只遍历 discovered（:198-220），新文件里只有动态 kind 注册时整个文件不进判据。恶意 PR 可在 mobile-owned 插件加无鉴权路由且门禁全绿，与文件头「cannot hide a route」自述矛盾；self-test 无动态 kind 反例。修法：有 path 缺 kind 字面量也计为候选（fail-closed）+ 反例进 self-test。**登记，未修复。**
+    现象：路由发现把 `kind: 'exact'|'prefix'` 字面量当候选门槛（check-api-route-auth.mjs:70-78），`kind: COND ? 'exact' : 'prefix'` 形态的 `register({...})` 整条丢弃；unlistedSources 与字面量反向断言只遍历 discovered（:198-220），新文件里只有动态 kind 注册时整个文件不进判据。恶意 PR 可在 mobile-owned 插件加无鉴权路由且门禁全绿，与文件头「cannot hide a route」自述矛盾；self-test 无动态 kind 反例。修法（已落地）：有 `path:`（字面量或简写）但缺 kind 字面量的 `register({...})` 也计为候选（kind 记 `<unparsed-kind>`，fail-closed 允许误报红）；self-test 新增动态 kind 反例。复验：`check-api-route-auth --self-test` 全过（28 路由 / 11 注册计数不变——现库无动态 kind 注册，无误报红）。
 
 519. **check-browser-syntax-floor 的 esbuild sha512 条件性校验且镜像仓内可控（R3-08，2026-10-24 登记）**
 
-    现象：`extractNpmTgz` 在 `dist.sha512` 缺席时**不校验**直接解包（check-browser-syntax-floor.mjs:185-200），随后在门禁进程内 spawnSync 执行 esbuild 二进制（:210-214）；镜像清单来自仓内 `preinstall.json` 的 npmMirrors（:144-147）。镜像被劫持 + 元数据省略 sha512 → 恶意二进制在构建链执行。真因：把「registry 给了才校验」当默认，而非「无 pin 即拒」。修法：sha512 缺席即 die（同 lib/pinned-npm.mjs 纪律）。**登记，未修复。**
+    现象：`extractNpmTgz` 在 `dist.sha512` 缺席时**不校验**直接解包（check-browser-syntax-floor.mjs:185-200），随后在门禁进程内 spawnSync 执行 esbuild 二进制（:210-214）；镜像清单来自仓内 `preinstall.json` 的 npmMirrors（:144-147）。镜像被劫持 + 元数据省略 sha512 → 恶意二进制在构建链执行。真因：把「registry 给了才校验」当默认，而非「无 pin 即拒」。修法（已落地）：sha512/integrity 缺席即 throw（与 lib/pinned-npm.mjs「缺 pin 即拒」同纪律），镜像劫持无法通过省略元数据绕过校验。复验：`check-browser-syntax-floor --self-test` 六向自证全绿；语法检查通过。
 
 520. **linux_bash 工具无会话档位门且不受渐进披露掩蔽（R3-09，2026-10-24 登记）**
 
@@ -3124,15 +3124,15 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 
 532. **check-mcp-client-deps 严格档未被聚合入口传播（R3-21，2026-10-24 登记）**
 
-    现象：支持 `--require` 的 check-mcp-client-deps 不在 `check-release-gates.mjs:620` 的 STRICT 传播白名单；gate-skips-declared.json 的申报理由却写「发布链以 --require 强制齐全」——申报与接线漂移。实际可达性被前置 check-snapshot-secrets 收敛，降级 low。修法：加入传播清单 + check-gate-skips 对全部 --require 支持者一致性断言。**登记，未修复。**
+    现象：支持 `--require` 的 check-mcp-client-deps 不在 `check-release-gates.mjs:620` 的 STRICT 传播白名单；gate-skips-declared.json 的申报理由却写「发布链以 --require 强制齐全」——申报与接线漂移。实际可达性被前置 check-snapshot-secrets 收敛，降级 low。修法（已落地）：`check-mcp-client-deps.mjs` 加入聚合入口 STRICT 传播白名单；check-gate-skips 的传播断言改为全白名单一致断言。复验：两个门禁 self-test/全跑通过。
 
 533. **snapshot-server.mjs 无鉴权监听 0.0.0.0（R3-22，2026-10-24 登记）**
 
-    现象：`createServer(...).listen(8899)`（:26）把内嵌引擎快照完整 tar 分发到所有网卡、无 token。修法：绑 127.0.0.1。**登记，未修复。**
+    现象：`createServer(...).listen(8899)`（:26）把内嵌引擎快照完整 tar 分发到所有网卡、无 token。修法（已落地）：`listen(PORT, '127.0.0.1')`。复验：`node --check` 通过（脚本无单测；行为变更一行）。
 
 534. **三处脚本 sh()/execSync 字符串内插 CLI 路径可 shell 注入（R3-23，2026-10-24 登记）**
 
-    现象：`check-third-party.mjs:147/196`（tar -tvf）、`check-engine-overlay.mjs:230`（JSON.stringify 包路径不转义 `$`/反引号）、`pi-catalog-diff.mjs:66`——路径来自 CLI 参数或构建链，无远程可达性，本地自伤面。修法：统一 execFileSync argv 形态。**登记，未修复。**
+    现象：`check-third-party.mjs:147/196`（tar -tvf）、`check-engine-overlay.mjs:230`（JSON.stringify 包路径不转义 `$`/反引号）、`pi-catalog-diff.mjs:66`——路径来自 CLI 参数或构建链，无远程可达性，本地自伤面。修法（已落地）：lib/shell.mjs 新增 `shellQuote`（POSIX 单引号）；check-third-party 两处 tar 内插改用它，check-engine-overlay 的 python 调用参数全部 shellQuote，pi-catalog-diff 改 execFileSync argv 形态。复验：`node --check` 全过；check-third-party 直跑出用法（参数面无变化）。
 
 535. **桥审计与 .live.ndjson 可携带命令内联凭据（R3-24，2026-10-24 登记）**
 
@@ -3144,4 +3144,4 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 
 537. **杂项加固批（R3-26/27/28/29/30/31/32/33/34/35/36/37，2026-10-24 登记）**
 
-    一次登记十二项 low：浏览器「外部打开」对持久化恢复地址跳过协议白名单复验（BrowserBody.tsx:59,73,99-101）；shell-termux fence 漏 dshEnv 通道（src/index.ts:141-150/200，受信调用方面）；host-web-compat 字符串替换注入遇 `$&` 序列会被替换语义改写（lib/index.js:1118-1120/960，当前模板无此序列）；AdbKeyboardService 注释描述的「当前输入法校验」不存在（:22-26 vs :113-121，已按实现现状更正注释与 Manifest 引用）；SafeMode.newId 用 java.util.Random（:548-550，已改 SecureRandom）；check-patch-test-manifest 白名单缺 stale 方向（:104）；check-tool-name-promises 只扫 plugins/*/src（:63-84）；NDK 以 SHA-1 钉定（build-apk-source.yml:496-505）；auto-approve.mjs 无条件自动批准无确认 gate；pr-gate 敏感信息扫描模式窄（pr-gate.yml:73-79）；托管 PR Gate 可被单个仓库变量休眠且 skipped 满足 required checks；FileProvider external_shared 全盘映射无门禁断言。各项修法与状态见 [R3 修复账本](SECURITY-REMEDIATION-2026-10-24-R3.md)。**登记，未修复。**
+    一次登记十二项 low：浏览器「外部打开」对持久化恢复地址跳过协议白名单复验（BrowserBody.tsx:59,73,99-101）；shell-termux fence 漏 dshEnv 通道（src/index.ts:141-150/200，受信调用方面）；host-web-compat 字符串替换注入遇 `$&` 序列会被替换语义改写（lib/index.js:1118-1120/960，当前模板无此序列）；AdbKeyboardService 注释描述的「当前输入法校验」不存在（:22-26 vs :113-121，已按实现现状更正注释与 Manifest 引用）；SafeMode.newId 用 java.util.Random（:548-550，已改 SecureRandom）；check-patch-test-manifest 白名单缺 stale 方向（:104，**已加 staleKnownFails 纯函数 + self-test 正反证 + 真实档 WARN**）；check-tool-name-promises 只扫 plugins/*/src（:63-84，**已在文首如实登记扫描面边界**）；NDK 以 SHA-1 钉定（build-apk-source.yml:496-505）；auto-approve.mjs 无条件自动批准无确认 gate（**已加 DSH_AUTO_APPROVE_CONFIRM=1 显式确认门，缺省 exit 2**）；pr-gate 敏感信息扫描模式窄（pr-gate.yml:73-79）；托管 PR Gate 可被单个仓库变量休眠且 skipped 满足 required checks；FileProvider external_shared 全盘映射无门禁断言。各项修法与状态见 [R3 修复账本](SECURITY-REMEDIATION-2026-10-24-R3.md)。**登记，未修复。**

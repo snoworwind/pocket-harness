@@ -24,4 +24,4 @@ createServer((req, res) => {
     res.writeHead(404)
     res.end()
   }
-}).listen(PORT, () => console.log('snapshot server on :' + PORT, '(manifest sha ' + sha256.slice(0, 12) + '…)'))
+}).listen(PORT, '127.0.0.1', () => console.log('snapshot server on 127.0.0.1:' + PORT, '(manifest sha ' + sha256.slice(0, 12) + '…)'))

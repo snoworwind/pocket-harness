@@ -4,8 +4,13 @@
 // 为什么需要（0.14.1 设备实测缺陷 B2）：
 //   指引里承诺的工具**从未被实现**。`android_vdisplay_input` 出现在三处模型可见文案里
 //   （manage 的 `android_screen_list` 描述、`android_ui_dump` 失败文案与坐标指引、bridge 的坐标模式指引）
-//   与 Skill 文档中，但全仓没有任何 `defineTool` 声明它——模型照指引调用只会拿到 `unknown tool`。
+//   与历史 Skill 文档中，但全仓没有任何 `defineTool` 声明它——模型照指引调用只会拿到 `unknown tool`。
 //   「指引指向一条不存在的路」比拒绝更难排查：模型会把 unknown tool 当成自己参数写错，反复重试。
+//
+// 扫描面边界（坑 537 / R3-32，2026-10-24 如实登记）：本门禁只扫 plugins/*/src——本仓的模型可见
+// 工具指引全部产自插件 src（bridge/manage 等），历史 Skill 文档不在本仓树内。壳侧 assets（console/
+// docs）面向用户而非模型，不计入提及集；若将来模型可见指引移出插件 src，必须同步扩此扫描面，
+// 否则「指引指向一条不存在的路」这缺陷类别将重新不可见。
 //
 // 判据（机械可判、零启发式）：
 //   1) 注册集 = 插件 src 里所有**声明位**的 `android_*` 字面量——`键: 'android_x'` 形态

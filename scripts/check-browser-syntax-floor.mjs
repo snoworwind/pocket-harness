@@ -192,8 +192,12 @@ const extractNpmTgz = async (registry, name, version, targetDir) => {
   const dist = meta?.versions?.[version]?.dist
   if (!dist?.tarball) throw new Error('版本 ' + version + ' 的 dist 不可得')
   const buf = Buffer.from(await (await fetch(dist.tarball, { signal: AbortSignal.timeout(300000) })).arrayBuffer())
+  // 坑 519（R3-08）：sha512 必需（fail-closed）。旧实现「registry 给了才校验」——被劫持的镜像
+  // 只要在元数据里省略 sha512/integrity，恶意 tarball 就能零校验解包并在本门禁进程内执行。
+  // 本门禁是语法下限判定的信任根，口径与 lib/pinned-npm.mjs「缺 pin 即 throw」一致。
   const sha = dist.sha512 ?? (String(dist.integrity ?? '').startsWith('sha512-') ? String(dist.integrity).slice(7) : null)
-  if (sha && createHash('sha512').update(buf).digest('base64') !== sha) throw new Error('sha512 不匹配')
+  if (!sha) throw new Error('registry 元数据缺 sha512/integrity（fail-closed，拒绝无完整性判据的执行体）')
+  if (createHash('sha512').update(buf).digest('base64') !== sha) throw new Error('sha512 不匹配')
   const tgzDir = dirname(targetDir)
   mkdirSync(tgzDir, { recursive: true })
   const tgz = join(tgzDir, '.__' + name.replace(/[@/]/g, '_') + '.tgz')

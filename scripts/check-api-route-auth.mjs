@@ -70,10 +70,14 @@ function routeRegistrations(source) {
     const kindMatch = /\bkind\s*:\s*(['"])(exact|prefix)\1/.exec(objectHead)
     const pathMatch = /\bpath\s*:\s*([^,\n}]+)/.exec(objectHead)
     const shorthandPath = /(?:^|[,\n])\s*path\s*(?:,|\n|})/.test(objectHead)
-    if (kindMatch === null || (pathMatch === null && !shorthandPath)) continue
+    // 坑 518（R3-07）：kind 是运行时表达式时（如 `kind: COND ? 'exact' : 'prefix'`），旧实现把
+    // 整条候选丢弃——新文件若只有动态 kind 注册，则既不进 discovered（unlistedSources 看不见），
+    // 已登记文件内的计数锁也不会涨，路由清单被整体逃逸。fail-closed：有 path（字面量或简写）
+    // 但缺 kind 字面量的注册同样计为候选（kind 记 '<unparsed-kind>'，允许误报红、不允许漏报绿）。
+    if (kindMatch === null && !(pathMatch !== null || shorthandPath)) continue
     const pathExpression = pathMatch?.[1].trim() ?? 'path'
     const literal = /^(['"])(\/api(?:\/[^'"]*)?)\1$/.exec(pathExpression)
-    found.push({ kind: kindMatch[2], pathExpression, literalPath: literal?.[2], head: objectHead, index: start })
+    found.push({ kind: kindMatch?.[2] ?? '<unparsed-kind>', pathExpression, literalPath: literal?.[2], head: objectHead, index: start })
   }
   return found
 }
@@ -664,6 +668,12 @@ if (selfTest) {
   check('self-test: scanner handles path-before-kind and long handlers',
     reorderedRoutes.length === 1 && reorderedRoutes[0].kind === 'exact' && reorderedRoutes[0].literalPath === '/api/self-test-unlisted')
   check('self-test: comment/string-like candidate fails closed instead of hiding a route', routeRegistrations(commented).length === 2)
+  // 坑 518 反例：动态 kind 注册必须计为候选（kind='<unparsed-kind>'），不得整条逃逸路由清单
+  const dynamicKind = 'server.register({ path: "/api/dynamic-kind-fake", kind: COND ? "exact" : "prefix", handler: () => ({}) })'
+  const dynamicRoutes = routeRegistrations(dynamicKind)
+  check('self-test: dynamic kind candidate fails closed instead of hiding a route',
+    dynamicRoutes.length === 1 && dynamicRoutes[0].kind === '<unparsed-kind>' &&
+      dynamicRoutes[0].literalPath === '/api/dynamic-kind-fake')
   check('self-test: unlisted source/path would be rejected',
     !registrationSources.has('plugins/new-runtime/src/index.ts') && !routePaths.has('/api/self-test-unlisted'))
   // D2 上游路由面审计的反证夹具（全部走本段的纯函数，不碰仓库文件）。

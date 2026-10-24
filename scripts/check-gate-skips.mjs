@@ -133,8 +133,9 @@ for (const rel of ['scripts/build-release.ps1', 'dsh-mobile-apk/scripts/build-re
     /check-release-gates\.mjs/.test(text) && /--run\b[\s\S]{0,80}--require/.test(text),
     '缺 --require：发布链会以 SKIP 结案')
 }
-const strictPropagated = /argvFor\.push\('--require'\)/.test(aggText) && aggText.includes("'check-perf-instrumentation.mjs'")
-check('聚合入口对支持 --require 的门禁传严格档', strictPropagated)
+const strictWhitelist = ["'check-snapshot-fingerprint.mjs'", "'check-perf-instrumentation.mjs'", "'check-snapshot-secrets.mjs'", "'check-contract.mjs'", "'check-tool-output-schema.mjs'", "'check-dead-tokens.mjs'", "'check-mcp-client-deps.mjs'"]
+const strictPropagated = /argvFor\.push\('--require'\)/.test(aggText) && strictWhitelist.every((lit) => aggText.includes(lit))
+check('聚合入口对支持 --require 的门禁传严格档（全白名单，' + strictWhitelist.length + ' 项）', strictPropagated)
 
 if (argv.includes('--list')) {
   console.log('== 门禁清单（声明 ' + declared.length + ' 项）')
