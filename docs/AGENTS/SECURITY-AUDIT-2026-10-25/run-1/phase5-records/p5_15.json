@@ -1,0 +1,55 @@
+{
+  "verdict": "needs_validation",
+  "fingerprint": "scripts/build-snapshot-013.mjs/overlay-integrity",
+  "title": "Overlay tarballs lack source-controlled integrity verification",
+  "description": "The overlay resolver accepts bytes when registry SHA-512 metadata is absent and returns existing cache files without verification before extraction. The intended registry trust root and cache-writer boundary are unknown.",
+  "claimed_root_cause": "The overlay resolver trusts optional registry-provided integrity and unverified cached tarball bytes rather than a source-controlled digest.",
+  "trace": [
+    {
+      "kind": "entrypoint",
+      "file": "scripts/build-snapshot-013.mjs",
+      "line": 225,
+      "scope": "registry metadata fetch",
+      "description": "The builder obtains package metadata from a configured registry."
+    },
+    {
+      "kind": "propagation",
+      "file": "scripts/build-snapshot-013.mjs",
+      "line": 233,
+      "scope": "overlay tarball resolution",
+      "description": "It fetches tarball bytes from the metadata URL."
+    },
+    {
+      "kind": "sink",
+      "file": "scripts/build-snapshot-013.mjs",
+      "line": 257,
+      "scope": "staged engine extraction",
+      "description": "The resolved tarball is extracted into the staged runtime tree."
+    }
+  ],
+  "evidence": [
+    {
+      "file": "scripts/build-snapshot-013.mjs",
+      "line": 218,
+      "description": "The cache-hit branch returns existing bytes without verification."
+    },
+    {
+      "file": "scripts/build-snapshot-013.mjs",
+      "line": 234,
+      "description": "The digest check is conditional on registry-provided dist.sha512."
+    },
+    {
+      "file": "scripts/snapshot-config/engine-overlay.json",
+      "line": 25,
+      "description": "The source manifest pins package names/versions but lacks a per-package tarball digest."
+    }
+  ],
+  "blockers": [
+    "The required isolated registry fixture could not run because the OS-enforced sandbox is unavailable.",
+    "Source does not establish the intended registry integrity root or who can write the actual build worker cache before consumption."
+  ],
+  "validation_plan": {
+    "local": "In an approved network-denied sandbox with a stub registry and scratch-only cache, use a harmless dummy tarball and confirm whether omitted registry digest and cache-hit bytes are accepted and extracted. Do not use a real registry or publish artifacts.",
+    "deployment": "Have the build owner confirm the documented integrity root and who can write any shared engine-overlay cache on actual build workers."
+  }
+}

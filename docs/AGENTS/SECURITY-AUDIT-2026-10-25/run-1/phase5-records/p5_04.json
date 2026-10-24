@@ -1,0 +1,49 @@
+{
+  "verdict": "needs_validation",
+  "fingerprint": "RootAccess:root-grant-revocation-dispatch-window",
+  "title": "Root grant revocation may race a privileged launch",
+  "description": "The privileged su path checks the root grant, performs lease-state I/O, then starts su. Revocation updates volatile grant state without a shared lock covering that check-and-launch sequence. No concurrent interleaving or command launch after revocation was observed.",
+  "claimed_root_cause": "RootAccess.execPrivileged does not serialize the grant check and su process start with RootGrant revocation, leaving a possible check-use race.",
+  "trace": [
+    {
+      "kind": "entrypoint",
+      "file": "app/src/main/java/com/snoworwind/pocketharness/RootAccess.kt",
+      "line": 221,
+      "scope": "execPrivileged",
+      "description": "The privileged execution helper performs authorization checks before starting su."
+    },
+    {
+      "kind": "sink",
+      "file": "app/src/main/java/com/snoworwind/pocketharness/RootAccess.kt",
+      "line": 247,
+      "scope": "su process start",
+      "description": "The helper launches the privileged process after the grant and lease checks."
+    }
+  ],
+  "evidence": [
+    {
+      "file": "app/src/main/java/com/snoworwind/pocketharness/RootAccess.kt",
+      "line": 234,
+      "description": "The AI grant is checked before the subsequent maintenance-lease operations."
+    },
+    {
+      "file": "app/src/main/java/com/snoworwind/pocketharness/RootAccess.kt",
+      "line": 242,
+      "description": "Outstanding lease state and dispatch evidence are handled between the grant check and process start."
+    },
+    {
+      "file": "app/src/main/java/com/snoworwind/pocketharness/RootAccess.kt",
+      "line": 247,
+      "description": "ProcessBuilder starts su after those checks."
+    }
+  ],
+  "blockers": [
+    "No deterministic concurrent revoke/dispatch interleaving or root-side effect was observed.",
+    "The exact timing and RootManager response to revoke during the check-to-launch interval depend on runtime scheduling and device configuration.",
+    "The required OS-enforced sandbox and rooted test device are unavailable."
+  ],
+  "validation_plan": {
+    "local": "On an isolated rooted test device or bounded harness with a fake su executable that records invocation only, synchronize a grant check, revoke, and process-start boundary. Record whether a new privileged launch can start after revocation without running a destructive command.",
+    "deployment": "Have the owner reproduce with a disposable rooted test profile and no-op fake command, documenting whether revocation is serialized with an already queued privileged call. Do not use real root commands or user data."
+  }
+}

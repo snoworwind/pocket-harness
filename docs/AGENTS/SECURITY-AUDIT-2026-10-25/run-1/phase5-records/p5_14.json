@@ -1,0 +1,55 @@
+{
+  "verdict": "needs_validation",
+  "fingerprint": "plugins/dsh-android-bridge/src/capability-gate.ts/global-relock-scope",
+  "title": "Global capability revoke may leave another agent's tools visible",
+  "description": "The off revoke clears shared persisted unlock state but appears to rebuild restrictions only for the requesting agent. Another active agent may retain stale tool visibility. Separate execution checks remain, and no consequential bypass was established.",
+  "claimed_root_cause": "The shared unlock state is globally cleared while in-memory restriction fibers are updated only for the caller agent.",
+  "trace": [
+    {
+      "kind": "entrypoint",
+      "file": "plugins/dsh-android-bridge/src/capability-gate.ts",
+      "line": 385,
+      "scope": "capability tool execute",
+      "description": "The revoke call is associated with the current agent."
+    },
+    {
+      "kind": "propagation",
+      "file": "plugins/dsh-android-bridge/src/capability-gate.ts",
+      "line": 293,
+      "scope": "relock",
+      "description": "The off path clears shared groups and looks up only the supplied agent's lock table."
+    },
+    {
+      "kind": "sink",
+      "file": "plugins/dsh-android-bridge/src/capability-gate.ts",
+      "line": 315,
+      "scope": "lockAgent rebuild",
+      "description": "The restrictions are rebuilt for that agent alone."
+    }
+  ],
+  "evidence": [
+    {
+      "file": "plugins/dsh-android-bridge/src/capability-gate.ts",
+      "line": 203,
+      "description": "Active restriction fibers are tracked in a WeakMap by agent."
+    },
+    {
+      "file": "plugins/dsh-android-bridge/src/capability-gate.ts",
+      "line": 315,
+      "description": "The relock path visits only the current agent."
+    },
+    {
+      "file": "plugins/dsh-android-bridge/src/index.ts",
+      "line": 1038,
+      "description": "Device execution separately checks danger-full-access mode."
+    }
+  ],
+  "blockers": [
+    "Cordis fiber disposal and model tool-list/dispatch behavior across concurrent agents are not resolved by source.",
+    "Stale visibility alone does not prove execution bypass because separate session/channel gates remain."
+  ],
+  "validation_plan": {
+    "local": "In a bounded Cordis fixture, create two agents with a harmless synthetic gated tool, unlock both, revoke group off from one, then inspect the other agent's tool list and attempt only the side-effect-free test dispatch.",
+    "deployment": "Have the owner observe the same two-agent case using only a harmless no-op tool and separately verify execution session/channel checks."
+  }
+}

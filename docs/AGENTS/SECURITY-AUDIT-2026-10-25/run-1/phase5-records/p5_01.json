@@ -1,0 +1,49 @@
+{
+  "verdict": "needs_validation",
+  "fingerprint": "EngineManager:shared-diagnostics-incomplete-redaction",
+  "title": "Shared diagnostics apply only the engine-token redactor",
+  "description": "The diagnostic export copies engine log generations into Documents and applies EngineAuth.redact. Daily log copies use additional credential-shaped and private-key redaction. Source does not establish that engine logs contain those other secret forms or who can read the particular export.",
+  "claimed_root_cause": "The shared diagnostic log mirror applies only EngineAuth.redact, so credential formats handled by LogSanitizer may remain if they occur in engine output.",
+  "trace": [
+    {
+      "kind": "entrypoint",
+      "file": "app/src/main/java/com/snoworwind/pocketharness/EngineManager.kt",
+      "line": 1690,
+      "scope": "mirrorDiagnosticsToShared",
+      "description": "Failure diagnostics are copied into a shared Documents directory when writable."
+    },
+    {
+      "kind": "sink",
+      "file": "app/src/main/java/com/snoworwind/pocketharness/EngineManager.kt",
+      "line": 2658,
+      "scope": "mirrorLogBounded",
+      "description": "The copied log text is transformed only by EngineAuth.redact before writing."
+    }
+  ],
+  "evidence": [
+    {
+      "file": "app/src/main/java/com/snoworwind/pocketharness/EngineManager.kt",
+      "line": 1711,
+      "description": "The shared diagnostic copy is documented as readable by apps with all-files access and contains engine logs."
+    },
+    {
+      "file": "app/src/main/java/com/snoworwind/pocketharness/EngineManager.kt",
+      "line": 2658,
+      "description": "mirrorLogBounded applies EngineAuth.redact to the copied text."
+    },
+    {
+      "file": "app/src/main/java/com/snoworwind/pocketharness/LogSanitizer.kt",
+      "line": 90,
+      "description": "The separate LogSanitizer handles multiple secret classes for daily log output."
+    }
+  ],
+  "blockers": [
+    "No reviewed source or runtime log proves that the engine emits a credential shape that EngineAuth.redact misses.",
+    "The identity and storage permissions of an actual reader of a diagnostic copy are not established in this source-only review.",
+    "The required OS-enforced sandbox and Android device are unavailable, so no synthetic log export or cross-app read check was performed."
+  ],
+  "validation_plan": {
+    "local": "With an approved OS-enforced sandbox, call the bounded mirror helper on a synthetic engine log containing only dummy private-key and provider-key markers. Inspect the copied output and verify each marker is redacted or remains; do not use real credentials.",
+    "deployment": "Have the owner inspect only synthetic diagnostic output on a test installation and report the Android storage policy and whether an ordinary app or an authorized all-files-access test app can read the copy. Do not inspect real logs or credentials."
+  }
+}

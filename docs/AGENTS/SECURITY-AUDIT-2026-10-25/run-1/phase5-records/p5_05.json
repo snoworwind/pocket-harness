@@ -1,0 +1,47 @@
+{
+  "verdict": "needs_validation",
+  "fingerprint": "android-backup:active-profile-secret-in-transfer",
+  "title": "Device-transfer rules omit the active profile configuration",
+  "description": "Backup rules exclude credential, session, and workspace paths but do not list the active profile patch or legacy settings path. EngineManager notes that profile patches can contain provider keys. The manifest also sets allowBackup=false; source does not establish OEM/device-transfer behavior.",
+  "claimed_root_cause": "The device-transfer exclusion list omits active profile configuration files that may contain provider credentials, while the actual platform transfer behavior is not represented in the repository.",
+  "trace": [
+    {
+      "kind": "entrypoint",
+      "file": "app/src/main/AndroidManifest.xml",
+      "line": 29,
+      "scope": "application backup configuration",
+      "description": "The application points to backup and data-extraction rule files while setting its backup policy."
+    },
+    {
+      "kind": "sink",
+      "file": "app/src/main/res/xml/data_extraction_rules.xml",
+      "line": 18,
+      "scope": "device-transfer exclusions",
+      "description": "The transfer exclusions list sensitive runtime paths but not profiles/<profile>/cordis.patch.yml or settings.yaml."
+    }
+  ],
+  "evidence": [
+    {
+      "file": "app/src/main/AndroidManifest.xml",
+      "line": 29,
+      "description": "The manifest declares allowBackup=false."
+    },
+    {
+      "file": "app/src/main/res/xml/data_extraction_rules.xml",
+      "line": 18,
+      "description": "The device-transfer rule block begins without an exclusion for profile configuration."
+    },
+    {
+      "file": "app/src/main/java/com/snoworwind/pocketharness/EngineManager.kt",
+      "line": 1535,
+      "description": "The source notes that profile patches can contain provider keys."
+    }
+  ],
+  "blockers": [
+    "Whether the supported Android/OEM transfer path copies these app-private files despite allowBackup=false is a platform and device fact outside this checkout.",
+    "No approved transfer device or disposable profile was available; no real profile configuration was inspected."
+  ],
+  "validation_plan": {
+    "deployment": "Have the Android owner verify the exact supported Android and OEM transfer behavior using a disposable profile with a synthetic nonsecret marker, and report whether the omitted profile path is copied. Do not inspect or transfer real credentials."
+  }
+}
