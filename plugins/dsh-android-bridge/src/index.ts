@@ -145,12 +145,50 @@ function auditDir(): string {
   return process.env.DSH_ADB_AUDIT_PATH ?? '/data/user/0/com.snoworwind.pocketharness/files/audit'
 }
 
+/**
+ * 凭据形状掩码（坑 535 / R3-24）：审计文件与 .live.ndjson 是同 UID 本机文件，模型在 shell
+ * 命令里内联的凭据（`curl -H "Authorization: Bearer sk-…"`）不应明文沉淀。这里没有请求上下文
+ * （不是 model-capability 那种 request-aware redact），按**已知形状**打码，口径与壳侧
+ * LogSanitizer 一致：宁可多打码，不可漏打码。导出供单测喂真实形态样本。
+ */
+const CREDENTIAL_SHAPE_RULES: Array<[RegExp, string]> = [
+  [/\b(?:sk|xai)-[A-Za-z0-9_-]{6,}/g, '[redacted]'],
+  [/\bghp_[A-Za-z0-9]{8,}/g, '[redacted]'],
+  [/\bgho_[A-Za-z0-9]{8,}/g, '[redacted]'],
+  [/\bgithub_pat_[A-Za-z0-9_]{8,}/g, '[redacted]'],
+  [/\bAIza[0-9A-Za-z_-]{8,}/g, '[redacted]'],
+  [/\bAKIA[0-9A-Z]{16}/g, '[redacted]'],
+  // token 字符集排除引号与反斜杠：外层引号必须原样保留，JSON 转义边界不被吃掉
+  [/\b(Bearer\s+)[^\s"'\\]+/gi, '$1[redacted]'],
+  [/((?:api[_-]?key|apikey|access[_-]?token|auth[_-]?token|refresh[_-]?token|client[_-]?secret|secret|password|passwd|credential|token)\s*[:=：]\s*)(["']?)([^\s"'\\,;&]{4,})\2/gi, '$1$2[redacted]$2'],
+  [/-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z0-9 ]*PRIVATE KEY-----/g, '[redacted-private-key]'],
+]
+
+export function maskCredentialShapes(text: string): string {
+  let out = String(text ?? '')
+  for (const [re, replacement] of CREDENTIAL_SHAPE_RULES) out = out.replace(re, replacement)
+  return out
+}
+
+/** 递归掩码字符串值；writeAudit / live 在 **JSON.stringify 之前**调用（转义后掩码会打坏 JSON 结构）。 */
+function maskDeep(value: unknown): unknown {
+  if (typeof value === 'string') return maskCredentialShapes(value)
+  if (Array.isArray(value)) return value.map(maskDeep)
+  if (value && typeof value === 'object') {
+    const out: Record<string, unknown> = {}
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) out[k] = maskDeep(v)
+    return out
+  }
+  return value
+}
+
 function writeAudit(entry: Record<string, unknown>) {
   try {
     const dir = auditDir()
     mkdirSync(dir, { recursive: true })
     const file = join(dir, 'audit.ndjson')
-    appendFileSync(file, JSON.stringify({ ts: new Date().toISOString(), ...entry }) + '\n')
+    // stringify 前递归掩码：args.command 内联凭据不得明文进审计（坑 535）
+    appendFileSync(file, JSON.stringify(maskDeep({ ts: new Date().toISOString(), ...entry })) + '\n')
     // 滚动截断：>2MB 时保留尾部（简单实现；ESM 下用导入的 fs 而非 require）
     try {
       if (statSync(file).size > 2 * 1024 * 1024) {
@@ -1828,7 +1866,8 @@ export function apply(ctx: Context, config: Record<string, unknown> = {}) {
       // tool_call/tool_result（壳侧保留 turn_start 行处理兼容旧包在装）。
       if (k === 'tool/call') {
         const d = ev.data as { name?: string; arguments?: string; callId?: string }
-        const args = String(d.arguments ?? '').slice(0, 240)
+        // 实时流进悬浮球 UI：先形状掩码再截断（坑 535），tool_result 复用的缓存 args 同源已掩
+        const args = maskCredentialShapes(String(d.arguments ?? '')).slice(0, 240)
         if (d.callId) liveCalls.set(String(d.callId), { name: String(d.name ?? ''), args, start: t })
         appendLive(JSON.stringify({ t, s, k: 'tool_call', name: String(d.name ?? ''), args }) + '\n')
         return
