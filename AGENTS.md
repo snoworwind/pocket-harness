@@ -44,7 +44,7 @@ adb -s <serial> install -r -t out\v<版本>\pocket-harness-v<版本>-arm64.apk
 ```
 
 **设备**：
-- MuMu 模拟器 `127.0.0.1:16416`（竖屏）、`127.0.0.1:16384`（横屏，x86_64）可用于通用 UI/脚本开发；**不能安装 ARM64 产品 APK**。
+- 模拟器验收统一使用 Android Studio 的 Google 官方 Android Emulator：Android 16（API 36）Pixel AVD，选择 ARM64-v8a Google APIs 系统映像以运行本仓 ARM64 产品 APK。设备创建与 ABI 检查见 `docs/AGENTS/emulator-test-protocol.md`；MuMu 仅保留为历史记录，不作为当前验收设备。
 - ARM64 设备 V2425A `<arm64-serial>`（1260x2800，SDK 36）用于本应用安装验收；当前暂不可用，发布前必须补充门禁。
 
 **验证脚本**（`scripts/`，必须**逐个单独跑**，每个都重建 WebView target）：
@@ -86,7 +86,7 @@ adb -s <serial> install -r -t out\v<版本>\pocket-harness-v<版本>-arm64.apk
    - **B 轨的现成驱动**：`node scripts/verify-screen-scope-matrix.mjs --serial <s>`（屏幕范围/通道/落点；它自己会向模型发起真实任务并只断言设备事实）。屏幕范围、Shizuku、虚拟屏、通道状态相关的改动**先跑它**，再按下方原语补人眼判读。
 4. **只跑 CDP 不算验收**：几何/层级/遮挡/焦点/键盘这类缺陷 DOM 断言看不见（坑 50/61 是实锤）；反过来只贴截图也不算——状态语义只有 A 轨能证。两轨互补，缺一不可。
 5. **证据落盘**：命令清单 + 每步截图（`.deploy-tmp/<round>/ui-NN-*.png`）+ 三层各自的结论行；PR 描述贴结论行与截图路径。**缺任一层 = 未验收**，不得写「功能完好」。
-6. **覆盖两个方向**：当前仅支持 ARM64；在同一 ARM64 真机上切换竖屏与横屏，各至少一次 tap 级操作 + 截图。几何/布局类改动两个方向都必跑；缺设备如实标未验收，不使用旧 x86_64 包代验。
+6. **覆盖两个方向**：模拟器验收使用 Google 官方 Android 16（API 36）ARM64 AVD；设备验收还须在同一 ARM64 真机上切换竖屏与横屏，各至少一次 tap 级操作 + 截图。几何/布局类改动在 AVD 与真机两个方向都必跑；缺设备如实标未验收，不使用旧 x86_64 包代验。
 7. **前置与假失败**：快照刷新期间禁跑设备验收；uid-mode appop 残留、prefs 僵尸 a11y 标记、应用被切后台都会制造假失败——清理方式与判据见详档 §3、§8。
 
 ---
@@ -105,6 +105,7 @@ adb -s <serial> install -r -t out\v<版本>\pocket-harness-v<版本>-arm64.apk
 |---|---|
 | fx2 阶段计划 / 开发候选与验收交接 | `docs/HANDOFF-0.14.5-FX-2-PLAN-2026-10-09.md` / `docs/HANDOFF-0.14.5-FX-2-DEVELOPMENT-2026-10-09.md` |
 | **项目基线 / 未迁移标识** | `docs/AGENTS/BASELINE.md` |
+| **安全审计方法 / 结果归档** | `docs/AGENTS/SECURITY-AUDIT-PROCESS.md`（Cloudflare `security-audit` skill；每次审计存于 `docs/AGENTS/SECURITY-AUDIT-<被审查提交短哈希>/`） |
 | **Linux 环境调查 / 保留决策（2026-10-19）** | `docs/linux-env-findings/README.md`（原始报告、源码复核、两轮实机、迁移/保留决策） |
 | **构建拆分 / 复用架构（2026-10-19）** | `docs/AGENTS/BUILD-DECOMPOSITION-2026-10-19.md`（组件键、base-lock、双构建、分阶段） |
 | **坑位（历史实锤，权威）** | `docs/AGENTS/gotchas.md`（递增编号，允许空缺；grep 关键词） |
