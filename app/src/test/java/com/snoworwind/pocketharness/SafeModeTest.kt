@@ -774,6 +774,28 @@ class SafeModeTest {
   }
 
   /**
+   * 坑 546（R3-02 残余）：尾巴出口必须与日文件/诊断包**同一口径**（LogSanitizer 全七类），
+   * 不能只掩令牌一类——engine.log 会回显模型命令与配置内容，Authorization 头 / sk- 密钥 /
+   * 环境变量导出 / PEM 块都可能随尾巴进系统剪贴板（任意获焦应用可读）。
+   */
+  @Test
+  fun `prompt 日志尾巴过全七类脱敏而非只掩令牌`() {
+    val tail = listOf(
+      "curl -H \"Authorization: Bearer sk-abcdef1234567890abcdef\" https://api.example.com/v1",
+      "OPENAI_API_KEY=sk-proj-abcdefghijklmnopqrstuvwxyz123456",
+      "-----BEGIN RSA PRIVATE KEY-----",
+      "MIIEpAIBAAKCAQEA7aKv1Zx0mQsF9r2uJdXw=",
+      "-----END RSA PRIVATE KEY-----",
+      "java.lang.IllegalStateException: boom",
+    ).joinToString("\n")
+    val p = buildSafeModePrompt("engine-start-false", "detail", tail, safeModeActive = true)
+    assertFalse("Bearer 凭据不得进入剪贴板", p.contains("sk-abcdef1234567890abcdef"))
+    assertFalse("环境变量密钥不得进入剪贴板", p.contains("sk-proj-abcdefghijklmnopqrstuvwxyz123456"))
+    assertFalse("PEM 密钥材料不得进入剪贴板", p.contains("MIIEpAIBAAKCAQEA7aKv1Zx0mQsF9r2uJdXw="))
+    assertTrue("非敏感行必须保留", p.contains("IllegalStateException: boom"))
+  }
+
+  /**
    * 安全关键：safe 态下 **7 条 `disabled: true` 一条都不能少**（lead 实测清单）。
    *
    * 其中 `client-hmr` 是安全关键项：漏掉它会重开 `/plugins/events` 无鉴权 SSE

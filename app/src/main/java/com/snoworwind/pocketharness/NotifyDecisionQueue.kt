@@ -119,7 +119,11 @@ object NotifyDecisionQueue {
 
   /**
    * MAC 覆盖的规范串：字段定序拼接而非对 JSON 全文签（org.json 的成员序不构成稳定承诺）。
-   * 版本前缀 v1 为将来格式变更留位；outcomeJson 是完整 payload（含审批闭集取值）。
+   * 版本前缀为将来格式变更留位；outcomeJson 是完整 payload（含审批闭集取值）。
+   *
+   * 坑 544：每字段带长度前缀。裸 `|` 拼接在字段值本身含 `|` 时存在多重合法切分，同 UID 攻击者
+   * 可拿一条**合法签名行**构造出 canonical 字节完全相同的另一条 Decision（字段重切后照常验签
+   * 通过）。长度前缀让切分唯一。v1 行（无前缀）验签失败按 fail-closed 丢弃，与升级丢行语义一致。
    */
   internal fun canonical(
     requestId: String,
@@ -130,9 +134,13 @@ object NotifyDecisionQueue {
     state: String,
     attempts: Int,
     waitAttempts: Int,
-  ): String =
-    "v1|" + requestId + "|" + eventId + "|" + kind + "|" + outcomeJson + "|" +
-      ts + "|" + state + "|" + attempts + "|" + waitAttempts
+  ): String {
+    val fields = listOf(
+      "v2", requestId, eventId, kind, outcomeJson,
+      ts.toString(), state, attempts.toString(), waitAttempts.toString(),
+    )
+    return fields.joinToString("|") { it.length.toString() + ":" + it }
+  }
 
   internal fun canonical(d: Decision): String =
     canonical(d.requestId, d.eventId, d.kind, d.outcomeJson, d.ts, d.state, d.attempts, d.waitAttempts)
@@ -178,11 +186,38 @@ object NotifyDecisionQueue {
         java.security.MessageDigest.isEqual(candidate, mac(key).doFinal(canonical.toByteArray(Charsets.UTF_8)))
       }.getOrDefault(false)
 
+    /**
+     * 坑 545：密钥「在场」不等于「可用」——master-key 回滚/安全硬件复位后的失效密钥 getKey 仍
+     * 返回句柄，但 Mac.init/doFinal 抛异常。sign 只在 null 时回退的话，这类设备上每个用户决策
+     * 都会在 enqueue 的 catch 里静默丢失（NotifyActionReceiver 不检查返回值，无重试无可见提示）。
+     * 因此**任何**主密钥签名失败都回退临时密钥；两把都失败才返回 null（仅剩异常一条路，与
+     * 「放弃持久化」语义可区分）。
+     */
+    internal fun signWithFallback(
+      primary: java.security.Key?,
+      ephemeral: java.security.Key,
+      bytes: ByteArray,
+    ): ByteArray? {
+      if (primary != null) {
+        try {
+          return mac(primary).doFinal(bytes)
+        } catch (_: Throwable) {
+          // 在场但失效：落到临时密钥（JVM 单测用 null 编码 Key 直测这条路径——注意算法名
+          // 不匹配的 SecretKeySpec 在 SunJCE 下照常 init，测不到「init 必抛」）
+        }
+      }
+      return try {
+        mac(ephemeral).doFinal(bytes)
+      } catch (_: Throwable) {
+        null
+      }
+    }
+
     override fun sign(canonical: String): String {
-      val key = keystoreKey() ?: ephemeralKey
-      return java.util.Base64.getEncoder().encodeToString(
-        mac(key).doFinal(canonical.toByteArray(Charsets.UTF_8)),
-      )
+      val bytes = canonical.toByteArray(Charsets.UTF_8)
+      val macBytes = signWithFallback(keystoreKey(), ephemeralKey, bytes)
+        ?: throw java.security.GeneralSecurityException("notify decision mac: no usable key")
+      return java.util.Base64.getEncoder().encodeToString(macBytes)
     }
 
     override fun verify(canonical: String, mac: String): Boolean = runCatching {

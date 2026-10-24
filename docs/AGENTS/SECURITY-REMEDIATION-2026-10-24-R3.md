@@ -31,6 +31,17 @@
 
 ## 已完成
 
+## 复审二轮（2026-10-24 深夜，对当日全部合入 `git diff 8c99c00..5ce2613` 的三路独立复审；坑 544-548）
+
+- **坑 544（P2）**：canonical 裸 `|` 拼接可被字段重切——合法签名行在字段值含 `|` 时可构造出 canonical 字节相同的另一条 Decision。已升 v2 长度前缀（切分唯一）；v1 行 fail-closed 丢弃（未发布无存量）。反证：两 Decision v1 同串/v2 不同 + 含竖线往返精确。
+- **坑 545（P2）**：sign 只对 `keystoreKey()==null` 回退——「在场但失效」的 Keystore 密钥（master-key 回滚）让 init/doFinal 抛异常穿出，enqueue 返回 false 且 NotifyActionReceiver 不检查：决策静默丢失。已改 signWithFallback（主密钥任何签名失败都落临时密钥）。JVM 直测注意：算法名不匹配的 SecretKeySpec 在 SunJCE 下照常 init（首版负控假阴性），必须用 null 编码 Key 构造必抛路径。
+- **坑 546（P2）**：安全模式剪贴板 prompt 的 logTail 只过 EngineAuth.redact（令牌一类），比日文件出口（全七类）双标——Authorization/sk-/环境变量/PEM 可随尾巴进系统剪贴板。已统一过 LogSanitizer.sanitizeOrNull，脱敏失败不附带尾巴（可见说明，不冒充「未取到」）。SafeModeTest 四形态反证。
+- **坑 547（P2）**：坑 542 的行尾注释剥离 `\s#.*$` 不匹配 CRLF 行尾（`$` 不带 m 只匹配串尾、`.` 不跨 `\r`）——Git for Windows autocrlf 检出上伪接线判绿复活。已先归一 `\r\n` 再剥。负控三态：LF 行尾 FAIL / CRLF 行尾 FAIL（旧实现必绿）/ 恢复全绿。已知误报（fail-closed 方向）：引号字符串内的 ` #` 也会被剥，登记坑位防后人反向放松。
+- **坑 548（P2+P3 批）**：pr-gate 两道 grep 扫描 `if grep` 把 exit>1（路径缺席等出错）当「无命中」放行——「路径被删 + 真钥在场」实测放行（账本原声称「无 fail-open 风险」过强）；已改三态退出码判定。同批：sk-/xai- 加左边界（`task-management-infrastructure` 类假红）、测试排除从整类通配收窄为具名夹具（SafeModeTest 因坑 546 新夹具入列）、冲突标记扩展名补 .py/.sh/.txt/.patch/.svg、manifest allowlist 改包相对路径键控（子包 PathOpen.kt 不得白嫖）+ 读失败按红处理。四组本机验证 + manifest 负控（临时子包调用方 exit 1）。
+- **小项**：VdisplayController 上限判据统一 `size >= MAX`（消除 isNotEmpty 早退 + 永不可达上限分支的死结构）；LinuxAssetIO urlVerdict/hopVerdict 拒 userInfo（坑 527 复审，与坑 541 authority 纪律同源）；桥 live 正文摘要掩码（坑 535 复审，与 tool_call 同口径）；LogSanitizer 分块注释订正（掩码顺序与「中间内容保留」原注释写反，坑 540 复审）；pr-gate 与 pr-gate-workflow.test 的「私有仓/休眠」过时注释更正为公开仓 + 哨兵现实。
+- 复审同时确认无缺陷的点：bridge maskDeep 的 stringify 前递归掩码与幂等、shell-termux WeakMap 键迁移（execute 以 resolve 返回值为键 + 无键防御回退）、host-web-compat 两处函数替换（smoke 全过）、BrowserBody 恢复地址三元链、gotchas 544 前编号连续、被删 build-snapshot-arm64 无活引用、待续项对应的文件（build-snapshot-013 / 来源链 / undo-savepoint / build-apk-source.yml）当日确实零改动（无账实漂移）。
+- 验证：`:app:testDebugUnitTest` 全量 1372 例 0 失败；bridge `npm test` 172/172；check-release-gates / check-api-route-auth / check-gate-skips / check-kotlin-comments / check-code-map / check-manifest-hardening / pr-gate-workflow.test 全绿；本机 local-gate 因宿主条件不可整跑（坑 335 族，CI 为权威）。**未做设备验证**（决策队列与剪贴板为壳侧行为面，进发版候选前须补三层）。
+
 ## 复审轮（2026-10-24 晚，对 R3 全部合入改动 `git diff 8c99c00..6f4552e` 的独立复查；坑 540-543）
 
 - **坑 540**：坑 514 的 PEM 截断补口只堵了 BEGIN 方向——readEngineLog 按 MAX_ENGINE_CHUNK 切块时「后半段先到」的 chunk（只有材料后半 + END、无 BEGIN）密钥材料裸露进共享存储日文件。已补 ORPHAN_END 分支（从文本开头掩到 END），+尾方向与双方向叠加两组 JVM 反证。

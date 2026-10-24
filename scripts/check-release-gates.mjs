@@ -313,10 +313,12 @@ for (const pos of POSITIONS) {
   // `run: node x.mjs # check-y.mjs` 这类「门禁名只活在行尾注释」的伪接线不得判绿（实测
   // pr-gate.yml 的注释本就含门禁名，纯子串匹配会把「挪进注释」判成绿）。pwsh/node 链文件的
   // gate() 调用点由 check-gate-skips 的 executionSites 反向断言守，这里对 yml 面补同级判据。
+  // 坑 547（复审）：剥行尾注释前必须先归一 CRLF——JS 里 `$` 不带 m 标志只匹配串尾、`.` 不跨
+  // `\r`，CRLF 检出（Git for Windows 默认 autocrlf）下 `\s#.*$` 整体不命中，行尾伪接线复活。
   const effectiveText = pos.file.endsWith('.yml')
-    ? text.split('\n')
+    ? text.replace(/\r\n/g, '\n').split('\n')
       .map((l) => l.replace(/\s#.*$/, ''))
-      .filter((l) => !/^\s*#/.test(l))
+      .filter((l) => !/^\s*#/.test(l) && l.trim() !== '')
       .join('\n')
     : text
   const missing = pos.gates.filter((g) => !effectiveText.includes(g))

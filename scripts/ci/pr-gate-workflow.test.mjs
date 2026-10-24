@@ -4,10 +4,11 @@ import { readFileSync } from 'node:fs'
 
 // Structural regression for the PR Gate layering decisions (2026-10-20).
 //
-// These are deliberate relaxations for a private repo where every change lands through a
-// PR: the merge commit's tree was already validated by the PR run of the same HEAD. Each
-// assertion below pins one decision so a later edit cannot silently reintroduce the cost
-// or, worse, drop the coverage that replaced it.
+// These are deliberate relaxations for a repo where every change lands through a PR
+// (public + branch protection since 2026-10-20): the merge commit's tree was already
+// validated by the PR run of the same HEAD. Each assertion below pins one decision so a
+// later edit cannot silently reintroduce the cost or, worse, drop the coverage that
+// replaced it.
 const workflow = readFileSync(new URL('../../.github/workflows/pr-gate.yml', import.meta.url), 'utf8').replaceAll('\r\n', '\n')
 
 function jobBody(name) {
@@ -19,9 +20,10 @@ function jobBody(name) {
 }
 
 test('the hosted pipeline is dormant unless the repository variable enables it', () => {
-  // The local gate is the merge gate while runner allocation is unavailable. Every job
-  // must carry the switch, otherwise a partially-enabled workflow produces misleading red
-  // checks on PRs that nobody can act on.
+  // The hosted pipeline has been the merge gate since 2026-10-20 (PR_GATE_MODE=on). Every
+  // job must carry the switch so the always-run gate-sentinel stays the single authority:
+  // if the variable is ever lost, the sentinel turns red instead of leaving silently
+  // skipped jobs that GitHub counts as passed required checks.
   const jobs = ['changes', 'docs-hygiene', 'static', 'compile', 'maintenance']
   for (const job of jobs) {
     assert.match(jobBody(job), /vars\.PR_GATE_MODE == 'on'/, `job ${job} ignores PR_GATE_MODE`)

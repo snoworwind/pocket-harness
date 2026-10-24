@@ -361,17 +361,19 @@ object VdisplayController {
     //   - 销毁：任何会话都能关（用户明确要求，否则创建者消失后没人能关）。
     //
     // 因此幂等判断回到「本机是否已有屏」——存在即复用，无论它当初由谁创建。
+    // 上限判据统一为 size >= MAX（坑 515 复审：原结构是 isNotEmpty 早退 + 一个 MAX=1 下
+    // 永不可达的上限分支，将来放宽 MAX 时会退化成「永远复用第一块」；单一判据两个语义都对）。
     val existing = synchronized(lock) { records.size }
-    if (existing > 0) return status(appContext)
+    if (existing >= MAX_VIRTUAL_DISPLAYS) {
+      if (MAX_VIRTUAL_DISPLAYS == 1) return status(appContext)
+      return status(appContext).put("ok", false).put("code", "vdisplay-limit")
+        .put("guidance", "已达到本机虚拟屏上限（$MAX_VIRTUAL_DISPLAYS 块）；先销毁一块再创建。")
+    }
     val bound = ShizukuTransport.ensureBound(appContext)
     if (!bound.optBoolean("ok")) return status(appContext)
       .put("code", bound.optString("code", "shizuku-not-ready"))
       .put("guidance", bound.optString("guidance", "Shizuku 未就绪。"))
 
-    if (existing >= MAX_VIRTUAL_DISPLAYS) {
-      return status(appContext).put("ok", false).put("code", "vdisplay-limit")
-        .put("guidance", "已达到本机虚拟屏上限（$MAX_VIRTUAL_DISPLAYS 块）；先销毁一块再创建。")
-    }
     val real = DisplayMetrics()
     @Suppress("DEPRECATION")
     (appContext.getSystemService(Context.WINDOW_SERVICE) as WindowManager).defaultDisplay.getRealMetrics(real)
@@ -386,9 +388,10 @@ object VdisplayController {
       // 并发重查（坑 515 / R3-04）：上面的 existing 是锁外快照，ensureBound 的 binder 往返是
       // 竞态窗口——控制队列线程、JavaBridge 线程与 binder 线程同时到达会双双通过上限检查，
       // 特权资源（VirtualDisplay+ImageReader+HandlerThread）上限被绕过。查空 + 上限 + 创建
-      // 必须在同一临界区内原子完成（monitor 可重入，锁内调 status 安全）。
-      if (records.isNotEmpty()) return status(appContext)
+      // 必须在同一临界区内原子完成（monitor 可重入，锁内调 status 安全）。判据与锁外同源：
+      // size >= MAX，MAX=1 即「存在即复用」。
       if (records.size >= MAX_VIRTUAL_DISPLAYS) {
+        if (MAX_VIRTUAL_DISPLAYS == 1) return status(appContext)
         return status(appContext).put("ok", false).put("code", "vdisplay-limit")
           .put("guidance", "已达到本机虚拟屏上限（$MAX_VIRTUAL_DISPLAYS 块）；先销毁一块再创建。")
       }

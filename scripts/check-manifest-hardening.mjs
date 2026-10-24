@@ -299,6 +299,8 @@ checkExcludes('data_extraction_rules.xml', join(MAIN, 'res', 'xml', 'data_extrac
 // file_paths.xml 把整个外部存储根映射为 external_shared（0.13.7 有意设计，运行时白名单
 // 在 PathOpen/FileIncoming）。宽映射本身不收窄，但**生成 content:// 的调用方**必须锁定：
 // 任何新代码直接对映射面发 URI 都会把全盘爆炸半径带进来。allowlist 之外的调用方即判红。
+// 坑 548（复审）：按**包相对路径**键控而非裸文件名——任意子包里再造一个 PathOpen.kt 不得
+// 白嫖 allowlist；读文件失败（read 返回 null）按门禁红处理，不得让 TypeError 把红吞成崩溃。
 const FILE_PROVIDER_URI_ALLOWLIST = new Set([
   'FileIncoming.kt',   // 来件/阅读器（引擎驱动，运行时窄白名单）
   'LogShare.kt',       // 诊断包分享（只读候选白名单 + LogSanitizer fail-closed）
@@ -313,12 +315,14 @@ const FILE_PROVIDER_URI_ALLOWLIST = new Set([
       const p2 = join(dir, entry.name)
       if (entry.isDirectory()) { walkKt(p2); continue }
       if (!entry.name.endsWith('.kt')) continue
-      if (read(p2).includes('getUriForFile')) callers.push(entry.name)
+      const text = read(p2)
+      if (text === null) { check('读取 ' + p2 + '（FileProvider 调用方扫描）', false); continue }
+      if (text.includes('getUriForFile')) callers.push(relative(ktDir, p2))
     }
   }
   walkKt(ktDir)
   const rogue = callers.filter((f) => !FILE_PROVIDER_URI_ALLOWLIST.has(f))
-  check('FileProvider content:// 调用方 ⊆ allowlist（' + FILE_PROVIDER_URI_ALLOWLIST.size + ' 项）',
+  check('FileProvider content:// 调用方 ⊆ allowlist（' + FILE_PROVIDER_URI_ALLOWLIST.size + ' 项，按包相对路径）',
     rogue.length === 0, '映射面外泄: ' + rogue.join(', '))
 }
 

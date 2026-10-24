@@ -3169,3 +3169,23 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 543. **合并冲突标记合进了 main，而门禁的冲突检查面只有代码文件（2026-10-24 复审发现）**
 
     现象：`docs/AGENTS/SECURITY-REMEDIATION-2026-10-24-R3.md:44-51` 带着 `<<<<<<< HEAD`/`=======`/`>>>>>>> origin/main` 三段标记合入 main（引入者 4efd96a「merge main: union fixed-item markers in gotchas 537 and R3 ledger」——手工合并账本时只 union 了 gotchas 537，账本一侧的冲突没解完就提交），此后 5 个 PR 的 CI 全绿放行。真因：pr-gate 的冲突标记检查只扫 `app/src .github` 的 `*.kt/java/xml/html/js/yml/yaml`——docs/ 与 scripts/ 不在扫描面，`*.md/*.mjs` 等扩展名也不在；「检查存在」不等于「检查覆盖全部会被人读/会被工具消费的内容」。修法：账本按 union 语义解冲突（两侧条目都保留，与该 merge commit 的意图一致）+ 计划表去掉合并残留的重复行；pr-gate 冲突检查扫描面扩为 `app/src scripts .github docs` × `kt/java/xml/html/js/mjs/ts/tsx/css/json/yml/yaml/md/ps1`（`=======` 单行不扫：markdown 分隔线误报率高，两个锚点足以判定）。复验：新 grep 在修复后的树上 exit 1（无标记）；受控负控（临时目录放 `<<<<<<< HEAD`/`>>>>>>> origin/main` 的 .md）命中两条。
+
+544. **通知决策 HMAC 的 canonical 裸管道拼接可被字段重切（坑 512 复审续，2026-10-24 复审二轮发现）**
+
+    现象：canonical() 把九个字段用 `|` 直接拼接签名；字段值本身含 `|` 时（free-text 作答回显进 outcome 一类），同一字节串存在多重合法切分——同 UID 攻击者拿一条**合法签名行**可构造出 canonical 字节完全相同的另一条 Decision（字段重切后照常验签通过），MAC「绑定到这一条决策」的承诺失守。真因：坑 512 修复按「字段定序」设计签名，但定序不等于定界——分隔符出现在值域内时边界歧义；现实可达性被 requestId 16 位 hex、ts 13 位数字等形状约束压到接近零，属实现缺陷 + 实际利用面极窄。修法（已落地）：canonical 升 v2，每字段带 `len:` 长度前缀让切分唯一；v1 行验签失败按 fail-closed 丢弃（与升级丢行语义一致，本轮未发布无存量行）。复验：新反证「字段含竖线时不同决策不得同串」（v1 拼接下两条 Decision 同串、v2 必须不同，旧实现该用例必红）+ 含竖线字段 serialize→parse 往返精确；`testDebugUnitTest` 1372 例 0 失败。
+
+545. **生产 HMAC sign 只对「密钥缺席」回退，「在场但失效」的 Keystore 密钥让决策静默丢失（坑 512 自审续，2026-10-24 复审二轮发现）**
+
+    现象：ProductionIntegrity.sign 的回退条件是 `keystoreKey() ?: ephemeralKey`——只覆盖 getKey 返回 null 的形态；master-key 回滚/安全硬件复位后的失效密钥句柄仍在，Mac.init/doFinal 抛异常直接穿出 serialize，enqueue 的 catch 返回 false 而 NotifyActionReceiver 不检查返回值：用户决策无声消失，无重试无可见提示，与类头「Keystore 不可用时决策仍即时签名与投递」的自述矛盾。真因：「不可用」被窄化为「拿不到句柄」，Keystore 故障的真实形态还有「句柄在、用不了」；JVM 单测只覆盖 null 路径（AndroidKeyStore 在 JVM 天然缺席）掩盖了这一档。修法（已落地）：signWithFallback——主密钥**任何**签名失败都落临时密钥，两把都失败才返回 null（与「放弃持久化」语义可区分）。复验：JVM 直测用 **null 编码 Key** 构造 init 必抛路径（注意：SunJCE 对「算法名不匹配」的 SecretKeySpec 照常 init，首版负控用 DES 标签密钥测了个假阴性，改 null 编码后跨 JDK 确定失败）；两断言（在场失效→临时密钥结果逐字节相等 / null→同）全过，`testDebugUnitTest` 1372 例 0 失败。
+
+546. **安全模式剪贴板 prompt 只掩令牌一类，六类凭据形状直达系统剪贴板（坑 513 复审续，2026-10-24 复审二轮发现）**
+
+    现象：坑 513 修复让 buildSafeModePrompt 的 logTail 只过 EngineAuth.redact（token= 一类），而**更少暴露**的日文件出口（坑 514）同日已升级 LogSanitizer 全七类——同一份 engine.log 内容两个出口双标：Authorization: Bearer / sk- 密钥 / 环境变量导出 / PEM 块可随尾巴进系统剪贴板（任意获焦应用可读、设计用途就是粘给外部渠道）；engine.log 会回显模型命令与配置内容，是真实可达面。真因：坑 513 按审计条目字面（#184「令牌行不得进入外发文本」）收窄出口，未对齐同日坑 514 已确立的全量口径——「构造咽喉处统一脱敏」的教训没有跨条目复用。修法（已落地）：logTail 统一过 LogSanitizer.sanitizeOrNull（七类），脱敏失败按 fail-closed 纪律不附带尾巴并给可见说明（不冒充「未取到」），绝不回退原文。复验：SafeModeTest 新反证（Bearer/sk-/环境变量/PEM 四形态同场，明文全部缺席、非敏感行保留），`testDebugUnitTest` 全绿。**未做设备验证**（纯字符串构造，无设备行为面）。
+
+547. **yml 接线断言的行尾注释剥离不匹配 CRLF 检出，伪接线在 Windows 上复活（坑 542 复审续，2026-10-24 复审二轮发现）**
+
+    现象：坑 542 的 `\s#.*$` 行尾注释剥离在 CRLF 行尾整行不命中——JS 正则 `$` 不带 m 标志只匹配串尾、`.` 不跨 `\r`，行尾残留的 `\r` 让模式无法匹配；Git for Windows 默认 autocrlf=true 的检出上，「门禁名只活在行尾注释」的伪接线再次判绿，坑 517/542 修掉的假绿按平台复活（本仓 PR Gate 跑 ubuntu 检出 LF，故线上未踩中——这是给本地 Windows 跑门禁的人埋的雷）。真因：坑 542 的负控样本用 LF 字符串合成，「换行形态」维度不在用例矩阵；同一文件 :441 已有 `.replace(/\r\n/g, '\n')` 归一先例，两处判据没共享。修法（已落地）：effectiveText 计算前先做同款 CRLF 归一。复验：受控负控三态——LF 行尾伪接线 FAIL（坑 542 判据保留）、CRLF 行尾伪接线 FAIL（新判据，旧实现该用例必绿）、恢复后全绿。附注（fail-closed 方向的已知误报）：`\s#.*$` 会把 yml 引号字符串内的 ` #` 也剥掉（如 `run: echo "# x" && node a.mjs` 失去后半）——判绿变判红方向，符合「允许误报红、不允许漏报绿」的声明，登记在此防后人「修注释」时反向放松。
+
+548. **pr-gate 两道 grep 扫描把 exit>1 当「无命中」放行，另有扫描面四处潜伏缺口（R3 复审二轮，2026-10-24）**
+
+    现象：敏感信息扫描与冲突标记扫描都用 `if grep …; then exit 1; fi`——grep 退出码 0=命中/1=干净/**>1=出错**（路径缺席等），`if` 把一切非零当「无命中」：同一 PR 删掉一个被扫目录并植入真实密钥时步骤打印「无敏感信息」放行（`2>/dev/null` 连出错原因都吞掉）。账本声称「grep 无 fail-open 风险」只验证了「今天路径都在 git 内」，没验证「路径缺席时判据怎么走」。同轮发现的四处潜伏缺口：sk-/xai- 模式无左边界（`task-management-infrastructure`/`risk-analysis` 一类英文连字符词假红）；测试排除用整类通配（`*Test.kt` 排除全部 Kotlin 测试——真实密钥粘进任意测试文件即成盲区）；冲突标记扩展名缺 .py/.sh/.txt/.patch/.svg（scripts/source-build 32 个 .py 是与门禁同权重的执行面）；check-manifest-hardening 的 FileProvider allowlist 按裸文件名匹配（任意子包再造 PathOpen.kt 白嫖 allowlist）且读文件失败时 `null.includes` 直接 TypeError 崩溃（红被吞成 crash）。修法（已落地）：两道扫描改三态退出码判定（0=命中红 / 1=干净 / >1=扫描出错红，stderr 可见）；sk-/xai- 加 `(^|[^A-Za-z0-9_-])` 左边界；排除面收窄为具名夹具文件（LogSanitizerTest/LogShareTest/SafeModeTest/e2e-provider-ui-security.test.ps1，SafeModeTest 因坑 546 新夹具入列）；扩展名补齐；manifest allowlist 改**包相对路径**键控 + 读失败按门禁红处理。复验：本机四组验证——新模式全树干净（exit 1）、`task-management-infrastructure` 不再命中、真实形态密钥仍命中、「路径缺席+真钥」合成场景 exit 2 被新判定判红（旧 `if grep` 形态实测放行）；manifest 门禁负控（临时子包 PathOpen.kt）判红 exit 1、恢复后 PASS。

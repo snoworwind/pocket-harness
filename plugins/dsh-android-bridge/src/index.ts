@@ -1892,7 +1892,9 @@ export function apply(ctx: Context, config: Record<string, unknown> = {}) {
         // 与工具行 chip 显示的是「某一段思考内容」。判据与修法见 notify-projection.visibleText。
         const content = (ev.data as { message?: { content?: unknown } })?.message?.content
         const text = visibleText(content)
-        appendLive(JSON.stringify({ t, s, k: 'text', sum: text.slice(0, 160) || '（空回复）' }) + '\n')
+        // 坑 535（复审）：正文摘要与 tool_call 同口径——模型正文也可能回显凭据（读文件后在
+        // 回复里粘贴），.live.ndjson 是同 UID 本机文件、悬浮球 UI 是人眼出口，先掩码再截断。
+        appendLive(JSON.stringify({ t, s, k: 'text', sum: maskCredentialShapes(text).slice(0, 160) || '（空回复）' }) + '\n')
         return
       }
       if (k === 'turn/end') {
