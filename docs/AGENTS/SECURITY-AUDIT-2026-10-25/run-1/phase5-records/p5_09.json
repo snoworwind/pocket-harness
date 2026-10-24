@@ -1,0 +1,55 @@
+{
+  "verdict": "needs_validation",
+  "fingerprint": "android:incoming-share:aggregate-storage-budget",
+  "title": "Repeated incoming shares lack an aggregate storage budget",
+  "description": "The exported VIEW/SEND intake copies accepted files into private incoming storage with a 200 MiB per-file cap. A single-thread queue has no visible aggregate request bound, and session-referenced files are exempt from cleanup. Practical repeated-share impact is unobserved.",
+  "claimed_root_cause": "Incoming-share processing has only a per-file limit and no source-visible aggregate quota for queued or retained files.",
+  "trace": [
+    {
+      "kind": "entrypoint",
+      "file": "app/src/main/AndroidManifest.xml",
+      "line": 107,
+      "scope": "exported MainActivity intent filters",
+      "description": "The activity accepts external VIEW and SEND intents without a manifest permission."
+    },
+    {
+      "kind": "propagation",
+      "file": "app/src/main/java/com/snoworwind/pocketharness/FileIncoming.kt",
+      "line": 561,
+      "scope": "processIncomingIntent",
+      "description": "Accepted intents queue asynchronous work."
+    },
+    {
+      "kind": "sink",
+      "file": "app/src/main/java/com/snoworwind/pocketharness/FileIncoming.kt",
+      "line": 179,
+      "scope": "copyIn",
+      "description": "Each accepted file is copied into the private incoming workspace under its individual limit."
+    }
+  ],
+  "evidence": [
+    {
+      "file": "app/src/main/java/com/snoworwind/pocketharness/FileIncoming.kt",
+      "line": 163,
+      "description": "The copy limit is 200 MiB per file."
+    },
+    {
+      "file": "app/src/main/java/com/snoworwind/pocketharness/FileIncoming.kt",
+      "line": 386,
+      "description": "Incoming IO uses a single-thread executor without a source-visible queue bound."
+    },
+    {
+      "file": "app/src/main/java/com/snoworwind/pocketharness/FileIncoming.kt",
+      "line": 253,
+      "description": "TTL cleanup excludes paths referenced by pending/session queues."
+    }
+  ],
+  "blockers": [
+    "No isolated device check established that a separate app can repeatedly invoke the packaged activity with valid read grants to its provider.",
+    "The practical retained byte total and any meaningful app-storage availability effect have not been observed."
+  ],
+  "validation_plan": {
+    "local": "On an isolated emulator, use a dummy content provider and a small bounded set of harmless files to exercise the exported share path. Record copied byte totals and queue/cleanup state without approaching storage exhaustion.",
+    "deployment": "Have the owner verify final merged manifest and retention behavior using dummy shared files and a disposable test profile; do not fill device storage or use user files."
+  }
+}

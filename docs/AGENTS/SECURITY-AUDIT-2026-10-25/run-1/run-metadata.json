@@ -1,0 +1,369 @@
+{
+  "run_id": "pocket-harness-2026-10-24-run-1",
+  "repo": "pocket-harness",
+  "target": "/Users/zouhaoyu/Documents/forGithub/pocket-harness",
+  "source_ref": {
+    "commit": "b5a583be458c8ed10a914f4486932b15af7c7182",
+    "branch": "main",
+    "dirty": false
+  },
+  "profile": "deep",
+  "scope_paths": [
+    "repository-wide: Android shell, runtime snapshot and plugins, self-contained companion copies, local IPC and bridge protocols, data lifecycle, build and release automation, web/download surface, and security-relevant configuration"
+  ],
+  "budget": 80,
+  "execution_policy": "sandboxed-source-and-local-only",
+  "selected_companion_files": [
+    "CLIENT-SIDE.md",
+    "AI-AND-LLM.md",
+    "DESKTOP-MOBILE-AND-LOCAL-IPC.md",
+    "PROTOCOLS-RPC-AND-MESSAGING.md",
+    "DATA-ISOLATION-AND-LIFECYCLE.md",
+    "SUPPLY-CHAIN-AND-RELEASE.md",
+    "CLOUD-AND-DEPLOYMENT.md",
+    "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md",
+    "WEB-PROTOCOL-AND-AUTH.md"
+  ],
+  "prior_run_paths": [],
+  "prior_run_note": "No compatible structured coverage-ledger.json or findings.json exists in the designated prior-run store. Historical Markdown audits are contextual leads only and are not carried as verified records.",
+  "shared_file_owners": {
+    "run-metadata.json": "parent",
+    "architecture.md": "parent",
+    "coverage-ledger.json": "parent",
+    "findings.json": "parent",
+    "REPORT.md": "parent",
+    "FINDINGS-DETAIL.md": "parent",
+    "NEEDS-VALIDATION.md": "parent"
+  },
+  "run_status": "incomplete",
+  "pre_recon_budget_estimate": {
+    "baseline_recon_calls": 4,
+    "planned_hunter_waves": 3,
+    "reserved_critic_calls": 4,
+    "candidate_verifier_reserve": 46,
+    "candidate_capacity_at_two_verification_passes_each": 23,
+    "hunter_allowance_after_reserves": 48,
+    "budget_gate_passed": true,
+    "gate_note": "Initial planning reserved 44 verifier calls for 22 candidates. Wave 6 produced a 23rd candidate; the two remaining plan calls were reallocated to preserve two independent verification passes for all 23 candidates. The post-wave critic accepted two new units and the distinct final critic accepted a third missing lifecycle; no further hunter wave fits while preserving critic and validation reserves. Those three coverage units are deferred with budget_cannot_reserve_critics_and_validation. Revised total is exactly 80 calls, with no replacement or retry cushion.",
+    "seeded_deep_coverage_units": 42,
+    "planned_hunter_calls": 23,
+    "planned_wave_hunters": [
+      5,
+      4,
+      4,
+      1,
+      5,
+      4
+    ],
+    "reserved_critics": 7,
+    "planned_total_calls": 80,
+    "accepted_post_wave1_missing_units": 4,
+    "accepted_post_wave2_missing_units": 4,
+    "accepted_post_wave3_missing_units": 0,
+    "accepted_post_wave4_missing_units": 4,
+    "planned_critic_calls": 7,
+    "accepted_post_wave5_missing_units": 6
+  },
+  "coverage_critic_waves": [
+    {
+      "wave": 1,
+      "agent_id": "critic_wave1",
+      "missing_units_accepted": 4,
+      "reassign_ids": [],
+      "resolved_prior_leads": [],
+      "stop": false,
+      "reason": "Four source-mapped Android lifecycle paths were absent from the initial 29-unit ledger."
+    },
+    {
+      "wave": 2,
+      "agent_id": "critic_wave2",
+      "missing_units_accepted": 4,
+      "reassign_ids": [
+        "app%2Fsrc%2Fmain%2FAndroidManifest.xml%23ADB%20receiver%20and%20Shizuku%20provider%2Fservice::app%2Fsrc%2Fmain%2FAndroidManifest.xml%23exported%20IPC%20caller%20identity%20and%20operation%20binding::app%2Fsrc%2Fmain%2Fjava%2Fcom%2Fsnoworwind%2Fpocketharness::DESKTOP-MOBILE-AND-LOCAL-IPC.md%23IPC%20peer-authentication%20gaps::lifecycle%2Fexternal-invoke",
+        "app%2Fsrc%2Fmain%2FAndroidManifest.xml%23AdbKeyboardService::app%2Fsrc%2Fmain%2FAndroidManifest.xml%23BIND_INPUT_METHOD%20%E2%86%92%20active%20InputConnection%20text%20mutation::app%2Fsrc%2Fmain%2Fjava%2Fcom%2Fsnoworwind%2Fpocketharness::DESKTOP-MOBILE-AND-LOCAL-IPC.md%23Exported%20service%2C%20activity%2C%20receiver%2C%20or%20provider%20overreach::lifecycle%2Fime-bind-text-mutation",
+        "app%2Fsrc%2Fmain%2FAndroidManifest.xml%23BootReceiver::app%2Fsrc%2Fmain%2FAndroidManifest.xml%23BOOT_COMPLETED%20broadcast%20%E2%86%92%20EngineService%20start::app%2Fsrc%2Fmain%2Fjava%2Fcom%2Fsnoworwind%2Fpocketharness::DESKTOP-MOBILE-AND-LOCAL-IPC.md%23Exported%20service%2C%20activity%2C%20receiver%2C%20or%20provider%20overreach::lifecycle%2Fboot-receiver-start",
+        "app%2Fsrc%2Fmain%2Fjava%2Fcom%2Fsnoworwind%2Fpocketharness%2FShizukuUserService.kt%23Shizuku%2Faccessibility%20grant%20lifecycle::app%2Fsrc%2Fmain%2Fjava%2Fcom%2Fsnoworwind%2Fpocketharness%2FShizukuUserService.kt%23permission%20grant%20%E2%86%92%20privileged%20operation%20%E2%86%92%20revoke%2Frecovery::app%2Fsrc%2Fmain%2Fjava%2Fcom%2Fsnoworwind%2Fpocketharness::DESKTOP-MOBILE-AND-LOCAL-IPC.md%23Privileged%20helper%20as%20confused%20deputy::lifecycle%2Fgrant-revoke-recovery"
+      ],
+      "resolved_prior_leads": [],
+      "stop": false,
+      "reason": "Four units remain unassigned after an invalid hunter result; independent source critique found four additional security boundaries."
+    },
+    {
+      "wave": 3,
+      "agent_id": "critic_wave3",
+      "missing_units_accepted": 1,
+      "reassign_ids": [],
+      "resolved_prior_leads": [],
+      "stop": false,
+      "reason": "One SAF persisted-grant lifecycle boundary was accepted; no other mapped unit required reassignment."
+    },
+    {
+      "wave": 4,
+      "agent_id": "critic_wave4",
+      "missing_units_accepted": 4,
+      "reassign_ids": [],
+      "resolved_prior_leads": [],
+      "stop": false,
+      "reason": "Four separate undo-savepoint boundaries were missed: model tools, its REST route authorization, snapshot import parsing, and snapshot export scope/encryption."
+    },
+    {
+      "wave": 5,
+      "agent_id": "critic_wave5",
+      "missing_units_accepted": 6,
+      "reassign_ids": [],
+      "resolved_prior_leads": [],
+      "stop": false,
+      "reason": "Fresh post-wave critique found six separate shell/native and undo data lifecycle boundaries not covered by the 42 current units."
+    },
+    {
+      "wave": 6,
+      "agent_id": "post_wave6_critic",
+      "missing_units_accepted": 2,
+      "reassign_ids": [],
+      "resolved_prior_leads": [],
+      "stop": false,
+      "reason": "Accepted two source-mapped gaps: root ownership maintenance lease lifecycle and reusable engine-base cache workflow. No further hunter wave is budgeted because doing so would consume the strict candidate-validation and final-critic reserves."
+    },
+    {
+      "wave": 7,
+      "agent_id": "final_clean_critic",
+      "missing_units_accepted": 1,
+      "reassign_ids": [],
+      "resolved_prior_leads": [],
+      "stop": false,
+      "reason": "The distinct final critic found a separate runtime-cache cleanup deletion lifecycle absent from the map; no budget remained for a hunter wave and its next critic while preserving validation reserves."
+    }
+  ],
+  "invalid_agent_results": [
+    {
+      "agent_id": "hunter_privilege_ipc",
+      "affected_unit_count": 4,
+      "reason": "Returned duplicate coverage IDs and failed the exactly-once unit contract; no unit evidence accepted."
+    },
+    {
+      "agent_id": "wave5_undo_tools",
+      "affected_unit_count": 1,
+      "reason": "Returned a candidate using verdict instead of the required proposed_verdict field; result contract failed and unit was not accepted. Reassigned for fresh source hunting."
+    },
+    {
+      "agent_id": "wave5_undo_archive",
+      "affected_unit_count": 2,
+      "reason": "Returned candidate entries with verdict instead of required proposed_verdict; result contract failed and neither unit was accepted. Both archive units were reassigned for fresh source hunting."
+    }
+  ],
+  "spend_so_far": {
+    "baseline_recon_calls": 4,
+    "hunter_calls": 23,
+    "critic_calls": 7,
+    "verifier_calls": 46,
+    "total_agent_invocations": 80
+  },
+  "pending_uncovered_from_hunters": [],
+  "accepted_post_wave3_missing_units": 1,
+  "accepted_post_wave4_missing_units": 4,
+  "accepted_post_wave5_missing_units": 6,
+  "accepted_post_wave6_missing_units": 2,
+  "deferred_hunter_units": [
+    {
+      "surface": "Root ownership repair and maintenance lease lifecycle",
+      "lifecycle": "root-ownership-maintenance",
+      "reason": "budget_cannot_reserve_critics_and_validation"
+    },
+    {
+      "surface": "Reusable engine-base cache workflow",
+      "lifecycle": "engine-base-cache-provenance",
+      "reason": "budget_cannot_reserve_critics_and_validation"
+    },
+    {
+      "surface": "Runtime cache cleanup execution",
+      "lifecycle": "runtime-cache-cleanup-execution",
+      "reason": "budget_cannot_reserve_critics_and_validation"
+    }
+  ],
+  "accepted_final_critic_missing_units": 1,
+  "incomplete_reason": "validation_budget_exhausted",
+  "final_verification": [
+    {
+      "fingerprint": "EngineManager:shared-diagnostics-incomplete-redaction",
+      "verifier": "p5_01",
+      "status": "withheld_pending_fresh_verification",
+      "reason": "The reviewer corrected the storage-selection condition and reader boundary; the stricter wording needs a fresh independent final-record verification."
+    },
+    {
+      "fingerprint": "LinuxAssetPrepare/per-digest-staging-aggregate",
+      "verifier": "p5_02",
+      "status": "verified",
+      "reason": null
+    },
+    {
+      "fingerprint": "LogCollector:secret-redaction-chunk-boundary",
+      "verifier": "p5_03",
+      "status": "withheld_pending_fresh_verification",
+      "reason": "The reviewer corrected per-read/tick sink semantics and supplied a more exact multi-chunk fixture; that input and trace correction need a fresh independent final-record verification."
+    },
+    {
+      "fingerprint": "RootAccess:root-grant-revocation-dispatch-window",
+      "verifier": "p5_04",
+      "status": "withheld_pending_fresh_verification",
+      "reason": "The reviewer replaced a private helper as the alleged entrypoint with the model shell dispatch path and clarified AI consent versus Root Manager authorization; the corrected trace needs a fresh independent verification."
+    },
+    {
+      "fingerprint": "android-backup:active-profile-secret-in-transfer",
+      "verifier": "p5_05",
+      "status": "verified",
+      "reason": null
+    },
+    {
+      "fingerprint": "android-client-failure:console-provenance",
+      "verifier": "p5_06",
+      "status": "withheld_pending_fresh_verification",
+      "reason": "The reviewer extended the trace through recovery selection, UndoGate, and the quarantine patch write; the corrected impact path needs a fresh independent final-record verification."
+    },
+    {
+      "fingerprint": "android-config-export:unredacted-active-profile-copy",
+      "verifier": "p5_07",
+      "status": "verified_after_nonmaterial_correction",
+      "reason": "Applied only source line, wording, or bounded-plan corrections supplied by the fresh verifier; fingerprint, claimed root cause, blocker, and verdict stayed needs_validation."
+    },
+    {
+      "fingerprint": "android-saf:unbound-primary-document-id",
+      "verifier": "p5_08",
+      "status": "withheld_pending_fresh_verification",
+      "reason": "The reviewer moved the untrusted input entrypoint to the SAF result callback and specified a provider-identity mismatch fixture; this materially changes the source trace and needs a fresh independent verification."
+    },
+    {
+      "fingerprint": "android:incoming-share:aggregate-storage-budget",
+      "verifier": "p5_09",
+      "status": "verified_after_nonmaterial_correction",
+      "reason": "Applied only source line, wording, or bounded-plan corrections supplied by the fresh verifier; fingerprint, claimed root cause, blocker, and verdict stayed needs_validation."
+    },
+    {
+      "fingerprint": "github.github/workflows/pr-gate.yml/pr-workflow-secret-isolation",
+      "verifier": "p5_10",
+      "status": "verified",
+      "reason": null
+    },
+    {
+      "fingerprint": "linux-bash:session-policy-bypass",
+      "verifier": "p5_11",
+      "status": "verified_after_nonmaterial_correction",
+      "reason": "Applied only source line, wording, or bounded-plan corrections supplied by the fresh verifier; fingerprint, claimed root cause, blocker, and verdict stayed needs_validation."
+    },
+    {
+      "fingerprint": "model-capability:active-probe-level-cardinality",
+      "verifier": "p5_12",
+      "status": "verified",
+      "reason": null
+    },
+    {
+      "fingerprint": "model-capability:active-probe-user-approval",
+      "verifier": "p5_13",
+      "status": "verified",
+      "reason": null
+    },
+    {
+      "fingerprint": "plugins/dsh-android-bridge/src/capability-gate.ts/global-relock-scope",
+      "verifier": "p5_14",
+      "status": "verified",
+      "reason": null
+    },
+    {
+      "fingerprint": "scripts/build-snapshot-013.mjs/overlay-integrity",
+      "verifier": "p5_15",
+      "status": "verified",
+      "reason": null
+    },
+    {
+      "fingerprint": "scripts/source-build/run-local-source-chain.mjs/corepack-mirror-bootstrap",
+      "verifier": "p5_16",
+      "status": "verified",
+      "reason": null
+    },
+    {
+      "fingerprint": "undo-restore:sync-deps-action-confirmation",
+      "verifier": "p5_17",
+      "status": "verified",
+      "reason": null
+    },
+    {
+      "fingerprint": "undo.export.plaintext-encryption-staging",
+      "verifier": "p5_18",
+      "status": "withheld_pending_fresh_verification",
+      "reason": "The reviewer identified a concrete password-conversion failure input after plaintext archive creation; this changes the execution input and needs a fresh independent final-record verification."
+    },
+    {
+      "fingerprint": "undo.import.aggregate-buffer-cap",
+      "verifier": "p5_19",
+      "status": "verified",
+      "reason": null
+    },
+    {
+      "fingerprint": "vdisplay-destroy-session-mode-bypass",
+      "verifier": "p5_20",
+      "status": "verified_after_nonmaterial_correction",
+      "reason": "Applied only source line, wording, or bounded-plan corrections supplied by the fresh verifier; fingerprint, claimed root cause, blocker, and verdict stayed needs_validation."
+    },
+    {
+      "fingerprint": "vendor-dsh-undo-savepoint:global-settings-overrides-profile-store",
+      "verifier": "p5_21",
+      "status": "verified_after_nonmaterial_correction",
+      "reason": "Applied only source line, wording, or bounded-plan corrections supplied by the fresh verifier; fingerprint, claimed root cause, blocker, and verdict stayed needs_validation."
+    },
+    {
+      "fingerprint": "vendor-dsh-undo-savepoint:prune-auto-deletes-message-undo-blobs",
+      "verifier": "p5_22",
+      "status": "verified",
+      "reason": null
+    },
+    {
+      "fingerprint": "vendor/dshmarketplace-plugin/lib/index.js/install-source-approval-binding",
+      "verifier": "p5_23",
+      "status": "verified",
+      "reason": null
+    }
+  ],
+  "unvalidated_final_record_candidates": [
+    {
+      "fingerprint": "EngineManager:shared-diagnostics-incomplete-redaction",
+      "coverage_id": "app%2Fsrc%2Fmain%2Fjava%2Fcom%2Fsnoworwind%2Fpocketharness%2FEngineManager.kt%23Engine%20logs%2C%20audit%20logs%2C%20and%20console%20env::app%2Fsrc%2Fmain%2Fjava%2Fcom%2Fsnoworwind%2Fpocketharness%2FEngineManager.kt%23engine%20child%20env%20and%20log%20sinks::app%2Fsrc%2Fmain%2Fjava%2Fcom%2Fsnoworwind%2Fpocketharness::DATA-ISOLATION-AND-LIFECYCLE.md%23Analytics%2C%20logs%2C%20traces%2C%20and%20diagnostics%20as%20alternate%20readers::lifecycle%2Fstreaming-truncation-derived-copy",
+      "verifier": "p5_01",
+      "reason": "The reviewer corrected the storage-selection condition and reader boundary; the stricter wording needs a fresh independent final-record verification.",
+      "withheld_from_findings_json": true
+    },
+    {
+      "fingerprint": "LogCollector:secret-redaction-chunk-boundary",
+      "coverage_id": "app%2Fsrc%2Fmain%2Fjava%2Fcom%2Fsnoworwind%2Fpocketharness%2FEngineManager.kt%23Engine%20logs%2C%20audit%20logs%2C%20and%20console%20env::app%2Fsrc%2Fmain%2Fjava%2Fcom%2Fsnoworwind%2Fpocketharness%2FEngineManager.kt%23engine%20child%20env%20and%20log%20sinks::app%2Fsrc%2Fmain%2Fjava%2Fcom%2Fsnoworwind%2Fpocketharness::DATA-ISOLATION-AND-LIFECYCLE.md%23Analytics%2C%20logs%2C%20traces%2C%20and%20diagnostics%20as%20alternate%20readers::lifecycle%2Fstreaming-truncation-derived-copy",
+      "verifier": "p5_03",
+      "reason": "The reviewer corrected per-read/tick sink semantics and supplied a more exact multi-chunk fixture; that input and trace correction need a fresh independent final-record verification.",
+      "withheld_from_findings_json": true
+    },
+    {
+      "fingerprint": "RootAccess:root-grant-revocation-dispatch-window",
+      "coverage_id": "AI%20root%20grant%20and%20privileged%20shell%20fallback::RootGrant%20consent%20%E2%86%92%20ShellOps%20dispatch%20%E2%86%92%20Shizuku%20or%20direct-su%20root%20execution::app%2Fsrc%2Fmain%2Fjava%2Fcom%2Fsnoworwind%2Fpocketharness::DESKTOP-MOBILE-AND-LOCAL-IPC.md%23Privileged%20helper%20as%20confused%20deputy::lifecycle%2Fai-root-grant-shell-fallback",
+      "verifier": "p5_04",
+      "reason": "The reviewer replaced a private helper as the alleged entrypoint with the model shell dispatch path and clarified AI consent versus Root Manager authorization; the corrected trace needs a fresh independent verification.",
+      "withheld_from_findings_json": true
+    },
+    {
+      "fingerprint": "android-client-failure:console-provenance",
+      "coverage_id": "Android%20automatic%20undo%20recovery::Watchdog%20or%20client-plugin%20failure%20%E2%86%92%20UndoGate%20evidence%20and%20known-good%20checks%20%E2%86%92%20undo-emergency.mjs%20restore%20%E2%86%92%20profile%2Fplugin%20writes::app%2Fsrc%2Fmain%2Fjava%2Fcom%2Fsnoworwind%2Fpocketharness::Restore%20reintroduces%20invalid%20state::lifecycle%2Fandroid-undo-emergency-recovery",
+      "verifier": "p5_06",
+      "reason": "The reviewer extended the trace through recovery selection, UndoGate, and the quarantine patch write; the corrected impact path needs a fresh independent final-record verification.",
+      "withheld_from_findings_json": true
+    },
+    {
+      "fingerprint": "android-saf:unbound-primary-document-id",
+      "coverage_id": "SAF%20workspace%20and%20shared-directory%20selection::AndroidBridge.pickDirectory%20%E2%86%92%20persisted%20SAF%20grant%20and%20resolved%20host%20path%20%E2%86%92%20Termux%2FLinux%20workspace%20access::app%2Fsrc%2Fmain%2Fjava%2Fcom%2Fsnoworwind%2Fpocketharness::DESKTOP-MOBILE-AND-LOCAL-IPC.md%23Over-broad%20native%20bridge%20capabilities::lifecycle%2Fsaf-workspace-path-selection",
+      "verifier": "p5_08",
+      "reason": "The reviewer moved the untrusted input entrypoint to the SAF result callback and specified a provider-identity mismatch fixture; this materially changes the source trace and needs a fresh independent verification.",
+      "withheld_from_findings_json": true
+    },
+    {
+      "fingerprint": "undo.export.plaintext-encryption-staging",
+      "coverage_id": "vendor%2Fdsh-undo-savepoint%2Flib%2Fcore.mjs%23exportSnapshots::snapshot%20files%20and%20blobs%20%E2%86%92%20ZIP%20creation%2C%20optional%20encryption%2C%20and%20exported%20archive::vendor%2Fdsh-undo-savepoint::DATA-ISOLATION-AND-LIFECYCLE.md%23Export%20and%20backup%20scope%20expansion::lifecycle%2Fundo-snapshot-export",
+      "verifier": "p5_18",
+      "reason": "The reviewer identified a concrete password-conversion failure input after plaintext archive creation; this changes the execution input and needs a fresh independent final-record verification.",
+      "withheld_from_findings_json": true
+    }
+  ]
+}

@@ -1,0 +1,54 @@
+{
+  "verdict": "needs_validation",
+  "fingerprint": "undo.export.plaintext-encryption-staging",
+  "title": "Failed encrypted exports may leave a plaintext archive",
+  "description": "The authenticated export route writes a ZIP to the final export path before optional encryption. Errors after that write are returned without removing the archive. Whether another principal or a sync/backup reader can access it is unknown.",
+  "claimed_root_cause": "Password-protected export stages plaintext at the final path before encryption, so a later failure may leave an unencrypted archive there.",
+  "trace": [
+    {
+      "kind": "entrypoint",
+      "file": "vendor/dsh-undo-savepoint/lib/index.js",
+      "line": 1190,
+      "scope": "POST undo export route",
+      "description": "After route authorization, the request body and optional password are passed to exportSnapshots."
+    },
+    {
+      "kind": "sink",
+      "file": "vendor/dsh-undo-savepoint/lib/core.mjs",
+      "line": 2865,
+      "scope": "exportSnapshots file lifecycle",
+      "description": "The ZIP is written at the final path before encryption, and the catch does not remove that path."
+    }
+  ],
+  "evidence": [
+    {
+      "file": "vendor/dsh-undo-savepoint/lib/index.js",
+      "line": 1045,
+      "description": "The export route calls the authorization helper before handling the request."
+    },
+    {
+      "file": "vendor/dsh-undo-savepoint/lib/core.mjs",
+      "line": 2865,
+      "description": "writeZip completes before encryption."
+    },
+    {
+      "file": "vendor/dsh-undo-savepoint/lib/core.mjs",
+      "line": 2873,
+      "description": "The catch returns an error without deleting the archive."
+    },
+    {
+      "file": "vendor/dsh-undo-savepoint/lib/zip.mjs",
+      "line": 116,
+      "description": "writeZip renames its temporary file to the requested path."
+    }
+  ],
+  "blockers": [
+    "Failure-path plaintext residue was not reproduced because the required OS-enforced sandbox is unavailable.",
+    "Effective export directory permissions and any other principal, sync, or backup reader are not established.",
+    "Whether real snapshots contain sensitive values depends on local state that was not inspected."
+  ],
+  "validation_plan": {
+    "local": "When compliant sandboxing is available, use a temporary export root and synthetic snapshot with a dummy marker; inject a failure after the final ZIP write and before encrypted replacement, then inspect only that dummy file and remove the fixture.",
+    "deployment": "Have the owner inspect the effective export directory permissions and configured sync/backup scope without opening real export contents."
+  }
+}

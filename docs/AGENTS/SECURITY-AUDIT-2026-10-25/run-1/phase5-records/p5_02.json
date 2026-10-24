@@ -1,0 +1,49 @@
+{
+  "verdict": "needs_validation",
+  "fingerprint": "LinuxAssetPrepare/per-digest-staging-aggregate",
+  "title": "Linux asset preparation retains one staging tree per digest",
+  "description": "Asset preparation removes the staging path for the current digest and publishes the validated archive and unpacked tree under that digest. No aggregate quota or cleanup of other digest directories is visible. Lower-trust reachability and practical storage impact remain unresolved.",
+  "claimed_root_cause": "Successful distinct asset digests accumulate in separate staging directories without a source-visible aggregate quota or pruning policy.",
+  "trace": [
+    {
+      "kind": "entrypoint",
+      "file": "app/src/main/java/com/snoworwind/pocketharness/AndroidBridge.kt",
+      "line": 199,
+      "scope": "linuxAssetPrepare bridge",
+      "description": "The bridge passes an asset specification to the native preparation path."
+    },
+    {
+      "kind": "sink",
+      "file": "app/src/main/java/com/snoworwind/pocketharness/LinuxAssetPrepare.kt",
+      "line": 177,
+      "scope": "digest staging publication",
+      "description": "A successful preparation renames the work tree into the digest-specific staging directory."
+    }
+  ],
+  "evidence": [
+    {
+      "file": "app/src/main/java/com/snoworwind/pocketharness/LinuxAssetPrepare.kt",
+      "line": 161,
+      "description": "Preparation deletes only the current digest staging directory before doing work."
+    },
+    {
+      "file": "app/src/main/java/com/snoworwind/pocketharness/LinuxAssetPrepare.kt",
+      "line": 151,
+      "description": "The validated archive is deliberately retained alongside the unpacked tree."
+    },
+    {
+      "file": "app/src/main/java/com/snoworwind/pocketharness/LinuxAssetPrepare.kt",
+      "line": 177,
+      "description": "The completed work tree is published as staging/<sha256>."
+    }
+  ],
+  "blockers": [
+    "Whether a lower-trust principal can repeatedly reach the bridge is unresolved; the source describes a main-WebView facade and the Linux feature is not enabled by default.",
+    "The number and size of distinct valid assets reachable in deployment, and any resulting availability impact, are not established.",
+    "No isolated build or device runtime was available for a bounded fixture."
+  ],
+  "validation_plan": {
+    "local": "In an approved OS-enforced sandbox, use a fake asset opener and two small synthetic manifests with distinct digests, then inspect only the temporary staging directory to see whether both archive/tree pairs remain and whether any aggregate limit applies.",
+    "deployment": "Have the owner confirm whether lower-trust content can invoke the bridge and what asset size/cardinality limits apply in the shipped Linux environment. Do not fetch real assets or fill device storage."
+  }
+}
