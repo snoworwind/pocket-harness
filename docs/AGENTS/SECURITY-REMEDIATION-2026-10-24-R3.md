@@ -33,6 +33,12 @@
 
 ## 已完成
 
+## 自审轮（2026-10-24，对本轮全部修复的复核；发现于 `git diff 8c99c00..HEAD` 逐文件复查）
+
+- **自审批 A（Kotlin）**：坑 512 补口——ProductionIntegrity 落实临时密钥回退（原实现 Keystore 不可用时 sign 抛异常，Keystore 故障设备上通知决策全部无法落盘；现回退进程内 SecureRandom，verify 双钥匙都接受，+JVM 直测）；坑 514 补口——LogSanitizer 处理分块边界截断 PEM 头（BEGIN 无 END 时掩到文本末尾，+单测）；坑 528 补口——ConsoleActivity 导航锁改路径比对（不误杀页内锚点）；坑 529 补口——session 形态门放宽为可打印 ASCII（原白名单对上游 id 格式无依据）；脱敏失败计数原子化。
+- **自审批 B（脚本）**：auto-approve.mjs 全文恢复（加确认门时被截断为头+首行且两道验证全绿——坑 538）；check-engine-overlay 引号按平台分流（win32 保留双引号，POSIX 用 shellQuote，argv 端到端合成用例 EXACT——坑 539）。
+- 自审同时复核确认无缺陷的点：maskCredentialShapes 最终形态（Bearer/KV 字符串替换保引号）、Vdisplay 锁内 status 可重入、BrowserBody 改动经 757 例回归、门禁批负控均复跑通过。
+
 - **PR-6（R3-11/35/36/37）清理与 CI 批**：遗留 build-snapshot-arm64.mjs 删除（EXECUTION-MAP 摘行，code-map 通过）；pr-gate 敏感信息扫描扩模式族与目录面（测试文件排除——脱敏器单测必须内置字面假键）；gate-sentinel 恒跑 job（PR_GATE_MODE != on 即红）；check-manifest-hardening 加 FileProvider 调用方 allowlist（负控：移出即 FAIL）。
 
 <<<<<<< HEAD

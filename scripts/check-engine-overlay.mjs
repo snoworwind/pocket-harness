@@ -228,9 +228,12 @@ try {
   writeFileSync(mountFile, JSON.stringify(ROW_FILES))
   try {
     const snapWin = snap.replace(/\\/g, '/')
-    // 坑 534（R3-23）：JSON.stringify 不转义 `$`/反引号，POSIX shell 内插下 `$(…)` 仍可执行；
-    // 全部参数改 shellQuote（POSIX 单引号）。
-    res = JSON.parse(execSync(`${process.platform === 'win32' ? 'python' : 'python3'} ${shellQuote(tmpPy)} ${shellQuote(snapWin)} ${shellQuote(wantFile)} ${shellQuote(NM)} ${shellQuote(carrierFile)} ${shellQuote(mountFile)} ${shellQuote(discoveryFile)}`, { encoding: 'utf8', maxBuffer: 128 * 1024 * 1024 }))
+    // 坑 534（R3-23）+ 坑 539（自审纠正）：引号语义按平台分流——POSIX shell 下 JSON.stringify
+    // 不转义 `$`/反引号（`$(…)` 可执行），必须 shellQuote（POSIX 单引号）；但 win32 的
+    // execSync 走 cmd.exe，**不认单引号**（会被当字面量传给 python）。win32 保留原双引号
+    // 形态（cmd 语义下安全；路径含 `"` 在本仓布局中不存在）。
+    const q = (v) => (process.platform === 'win32' ? JSON.stringify(v) : shellQuote(v))
+    res = JSON.parse(execSync(`${process.platform === 'win32' ? 'python' : 'python3'} ${q(tmpPy)} ${q(snapWin)} ${q(wantFile)} ${q(NM)} ${q(carrierFile)} ${q(mountFile)} ${q(discoveryFile)}`, { encoding: 'utf8', maxBuffer: 128 * 1024 * 1024 }))
   } finally {
     rmSync(tmpPy, { force: true })
     rmSync(wantFile, { force: true })
