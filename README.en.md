@@ -244,9 +244,8 @@ APK `assets/licenses/`.
 
 ## Thanks
 
-This project builds on the existing work of dsh-mobile-apk. Thanks to the original community members
-for their feedback and contributions: cdwlll (environment reports), haitunlang (MIUI12 compatibility),
-TACONailoong (legacy WebView compatibility approach), X-SCI-TECH (PR contribution), Yangerwei (file race
-feedback), gr12-cmd (armv7l request), and cmyfqwq (in-place upgrade feedback).
+Thanks to the [`kelai141/dsh-mobile-apk`](https://github.com/kelai141/dsh-mobile-apk) repository and its
+community for the code, documentation, and experience that provide an important foundation for this
+project.
 
 Development and maintenance conventions live in [`AGENTS.md`](AGENTS.md).
