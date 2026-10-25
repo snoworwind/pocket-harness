@@ -204,8 +204,7 @@ MIT，双版权：原项目 [`kelai141/dsh-mobile-apk`](https://github.com/kelai
 
 ## 致谢
 
-本项目基于 dsh-mobile-apk 的既有工作。感谢原项目社区成员的反馈与贡献：cdwlll（环境问题反馈）、
-haitunlang（MIUI12 兼容）、TACONailoong（老 WebView 兼容方案）、X-SCI-TECH（PR 贡献）、
-Yangerwei（文件竞态反馈）、gr12-cmd（armv7l 需求）、cmyfqwq（覆盖安装兼容反馈）。
+感谢 [`kelai141/dsh-mobile-apk`](https://github.com/kelai141/dsh-mobile-apk) 仓库及其社区积累的代码、
+文档与实践，为本项目提供了重要基础。
 
 开发维护规范见 [`AGENTS.md`](AGENTS.md)（开发地图）。
