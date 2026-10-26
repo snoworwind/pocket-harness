@@ -171,6 +171,8 @@ Harness 与 vendor 源码均跟随当前官方目标；`prepare-harness-vendor-o
 
 来源链在构建期会把 `@deepseek-ai/*` 从 `scripts/snapshot-config/engine-overlay.json` 摘除（否则快照构建器会按登记表回拉上游发布版 tarball，整目录覆盖已注入的源码产物），摘除清单记进 `source-build-policy.json`；APK 步骤先由 `scripts/source-build/restore-overlay-pins.mjs` 把这份清单并回去，再跑门禁集——`check-contract.mjs` 第 7 节正是按它定运行时版本、并判 profile 里引擎包 insert 行是否与运行时同版（该门禁在拿不到 semver 时 SKIP，旧链因此从未真判过）。还原记录进策略 provenance，退出 trap 覆盖回原文件（坑 201）。
 
+**Termux Go argv 修复组件**：快照会带 `go-compat`，但不预装 Go。`go-compat diagnose` 用真实 `go version` 与带一次性前置参数的对照调用区分健康、已知 `argv[1]` 丢失和未知状态；只有确认匹配 Termux runtime 与 `os/exec` 标记源码后，`go-compat rebuild` 才会复制 GOROOT、在副本上按 `TERMUX_EXEC__PROC_SELF_EXE` 标记条件化参数调整，并用现有 Go bootstrap 构建旁路工具链。原 GOROOT 不被覆盖，构建结果还会检查版本、用户参数、环境变量和子进程参数。设备用法见 [`scripts/snapshot-config/README.md`](../../scripts/snapshot-config/README.md)，根因见 [坑 550](gotchas.md)。
+
 **设备验证链路**（产品验收使用 ARM64 Android 设备；MuMu x86_64 竖屏 `127.0.0.1:16416`、横屏 `127.0.0.1:16384` 不能安装产品 APK）：
 - 安装：`adb -s <serial> install -r -t out\v<版本>\pocket-harness-v<版本>-arm64.apk`（发布包使用固定 Pocket Harness 签名；**指纹变更触发 refreshSnapshot 全量重解压（真机 ≈2-4 分钟，勿在解压中杀进程——中途杀进程看门狗会拿半解压运行时拉引擎，见坑 37）**）。
 - 引擎探活：`adb -s <serial> forward tcp:23080 tcp:3080` → `http://127.0.0.1:23080/`。

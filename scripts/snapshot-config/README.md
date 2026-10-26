@@ -10,6 +10,18 @@
 | `slim.json` | 7e-2/8a/8a2 | nodePtyPrebuilds / reflinkGlobs / misplacedDirs / sourcemapDelete |
 | `apt.conf.template` | 7d 包管理器路径覆盖 | APT_CONFIG 主文件；`@@PREFIX@@` 构建期替换设备端前缀 |
 | `install-clang.sh` | 0.13.1 W6 工具链 | C 工具链按需安装器（随快照分发）；`@@PREFIX@@` 同上 |
+| `go-compat.mjs` / `go-compat.sh` | Go argv 兼容组件 | 检测受影响的 Termux Go，并从现有 GOROOT 源码重编修复版 Android/arm64 工具链；只生成旁路目录，不覆盖原安装 |
+
+### Go argv 兼容组件
+
+组件随快照安装为 `go-compat`，但不预装 Go。它只接受同时具备已知 runtime argv 补丁和 `TERMUX_EXEC__PROC_SELF_EXE` 执行标记的 Go 源码树；源码检查不匹配时会拒绝重编。先诊断，再将 GOROOT 复制到临时构建树、修改副本并输出到 `~/.dsh/opt/golang-argvfix-<版本>`：
+
+```sh
+go-compat diagnose --go "$HOME/.dsh/opt/golang/bin/go"
+go-compat rebuild --go "$HOME/.dsh/opt/golang/bin/go" --goroot "$HOME/.dsh/opt/golang"
+```
+
+重编成功后按命令输出设置 `GOROOT` 与 `PATH`，并用新工具链重新构建 Go 应用。旧二进制仍带有原 runtime 行为。重编会同时保留原工具链、源码副本和新工具链，运行前应确保有足够空间。组件不会覆盖原 Go 安装，也不会对不匹配的 Go 源码猜测修改。
 
 ## 约定
 

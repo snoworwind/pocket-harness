@@ -108,6 +108,20 @@ const REQUIRED = [
     deps: ['assertRelSafe'],
     why: '同上：步骤被删会让 extensionDelete 变死键，裁剪静默失效而门禁全绿',
   },
+  {
+    id: 'go-compat-runtime',
+    label: '快照组件：Go argv 修复器运行模块写入 usr/share',
+    needle: "writeFileSync(join(POCKET_HARNESS_SHARE, 'go-compat.mjs')",
+    deps: ['GO_COMPAT_TPL', 'POCKET_HARNESS_SHARE'],
+    why: '删除会让 go-compat 启动器在设备上找不到运行模块',
+  },
+  {
+    id: 'go-compat-launcher',
+    label: '快照组件：Go argv 修复器 go-compat 命令写入 usr/bin',
+    needle: "writeFileSync(join(U, 'bin', 'go-compat')",
+    deps: ['GO_COMPAT_LAUNCHER_TPL', 'PKG_PREFIX'],
+    why: '删除会让设备 PATH 中没有 go-compat 命令',
+  },
 ]
 
 function runChecks() {
@@ -200,6 +214,12 @@ function selfTest() {
   // ① 正向：当前构建器必须通过全部构造在场判据
   const missingNow = REQUIRED.filter((r) => !text.split('\n').some((l) => l.includes(r.needle) && !/^\s*(\/\/|\*)/.test(l)))
   probe('正向对照：当前构建器的产出面构造全部在场（缺=' + missingNow.length + '）', missingNow.length === 0)
+  const withoutGoCompat = text.split('\n').filter((line) =>
+    !line.includes("join(POCKET_HARNESS_SHARE, 'go-compat.mjs')") && !line.includes("join(U, 'bin', 'go-compat')"),
+  ).join('\n')
+  const missingGoCompat = REQUIRED.filter((r) => r.id.startsWith('go-compat-')
+    && !withoutGoCompat.split('\n').some((line) => line.includes(r.needle) && !/^\s*(\/\/|\*)/.test(line)))
+  probe('反向对照：移除 Go 组件模块与启动器写入后门禁判红', missingGoCompat.length === 2)
 
   const localChain = readFileSync(APK_CHAIN, 'utf8')
   const portableChain = readFileSync(PORTABLE_CHAIN, 'utf8')

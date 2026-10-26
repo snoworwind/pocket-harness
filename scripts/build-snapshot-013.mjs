@@ -52,7 +52,7 @@ const PYTHON = process.platform === 'win32' ? 'python' : 'python3'
 
 // ── 数据模块（Phase 2b 外置：scripts/snapshot-config/，双仓同版——雷点 10）──
 // 清单/模板与编排逻辑分离：预装包、镜像链、剥离清单、瘦身清单、seed 模板、apt.conf、
-// install-clang.sh 均在本目录维护；编排器只读数据 + 走流程。@@PREFIX@@ 为模板占位
+// install-clang.sh / go-compat.* 均在本目录维护；编排器只读数据 + 走流程。@@PREFIX@@ 为模板占位
 // （构建期替换为设备端前缀，本地 stage 路径不可烧入）。
 import { checkShippedProfileManifests } from './lib/profile-seed.mjs'
 const CFG_DIR = join(ROOT, 'scripts', 'snapshot-config')
@@ -63,6 +63,8 @@ const SLIM = JSON.parse(readCfg('slim.json'))
 const SEED_SETTINGS = readCfg('seed-settings.yaml')
 const APT_CONF_TPL = readCfg('apt.conf.template')
 const INSTALL_CLANG_TPL = readCfg('install-clang.sh')
+const GO_COMPAT_TPL = readCfg('go-compat.mjs')
+const GO_COMPAT_LAUNCHER_TPL = readCfg('go-compat.sh')
 for (const [name, v] of [['preinstall', PREINSTALL], ['strip', STRIP], ['slim', SLIM]]) {
   if (!v || typeof v !== 'object') { console.error(`snapshot-config/${name} 无效`); process.exit(1) }
 }
@@ -957,6 +959,13 @@ if (existsSync(join(binDir, 'dpkg'))) {
 // 脚本本体外置 snapshot-config/install-clang.sh（@@PREFIX@@ 占位，构建期替换设备端前缀）。
 writeFileSync(join(U, 'bin', 'install-clang.sh'), INSTALL_CLANG_TPL.replaceAll('@@PREFIX@@', PKG_PREFIX), { mode: 0o755 })
 log('install-clang.sh 就位（usr/bin，按需 C 工具链安装器）')
+
+// ── Go argv 兼容组件（运行时可选调用，不预装 Go）────────────────────────
+const POCKET_HARNESS_SHARE = join(U, 'share', 'pocket-harness')
+mkdirSync(POCKET_HARNESS_SHARE, { recursive: true })
+writeFileSync(join(POCKET_HARNESS_SHARE, 'go-compat.mjs'), GO_COMPAT_TPL, { mode: 0o644 })
+writeFileSync(join(U, 'bin', 'go-compat'), GO_COMPAT_LAUNCHER_TPL.replaceAll('@@PREFIX@@', PKG_PREFIX), { mode: 0o755 })
+log('go-compat 就位（usr/bin，可诊断并从源码重编 Android/arm64 Go）')
 
 // ── 7e. 错位目录剔除（issue #80 P5，2026-08-24）：relocate-snapshot 历史上会把
 // 包内绝对路径 `/data/data/com.termux/...` 当作相对路径搬进 usr 树——纯冗余（PATH 不会搜到），
