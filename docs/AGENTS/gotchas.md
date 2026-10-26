@@ -3213,3 +3213,7 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 554. **同一通知事件内相同选项文字会让多个问题按钮共用 PendingIntent（上游 `dsh-mobile-apk` #570，2026-10-26）**
 
     现象：多问通知可以为每个问题生成相同文案的选项按钮，但动作 PendingIntent 的 requestCode 原来只由 `eventId`、动作和选项决定；Android 的 PendingIntent 身份不包含 extras，`FLAG_UPDATE_CURRENT` 会把先前按钮的 questionId 更新成后一个问题，点击任一按钮都可能答到错误的问题。真因：代码把 questionId 放进 Intent extras，却遗漏在 PendingIntent 的稳定身份键中。修法：将 questionId 纳入 `actionPendingKey`，其他动作没有 questionId 时保留原键形态。复验：`NotificationContractTest.同事件同选项的不同问句使用不同PendingIntent身份` 断言稳定键与 requestCode 均不同，并锁定 actionPending 调用该 helper；完整 Kotlin 单测、计数及执行地图门禁通过。设备层状态：按用户要求暂缓实际设备验证。
+
+555. **FileProvider 门禁只登记调用文件名，漏查实际路径资源与文件内第二个调用（上游 `dsh-mobile-apk` #585，2026-10-26）**
+
+    现象：旧门禁只检查 `getUriForFile` 出现在哪些文件，允许文件里增加第二次调用仍判绿；也没有从 Manifest 的 `FILE_PROVIDER_PATHS` 实际引用追到资源并核对 XML 映射。若路径属性用 `&#46;` 表示根点号，原始文本匹配也可能把宽映射误当成另一条路径；递归解码则会把字面 `&amp;#46;` 再变宽。真因：判据停留在调用者集合和未解释的 XML 属性字符串，没有锁定调用次数、资源引用和一次实体解析后的映射语义。修法：按 Manifest 的 `@xml` 引用读取 FileProvider paths 资源，XML 属性只解码一次；按 `(tag,name,path)` 精确登记所有宽/窄映射，核对同名资源的 qualifier/source-set 覆盖，并对 `app/src` 相对生产 Kotlin 文件逐一锁定调用次数。运行时 FileProvider 白名单和路径边界未变。复验：`node scripts/check-manifest-hardening.mjs --self-test` 覆盖已登记正控、编码点号、双重编码不递归、额外宽映射、重复调用及越 source-set 调用；临时合成树的第二次 `PathOpen.kt` 调用和 `debug/res/xml/file_paths.xml` 宽化均判红。PR Gate 先跑自检再跑真实树检查。L1 门禁改动，未做设备验证。

@@ -18,10 +18,10 @@
 //   4. exclude 语义：backup_rules 与 data_extraction_rules（cloud-backup + device-transfer）
 //      必须逐条覆盖 REQUIRED_EXCLUDES（删任意一条即拒，空 exclude 即拒）。
 //
-// 用法：node scripts/check-manifest-hardening.mjs [--root <apk 仓根或协调仓根>]
+// 用法：node scripts/check-manifest-hardening.mjs [--self-test] [--root <apk 仓根或协调仓根>]
 //   --root 仅用于反向验证（合成夹具树）；缺省自动探测。也可用环境变量 DSH_APK_ROOT。
 // 退出码：0 = 通过；1 = 失败（拒打包/拒合）或树定位失败。
-import { readFileSync, existsSync } from 'node:fs'
+import { readFileSync, existsSync, readdirSync } from 'node:fs'
 import { join, dirname, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -102,6 +102,177 @@ const texts = (node) => descendants(node, 'domain').map((d) => (d.text ?? '').tr
 
 const read = (p) => {
   try { return readFileSync(p, 'utf8') } catch { return null }
+}
+
+// Decode XML attributes exactly once. Recursive entity decoding could turn the
+// literal text "&#46;" into "." and change a reviewed FileProvider root width.
+function decodeXmlAttributeOnce(raw) {
+  const value = String(raw ?? '')
+  const entityPattern = /&(?:amp|lt|gt|quot|apos|#(?:[0-9]+|x[0-9a-fA-F]+));/g
+  if (value.replace(entityPattern, '').includes('&')) return { error: '未知或不完整 XML entity' }
+  try {
+    return { value: value.replace(entityPattern, (entity) => {
+      if (entity === '&amp;') return '&'
+      if (entity === '&lt;') return '<'
+      if (entity === '&gt;') return '>'
+      if (entity === '&quot;') return '"'
+      if (entity === '&apos;') return "'"
+      const body = entity.slice(2, -1)
+      const codePoint = body[0]?.toLowerCase() === 'x'
+        ? Number.parseInt(body.slice(1), 16)
+        : Number.parseInt(body, 10)
+      const validXmlChar = codePoint === 0x9 || codePoint === 0xa || codePoint === 0xd
+        || (codePoint >= 0x20 && codePoint <= 0xd7ff)
+        || (codePoint >= 0xe000 && codePoint <= 0xfffd)
+        || (codePoint >= 0x10000 && codePoint <= 0x10ffff)
+      if (!Number.isInteger(codePoint) || !validXmlChar) throw new Error('非法 XML code point')
+      return String.fromCodePoint(codePoint)
+    }) }
+  } catch (error) {
+    return { error: error.message }
+  }
+}
+
+const FILE_PROVIDER_PATHS = new Map([
+  ['external-path|dshdata_exports|Documents/dshdata/', 'narrow'],
+  ['external-path|external_shared|.', 'wide'], // PathOpen chooser only; runtime checks remain authoritative.
+  ['files-path|internal_workspaces|home/.dsh/workspaces/', 'narrow'],
+  ['files-path|internal_tmp|home/tmp/', 'narrow'],
+  ['files-path|internal_usr_bin|usr/bin/', 'narrow'],
+  ['cache-path|log_share|log-share/', 'narrow'],
+])
+const FILE_PROVIDER_CALLERS = new Map([
+  ['main/java/com/snoworwind/pocketharness/FileIncoming.kt', 1], // Engine-driven reader; runtime path allowlist.
+  ['main/java/com/snoworwind/pocketharness/LogShare.kt', 1], // Sanitized diagnostic ZIP in cacheDir/log-share.
+  ['main/java/com/snoworwind/pocketharness/PathOpen.kt', 1], // User-mediated Files chooser; chooser predicate.
+])
+
+function fileProviderResourcePath(mainDir, pathsRef) {
+  if (!/^@xml\/[A-Za-z_][A-Za-z0-9_]*$/.test(pathsRef ?? '')) return null
+  return join(mainDir, 'res', 'xml', pathsRef.slice('@xml/'.length) + '.xml')
+}
+
+function fileProviderResourceVariants(appSrcDir, pathsRef) {
+  if (!/^@xml\/[A-Za-z_][A-Za-z0-9_]*$/.test(pathsRef ?? '')) return []
+  const fileName = pathsRef.slice('@xml/'.length) + '.xml'
+  const matches = []
+  for (const sourceSet of readdirSync(appSrcDir, { withFileTypes: true })) {
+    if (!sourceSet.isDirectory() || /^(?:androidTest|test)/.test(sourceSet.name)) continue
+    const resDir = join(appSrcDir, sourceSet.name, 'res')
+    if (!existsSync(resDir)) continue
+    for (const qualifier of readdirSync(resDir, { withFileTypes: true })) {
+      if (!qualifier.isDirectory() || !/^xml(?:-[A-Za-z0-9-]+)*$/.test(qualifier.name)) continue
+      const candidate = join(resDir, qualifier.name, fileName)
+      if (existsSync(candidate)) matches.push(candidate)
+    }
+  }
+  return matches.sort()
+}
+
+function validateFileProviderMappings(manifestText, pathsXml, callerCounts) {
+  const errors = []
+  const manifest = parseXml(manifestText)
+  const providers = descendants(manifest, 'provider').filter((provider) => {
+    return decodeXmlAttributeOnce(provider.attrs['android:name']).value === 'androidx.core.content.FileProvider'
+  })
+  if (providers.length !== 1) errors.push('FileProvider provider 数量必须为 1，实际 ' + providers.length)
+  const provider = providers[0]
+  let pathsRef = null
+  if (provider) {
+    if (provider.attrs['android:exported'] !== 'false') errors.push('FileProvider 必须 exported=false')
+    if (provider.attrs['android:grantUriPermissions'] !== 'true') errors.push('FileProvider 必须 grantUriPermissions=true')
+    const metadata = descendants(provider, 'meta-data').filter((item) => {
+      return decodeXmlAttributeOnce(item.attrs['android:name']).value === 'android.support.FILE_PROVIDER_PATHS'
+    })
+    if (metadata.length !== 1) errors.push('FILE_PROVIDER_PATHS metadata 数量必须为 1，实际 ' + metadata.length)
+    const resource = metadata[0] && decodeXmlAttributeOnce(metadata[0].attrs['android:resource'])
+    if (resource?.error) errors.push('FILE_PROVIDER_PATHS resource 解码失败：' + resource.error)
+    else if (resource?.value && /^@xml\/[A-Za-z_][A-Za-z0-9_]*$/.test(resource.value)) pathsRef = resource.value
+    else if (metadata.length === 1) errors.push('FILE_PROVIDER_PATHS 必须引用一个 @xml 资源')
+  }
+
+  const pathsDoc = parseXml(pathsXml)
+  const roots = descendants(pathsDoc, 'paths')
+  if (roots.length !== 1) errors.push('<paths> 根元素数量必须为 1，实际 ' + roots.length)
+  const mappingRoot = roots[0]
+  const allowedTags = new Set(['cache-path', 'external-path', 'files-path', 'external-cache-path', 'external-media-path', 'root-path'])
+  const actual = new Map()
+  for (const node of mappingRoot?.children ?? []) {
+    if (!allowedTags.has(node.name)) { errors.push('不支持或未登记的路径映射元素 <' + node.name + '>'); continue }
+    const name = decodeXmlAttributeOnce(node.attrs.name)
+    const path = decodeXmlAttributeOnce(node.attrs.path)
+    if (name.error || path.error) { errors.push('<' + node.name + '> name/path entity 解码失败'); continue }
+    if (!name.value || path.value === undefined) { errors.push('<' + node.name + '> 必须显式声明 name 与 path'); continue }
+    const key = node.name + '|' + name.value + '|' + path.value
+    actual.set(key, (actual.get(key) ?? 0) + 1)
+  }
+  for (const [key, width] of FILE_PROVIDER_PATHS) {
+    if (actual.get(key) !== 1) errors.push('FileProvider ' + width + ' 映射必须恰好登记一次：' + key + '（实际 ' + (actual.get(key) ?? 0) + '）')
+  }
+  for (const [key, count] of actual) {
+    if (!FILE_PROVIDER_PATHS.has(key)) errors.push('FileProvider 路径映射未审核：' + key)
+    if (count !== 1) errors.push('FileProvider 路径映射重复：' + key + '（' + count + ' 次）')
+  }
+  if (pathsRef === null) errors.push('无法从 manifest 确定 FileProvider paths 资源')
+
+  for (const [file, expected] of FILE_PROVIDER_CALLERS) {
+    if ((callerCounts.get(file) ?? 0) !== expected) {
+      errors.push('FileProvider 调用登记不符：' + file + '（期望 ' + expected + '，实际 ' + (callerCounts.get(file) ?? 0) + '）')
+    }
+  }
+  for (const [file, count] of callerCounts) {
+    if (!FILE_PROVIDER_CALLERS.has(file)) errors.push('FileProvider 调用文件未登记：' + file)
+    if (!Number.isInteger(count) || count < 0) errors.push('FileProvider 调用计数无效：' + file)
+  }
+  return { errors, pathsRef }
+}
+
+function selfTestFileProvider() {
+  const assert = (condition, message) => { if (!condition) throw new Error('FileProvider self-test: ' + message) }
+  const manifest = '<manifest><application><provider android:name="androidx.core.content.FileProvider" android:exported="false" android:grantUriPermissions="true"><meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/file_paths" /></provider></application></manifest>'
+  const mappings = [
+    '<external-path name="dshdata_exports" path="Documents/dshdata/" />',
+    '<external-path name="external_shared" path="." />',
+    '<files-path name="internal_workspaces" path="home/.dsh/workspaces/" />',
+    '<files-path name="internal_tmp" path="home/tmp/" />',
+    '<files-path name="internal_usr_bin" path="usr/bin/" />',
+    '<cache-path name="log_share" path="log-share/" />',
+  ].join('')
+  const paths = '<paths>' + mappings + '</paths>'
+  const callers = new Map(FILE_PROVIDER_CALLERS)
+  const valid = validateFileProviderMappings(manifest, paths, callers)
+  assert(valid.errors.length === 0, '当前已审核映射应通过')
+  assert(valid.pathsRef === '@xml/file_paths' && fileProviderResourcePath('/fixture/app/src/main', valid.pathsRef)
+    === '/fixture/app/src/main/res/xml/file_paths.xml', '应从 Manifest 引用解析实际资源路径')
+  assert(fileProviderResourcePath('/fixture/app/src/main', '@xml/../file_paths') === null, '资源名不得越出 res/xml')
+  const encodedWideRoot = paths.replace('path="."', 'path="&#46;"')
+  assert(validateFileProviderMappings(manifest, encodedWideRoot, callers).errors.length === 0,
+    '十进制 entity 解码后仍须识别已登记的宽根映射')
+  assert(decodeXmlAttributeOnce('&amp;#46;').value === '&#46;', 'attribute 只解码一次，不得递归变成宽根点号')
+  assert(validateFileProviderMappings(manifest, paths.replace('path="."', 'path="&amp;#46;"'), callers).errors.length > 0,
+    '双重编码后的字面 entity 不得递归变成获批根路径')
+  assert(validateFileProviderMappings(manifest, paths.replace('path="."', 'path="&bogus;"'), callers).errors.length > 0,
+    '未知 entity 必须拒绝')
+  assert(validateFileProviderMappings(manifest, paths.replace('</paths>', '<external-path name="extra" path="." /></paths>'), callers).errors.length > 0,
+    '额外宽映射必须判红')
+  const duplicateCallers = new Map(callers)
+  duplicateCallers.set('main/java/com/snoworwind/pocketharness/PathOpen.kt', 2)
+  assert(validateFileProviderMappings(manifest, paths, duplicateCallers).errors.some((error) => error.includes('PathOpen.kt')),
+    '已登记文件增加第二个调用必须判红')
+  assert(validateFileProviderMappings(manifest, paths, new Map([...callers, ['main/java/other/PathOpen.kt', 1]])).errors.some((error) => error.includes('未登记')),
+    '未登记 source-set 路径的调用必须判红')
+  console.log('PASS  FileProvider self-test（资源引用、单次 entity 解码、额外宽映射、精确调用数）')
+}
+
+if (argv.includes('--self-test')) {
+  try {
+    selfTestFileProvider()
+    console.log('MANIFEST-HARDENING SELF-TEST PASSED')
+    process.exit(0)
+  } catch (error) {
+    console.error('MANIFEST-HARDENING SELF-TEST FAILED: ' + error.message)
+    process.exit(1)
+  }
 }
 
 // ── 1/2. manifest ────────────────────────────────────────────────────────────
@@ -295,35 +466,46 @@ const checkExcludes = (label, file, groups) => {
 checkExcludes('backup_rules.xml', join(MAIN, 'res', 'xml', 'backup_rules.xml'), [null])
 checkExcludes('data_extraction_rules.xml', join(MAIN, 'res', 'xml', 'data_extraction_rules.xml'), ['cloud-backup', 'device-transfer'])
 
-// ── FileProvider external_shared 全盘映射的调用方封口（坑 537 / R3-37）──────
-// file_paths.xml 把整个外部存储根映射为 external_shared（0.13.7 有意设计，运行时白名单
-// 在 PathOpen/FileIncoming）。宽映射本身不收窄，但**生成 content:// 的调用方**必须锁定：
-// 任何新代码直接对映射面发 URI 都会把全盘爆炸半径带进来。allowlist 之外的调用方即判红。
-// 坑 548（复审）：按**包相对路径**键控而非裸文件名——任意子包里再造一个 PathOpen.kt 不得
-// 白嫖 allowlist；读文件失败（read 返回 null）按门禁红处理，不得让 TypeError 把红吞成崩溃。
-const FILE_PROVIDER_URI_ALLOWLIST = new Set([
-  'FileIncoming.kt',   // 来件/阅读器（引擎驱动，运行时窄白名单）
-  'LogShare.kt',       // 诊断包分享（只读候选白名单 + LogSanitizer fail-closed）
-  'PathOpen.kt',       // Files 面用户介导 chooser（isChooserAllowed 判据）
-])
+// ── FileProvider 映射资源与每个调用点封口（坑 537 / R3-37 / R3-43）───────
+// 按 Manifest 实际引用解析 paths XML；实体只解码一次，并以解码后的
+// (tag,name,path) 精确登记宽/窄映射。每个生成 URI 的 app/src 相对文件也锁定精确引用数。
 {
-  const { readdirSync } = await import('node:fs')
-  const ktDir = join(MAIN, 'java', 'com', 'snoworwind', 'pocketharness')
-  const callers = []
+  const appSrcDir = join(APK_ROOT, 'app', 'src')
+  const callers = new Map()
+  const stripKotlinComments = (text) => text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '')
   const walkKt = (dir) => {
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
       const p2 = join(dir, entry.name)
-      if (entry.isDirectory()) { walkKt(p2); continue }
+      if (entry.isDirectory()) {
+        // Test source sets are not production URI issuers; scan main, flavor,
+        // debug, and release source sets so overlays cannot add unregistered calls.
+        if (dir === appSrcDir && /^(?:androidTest|test)/.test(entry.name)) continue
+        walkKt(p2)
+        continue
+      }
       if (!entry.name.endsWith('.kt')) continue
       const text = read(p2)
       if (text === null) { check('读取 ' + p2 + '（FileProvider 调用方扫描）', false); continue }
-      if (text.includes('getUriForFile')) callers.push(relative(ktDir, p2))
+      const count = [...stripKotlinComments(text).matchAll(/\bgetUriForFile\s*\(/g)].length
+      if (count > 0) callers.set(relative(appSrcDir, p2).split('\\').join('/'), count)
     }
   }
-  walkKt(ktDir)
-  const rogue = callers.filter((f) => !FILE_PROVIDER_URI_ALLOWLIST.has(f))
-  check('FileProvider content:// 调用方 ⊆ allowlist（' + FILE_PROVIDER_URI_ALLOWLIST.size + ' 项，按包相对路径）',
-    rogue.length === 0, '映射面外泄: ' + rogue.join(', '))
+  walkKt(appSrcDir)
+  const policy = validateFileProviderMappings(manifestText ?? '', '', callers)
+  const resourcePath = fileProviderResourcePath(MAIN, policy.pathsRef)
+  const pathsXml = resourcePath ? read(resourcePath) : null
+  check('Manifest FileProvider paths 资源在场且可解析', pathsXml !== null,
+    resourcePath ?? 'Manifest 未解析出 @xml 资源')
+  const checked = validateFileProviderMappings(manifestText ?? '', pathsXml ?? '', callers)
+  check('FileProvider 映射与调用数精确登记（宽映射 ' + [...FILE_PROVIDER_PATHS.values()].filter((width) => width === 'wide').length + ' 项；调用点 '
+    + [...FILE_PROVIDER_CALLERS.values()].reduce((sum, n) => sum + n, 0) + ' 个）',
+    checked.errors.length === 0, checked.errors.join('；'))
+  for (const variantPath of fileProviderResourceVariants(appSrcDir, policy.pathsRef).filter((p) => p !== resourcePath)) {
+    const variantXml = read(variantPath)
+    const variant = validateFileProviderMappings(manifestText ?? '', variantXml ?? '', callers)
+    check('FileProvider 覆盖资源精确登记（' + relative(APK_ROOT, variantPath).split('\\').join('/') + ')',
+      variantXml !== null && variant.errors.length === 0, variant.errors.join('；'))
+  }
 }
 
 if (failures.length > 0) {
