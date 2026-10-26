@@ -449,7 +449,7 @@ Linux 发现补充（P04，坑 373）：bootstrap `index.js` 串行发现 → `g
 | K02 | UndoGate | 看门狗 UNDO、启动超时与客户端插件树失败共用闸门：可点名时外科拔除非 Hard 插件；整份回撤只用当前 snapshot fingerprint 下的壳侧 HEALTHY known-good ID；被拒后复位锁存以继续引擎重试 | EngineService.kt:207-293、EngineStartFlow.kt:345-390、UndoGate.kt:278-434 |
 | K02 | 通知链 NotifyStore/NotifyCenter | 每拍按字节偏移消费 .task-done.ndjson，双读不双发 | WatchdogV2.kt:258-309、NotifyCenter.kt:188 |
 | K02 | 控制载体 ControlCarrier | 随前台引擎服务起停，a11y 关着也承载 browser*/vd* | EngineService.kt:43 |
-| K02 | ConsoleSession | 复用 usrDir 与 shellEnv 起交互 shell，不起第二个引擎；start/restart 按 generation 接受进程，过期创建立即销毁；destroy 使代次失效并关启动 worker | ConsoleSession.kt:63-81 |
+| K02 | ConsoleSession | 复用 usrDir 与 shellEnv 起交互 shell，不起第二个引擎；start/restart 按 generation 接受进程，过期创建立即销毁；destroy 使代次失效并关启动 worker；reader 规范化 CRLF 并把输出交给独立批处理器 | ConsoleSession.kt:63-81,142-211；ConsoleOutputBatcher.kt:8-20 |
 | K02 | 门禁 check-boot-budget | files/boot-segments.log 是该门禁的唯一产物 | LogCollector.kt:395-424 |
 | K02 | 页面失败诊断与恢复 | onClientPluginTreeFailed 的文件 detail 和直接 logcat 共用脱敏后截断的 diagnosticLine；原文保留于恢复字段，供后续回撤编排 | EngineStartFlow.kt:330-341、LogCollector.kt:528-537 |
 | K03 | 引导与启动 | refreshSnapshot 的进度/失败文案与恢复前置由启动流拉起，刷新期 snapshotRefreshing 闸门禁止拉引擎 | app/src/main/java/com/snoworwind/pocketharness/EngineStartFlow.kt:427 |
@@ -2189,6 +2189,7 @@ app/src/main/java/com/snoworwind/pocketharness/WebUiChrome.kt
 app/src/main/java/com/snoworwind/pocketharness/WebViewShim.kt
 app/src/main/java/com/snoworwind/pocketharness/ConsoleActivity.kt
 app/src/main/java/com/snoworwind/pocketharness/ConsoleSession.kt
+app/src/main/java/com/snoworwind/pocketharness/ConsoleOutputBatcher.kt
 app/src/main/java/com/snoworwind/pocketharness/BootReceiver.kt
 app/src/main/java/com/snoworwind/pocketharness/ShimmerTextView.kt
 app/src/main/java/com/snoworwind/pocketharness/DsUi.kt
