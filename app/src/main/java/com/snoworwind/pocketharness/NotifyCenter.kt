@@ -343,7 +343,7 @@ object NotifyCenter {
 
   /** 设置页/长按入口的开关生效即时反馈：关掉抑制时立刻补投被延后的条目。 */
   fun onSuppressForegroundChanged(context: Context) {
-    if (!suppressForeground(context)) NotifySuppressQueue.flush(context)
+    if (!suppressForeground(context)) NotifySuppressQueue.flushAsync(context)
   }
 
   // ── 渠道选择：纯逻辑（JVM 可测）+ Android 胶水 ─────────────────────────

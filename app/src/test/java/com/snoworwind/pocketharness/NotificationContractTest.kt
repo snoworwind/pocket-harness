@@ -124,6 +124,26 @@ class NotificationContractTest {
   }
 
   @Test
+  fun 通知启动消费与补投不得占用主线程且tick异常后续拍() {
+    val store = codeOnly(shellSource("NotifyStore.kt"))
+    assertTrue("启动 drain 必须派到后台执行器", store.contains("drainExecutor.execute"))
+    assertTrue("启动 drain executor 必须为单线程 daemon", store.contains("dsh-notify-store-drain") && store.contains("isDaemon = true"))
+    assertTrue("消费发现积压补投必须异步", store.contains("NotifySuppressQueue.flushAsync(context)"))
+
+    val queue = codeOnly(shellSource("NotifySuppressQueue.kt"))
+    assertTrue("补投必须有后台入口", queue.contains("fun flushAsync(context: Context)"))
+    assertTrue("补投必须通过单线程执行器", queue.contains("flushExecutor.execute"))
+    assertTrue("恢复不能同步执行 flush", queue.contains("flushAsync(app) else scheduleTick(app)"))
+    val tick = queue.substringAfter("private fun scheduleTick(")
+    assertTrue("tick 的前台检查/flush 必须在后台执行器", tick.contains("flushExecutor.execute") &&
+      tick.indexOf("flushExecutor.execute") < tick.indexOf("NotifyStore.isForeground(app) && NotifyCenter.suppressForeground(app)"))
+    assertTrue("tick 检查异常后必须安排下一拍", tick.contains("suppress deferred tick failed") &&
+      tick.contains("if (pendingCount() > 0) scheduleTick(app)"))
+    assertTrue("设置页关抑制必须异步补投",
+      codeOnly(shellSource("NotifyCenter.kt")).contains("NotifySuppressQueue.flushAsync(context)"))
+  }
+
+  @Test
   fun listener必须有真实实现且被有界注册() {
     // FIX-2：listener 旧态全仓零赋值 → onForegroundSuppressed 是空操作（静默失败形态）。
     val code = codeOnly(shellSource("NotifyCenter.kt"))
