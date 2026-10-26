@@ -444,6 +444,22 @@ class GuideAndConsoleBatch6Test {
   }
 
   @Test
+  fun `控制台输出按字节和闲置时限聚合且CRLF只折成一行`() {
+    val session = codeOnly(source("ConsoleSession.kt"))
+    assertTrue("进程 reader 必须使用有界字符缓冲并接入批处理器",
+      session.contains("val chars = CharArray(1024)") && session.contains("ConsoleOutputBatcher { text ->"))
+    assertTrue("reader 不得等换行或固定字符数才回传", session.contains("outputBatcher.append(normalized.toString())"))
+    assertFalse("旧 4096 字符/换行门槛会卡住短提示", session.contains("sb.length >= 4096") ||
+      session.contains("c == '\\n'.code ||"))
+    val batcher = codeOnly(source("ConsoleOutputBatcher.kt"))
+    assertTrue("默认上限为 16 KiB", batcher.contains("const val DEFAULT_MAX_BYTES = 16 * 1024"))
+    assertTrue("短输出由独立 50ms deadline 推送", batcher.contains("const val DEFAULT_FLUSH_INTERVAL_MS = 50L") &&
+      batcher.contains("scheduler.schedule"))
+    assertTrue("跨输入片段的 CRLF 只折叠一次", session.contains("if (pendingCr) {") &&
+      session.contains("if (c == '\\n') continue"))
+  }
+
+  @Test
   fun `控制台Activity销毁后必须丢弃已排队和迟到的WebView回调`() {
     val activity = codeOnly(source("ConsoleActivity.kt"))
     val postUi = activity.substringAfter("private fun postUi(action: () -> Unit) {")

@@ -3,6 +3,7 @@ package com.snoworwind.pocketharness
 import android.content.Context
 import android.util.Log
 import java.io.File
+import java.io.InputStreamReader
 import java.util.concurrent.Executors
 
 /**
@@ -132,31 +133,59 @@ class ConsoleSession(private val context: Context) {
         startedProcess.destroy()
         return
       }
+      val outputBatcher = ConsoleOutputBatcher { text ->
+        notifyIfCurrent(gen) { listener.onOutput(text) }
+      }
       val reader = Thread {
+        var pendingCr = false
+        var pendingHighSurrogate: Char? = null
         try {
-          startedProcess.inputStream.bufferedReader().use { r ->
-            val sb = StringBuilder()
+          InputStreamReader(startedProcess.inputStream).use { r ->
+            val chars = CharArray(1024)
             while (true) {
-              val c = r.read()
-              if (c < 0) break
-              // Collapse \r to \n (output carries CR without PTY); ignore bell (avoids UI noise).
-              if (c == '\r'.code) {
-                sb.append('\n')
-              } else if (c != '\u0007'.code) {
-                sb.append(c.toChar())
+              val count = r.read(chars)
+              if (count < 0) break
+              if (count == 0) continue
+              val raw = StringBuilder(count + 1)
+              var offset = 0
+              pendingHighSurrogate?.let { high ->
+                if (Character.isLowSurrogate(chars[0])) {
+                  raw.append(high).append(chars[0])
+                  offset = 1
+                } else {
+                  raw.append('\uFFFD')
+                }
+                pendingHighSurrogate = null
               }
-              // Line buffering: small output (echo etc.) must not wait for the 4096 threshold —
-              // on-device measurement showed whole-block buffering stalls output until the next chunk/EOF.
-              if (c == '\n'.code || sb.length >= 4096) {
-                val chunk = sb.toString()
-                sb.setLength(0)
-                notifyIfCurrent(gen) { listener.onOutput(chunk) }
+              var end = count
+              if (end > offset && Character.isHighSurrogate(chars[end - 1])) {
+                pendingHighSurrogate = chars[end - 1]
+                end -= 1
               }
+              if (end > offset) raw.append(chars, offset, end - offset)
+
+              val normalized = StringBuilder(raw.length)
+              for (c in raw) {
+                if (pendingCr) {
+                  normalized.append('\n')
+                  pendingCr = false
+                  if (c == '\n') continue
+                }
+                when (c) {
+                  '\r' -> pendingCr = true
+                  '\u0007' -> Unit
+                  else -> normalized.append(c)
+                }
+              }
+              if (normalized.isNotEmpty()) outputBatcher.append(normalized.toString())
             }
-            if (sb.isNotEmpty()) notifyIfCurrent(gen) { listener.onOutput(sb.toString()) }
+            if (pendingCr) outputBatcher.append("\n")
+            if (pendingHighSurrogate != null) outputBatcher.append("\uFFFD")
           }
         } catch (t: Throwable) {
           if (isCurrent(gen)) Log.w(TAG, "console reader ended: " + (t.message ?: t.javaClass.simpleName))
+        } finally {
+          outputBatcher.close()
         }
         // destroy() race: after bash closes stdout on SIGTERM (read hits EOF) the process may not have
         // fully exited yet — exitValue() then throws IllegalThreadStateException (measured when the app

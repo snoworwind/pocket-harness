@@ -3221,3 +3221,7 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 556. **控制台启动占用主线程，Activity 销毁后仍可能接收过期进程/WebView 回调（上游 `dsh-mobile-apk` #580，2026-10-26）**
 
     现象：`ConsoleActivity.onStart()` 同步调用 `ConsoleSession.start()`，后者检查快照 bash、构造 shell 环境并执行 `ProcessBuilder.start()`；慢存储或进程拉起会卡住 Activity 主线程。改为异步后，如果 `restart()`/`destroy()` 与进程创建并发，过期启动仍可能把进程写回当前会话；reader 和 `Handler` 中已排队的输出/状态也可能在 `WebView.destroy()` 后继续执行。真因：会话生命周期没有统一的代次所有权，Activity 回调队列也没有销毁态闸门。修法：start 只提交到私有单线程 daemon worker；进程发布与 restart/destroy 在锁内检查 generation，过期进程立即销毁；回调在同一状态锁下核对代次并投递；Activity 用原子状态快照、生命周期复查和统一 `postUi` 守住 WebView，并在 teardown 先标记销毁、清空 Handler 队列，再销毁会话与 WebView。复验：`GuideAndConsoleBatch6Test` 控制台生命周期回归 25 项；完整 `:app:testDebugUnitTest` 1382 项通过；`check-kotlin-test-count.mjs` 自检与真实结果、`check-code-map.mjs` 自检与真实地图、`check-kotlin-comments.mjs`、`git diff --check` 通过。未做设备验证（按用户要求暂缓）。
+
+557. **控制台小段输出等到换行/4096 字符才到页面，CRLF 被重复折行（上游 `dsh-mobile-apk` #580，2026-10-26）**
+
+    现象：旧 reader 按字符读取，只在换行或累计 4096 字符时调用 WebView；无换行的短提示/提示符会一直滞留，长输出又会按大量小片段重复跨进程调用 `evaluateJavascript`。每个 `\r\n` 还被无状态地各自改成换行，造成双倍行距。真因：输出以“行/字符数”为交付单位，没有字节上限和独立闲置 deadline；行尾归一没有保留跨读取边界的 CR 状态。修法：用 `InputStreamReader` 缓冲读取，按 UTF-8 code point 聚合至 16 KiB 上限；独立 50ms daemon deadline 推送短输出，EOF/销毁时先 flush 尾块再报告退出；跨读取保留 CR 状态，CRLF 只输出一个 LF，裸 CR 仍折行，bell 继续忽略。复验：`ConsoleOutputBatcherTest` 覆盖 UTF-8 字节边界、无换行 idle flush 和 close 尾块恰好一次；`GuideAndConsoleBatch6Test` 锁定 reader 接线及 CRLF 判据；完整 Kotlin 单测 1386 项及代码地图/测试计数门禁通过。未做设备验证（按用户要求暂缓）。
