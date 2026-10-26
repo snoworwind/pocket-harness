@@ -4,9 +4,9 @@
 
 Linux 执行后端由 Bionilux 改为 Termux PRoot。Bionilux 在目标 Android app 域中无法直接执行 Debian glibc loader；改为进程内装载还需要补齐完整的后续 `execve` 链，工程量接近重写 PRoot。本轮不继续维护这条自研 loader 路线。
 
-当前源码版本为 Linux runtime/bootstrap `0.6.2`，PRoot pin 为 `5.1.107.99`。APK 资产工厂从 Termux 官方签名仓库取得 ARM64 PRoot 包及依赖，创建 Debian 13 ARM64 rootfs，打包 glibc Node；来源链在资产嵌入前验证仓库签名、签名索引摘要、精确软件包版本与 `.deb` 摘要。APK 内的 PRoot launcher/loader 与依赖逐字节复核。Bionilux launcher、loader、preload 与 Cargo 许可收集器已从活跃源码和资产构建路径删除；bootstrap 包的历史上游来源仍保留为来源记录。
+当前源码版本为 Linux runtime/bootstrap `0.6.2`，PRoot pin 为 `5.1.107.101`（Termux recipe commit `d6a36549b20eadb7723015eb3423e753ea125567`）。APK 资产工厂从 Termux 官方签名仓库取得 ARM64 PRoot 包及依赖，创建 Debian 13 ARM64 rootfs，打包 glibc Node；来源链在资产嵌入前验证仓库签名、签名索引摘要、精确软件包版本与 `.deb` 摘要。APK 内的 PRoot launcher/loader 与依赖逐字节复核。Bionilux launcher、loader、preload 与 Cargo 许可收集器已从活跃源码和资产构建路径删除；bootstrap 包的历史上游来源仍保留为来源记录。
 
-本轮完成的是源码迁移和构建前静态/自动检查。2026-10-23 的第一次 `draft_release=true` 来源 run [39922474317](https://github.com/snoworwind/pocket-harness/actions/runs/39922474317) 在两路 ARM64 builder 的 Linux PRoot 资产组装阶段 fail-closed：官方签名 Termux 索引已提供 PRoot `5.1.107.99`，提交锁仍是 `5.1.107.98`，该次没有产出 APK 或草稿 Release。当前 follow-up 将 PRoot 源码、recipe 与归档摘要锁同步到 `5.1.107.99`。**目标 ROM 的 Android 设备验收仍未完成**，不能据 CI 构建证明 PRoot 能在 app 域启动、guest glibc、apt 和多级 `execve`。
+本轮完成的是源码迁移和构建前静态/自动检查。2026-10-23 的第一次 `draft_release=true` 来源 run [39922474317](https://github.com/snoworwind/pocket-harness/actions/runs/39922474317) 在两路 ARM64 builder 的 Linux PRoot 资产组装阶段 fail-closed：官方签名 Termux 索引已提供 PRoot `5.1.107.99`，提交锁仍是 `5.1.107.98`，该次没有产出 APK 或草稿 Release。首次 follow-up 已将 PRoot 锁更新到 `5.1.107.99`；2026-10-26 来源 run [40288221965](https://github.com/snoworwind/pocket-harness/actions/runs/40288221965) 发现 stable 又前进至 `5.1.107.101`。本次修复复核其 recipe 与源码摘要并将锁同步到 `.101`；合并后的草稿来源构建结果待补记。**目标 ROM 的 Android 设备验收仍未完成**，不能据 CI 构建证明 PRoot 能在 app 域启动、guest glibc、apt 和多级 `execve`。
 
 2026-10-22 的用户安装报告显示，原生 PRoot 可正常启动并以 exit 0 输出版本横幅，但安装探针只接受字面串 `PRoot v<version>`，误拒 Termux 横幅。源码现已按 manifest 版本 token 校验两种横幅格式，并增加零退出但版本不匹配的负控；宿主测试通过，尚未以新 APK 在设备复验。实现与复验详见 [坑 496](../AGENTS/gotchas.md)。
 
@@ -30,7 +30,7 @@ TermFold 派生的 glibc preload 只在内核拒绝普通文件 `link(2)`/`linka
 
 | 部件 | 来源/版本 | 许可证与随包材料 |
 |---|---|---|
-| PRoot ARM64 可执行文件、loader、依赖 | Termux 官方签名仓库；PRoot 5.1.107.99，recipe commit `5b90c229de8e674a890d723b100cfcc5d6054ea5`，依赖版本见 `scripts/source-build/linux-backend-packages.json` | PRoot GPL-2.0；libtalloc LGPL-3.0-or-later；libandroid-shmem BSD-3-Clause；保存各包 copyright 和适用许可证全文 |
+| PRoot ARM64 可执行文件、loader、依赖 | Termux 官方签名仓库；PRoot 5.1.107.101，recipe commit `d6a36549b20eadb7723015eb3423e753ea125567`，依赖版本见 `scripts/source-build/linux-backend-packages.json` | PRoot GPL-2.0；libtalloc LGPL-3.0-or-later；libandroid-shmem BSD-3-Clause；保存各包 copyright 和适用许可证全文 |
 | rootfs | Debian Trixie 固定 snapshot、签名 InRelease 摘要锁定 | 保留 dpkg 包版本/源版本、deb 摘要和版权材料 |
 | glibc Node | Node.js 24.22.0 ARM64 官方归档、SHA-256 锁定 | Node LICENSE 与第三方 notices |
 | 兼容 preload | TermFold commit `a9f678d794a9f9942da923161d6fe996b89b935f` 的 Apache-2.0 源码改编 | 源文件、完整 Apache-2.0 许可证、来源 commit/hash 与适配说明 |

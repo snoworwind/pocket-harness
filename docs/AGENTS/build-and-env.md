@@ -16,6 +16,8 @@
 
 来源 run [40288221965](https://github.com/snoworwind/pocket-harness/actions/runs/40288221965)（2026-10-26，来源提交 `21982f74915fbda9facac1b97333d5af1b03eb82`）的 Termux 签名包预检成功，primary/reference 两个 ARM64 builder 均在 `Build source-owned offline ARM64 Linux assets` 报 `Termux proot version is not reviewed: '5.1.107.101'`；该提交的受审锁仍为 `5.1.107.99`。PRoot 资产组装前的 62 项 Linux 源码测试通过。两个 builder 共享同一份已验签的滚动包快照，因此这是 stable 仓库版本领先于审查锁后触发的预期 fail-closed，不是 runner 故障；快照、APK、verify/sign 与 Release 步骤均未执行。复核与安全更新步骤见 [坑 559](gotchas.md)：先审查 `.101` 的不可变 recipe、源归档摘要和签名 deb 闭包，再同步更新锁与来源清单，不能放宽精确版本拒绝。
 
+本次复核采用 Termux recipe commit [`d6a36549`](https://github.com/termux/termux-packages/commit/d6a36549b20eadb7723015eb3423e753ea125567)：recipe 仅更新 PRoot 版本与源码归档摘要，依赖仍为 `libandroid-shmem 0.7` 和 `libtalloc 2.5.0`。`v5.1.107.101.zip` 的独立 SHA-256 为 `a66743f50c7b0bac1913b83bf55e139d679c80a0ca2808eec76432a65640017f`，recipe 文件摘要为 `9b284fa9f1265af51ac829cf59e8f86a84f151065310b6ed1950437dff364006`；run [40288221965](https://github.com/snoworwind/pocket-harness/actions/runs/40288221965) 的已验签快照记录 PRoot `.deb` SHA-256 `a28355e9be257e1f87f4e9294b3118470d4fd7a5442fed8b278f4443c83407d7`，两个依赖的包摘要亦已记录在该 run。当前锁已同步到 `.101`；合并后必须重跑双构建和草稿发布链，才能确认新锁通过来源链。
+
 真实 ARM64 工厂资产 run [39103194656](https://github.com/snoworwind/pocket-harness/actions/runs/39103194656) 已完整构建并上传资产与 provenance；此前 `r-efi` 全量扫描和 runner 缺 Debian Trixie keyring 的两次失败分别由目标闭包遍历和官方公钥指纹验证修复。约 59 MB、7 天保留的 artifact 仅供独立检查；APK 来源链在自身运行中重建资产，随后校验来源 commit、manifest 原始字节 sidecar、资产 SHA-256/长度和固定 GitHub namespace，再嵌入快照。rootfs `/dev/shm` 修复的 ARM64 来源链 run [39899439859](https://github.com/snoworwind/pocket-harness/actions/runs/39899439859) 已成功；设备验收尚未完成。
 
 ## 独立检出与固定字节（2026-10-18）
