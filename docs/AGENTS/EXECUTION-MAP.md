@@ -1887,7 +1887,7 @@ flowchart LR
 | 门禁脚本 | 守什么不变量 | 触发点 | 失败时的典型真因 | 需要快照或设备 |
 |---|---|---|---|---|
 | check-patch-mirror.mjs | registry↔IMPLS 补丁 id 双向闭合（树内自洽面）；跨树逐字节镜像已于 2026-10-15 按用户决定移除 | CI（apk 侧 `--self`）/两条链 | 「登记了没实现 / 实现了没登记」；跨仓副本落后这一类风险随镜像纪律一并退役 | 否 |
-| check-manifest-hardening.mjs | manifest XML 语义：唯一 application、allowBackup=false、无 cleartext、NSC exclude 在场、接收器来源校验 | CI/链 | 加固项被删或改成全域明文 | 否 |
+| check-manifest-hardening.mjs | manifest/XML 语义：唯一 application、导出面、NSC/备份排除、来源校验；按 Manifest 实际引用解析 FileProvider paths，单次 entity 解码后精确登记映射与每文件调用数 | CI/链（self-test + 真实树） | 加固项被删、FileProvider 映射变宽或已有调用方增加 URI 发放点 | 否 |
 | check-bounded-io.mjs | 壳侧子进程与连接流输出必须走 `ProcIo.readBounded` | CI/链 | 新写的流读取绕过有界读（超时失效/死锁） | 否 |
 | check-api-route-auth.mjs | mobile-owned `/api` exact/prefix 路由必须有登记行 + 本地 auth guard（公开白名单需理由）；注入后逐个归档成员独立核对自身 marker | CI（源码档）/链与发布（`--snapshot` 注入后 tar） | 新路由未登记，或注册本身不鉴权 → 绕过 browser auth；其他成员不能替缺失文件提供 marker | 注入后档需快照 |
 | check-snapshot-fingerprint.mjs | `sha256(assets/snapshot.tar.xz) == assets/snapshot.sha256` | CI（净检出 SKIP）/链 `--require` | 手工替换 tar；两个 ABI 各自写入声明值 | 需 assets 内 tar |

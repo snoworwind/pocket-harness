@@ -312,6 +312,10 @@ bootstrap 的 package-lock.json 与 package.json 一样属于逐字节来源输�
 
 分类器单测 `node --test scripts/ci/classify-changes.test.mjs`（含「Kotlin 不读 workflow/source-build」不变量）。
 
+### FileProvider 映射门禁（L1）
+
+`scripts/check-manifest-hardening.mjs` 已从 `AndroidManifest.xml` 的 `android.support.FILE_PROVIDER_PATHS` 引用解析实际 XML 资源；对 `name`、`path` 属性只做一次 XML entity 解码，按 `(tag,name,path)` 登记全部映射（包含有意保留的外部存储根宽映射），同时核对同名资源的 qualifier/source-set 覆盖，并逐 `app/src` 相对生产 Kotlin 文件锁定 `getUriForFile` 调用次数，覆盖 main、debug、release 与产品变体 source set。运行时路径白名单不由本门禁替代。PR Gate 先运行 `node scripts/check-manifest-hardening.mjs --self-test`（含额外宽映射、重复调用等受控负控），再检查真实仓库；此类 L1 改动不要求设备验证。
+
 ## 本地门禁（2026-10-20，CI 的快速自查与离线回退）
 
 `node scripts/ci/local-gate.mjs` 在本地复现 CI 的同一套检查，CI 可用时用于推送前自查，配额或网络不可用时即合并判据：**步骤不另维护清单，直接读 `.github/workflows/pr-gate.yml`**，按同一套 job 条件（`docs-hygiene` 恒跑、`static` 除文档改动、`compile` 仅 `apk`）在 gate 镜像里执行同样的 `run:` 块。workflow 增删门禁时本地自动跟随；`local-gate.test.mjs` 用计数钉住这个契约。
