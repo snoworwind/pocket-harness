@@ -442,14 +442,14 @@ Linux 发现补充（P04，坑 373）：bootstrap `index.js` 串行发现 → `g
 | K01 | 引擎侧页面契约 | onConsoleMessage 消费 dsh-boot-ready 与 dsh-boot-stall 两个前缀，判据由页面侧 readyWatch 发布 | app/src/main/java/com/snoworwind/pocketharness/MainActivity.kt:667 |
 | K01 | 来件与选择器 | onCreate 投递 VIEW/SEND 来件，桥回调接 DirectoryPickerController/MediaPickController/FileIncoming | app/src/main/java/com/snoworwind/pocketharness/MainActivity.kt:266 |
 | K01 | 快照与更新面 | 启动前部署 APK 内嵌快照，历史中断恢复走 SnapshotTransaction，自动回撤走 UndoGate | app/src/main/java/com/snoworwind/pocketharness/EngineStartFlow.kt:294 |
-| K01 | 内置控制台 | 引导页与控制台按钮 START ConsoleActivity，其 ConsoleSession 用与引擎同源的 shellEnv 起快照 bash | app/src/main/java/com/snoworwind/pocketharness/ConsoleSession.kt:33 |
+| K01 | 内置控制台 | 引导页进入 ConsoleActivity；onStart 只将启动任务提交给专用 worker，文件检查、shellEnv 构造与 ProcessBuilder.start 在后台执行；状态/输出回主线程前复查 Activity 生命周期 | app/src/main/java/com/snoworwind/pocketharness/ConsoleActivity.kt:154 |
 | K01 | 系统外部角色 | BootReceiver 接 ACTION_BOOT_COMPLETED 决定是否自启前台服务，分享面板经 VIEW/SEND 进本 Activity | app/src/main/java/com/snoworwind/pocketharness/BootReceiver.kt:24 |
 | K02 | K01 | 启动全程用可见引导页承载文案；只有引擎 HTTP 就绪且首个页面文档提交后才切 WebUI | EngineStartFlow.kt:738-780、MainActivity.kt:306-369、MainActivity.kt:1130-1143 |
 | K02 | K03 | 刷新期禁启动、事务恢复、update-pending 健康 3 拍才删 usr-old 三处握手；刷新窗口内的启动请求**不得静默丢弃**（0.14.8 P1）：`start()`/`restart()` 拿不到世代所有权时按 destroyed/running 分开处置，running 走 boot-fail 留痕 + 有界等待后自动续跑；安全模式重启在停旧引擎前先判事务 journal | EngineManager.kt:595、1298-1345、2157-2158；EngineStartFlow.kt:659、1417 |
 | K02 | UndoGate | 看门狗 UNDO、启动超时与客户端插件树失败共用闸门：可点名时外科拔除非 Hard 插件；整份回撤只用当前 snapshot fingerprint 下的壳侧 HEALTHY known-good ID；被拒后复位锁存以继续引擎重试 | EngineService.kt:207-293、EngineStartFlow.kt:345-390、UndoGate.kt:278-434 |
 | K02 | 通知链 NotifyStore/NotifyCenter | 每拍按字节偏移消费 .task-done.ndjson，双读不双发 | WatchdogV2.kt:258-309、NotifyCenter.kt:188 |
 | K02 | 控制载体 ControlCarrier | 随前台引擎服务起停，a11y 关着也承载 browser*/vd* | EngineService.kt:43 |
-| K02 | ConsoleSession | 复用 usrDir 与 shellEnv 起交互 shell，不起第二个引擎 | ConsoleSession.kt:33-50 |
+| K02 | ConsoleSession | 复用 usrDir 与 shellEnv 起交互 shell，不起第二个引擎；start/restart 按 generation 接受进程，过期创建立即销毁；destroy 使代次失效并关启动 worker | ConsoleSession.kt:63-81 |
 | K02 | 门禁 check-boot-budget | files/boot-segments.log 是该门禁的唯一产物 | LogCollector.kt:395-424 |
 | K02 | 页面失败诊断与恢复 | onClientPluginTreeFailed 的文件 detail 和直接 logcat 共用脱敏后截断的 diagnosticLine；原文保留于恢复字段，供后续回撤编排 | EngineStartFlow.kt:330-341、LogCollector.kt:528-537 |
 | K03 | 引导与启动 | refreshSnapshot 的进度/失败文案与恢复前置由启动流拉起，刷新期 snapshotRefreshing 闸门禁止拉引擎 | app/src/main/java/com/snoworwind/pocketharness/EngineStartFlow.kt:427 |

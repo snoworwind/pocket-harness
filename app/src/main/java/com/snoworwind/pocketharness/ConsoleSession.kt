@@ -3,6 +3,7 @@ package com.snoworwind.pocketharness
 import android.content.Context
 import android.util.Log
 import java.io.File
+import java.util.concurrent.Executors
 
 /**
  * Console session: spawns the snapshot bash (env matching the engine: PATH/LD_LIBRARY_PATH/
@@ -49,30 +50,59 @@ class ConsoleSession(private val context: Context) {
     fun onExit(code: Int)
   }
 
-  private var process: Process? = null
-  private var closed = false
-  private var generation = 0
+  @Volatile private var process: Process? = null
+  @Volatile private var closed = false
+  @Volatile private var generation = 0
+  private val stateLock = Any()
+  private var starting = false // guarded by stateLock
+  private val starter = Executors.newSingleThreadExecutor { task ->
+    Thread(task, "dsh-console-start").apply { isDaemon = true }
+  }
 
-  /** Start bash; on failure report the reason via listener.onStatus and return false. */
+  /** Queue bash startup off the Activity thread; false means this session cannot accept a start. */
   fun start(listener: Listener): Boolean {
-    val engineManager = EngineManager(context, EngineManager.ensurePickToken())
-    val bash = File(engineManager.usrDir, "bin/bash")
-    if (!bash.exists()) {
-      // P3-6：快照内的相对路径不上屏（用户看不懂 `usr/bin/bash`，也做不了什么）——
-      // 正文说清「缺什么组件、能不能重试」，路径进日志。
-      Log.w(TAG, "console unavailable: bash missing at " + bash.absolutePath)
-      listener.onStatus(State.MISSING, "运行时缺少命令行组件（快照不完整），无法打开控制台——请重新安装应用或重装运行时快照")
-      return false
+    val gen = synchronized(stateLock) {
+      if (closed || starting || process != null) return false
+      starting = true
+      generation += 1
+      generation
     }
-    // Exec-bit fallback: some devices/filesystems lose the exec bit after extraction (execve → EACCES,
-    // "Permission denied"). The tar mode is theoretically preserved; this is an idempotent hardening step.
-    try {
-      bash.setExecutable(true, false)
-    } catch (t: Throwable) {
-      Log.w(TAG, "bash setExecutable failed: " + (t.message ?: t.javaClass.simpleName))
-    }
-    val gen = ++generation
     return try {
+      starter.execute { startProcess(listener, gen) }
+      true
+    } catch (t: Throwable) {
+      finishStart(gen)
+      notifyIfCurrent(gen) {
+        listener.onStatus(State.FAILED, "控制台启动失败：" + (t.message ?: t.javaClass.simpleName))
+      }
+      false
+    }
+  }
+
+  /** File checks, environment setup and ProcessBuilder.start all run on the private worker. */
+  private fun startProcess(listener: Listener, gen: Int) {
+    var proc: Process? = null
+    try {
+      if (!isCurrent(gen)) return
+      val engineManager = EngineManager(context, EngineManager.ensurePickToken())
+      val bash = File(engineManager.usrDir, "bin/bash")
+      if (!bash.exists()) {
+        // P3-6：快照内的相对路径不上屏（用户看不懂 `usr/bin/bash`，也做不了什么）——
+        // 正文说清「缺什么组件、能不能重试」，路径进日志。
+        Log.w(TAG, "console unavailable: bash missing at " + bash.absolutePath)
+        notifyIfCurrent(gen) {
+          listener.onStatus(State.MISSING,
+            "运行时缺少命令行组件（快照不完整），无法打开控制台——请重新安装应用或重装运行时快照")
+        }
+        return
+      }
+      // Exec-bit fallback: some devices/filesystems lose the exec bit after extraction (execve → EACCES,
+      // "Permission denied"). The tar mode is theoretically preserved; this is an idempotent hardening step.
+      try {
+        bash.setExecutable(true, false)
+      } catch (t: Throwable) {
+        Log.w(TAG, "bash setExecutable failed: " + (t.message ?: t.javaClass.simpleName))
+      }
       fun build(argv: List<String>): ProcessBuilder =
         ProcessBuilder(argv).also { p ->
           p.environment().putAll(engineManager.shellEnv())
@@ -83,16 +113,28 @@ class ConsoleSession(private val context: Context) {
       // Same fallback as the engine: Android 15/16 and some OEM systems (Honor/Huawei, measured)
       // forbid the app domain from exec'ing an app-data ELF directly (EACCES Permission denied);
       // loading via /system/bin/linker64 matches the Android system-lib mechanism and always works.
-      val proc = try {
+      val startedProcess = try {
         build(argv).start()
       } catch (e: java.io.IOException) {
         Log.w(TAG, "console: direct exec denied, falling back to linker64: " + e.message)
         build(listOf("/system/bin/linker64") + argv).start()
       }
-      process = proc
+      proc = startedProcess
+      val accepted = synchronized(stateLock) {
+        if (closed || generation != gen) false
+        else {
+          process = startedProcess
+          starting = false
+          true
+        }
+      }
+      if (!accepted) {
+        startedProcess.destroy()
+        return
+      }
       val reader = Thread {
         try {
-          proc.inputStream.bufferedReader().use { r ->
+          startedProcess.inputStream.bufferedReader().use { r ->
             val sb = StringBuilder()
             while (true) {
               val c = r.read()
@@ -108,32 +150,60 @@ class ConsoleSession(private val context: Context) {
               if (c == '\n'.code || sb.length >= 4096) {
                 val chunk = sb.toString()
                 sb.setLength(0)
-                if (generation == gen) listener.onOutput(chunk)
+                notifyIfCurrent(gen) { listener.onOutput(chunk) }
               }
             }
-            if (sb.isNotEmpty() && generation == gen) listener.onOutput(sb.toString())
+            if (sb.isNotEmpty()) notifyIfCurrent(gen) { listener.onOutput(sb.toString()) }
           }
         } catch (t: Throwable) {
-          if (!closed) Log.w(TAG, "console reader ended: " + (t.message ?: t.javaClass.simpleName))
+          if (isCurrent(gen)) Log.w(TAG, "console reader ended: " + (t.message ?: t.javaClass.simpleName))
         }
         // destroy() race: after bash closes stdout on SIGTERM (read hits EOF) the process may not have
         // fully exited yet — exitValue() then throws IllegalThreadStateException (measured when the app
         // is killed). Report as exited, or mark -1.
         val code = try {
-          proc.exitValue()
+          startedProcess.exitValue()
         } catch (_: IllegalThreadStateException) {
           -1
         }
-        if (generation == gen) listener.onExit(code)
+        notifyIfCurrent(gen) { listener.onExit(code) }
       }
       reader.isDaemon = true
+      reader.name = "dsh-console-output"
+      // Post READY before starting the reader so an immediate EOF cannot be followed by stale READY.
+      notifyIfCurrent(gen) { listener.onStatus(State.READY, "bash 已就绪（快照 Termux 环境）") }
       reader.start()
-      listener.onStatus(State.READY, "bash 已就绪（快照 Termux 环境）")
-      true
     } catch (t: Throwable) {
-      LogCollector.log(TAG, "console start FAILED: " + (t.message ?: t.javaClass.simpleName))
-      listener.onStatus(State.FAILED, "控制台启动失败：" + (t.message ?: t.javaClass.simpleName))
-      false
+      val failedProcess = proc
+      if (failedProcess != null) {
+        synchronized(stateLock) { if (process === failedProcess) process = null }
+        failedProcess.destroy()
+      }
+      if (isCurrent(gen)) {
+        LogCollector.log(TAG, "console start FAILED: " + (t.message ?: t.javaClass.simpleName))
+        notifyIfCurrent(gen) {
+          listener.onStatus(State.FAILED, "控制台启动失败：" + (t.message ?: t.javaClass.simpleName))
+        }
+      }
+    } finally {
+      finishStart(gen)
+    }
+  }
+
+  private fun isCurrent(gen: Int): Boolean = !closed && generation == gen
+
+  /** Hold the lifecycle lock through callback delivery so restart cannot race a stale event. */
+  private fun notifyIfCurrent(gen: Int, callback: () -> Unit): Boolean = synchronized(stateLock) {
+    if (closed || generation != gen) false
+    else {
+      callback()
+      true
+    }
+  }
+
+  private fun finishStart(gen: Int) {
+    synchronized(stateLock) {
+      if (generation == gen) starting = false
     }
   }
 
@@ -159,17 +229,27 @@ class ConsoleSession(private val context: Context) {
   }
 
   fun restart(listener: Listener): Boolean {
-    generation += 1
-    destroy()
-    closed = false
+    val oldProcess = synchronized(stateLock) {
+      if (closed) return false
+      generation += 1 // invalidate an in-flight start or reader callback before stopping it
+      starting = false
+      process.also { process = null }
+    }
+    oldProcess?.destroy()
     return start(listener)
   }
 
   /** Terminate the session (Activity destroyed). */
   fun destroy() {
-    closed = true
-    process?.destroy()
-    process = null
+    val oldProcess = synchronized(stateLock) {
+      if (closed) return
+      closed = true
+      generation += 1
+      starting = false
+      process.also { process = null }
+    }
+    oldProcess?.destroy()
+    starter.shutdownNow()
   }
 
   companion object {
