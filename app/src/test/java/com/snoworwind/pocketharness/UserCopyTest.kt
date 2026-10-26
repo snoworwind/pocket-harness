@@ -250,7 +250,7 @@ class UserCopyTest {
   @Test
   fun channelNameSyncIsWiredWhereOldInstallsWillRunIt() {
     // 反证（设备实测撞到的形态）：改名逻辑若只挂在渠道**创建**路径上，老装机永远不会执行它——
-    // `channelFor` 在 channelsInitialized 之后只读 prefs 映射、不再走 resolveChannel。
+    // `channelFor` 对仍存在的缓存/prefs 渠道直接返回，不会为了改名而进入 resolveChannel。
     // 因此必须挂在一个每次启动都会跑到的地方。
     val center = codeOnly(source("src/main/java/com/snoworwind/pocketharness/NotifyCenter.kt"))
     assertTrue("必须有渠道展示名同步入口", center.contains("fun syncChannelNames("))

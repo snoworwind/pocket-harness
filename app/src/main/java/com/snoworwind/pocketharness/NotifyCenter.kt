@@ -401,22 +401,36 @@ object NotifyCenter {
 
   private val selectedCache = HashMap<String, String?>()
 
-  /** 渠道解析入口（幂等；channelsInitialized 后只读 prefs 映射，不再重建——S6）。 */
+  /** 渠道解析入口（幂等；缓存与 prefs 命中均校验系统渠道仍存在，缺失时自愈重建）。 */
   @Synchronized
   fun channelFor(context: Context, face: Face): String? {
     val app = context.applicationContext
-    selectedCache[face.category]?.let { return it.ifEmpty { null } }
+    selectedCache[face.category]?.let { cached ->
+      if (selectedChannelAvailable(cached, channelExists(app, cached))) return cached
+      selectedCache.remove(face.category)
+    }
     val p = prefs(app)
     if (p.getBoolean(KEY_CHANNELS_INITIALIZED, false)) {
       val stored = p.getString(KEY_SELECTED_PREFIX + face.category, null)
-      if (stored != null) {
+      if (selectedChannelAvailable(stored, stored != null && channelExists(app, stored))) {
         selectedCache[face.category] = stored
-        return stored.ifEmpty { null }
+        return stored
       }
     }
     val id = resolveChannel(app, face)
     selectedCache[face.category] = id ?: ""
     return id
+  }
+
+  internal fun selectedChannelAvailable(selectedId: String?, systemChannelExists: Boolean): Boolean =
+    !selectedId.isNullOrEmpty() && systemChannelExists
+
+  private fun channelExists(app: Context, channelId: String): Boolean = try {
+    val manager = app.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+    manager.getNotificationChannel(channelId) != null
+  } catch (_: Throwable) {
+    // Treat an unavailable system answer as stale; resolveChannel retries and can recreate the mapping.
+    false
   }
 
   /** 解析（必要时创建）一个信道的渠道 ID；结果落 prefs（投递路径一律读映射，不硬编码）。 */
@@ -475,9 +489,8 @@ object NotifyCenter {
    * 一次性初始化（首启/自检/设置页可显式调用；幂等）。
    *
    * 0.14.1 批 3（P3-2）：本方法同时负责**渠道展示名的用词迁移**（见 [syncChannelNames]）。
-   * 为什么迁移必须挂在这里、而不能只挂在 `resolveChannel` 里：`channelFor` 在
-   * `KEY_CHANNELS_INITIALIZED` 之后**只读 prefs 映射、不再重建**（S6 的设计），于是
-   * `resolveChannel` 对老装机永远不会再被调用——改名代码写在里面等于没写（本轮设备实测撞到）。
+   * 为什么同步必须挂在这里、而不能只挂在 `resolveChannel` 里：`channelFor` 对仍存在的缓存或
+   * prefs 渠道直接返回，不会因为展示名变化而进入 `resolveChannel`；只在创建/失效恢复时改名会漏掉老装机。
    */
   fun ensureChannels(context: Context) {
     for (face in Face.values()) channelFor(context, face)

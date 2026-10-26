@@ -3205,3 +3205,7 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 552. **通知启动补投和前台切换在主线程同步提交 journal/Binder，tick 检查异常会断掉后续补投（上游 `dsh-mobile-apk` #570/#588，2026-10-26）**
 
     现象：`NotifyStore.start` 可由 `EngineService.onCreate` / 通知动作 receiver 的主线程触发，并同步 drain 最多 256 KiB 积压；`NotifySuppressQueue.restore`、关闭前台抑制及离开前台时的 `flush` 会同步提交 journal、逐条调用通知 Binder；tick 的前台状态检查若抛异常，Handler 回调提前结束，队列有积压却不再续拍。真因：生产调用路径从生命周期/设置线程直接进入含磁盘提交与系统通知调用的整批工作，且 tick 只保护调度、未保护后台执行体。修法：启动 drain 与 flush 放到单线程 daemon executor；Handler 只调度，前台判定/flush 在 executor 执行；tick 任一检查失败时记录探针并重排下一拍，持久 journal 与既有 at-least-once 结算语义不变。复验：`NotificationContractTest.通知启动消费与补投不得占用主线程且tick异常后续拍` 锁定接线与续拍；完整 Kotlin 单测、测试计数门禁、CI 通过。设备层状态：按用户要求暂缓实际设备验证。
+
+553. **系统通知渠道删除后缓存继续指向失效 ID，探针超限轮转清空唯一日志（上游 `dsh-mobile-apk` #578，2026-10-26）**
+
+    现象：`NotifyCenter.channelFor` 曾直接复用进程缓存或 `channel.<category>` prefs 映射；用户删除系统渠道后，壳仍返回不存在的 ID，投递无法自愈。全部渠道被用户降级时写入的空字符串也会被缓存，之后即使系统状态变化仍持续返回静默降级。与此同时，`NotifyProbe.log` 超过 128KB 会用空字符串覆盖文件，正好在长时间停摆、最需要保留证据时销毁整段历史。真因：本地映射被误当作系统渠道仍存在的事实；探针把有界存储错误实现成清空，而非保留最近一代。修法：缓存和 prefs 命中都复查 `getNotificationChannel`，空/失效映射或系统查询失败时回到 `resolveChannel`；探针将上一代轮转为 `notify-responder.log.1`，删除旧上一代失败时不覆盖唯一当前日志。复验：`NotifyCenterChannelTest` 覆盖系统渠道可用判定和恢复分支接线；`NotificationContractTest` 覆盖轮转契约与超限文件完整保留；全量 Kotlin 单测 1378 项、测试计数与执行地图门禁通过。设备层状态：按用户要求暂缓实际设备验证。

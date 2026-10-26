@@ -694,8 +694,7 @@ class MainActivity : ComponentActivity() {
     // 「开关事实 = 偏好 && 在跑」由 DevLogControl 保证（幂等；偏好关时 no-op）。
     DevLogControl.ensureStarted(this)
     // 0.14.1 批 3（P3-2）：渠道**展示名**随用词更新同步（幂等；未变则零写入）。
-    // 为什么挂在 onResume 而不是只在创建渠道时：`channelFor` 在 channelsInitialized 之后只读
-    // prefs 映射、不再走创建分支，改名代码写在创建路径里对老装机等于没写（设备实测撞到）。
+    // 为什么挂在 onResume 而不是只在创建渠道时：有效的缓存/prefs 渠道会被直接复用，不会因名称变化进入创建分支。
     try {
       NotifyCenter.syncChannelNames(this)
     } catch (_: Throwable) {
