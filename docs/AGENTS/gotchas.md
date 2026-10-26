@@ -3225,3 +3225,7 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 557. **控制台小段输出等到换行/4096 字符才到页面，CRLF 被重复折行（上游 `dsh-mobile-apk` #580，2026-10-26）**
 
     现象：旧 reader 按字符读取，只在换行或累计 4096 字符时调用 WebView；无换行的短提示/提示符会一直滞留，长输出又会按大量小片段重复跨进程调用 `evaluateJavascript`。每个 `\r\n` 还被无状态地各自改成换行，造成双倍行距。真因：输出以“行/字符数”为交付单位，没有字节上限和独立闲置 deadline；行尾归一没有保留跨读取边界的 CR 状态。修法：用 `InputStreamReader` 缓冲读取，按 UTF-8 code point 聚合至 16 KiB 上限；独立 50ms daemon deadline 推送短输出，EOF/销毁时先 flush 尾块再报告退出；跨读取保留 CR 状态，CRLF 只输出一个 LF，裸 CR 仍折行，bell 继续忽略。复验：`ConsoleOutputBatcherTest` 覆盖 UTF-8 字节边界、无换行 idle flush 和 close 尾块恰好一次；`GuideAndConsoleBatch6Test` 锁定 reader 接线及 CRLF 判据；完整 Kotlin 单测 1386 项及代码地图/测试计数门禁通过。未做设备验证（按用户要求暂缓）。
+
+558. **侧栏横向溢出观察器测试用固定 70ms 等待，慢调度环境仍会竞态（上游 `dsh-mobile-apk` #587，2026-10-26）**
+
+    现象：侧栏测试先固定睡 70ms，再断言由 50ms `setTimeout` 调度的溢出刷新已完成；机器繁忙、后台节流或 CI 调度延迟超过 20ms 时，定时回调可能仍未运行，测试假失败。真因：测试把预期延迟当成完成证明，而不是等待被测条件。修法：统一轮询目标 DOM 判据（每 10ms）并设 2s 上限，超时信息点明等待条件；覆盖新滚动容器识别、resize/字体变化清除标记及松手后的样式扫描，不改产品定时逻辑。复验：`sidebar-gestures.spec.ts` 70/70 通过；`dsh-client-ui-responsive` 完整 Vitest 52 个文件、757/757 通过。首次本地回归暴露最后一项应等到 style 与尺寸扫描均发生，等待条件已收紧后重跑全绿。

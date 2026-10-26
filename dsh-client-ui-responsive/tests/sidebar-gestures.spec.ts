@@ -49,6 +49,15 @@ function setRect(element: HTMLElement, left: number, width: number): void {
   })
 }
 
+async function until(predicate: () => boolean, why: string, timeoutMs = 2_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs
+  for (;;) {
+    if (predicate()) return
+    if (Date.now() >= deadline) throw new Error(`等待条件超时（${timeoutMs}ms）：${why}`)
+    await new Promise<void>(resolve => window.setTimeout(resolve, 10))
+  }
+}
+
 /** 壳侧推送的软键盘高度（与 composer-insets / keyboard-boundary 同一来源变量）。 */
 function setImeInset(px: number): void {
   document.documentElement.style.setProperty('--dsh-android-ime-bottom', px > 0 ? `${px}px` : '0px')
@@ -968,11 +977,11 @@ describe('触点按下前的原生平移策略', () => {
     Object.defineProperty(scroller, 'scrollWidth', { configurable: true, value: 800 })
     Object.defineProperty(scroller, 'clientWidth', { configurable: true, value: 200 })
     h.drawer.appendChild(scroller)
-    await new Promise<void>(resolve => window.setTimeout(resolve, 70))
+    await until(() => scroller.hasAttribute('data-dsh-horizontal-scroll'), '新增横向滚动容器被识别')
     expect(scroller.hasAttribute('data-dsh-horizontal-scroll')).toBe(true)
     Object.defineProperty(scroller, 'scrollWidth', { configurable: true, value: 200 })
     window.dispatchEvent(new Event('resize'))
-    await new Promise<void>(resolve => window.setTimeout(resolve, 70))
+    await until(() => !scroller.hasAttribute('data-dsh-horizontal-scroll'), 'resize 后横向滚动标记移除')
     expect(scroller.hasAttribute('data-dsh-horizontal-scroll')).toBe(false)
   })
 
@@ -984,12 +993,12 @@ describe('触点按下前的原生平移策略', () => {
     Object.defineProperty(scroller, 'scrollWidth', { configurable: true, get: () => width })
     Object.defineProperty(scroller, 'clientWidth', { configurable: true, value: 200 })
     h.drawer.appendChild(scroller)
-    await new Promise<void>(resolve => window.setTimeout(resolve, 70))
+    await until(() => scroller.hasAttribute('data-dsh-horizontal-scroll'), '父级变化前识别横向溢出')
     expect(scroller.hasAttribute('data-dsh-horizontal-scroll')).toBe(true)
 
     width = 200
     h.drawer.style.fontSize = '20px'
-    await new Promise<void>(resolve => window.setTimeout(resolve, 70))
+    await until(() => !scroller.hasAttribute('data-dsh-horizontal-scroll'), '父级字体变化后重新测量溢出')
     expect(scroller.hasAttribute('data-dsh-horizontal-scroll')).toBe(false)
   })
 
@@ -1016,7 +1025,7 @@ describe('触点按下前的原生平移策略', () => {
     touch('touchend', 320, 302, document.body)
     expect(h.preview.endWhileDragging).toEqual([true])
     expect(dimensionReads).toBe(0)
-    await new Promise<void>(resolve => window.setTimeout(resolve, 70))
+    await until(() => styleRead.mock.calls.length > 0 && dimensionReads > 0, '松手后的帧完成样式与尺寸扫描')
     expect(styleRead).toHaveBeenCalled()
     expect(dimensionReads).toBeGreaterThan(0)
     expect(scroller.hasAttribute('data-dsh-horizontal-scroll')).toBe(true)
