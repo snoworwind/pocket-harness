@@ -3229,3 +3229,7 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 558. **侧栏横向溢出观察器测试用固定 70ms 等待，慢调度环境仍会竞态（上游 `dsh-mobile-apk` #587，2026-10-26）**
 
     现象：侧栏测试先固定睡 70ms，再断言由 50ms `setTimeout` 调度的溢出刷新已完成；机器繁忙、后台节流或 CI 调度延迟超过 20ms 时，定时回调可能仍未运行，测试假失败。真因：测试把预期延迟当成完成证明，而不是等待被测条件。修法：统一轮询目标 DOM 判据（每 10ms）并设 2s 上限，超时信息点明等待条件；覆盖新滚动容器识别、resize/字体变化清除标记及松手后的样式扫描，不改产品定时逻辑。复验：`sidebar-gestures.spec.ts` 70/70 通过；`dsh-client-ui-responsive` 完整 Vitest 52 个文件、757/757 通过。首次本地回归暴露最后一项应等到 style 与尺寸扫描均发生，等待条件已收紧后重跑全绿。
+
+559. **Termux stable 的签名 PRoot 包版本领先于审查锁，来源构建按预期 fail-closed（2026-10-26）**
+
+    现象：来源 run [40288221965](https://github.com/snoworwind/pocket-harness/actions/runs/40288221965) 中 primary 与 reference 均在 `Build source-owned offline ARM64 Linux assets` 报 `Termux proot version is not reviewed: '5.1.107.101'`；APK 快照、构建后验证、签名与 Release 步骤被跳过。真因：该 run 的 Termux stable 签名包快照已包含 PRoot `5.1.107.101`，而提交 `21982f74915fbda9facac1b97333d5af1b03eb82` 的仓内精确版本锁仍是 `5.1.107.99`；验签预检成功，两路 builder 使用同一快照，故是滚动仓库前进触发的审查保护，不是签名或 runner 故障。修法：先独立复核 `.101` 的不可变 Termux recipe、源归档 SHA-256、签名 deb 摘要与依赖闭包，再按 [构建输入台账](build-and-env.md) 同步版本/来源锁、夹具及 manifest；保留精确版本拒绝，不接受仅放宽断言。复验：该 run 的 PRoot 组装前 Linux 源码测试 62 项通过；两路均在相同版本断言处停止。新锁的来源构建尚未验证。
