@@ -476,6 +476,19 @@ class NotificationContractTest {
   }
 
   @Test
+  fun 同事件同选项的不同问句使用不同PendingIntent身份() {
+    val first = NotifyCenter.actionPendingKey("event-1", "option", "继续", "question-1")
+    val second = NotifyCenter.actionPendingKey("event-1", "option", "继续", "question-2")
+    assertNotEquals(first, second)
+    assertNotEquals(NotifyCenter.stableId(first), NotifyCenter.stableId(second))
+    assertEquals("dsh.action:event-1:option:继续", NotifyCenter.actionPendingKey("event-1", "option", "继续"))
+
+    val body = memberBody(shellSource("NotifyCenter.kt"), "private fun actionPending(")
+    assertTrue("PendingIntent requestCode 必须使用含 questionId 的身份键",
+      body.contains("actionPendingKey(entry.eventId, action, option, questionId)"))
+  }
+
+  @Test
   fun 审批动作恒为两个() {
     val body = memberBody(shellSource("NotifyCenter.kt"), "private fun addApprovalActions(")
     assertEquals("审批动作数必须恰为 2（批准一次 / 拒绝）", 2, body.split("Action.Builder(").size - 1)

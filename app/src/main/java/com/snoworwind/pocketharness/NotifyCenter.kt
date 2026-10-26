@@ -1164,7 +1164,7 @@ object NotifyCenter {
       questionId?.let { putExtra(NotifyActionReceiver.EXTRA_QUESTION_ID, it) }
     }
 
-  /** 动作 PendingIntent requestCode 必须按 (eventId, action) 唯一：Intent 过滤等价不含 extras。 */
+  /** 动作 PendingIntent 身份包含 (eventId, action, option, questionId)：Intent 过滤等价不含 extras。 */
   private fun actionPending(
     app: Context,
     entry: NotifyEntry,
@@ -1173,9 +1173,19 @@ object NotifyCenter {
     questionId: String? = null,
   ): PendingIntent {
     val flags = PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-    val key = "dsh.action:" + entry.eventId + ":" + action + (option?.let { ":" + it } ?: "")
+    val key = actionPendingKey(entry.eventId, action, option, questionId)
     val intent = actionIntent(app, entry, action, option, questionId).setClass(app, NotifyConfirmActivity::class.java)
     return PendingIntent.getActivity(app, stableId(key), intent, flags)
+  }
+
+  internal fun actionPendingKey(
+    eventId: String,
+    action: String,
+    option: String? = null,
+    questionId: String? = null,
+  ): String {
+    val base = "dsh.action:" + eventId + ":" + action + (option?.let { ":" + it } ?: "")
+    return base + (questionId?.let { ":question:" + it } ?: "")
   }
 
   /**

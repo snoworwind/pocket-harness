@@ -257,7 +257,7 @@
 
 | 文件 | 职责 | 关键函数 |
 |---|---|---|
-| `NotifyCenter.kt`（重写） | 五类渠道一次性定案 + 候选 ID 迁移 + 六类 kind → 渠道/形态分流 + 自检面 + 失败可见；缓存与 prefs 映射每次命中都复查系统渠道，删除后自愈重建 | `selectChannel()`（纯函数三态判定）/ `channelFor()` / `ensureChannels()` / `selfCheck()` / `notifyEvent()` / `postDeliveryFailure()` / `silent()` / `notify()`（旧调用点兼容） |
+| `NotifyCenter.kt`（重写） | 五类渠道一次性定案 + 候选 ID 迁移 + 六类 kind → 渠道/形态分流 + 自检面 + 失败可见；缓存与 prefs 映射每次命中都复查系统渠道，删除后自愈重建；多问动作身份包含 questionId | `selectChannel()`（纯函数三态判定）/ `channelFor()` / `actionPendingKey()` / `ensureChannels()` / `selfCheck()` / `notifyEvent()` / `postDeliveryFailure()` / `silent()` / `notify()`（旧调用点兼容） |
 | `NotifyStore.kt`（新） | `.notify.ndjson` 消费：FileObserver + **按字节偏移**推进（只消费到最后一个换行符）+ 偏移持久化 + 轮转残段补读 + 双读不双发门；启动首次 drain 由单线程后台 executor 执行 | `start()` / `drain()` / `drainBytes()`（纯函数，单测）/ `parseEntry()` / `dispatch()` / `legacyFallback()` |
 | `NotifyBridge.kt`（新） | 专用 `$events` 流（`streamId = dsh-notify-responder`，独立于悬浮球）：waterfall 投放通知、cancel 帧撤通知、`$events/result` 投递 | `start()` / `isReady()` / `handleValue()` / `markSettled()` / `postResult()` |
 | `NotifyDecisionQueue.kt`（新） | 决策耐久队列：先落盘 `files/notify-decisions.ndjson` 再投递、指数退避 ≤60s、requestId LRU、失败态可见；**NOT_READY（引擎/流未就绪）独立计数 + 5 分钟墙钟预算**（到期转 FAILED + 「提交失败，点击重试」；预算 > 实测冷启动上限 110s）；**触发点自愈**：进程死亡会带走重试定时器，启动/装载路径必须调 `ensureScheduled()` 重评滞留决策的预算（否则永久滞留 pending） | `enqueue()` / `load()` / `mark()` / `compact()` / `flush()` / `handleNotReady()` / `notReadyAction()` / `resumePlan()` / `ensureScheduled()` / `retryDelayMs()` / `requestIdFor()` |
