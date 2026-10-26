@@ -22,9 +22,12 @@ import androidx.core.view.WindowInsetsControllerCompat
  */
 class ConsoleActivity : ComponentActivity() {
 
+  private data class StatusSnapshot(val state: ConsoleSession.State, val text: String)
+
   private lateinit var webView: WebView
   private val session = ConsoleSession(this)
   private val handler = android.os.Handler(android.os.Looper.getMainLooper())
+  @Volatile private var destroyed = false
   private var sessionStarted = false
   private var pageReady = false
   private var pendingTopInset = 0f
@@ -32,28 +35,39 @@ class ConsoleActivity : ComponentActivity() {
   private var pendingImeInset = 0f
 
   /** Last status text (re-pushed on onPageFinished; replays status lost before page load). */
-  private var lastStatus: String? = null
+  @Volatile private var lastStatus: StatusSnapshot? = null
 
-  /** S1-18：与 lastStatus 配对的状态，页面重放时同样按状态判就绪。 */
-  private var lastState: ConsoleSession.State = ConsoleSession.State.STARTING
+  private fun canUseWebView(): Boolean =
+    !destroyed && !isFinishing && !isDestroyed && ::webView.isInitialized
+
+  /** Drop late process callbacks after Activity teardown, including callbacks already queued. */
+  private fun postUi(action: () -> Unit) {
+    if (destroyed) return
+    handler.post {
+      if (canUseWebView()) action()
+    }
+  }
+
+  private fun evalPage(script: String) {
+    if (canUseWebView()) webView.evaluateJavascript(script, null)
+  }
 
   private val sessionListener = object : ConsoleSession.Listener {
     override fun onOutput(text: String) {
-      handler.post {
-        webView.evaluateJavascript("window.__consoleAppend(" + jsString(text) + ")", null)
+      postUi {
+        evalPage("window.__consoleAppend(" + jsString(text) + ")")
       }
     }
 
     override fun onStatus(state: ConsoleSession.State, text: String) {
-      lastStatus = text
-      lastState = state
-      handler.post { pushStatus(state, text) }
+      lastStatus = StatusSnapshot(state, text)
+      postUi { pushStatus(state, text) }
     }
 
     override fun onExit(code: Int) {
-      lastStatus = "bash 已退出（code $code）"
-      lastState = ConsoleSession.State.EXITED
-      handler.post { pushStatus(ConsoleSession.State.EXITED, lastStatus!!) }
+      val text = "bash 已退出（code $code）"
+      lastStatus = StatusSnapshot(ConsoleSession.State.EXITED, text)
+      postUi { pushStatus(ConsoleSession.State.EXITED, text) }
     }
   }
 
@@ -64,17 +78,15 @@ class ConsoleActivity : ComponentActivity() {
    * 做子串正则（措辞一变就静默错判）。
    */
   private fun pushStatus(state: ConsoleSession.State, text: String) {
-    webView.evaluateJavascript(
+    evalPage(
       "window.__consoleState && window.__consoleState(" + jsString(state.wire) + "," + jsString(text) + ")",
-      null,
     )
   }
 
   private fun pushInsets() {
-    if (!pageReady || !::webView.isInitialized) return
-    webView.evaluateJavascript(
+    if (!pageReady || !canUseWebView()) return
+    evalPage(
       "window.__consoleInsets && window.__consoleInsets($pendingTopInset,$pendingBottomInset,$pendingImeInset)",
-      null,
     )
   }
 
@@ -104,8 +116,9 @@ class ConsoleActivity : ComponentActivity() {
     webView.webViewClient = object : android.webkit.WebViewClient() {
       override fun onPageFinished(view: android.webkit.WebView, url: String) {
         super.onPageFinished(view, url)
+        if (!canUseWebView()) return
         pageReady = true
-        lastStatus?.let { pushStatus(lastState, it) }
+        lastStatus?.let { pushStatus(it.state, it.text) }
         pushInsets()
       }
 
@@ -140,13 +153,17 @@ class ConsoleActivity : ComponentActivity() {
 
   override fun onStart() {
     super.onStart()
+    if (destroyed) return
     if (sessionStarted) return
     sessionStarted = session.start(sessionListener)
   }
 
   override fun onDestroy() {
+    destroyed = true
+    pageReady = false
+    handler.removeCallbacksAndMessages(null)
     session.destroy()
-    webView.destroy()
+    if (::webView.isInitialized) webView.destroy()
     super.onDestroy()
   }
 
@@ -154,6 +171,7 @@ class ConsoleActivity : ComponentActivity() {
   inner class ConsoleBridge {
     @JavascriptInterface
     fun submit(command: String) {
+      if (destroyed) return
       // 缺陷 D（fx-2）：离线安全模式口令。命中 `dsh safe[ on|off|status]` 时**不落 bash**——
       // 它要动的是壳侧 profile 装配清单（bash 侧既无权限语义也无事务纪律），
       // 且引擎已死时控制台仍可用，正是这条口令存在的理由。
@@ -191,18 +209,19 @@ class ConsoleActivity : ComponentActivity() {
 
     @JavascriptInterface
     fun close() {
-      handler.post { finish() }
+      postUi { finish() }
     }
 
     @JavascriptInterface
     fun restart() {
-      handler.post {
+      postUi {
         sessionStarted = session.restart(sessionListener)
       }
     }
 
     @JavascriptInterface
     fun copyText(text: String): Boolean {
+      if (destroyed) return false
       return try {
         val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         cm.setPrimaryClip(ClipData.newPlainText("dsh-console", text))

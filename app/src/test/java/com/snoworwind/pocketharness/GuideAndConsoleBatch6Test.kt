@@ -418,6 +418,50 @@ class GuideAndConsoleBatch6Test {
   }
 
   @Test
+  fun `控制台启动和进程创建不得占用Activity线程`() {
+    val session = codeOnly(source("ConsoleSession.kt"))
+    val start = session.substringAfter("fun start(listener: Listener): Boolean {")
+      .substringBefore("private fun startProcess")
+    assertTrue("start 只应把耗时启动工作排到专用 worker", start.contains("starter.execute { startProcess(listener, gen) }"))
+    assertFalse("调用线程不得创建 EngineManager", start.contains("EngineManager("))
+    assertFalse("调用线程不得创建进程", start.contains("ProcessBuilder"))
+    val worker = session.substringAfter("private fun startProcess")
+    assertTrue("文件系统、环境与进程启动都归 worker 执行", worker.contains("EngineManager(context") &&
+      worker.contains("shellEnv()") && worker.contains("build(argv).start()"))
+    assertTrue("状态锁必须覆盖代次检查与回调投递", session.contains(
+      "private fun notifyIfCurrent(gen: Int, callback: () -> Unit): Boolean = synchronized(stateLock)",
+    ))
+  }
+
+  @Test
+  fun `过期控制台启动必须销毁进程且不能覆盖新一代状态`() {
+    val session = codeOnly(source("ConsoleSession.kt"))
+    assertTrue(session.contains("@Volatile private var generation = 0"))
+    assertTrue(session.contains("if (closed || generation != gen) false"))
+    assertTrue(session.contains("if (!accepted) {\n        startedProcess.destroy()"))
+    assertTrue("Activity 销毁必须使当前代次失效", session.contains("closed = true\n      generation += 1"))
+    assertTrue("销毁还须关闭启动 worker", session.contains("starter.shutdownNow()"))
+  }
+
+  @Test
+  fun `控制台Activity销毁后必须丢弃已排队和迟到的WebView回调`() {
+    val activity = codeOnly(source("ConsoleActivity.kt"))
+    val postUi = activity.substringAfter("private fun postUi(action: () -> Unit) {")
+      .substringBefore("private fun evalPage")
+    assertTrue("入队前检查销毁态", postUi.contains("if (destroyed) return"))
+    assertTrue("执行前再次检查 Activity 与 WebView 状态", postUi.contains("if (canUseWebView()) action()"))
+    assertTrue("WebView 执行入口必须检查生命周期", activity.contains("if (canUseWebView()) webView.evaluateJavascript"))
+    val onDestroy = activity.substringAfter("override fun onDestroy() {")
+      .substringBefore("/** JS bridge")
+    val destroyed = onDestroy.indexOf("destroyed = true")
+    val callbacksRemoved = onDestroy.indexOf("handler.removeCallbacksAndMessages(null)")
+    val sessionClosed = onDestroy.indexOf("session.destroy()")
+    val webViewDestroyed = onDestroy.indexOf("webView.destroy()")
+    assertTrue("先标记销毁，再清理队列、会话和 WebView", destroyed >= 0 && destroyed < callbacksRemoved &&
+      callbacksRemoved < sessionClosed && sessionClosed < webViewDestroyed)
+  }
+
+  @Test
   fun `引擎离线必须给动作`() {
     val html = asset("console.html")
     assertTrue("离线文案要指向可点的动作", html.contains("引擎离线（点此重试）"))
