@@ -397,6 +397,36 @@ class NotificationContractTest {
     assertFalse("探针不得把整条正文写进去", probe.contains("bigText"))
   }
 
+  @Test
+  fun 通知探针轮转保留上一代诊断日志() {
+    val probe = codeOnly(shellSource("NotifyProbe.kt"))
+    assertTrue("写入前必须检查并轮转超限文件", probe.contains("rotateIfNeeded(f)"))
+    val rotate = memberBody(shellSource("NotifyProbe.kt"), "internal fun rotateIfNeeded(file: File) {")
+    assertTrue("只保留一个上一代日志", rotate.contains("file.name + \".1\""))
+    assertTrue("覆盖旧上一代前必须成功删除它", rotate.contains("!rolled.exists() || rolled.delete()"))
+    assertTrue("轮转必须通过 rename 保留当前日志", rotate.contains("file.renameTo(rolled)"))
+    assertFalse("不得在轮转边界清空唯一诊断日志", rotate.contains("writeText(\"\")"))
+  }
+
+  @Test
+  fun 通知探针轮转把超限日志保留为上一代文件() {
+    val dir = java.nio.file.Files.createTempDirectory("notify-probe-rotation").toFile()
+    try {
+      val active = File(dir, "notify-responder.log")
+      val previous = File(dir, "notify-responder.log.1")
+      val oldContents = "x".repeat(128 * 1024 + 1)
+      active.writeText(oldContents)
+      previous.writeText("older generation")
+
+      NotifyProbe.rotateIfNeeded(active)
+
+      assertFalse("活动文件应轮转", active.exists())
+      assertEquals("超限活动日志必须完整保留", oldContents, previous.readText())
+    } finally {
+      dir.deleteRecursively()
+    }
+  }
+
   // ── NT-15 / NT-16：动作面与 trampoline 禁令 ─────────────────────────────
 
   @Test

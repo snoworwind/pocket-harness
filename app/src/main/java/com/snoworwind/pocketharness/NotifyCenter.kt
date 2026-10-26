@@ -401,22 +401,36 @@ object NotifyCenter {
 
   private val selectedCache = HashMap<String, String?>()
 
-  /** 渠道解析入口（幂等；channelsInitialized 后只读 prefs 映射，不再重建——S6）。 */
+  /** 渠道解析入口（幂等；缓存与 prefs 命中均校验系统渠道仍存在，缺失时自愈重建）。 */
   @Synchronized
   fun channelFor(context: Context, face: Face): String? {
     val app = context.applicationContext
-    selectedCache[face.category]?.let { return it.ifEmpty { null } }
+    selectedCache[face.category]?.let { cached ->
+      if (selectedChannelAvailable(cached, channelExists(app, cached))) return cached
+      selectedCache.remove(face.category)
+    }
     val p = prefs(app)
     if (p.getBoolean(KEY_CHANNELS_INITIALIZED, false)) {
       val stored = p.getString(KEY_SELECTED_PREFIX + face.category, null)
-      if (stored != null) {
+      if (selectedChannelAvailable(stored, stored != null && channelExists(app, stored))) {
         selectedCache[face.category] = stored
-        return stored.ifEmpty { null }
+        return stored
       }
     }
     val id = resolveChannel(app, face)
     selectedCache[face.category] = id ?: ""
     return id
+  }
+
+  internal fun selectedChannelAvailable(selectedId: String?, systemChannelExists: Boolean): Boolean =
+    !selectedId.isNullOrEmpty() && systemChannelExists
+
+  private fun channelExists(app: Context, channelId: String): Boolean = try {
+    val manager = app.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+    manager.getNotificationChannel(channelId) != null
+  } catch (_: Throwable) {
+    // Treat an unavailable system answer as stale; resolveChannel retries and can recreate the mapping.
+    false
   }
 
   /** 解析（必要时创建）一个信道的渠道 ID；结果落 prefs（投递路径一律读映射，不硬编码）。 */
