@@ -343,7 +343,7 @@ object NotifyCenter {
 
   /** 设置页/长按入口的开关生效即时反馈：关掉抑制时立刻补投被延后的条目。 */
   fun onSuppressForegroundChanged(context: Context) {
-    if (!suppressForeground(context)) NotifySuppressQueue.flush(context)
+    if (!suppressForeground(context)) NotifySuppressQueue.flushAsync(context)
   }
 
   // ── 渠道选择：纯逻辑（JVM 可测）+ Android 胶水 ─────────────────────────
@@ -489,9 +489,8 @@ object NotifyCenter {
    * 一次性初始化（首启/自检/设置页可显式调用；幂等）。
    *
    * 0.14.1 批 3（P3-2）：本方法同时负责**渠道展示名的用词迁移**（见 [syncChannelNames]）。
-   * 为什么迁移必须挂在这里、而不能只挂在 `resolveChannel` 里：`channelFor` 在
-   * `KEY_CHANNELS_INITIALIZED` 之后**只读 prefs 映射、不再重建**（S6 的设计），于是
-   * `resolveChannel` 对老装机永远不会再被调用——改名代码写在里面等于没写（本轮设备实测撞到）。
+   * 为什么同步必须挂在这里、而不能只挂在 `resolveChannel` 里：`channelFor` 对仍存在的缓存或
+   * prefs 渠道直接返回，不会因为展示名变化而进入 `resolveChannel`；只在创建/失效恢复时改名会漏掉老装机。
    */
   fun ensureChannels(context: Context) {
     for (face in Face.values()) channelFor(context, face)

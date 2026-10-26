@@ -73,6 +73,13 @@ object NotifyStore {
   @Volatile
   private var appContext: Context? = null
 
+  /** Startup is called from Service/receiver main-thread entry points; drain disk and Binder work off-main. */
+  private val drainExecutor by lazy {
+    java.util.concurrent.Executors.newSingleThreadExecutor { r ->
+      Thread(r, "dsh-notify-store-drain").apply { isDaemon = true }
+    }
+  }
+
   /** 最近一次 watcher 事件时刻（任意路径，不筛）：心跳里对照「文件在长 / 事件不来」即判 watcher 失聪。 */
   @Volatile
   private var lastWatchEventAt = 0L
@@ -183,8 +190,14 @@ object NotifyStore {
     val d = dir(app)
     if (!d.exists()) d.mkdirs()
     watching(app, d)
-    // 启动即消费一次（进程离线期间的积压行：偏移持久化保证不重复投递）
-    drain(app, TRIGGER_START)
+    // 启动即消费积压，但随机读、通知投递和 offset commit 不占用 Service/receiver 主线程。
+    drainExecutor.execute {
+      try {
+        drain(app, TRIGGER_START)
+      } catch (t: Throwable) {
+        NotifyProbe.log(app, TAG, "startup drain failed: " + t.message)
+      }
+    }
   }
 
   /**
@@ -513,7 +526,7 @@ object NotifyStore {
     // FIX-1 补投触发点 ①（事件驱动）：应用已不在前台且队列非空 → 先补投延后条目再投本条。
     // 触发点 ② 是 NotifySuppressQueue 的自续 tick（30s，队列空即停），覆盖「后台不再有新事件」的场景。
     // 补投走 notifyEvent(foreground=false)，不经过本函数，故不存在递归。
-    if (!foreground && NotifySuppressQueue.pendingCount() > 0) NotifySuppressQueue.flush(context)
+    if (!foreground && NotifySuppressQueue.pendingCount() > 0) NotifySuppressQueue.flushAsync(context)
     val result = NotifyCenter.notifyEvent(context, entry, foreground = foreground)
     // J-2：这条「投递结果」是本缺陷唯一的终态记账，详档 §6.2/§6.3 的分流表按它判 POSTED /
     // SUPPRESSED_FOREGROUND。必须走 [NotifyProbe] 写进 files/notify-responder.log——旧实现用

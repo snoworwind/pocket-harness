@@ -215,7 +215,7 @@ object NotifySuppressQueue {
         if (!journalWritable) return
       }
       if (pendingCount() > 0) {
-        if (!NotifyStore.isForeground(app) || !NotifyCenter.suppressForeground(app)) flush(app) else scheduleTick(app)
+        if (!NotifyStore.isForeground(app) || !NotifyCenter.suppressForeground(app)) flushAsync(app) else scheduleTick(app)
       }
     } catch (t: Throwable) {
       NotifyProbe.log(app, TAG, "suppress deferred restore failed: " + t.message)
@@ -227,6 +227,13 @@ object NotifySuppressQueue {
 
   /** 主线程 Handler 惰性创建（JVM 单测只碰纯函数，不碰 Looper）。 */
   private val handler: Handler by lazy { Handler(Looper.getMainLooper()) }
+
+  /** Journal commits and NotificationManager Binder calls are batched work; keep them off main. */
+  private val flushExecutor by lazy {
+    java.util.concurrent.Executors.newSingleThreadExecutor { r ->
+      Thread(r, "dsh-notify-suppress-flush").apply { isDaemon = true }
+    }
+  }
 
   fun pendingCount(): Int = queue.size
 
@@ -321,6 +328,22 @@ object NotifySuppressQueue {
     }
   }
 
+  /** Schedule a durable replay without blocking a Service, receiver, or settings-page caller. */
+  fun flushAsync(context: Context) {
+    val app = context.applicationContext
+    try {
+      flushExecutor.execute {
+        try {
+          flush(app)
+        } catch (t: Throwable) {
+          NotifyProbe.log(app, TAG, "suppress deferred flush (async) failed: " + t.message)
+        }
+      }
+    } catch (_: java.util.concurrent.RejectedExecutionException) {
+      // This executor is never shut down. The durable queue remains for a later tick if an owner rejects it.
+    }
+  }
+
   /** 队列非空期间的自续 tick：前台则继续等，后台则补投。队列一空即停（有界）。 */
   private fun scheduleTick(context: Context) {
     val app = context.applicationContext
@@ -330,7 +353,18 @@ object NotifySuppressQueue {
       handler.postDelayed({
         tickScheduled = false
         if (pendingCount() == 0) return@postDelayed
-        if (NotifyStore.isForeground(app) && NotifyCenter.suppressForeground(app)) scheduleTick(app) else flush(app)
+        try {
+          flushExecutor.execute {
+            try {
+              if (NotifyStore.isForeground(app) && NotifyCenter.suppressForeground(app)) scheduleTick(app) else flush(app)
+            } catch (t: Throwable) {
+              NotifyProbe.log(app, TAG, "suppress deferred tick failed: " + t.message)
+              if (pendingCount() > 0) scheduleTick(app)
+            }
+          }
+        } catch (_: java.util.concurrent.RejectedExecutionException) {
+          // The journal is durable; a future enqueue/restore can schedule another tick.
+        }
       }, FLUSH_TICK_MS)
     } catch (t: Throwable) {
       tickScheduled = false
