@@ -40,6 +40,10 @@ class ShizukuUserServiceBridge() : ShizukuUserService.Stub() {
 
     private val spoolCounter = AtomicInteger(0)
 
+    /** `offset == fileLength` is EOF; negative and beyond-EOF offsets are invalid RPC state. */
+    internal fun isReadChunkOffsetInBounds(offset: Long, fileLength: Long): Boolean =
+      fileLength >= 0L && offset >= 0L && offset <= fileLength
+
     private fun spoolFile(appDataDir: String): File {
       val uid = Process.myUid()
       val dir = if (uid == 0) {
@@ -231,15 +235,17 @@ class ShizukuUserServiceBridge() : ShizukuUserService.Stub() {
     }
   }
 
-  /** @return null = 远端不可读（缺失 / 权限）；空数组 = 已到 EOF；其余为该段字节。 */
+  /** @return null = 远端不可读或 offset 越界；空数组 = offset 恰为 EOF；其余为该段字节。 */
   override fun readChunk(path: String, offset: Long, length: Int): ByteArray? {
     if (!isAbsolute(path)) return null
     val file = File(path)
     if (!file.isFile) return null
-    if (offset >= file.length()) return ByteArray(0)
     val size = length.takeIf { it > 0 }?.coerceAtMost(CHUNK_LIMIT) ?: CHUNK_LIMIT
     return try {
       RandomAccessFile(file, "r").use { raf ->
+        val fileLength = raf.length()
+        if (!isReadChunkOffsetInBounds(offset, fileLength)) return null
+        if (offset == fileLength) return ByteArray(0)
         if (offset > 0) raf.seek(offset)
         val buf = ByteArray(size)
         var read = 0

@@ -18,6 +18,25 @@ class ShizukuRpcLeaseWiringFixtureTest {
   private fun body(name: String): String = source().substringAfter("  private fun $name(")
     .substringBefore("\n  /**")
 
+  private fun userServiceSource(): String {
+    val suffix = "app/src/main/java/com/snoworwind/pocketharness/ShizukuUserService.kt"
+    val file = listOf(File(suffix), File("dsh-mobile-apk/$suffix"),
+      File("src/main/java/com/snoworwind/pocketharness/ShizukuUserService.kt")).firstOrNull { it.isFile }
+      ?: error("owned user-service source unavailable")
+    return file.readText()
+  }
+
+  @Test fun readChunkRejectsNegativeAndBeyondEofOffsetsButKeepsExactEof() {
+    assertTrue(ShizukuUserServiceBridge.isReadChunkOffsetInBounds(0L, 0L))
+    assertTrue(ShizukuUserServiceBridge.isReadChunkOffsetInBounds(7L, 7L))
+    assertFalse(ShizukuUserServiceBridge.isReadChunkOffsetInBounds(-1L, 7L))
+    assertFalse(ShizukuUserServiceBridge.isReadChunkOffsetInBounds(8L, 7L))
+    assertFalse(ShizukuUserServiceBridge.isReadChunkOffsetInBounds(0L, -1L))
+    val readChunk = userServiceSource().substringAfter("  override fun readChunk(").substringBefore("\n  @Synchronized")
+    assertTrue(readChunk.contains("if (!isReadChunkOffsetInBounds(offset, fileLength)) return null"))
+    assertTrue(readChunk.contains("if (offset == fileLength) return ByteArray(0)"))
+  }
+
   @Test fun everyTransferRpcHasAFreshDispatchPointGateInsideItsLoop() {
     val pull = body("pullFileInternal")
     val push = body("pushFileInternal")

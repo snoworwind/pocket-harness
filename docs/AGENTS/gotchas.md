@@ -3197,3 +3197,7 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 550. **看门狗把压缩后的签名当强证据，历史端口错误可放行破坏性恢复（上游 `dsh-mobile-apk` #570/#586，2026-10-26 吸收）**
 
     现象：`planTick` 的强证据门收到 `logSignature`，但 `logSignatureOf` 仅识别插件树失败和 `UncaughtException`，`EADDRINUSE` 被压成 `null`；若直接改为传原始日志，又会让最近一次 HEALTHY 之前留下的端口冲突持续放行强杀/回滚。真因：分类签名是有损摘要，不能用于要求具体错误原文的权限判定；日志又是跨探活累积的，未划定健康边界。修法：把原文尾部传入强证据门；记录最近 HEALTHY 时 `engine.log` 字节长度，强证据扫描从该水位之后开始，日志变短时按轮转重置水位；异常签名限定为准确的 `UncaughtException`。复验：`WatchdogLadderTest.onlyStrongLogEvidenceJustifiesDestructiveRecovery` 覆盖原文 EADDRINUSE、健康水位过滤、轮转和准确异常形态；`./gradlew :app:testDebugUnitTest --no-daemon` 及 `node scripts/check-kotlin-test-count.mjs --self-test` 通过。设备层状态：尚未完成 ADB 用户体验验收。
+
+551. **远端文件缩短后分块拉取可能以 EOF 成功返回不完整副本（上游 `dsh-mobile-apk` #573，本仓复核并修复，2026-10-26）**
+
+    现象：`ShizukuUserService.readChunk` 把所有 `offset >= file.length()` 都编码为空数组；`ShizukuTransport.pullFileInternal` 把空数组作为正常 EOF。若远端文件在传输中缩短到当前偏移之前，本地只落盘前缀却返回 `ok=true`；负 offset 也会被当成从文件头读取。真因：读块 RPC 把“精确 EOF”和“偏移越界/状态已变化”混为同一种空结果。修法：在打开后的文件描述符上读取长度；仅 `offset == length` 返回空块，负值和 `offset > length` 返回失败/null，保持 AIDL 结构不变。复验：`ShizukuRpcLeaseWiringFixtureTest.readChunkRejectsNegativeAndBeyondEofOffsetsButKeepsExactEof` 覆盖有效边界、越界、精确 EOF 及生产调用约束；完整 Kotlin 单测与计数门禁通过。设备层状态：按用户要求暂缓实际设备验证。
