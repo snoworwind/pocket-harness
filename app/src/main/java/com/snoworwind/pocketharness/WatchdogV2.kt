@@ -124,6 +124,7 @@ object WatchdogV2 {
     lastLogSignature = null
     lastProbeTimedOut = false
     lastLogTail = ""
+    healthyLogMark = 0L
   }
 
   /**
@@ -144,7 +145,7 @@ object WatchdogV2 {
    * 判据（命中任一条 = 有强证据，才允许跑破坏性阶梯）：
    *  - `EADDRINUSE`：端口被别人占着（我们自己起不来，等下去也不会好）；
    *  - `plugin tree failed to load`：插件树装配失败（引擎没起来，不会自愈）；
-   *  - `uncaught`：未捕获异常（进程已不可信）。
+   *  - `UncaughtException`：未捕获异常（进程已不可信；与 [logSignatureOf] 使用同一签名）。
    *
    * **反向要求**：`reset()` 不得因此类证据缺失而破坏既有坑 153 的语义——半死引擎的 undo/
    * 重启必须仍能生效。故本判据只否决**破坏性**阶梯（DEGRADED_HTTP → 重启/回滚），
@@ -154,7 +155,22 @@ object WatchdogV2 {
     if (logTail.isNullOrEmpty()) return false
     return logTail.contains("EADDRINUSE")
       || logTail.contains("plugin tree failed to load")
-      || logTail.contains("uncaught", ignoreCase = true)
+      || logTail.contains("UncaughtException")
+  }
+
+  /** 纯函数：健康水位后可用于强证据判定的尾部窗口起点。 */
+  internal fun tailWindowStart(len: Long, cap: Int, mark: Long): Long {
+    if (len <= 0L) return 0L
+    val start = if (mark in 0..len) mark else 0L
+    return maxOf(len - cap.toLong(), start)
+  }
+
+  /** 纯函数：健康拍推进水位；文件变短说明已轮转，水位跟到新文件长度。 */
+  internal fun nextHealthyLogMark(state: ProbeState, len: Long, mark: Long): Long = when {
+    len < 0L -> mark
+    state == ProbeState.HEALTHY -> len
+    len < mark -> len
+    else -> mark
   }
 
   /**
@@ -188,6 +204,10 @@ object WatchdogV2 {
   var lastLogTail: String = ""
     private set
 
+  /** engine.log 在最近一次 HEALTHY 探活时的长度；该长度之前的日志不能放行破坏性恢复。 */
+  @Volatile
+  private var healthyLogMark: Long = 0L
+
   fun assessProbe(context: Context, callerCurrent: () -> Boolean = { true }): ProbeState {
     if (!callerCurrent()) return ProbeState.DEAD
     val probe = EngineProbe.check(2_500)
@@ -199,16 +219,19 @@ object WatchdogV2 {
     // 于是最需要证据的时刻 lastLogTail 恒为空 —— 判据形同虚设。
     val tail = readEngineLogTail(context)
     if (!callerCurrent()) return ProbeState.DEAD
-    lastLogTail = tail
-    lastLogSignature = logSignatureOf(tail)
+    lastLogTail = tail.text
+    lastLogSignature = logSignatureOf(tail.text)
     val base = probe.optBoolean("running", false)
-    if (!base) return if (EngineProbe.portReachable(1_000)) ProbeState.DEGRADED_HTTP else ProbeState.DEAD
-    val signature = lastLogSignature
-    if (signature != null) {
-      LogCollector.log(TAG, "engine log reports a recoverable warning while HTTP remains alive: " + signature)
-      return ProbeState.DEGRADED_LOG
+    val state = when {
+      !base -> if (EngineProbe.portReachable(1_000)) ProbeState.DEGRADED_HTTP else ProbeState.DEAD
+      lastLogSignature != null -> ProbeState.DEGRADED_LOG
+      else -> ProbeState.HEALTHY
     }
-    return ProbeState.HEALTHY
+    if (state == ProbeState.DEGRADED_LOG) {
+      LogCollector.log(TAG, "engine log reports a recoverable warning while HTTP remains alive: " + lastLogSignature)
+    }
+    healthyLogMark = nextHealthyLogMark(state, tail.length, healthyLogMark)
+    return state
   }
 
   /**
@@ -228,6 +251,8 @@ object WatchdogV2 {
     startCooldownMs: Long = EngineManager.START_COOLDOWN_MS,
     /** 本拍的引擎日志签名（[assessProbe] 写、这里读；测试显式传，避免为测试在生产面留钩子）。 */
     logSignature: String? = lastLogSignature,
+    /** 原文尾用于区分具体故障；签名只用于状态分类，不能代替强证据文本。 */
+    logTail: String = lastLogTail,
     /**
      * 端口是否归本应用持有（issue #274 ①）。null = 未知（不否决）。
      * 生产面由 EngineService 从进程归属算出；JVM 测试直接传值。
@@ -288,7 +313,7 @@ object WatchdogV2 {
     // 强证据（EADDRINUSE / 插件树装配失败 / uncaught）**解除**「慢」这条否决：
     // 它把「探活超时」从「可能只是在忙」变成「确知引擎坏了」。
     // 注意方向——证据是**放行**的理由，不是**前置条件**（后者会挡掉必需的第 6 拍，见上）。
-    val strongEvidence = strongEvidenceForDestructiveRecovery(logSignature)
+    val strongEvidence = strongEvidenceForDestructiveRecovery(logTail)
     // 两组条件作用面不同，故用「或」：
     //  · portForeign：监听者不是我们 ⇒ **任何**恢复动作都不解决问题（含子进程已死时盲目重启）；
     //  · slowProbe：探活只是超时，但**只有在我们确实托管着一个活进程时**才谈得上「别强杀它」；
@@ -516,20 +541,23 @@ object WatchdogV2 {
     else -> null
   }
 
-  private fun readEngineLogTail(context: Context): String {
+  private data class LogTail(val text: String, val length: Long)
+
+  private fun readEngineLogTail(context: Context): LogTail {
     return try {
       val f = java.io.File(context.filesDir, "engine.log")
-      if (!f.exists()) return ""
+      if (!f.exists()) return LogTail("", 0L)
       java.io.RandomAccessFile(f, "r").use { raf ->
         val len = raf.length()
-        val off = (len - 4096).coerceAtLeast(0)
+        val off = tailWindowStart(len, 4096, healthyLogMark)
         raf.seek(off)
         val buf = ByteArray((len - off).toInt().coerceAtMost(4096))
         val n = raf.read(buf)
-        String(buf, 0, n.coerceAtLeast(0), Charsets.UTF_8)
+        LogTail(String(buf, 0, n.coerceAtLeast(0), Charsets.UTF_8), len)
       }
     } catch (_: Exception) {
-      ""
+      // A transient read failure is not a truncation/rotation signal; preserve the last healthy mark.
+      LogTail("", -1L)
     }
   }
 

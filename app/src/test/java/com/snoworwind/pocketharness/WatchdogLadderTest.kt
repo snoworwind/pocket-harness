@@ -430,12 +430,55 @@ class WatchdogLadderTest {
   fun onlyStrongLogEvidenceJustifiesDestructiveRecovery() {
     assertTrue("EADDRINUSE = 我们自己起不来，等下去不会好", WatchdogV2.strongEvidenceForDestructiveRecovery("Error: listen EADDRINUSE :::3080"))
     assertTrue("插件树装配失败 = 引擎没起来，不自愈", WatchdogV2.strongEvidenceForDestructiveRecovery("plugin tree failed to load"))
-    assertTrue("uncaught = 进程已不可信", WatchdogV2.strongEvidenceForDestructiveRecovery("Uncaught Exception: boom"))
+    assertTrue("准确的 UncaughtException 签名 = 进程已不可信", WatchdogV2.strongEvidenceForDestructiveRecovery("java.lang.UncaughtException: boom"))
     // 反证：普通日志 / 空 / null 一律**不**构成破坏性动作的理由。
     assertFalse("普通日志不得放行", WatchdogV2.strongEvidenceForDestructiveRecovery("turn started"))
     assertFalse("空串不得放行", WatchdogV2.strongEvidenceForDestructiveRecovery(""))
     assertFalse("null 不得放行", WatchdogV2.strongEvidenceForDestructiveRecovery(null))
     assertFalse("只是慢（无日志证据）不得放行", WatchdogV2.strongEvidenceForDestructiveRecovery("dsh web: listening on 3080"))
+    assertFalse("普通 uncaught 文案不是准确异常签名", WatchdogV2.strongEvidenceForDestructiveRecovery("plugin says uncaught while processing a turn"))
+    val stale = "Error: listen EADDRINUSE :::3080\nengine listening on 3080\n"
+    val mark = stale.length.toLong()
+    val nextWindowStart = WatchdogV2.tailWindowStart(stale.length.toLong(), 4096, mark)
+    assertEquals("健康拍后的窗口从该拍文件长度开始", mark, nextWindowStart)
+    assertFalse(
+      "最近 HEALTHY 之前的端口错误不能放行破坏性恢复",
+      WatchdogV2.strongEvidenceForDestructiveRecovery(stale.substring(nextWindowStart.toInt())),
+    )
+    assertEquals(
+      "健康拍推进到文件当前长度",
+      mark,
+      WatchdogV2.nextHealthyLogMark(WatchdogV2.ProbeState.HEALTHY, mark, 0L),
+    )
+    assertEquals("日志读取失败时不能把健康水位清零", mark,
+      WatchdogV2.nextHealthyLogMark(WatchdogV2.ProbeState.HEALTHY, -1L, mark))
+    assertEquals(
+      "日志轮转变短时水位回到新文件长度",
+      12L,
+      WatchdogV2.nextHealthyLogMark(WatchdogV2.ProbeState.DEGRADED_HTTP, 12L, mark),
+    )
+    assertEquals("轮转后重新从新文件尾部取证", 0L, WatchdogV2.tailWindowStart(12L, 4096, mark))
+    repeat(WatchdogV2.DEGRADED_RESTART_CONFIRMATIONS) {
+      WatchdogV2.recordProbe(WatchdogV2.ProbeState.DEGRADED_HTTP)
+    }
+    val plan = WatchdogV2.planTick(
+      state = WatchdogV2.ProbeState.DEGRADED_HTTP,
+      now = 999_999L,
+      nextRestartAllowedAt = 0L,
+      engineReady = true,
+      engineProcessAlive = true,
+      bootAgeMs = 999_999L,
+      restartDeadConfirmations = 2,
+      slowProbe = true,
+      portOwnedByApp = true,
+      logSignature = null,
+      logTail = "Error: listen EADDRINUSE :::3080",
+      feedProbe = {},
+      consumeMarkers = {},
+      refreshWake = {},
+      undoReady = { true },
+    )
+    assertEquals("原文证据应解除慢探活 HOLD", WatchdogV2.TickAction.UNDO, plan.action)
   }
 
   @Test
