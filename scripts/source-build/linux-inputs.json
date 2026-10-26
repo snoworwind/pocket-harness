@@ -9,11 +9,11 @@
   "debianReleaseKey13Fingerprint": "41587F7DB8C774BCCF131416762F67A0B2C39DE4",
   "ndk": "r30",
   "ndkSha1": "5107f898313790e449e87eee2183d9a20602dee9",
-  "prootVersion": "5.1.107.99",
+  "prootVersion": "5.1.107.101",
   "prootRepository": "https://github.com/termux/proot",
-  "prootSourceUrl": "https://github.com/termux/proot/archive/v5.1.107.99.zip",
-  "prootSourceSha256": "49951a8f35245eaf8e5b300b237ffb10a328f42641a9cbcd1e285d45e95d84e8",
-  "termuxPackagesRecipeCommit": "5b90c229de8e674a890d723b100cfcc5d6054ea5",
+  "prootSourceUrl": "https://github.com/termux/proot/archive/v5.1.107.101.zip",
+  "prootSourceSha256": "a66743f50c7b0bac1913b83bf55e139d679c80a0ca2808eec76432a65640017f",
+  "termuxPackagesRecipeCommit": "d6a36549b20eadb7723015eb3423e753ea125567",
   "runtimeVersion": "0.6.2",
   "minimumAppVersion": "0.14.0"
 }

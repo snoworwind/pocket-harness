@@ -3,27 +3,27 @@
   "requiredTargets": ["proot"],
   "requiredClosure": ["proot", "libandroid-shmem", "libtalloc"],
   "expectedVersions": {
-    "proot": "5.1.107.99",
+    "proot": "5.1.107.101",
     "libandroid-shmem": "0.7",
     "libtalloc": "2.5.0"
   },
   "packageSources": {
     "proot": {
       "license": "GPL-2.0",
-      "sourceUrl": "https://github.com/termux/proot/archive/v5.1.107.99.zip",
-      "sourceSha256": "49951a8f35245eaf8e5b300b237ffb10a328f42641a9cbcd1e285d45e95d84e8",
+      "sourceUrl": "https://github.com/termux/proot/archive/v5.1.107.101.zip",
+      "sourceSha256": "a66743f50c7b0bac1913b83bf55e139d679c80a0ca2808eec76432a65640017f",
       "recipePath": "packages/proot/build.sh",
-      "recipe": "https://github.com/termux/termux-packages/blob/5b90c229de8e674a890d723b100cfcc5d6054ea5/packages/proot/build.sh",
-      "recipeCommit": "5b90c229de8e674a890d723b100cfcc5d6054ea5",
-      "recipeSha256": "16831cfa2373137365418997fe1cd8b0047fd14b46d5dbbfefd89f9c1b530cb4"
+      "recipe": "https://github.com/termux/termux-packages/blob/d6a36549b20eadb7723015eb3423e753ea125567/packages/proot/build.sh",
+      "recipeCommit": "d6a36549b20eadb7723015eb3423e753ea125567",
+      "recipeSha256": "9b284fa9f1265af51ac829cf59e8f86a84f151065310b6ed1950437dff364006"
     },
     "libandroid-shmem": {
       "license": "BSD-3-Clause",
       "sourceUrl": "https://github.com/termux/libandroid-shmem/archive/refs/tags/v0.7.tar.gz",
       "sourceSha256": "1e5ff8459bc0a8c229dd8a94b27d119987e09ef3414331c2b5ebfff20b98e867",
       "recipePath": "packages/libandroid-shmem/build.sh",
-      "recipe": "https://github.com/termux/termux-packages/blob/5b90c229de8e674a890d723b100cfcc5d6054ea5/packages/libandroid-shmem/build.sh",
-      "recipeCommit": "5b90c229de8e674a890d723b100cfcc5d6054ea5",
+      "recipe": "https://github.com/termux/termux-packages/blob/d6a36549b20eadb7723015eb3423e753ea125567/packages/libandroid-shmem/build.sh",
+      "recipeCommit": "d6a36549b20eadb7723015eb3423e753ea125567",
       "recipeSha256": "db55b10b90c54dd4d39b76b5b074835c09c7c7534a84a12bc29c6a63717ff2fd"
     },
     "libtalloc": {
@@ -31,8 +31,8 @@
       "sourceUrl": "https://www.samba.org/ftp/talloc/talloc-2.5.0.tar.gz",
       "sourceSha256": "912afa237510ae542a7733998eb18a12bcda35ab6729c8e2ddb43e8d0ebab007",
       "recipePath": "packages/libtalloc/build.sh",
-      "recipe": "https://github.com/termux/termux-packages/blob/5b90c229de8e674a890d723b100cfcc5d6054ea5/packages/libtalloc/build.sh",
-      "recipeCommit": "5b90c229de8e674a890d723b100cfcc5d6054ea5",
+      "recipe": "https://github.com/termux/termux-packages/blob/d6a36549b20eadb7723015eb3423e753ea125567/packages/libtalloc/build.sh",
+      "recipeCommit": "d6a36549b20eadb7723015eb3423e753ea125567",
       "recipeSha256": "b722c5adb89e4d4ad4595dbba40be562d9894103a190777392c363b57b1a7201"
     }
   }
