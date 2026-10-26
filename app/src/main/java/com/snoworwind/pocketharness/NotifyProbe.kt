@@ -31,10 +31,17 @@ object NotifyProbe {
     val app = context?.applicationContext ?: return
     try {
       val f = file(app)
-      if (f.length() > MAX_BYTES) f.writeText("")
+      rotateIfNeeded(f)
       f.appendText(stamp.format(Date()) + " [" + tag + "] " + message + "\n")
     } catch (_: Throwable) {
       // 探针写失败绝不冒泡：通知主流程优先
     }
+  }
+
+  internal fun rotateIfNeeded(file: File) {
+    if (file.length() <= MAX_BYTES) return
+    // 保留一代用于停滞诊断；轮转边界不清空唯一副本。
+    val rolled = File(file.parentFile, file.name + ".1")
+    if (!rolled.exists() || rolled.delete()) file.renameTo(rolled)
   }
 }

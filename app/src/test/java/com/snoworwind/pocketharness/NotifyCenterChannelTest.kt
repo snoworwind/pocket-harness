@@ -64,6 +64,27 @@ class NotifyCenterChannelTest {
   }
 
   @Test
+  fun 缓存或prefs渠道映射只有系统渠道仍存在时可用() {
+    assertTrue(NotifyCenter.selectedChannelAvailable("dsh-question", systemChannelExists = true))
+    assertEquals(false, NotifyCenter.selectedChannelAvailable("dsh-question", systemChannelExists = false))
+    assertEquals(false, NotifyCenter.selectedChannelAvailable("", systemChannelExists = true))
+    assertEquals(false, NotifyCenter.selectedChannelAvailable(null, systemChannelExists = true))
+  }
+
+  @Test
+  fun channelFor会复查缓存和prefs中的系统渠道并在失效时重新解析() {
+    val center = listOf(
+      java.io.File("src/main/java/com/snoworwind/pocketharness/NotifyCenter.kt"),
+      java.io.File("app/src/main/java/com/snoworwind/pocketharness/NotifyCenter.kt"),
+    ).first { it.isFile }.readText()
+    val body = center.substringAfter("fun channelFor(context: Context, face: Face): String? {")
+      .substringBefore("internal fun selectedChannelAvailable")
+    assertTrue(body.contains("selectedChannelAvailable(cached, channelExists(app, cached))"))
+    assertTrue(body.contains("selectedChannelAvailable(stored, stored != null && channelExists(app, stored))"))
+    assertTrue(body.contains("val id = resolveChannel(app, face)"))
+  }
+
+  @Test
   fun S3_历史低importance且用户没改过_自动切下一个候选() {
     val sel = NotifyCenter.selectChannel(
       listOf("dsh-auth", "dsh-auth-h2", "dsh-auth-h3"),
