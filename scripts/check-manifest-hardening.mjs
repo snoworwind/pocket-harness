@@ -146,6 +146,7 @@ const FILE_PROVIDER_CALLERS = new Map([
   ['main/java/com/snoworwind/pocketharness/LogShare.kt', 1], // Sanitized diagnostic ZIP in cacheDir/log-share.
   ['main/java/com/snoworwind/pocketharness/PathOpen.kt', 1], // User-mediated Files chooser; chooser predicate.
 ])
+const isTestSourceSet = (name) => /^(?:androidTest|test)|(?:AndroidTest|Test)$/.test(name)
 
 function fileProviderResourcePath(mainDir, pathsRef) {
   if (!/^@xml\/[A-Za-z_][A-Za-z0-9_]*$/.test(pathsRef ?? '')) return null
@@ -157,7 +158,7 @@ function fileProviderResourceVariants(appSrcDir, pathsRef) {
   const fileName = pathsRef.slice('@xml/'.length) + '.xml'
   const matches = []
   for (const sourceSet of readdirSync(appSrcDir, { withFileTypes: true })) {
-    if (!sourceSet.isDirectory() || /^(?:androidTest|test)/.test(sourceSet.name)) continue
+    if (!sourceSet.isDirectory() || isTestSourceSet(sourceSet.name)) continue
     const resDir = join(appSrcDir, sourceSet.name, 'res')
     if (!existsSync(resDir)) continue
     for (const qualifier of readdirSync(resDir, { withFileTypes: true })) {
@@ -479,7 +480,7 @@ checkExcludes('data_extraction_rules.xml', join(MAIN, 'res', 'xml', 'data_extrac
       if (entry.isDirectory()) {
         // Test source sets are not production URI issuers; scan main, flavor,
         // debug, and release source sets so overlays cannot add unregistered calls.
-        if (dir === appSrcDir && /^(?:androidTest|test)/.test(entry.name)) continue
+        if (dir === appSrcDir && isTestSourceSet(entry.name)) continue
         walkKt(p2)
         continue
       }
