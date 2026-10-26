@@ -175,3 +175,16 @@
 | 高风险候选与设备边界 | #474 的重试退避/启动失败诊断值得在可复现连续启动故障时单独评审；其 logcat 数据面和“启动失败后允许 su 回退”会改变诊断及特权路径，不能整体照搬。当前环境没有 `adb`，故不改 Shizuku/桥/本机界面代码，也不把这些未验证候选列为已吸收。#481 同属壳侧语言桥与 Activity 重建变更，本仓没有对应语言 setter/同步调用链，暂不扩展。 |
 
 此游标仅表示检查已覆盖到 `a8d79b5`。并未吸收上游版本号、签名、Pages 发布清单、README 群二维码、开屏视频、分栏/浮窗、语言切换、临时探针处置或跨仓镜像规则；逐项理由与可重开条件见实施计划 §13。
+
+## 2026-10-26 上游增量审阅与吸收完成情况
+
+| 项 | 结果 |
+|---|---|
+| 比较基线 | 审阅开始时 Pocket Harness `main` 为 `21982f74915fbda9facac1b97333d5af1b03eb82`；所有后续代码 PR 均从最新 `origin/main` 分支单独创建并以 merge commit 合入。最后一个代码 PR #143 的 merge commit 为 [`87d6ee997e7a9be070b16eabe3d017eb33a891f5`](https://github.com/snoworwind/pocket-harness/commit/87d6ee997e7a9be070b16eabe3d017eb33a891f5)。 |
+| 上游刷新 | GitHub 实时 `kelai141/dsh-mobile-apk/main` 为 [`4a41e6ac9bf2b0f786e3c336cfc344068a8fd1e7`](https://github.com/kelai141/dsh-mobile-apk/commit/4a41e6ac9bf2b0f786e3c336cfc344068a8fd1e7)，比上次检查点 `06f1a0bdc3e2697d8cc6356fe76f13716e115c87` 新 12 个提交；compare 为 36 个文件、+1,556/-183。范围见 [GitHub compare](https://github.com/kelai141/dsh-mobile-apk/compare/06f1a0bdc3e2697d8cc6356fe76f13716e115c87...4a41e6ac9bf2b0f786e3c336cfc344068a8fd1e7)。 |
+| 已吸收 PR | #570/#586 看门狗证据水位 [#135](https://github.com/snoworwind/pocket-harness/pull/135)；#573 Shizuku offset [#136](https://github.com/snoworwind/pocket-harness/pull/136)；#588 通知后台补投 [#137](https://github.com/snoworwind/pocket-harness/pull/137)；#578 渠道自愈与日志轮转 [#138](https://github.com/snoworwind/pocket-harness/pull/138)；#570 多问 PendingIntent 身份 [#139](https://github.com/snoworwind/pocket-harness/pull/139)；#585 FileProvider 门禁 [#140](https://github.com/snoworwind/pocket-harness/pull/140)；#580 控制台生命周期 [#141](https://github.com/snoworwind/pocket-harness/pull/141) 与输出聚合 [#142](https://github.com/snoworwind/pocket-harness/pull/142)；#587 侧栏测试等待 [#143](https://github.com/snoworwind/pocket-harness/pull/143)。九个 PR 均已合并；逐项缺口、实现边界、merge commit 与证据见 [实施计划 §14](UPSTREAM-ABSORPTION-PLAN-2026-10-20.md#14-2026-10-26-上游最新增量复核与吸收结果)。 |
+| 排除项 | Repair Assistant 不属于本仓现有功能；不在壳侧新增 AI 工具。完整 PTY/ANSI/resize/中继属于新产品路径，本轮未引入。rc.3 引擎升级单独处理；本次不吸收上游签名、发布页、社群素材或分栏功能。 |
+| 本机/CI 证据 | PR #141 完整 Kotlin 测试 1382/1382、PR #142 完整 Kotlin 测试 1386/1386；门禁 self-test、代码地图与 Kotlin 注释检查通过；Node 24.22.1 下插件全套 52 文件/757 项通过；9 个 PR 的必需 CI 均通过。 |
+| 设备边界 | 按用户要求没有操作正在运行其他任务的 Android 16 AVD；L2/L3 的 PR #135–#139、#141–#142 均未完成三层设备验收，PR 描述已标注“未做设备验证”。进入发版候选前必须补验；上游设备证据不代替本仓验收。PR #140 是 L1 门禁；PR #143 仅改测试同步。 |
+
+比较游标推进为 `4a41e6ac9bf2b0f786e3c336cfc344068a8fd1e7`，只表示 `06f1a0b..4a41e6a` 新增范围已审阅；更早 `a8d79b5..06f1a0b` 筛查覆盖提交和文件路径分类，未逐行审计所有生成文件。本次不追溯性声称历史范围已全部逐行检查。文档更新本身待本 PR 的必检 CI 通过后合入。

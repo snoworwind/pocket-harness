@@ -284,4 +284,38 @@ APK/快照 OTA、旧包身份/签名、协调仓构建入口与壳侧模型工�
 
 本轮符合本仓宗旨且有本地缺陷证据的代码项为零；因此没有复制/改写产品代码，也没有新增生产依赖。吸收动作是完成 13 个提交的全量增量审阅、把比较游标推进至 `a8d79b5`，并将覆盖、排除与暂缓原因登记到本账本。最接近可直接吸收的 #483 已用干净安装反证：在 Node `v24.22.1` 下从无 `node_modules` 执行 `npm ci --no-audit --no-fund` 成功，随后 `npm test` 得 52/52 个文件和 757/757 项通过。该测试未覆盖真实 primitives 浏览器渲染；如新增此类用例，要重新评估依赖闭包。
 
-当前环境没有 `adb` 命令。#474 的 Shizuku bridge、#481 的语言桥和 Activity 生命周期改动分别属于 L2/L3，因未复现必要缺陷且无法完成即时三层验收，本轮不实施，不报告为通过。此次交付是 L0 文档比较更新；PR 描述需显式写明“未做设备验证”。文档本身用 `git diff --check` 校验，合并仍以本仓必检 CI 通过为条件。
+当前环境没有 `adb` 命令。#474 的 Shizuku bridge 与 #481 的语言桥仍因没有本地复现缺陷而排除；本轮另对照 2026-10-26 新增的 12 个提交，结果见 §14。
+
+## 14. 2026-10-26 上游最新增量复核与吸收结果
+
+### 14.1 固定比较点与覆盖范围
+
+比较开始时，Pocket Harness 本仓 `main` 与工作树同在 `21982f74915fbda9facac1b97333d5af1b03eb82`；上游 `kelai141/dsh-mobile-apk/main` 已从上次检查点 `06f1a0bdc3e2697d8cc6356fe76f13716e115c87` 前进到 [`4a41e6ac9bf2b0f786e3c336cfc344068a8fd1e7`](https://github.com/kelai141/dsh-mobile-apk/commit/4a41e6ac9bf2b0f786e3c336cfc344068a8fd1e7)，提交时间 2026-10-26 04:13:11 UTC。GitHub API 实时读取确认尖端；当前比较包含 12 个提交、36 个文件、+1,556/-183，范围见 [GitHub compare](https://github.com/kelai141/dsh-mobile-apk/compare/06f1a0bdc3e2697d8cc6356fe76f13716e115c87...4a41e6ac9bf2b0f786e3c336cfc344068a8fd1e7)。
+
+上一轮 `a8d79b5..06f1a0b` 的宽范围筛查覆盖 197 个提交、358 个变更文件路径，按提交和路径分类选择重点生产代码复核；没有逐行审阅所有历史生成文件。本轮只审阅 `06f1a0b..4a41e6a` 的新增差异，不把游标前移解释成对早期生成文件的逐行审计。
+
+### 14.2 可吸收候选与实际处置
+
+| 上游候选 | 本仓缺口与宗旨审查 | 本仓实施结果 |
+|---|---|---|
+| #570/#586 看门狗：把原始失败日志交给强恢复证据门，并从最近一次 HEALTHY 后的字节水位开始判定；轮转时重置水位，异常签名收窄。 | 本仓 `planTick` 原来只传有损 `logSignature`，无法同时正确判定插件树原文、EADDRINUSE 和旧健康前日志。直接传全量原文又会使陈旧错误放行破坏性恢复。 | 已吸收并合并 [PR #135](https://github.com/snoworwind/pocket-harness/pull/135)，merge `ef95d965c5efb8de6d8718d57b420549fe4b4923`。补原文、水位、轮转和精确异常形态回归；完整 Kotlin 测试及门禁通过。按用户要求未做设备验证，属于 L2 未验收。 |
+| #573 Shizuku 文件分块 offset：精确 EOF 可返回空，负值及越界失败。 | 本仓原来把 `offset >= size` 都当成功 EOF，远端文件缩短时可能成功返回不完整副本；AIDL 结构无需改变。 | 已吸收并合并 [PR #136](https://github.com/snoworwind/pocket-harness/pull/136)，merge `210bab2576c5b7ba2a32907d9d64cac0fb51edbf`。读块边界与调用链反例、完整 Kotlin 测试和门禁通过。未做设备验证，属于 L2 未验收。 |
+| #570/#588 通知后台补投与 tick 自续。 | 本仓启动 drain、通知队列恢复/flush 可在主线程同步提交 journal 并逐条调用通知 Binder；tick 检查异常可能停止后续调度。 | 已吸收并合并 [PR #137](https://github.com/snoworwind/pocket-harness/pull/137)，merge `d48e609fe5322c904ab644f3d8df8a7f05015902`。后台 executor 与异常续拍有契约回归，Kotlin 测试和 CI 通过。用户要求暂缓设备验证，通知链仍属 L3 未验收。 |
+| #578 通知渠道删除自愈与探针日志轮转。 | 本仓缓存/prefs 命中不检查系统渠道仍存在；探针超过上限会清空唯一当前日志。 | 已吸收并合并 [PR #138](https://github.com/snoworwind/pocket-harness/pull/138)，merge `02f95f51d30227ad505462b366df0702a9ffe698`。渠道状态与轮转反例、完整 Kotlin 测试及执行地图门禁通过。未做设备验证，通知链仍属 L3 未验收。 |
+| #570 多问通知按钮身份加入 `questionId`。 | 同一事件中不同问题使用相同选项文字时，旧 PendingIntent key 相同；extras 不参与 Android PendingIntent 身份，按钮可能答到另一问。 | 已吸收并合并 [PR #139](https://github.com/snoworwind/pocket-harness/pull/139)，merge `b2307fd67094a39a21153d55c0e684ad6ab7bd4a`。稳定键与多问同文选项反例、完整 Kotlin 测试和执行地图门禁通过。未做设备验证，通知动作仍属 L3 未验收。 |
+| #585 FileProvider 门禁检查资源映射与逐调用计数。 | 本仓门禁原先按文件名 allowlist，漏掉同文件第二次调用、Manifest 实际引用资源及 XML 实体解码后的宽路径。 | 已吸收并合并 [PR #140](https://github.com/snoworwind/pocket-harness/pull/140)，merge `1d907c6b46baaafd0a77d85108a0512accdc7512`。保留本仓运行时路径约束；新增资源解析、一次解码、来源集覆盖检查、`--self-test` 与受控负控，并接入 PR Gate。CI 通过，L1 门禁未做设备验证。 |
+| #580 控制台生命周期审计：启动 IO 移出主线程，代次作废、迟到 WebView 回调守卫。 | 本仓 `onStart` 曾同步检查运行时、组装环境并 `ProcessBuilder.start()`；异步后还需防止 restart/destroy 与进程创建竞态，以及 Handler/WebView teardown 后的回调。 | 拆为原子 PR 并合并：[PR #141](https://github.com/snoworwind/pocket-harness/pull/141)，merge `4830d2599509accb87d178bbd4d78dec005110fb`。专用 daemon worker、代次锁和 Activity 回调守卫；完整 Kotlin 1382 项与 CI 通过。用户要求暂缓 Android 16 AVD，L3 尚未做设备验收。 |
+| #580 控制台输出聚合与行尾处理。 | 本仓 reader 曾按换行或 4096 字符推送，短无换行提示可滞留，长输出造成过多 WebView 跨进程调用；CRLF 会被重复折行。 | 拆为原子 PR 并合并：[PR #142](https://github.com/snoworwind/pocket-harness/pull/142)，merge `bdd5576e5eefc629fd96c0f968bba4917e2bc417`。16 KiB/50ms 聚合、EOF flush、跨读取 CRLF 归一；ConsoleOutputBatcher 和完整 Kotlin 1386 项、CI 通过。用户要求暂缓设备验证，L3 尚未做设备验收。PTY 中继、ANSI/键盘协议等新功能未引入。 |
+| #587 侧栏手势测试从固定等待改为等待实际状态。 | 本仓测试固定睡 70ms 等源码 50ms 的延迟更新，CI 忙时仍有调度竞态。 | 已吸收并合并 [PR #143](https://github.com/snoworwind/pocket-harness/pull/143)，merge `87d6ee997e7a9be070b16eabe3d017eb33a891f5`。等待 DOM 条件，每 10ms 轮询、2s 超时；Node 24.22.1 下 `sidebar-gestures.spec.ts` 70/70、完整插件套件 52 文件/757 项通过，CI 通过。只改测试与记录，未操作 Android 设备。 |
+
+### 14.3 排除项与安全边界
+
+Repair Assistant 在本仓没有对应产品功能；壳侧不因此直接注册 AI 工具，AI 可见能力仍来自插件。完整 PTY/ANSI/中继、PTY 键盘与 resize 行为属于新产品路径；本轮仅取既有行式 bash 控制台也受益的线程、生命周期、输出聚合和 CRLF 修复。#577 上游 watchdog reset 注释不按上游调用点照搬；#578/#588 的通知语义以本仓持久队列和至少一次结算设计为准。FileProvider 只加强检测闭包，没有替换运行时授权边界。引擎 rc.3 与本仓 rc.2 的版本升级继续单独审计，未混入这些 PR。
+
+### 14.4 收口状态
+
+九个代码/测试 PR（#135–#143）均已通过各自必需 CI，并使用 merge commit 合入 `main`；比较账本和本段执行结果由独立文档 PR 更新。本机证据包括 Watchdog/Shizuku/通知/FileProvider 专项回归、完整 Kotlin 1382/1386 项、执行地图和测试计数自检、以及 Node 24.22.1 下插件全量 757 项。每项证据按 PR 各自提交记录，不用后续总结果倒推前序 PR 验收。
+
+按用户要求，没有操作正在执行其他任务的 Android 16 AVD，也没有做设备三层验证；PR #135–#139 的 L2/L3 行为和 PR #141/#142 控制台 L3 行为均仍未完成设备验收。所有 PR 描述已显式标注“未做设备验证”。这些改动尚不能随发版候选宣称通过；进入发布候选前仍须按 `AGENTS.md` §2.1 完成对应三层验收。PR #143 仅改测试等待方式，不涉及应用运行时。
+
+上游检查游标推进到 `4a41e6ac9bf2b0f786e3c336cfc344068a8fd1e7`，只表示 `06f1a0b..4a41e6a` 新增范围已审阅。完整候选、排除原因及逐 PR 证据亦记录于 [上游跟踪账本](UPSTREAM-TRACKING.md)。
