@@ -1137,7 +1137,7 @@ flowchart TD
   - `app/src/main/java/com/snoworwind/pocketharness/NotifySuppressQueue.kt:119` 补投 `flush`；`:153` 自续 tick
 - **不变量**：
   1. `kind` 是唯一分类权威、六类闭集，未知 kind 显式忽略并记账（`NotifyCenter.kt:550-563`）；`resolve` 只撤提问/审批通知（`:640-648`）。
-  2. 渠道 importance 应用不可调高：弹窗类首次必须 HIGH 建，候选 ID 序列是唯一迁移手段，选中项落 `channel.<category>` 后只读映射（`NotifyCenter.kt:370-380`）。违反＝弹窗类永久只能静默，只能换新候选 ID 救。
+  2. 渠道 importance 应用不可调高：弹窗类首次必须 HIGH 建，候选 ID 序列是唯一迁移手段；缓存和 `channel.<category>` 映射每次复用前都核对系统渠道，空值或渠道缺失时重新解析（`NotifyCenter.kt:406-429`）。用户改过 importance 时仍保留原 ID 并尊重降级选择。
   3. 前台抑制只作用于 `report`、默认关闭；提问/审批永不因前台抑制丢弃，引擎 `popup=false` 也不能把它们静默（`NotifyCenter.kt:527` / `:567-577`）。类别开关（`cat.*`）、权限、渠道全降级是三条硬拒发路径，每条都有独立记账串（表驱动锁死见 `NotificationContractTest.kt:242`）。
   4. 历史直接回复通知仍可能受平台 `LIFETIME_EXTENDED_BY_DIRECT_REPLY` 保护，直接 `cancel()` 无效：必须先同 `(tag,id)` 重投再撤（`NotifyCenter.kt:676-708`），否则通知撤不掉、回复框可再点。
   5. 动作 receiver 保留 exported=false 与显式 Intent，但它们不能证明通知动作由用户触发。现在通知仅持不可变 Activity PendingIntent；NotifyConfirmActivity 经系统凭据认证后签发内存一次性许可，NotifyActionReceiver 消费后才入队。旧通知广播无许可也拒绝；重试不产生新 outcome。outcome 仍为闭集 `allowed-once` / `rejected` / `answers`。
@@ -1145,6 +1145,8 @@ flowchart TD
   7. 消费**不再受单一事件源支配**（0.14.1 真机停摆 `#238` 的修法）：三个驱动者——`start()` 一次性、`FileObserver`（位集 `WATCH_MASK`：`MODIFY|CREATE|CLOSE_WRITE|MOVED_TO|DELETE|MOVED_FROM`，白名单 `FILE_NAME`/`ROTATED_NAME`/`path==null`）、看门狗 5 s tick（`NotifyStore.drainTick`）——都走同一把 `@Synchronized` 的 `drain`，且**先投递再推进偏移**（至少一次；重复由 P3 去重挡住）。违反：只靠事件 ⇒ 一次事件丢失即永久停摆（文件在长、`notify.offset` 冻住、一条报告都不投，真机实测十余分钟）；先推进再投递 ⇒ 崩溃静默丢。
   8. 长按面板的最近汇报**不依赖消费是否活着**：`lastReportLineRaw` 为空时由 `tailReportLine` 倒读 `.notify.ndjson` 尾部（32 KB 窗口）取最后一条 `kind=report` 行（`NotifyStore.kt:118` / `:127`）。违反：进程重启或消费停摆后长按面板只剩占位行。
   9. 所有 `NotifyCenter.Result` 取值必须各有互不相同的记账串（`NotificationContractTest.kt:242`），`notifyEvent` 与 `onFrame` 都不得把异常冒到读线程（`:292`）。
+  10. `channelFor` 复用缓存或 prefs 映射前检查系统渠道；空映射、查询失败或系统渠道被删都会进入 `resolveChannel` 重新判定。探针超过 128KB 时轮转到 `.1`，保留一代后继续追加（`NotifyCenter.kt:406-429` / `NotifyProbe.kt:32-48`）。
+  11. 多问通知动作的 PendingIntent 身份包含 `eventId`、动作、选项和 `questionId`；Android 不按 extras 区分 PendingIntent，同一事件内相同选项文字也必须生成不同 requestCode（`NotifyCenter.kt:1168-1187`）。
 - **症状 → 排查**：
   1. 「前台仍然收不到工作汇报」：`run-as cat shared_prefs/dsh-notify.xml | grep suppressForeground`；再 `grep -E "suppressForeground (set to|migration)" files/notify-responder.log` 看是 `explicit=true`（磁盘被显式写成开）还是 `implicit`（走新默认 false）。
   2. 「汇报只在划到后台后才弹」：先分辨**没投**还是**投了不弹**——`run-as cat shared_prefs/dsh-notify.xml | grep notify.offset` 与 `run-as ls -l files/home/.dsh/.notify.ndjson` 对长度：**offset 小于文件长度** ⇒ 消费停摆（没投），看 `grep -E "notify drain trigger=|notify tick alive" files/notify-responder.log`：只有 `watch:` 触发、没有 `tick` ⇒ 兜底没跑；`watchEventAgeMs` 一直很大而 `lag` 一直 >0 ⇒ watcher 失聪（目录 inode 被换过，如快照重解包）。**offset 等于长度**再查投递面：`grep -E "result=SUPPRESSED_FOREGROUND|suppress deferred|suppress deferred flushed"`；只有 `deferred` 没有 `flushed` ⇒ 延后条目随进程一起没了（见可疑点 2）。
