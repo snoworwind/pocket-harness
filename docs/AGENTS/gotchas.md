@@ -3241,3 +3241,7 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 561. **Android 来源构建跳过上游 official client profile，Web 标题和侧栏品牌退回本地默认值（2026-10-27）**
 
     现象：Web UI 标题显示“DSH 本地构建”，官方侧栏品牌插件也不启用；Android 图标名称仍是 Pocket Harness。真因：上游 `AppFrame` 的标题只读取 `DSH_CLIENT_TITLE`，缺省回退到 `brand.localBuild`；`ui-brand-official` 仅在 `DSH_CLIENT_BUILD_PROFILE=official` 时注册品牌槽位。上游 `scripts/build.ts --profile official` 会为所有 artifact 阶段构造提交短哈希、版本、profile 和标题，但 Android 来源脚本为省去 Desktop 阶段直接调用子编译器，没有传递该环境。修法：在直接构建前清除继承的 `DSH_CLIENT_*` 与 profile selector，再从固定 Harness checkout 导出上游 official profile 的四个公开值；构建后检查 `ui-layout` client bundle、官方品牌槽位和 `apps/web/dist/index.html` 的 title。复验：`node --test scripts/source-build/cloud-workflow.test.mjs` 20 项通过、1 项 Linux-only skip；受控负控覆盖错误 profile/title、缺少 commit/version 和移除每个产物断言。最终来源 APK 尚未重建，因此设备侧显示仍待 Android main 来源链及设备验收确认。
+
+562. **升级 Linux bootstrap peer metadata 后未同步来源摘要清单，PR Linux 验证按预期拒绝（2026-10-27）**
+
+    现象：PR #148 的 `build-linux-assets` 在 `check-linux-sources.mjs --self-test` 的仓库实体验证阶段报 `Linux source digest mismatch: plugins/dsh-linux-bootstrap/package-lock.json`。真因：Harness RC3 升级同步了 bootstrap 的 `package.json` 与 lockfile peer 版本，但 `linux-source-manifest.json` 的双份字节摘要仍指向 RC2；单测通过只证明负控有效，不代表仓库输入摘要已更新。修法：逐字节确认两文件只改变 client-settings peer 元数据，重算并同步 manifest 的 additional-source 与全局文件摘要，并更新对应 local-patch 理由；不放宽或跳过来源校验。复验：待 CI 对 PR #148 重跑 `build-linux-assets` 验证。

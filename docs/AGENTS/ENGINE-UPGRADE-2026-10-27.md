@@ -27,7 +27,7 @@ OrbStack Linux 隔离环境完成 Harness 来源构建阶段；完整 Node 来�
 
 `cloud-workflow.test.mjs` 已覆盖官方 profile 环境的正向条件与错误 profile/title、缺少 commit/version、漏掉三项构建产物断言的受控负控。
 
-**本分支仍不是可发布或已验收的升级。** 当前快照/APK 没有由最终提交的正式 main 来源链重建；三份覆盖资产尚未与该最终快照逐字节对账。Android 16 / API 36 ARM64 AVD、真机、CDP 或 ADB 用户体验三层验收未完成。GitHub CLI 保存凭据仍被判无效，因此分支尚未推送、PR 尚未创建。测试环境的来源构建证据来自隔离验证副本，只证明 Harness 构建阶段和已列测试结果，不能冒充正式发布链。
+**PR #148 中的开发候选仍不是可发布或已验收的升级。** 当前快照/APK 没有由最终 main 提交的正式来源链重建；三份覆盖资产尚未与该最终快照逐字节对账。Android 16 / API 36 ARM64 AVD、真机、CDP 或 ADB 用户体验三层验收未完成。OrbStack 隔离验证副本只证明 Harness 构建阶段及相应来源检查结果，不能冒充正式发布链；合入 main 后仍须按发布前清单完成来源构建和设备验收。
 
 ## 发布前仍需补齐
 
