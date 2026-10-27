@@ -91,11 +91,34 @@ printf '%s\n' "$deployment_pnpm" >> "$GITHUB_WORKSPACE/.deploy-tmp/source-build/
 # Android's native/Host/Client/Web artifacts through its public helpers;
 # no tracked upstream source or package manifest is rewritten.
 cp package.json "$GITHUB_WORKSPACE/.deploy-tmp/source-build/harness-root-package.json.original"
+# Android calls the artifact stages directly instead of `scripts/build.ts --profile official`.
+# Match the public environment produced by upstream `officialClientBuildEnvironment` so every
+# client bundle and the Web document receive the official profile, title, source commit and version.
+unset DSH_BUILD_CLIENT_PROFILE
+for name in ${!DSH_CLIENT_@}; do
+  unset "$name"
+done
+source_commit="$(git rev-parse HEAD)"
+export DSH_CLIENT_COMMIT_HASH="${source_commit:0:7}"
+export DSH_CLIENT_VERSION="$(node -p 'require("./package.json").version')"
+export DSH_CLIENT_BUILD_PROFILE=official
+export DSH_CLIENT_TITLE='DeepSeek Harness'
 corepack pnpm run build:native-system
 corepack pnpm exec tsx scripts/compile-referenced-projects.ts host-libraries
 corepack pnpm exec tsx scripts/compile-referenced-projects.ts client
 corepack pnpm exec tsdown --config-loader native --env.DSH_BUILD_FACE client
 corepack pnpm run build:web
+node <<'NODE'
+const { readFileSync } = require('node:fs')
+const client = readFileSync('packages/client/ui-layout/lib/client.js', 'utf8')
+const brand = readFileSync('packages/client/ui-brand-official/lib/client.js', 'utf8')
+const page = readFileSync('apps/web/dist/index.html', 'utf8')
+if (!client.includes('DeepSeek Harness')) throw new Error('Client bundle did not embed the official Harness title')
+if (!brand.includes('sidebar.brand.mark') || !brand.includes('sidebar.brand.name')) {
+  throw new Error('Client bundle did not register the official sidebar brand slots')
+}
+if (!page.includes('<title>DeepSeek Harness</title>')) throw new Error('Web document did not embed the official Harness title')
+NODE
 git diff --exit-code
 node <<'NODE'
 const fs = require('node:fs')

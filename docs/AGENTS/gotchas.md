@@ -3237,3 +3237,7 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 560. **补丁测试的 ESM 语法预检依赖 Node 自动识别，Node 20 与 Node 24 结果不一致（2026-10-27）**
 
     现象：`.mjs` 测试用 `node --check` 检查 `.js` 补丁源码时，Node 24 的语法检测可能把未声明模块类型的文件按 ESM 解析，而 Node 20 将它当 CommonJS；同一源文件因此出现平台相关的预检结果。真因：预检依赖 Node 版本的语法自动检测和夹具目录的 `package.json` 上溯规则，没有显式固定模块语法。修法：对 ESM 补丁文件显式传入 `--input-type=module --check`；需要按包语义检查的夹具则在临时目录带上对应 `package.json`。复验：补丁测试清单在 macOS Node 20 与 OrbStack Node 24 均为 77/77。
+
+561. **Android 来源构建跳过上游 official client profile，Web 标题和侧栏品牌退回本地默认值（2026-10-27）**
+
+    现象：Web UI 标题显示“DSH 本地构建”，官方侧栏品牌插件也不启用；Android 图标名称仍是 Pocket Harness。真因：上游 `AppFrame` 的标题只读取 `DSH_CLIENT_TITLE`，缺省回退到 `brand.localBuild`；`ui-brand-official` 仅在 `DSH_CLIENT_BUILD_PROFILE=official` 时注册品牌槽位。上游 `scripts/build.ts --profile official` 会为所有 artifact 阶段构造提交短哈希、版本、profile 和标题，但 Android 来源脚本为省去 Desktop 阶段直接调用子编译器，没有传递该环境。修法：在直接构建前清除继承的 `DSH_CLIENT_*` 与 profile selector，再从固定 Harness checkout 导出上游 official profile 的四个公开值；构建后检查 `ui-layout` client bundle、官方品牌槽位和 `apps/web/dist/index.html` 的 title。复验：`node --test scripts/source-build/cloud-workflow.test.mjs` 20 项通过、1 项 Linux-only skip；受控负控覆盖错误 profile/title、缺少 commit/version 和移除每个产物断言。最终来源 APK 尚未重建，因此设备侧显示仍待 Android main 来源链及设备验收确认。

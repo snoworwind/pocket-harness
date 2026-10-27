@@ -2,7 +2,7 @@
 
 ## 0.2.1 引擎来源链
 
-目标、工具链、实际构建输入和环境错误见 [升级记录](ENGINE-UPGRADE-2026-10-19.md)。源码阶段用官方 native → Host libraries → Client compiler → Client workspace bundle → Web 顺序；根 workspace bundle 已覆盖 package-local 配置，不能再追加旧 recursive bundle（新版 pnpm 拒绝实际循环依赖）。固定 Corepack 0.36.0；本地 Node 24 必须带匹配开发头文件。APK 仍仅由 main 的隔离来源链产出。
+目标、工具链、实际构建输入和环境错误见 [升级记录](ENGINE-UPGRADE-2026-10-19.md)。源码阶段用官方 native → Host libraries → Client compiler → Client workspace bundle → Web 顺序；根 workspace bundle 已覆盖 package-local 配置，不能再追加旧 recursive bundle（新版 pnpm 拒绝实际循环依赖）。Android 直接调用这些阶段、绕过上游 `scripts/build.ts --profile official`，因此 `build-engine.sh` 会向所有阶段注入同一组官方客户端环境（提交短哈希、Harness 版本、`DSH_CLIENT_BUILD_PROFILE=official`、`DSH_CLIENT_TITLE=DeepSeek Harness`），并检查 Client 标题、官方品牌槽位和 Web HTML 标题确实进入产物。固定 Corepack 0.36.0；本地 Node 24 必须带匹配开发头文件。APK 仍仅由 main 的隔离来源链产出。
 
 ## 双构建比对拒绝重复成员（2026-10-19）
 
