@@ -14,7 +14,7 @@
 
 ## 2. 文件逐项登记
 
-本节当前三份覆盖资产于 2026-10-27 从固定的官方 `0.2.1-rc.3` 来源构建包，经完整 26 条引擎补丁链重出；与隔离探针树目标文件逐字节相同。最终快照/APK 尚未重建，因此与终包目标的对账及设备验收仍未完成。SHA-256：`attachment-local-index.js` `7ffe07dc8bed38a858f85c7f6df1fa41214cc16c634afbd989e07bf60cb31dbd`；`fs-local-index.js` `4b1daab4763d47c0936886e23767f485a5aee54cc66ecbcf0588f047de6f5408`；`session-persistence-jsonl-index.js` `b9ac5744c96a35c881ccc0d1b70850b012245dc54f07f2e543ad3632784a0981`。升级边界见 [升级记录](ENGINE-UPGRADE-2026-10-27.md)，上一轮来源见 [0.2.1-rc.2 升级记录](ENGINE-UPGRADE-2026-10-19.md)。
+本节当前三份覆盖资产于 2026-10-27 从固定的官方 `0.2.1-rc.3` 来源构建包，经完整 26 条引擎补丁链重出；与隔离探针树目标文件逐字节相同。最终 main 来源链已构建并发布 v0.14.9 ARM64 APK（run `40473155658`）；本段逐字节证据覆盖隔离探针树，未单独记录 APK 内三项资产的逐项抽取对账。完整设备三层验收仍未完成。SHA-256：`attachment-local-index.js` `7ffe07dc8bed38a858f85c7f6df1fa41214cc16c634afbd989e07bf60cb31dbd`；`fs-local-index.js` `4b1daab4763d47c0936886e23767f485a5aee54cc66ecbcf0588f047de6f5408`；`session-persistence-jsonl-index.js` `b9ac5744c96a35c881ccc0d1b70850b012245dc54f07f2e543ad3632784a0981`。升级边界见 [升级记录](ENGINE-UPGRADE-2026-10-27.md)，上一轮来源见 [0.2.1-rc.2 升级记录](ENGINE-UPGRADE-2026-10-19.md)。
 
 目标根为快照内 usr/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai；下表尺寸为当前树实测，注册入口为 applyRuntimePatches。
 

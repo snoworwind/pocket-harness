@@ -20,13 +20,13 @@
 
 ## 应用身份迁移
 
-独立身份已在本分支实现，旧 DeepCode 保持并行安装；不会自动复制旧应用数据。代码迁移已完成，来源 APK 构建与设备验收仍待完成，本轮不声明设备通过。
+独立身份已实现，旧 DeepCode 保持并行安装；不会自动复制旧应用数据。此基线记录形成时，来源 APK 构建与设备验收仍待完成。后续 Pocket Harness v0.14.9 已完成来源构建并正式发布；当前完整设备三层验收仍未完成，见[版本说明](../../release/v0.14.9/notes.md)。
 
 | 标识 | 当前值 | 迁移说明 |
 |---|---|---|
 | `applicationId` | `com.snoworwind.pocketharness` | 独立安装身份；与旧 `com.dsharnessmobile.shell` 并排安装，不覆盖升级、不自动迁移数据 |
 | Kotlin `namespace` | `com.snoworwind.pocketharness` | 2026-10-19 按用户决定统一迁移类、AIDL 与源码目录；升级和验证边界见 [迁移记录](NAMESPACE-MIGRATION-2026-10-19.md) |
-| 应用显示名 | `Pocket Harness`（无障碍服务名、控制台标题同源） | `UserCopy.APP_NAME`、`strings.xml`、控制台标题、管理页已同步；ARM64 设备三层验收仍待集中执行，当前 MuMu x86_64 不能安装产品 APK |
+| 应用显示名 | `Pocket Harness`（无障碍服务名、控制台标题同源） | `UserCopy.APP_NAME`、`strings.xml`、控制台标题、管理页已同步；v0.14.9 已在 Android 16 ARM64 host-GPU AVD 完成覆盖安装与启动烟测，完整三层验收仍未完成；MuMu x86_64 不能安装 ARM64 产品 APK，详见[版本说明](../../release/v0.14.9/notes.md) |
 | APK 产物前缀 | `pocket-harness-v<版本>-arm64.apk` | 发布链、下载页、来源 artifact 与 Python 发布准备已统一为 ARM64 独立命名 |
 | 发布签名 | `POCKET_SIGNING_KEYSTORE_BASE64` 与 `POCKET_SIGNING_KEYSTORE_PASSWORD` 仓库 Secret | 私钥不入库；发布 APK 校验提交的证书 SHA-256 指纹 |
 | Gradle 子仓目录名 | `dsh-mobile-apk/` 兼容探测 | 多个门禁同时支持「协调仓布局」与「自包含布局」；改名要逐项回归，否则门禁会找不到树 |

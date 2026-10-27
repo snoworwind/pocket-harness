@@ -12,7 +12,7 @@ K11 离线 Linux 资产：`build-linux-assets.yml` → `check-linux-sources.mjs`
 > 2. 手里是**文件或函数** → 查 §2 主表的「关键文件」列，或 §6 分块详解里的小节；
 > 3. 想**先通读一遍** → §1 全局运行顺序（阶段 0-4 + 时序图）→ §2 主表 → §4 耦合矩阵。
 >
-> **当前源码登记**：应用 0.14.8 开发候选；官方引擎 687f282e / 0.2.1-rc.2；本轮来源、代码证据和设备缺口见 ENGINE-UPGRADE-2026-10-19.md。旧版本轮次仅作历史溯源。
+> **当前源码登记**：Pocket Harness 0.14.9 已正式发布，官方引擎固定为 `1f81c047` / 0.2.1-rc.3；来源构建与部分 AVD 烟测通过，完整设备三层验收仍未完成。发布证据与缺口见 [ENGINE-UPGRADE-2026-10-27.md](ENGINE-UPGRADE-2026-10-27.md)。旧版本轮次仅作历史溯源。
 > 锚点格式 `path:line`，路径一律**相对 apk 仓根**；插件与三个子仓（`plugins/*`、`dsh-client-ui-responsive`、`dsh-host-web-compat`、`dsh-shell-termux`）在本分支以树内副本为权威，跨树镜像约束已退役（AGENTS.md §4.6），行号以本仓副本为准。
 >
 > **锚点会漂**：改了代码就跑 `node scripts/check-code-map.mjs`——它守「覆盖完整、锚点有效、编号一致」（详见 §7）。
@@ -570,7 +570,7 @@ Linux 发现补充（P04，坑 373）：bootstrap `index.js` 串行发现 → `g
 | B01 | 树内副本即权威 | 2026-10-15 起 `scripts/patches/**`、`build-apk-013.ps1`、`build-snapshot-013.mjs`、`inject-all.py` 等**不再做双仓逐字节比对**：本分支只从源码构建、不依赖协调仓，原「单边演进即拒」纪律随镜像层一并移除；补丁面只由本仓自洽判据守 | scripts/check-patch-mirror.mjs:56-72 |
 | B01 | 发布链 build-release.ps1 | 复用同一门禁集与指纹对账，输入走设备侧 make-snapshot.sh 产出的 snapshot/snapshot-*.tar.xz | scripts/build-release.ps1:56-61,89-114,147 |
 | B01 | CI 与云端构建链 | 云端 build-apk.mjs 与本地链门禁集差集必须为 0。0.14.5：原先并列的 apk 仓独立快照 workflow `build-snapshot.yml`（走 inject-snapshot.py 三包注入、无引擎 overlay/补丁/语法降级）已删除，快照构建入口收敛为单一链 | scripts/check-release-gates.mjs:191-212 |
-| B01 | 来源审计 ARM64 构建 | 官方687f282e/0.2.1-rc.2源码构建CLI/Web/第一方包；Cordis按目标官方源码、不回退旧版本；bootstrap/InRelease/deb认证、native来源审计与overlay pin恢复。PTC与MiMo多文件 exact verifier及全部pnpm同包副本同步；MiMo复用已登记planner并要求before==after，部分补丁和未知verifier仍拒绝；最终snapshot检查复用同一判据，普通post-apply复用runner --check | .github/workflows/build-apk-source.yml:134,scripts/patches/registry.json:211,scripts/patches/apply-patches.mjs:122,scripts/source-build/reconcile-engine-patch-copies.mjs:80,scripts/source-build/check-dsh-source-snapshot.mjs:25 |
+| B01 | 来源审计 ARM64 构建 | 官方 `1f81c047` / 0.2.1-rc.3 源码构建 CLI/Web/第一方包；Android 构建阶段设置 official client profile/title 并核验 bundle；Cordis 按目标源码、不回退旧版本；bootstrap/InRelease/deb 认证、native 来源审计与 overlay pin 恢复。PTC 与 MiMo 多文件 exact verifier 及全部 pnpm 同包副本同步；最终 snapshot 检查复用同一判据。v0.14.9 来源链已正式运行，完整设备三层验收仍未完成，见升级记录。 | .github/workflows/build-apk-source.yml:134,scripts/patches/registry.json:211,scripts/patches/apply-patches.mjs:122,scripts/source-build/reconcile-engine-patch-copies.mjs:80,scripts/source-build/check-dsh-source-snapshot.mjs:25 |
 | B01 | 来源草稿资产边界 | 写权限任务先拒绝额外/缺失/链接/非普通资产，要求哈希清单与实际上传集合一一对应，再核验字节，最后调用 gh 创建草稿；真实 shell 负控见坑 371 | .github/workflows/release-source-draft.yml:83,scripts/source-build/test_prepare_source_release.py:74 |
 | B02 | B01 | 门禁集由两条编排器逐项调用；聚合入口断言本地链与云端链门禁集差集为 0，并锁发布链必须走 --run | scripts/check-release-gates.mjs:135 |
 | B02 | B03 | 冷启动预算的真数据只能来自设备产物，--require-real 由设备验收承担，构建机与 CI 只计 SKIP | scripts/check-boot-budget.mjs:671 |
@@ -1687,7 +1687,7 @@ flowchart TD
 
 - **Auto Review 新会话默认与执行边界**：`scripts/profile-web.cordis.patch.yml` 完整配置 permission presets 并设置 `defaultPreset: auto`，同时装载固定版 `dsh-experimental-auto-review`；engine scope 补丁由 `scripts/patches/data/permission-auto-review-default.mjs` 修改权限服务、reviewer 与设置客户端。启动时 Auto 是可解析的新会话默认，但 reviewer 未注册时 permission 插件的 `tools/pre-execute` 先行拒绝。注册 reviewer 后每个原生工具、顶层 PTC `run_code` 源码及原有 PTC 内层调用都进入模型分类。high 在 reviewer listener 内直接返回 deny、记录原始 `exec`，不调用后续审批链；同一插件注册 `ctx.tools.guard`，waterfall 后仍对记录中的 exec 返回拒绝。medium deny 才继续进入逐次审批；低风险按 reviewer allow 继续。reviewer 异常 fail closed；插件卸载回退 `workspace-write`，Android shell 在 spawn 前拒绝受限档位。用户切换当前会话权限档位会退出 Auto Review；设置中的默认值仅用于新会话。三个固定 npm 包的 source fixture、运行时语义和 runner 反证在 `scripts/patches/tests/permission-auto-review-default.test.mjs`；本机测试不替代设备验收。
 - **Workspace Write 档位说明**：后置 engine 补丁 `scripts/patches/data/workspace-write-boundary-warning.mjs` 在当前会话选择器、新会话默认设置与 `/permission` 命令三条入口拦截档位变更；确认说明 Android 没有覆盖所有工具的路径级文件系统沙箱，Termux Shell 在 bash 启动前失败关闭，其他工具按各自实现并受 app UID 边界约束。选中后 settings 描述持续提示。它依赖 AR1 注册同一 client target；本代夹具与 runner 反证见 `scripts/patches/tests/workspace-write-boundary-warning.test.mjs`。
-- **当前来源链**：官方 0.2.1-rc.2 → native addon → 官方 host-libraries → Client compiler → 根 Client bundle → Web → 固定源码导出 → 临时部署闭包 → pnpm deploy → 恢复源码 → 快照/补丁/注入/双构建/隔离签名。PTC A1 的 planPatch 同时验证 index/process/persistent-process，patchRuntimeIndex 与 patchPersistentLaunch 分别处理两条 launch；固定 spawn 数、enforcing argv 与 companion 门均不得绕过。回归账本：PTC 15 项、cloud-workflow 的缺编译器/旧包管理器/旧 builder 负控；设备缺口见 [升级记录](ENGINE-UPGRADE-2026-10-19.md)。
+- **当前来源链**：官方 0.2.1-rc.3 → native addon → 官方 host-libraries → Client compiler → 根 Client bundle → Web → 固定源码导出 → 临时部署闭包 → pnpm deploy → 恢复源码 → 快照/补丁/注入/双构建/隔离签名。Android client 构建注入 official profile、版本、提交短哈希与标题，并检查品牌槽位和 HTML title。PTC A1 的 planPatch 同时验证 index/process/persistent-process，patchRuntimeIndex 与 patchPersistentLaunch 分别处理两条 launch；固定 spawn 数、enforcing argv 与 companion 门均不得绕过。v0.14.9 来源构建与 AVD 烟测证据及未完成设备验收见 [升级记录](ENGINE-UPGRADE-2026-10-27.md)。
 - 以下旧来源链锚点仅作历史回查；当前固定源码与允许入口见 [构建环境](build-and-env.md)，本轮实际验证见升级记录。
 
 
