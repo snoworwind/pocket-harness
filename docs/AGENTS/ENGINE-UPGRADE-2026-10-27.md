@@ -17,7 +17,7 @@
 - 应用开发版本提升到 0.14.9 / versionCode 53。
 - Android 的来源构建阶段直接调用上游客户端编译器，原先漏传官方客户端构建环境，Web 标题因此回退到本地构建文案。现在注入上游 official profile 的提交短哈希、Harness 版本、品牌 profile 和标题，并在构建时检查 UI bundle、官方侧栏品牌槽位与 HTML title。
 
-## 当前检查结果与验收边界
+## 开发期检查结果与验收边界
 
 RC3 补丁夹具已从官方源码构建缓存捕获，包含 53 个目标文件；`check-patch-fixtures.mjs --require` 通过。完整引擎补丁探针以同一来源包和 source-build manifest 运行，26/26 补丁应用成功。此前发现并修复两处 RC2 假设：MiMo 适配器改为校验引擎根包与目标 DSH 模块同版、pi-ai 固定 `1.1.0`；PTC 适配器移除硬编码 RC2 版本拒绝，保留包身份与精确补丁锚点。另修复来源发布测试中仍创建 RC2 夹具目录的旧路径。
 
@@ -27,11 +27,11 @@ OrbStack Linux 隔离环境完成 Harness 来源构建阶段；完整 Node 来�
 
 `cloud-workflow.test.mjs` 已覆盖官方 profile 环境的正向条件与错误 profile/title、缺少 commit/version、漏掉三项构建产物断言的受控负控。
 
-**PR #148 中的开发候选仍不是可发布或已验收的升级。** 当前快照/APK 没有由最终 main 提交的正式来源链重建；三份覆盖资产尚未与该最终快照逐字节对账。Android 16 / API 36 ARM64 AVD、真机、CDP 或 ADB 用户体验三层验收未完成。OrbStack 隔离验证副本只证明 Harness 构建阶段及相应来源检查结果，不能冒充正式发布链；合入 main 后仍须按发布前清单完成来源构建和设备验收。
+**在 PR #148 合入后的开发候选阶段，该候选尚不可发布或视为已验收。** 当时快照/APK 尚无最终 main 提交的正式来源链重建，三份覆盖资产尚未与最终快照逐字节对账，设备三层验收未完成。OrbStack 隔离验证副本只证明 Harness 构建阶段及相应来源检查结果，不能冒充正式发布链。后续正式来源构建及当前设备验收边界见下节。
 
-## 发布前仍需补齐
+## 正式发布结果与剩余验收
 
-1. 将本分支通过标准 PR 合入 `main` 后，从最终 main 提交运行正式来源链，核对依赖闭包、包版本、来源清单、双构建与最终 APK。
-2. 在最终快照中逐字节对账三份 `assets/patched`，并完成签名、权限、APK 资产和冷启动门禁。
-3. 运行 Kotlin 单测及适用的静态/来源门禁；设备就绪后在 Android 16 / API 36 官方 ARM64 AVD 和 ARM64 真机完成代码、CDP、ADB 三层验收，任务与证据遵循 `emulator-test-protocol.md`。
-4. 将设备缺口和真实验收证据补入 release notes；未补齐前保持开发候选，不公开发布或标记功能完好。
+1. main 提交 `625fd8e0311d79cbb9788d41603517facdd8f6d7` 的来源 run [40473155658](https://github.com/snoworwind/pocket-harness/actions/runs/40473155658) 双构建、独立 APK 核验与签名检查通过；Pocket Harness v0.14.9 已发布，tag 为 `hardening-source-625fd8e0311d-40473155658-1`，APK SHA-256 为 `4671883239489e6881a5aa04ddc54c2281e576c382abe31cad1d7b074a7d94da`。
+2. Android 16 ARM64 host-GPU AVD 覆盖安装 0.14.8、启动应用并核对官方 WebView 标题的烟测通过。`verify-webview-015` 为 38/39；唯一失败使用过期 Settings 选择器，人工 ADB/CDP 检查确认手机控制页和已启用的重置控件正常。
+3. 完整设备验收仍未完成：AVD 使用 Android 16 / API 36 default 镜像而非要求的 Google APIs 镜像；未完成模型驱动多步任务、横屏操作或 ARM64 真机测试。发布时保留了这些限制；不得将发布烟测描述成完整三层验收。
+4. 完整记录见 [v0.14.9 发布说明](../../release/v0.14.9/notes.md) 与 [GitHub Release](https://github.com/snoworwind/pocket-harness/releases/tag/hardening-source-625fd8e0311d-40473155658-1)。

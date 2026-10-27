@@ -18,7 +18,7 @@ install: it boots a full dsh web agent that can really execute bash.
 > **Project charter: maximize security and verifiability.** See [the security charter](docs/AGENTS/SECURITY-HARDENING.md) for scope, principles, accepted risks and evidence requirements.
 
 The app is named `Pocket Harness` and uses the independent package `com.snoworwind.pocketharness` (the Kotlin namespace is also `com.snoworwind.pocketharness`),
-source version and versionCode follow the [build declarations](app/build.gradle.kts), with the suffix supplied by build properties; the engine development target is `@deepseek-ai/dsh` 0.2.1-rc.3 (**not released; source build and device acceptance are pending**). See the [project baseline](docs/AGENTS/BASELINE.md) for the migration boundary of the app name, applicationId and APK artifact prefix.
+source version and versionCode follow the [build declarations](app/build.gradle.kts), with the suffix supplied by build properties; Pocket Harness v0.14.9 has been released with the embedded engine source target `@deepseek-ai/dsh` 0.2.1-rc.3. The release smoke test passed, but full device acceptance is incomplete; see the [release notes](release/v0.14.9/notes.md). See the [project baseline](docs/AGENTS/BASELINE.md) for the migration boundary of the app name, applicationId and APK artifact prefix.
 
 See the [namespace migration record](docs/AGENTS/NAMESPACE-MIGRATION-2026-10-19.md) for upgrade limitations, before/after checks and source-build progress.
 
@@ -107,16 +107,15 @@ See the [namespace migration record](docs/AGENTS/NAMESPACE-MIGRATION-2026-10-19.
 
 ## Download / install
 
-The repository is public, but **no APK has been released**: current source-build artifacts are kept as draft
-pre-releases and are not publicly visible. The source chain builds ARM64 only and names artifacts
-`pocket-harness-v<version>-source-arm64.apk`, signed with the independent release key held in repository secrets.
+The ARM64 APK for Pocket Harness v0.14.9 is [formally released](https://github.com/snoworwind/pocket-harness/releases/tag/hardening-source-625fd8e0311d-40473155658-1). The source chain builds ARM64 only and names artifacts
+`pocket-harness-v<version>-source-arm64.apk`, signed with the independent release key held in repository secrets. See the [release notes](release/v0.14.9/notes.md) for its device-acceptance scope and limitations.
 
 ```sh
 adb install -r -t <apk>    # in-place upgrade, same signature
 ```
 
 **The ABI must match the device.** A mismatch crashes the engine on start — node ELF `EM_X86_64` vs
-`EM_AARCH64`. Use the arm64 package on real hardware and x86_64 on emulators.
+`EM_AARCH64`. Use the arm64 package on real hardware and ARM64 Android emulators; x86_64 emulators are not supported.
 
 > **After an in-place upgrade, wait for the first extraction to finish** (snapshot fingerprint flip),
 > and do not force-kill the app while it runs.
@@ -133,8 +132,9 @@ gh workflow run build-apk-source.yml --repo snoworwind/pocket-harness --ref main
 node scripts/source-build/run-local-source-chain.mjs
 ```
 
-Cloud runs publish the APK plus provenance artifacts. Local prerequisites, artifact scope and checks are
-in [build-and-env.md](docs/AGENTS/build-and-env.md#github-actions-来源构建入口2026-10-17); delivery
+Cloud source-build runs provide the APK and provenance as Actions artifacts. The optional draft flow
+creates an unpublished pre-release; Pocket Harness v0.14.9 is the current published release. Local
+prerequisites, artifact scope and checks are in [build-and-env.md](docs/AGENTS/build-and-env.md#github-actions-来源构建入口2026-10-17); delivery
 boundaries are in [RELEASE.md](docs/RELEASE.md#5-来源链预发布草稿2026-10-17-按用户决定). A green build
 is not device acceptance.
 
