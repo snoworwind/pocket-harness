@@ -1,0 +1,45 @@
+{
+  "description": "Prebuilt system primitives: a Linux Landlock launcher and asynchronous POSIX flock through stable Node-API",
+  "engines": {
+    "node": ">=20"
+  },
+  "exports": {
+    "./landlock-run": {
+      "types": "./lib/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./flock": {
+      "types": "./lib/flock.d.ts",
+      "default": "./lib/flock.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "README.md",
+    "lib/",
+    "!lib/*.tsbuildinfo",
+    "src/main.c",
+    "src/flock.c"
+  ],
+  "license": "BSD-3-Clause",
+  "name": "@deepseek-ai/node-addon-system",
+  "optionalDependencies": {
+    "@deepseek-ai/node-addon-system-darwin-arm64": "~0.1.2",
+    "@deepseek-ai/node-addon-system-darwin-x64": "~0.1.2",
+    "@deepseek-ai/node-addon-system-linux-arm64": "~0.1.2",
+    "@deepseek-ai/node-addon-system-linux-x64": "~0.1.2"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/deepseek-ai/deepseek-harness.git",
+    "directory": "native/system/packages/entry"
+  },
+  "scripts": {
+    "build:js": "tsc -b"
+  },
+  "type": "module",
+  "version": "0.1.2"
+}

@@ -14,22 +14,22 @@
 
 ## 2. 文件逐项登记
 
-本节登记当前树内覆盖资产；2026-10-19 从本轮官方 0.2.1-rc.2 源码产物经过完整补丁链重出。来源与代码行为证据见 [升级记录](ENGINE-UPGRADE-2026-10-19.md)，最终 APK 同源性与设备验收尚不能由本表证明。
+本节当前三份覆盖资产于 2026-10-27 从固定的官方 `0.2.1-rc.3` 来源构建包，经完整 26 条引擎补丁链重出；与隔离探针树目标文件逐字节相同。最终快照/APK 尚未重建，因此与终包目标的对账及设备验收仍未完成。SHA-256：`attachment-local-index.js` `7ffe07dc8bed38a858f85c7f6df1fa41214cc16c634afbd989e07bf60cb31dbd`；`fs-local-index.js` `4b1daab4763d47c0936886e23767f485a5aee54cc66ecbcf0588f047de6f5408`；`session-persistence-jsonl-index.js` `b9ac5744c96a35c881ccc0d1b70850b012245dc54f07f2e543ad3632784a0981`。升级边界见 [升级记录](ENGINE-UPGRADE-2026-10-27.md)，上一轮来源见 [0.2.1-rc.2 升级记录](ENGINE-UPGRADE-2026-10-19.md)。
 
 目标根为快照内 usr/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai；下表尺寸为当前树实测，注册入口为 applyRuntimePatches。
 
 | asset 文件（字节） | 目标快照路径（注册行） | 状态 | 作用 / 来源线索 |
 |---|---|---|---|
-| attachment-local-index.js（**47,937**） | dsh-attachment-local/lib/index.js（applyRuntimePatches） | 生效 | 本轮源码产物 + attach-durable-F2；祖先 fsync、link→rename 回退与 ENOENT 容忍；字节与本轮已施加补丁产物相同。 |
-| session-persistence-jsonl-index.js（**149,673**） | dsh-session-persistence-jsonl/lib/index.js（applyRuntimePatches） | 生效 | 本轮源码产物 + F5/F7，保留 O_EXCL 独占占位及失败回收；`publish-exclusive-reclaim --asset` 实测通过。历史双占位缺陷见 §7.4。 |
-| fs-local-index.js（**47,826**） | dsh-fs-local/lib/index.js（applyRuntimePatches） | 生效 | 本轮源码产物 + F8/B，独占创建的 Android link 回退与摘要守卫；`fs-local-link-f8 --asset` 实测通过。 |
+| attachment-local-index.js（**47,937**） | dsh-attachment-local/lib/index.js（applyRuntimePatches） | RC3 探针树逐字节一致；终快照待对账 | RC3 来源构建产物 + attach-durable-F2；祖先 fsync、link→rename 回退与 ENOENT 容忍。 |
+| session-persistence-jsonl-index.js（**149,673**） | dsh-session-persistence-jsonl/lib/index.js（applyRuntimePatches） | RC3 探针树逐字节一致；终快照待对账 | RC3 来源构建产物 + F5/F7，保留 O_EXCL 独占占位及失败回收；历史双占位缺陷见 §7.4。 |
+| fs-local-index.js（**47,826**） | dsh-fs-local/lib/index.js（applyRuntimePatches） | RC3 探针树逐字节一致；终快照待对账 | RC3 来源构建产物 + F8/B，独占创建的 Android link 回退与摘要守卫。 |
 
 已退役资产（不在 `assets/patched/`，`applyAssetPatch` 注册行同步移除，勿再引用）：`primitives-index.js`、`fs-local-index.js`（0.13.3 批退役，d377abc——link(2) 回退族改由构建期补丁承担；**0.14.1 已重新入册，见 §2 的 fs-local-index.js 行与 §7.1 的 `fs-local-link-F8`**——退役时该回退并未真正落到构建期补丁，`createIfAbsent` 站点成了覆盖空洞）；`web-frontend-index.html`（0.13.7fx-1 退役，§8）；`llm-deepseek-index.js`（rc.2 起遗留死资产，随重出批删除）。
 
 ## 3. 维护约定（硬约束）
 
 1. **全量替换非 delta**：asset 必须是目标文件的完整拷贝（在原文件基础上改后整体入库）；不允许只存 diff 片段或手写残缺文件——applyAssetPatch 直接 writeBytes 整写，半截文件 = 引擎启动即崩。
-2. **更新需随上游引擎对齐**：升级0.2.0-rc.2必须从对应原始文件重出三条资产，并施加该文件全部当前补丁，再与最终双ABI快照逐字节/全部marker或exact verifier对账；不能叠加旧asset。§7.4/7.5是历史证据，不是本轮已完成。
+2. **更新需随上游引擎对齐**：每次升级引擎都必须从对应原始文件重出三条资产，并施加该文件全部当前补丁，再与最终快照逐字节/全部 marker 或 exact verifier 对账；不能叠加旧 asset。§7 的批次章节是历史证据，不代替本轮验收。
 3. **禁止随手重生成**：内容指纹机制意味着 asset 与目标「看起来差不多但字节不同」就会触发重写——不得用本地构建产物/不同 minify 形态随手替换 asset；改动须走完整链路验证（引擎起得来、市场/会话/附件功能实测）。
 4. **新增补丁**：applyAssetPatch 注册新条目 + 本表登记；优先评估上游新版本是否已修复（能不补则不补）。
 
@@ -168,7 +168,7 @@
 | `typert-registry-scan-C4` | `dsh-typert-loader/lib/index.js` | 同步 flush 单次索引已挂接名称，错误回调后失效；异步 manifest 完成后继续使用 live Loader 判定，防消失的条目误注册。显式包、激活失败及运行期撤销保留；回归 `typert-registry-scan-c4.test.mjs`。 |
 | `boot-third-party-isolation-G3` | `dsh-app-boot/lib/index.js` | 第三方插件 boot 期失败隔离：`boot()` 经隔离式挂载器挂 root include，失败条目若属**用户自装**（非 `@deepseek-ai/*` / `@dsh-android/*` / 出货具名插件）则加 `disabled:true` 后重试并点名列出被跳过的插件；官方/出厂插件失败、不可识别失败、或超过上限 8 个仍响亮失败。真因：用户自装插件 import 期抛错在 `mountRootInclude` 就抛出，`boot-pending-G1` 的锚点 `assertEntriesActivated` 结构上不可达。真源见 `scripts/patches/registry.json` 的 `boot-third-party-isolation-G3`；回归 `node scripts/patches/tests/boot-third-party-isolation-g3.test.mjs` |
 | `file-upload-restart-R1` | `dsh-client-file-upload/lib/index.js` | Agent resolver 单槽注册改为**同槽覆盖**（2026-09-28 模拟器 5556 实锤）：cordis `Fiber._reload` 的顺序是「先执行新实例 body、再 `_unload()` 释放旧 effect」，故 session-controller 因 `agent-default-model` 条目被改写而重启时，新 `SessionController` 构造里的 `ctx.effect(() => ctx.fileUploads.registerAgentResolver(...))` 撞上上游的 already-registered 守卫 → 新 fiber 判 FAILED、服务永久缺席（切一次默认模型即触发，客户端恒报 `session/control: active Service "sessionController" is unavailable`）。修法只去掉守卫、保留身份判据的 disposer（旧 fiber 的 disposer 不会清掉新注册）；仍只有一个槽。真源见 `scripts/patches/registry.json` 的 `file-upload-restart-R1` |
-| `mimo-thinking-toggle-056` | `dsh-llm-pi-ai/lib/index.js` + `@earendil-works/pi-ai/dist/api/openai-completions.js` | Issue #56：开放显式 `thinkingFormat=mimo`；仅精确官方 MiMo profile 或用户显式 compat 生成 off/low 二态映射，选择器显示“关闭思考/开启思考”，默认开启。Completions serializer 将状态编码为 `thinking.type=disabled|enabled`，不发送 `reasoning_effort`；保留 assistant 多轮 `reasoning_content`。固定 DSH 0.2.0-rc.2 / pi-ai 0.87.1 锚点；行为回归 `scripts/patches/tests/mimo-thinking-toggle-056.test.mjs`。 |
+| `mimo-thinking-toggle-056` | `dsh-llm-pi-ai/lib/index.js` + `@earendil-works/pi-ai/dist/api/openai-completions.js` | Issue #56：开放显式 `thinkingFormat=mimo`；仅精确官方 MiMo profile 或用户显式 compat 生成 off/low 二态映射，选择器显示“关闭思考/开启思考”，默认开启。Completions serializer 将状态编码为 `thinking.type=disabled|enabled`，不发送 `reasoning_effort`；保留 assistant 多轮 `reasoning_content`。校验 `dsh-llm-pi-ai` 与根引擎包同版，并固定 `@earendil-works/pi-ai@1.1.0`；RC3 行为回归见 `scripts/patches/tests/mimo-thinking-toggle-056.test.mjs`。 |
 
 
 | `permission-auto-review-default-AR1` | `dsh-permission-presets/lib/index.js`、`dsh-experimental-auto-review/lib/index.js`、`dsh-client-ui-permission-presets/lib/client.js` | 新会话默认 Auto Review，审查原生工具、PTC 外层 `run_code` 与内层调用；high 直接拒绝并由 `tools.guard` 防后续 hook 覆盖，不进入用户审批；medium 拒绝仍可逐次确认。审查故障/集成缺席 fail closed，插件卸载将活跃会话回退到 `workspace-write`。Auto 风险提示明确 app UID、无路径级沙箱与切换权限档位即退出 Auto。回归 `scripts/patches/tests/permission-auto-review-default.test.mjs`；未改 `assets/patched`，§2 字节数不变。
@@ -177,7 +177,7 @@
 
 | 补丁/文件 | 真实目标与职责 | 登记 / 回归状态 |
 |---|---|---|
-| [ptc-android-native-A1](../../scripts/patches/ptc-android-native-A1.mjs) | 0.2.1-rc.2 的 lib/index.js、process.js、persistent-process.js；一次/持久两条启动路径共享可信 linker 前缀，NODE_OPTIONS 仅宿主 heap，两个模型环境为空原型 | registry/runner 三目标及 exact verifier 同步；16 项行为/反证通过（含 apply-patches 三文件写回），实际源码构建夹具在场；设备未验。 |
+| [ptc-android-native-A1](../../scripts/patches/ptc-android-native-A1.mjs) | RC3 的 lib/index.js、process.js、persistent-process.js；一次/持久两条启动路径共享可信 linker 前缀，NODE_OPTIONS 仅宿主 heap，两个模型环境为空原型 | 以包身份、精确锚点和三文件 verifier 约束，不写死 RC2 版本；RC3 探针应用成功，16 项行为/反证通过；设备未验。 |
 | [pi-upstream-streaming-020](../../scripts/patches/pi-upstream-streaming-020.mjs) | pi-ai@1.1.0 六个 dist/api JS 恢复官方 pnpm patch | [官方副本](../../scripts/patches/upstream/pi-ai-1.1.0.patch) SHA-256 66eaf960054f10441b93ac3857114e96c1901f6d183713e2f21437b007111644；完整 plan 先验证后缓存写，严格上下文/幂等；G2 requires streaming020。 |
 | ptc-argv-L1 | host heap参数移出argv，经本次NODE_OPTIONS；A1重整launch前缀，不能只保留L1并假称Android已可启动 | registry仍在场，A1 requires L1；旧fixture通过不能证明target0.2三文件通过；`apply-patches` 必须写回 index/process/persistent 三文件。 |
 | terminal-inspector-android-D1 | dsh-subprocess-local的runner-launch-B2zsQ1Dz（按targetDiscovery发现版本bundle）；createProcessInspector把android归入既有Linux分支，其它平台throw不放宽 | registry在场；版本重锚/最终bundle核实由父构建完成，不推断0.2已验收。 |

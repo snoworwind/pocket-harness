@@ -50,11 +50,13 @@ test('MiMo canonical verifier accepts both patched files and rejects a partial p
     const engine = join(root, PREFIX)
     const dshRel = 'node_modules/@deepseek-ai/dsh-llm-pi-ai'
     const piRel = 'node_modules/@earendil-works/pi-ai'
+    const dshSource = readFileSync(versionedFixture('dsh-llm-pi-ai', 'lib', 'index.js'), 'utf8').replaceAll('\r\n', '\n')
     const inputs = [
-      [dshRel + '/lib/index.js', readFileSync(versionedFixture('dsh-llm-pi-ai', 'lib', 'index.js'), 'utf8').replaceAll('\r\n', '\n')],
+      ['package.json', readFileSync(versionedFixture('dsh-root', 'package.json'), 'utf8')],
+      [dshRel + '/lib/index.js', dshSource],
       [piRel + '/dist/api/openai-completions.js', readFileSync(versionedFixture('pi-ai', 'dist', 'api', 'openai-completions.js'), 'utf8').replaceAll('\r\n', '\n')],
-      [dshRel + '/package.json', JSON.stringify({ version: '0.2.1-rc.2' })],
-      [piRel + '/package.json', JSON.stringify({ version: '1.1.0' })],
+      [dshRel + '/package.json', readFileSync(versionedFixture('dsh-llm-pi-ai', 'package.json'), 'utf8')],
+      [piRel + '/package.json', readFileSync(versionedFixture('pi-ai', 'package.json'), 'utf8')],
     ]
     for (const [rel, text] of inputs) {
       const path = join(engine, rel)
@@ -65,7 +67,7 @@ test('MiMo canonical verifier accepts both patched files and rejects a partial p
     for (const item of planMimoThinking(read)) writeFileSync(join(root, item.file), item.after)
     const patch = { id: 'mimo-thinking-toggle-056', verifier: 'mimo-thinking-toggle-056' }
     assert.doesNotThrow(() => verifyCanonicalEnginePatch(engine, patch))
-    writeFileSync(join(engine, inputs[0][0]), inputs[0][1])
+    writeFileSync(join(engine, dshRel, 'lib/index.js'), dshSource)
     assert.throws(() => verifyCanonicalEnginePatch(engine, patch), /incomplete canonical engine patch/)
     assert.throws(() => verifyCanonicalEnginePatch(engine, { id: 'unknown', verifier: 'unknown' }), /unknown engine patch verifier/)
   } finally {

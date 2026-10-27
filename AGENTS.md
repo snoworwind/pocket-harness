@@ -15,7 +15,7 @@ DeepSeek Harness 的独立安卓应用 **Pocket Harness**（包名与 Kotlin nam
 
 **关键约束：AI 可见的能力全部来自插件**，壳侧不直接注册工具。
 
-**运行时**：内嵌 Termux 快照（`assets/snapshot.tar.xz` → `files/usr` + `files/home`）；引擎来源目标为 **0.2.1-rc.2**（`scripts/snapshot-config/engine-overlay.json`，本轮来源与未验收边界见 `docs/AGENTS/ENGINE-UPGRADE-2026-10-19.md`），监听 `127.0.0.1:3080`；WebView 加载引擎 Web UI。
+**运行时**：内嵌 Termux 快照（`assets/snapshot.tar.xz` → `files/usr` + `files/home`）；当前开发目标为 **0.2.1-rc.3**（`scripts/snapshot-config/engine-overlay.json`，源码选择与未完成验收见 `docs/AGENTS/ENGINE-UPGRADE-2026-10-27.md`），监听 `127.0.0.1:3080`；WebView 加载引擎 Web UI。
 
 **构建链**：minSdk 26 / targetSdk 34 / compileSdk 36；Kotlin 2.0.21；AGP 8.8.2；Java 17。
 

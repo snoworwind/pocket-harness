@@ -1,4 +1,4 @@
-/** Regressions against the published 0.2.1-rc.2 runtime library. No child processes, devices, network, or runtime probes. */
+/** Regressions against the current engine runtime library. No child processes, devices, network, or runtime probes. */
 import assert from 'node:assert/strict'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -11,9 +11,10 @@ import {
   ANDROID_ENV_NAMES, ENV_MARKER, LAUNCH_HELPER_JS, PERSISTENT_MARKER, assertChildClearing, assertPolicyGate,
   patchEnvironment, patchRuntimeIndex, planPatch,
 } from '../ptc-android-native-A1.mjs'
+import { versionedFixture } from './lib/fixture.mjs'
 
-const fixture = new URL('./fixtures/dsh-ptc-runtime-node-0.2.1-rc.2/', import.meta.url)
-const read = name => readFileSync(new URL(name, fixture), 'utf8')
+const fixture = versionedFixture('dsh-ptc-runtime-node')
+const read = name => readFileSync(join(fixture, name), 'utf8')
 const rawIndex = read('lib/index.js')
 const rawChild = read('lib/process.js')
 const environment = patchEnvironment(rawIndex)
@@ -98,13 +99,16 @@ async function launch(mode, options = {}) {
   catch (error) { return { calls, error } }
 }
 
-test('published 0.2.1-rc.2 library patch is idempotent and preflights the unchanged child', () => {
+test('published runtime library patch is idempotent and preflights the unchanged child', () => {
   assert.equal(patchRuntimeIndex(index), index)
   assert.equal(patchEnvironment(environment), environment)
   assertChildClearing(child)
-  const plan = planPatch(fileURLToPath(fixture))
+  const plan = planPatch(fixture)
   assert.deepEqual(plan.filter(file => file.before !== file.after).map(file => file.name), ['lib/index.js', 'lib/process.js', 'lib/persistent-process.js'])
   assert.equal(read('lib/index.js'), rawIndex)
+  assert.throws(() => planPatch(fixture, false, name => name === 'package.json'
+    ? JSON.stringify({ name: '@deepseek-ai/unexpected-runtime', version: '0.2.1-rc.3' })
+    : read(name)), /requires package @deepseek-ai\/dsh-ptc-runtime-node/)
 })
 test('Android retains exactly the native settings; other platforms retain the original six names', () => {
   const android = environmentSet('android')
@@ -280,7 +284,7 @@ test('persistent child clears secrets and exposes an empty model environment; mi
   assert.equal(Object.getPrototypeOf(processState.env), null)
   assert.equal(Object.hasOwn(osEnv, 'DEEPSEEK_API_KEY'), false)
   for (const key of ANDROID_ENV_NAMES) assert.equal(osEnv[key], native[key])
-  assert.throws(() => planPatch(fileURLToPath(fixture), false, file => { if (file === 'lib/persistent-process.js') throw new Error('missing persistent companion'); return read(file) }), /missing persistent companion/)
+  assert.throws(() => planPatch(fixture, false, file => { if (file === 'lib/persistent-process.js') throw new Error('missing persistent companion'); return read(file) }), /missing persistent companion/)
   assert.throws(() => assertPolicyGate(index.replace('argv: this.confined?.argv ?? argv', 'argv: argv')), /every spawn must consume/)
   assert.throws(() => assertPolicyGate(index + '\nconfined = policy.mode === "danger-full-access" ? void 0 : await this.ctx.sandbox.confine(argv, {});\n'), /unreviewed sandbox spawn count/)
 })
@@ -296,13 +300,13 @@ test('anchor, marker, heap placement, and sandbox-policy drift are rejected', ()
   assert.throws(() => patchRuntimeIndex(index.replace('...launchPrefix,', '...launchPrefix, heapFlag,')))
   assert.throws(() => assertChildClearing(child.replace('state.env = Object.create(null)', 'state.env = {}')))
 })
-test('old published artifact is rejected by the version preflight; both compiled void 0/undefined spellings are accepted', () => {
+test('old published artifact is rejected by strict anchor preflight; both compiled void 0/undefined spellings are accepted', () => {
   const oldFixture = new URL('./fixtures/dsh-ptc-runtime-node-0.2.0-rc.2/', import.meta.url)
-  // 旧夹具只读参考：0.2.0 产物还写着 nodeExecutable，版本预检必须先判红，不能拿旧产物冒充新引擎。
+  // 旧夹具只读参考：0.2.0 产物还写着 nodeExecutable，严格锚点预检必须判红，不能拿旧产物冒充新引擎。
   const oldIndex = readFileSync(new URL('lib/index.js', oldFixture), 'utf8')
   assert.equal(JSON.parse(readFileSync(new URL('package.json', oldFixture), 'utf8')).version, '0.2.0-rc.2')
   assert.match(oldIndex, /this\.config\.nodeExecutable/)
-  assert.throws(() => planPatch(fileURLToPath(oldFixture)), /requires @deepseek-ai\/dsh-ptc-runtime-node@0\.2\.1-rc\.2/)
+  assert.throws(() => planPatch(fileURLToPath(oldFixture)))
   // 编译产物里同一条 launch 段有 void 0 与 undefined 两种写法；A1 必须归一成同一份补丁产物。
   const reworded = rawIndex.replace(
     'resolveExecutable(this.config.launch.executable, void 0, signal);',

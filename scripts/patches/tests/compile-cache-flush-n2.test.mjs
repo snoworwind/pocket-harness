@@ -29,6 +29,8 @@ function check(label, ok, detail) {
 
 const scratch = mkdtempSync(join(tmpdir(), 'n2-test-'))
 try {
+  // The target is an ESM .js file; keep parsing consistent across Node 20 and 24.
+  writeFileSync(join(scratch, 'package.json'), JSON.stringify({ type: 'module' }))
   const target = join(scratch, TARGET)
   mkdirSync(dirname(target), { recursive: true })
   writeFileSync(target, readFileSync(FIXTURE, 'utf8').replace(/\r\n/g, '\n'))
@@ -50,7 +52,7 @@ try {
     blockAt > 0 && (firstRegion < 0 || blockAt < firstRegion)
     && patched.indexOf('import { inspect } from "node:util";') < blockAt,
     `blockAt=${blockAt} firstRegion=${firstRegion}`)
-  const parse = spawnSync(process.execPath, ['--check', target], { encoding: 'utf8' })
+  const parse = spawnSync(process.execPath, ['--input-type=module', '--check'], { input: patched, encoding: 'utf8' })
   check('patched file parses', parse.status === 0, (parse.stderr || '').split('\n')[0])
   apply()
   check('re-apply is idempotent', readFileSync(target, 'utf8') === patched)

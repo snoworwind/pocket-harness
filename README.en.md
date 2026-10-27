@@ -18,7 +18,7 @@ install: it boots a full dsh web agent that can really execute bash.
 > **Project charter: maximize security and verifiability.** See [the security charter](docs/AGENTS/SECURITY-HARDENING.md) for scope, principles, accepted risks and evidence requirements.
 
 The app is named `Pocket Harness` and uses the independent package `com.snoworwind.pocketharness` (the Kotlin namespace is also `com.snoworwind.pocketharness`),
-source version and versionCode follow the [build declarations](app/build.gradle.kts), with the suffix supplied by build properties; engine `@deepseek-ai/dsh` 0.2.1-rc.2 (source target, **not released**). See the [project baseline](docs/AGENTS/BASELINE.md) for the migration boundary of the app name, applicationId and APK artifact prefix.
+source version and versionCode follow the [build declarations](app/build.gradle.kts), with the suffix supplied by build properties; the engine development target is `@deepseek-ai/dsh` 0.2.1-rc.3 (**not released; source build and device acceptance are pending**). See the [project baseline](docs/AGENTS/BASELINE.md) for the migration boundary of the app name, applicationId and APK artifact prefix.
 
 See the [namespace migration record](docs/AGENTS/NAMESPACE-MIGRATION-2026-10-19.md) for upgrade limitations, before/after checks and source-build progress.
 

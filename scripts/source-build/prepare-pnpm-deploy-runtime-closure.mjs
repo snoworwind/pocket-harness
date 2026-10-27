@@ -16,9 +16,9 @@ if (!sourceArg || !overlayArg || !backupArg || !reportArg) {
 const sourceRoot = resolve(sourceArg)
 const sourceCommit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: sourceRoot, encoding: 'utf8' }).trim()
 const sourceManifest = JSON.parse(readFileSync(join(sourceRoot, 'package.json'), 'utf8'))
-if (sourceCommit !== '687f282e8625c6b8d11ff58211a90524be2e4317' || sourceManifest.version !== '0.2.1-rc.2'
+if (sourceCommit !== '1f81c047fc48fa190a683e469daa699857e9afe8' || sourceManifest.version !== '0.2.1-rc.3'
   || sourceManifest.packageManager !== 'pnpm@11.28.5') {
-  throw new Error('production deployment requires official 0.2.1-rc.2 source and pnpm 11.28.5')
+  throw new Error('production deployment requires official 0.2.1-rc.3 source and pnpm 11.28.5')
 }
 const cliDir = join(sourceRoot, 'apps', 'cli')
 const packageFile = join(cliDir, 'package.json')
@@ -32,9 +32,9 @@ const originalLock = readFileSync(lockFile)
 const originalWorkspace = readFileSync(workspaceFile)
 const manifest = JSON.parse(originalPackage.toString('utf8'))
 const overlay = JSON.parse(readFileSync(resolve(overlayArg), 'utf8'))
-if (manifest.name !== '@deepseek-ai/dsh' || manifest.version !== '0.2.1-rc.2'
-  || overlay.engineVersion !== '0.2.1-rc.2' || overlay.rootPackage?.version !== '0.2.1-rc.2') {
-  throw new Error('production deployment manifest/overlay must target 0.2.1-rc.2')
+if (manifest.name !== '@deepseek-ai/dsh' || manifest.version !== '0.2.1-rc.3'
+  || overlay.engineVersion !== '0.2.1-rc.3' || overlay.rootPackage?.version !== '0.2.1-rc.3') {
+  throw new Error('production deployment manifest/overlay must target 0.2.1-rc.3')
 }
 const packages = Object.entries(overlay.packages ?? {})
   .filter(([name]) => name.startsWith('@deepseek-ai/'))

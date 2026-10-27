@@ -1,11 +1,33 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import test from 'node:test'
-import { MIMO_PATCH_MARKER, patchDshThinkingProfile, patchPiAiMimoThinking } from '../mimo-thinking-toggle-056.mjs'
+import { MIMO_PATCH_MARKER, patchDshThinkingProfile, patchPiAiMimoThinking, planMimoThinking } from '../mimo-thinking-toggle-056.mjs'
 import { versionedFixture } from './lib/fixture.mjs'
 
 const dshFixture = readFileSync(versionedFixture('dsh-llm-pi-ai', 'lib', 'index.js'), 'utf8')
 const piFixture = readFileSync(versionedFixture('pi-ai', 'dist', 'api', 'openai-completions.js'), 'utf8')
+
+test('patch plan accepts the current DSH release while requiring its paired runtime version', () => {
+  const engineManifest = JSON.parse(readFileSync(versionedFixture('dsh-root', 'package.json'), 'utf8'))
+  const dshManifest = JSON.parse(readFileSync(versionedFixture('dsh-llm-pi-ai', 'package.json'), 'utf8'))
+  const piManifest = JSON.parse(readFileSync(versionedFixture('pi-ai', 'package.json'), 'utf8'))
+  const read = (path) => {
+    if (path.endsWith('/@deepseek-ai/dsh/package.json')) return JSON.stringify(engineManifest)
+    if (path.endsWith('/@deepseek-ai/dsh-llm-pi-ai/package.json')) return JSON.stringify(dshManifest)
+    if (path.endsWith('/@earendil-works/pi-ai/package.json')) return JSON.stringify(piManifest)
+    if (path.endsWith('/@deepseek-ai/dsh-llm-pi-ai/lib/index.js')) return dshFixture
+    if (path.endsWith('/@earendil-works/pi-ai/dist/api/openai-completions.js')) return piFixture
+    throw new Error(`unexpected patch target: ${path}`)
+  }
+  const plan = planMimoThinking(read)
+  assert.equal(plan.length, 2)
+  assert.ok(plan.every((item) => item.after.includes(MIMO_PATCH_MARKER)))
+
+  assert.throws(() => planMimoThinking((path) => {
+    if (path.endsWith('/@deepseek-ai/dsh/package.json')) return JSON.stringify({ ...engineManifest, version: '0.2.1-rc.2' })
+    return read(path)
+  }), /dsh-llm-pi-ai to match @deepseek-ai\/dsh@0\.2\.1-rc\.2/)
+})
 
 test('patch marker and selector expose only closed plus one canonical enabled value', () => {
   const patched = patchDshThinkingProfile(dshFixture)

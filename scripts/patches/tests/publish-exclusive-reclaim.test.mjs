@@ -65,6 +65,8 @@ try {
     parseTarget = ASSET
     check('资产模式：直接对资产正文本体运行', true)
   } else {
+    // The fixture is an ESM .js artifact; keep parsing consistent across Node 20 and 24.
+    writeFileSync(join(scratch, 'package.json'), JSON.stringify({ type: 'module' }))
     const target = join(scratch, TARGET)
     mkdirSync(dirname(target), { recursive: true })
     // FX-E19：fixture 索引 LF 而工作树在 core.autocrlf=true 下是 CRLF——按 LF 归一后写夹具。
@@ -98,7 +100,7 @@ try {
   check('独占前提注释写明 flock-android-F3 stub 的后果',
     patched.includes('flock-android-F3 stubbing the writer lock out on Android'))
 
-  const parse = spawnSync(process.execPath, ['--check', parseTarget], { encoding: 'utf8' })
+  const parse = spawnSync(process.execPath, ['--input-type=module', '--check'], { input: patched, encoding: 'utf8' })
   check('patched file parses', parse.status === 0, (parse.stderr || '').split('\n')[0])
 
   const publishSrc = extractFunction(patched, 'async function publishCurrentExclusive(')

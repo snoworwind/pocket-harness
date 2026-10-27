@@ -8,8 +8,8 @@ mkdir -p .deploy-tmp
 if [ ! -d .deploy-tmp/deepseek-harness/.git ]; then
   git clone --filter=blob:none --no-checkout --depth=1 https://github.com/deepseek-ai/deepseek-harness.git .deploy-tmp/deepseek-harness
 fi
-git -C .deploy-tmp/deepseek-harness fetch --depth=1 origin 687f282e8625c6b8d11ff58211a90524be2e4317
-git -C .deploy-tmp/deepseek-harness fetch --depth=1 origin refs/tags/dsh-v0.2.1-rc.2:refs/tags/dsh-v0.2.1-rc.2
+git -C .deploy-tmp/deepseek-harness fetch --depth=1 origin 1f81c047fc48fa190a683e469daa699857e9afe8
+git -C .deploy-tmp/deepseek-harness fetch --depth=1 origin refs/tags/dsh-v0.2.1-rc.3:refs/tags/dsh-v0.2.1-rc.3
 # A previous interrupted build may have modified tracked inputs before this checkout.
 # Reset only this dedicated source checkout; preserve ignored dependency caches.
 test "$(realpath .deploy-tmp/deepseek-harness)" = "$(realpath .)/.deploy-tmp/deepseek-harness"
@@ -19,11 +19,11 @@ if [ -n "$(git -C .deploy-tmp/deepseek-harness ls-files)" ]; then
   git -C .deploy-tmp/deepseek-harness checkout -- .
   git -C .deploy-tmp/deepseek-harness clean -fdq
 fi
-git -C .deploy-tmp/deepseek-harness checkout --detach 687f282e8625c6b8d11ff58211a90524be2e4317
-test "$(git -C .deploy-tmp/deepseek-harness rev-parse HEAD)" = "687f282e8625c6b8d11ff58211a90524be2e4317"
-test "$(git -C .deploy-tmp/deepseek-harness describe --tags --always)" = "dsh-v0.2.1-rc.2"
-node -e 'const c=require("./scripts/contract.json"); if(c.upstreamRepo!==".deploy-tmp/deepseek-harness" || c.baseline!=="0.2.1-rc.2" || c.upstream.commit!=="687f282e8625c6b8d11ff58211a90524be2e4317") throw Error("source workflow identity does not match contract")'
-node -e 'const p=require("./.deploy-tmp/deepseek-harness/package.json"); if(p.version!=="0.2.1-rc.2" || p.packageManager!=="pnpm@11.28.5" || p.engines.node!=="^22.19.0 || >=24.0.0") throw Error("official Harness runtime policy changed")'
+git -C .deploy-tmp/deepseek-harness checkout --detach 1f81c047fc48fa190a683e469daa699857e9afe8
+test "$(git -C .deploy-tmp/deepseek-harness rev-parse HEAD)" = "1f81c047fc48fa190a683e469daa699857e9afe8"
+test "$(git -C .deploy-tmp/deepseek-harness describe --tags --always)" = "dsh-v0.2.1-rc.3"
+node -e 'const c=require("./scripts/contract.json"); if(c.upstreamRepo!==".deploy-tmp/deepseek-harness" || c.baseline!=="0.2.1-rc.3" || c.upstream.commit!=="1f81c047fc48fa190a683e469daa699857e9afe8") throw Error("source workflow identity does not match contract")'
+node -e 'const p=require("./.deploy-tmp/deepseek-harness/package.json"); if(p.version!=="0.2.1-rc.3" || p.packageManager!=="pnpm@11.28.5" || p.engines.node!=="^22.19.0 || >=24.0.0") throw Error("official Harness runtime policy changed")'
 
 
 set -euo pipefail
@@ -91,11 +91,34 @@ printf '%s\n' "$deployment_pnpm" >> "$GITHUB_WORKSPACE/.deploy-tmp/source-build/
 # Android's native/Host/Client/Web artifacts through its public helpers;
 # no tracked upstream source or package manifest is rewritten.
 cp package.json "$GITHUB_WORKSPACE/.deploy-tmp/source-build/harness-root-package.json.original"
+# Android calls the artifact stages directly instead of `scripts/build.ts --profile official`.
+# Match the public environment produced by upstream `officialClientBuildEnvironment` so every
+# client bundle and the Web document receive the official profile, title, source commit and version.
+unset DSH_BUILD_CLIENT_PROFILE
+for name in ${!DSH_CLIENT_@}; do
+  unset "$name"
+done
+source_commit="$(git rev-parse HEAD)"
+export DSH_CLIENT_COMMIT_HASH="${source_commit:0:7}"
+export DSH_CLIENT_VERSION="$(node -p 'require("./package.json").version')"
+export DSH_CLIENT_BUILD_PROFILE=official
+export DSH_CLIENT_TITLE='DeepSeek Harness'
 corepack pnpm run build:native-system
 corepack pnpm exec tsx scripts/compile-referenced-projects.ts host-libraries
 corepack pnpm exec tsx scripts/compile-referenced-projects.ts client
 corepack pnpm exec tsdown --config-loader native --env.DSH_BUILD_FACE client
 corepack pnpm run build:web
+node <<'NODE'
+const { readFileSync } = require('node:fs')
+const client = readFileSync('packages/client/ui-layout/lib/client.js', 'utf8')
+const brand = readFileSync('packages/client/ui-brand-official/lib/client.js', 'utf8')
+const page = readFileSync('apps/web/dist/index.html', 'utf8')
+if (!client.includes('DeepSeek Harness')) throw new Error('Client bundle did not embed the official Harness title')
+if (!brand.includes('sidebar.brand.mark') || !brand.includes('sidebar.brand.name')) {
+  throw new Error('Client bundle did not register the official sidebar brand slots')
+}
+if (!page.includes('<title>DeepSeek Harness</title>')) throw new Error('Web document did not embed the official Harness title')
+NODE
 git diff --exit-code
 node <<'NODE'
 const fs = require('node:fs')

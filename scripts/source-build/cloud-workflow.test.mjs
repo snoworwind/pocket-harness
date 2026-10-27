@@ -13,6 +13,7 @@ const engine = () => readFileSync(new URL('./build-engine.sh', import.meta.url),
 function checkEngine021Build(source) {
   assert.match(source, /packageManager!=="pnpm@11\.28\.5"/)
   assert.match(source, /npm install -g corepack@0\.36\.0 --ignore-scripts/)
+  checkOfficialClientBuildEnvironment(source)
   const start = source.indexOf('          corepack pnpm run build:native-system')
   const end = source.indexOf('          # Audit all overlay-pinned vendor', start)
   assert.ok(start > 0 && end > start)
@@ -20,7 +21,9 @@ function checkEngine021Build(source) {
   assert.ok(rootReceipt > source.indexOf('          cd .deploy-tmp/deepseek-harness') && rootReceipt < start, 'freeze the required raw root manifest before compilation')
   const build = source.slice(start, end)
   const steps = ['run build:native-system', 'exec tsx scripts/compile-referenced-projects.ts host-libraries',
-    'exec tsx scripts/compile-referenced-projects.ts client', 'exec tsdown --config-loader native --env.DSH_BUILD_FACE client', 'run build:web', 'git diff --exit-code']
+    'exec tsx scripts/compile-referenced-projects.ts client', 'exec tsdown --config-loader native --env.DSH_BUILD_FACE client', 'run build:web',
+    "readFileSync('packages/client/ui-layout/lib/client.js'", "readFileSync('packages/client/ui-brand-official/lib/client.js'",
+    "readFileSync('apps/web/dist/index.html'", 'git diff --exit-code']
   let previous = -1
   for (const step of steps) {
     const position = build.indexOf(step)
@@ -28,16 +31,46 @@ function checkEngine021Build(source) {
     previous = position
   }
   assert.doesNotMatch(source.slice(source.indexOf('          cd .deploy-tmp/deepseek-harness'), end), /fs\.writeFileSync\(path, temporary\)|corepack pnpm --recursive --if-present run bundle|corepack pnpm run build\n/)
+  assert.match(build, /Client bundle did not embed the official Harness title/)
+  assert.match(build, /Client bundle did not register the official sidebar brand slots/)
+  assert.match(build, /Web document did not embed the official Harness title/)
+  assert.match(build, /if \(!brand\.includes\('sidebar\.brand\.mark'\) \|\| !brand\.includes\('sidebar\.brand\.name'\)\)/)
+}
+
+function checkOfficialClientBuildEnvironment(source) {
+  const profile = source.indexOf('          export DSH_CLIENT_BUILD_PROFILE=official')
+  const title = source.indexOf("          export DSH_CLIENT_TITLE='DeepSeek Harness'")
+  const commit = source.indexOf('          export DSH_CLIENT_COMMIT_HASH="${source_commit:0:7}"')
+  const version = source.indexOf('          export DSH_CLIENT_VERSION="$(node -p \'require(\"./package.json\").version\')"')
+  const firstBuild = source.indexOf('          corepack pnpm run build:native-system')
+  const clearSelector = source.indexOf('          unset DSH_BUILD_CLIENT_PROFILE')
+  const clearClientValues = source.indexOf('          for name in ${!DSH_CLIENT_@}; do')
+  assert.ok(profile >= 0 && title > profile && commit >= 0 && version >= 0, 'Android must select the full upstream official client profile')
+  assert.match(source, /unset DSH_BUILD_CLIENT_PROFILE/)
+  assert.match(source, /for name in \$\{!DSH_CLIENT_@\}; do\n\s+unset "\$name"/)
+  assert.ok(clearSelector >= 0 && clearSelector < profile && clearClientValues >= 0 && clearClientValues < profile,
+    'inherited client profile values must be cleared before selecting the official build environment')
+  assert.ok(profile < firstBuild && title < firstBuild && commit < firstBuild && version < firstBuild,
+    'official client values must be set before any compiled artifact stage')
+  assert.match(source, /source_commit="\$\(git rev-parse HEAD\)"/)
+  assert.match(source, /node -p 'require\("\.\/package\.json"\)\.version'/)
 }
 
 test('0.2.1 source build follows official artifact stages without rewriting upstream manifests', () => checkEngine021Build(engine()))
-test('negative controls reject a missing source compiler, stale package manager and obsolete recursive builder', () => {
+test('negative controls reject missing source compiler, stale package manager, bad official client metadata and obsolete recursive builder', () => {
   const source = engine()
-  for (const bad of [source.replace('exec tsx scripts/compile-referenced-projects.ts client', 'exec true'),
+  for (const [index, bad] of [source.replace('exec tsx scripts/compile-referenced-projects.ts client', 'exec true'),
     source.replace('          cp package.json "$GITHUB_WORKSPACE/.deploy-tmp/source-build/harness-root-package.json.original"', '          # root receipt omitted'),
     source.replace('pnpm@11.28.5', 'pnpm@11.7.0'),
-    source.replace('          corepack pnpm run build:web', '          corepack pnpm --recursive --if-present run bundle\n          corepack pnpm run build:web')]) {
-    assert.throws(() => checkEngine021Build(bad), assert.AssertionError)
+    source.replace('export DSH_CLIENT_BUILD_PROFILE=official', 'export DSH_CLIENT_BUILD_PROFILE=local'),
+    source.replace("export DSH_CLIENT_TITLE='DeepSeek Harness'", "export DSH_CLIENT_TITLE='DSH Local Build'"),
+    source.replace('export DSH_CLIENT_COMMIT_HASH="${source_commit:0:7}"', '# source commit omitted'),
+    source.replace('export DSH_CLIENT_VERSION="$(node -p \'require("./package.json").version\')"', '# source version omitted'),
+    source.replace("if (!client.includes('DeepSeek Harness')) throw new Error('Client bundle did not embed the official Harness title')", '// title artifact assertion omitted'),
+    source.replace("if (!brand.includes('sidebar.brand.mark') || !brand.includes('sidebar.brand.name')) {", 'if (false) {'),
+    source.replace("if (!page.includes('<title>DeepSeek Harness</title>')) throw new Error('Web document did not embed the official Harness title')", '// document title assertion omitted'),
+    source.replace('          corepack pnpm run build:web', '          corepack pnpm --recursive --if-present run bundle\n          corepack pnpm run build:web')].entries()) {
+    assert.throws(() => checkEngine021Build(bad), assert.AssertionError, `negative control ${index} was not rejected`)
   }
 })
 
