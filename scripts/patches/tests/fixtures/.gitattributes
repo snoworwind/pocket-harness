@@ -1,3 +1,5 @@
 # 这两份真实第三方产物需保持捕获字节与夹具 SHA256；其上游空白行不做手工格式化。
 /dsh-client-ui-sidebar-right-0.2.0-rc.2/lib/client.js -text whitespace=-blank-at-eol
 /dsh-client-ui-sidebar-right-mobile-0.2.0-rc.2/lib/client.js -text whitespace=-blank-at-eol
+# The captured RC3 pi-ai package contains an upstream trailing space; keep the hash-pinned source byte-exact.
+/pi-ai-0.2.1-rc.3/dist/api/anthropic-messages.js -text whitespace=-blank-at-eol

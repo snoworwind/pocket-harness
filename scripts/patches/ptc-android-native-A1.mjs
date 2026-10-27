@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Android PTC native launch adaptation for @deepseek-ai/dsh-ptc-runtime-node 0.2.1-rc.2.
+ * Android PTC native launch adaptation for the contract-pinned Harness runtime.
  * Usage: node scripts/patches/ptc-android-native-A1.mjs <runtime-package-root> [--apply|--check] [--source]
  * Default: check lib/index.js + lib/process.js. --source targets a disposable source copy.
  * No policy defaults, approval paths, sandbox providers, or public configuration are changed.
@@ -13,7 +13,6 @@ export const ENV_MARKER = 'dsh-mobile PTC Android native environment (A1)'
 export const LAUNCH_MARKER = 'dsh-mobile PTC Android linker prefix (A1)'
 export const PERSISTENT_MARKER = 'dsh-mobile PTC Android persistent launch (A1)'
 const PACKAGE_NAME = '@deepseek-ai/dsh-ptc-runtime-node'
-const PACKAGE_VERSION = '0.2.1-rc.2'
 const BASE_ENV_NAMES = ['PATH', 'PATHEXT', 'SYSTEMROOT', 'WINDIR', 'TEMP', 'TMP']
 /** Exact host-owned native settings; no TERMUX_* wildcard, credentials, HOME, or DSH_* inheritance. */
 export const ANDROID_ENV_NAMES = Object.freeze([
@@ -207,7 +206,7 @@ function rejectReadonlyCheckout(root) {
 /** Preflight all files before writes; anchor/version failures leave the target untouched. */
 export function planPatch(packageRoot, source = false, read = name => readFileSync(resolve(packageRoot, name), 'utf8')) {
   const manifest = JSON.parse(read('package.json'))
-  if (manifest.name !== PACKAGE_NAME || manifest.version !== PACKAGE_VERSION) fail('requires ' + PACKAGE_NAME + '@' + PACKAGE_VERSION)
+  if (manifest.name !== PACKAGE_NAME) fail('requires package ' + PACKAGE_NAME)
   const names = source ? ['src/environment.ts', 'src/index.ts', 'src/process.ts', 'src/persistent.ts', 'src/persistent-process.ts'] : ['lib/index.js', 'lib/process.js', 'lib/persistent-process.js']
   const originals = new Map(names.map(name => [name, read(name)]))
   const outputs = new Map(originals)

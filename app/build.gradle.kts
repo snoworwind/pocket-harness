@@ -18,14 +18,14 @@ android {
     // Guest ELF execution is mediated by the APK-installed PRoot executable and
     // its static loader in nativeLibraryDir; writable app data holds guest files.
     targetSdk = 34
-    // 0.14.8: the source-built engine moves to 0.2.1-rc.2; preserve monotonic upgrade identity.
+    // 0.14.9: the source-built engine moves to 0.2.1-rc.3; preserve monotonic upgrade identity.
     // All delivered APKs still require v1/v2/v3 signatures.
-    versionCode = 52
+    versionCode = 53
     // Snapshot builds append a suffix (e.g. -SN-1-RC13) via -PversionNameSuffix; release builds pass none.
     val snapshotSuffix = providers.gradleProperty("versionNameSuffix").getOrElse("")
     // 版本号单一来源：UI（GuidePageRenderer）、桥（androidBridge.version）、诊断日志、引擎环境变量
     // （DSH_APP_VERSION，见 EngineManager.engineEnv）全部读这里，禁止任何地方再硬编码版本字面量。
-    versionName = "0.14.8" + snapshotSuffix
+    versionName = "0.14.9" + snapshotSuffix
     buildConfigField("String", "TERMUX_VERSION", "\"0.118.3\"")
     // 0.14.0-preview：虚拟屏 P0 建屏矩阵走仪器测试入口（app UID 下运行 = P0-6 要测的调用者身份），
     // 不新增任何产品面（Activity/Bridge/Manifest 均不动）。见 .deploy-tmp/iter-0140/vdisplay-p0.md §8.8。

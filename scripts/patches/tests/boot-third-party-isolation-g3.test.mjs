@@ -76,6 +76,9 @@ const importErrorFor = (...pairs) => {
 
 const scratch = mkdtempSync(join(tmpdir(), 'g3-test-'))
 try {
+  // These packaged .js artifacts are ESM. Node 20 does not infer ESM syntax for .js,
+  // while newer Node releases do; model the engine package boundary explicitly.
+  writeFileSync(join(scratch, 'package.json'), JSON.stringify({ type: 'module' }))
   const target = join(scratch, TARGET)
   mkdirSync(dirname(target), { recursive: true })
   // 夹具是**未打补丁**的真产物字节（随版，见 tests/lib/fixture.mjs）——G3 的判据必须建立在
@@ -100,7 +103,7 @@ try {
   check('boot 期容错唯一真源（无第二种容错标记混在产物里）',
     (patched.match(/dsh-mobile third-party boot isolation \(G3\)/g) || []).length >= 1
     && !patched.includes('dsh-mobile boot tolerance'))
-  const parse = spawnSync(process.execPath, ['--check', target], { encoding: 'utf8' })
+  const parse = spawnSync(process.execPath, ['--input-type=module', '--check'], { input: patched, encoding: 'utf8' })
   check('patched file parses', parse.status === 0, (parse.stderr || '').split('\n')[0])
   apply()
   check('re-apply is idempotent', readFileSync(target, 'utf8') === patched)

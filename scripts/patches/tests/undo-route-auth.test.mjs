@@ -73,6 +73,8 @@ const pendingEffects = []
 try {
   const target = join(scratch, targetRel)
   mkdirSync(dirname(target), { recursive: true })
+  writeFileSync(join(scratch, 'dsh-undo-savepoint', 'package.json'),
+    readFileSync(join(repoRoot, 'vendor', 'dsh-undo-savepoint', 'package.json')))
   // 0.4.9 起 index.js 把实现拆到 core.mjs/zip.mjs/i18n.mjs（且 core.mjs 再 import i18n.mjs 与 i18n/*.json）。
   // 只拷 index.js 会让 import 期 ERR_MODULE_NOT_FOUND（实测：Cannot find module .../lib/core.mjs）。
   // 这里整目录拷贝 lib/，并对文本文件统一归一为 LF（补丁锚点与结构断言都按 LF 写；
@@ -99,7 +101,7 @@ try {
   check('U1 marker appears in patched undo artifact', patched.includes('dsh-mobile undo route auth (U1)'))
   check('U1 success responses are explicitly no-store', patched.includes('dsh-mobile undo no-store (U1)'))
   check('U1 guard precedes the REST try block', patched.includes('const rejection = dshMobileUndoAuthorize(req);\n        if (rejection !== undefined) { dshMobileUndoReject(res, rejection); return; }\n        try {'))
-  const syntax = spawnSync(process.execPath, ['--check', target], { encoding: 'utf8' })
+  const syntax = spawnSync(process.execPath, ['--input-type=module', '--check'], { input: patched, encoding: 'utf8' })
   check('patched artifact parses', syntax.status === 0, (syntax.stderr || '').split('\n')[0])
   const second = spawnSync(process.execPath,
     [patchRunner, scratch, '--apply', '--scope', 'vendor', '--only', 'undo-api-auth-U1'],

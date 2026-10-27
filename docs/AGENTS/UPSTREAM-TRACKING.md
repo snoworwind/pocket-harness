@@ -2,6 +2,12 @@
 
 本仓独立维护；`kelai141/dsh-mobile-apk` 是参考来源，不是构建依赖或镜像权威。按问题选择性移植，每个逻辑改动独立 PR，保留出处，重新审查本仓安全约束并按风险分档验证。上游发布和测试不代替本仓验收。
 
+## 2026-10-27 DeepSeek Harness 引擎追版
+
+本仓开发分支将官方源码目标从 `0.2.1-rc.2` 提升到 [`dsh-v0.2.1-rc.3`](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.1-rc.3)，固定提交 `1f81c047fc48fa190a683e469daa699857e9afe8`。合同、来源构建检查、部署版本门、插件 peer/锁文件及 WebView 槽位/组件清单已同步；新增三个 More 菜单槽位由官方 `entry-customization` Web 插件消费。
+
+**当前仅是开发目标**：未完成 Linux/WSL 来源构建；`assets/patched` 和补丁回归夹具仍为 rc.2；无 APK、CDP 或 ADB 用户验收，也未发布。逐项来源、变更及阻塞见 [0.2.1-rc.3 升级记录](ENGINE-UPGRADE-2026-10-27.md)。
+
 ## 检查规则
 
 - 建议每周及准备发版时检查；本文件不创建定时任务。

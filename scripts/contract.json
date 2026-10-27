@@ -1,14 +1,14 @@
 {
-  "baseline": "0.2.1-rc.2",
+  "baseline": "0.2.1-rc.3",
   "cordis": "4.0.5",
   "schemastery": "3.18.5",
   "upstreamRepo": ".deploy-tmp/deepseek-harness",
   "upstream": {
-    "$comment": "0.14.8 source-only target identity. Inventories were read from the official SHA; upstreamRepo and adaptationSourceRepo both select the disposable pinned build checkout. dsh/ and .deploy-tmp/upstream-020rc2 remain readonly historical inputs. No build, patch validation or runtime acceptance is implied.",
-    "tag": "dsh-v0.2.1-rc.2",
-    "describe": "dsh-v0.2.1-rc.2",
-    "commit": "687f282e8625c6b8d11ff58211a90524be2e4317",
-    "rootVersion": "0.2.1-rc.2",
+    "$comment": "0.14.9 source-only target identity. Inventories are being read from official 1f81c047fc48fa190a683e469daa699857e9afe8; upstreamRepo and adaptationSourceRepo select the disposable pinned build checkout. The official rc.3 tag is pinned; npm rc.4 has no matching public source tag at this review point. No build, patch validation or runtime acceptance is implied.",
+    "tag": "dsh-v0.2.1-rc.3",
+    "describe": "dsh-v0.2.1-rc.3",
+    "commit": "1f81c047fc48fa190a683e469daa699857e9afe8",
+    "rootVersion": "0.2.1-rc.3",
     "adaptationSourceRepo": ".deploy-tmp/deepseek-harness"
   },
   "runtimeCompat": {
@@ -38,19 +38,19 @@
         "packageVersion": "0.1.7",
         "publishedTarball": "https://registry.npmjs.org/dshmarketplace-plugin/-/dshmarketplace-plugin-0.1.7.tgz",
         "publishedTarballSha256": "881c21ec33a4a91ad65c61676540faab4122440e3f9685f69939533a6dbbc0c1",
-        "targetSourceCommit": "687f282e8625c6b8d11ff58211a90524be2e4317",
+        "targetSourceCommit": "1f81c047fc48fa190a683e469daa699857e9afe8",
         "fields": [
           {
             "section": "peerDependencies",
             "name": "@deepseek-ai/dsh-native-command",
             "from": "^0.1.0-rc.6",
-            "to": "0.2.1-rc.2"
+            "to": "0.2.1-rc.3"
           },
           {
             "section": "peerDependencies",
             "name": "@deepseek-ai/dsh-tools",
             "from": "^0.1.0-rc.6",
-            "to": "0.2.1-rc.2"
+            "to": "0.2.1-rc.3"
           }
         ],
         "reason": "The published 0.1.7 caret peers reject the 0.2 prerelease. This explicitly recorded Android declaration delta prevents silent row disabling; no vendor runtime payload is changed and runtime compatibility is not claimed."
@@ -244,9 +244,9 @@
     "upstreamUniverse": {
       "$comment": "G-1 反向判据的登记集：上游**声明面**槽位全集（见 scanUpstreamSlots 的枚举范围），不是「上游一共有多少座位」的哲学断言——它只负责让「新长出来/被删掉」两类漂移判红。追版换树后必须重新 --capture-slots 并逐条判定新增项。",
       "scanScope": "packages/client/<pkg>/src/**（排除 tests/__tests__ 与 *.test.tsx）里的 `'slot': { kind: …; scope: … }`",
-      "capturedFrom": "dsh-v0.2.1-rc.2",
-      "capturedReason": "0.14.8 追版 dsh-v0.2.1-rc.2 重新登记：新增 11 条座位逐条判定我方不消费（我方消费面仍是 shell.overlay / sidebar.right.pane.tab(+title/menu) / settings.section / settings.general.item / conversation.header.leading 与自建 android.dock.conversation）；上游删除 conversation.message.images，我方未注册该座位，删除不造成静默落空",
-      "total": 90,
+      "capturedFrom": "dsh-v0.2.1-rc.3",
+      "capturedReason": "rc.3 adds three list/root More-menu slots. The included upstream entry-customization web-app row consumes all three for plugin browsing and creation; Pocket Harness local plugins do not register them.",
+      "total": 93,
       "entries": [
         {
           "slot": "conversation.approval.detail",
@@ -438,6 +438,12 @@
           "slot": "conversation.session.header.utilities",
           "kind": "list",
           "scope": "session",
+          "file": ".deploy-tmp/deepseek-harness/packages/client/ui-conversation/src/client/contract/slots.ts"
+        },
+        {
+          "slot": "conversation.session.header.views.actions",
+          "kind": "list",
+          "scope": "root",
           "file": ".deploy-tmp/deepseek-harness/packages/client/ui-conversation/src/client/contract/slots.ts"
         },
         {
@@ -657,6 +663,12 @@
           "file": ".deploy-tmp/deepseek-harness/packages/client/ui-sidebar/src/client/contract/slots.ts"
         },
         {
+          "slot": "sidebar.panellist.actions",
+          "kind": "list",
+          "scope": "root",
+          "file": ".deploy-tmp/deepseek-harness/packages/client/ui-sidebar/src/client/contract/slots.ts"
+        },
+        {
           "slot": "sidebar.right.pane.tab",
           "kind": "keyed",
           "scope": "session",
@@ -708,6 +720,12 @@
           "slot": "sidebar.right.tab.guide",
           "kind": "chain",
           "scope": "session",
+          "file": ".deploy-tmp/deepseek-harness/packages/client/ui-sidebar-right/src/client/contract/slots.ts"
+        },
+        {
+          "slot": "sidebar.right.tab.guide.actions",
+          "kind": "list",
+          "scope": "root",
           "file": ".deploy-tmp/deepseek-harness/packages/client/ui-sidebar-right/src/client/contract/slots.ts"
         },
         {
@@ -825,9 +843,9 @@
   },
   "upstreamRows": {
     "$comment": "G-4 判据的登记集：上游 base + web-app 两个 bundle 的全部行 id（含我们未挂载的）。新增行必须逐条判「挂载 / 明确不挂」后重新登记——0.14.2 追版时 `mcp-resources` 这类新行走的就是这里。",
-    "capturedFrom": "dsh-v0.2.1-rc.2",
-    "capturedReason": "0.14.8 追版 dsh-v0.2.1-rc.2 重新登记上游行集（占位，稍后改真因）",
-    "total": 186,
+    "capturedFrom": "dsh-v0.2.1-rc.3",
+    "capturedReason": "rc.3 adds entry-customization to web-app. Keep the official row enabled on Android and add its source package to the overlay for the left sidebar, Conversation Views, and right-sidebar guide More menus.",
+    "total": 187,
     "entries": [
       {
         "key": "account-controller",
@@ -988,6 +1006,12 @@
       {
         "key": "directory-picker",
         "name": "@deepseek-ai/dsh-host-directory-picker-auto",
+        "upstreamDisabled": false,
+        "bundle": "web-app"
+      },
+      {
+        "key": "entry-customization",
+        "name": "@deepseek-ai/dsh-client-ui-entry-customization",
         "upstreamDisabled": false,
         "bundle": "web-app"
       },

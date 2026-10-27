@@ -9,10 +9,10 @@ import shutil
 import subprocess
 import sys
 
-HARNESS_COMMIT = "687f282e8625c6b8d11ff58211a90524be2e4317"
+HARNESS_COMMIT = "1f81c047fc48fa190a683e469daa699857e9afe8"
 
 PACKAGE_NAME = "@deepseek-ai/dsh-web-frontend"
-PACKAGE_VERSION = "0.2.1-rc.2"
+PACKAGE_VERSION = "0.2.1-rc.3"
 EXPECTED_FILES = ["dist", "!dist/**/*.map", "!dist/preview.html", "!dist/preview"]
 
 
@@ -88,7 +88,7 @@ def main() -> None:
     commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=source_root, text=True).strip()
     root_manifest = json.loads((source_root / "package.json").read_text(encoding="utf-8"))
     if commit != HARNESS_COMMIT or root_manifest.get("version") != PACKAGE_VERSION:
-        raise ValueError("preview pruning requires the official 0.2.1-rc.2 source")
+        raise ValueError("preview pruning requires the official 0.2.1-rc.3 source")
     package_root = source_root / "apps" / "web"
     package_file = package_root / "package.json"
     package_bytes = package_file.read_bytes()
