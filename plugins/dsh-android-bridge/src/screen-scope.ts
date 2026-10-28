@@ -94,12 +94,16 @@ export interface DisplayOption {
   value: string
 }
 
+/** Android short `-d` accepts both `-d 7` and `-d7`; an equals form is ambiguous and is rejected. */
+const SHORT_DISPLAY_OPTION = /(?:^|[ \t])-d[ \t]*(\d+)(?=$|[ \t])/g
+const LONG_DISPLAY_OPTION = /(?:^|[ \t])(--display|--display-id)[ \t=]+(\d+)/g
+const COMPACT_SHORT_DISPLAY_OPTION = /^-d(\d+)$/
+
 /** 扫描命令里出现的全部目标屏参数（含三种拼写，值原样字符串）。 */
 export function displayOptionsIn(text: string): DisplayOption[] {
   const out: DisplayOption[] = []
-  for (const m of text.matchAll(/(?:^|[ \t])(-d|--display|--display-id)[ \t=]+(\d+)/g)) {
-    out.push({ flag: m[1], value: m[2] })
-  }
+  for (const m of text.matchAll(SHORT_DISPLAY_OPTION)) out.push({ flag: '-d', value: m[1] })
+  for (const m of text.matchAll(LONG_DISPLAY_OPTION)) out.push({ flag: m[1], value: m[2] })
   return out
 }
 
@@ -222,12 +226,13 @@ function parenEnd(text: string, from: number): number {
 /** Only the actual, fixed `sh -c` launch may donate an inspectable payload. */
 const SHELL_C_PAYLOAD = /^[ \t]*(?:(?:[A-Za-z_][A-Za-z0-9_]*=[^\s]+)[ \t]+)*(?:(?:env|command)[ \t]+)?(?:\/system\/bin\/)?sh[ \t]+-c[ \t]+([\s\S]*)$/
 
-/** Read the first shell word after `-c`, removing the outer shell quoting. Null means ambiguous. */
-function shellCommandArgument(text: string): string | null {
+/** Read one shell argument, removing its quoting; retain the suffix for `sh -c --`. */
+function firstShellArgument(text: string): { word: string; rest: string } | null {
   let out = ''
   let quote: "'" | '"' | null = null
   let sawArgument = false
   let i = 0
+  while (i < text.length && /[ \t\r\n]/.test(text[i])) i += 1
   while (i < text.length) {
     const ch = text[i]
     if (quote === null) {
@@ -272,7 +277,15 @@ function shellCommandArgument(text: string): string | null {
     out += ch
     i += 1
   }
-  return quote === null && sawArgument ? out : null
+  return quote === null && sawArgument ? { word: out, rest: text.slice(i) } : null
+}
+
+/** Read the script argument after `-c`, accounting for its optional `--` option terminator. */
+function shellCommandArgument(text: string): string | null {
+  const first = firstShellArgument(text)
+  if (first === null) return null
+  if (first.word !== '--') return first.word
+  return firstShellArgument(first.rest)?.word ?? null
 }
 
 /**
@@ -486,7 +499,7 @@ export function stripQuotedText(text: string): string {
 
 /** 把目标屏参数整体抹成空白（命令词匹配前归一化，使 `input -d 0 tap …` 也进命令词面）。 */
 export function stripDisplayOptions(text: string): string {
-  return text.replace(/(?:^|[ \t])(?:-d|--display|--display-id)[ \t=]+\d+/g, ' ')
+  return text.replace(LONG_DISPLAY_OPTION, ' ').replace(SHORT_DISPLAY_OPTION, ' ')
 }
 
 // ── 命令词家族：每个家族自带「哪种拼写才算它的目标屏」 ──────────────────────────
@@ -541,7 +554,11 @@ const SCREEN_COMMAND_FAMILIES: readonly ScreenCommandFamily[] = [
 
 /** A flag only certifies a display when that exact command actually consumes it. */
 function hasUncertifiedSelector(text: string, family: ScreenCommandFamily): boolean {
-  const words = text.split(' ')
+  // Tokenize legal compact `-d7` as the same flag/value pair as `-d 7` before enforcing each CLI's position rules.
+  const words = text.split(' ').flatMap((word) => {
+    const compact = COMPACT_SHORT_DISPLAY_OPTION.exec(word)
+    return compact === null ? [word] : ['-d', compact[1]]
+  })
   for (let i = 0; i < words.length; i += 1) {
     const word = words[i]
     if (word === '-d' && (family.name.startsWith('am') || family.name.startsWith('cmd-activity'))) {

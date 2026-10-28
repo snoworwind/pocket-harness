@@ -27,7 +27,10 @@ internal object ShellOps {
    * 取值不数值化：`screencap -d` 吃的是 SurfaceFlinger display token，设备实测虚拟屏形如
    * `11529215046816944610`——超出 `Long` 上界，数值化即失真（见坑 147）。
    */
-  private val DISPLAY_OPTION = Regex("""(?:^|[ \t])(-d|--display|--display-id)[ \t=]+(\d+)""")
+  /** Android short `-d` accepts both `-d 7` and `-d7`; equals is ambiguous and must not certify a screen. */
+  private val SHORT_DISPLAY_OPTION = Regex("""(?:^|[ \t])-d[ \t]*(\d+)(?=$|[ \t])""")
+  private val LONG_DISPLAY_OPTION = Regex("""(?:^|[ \t])(--display|--display-id)[ \t=]+(\d+)""")
+  private val COMPACT_SHORT_DISPLAY_OPTION = Regex("""^-d(\d+)$""")
 
   /** 命令词家族：每个家族自带「哪种拼写才算它的目标屏」（与引擎侧 `SCREEN_COMMAND_FAMILIES` 同表）。 */
   private data class ScreenFamily(val name: String, val pattern: Regex, val targetFlags: List<String>)
@@ -260,9 +263,9 @@ internal object ShellOps {
       val families = SCREEN_FAMILIES.filter { it.pattern.containsMatchIn(normalized) }
       for (family in families) {
         if (hasUncertifiedSelector(bare, family)) return false
-        val relevant = options.filter { it.first in family.targetFlags }
+        val relevant = options.filter { it.flag in family.targetFlags }
         if (family.targetFlags.isEmpty() && options.isNotEmpty()) return false
-        if (relevant.any { it.second != "0" }) return false
+        if (relevant.any { it.value != "0" }) return false
       }
     }
     return true
@@ -371,7 +374,7 @@ internal object ShellOps {
       for (family in families) {
         if (hasUncertifiedSelector(bare, family)) return ScreenCommandVerdict.DENY_UNCERTIFIED_TARGET
         if (family.targetFlags.isEmpty()) return ScreenCommandVerdict.DENY_UNCERTIFIED_TARGET
-        val owned = options.filter { it.first in family.targetFlags }.map { it.second }
+        val owned = options.filter { it.flag in family.targetFlags }.map { it.value }
         // 该家族必须在**本段内**自证：参数缺席、或任一值不属于已注册虚拟屏 → 拒（不得只认证其中一个）。
         if (owned.isEmpty()) return ScreenCommandVerdict.DENY_UNCERTIFIED_TARGET
         if (!owned.all { ownsTarget(it) }) return ScreenCommandVerdict.DENY_UNCERTIFIED_TARGET
@@ -599,12 +602,15 @@ internal object ShellOps {
     return -1
   }
 
-  /** Read the first shell word after `-c`, removing the outer shell quoting. Null means ambiguous. */
-  private fun shellCommandArgument(text: String): String? {
+  private data class ShellArgument(val word: String, val rest: String)
+
+  /** Read one shell argument, removing its quoting; retain the suffix for `sh -c --`. */
+  private fun firstShellArgument(text: String): ShellArgument? {
     val out = StringBuilder()
     var quote: Char? = null
     var sawArgument = false
     var i = 0
+    while (i < text.length && text[i] in listOf(' ', '\t', '\r', '\n')) i += 1
     while (i < text.length) {
       val ch = text[i]
       if (quote == null) {
@@ -649,7 +655,14 @@ internal object ShellOps {
       out.append(ch)
       i += 1
     }
-    return if (quote == null && sawArgument) out.toString() else null
+    return if (quote == null && sawArgument) ShellArgument(out.toString(), text.substring(i)) else null
+  }
+
+  /** Read the script argument after `-c`, accounting for its optional `--` option terminator. */
+  private fun shellCommandArgument(text: String): String? {
+    val first = firstShellArgument(text) ?: return null
+    if (first.word != "--") return first.word
+    return firstShellArgument(first.rest)?.word
   }
 
   /**
@@ -717,7 +730,11 @@ internal object ShellOps {
   }
 
   private fun hasUncertifiedSelector(text: String, family: ScreenFamily): Boolean {
-    val words = text.split(' ')
+    // Treat legal compact `-d7` exactly like the separate `-d 7` flag and value.
+    val words = text.split(' ').flatMap { word ->
+      val compact = COMPACT_SHORT_DISPLAY_OPTION.matchEntire(word)
+      if (compact == null) listOf(word) else listOf("-d", compact.groupValues[1])
+    }
     var i = 0
     while (i < words.size) {
       val word = words[i]
@@ -786,11 +803,22 @@ internal object ShellOps {
   }
 
   /** 把目标屏参数整体抹成空白（命令词匹配前归一化，使 `input -d 0 tap …` 也进命令词面）。 */
-  internal fun stripDisplayOptions(text: String): String = DISPLAY_OPTION.replace(text, " ")
+  internal fun stripDisplayOptions(text: String): String =
+    LONG_DISPLAY_OPTION.replace(SHORT_DISPLAY_OPTION.replace(text, " "), " ")
 
   /** 命令里的全部目标屏参数（拼写 + 原样数字串）。 */
-  internal fun displayOptionsIn(text: String): List<Pair<String, String>> =
-    DISPLAY_OPTION.findAll(text).map { it.groupValues[1] to it.groupValues[2] }.toList()
+  internal data class DisplayOption(val flag: String, val value: String, val index: Int)
+
+  internal fun displayOptionsIn(text: String): List<DisplayOption> {
+    val out = ArrayList<DisplayOption>()
+    for (match in SHORT_DISPLAY_OPTION.findAll(text)) {
+      out.add(DisplayOption("-d", match.groupValues[1], match.range.first))
+    }
+    for (match in LONG_DISPLAY_OPTION.findAll(text)) {
+      out.add(DisplayOption(match.groupValues[1], match.groupValues[2], match.range.first))
+    }
+    return out.sortedBy { it.index }
+  }
 
   /**
    * 当前**已注册**虚拟屏的 SF token 集合（块G F6）。经 Shizuku shell 通道读
@@ -865,7 +893,7 @@ internal object ShellOps {
    */
   internal fun commandDisplayTokens(command: String): List<String> =
     splitCommandSegments(command).let { parsed ->
-      if (parsed.unparsed) emptyList() else parsed.segments.flatMap { displayOptionsIn(scopeCommandText(it) ?: "").map { option -> option.second } }
+      if (parsed.unparsed) emptyList() else parsed.segments.flatMap { displayOptionsIn(scopeCommandText(it) ?: "").map { option -> option.value } }
     }
 
   /**
