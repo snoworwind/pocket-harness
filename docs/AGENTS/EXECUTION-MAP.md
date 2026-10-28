@@ -179,6 +179,7 @@ Linux 发现补充（P04，坑 373）：bootstrap `index.js` 串行发现 → `g
 | 高 | K06 | `sh -c --` 会遮住脚本，短 `-d` 粘连值会误判 | `ShellOps.splitCommandSegments/displayOptionsIn`、`screen-scope.ts` 对应实现 | virtual-only 下可能漏过 `--` 后的真实屏脚本，也会误拒合法 `-d7` 目标 | 已修：展开 `-c --` 后的脚本；按 CLI 语法接受 `-d 7` 与 `-d7`，拒绝 `-d=7` 作为认证。OrbStack 插件与 Kotlin fixture 通过；设备三层未做，见坑 582 |
 | 高 | K06 | 路径脚本与错误显示参数认证可绕过范围门 | `ShellOps.scopeCommandText/hasUncertifiedSelector`、`screen-scope.ts` 同名函数 | 脚本不可见、引用目标被抹掉、注释/重定向捐出参数、Android CLI 别名与位置差异 | 源码已修；两插件编译通过；按用户要求仅做编译和静态检查，设备层未验收。见坑 313/314 |
 | 高 | K06 | 外部文件导入可借应用权限读取私有文件或内部 Provider | `FileIncoming.kt:40-100`、`FileIncoming.kt:163-190`、`FileIncoming.kt:417-439` | exported Activity 接收攻击者指定的 URI，旧白名单含整个应用私有根且 content 来源无授权门 | 源码已修：共享存储路径与持有 FD 双检；content 要求外部 UID 与系统读授权；输出排他创建，分享参数类型化解析。WSL Kotlin 编译通过；未运行测试或设备验收，见坑 321 |
+| 高 | K06 | shell 短选项簇会把可安全解析的 `-lc` / `-o errexit -c` 误判为不可解析 | `ShellOps.kt`、`plugins/dsh-android-bridge/src/screen-scope.ts` | 已知 shell 包装器未展开载荷，常见命令被 fail-closed 拒绝；未确认真实屏绕过 | 已修：JS/Kotlin 同步识别选项簇末尾的 `c` 并递归检查载荷；真实屏仍拒、已登记虚拟屏放行。跨语言夹具和受控负控通过，设备未验收，见坑 589 |
 | 高 | K05 | 输入广播未限定组件时可能向其他应用泄露 nonce | `plugins/dsh-android-manage/src/index.ts:33` | 同 action 接收器可能取得 auth 并伪造输入 | 源码已修：所有发送与重试显式指定 AdbKeyboardReceiver；设备验收待完成。见坑 312 |
 | 高 | K04 | 认证 HTTP 缺少统一初始源与重定向约束 | `EngineAuth.confineConnection` | 手工 Cookie 头不能依赖浏览器域策略，自动重定向可能把请求送到其他源 | 源码已修：精确引擎源、禁自动重定向；仅编译/静态检查，见坑 316 |
 | 高 | K06 | 特权服务面危险命令黑名单曾可被 `controlExec` 直连绕过 | `plugins/dsh-android-bridge/src/index.ts:1045`、`:1191`、`:1228` | 工具壳拒绝而服务面放行，会让直连插件绕过系统配置/权限写保护 | 已修：服务面 `controlExec`、`execAdbShell`、`execAdbLine` 共用拒绝判据并审计 |
@@ -1858,7 +1859,7 @@ flowchart LR
 - **嵌套与线程**：
   1. `build-apk-013.ps1`【PowerShell 主线程】→ `node scripts/check-*.mjs`【每个门禁一个短命进程，串行，`$LASTEXITCODE` 判定】→ 门禁内部多为单线程流式读 tar（`scripts/check-runtime-assets.mjs` 另 `spawnSync` 跑行为回归测试）。
   2. `check-release-gates.mjs --run`【node 主线程】→ `spawnSync(process.execPath, [scripts/<gate>])`【逐个子进程，串行，`maxBuffer` 128MB】→ 子进程 stdout 回写父进程，父进程用 `/SKIP=(\d+)/` 累计 SKIP（`scripts/check-release-gates.mjs:246`）。
-  3. pr-gate `static`【GitHub runner 的 bash 步骤，串行】→ `npm install/npm run build`【子进程】→ `node scripts/check-plugin-tests.mjs`【该门禁再 `spawnSync` 每个插件的 `node --test` 或 `npx vitest`】（`scripts/check-plugin-tests.mjs:54`）。CI 的 `static` 与 `compile` 两个作业并行，互不阻塞。
+  3. pr-gate `static`【GitHub runner 的 bash 步骤，串行】→ `npm install/npm run build`【子进程】→ `node scripts/check-plugin-tests.mjs`【该门禁再 `spawnSync` 每个插件的 `node --test` 或 `npx vitest`，强制测试子进程 `NODE_ENV=test`，避免父进程 production 环境关闭 React `act()`】（`scripts/check-plugin-tests.mjs`）。CI 的 `static` 与 `compile` 两个作业并行，互不阻塞。
 - **耦合**（点名符号）：
   - **唯一声明处**：`GATES` / `CI_GATES` / `ALL_GATES`（`scripts/check-release-gates.mjs:28`/`:106`/`:107`）与云端链的 `GATE_SCRIPTS`（`scripts/build-apk.mjs:61`）；`CI_GATES` 决定两仓 CI 必须出现的门禁名，`ALL_GATES` 决定两条链与发布链。
   - **注入集单一常量**：`scripts/plugin-dirs.json` 的 `dirs`/`externals` 被 `scripts/build-apk-013.ps1:174`、`scripts/build-apk.mjs`、`scripts/check-release-gates.mjs:164` 共同消费（`check-patch-mirror.mjs` 自 2026-10-15 起不再读它）；`scripts/release-plugin-src-gaps.json` 只承载 `$pluginSrcs ⊇ dirs` 的显式差集理由。
@@ -1918,7 +1919,7 @@ flowchart LR
 | check-strip-noop.mjs | 剥离清单项在产物里必须不存在（反 no-op） | 链（注入后 tar）/快照构建 `--stage` | 剥离键名写错或被后续步骤写回 | 需快照 |
 | check-combo-cache.mjs | 注入后每条 `client.js` 有 sha256 命中的缓存条目 | 仅链 | 降级步骤排在 combo 预计算之后 → 键全 miss（fail-open 回退） | 需注入后快照 |
 | check-tool-surface-budget.mjs | 模型面工具 name+description+parameters 字节 ≤ 基线 +2%（注册集 + 初始可见集） | CI（先 build 八个包）/链 | 新增工具使每会话固定预算膨胀；需归组掩蔽或改基线 | 需 plugins/*/lib |
-| check-plugin-tests.mjs | 每个插件 `test/*.test.mjs` 真跑且有效通过数 > 0（全 skip 判红） | CI（先 build）/链 | 测试全 skip；依赖没装（报错与真失败混报）；跨仓路径读不到文件 | 需 plugins/*/lib |
+| check-plugin-tests.mjs | 每个插件 `test/*.test.mjs` 真跑且有效通过数 > 0（全 skip 判红）；测试子进程固定 `NODE_ENV=test` | CI（先 build）/链 | 测试全 skip；依赖没装（报错与真失败混报）；跨仓路径读不到文件；production 环境关闭 React `act()` | 需 plugins/*/lib |
 | check-boot-budget.mjs | 冷启动 C1-C6（首个 HTTP 响应、事件循环 p99、compose 次数/同步块） | CI/链默认档；真检需设备产物 | C3 compose ≤2；C4 需采到 loop histogram；C6 需真实 TOTAL 耗时；无产物 → SKIP 只跑自证 | 需设备产物（boot-segments.log + P1 探针）；TOTAL 延迟 250ms 收口，LISTEN 前 TOTAL 在壳侧暂存并随 LISTEN 判据落盘 |
 | check-snapshot-builder-output.mjs | 构建器产出面构造在场 + slim 配置键无死键 + 与打包链路径同源 | CI/链 | 归档段被删 → 构建器 exit 0 不产 tar，静默复用陈旧快照 | 否 |
 | check-browser-syntax-floor.mjs | 发往浏览器的 bundle 不得含老内核解析不了的语法（AST + 双 arm 差分） | CI 只 `--self-test`；链 `--degrade`/`--scan` | vendor 无构建源未降级；降级排在 combo 预计算之后；顺序反了 13 条 combo 键必 miss | 真扫需构建树/快照 |
