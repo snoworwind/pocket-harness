@@ -728,6 +728,7 @@ K01 journal 发布：`SnapshotTransaction.writeMarker` 拒绝目标或临时路�
 
 #### K03 快照事务与更新链
 
+- **提交点**：`.snapshot-fingerprint` 是已提交快照树的耐久身份；发布必须用 `SnapshotTransaction.writeTextAtomic`，替换失败保留旧值并留存失败证据，禁止先删除或直接写目标。对应反例与回归见坑 583。
 - **严格SHA**：SnapshotFingerprintPolicy要求内嵌64hex；fresh须node在场及durable committed fingerprint匹配。缺/非法metadata在抽取/事务/refresh/spawn前拒绝，无legacy/degraded旁路、不无限解压，既有用户数据不被坏包改变。
 - **顺序**：ownership prelude已结算→recoverInterruptedRefresh→probe/fresh→refresh；factory refresh暂存解压→SnapshotUserData.prepareStagedSnapshot→journal/factory swap→durable fingerprint→finish。本分支不再创建在线更新；历史 ONLINE_UPDATE journal 和 `.snapshot-previous/usr` 仍按原事务目的恢复或回滚，避免遗留半交换状态失去恢复入口。在线健康身份 `.online-snapshot` 保存 base（内嵌 SHA）与 archive SHA；same-APK冷启保持在线树新鲜，APK快照变化转回factory refresh。未知purpose/phase与ONLINE_COMMITTED非在线事务 fail closed 并保留现场；恢复拒绝且marker仍在时Activity不再probe、服务不再装配看门狗启动运行时。
 - **#304真源**：preserve settings.yaml.imported，marker属安装不是factory；marker或活web patch已在且无legacy YAML则抑stage factory seed，profile-local marker同理；backup不复活已迁移YAML。pre-spawn仅quarantine已知旧blank模板，不动custom配置。configurationDocument选真实web cordis.patch.yml，活patch缺失不fallback历史/factory；显式export公共副本警告key、import仅同格式先backup再atomic replace。
