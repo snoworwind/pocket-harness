@@ -3246,6 +3246,10 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 
     现象：PR #148 的 `build-linux-assets` 在 `check-linux-sources.mjs --self-test` 的仓库实体验证阶段报 `Linux source digest mismatch: plugins/dsh-linux-bootstrap/package-lock.json`。真因：Harness RC3 升级同步了 bootstrap 的 `package.json` 与 lockfile peer 版本，但 `linux-source-manifest.json` 的双份字节摘要仍指向 RC2；单测通过只证明负控有效，不代表仓库输入摘要已更新。修法：逐字节确认两文件只改变 client-settings peer 元数据，重算并同步 manifest 的 additional-source 与全局文件摘要，并更新对应 local-patch 理由；不放宽或跳过来源校验。复验：待 CI 对 PR #148 重跑 `build-linux-assets` 验证。
 
+564. **引擎来源锁的 overlay 输入未固定检出字节（2026-10-28）**
+
+    现象：启用 `core.autocrlf=true` 的检出会将 `engine-overlay.json` 的 LF 改为 CRLF，即使 JSON 语义不变。真因：引擎组件键按文件原始字节散列该输入，而该路径未声明检出字节属性。修法：对该文件设置 `-text`，保持 Git 对象中的原始字节，不更改内容或放宽来源锁。复验：`base-lock.test.mjs` 在隔离 Git 仓模拟 autocrlf 检出，验证属性在场时字节一致、删除该属性后字节不同；两臂均通过。未做设备验证，此改动不改变设备运行代码。
+
 566. **旧配置归一化忽略备份失败并可能截断 live（2026-10-28）**
 
     现象：备份路径已存在或备份写入失败时仍继续改写 profile；rename 失败还会直接写目标。真因：固定备份名被当成有效备份，且写入失败被吞掉；直接写入可能在中断或磁盘满时留下半份配置。修法：复用 `SnapshotFs.replaceWithVerifiedBackup`，核对本次原文字节、创建并同步唯一备份，再原子发布；任一失败保留原目标并在下次启动重试。复验：OrbStack Linux 的 `FactoryProfilePatchTest` 36 项和 `SnapshotFsTest` 11 项通过，包含备份与发布失败反例；设备三层尚未完成，不能作为发版通过。
