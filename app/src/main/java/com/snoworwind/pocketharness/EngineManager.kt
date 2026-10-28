@@ -1913,7 +1913,7 @@ class EngineManager(private val context: Context, private val pickToken: String?
    * （`if (snapshotFresh()) return true` 早退）—— 指纹已 fresh 的设备永远拿不到修复。
    * 实测：两台设备装上含归一的包后，冷启动两次 live patch md5 均不变。
    *
-   * 安全面：沿用本函数既有的三件套（`.pre-<version>.bak` 备份 / 原子写 / 解析校验），
+   * 安全面：沿用本函数既有的三件套（唯一的 `.pre-<version>-*.bak` 验证备份 / 原子写 / 解析校验），
    * 不新增第二条落盘路径。
    *
    * 幂等：**独立**标记 `.profile-patch-normalize-<version>`（不复用退役行那个标记）。
@@ -1932,7 +1932,8 @@ class EngineManager(private val context: Context, private val pickToken: String?
         .map { File(it, "cordis.patch.yml") }
         .filter { it.isFile }
       for (target in targets) {
-        val live = try { target.readText() } catch (_: Throwable) { failed = true; continue }
+        val liveBytes = try { target.readBytes() } catch (_: Throwable) { failed = true; continue }
+        val live = String(liveBytes, Charsets.UTF_8)
         if (FactoryProfilePatch.legacyMobileConfigLines(live).isEmpty()) continue // 不满足形态 ⇒ 不动
         val result = FactoryProfilePatch.normalizeLegacyAgentDefaultModel(live)
         if (result.text == live) continue // 条件不满足 ⇒ 零改动
@@ -1943,20 +1944,15 @@ class EngineManager(private val context: Context, private val pickToken: String?
           failed = true
           continue
         }
-        val backup = File(target.parentFile, target.name + ".pre-" + BuildConfig.VERSION_NAME + ".bak")
-        if (!backup.exists()) {
-          try { backup.writeText(live) } catch (_: Throwable) {}
-        }
-        val tmp = File(target.parentFile, target.name + ".normalize.tmp")
-        try {
-          tmp.writeText(result.text)
-          if (!tmp.renameTo(target)) {
-            target.writeText(result.text)
-            SnapshotFs.deletePath(tmp)
-          }
+        val backup = try {
+          SnapshotFs.replaceWithVerifiedBackup(
+            target,
+            result.text.toByteArray(Charsets.UTF_8),
+            target.name + ".pre-" + BuildConfig.VERSION_NAME + "-",
+            liveBytes,
+          )
         } catch (t: Throwable) {
           failed = true
-          SnapshotFs.deletePath(tmp)
           Log.w(TAG, "profile patch normalize write failed (retried next boot): " + target.absolutePath, t)
           continue
         }

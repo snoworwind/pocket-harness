@@ -457,6 +457,8 @@ Linux 发现补充（P04，坑 373）：bootstrap `index.js` 串行发现 → `g
 | K03 | 引擎总管 EngineManager | 事务/残渣/空间的调用方，也是 usr、home、.snapshot-fingerprint 的持有者；启动前 profile 自愈先验证唯一 `.pre-*` 备份再原子发布 | app/src/main/java/com/snoworwind/pocketharness/EngineManager.kt:99 |
 | K03 | 构建与发布 | 内嵌 assets/snapshot.tar.xz 与 snapshot.sha256 是首次解压与刷新两条路径的唯一输入，指纹翻转是刷新触发条件 | app/src/main/java/com/snoworwind/pocketharness/EngineManager.kt:68 |
 | K03 | 插件注入层 | profiles 的 package.json 与 cordis.patch.yml 决定引擎实际挂载集，工厂 disabled 语义以 FactoryProfilePatch 为权威 | app/src/main/java/com/snoworwind/pocketharness/FactoryProfilePatch.kt:79 |
+
+K03 配置修复：`EngineManager` 的旧单点配置归一与退役行修复均调用 `SnapshotFs.replaceWithVerifiedBackup`，先校验原文与唯一备份，再原子发布；失败不写归一标记并在下次启动重试。设备验收尚未完成。
 | K03 | 交互面 MainActivity | DownloadSaver 由 WebView 下载/外链回调拉起，回执经 window.__dshExportResult 回灌页面 | app/src/main/java/com/snoworwind/pocketharness/MainActivity.kt:89 |
 | K03 | EngineAuth | DownloadSaver 下载引擎同源 URL 时附加鉴权并做一次 401 自愈重试 | app/src/main/java/com/snoworwind/pocketharness/DownloadSaver.kt:101 |
 | K03 | 开发选项与诊断 | boot-fail.log、update-status.txt 与 diagnostics 镜像目录是本块失败终态的落盘点 | app/src/main/java/com/snoworwind/pocketharness/EngineManager.kt:193 |
