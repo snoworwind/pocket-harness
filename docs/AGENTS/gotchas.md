@@ -3309,3 +3309,7 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 585. **虚拟屏空闲计时只从创建时起算，操作未续期且写入与回收不同步（2026-10-28）**
 
     现象：空闲回收按 `Record.lastUsedAt` 判定，但活动中的虚拟屏在创建 10 分钟后仍可能被回收；回收线程与时间戳更新还会并发访问 `records` 中同一记录。真因：`touch()` 原本只有定义，没有任何调用点；它也未持有 `reclaimIdle()` 使用的 `lock`。修法：让选择、viewer 绑定、跨屏输入/拉起和已有屏幂等创建续期；`touch()` 与注册表/回收统一使用 `lock`，避免判旧后与续期交错。复验：`VdisplayTouchLockTest` 检查 monitor 锁争用及各操作接线，Kotlin 测试通过。设备侧虚拟屏矩阵按用户本轮指示未做，不能作为设备验收或发版通过。
+
+587. **Android 12 到 15 的全局动作表提前宣传 API 36 动作（2026-10-28）**
+
+    现象：API 31–35 且 ROM 不返回 `getSystemActions()` 时，`menu` 与 `mediaPlayPause` 被目录按旧的 minSdk=31 宣传为可用，调用却会被系统拒绝。真因：目录把两个 API 36 才引入的动作登记成 API 31。修法：两项最低版本改为 36；测试同时覆盖 API 35 拒绝、API 36 放行，以及系统动作列表有值/为空两种路径。复验：`GlobalActionCatalogTest` 通过。设备验证按本轮决定未做。
