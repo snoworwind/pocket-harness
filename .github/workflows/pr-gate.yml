@@ -186,6 +186,11 @@ jobs:
             node scripts/source-build/install-project-dependencies.mjs "$d" .deploy-tmp/source-build/plugin-lock-resolution-pr.json
             (cd "$d" && npm run build)
           done
+      - name: WebView 验收探针双语自检
+        if: always()
+        run: |
+          node scripts/source-build/install-project-dependencies.mjs dsh-client-ui-responsive .deploy-tmp/source-build/webview-probe-lock-resolution-pr.json
+          node scripts/verify-webview-015.mjs --self-test
       # 控制协议 V2（0.13.8 批 F）：引擎侧编解码的往返等价与体积基线（壳侧 Kotlin 一侧由
       # 本仓单测 + 跨语言往返门禁另守）。
       - name: 协议 V2 往返与体积门禁

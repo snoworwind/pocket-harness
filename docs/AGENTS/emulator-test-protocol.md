@@ -147,6 +147,8 @@ adb -s <serial> logcat -d -s dsh-browser:V AndroidRuntime:E System.err:W
 
 套件清单与参数约定见 `AGENTS.md` §2 的表（`verify-webview-015` / `verify-state-sync` / `verify-browser-host` / `verify-browser-panel` / `verify-vdisplay-viewer` / `verify-vdisplay-float` / `verify-engine-log-copy`）。
 
+`node scripts/verify-webview-015.mjs --self-test` 只在本地 jsdom 验证设置入口、双语 accessible name 和缺失入口负控；不连接 WebView target，也不计作 CDP 层。设备验收仍须传入本轮重新发现的 positional ws URL 执行 live probe。
+
 硬性约束（违反会**静默连错目标**）：
 
 - 每个套件**单独跑**，跑前重建 WebView target：`adb shell "cat /proc/net/unix | grep webview_devtools"` → `adb forward tcp:29225 localabstract:webview_devtools_remote_<pid>`；
