@@ -10,6 +10,8 @@ scripts/patches/tests/fixtures/dsh-client-modules-0.2.0-rc.2/lib/index.js -text
 # Capture manifests bind every fixture and the registry to exact Git bytes.
 scripts/patches/tests/fixtures/** -text
 scripts/patches/registry.json -text
+# The engine component key hashes this reviewed input byte-for-byte.
+scripts/snapshot-config/engine-overlay.json -text
 # Reviewed native/runtime source imports retain the original bytes on every host.
 vendor/bionilux/** -text
 vendor/dsh-linux-runtime/** -text
