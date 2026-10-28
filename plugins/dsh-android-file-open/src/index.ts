@@ -695,12 +695,18 @@ export function apply(ctx: Context, _config: Record<string, unknown> = {}) {
             }
             const path = safeResolveInside(resolve(tmpWorkspace()), item.path)
             if (path === null || !existsSync(path)) {
+              // Queue records promise that deliverable bytes still exist. Retaining a stale
+              // record makes every subsequent claim return 410 and can leave a blank session
+              // behind for each browser retry; converge the record with the missing source.
+              rmSync(join(queueDir(), item.file), { force: true })
               res.writeHead(410, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' })
               res.end(JSON.stringify({ ok: false, error: 'incoming source expired' }))
               return
             }
             const current = statSync(path)
             if (!current.isFile()) {
+              // A replaced directory is just as undeliverable as a missing source.
+              rmSync(join(queueDir(), item.file), { force: true })
               res.writeHead(410, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' })
               res.end(JSON.stringify({ ok: false, error: 'incoming source is not a file' }))
               return
