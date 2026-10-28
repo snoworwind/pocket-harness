@@ -378,3 +378,4 @@ engine 的 checkout/upstream/overlay/patches/build/deploy 步骤集中到 `scrip
 引擎组件键按原始字节散列 `scripts/snapshot-config/engine-overlay.json`。该文件在 `.gitattributes` 标记 `-text`，避免 `core.autocrlf` 在检出时改变组件键；`node --test scripts/source-build/base-lock.test.mjs` 包含隔离检出正控及删除属性的受控负控。
 
 来源 APK 注入完成后，`scripts/check-snapshot-profile-identity.py` 直接流式读取最终 `snapIn`：要求 web/headless profile 为普通文件且与仓内权威 patch 逐字节一致，`headless-bad` 负控必须存在且保持不同；拒绝重复、非规范 tar 成员路径、profile 父路径链接/非目录、超大条目及被覆盖的负控 profile。同时从本仓 Gradle 取唯一 applicationId，验证四个 shell 路径位于该应用 `files/` 且是顶层规范路径。`--self-test` 覆盖缺项、错字节、重复、绝对/点段/父段路径别名、错误包名、应用路径穿越、文件与目录符号链接、超大条目及负控缺失/被覆盖；`cloud-workflow.test.mjs` 守注入后接线。既有 APK 资产可作兼容性反证，不能替代最终候选验证。
+上游浏览器样式 `Browser.module.css`、屏幕范围跨语言 fixture 的源文件与 undo-savepoint `core.mjs` 保持 Git 原始检出字节；前者的来源摘要登记于 `upstream-browser/SOURCE.json`，后两者分别参与夹具生成和精确上下文补丁测试。`node --test scripts/source-build/checkout-reviewed-bytes.test.mjs` 验证 autocrlf 正控和逐文件去属性负控。
