@@ -129,6 +129,8 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with: { node-version: '24' }
+      - name: 快照 profile 身份门禁自检
+        run: python3 scripts/check-snapshot-profile-identity.py --self-test
       # APK assembly/version/signature contracts are small Node-only regressions; run them on every PR
       # instead of waiting for a manual local build or the release workflow to exercise them.
       - name: APK 组装、版本与签名回归

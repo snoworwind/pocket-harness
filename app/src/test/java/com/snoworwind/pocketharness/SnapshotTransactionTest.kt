@@ -1427,6 +1427,43 @@ class SnapshotTransactionTest {
     }
   }
 
+  @Test
+  fun markerFailedPublicationPreservesPreviousJournalBytes() {
+    val dir = tempDir()
+    try {
+      val old = SnapshotTransaction.Marker(SnapshotTransaction.Phase.SWAPPING, "old", 1L)
+      SnapshotTransaction.writeMarker(dir, old)
+      val original = SnapshotTransaction.markerFile(dir).readBytes()
+      var threw = false
+      try {
+        SnapshotTransaction.writeMarker(dir, old.copy(fingerprint = "new")) { _, _ -> false }
+      } catch (e: SnapshotFsException) {
+        threw = true
+        assertEquals(CODE_MARKER_WRITE, e.code)
+      }
+      assertTrue(threw)
+      assertTrue(original.contentEquals(SnapshotTransaction.markerFile(dir).readBytes()))
+      assertFalse(File(dir, ".snapshot-transaction.tmp").exists())
+    } finally { SnapshotFs.deletePath(dir) }
+  }
+
+  @Test
+  fun markerRejectsSymlinksWithoutTouchingTheirTargets() {
+    val dir = tempDir()
+    try {
+      val outside = File(dir, "user-data").apply { writeText("keep") }
+      val target = SnapshotTransaction.markerFile(dir)
+      java.nio.file.Files.createSymbolicLink(target.toPath(), outside.toPath())
+      var threw = false
+      try {
+        SnapshotTransaction.writeMarker(dir, SnapshotTransaction.Marker(SnapshotTransaction.Phase.SWAPPING, "fp", 1L))
+      } catch (e: SnapshotFsException) { threw = true; assertEquals(CODE_MARKER_WRITE, e.code) }
+      assertTrue(threw)
+      assertEquals("keep", outside.readText())
+      assertTrue(java.nio.file.Files.isSymbolicLink(target.toPath()))
+    } finally { SnapshotFs.deletePath(dir) }
+  }
+
   // ── M.3 C（issue #274 ②）：用户面清单必须原子写 + 写后可解析 ─────────────────────
   //
   // 旧实现 `live.writeText(...)` 直接截断目标再写：写到一半被杀 / 磁盘满 ⇒ live 上留下
