@@ -10,8 +10,10 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 PROFILE = re.compile(r'^home/\.dsh/profiles/([^/]+)/cordis\.patch\.yml$')
+PROFILE_DIR = 'home/.dsh/profiles'
+PROFILE_PARENTS = {'home', 'home/.dsh', PROFILE_DIR}
 APP_ID = re.compile(r'\bapplicationId\s*=\s*"([a-zA-Z0-9_.]+)"')
-REQUIRED = {'web', 'headless'}
+REQUIRED = {'web', 'headless', 'headless-bad'}
 MAX_PATCH = 1024 * 1024
 
 
@@ -22,14 +24,29 @@ def verify(snapshot, authoritative, app_id):
     except UnicodeDecodeError:
         return ['authoritative patch is not UTF-8']
     for key in ('bashPath', 'prefix', 'home', 'cwd'):
-        values = re.findall(r'^\s*' + key + r':\s*(\S+)\s*$', text, re.M)
+        values = re.findall(r'^' + key + r':\s*(\S+)\s*$', text, re.M)
         prefixes = (f'/data/data/{app_id}/files/', f'/data/user/0/{app_id}/files/')
         if len(values) != 1 or not values[0].startswith(prefixes) or posixpath.normpath(values[0]) != values[0]:
             errors.append(f'{key} must have one application-owned files path')
     with tarfile.open(snapshot, 'r|xz') as archive:
         for entry in archive:
-            match = PROFILE.fullmatch(posixpath.normpath(entry.name))
+            components = entry.name.split('/')
+            if entry.name.startswith('/') or any(part in {'.', '..'} for part in components):
+                errors.append(f'archive member path is not canonical: {entry.name}')
+                continue
+            normalized_name = posixpath.normpath(entry.name)
+            under_profiles = normalized_name == PROFILE_DIR or normalized_name.startswith(PROFILE_DIR + '/')
+            if (entry.issym() or entry.islnk()) and (
+                normalized_name in PROFILE_PARENTS or under_profiles
+            ):
+                errors.append(f'profile archive path contains a link: {entry.name}')
+            if normalized_name in PROFILE_PARENTS and not entry.isdir():
+                errors.append(f'profile archive parent is not a directory: {entry.name}')
+            match = PROFILE.fullmatch(normalized_name)
             if not match:
+                continue
+            if entry.name != normalized_name:
+                errors.append(f'profile patch path is not canonical: {entry.name}')
                 continue
             profile = match.group(1)
             if profile in found:
@@ -57,7 +74,14 @@ def self_test():
     def archive(path, entries):
         with tarfile.open(path, 'w:xz') as tar:
             for name, data in entries:
-                info = tarfile.TarInfo('home/.dsh/profiles/' + name + '/cordis.patch.yml')
+                archive_name = name if name.startswith(('./', '/')) else 'home/.dsh/profiles/' + name + '/cordis.patch.yml'
+                info = tarfile.TarInfo(archive_name)
+                info.size = len(data)
+                tar.addfile(info, io.BytesIO(data))
+    def archive_raw(path, entries):
+        with tarfile.open(path, 'w:xz') as tar:
+            for name, data in entries:
+                info = tarfile.TarInfo(name)
                 info.size = len(data)
                 tar.addfile(info, io.BytesIO(data))
     with tempfile.TemporaryDirectory(prefix='profile-gate-') as tmp:
@@ -68,25 +92,44 @@ def self_test():
             ([('web', patch)], patch, 'test.app', True),
             ([('web', patch), ('headless', b'changed')], patch, 'test.app', True),
             (good + [('web', patch)], patch, 'test.app', True),
+            ([('web/../web', patch), ('headless', patch), ('headless-bad', b'negative')], patch, 'test.app', True),
+            ([('./home/.dsh/profiles/web/cordis.patch.yml', patch), ('home/.dsh/profiles/headless/cordis.patch.yml', patch), ('home/.dsh/profiles/headless-bad/cordis.patch.yml', b'negative')], patch, 'test.app', True),
+            ([('web', patch), ('headless', patch)], patch, 'test.app', True),
+            ([('web', patch.replace(b'prefix:', b'  prefix:')), ('headless', patch.replace(b'prefix:', b'  prefix:')), ('headless-bad', b'negative')], patch.replace(b'prefix:', b'  prefix:'), 'test.app', True),
             (good, patch, 'wrong.app', True),
             (good, patch.replace(b'/files/usr/bin/bash', b'/files/../../outside'), 'test.app', True),
             ([('web', patch), ('headless', patch), ('headless-bad', patch)], patch, 'test.app', True),
+            ([('web', b'x' * (MAX_PATCH + 1)), ('headless', patch), ('headless-bad', b'negative')], patch, 'test.app', True),
         ]
         for entries, authority, app_id, expect_failure in cases:
             archive(path, entries)
             assert bool(verify(path, authority, app_id)) == expect_failure
         with tarfile.open(path, 'w:xz') as tar:
-            for name in ('web', 'headless'):
+            web = tarfile.TarInfo('home/.dsh/profiles/web/cordis.patch.yml')
+            web.type = tarfile.SYMTYPE
+            web.linkname = 'outside'
+            tar.addfile(web)
+            for name, data in [('headless', patch), ('headless-bad', b'negative')]:
                 info = tarfile.TarInfo('home/.dsh/profiles/' + name + '/cordis.patch.yml')
-                if name == 'web':
-                    info.type = tarfile.SYMTYPE
-                    info.linkname = 'outside'
-                    tar.addfile(info)
-                else:
-                    info.size = len(patch)
-                    tar.addfile(info, io.BytesIO(patch))
+                info.size = len(data)
+                tar.addfile(info, io.BytesIO(data))
         assert verify(path, patch, 'test.app'), 'symlinked profile must fail'
-    print('snapshot profile identity self-test passed: 1 positive, 7 controlled negatives')
+        with tarfile.open(path, 'w:xz') as tar:
+            parent = tarfile.TarInfo('home/.dsh/profiles/web')
+            parent.type = tarfile.SYMTYPE
+            parent.linkname = '/tmp/outside'
+            tar.addfile(parent)
+            for name, data in [('web', patch), ('headless', patch), ('headless-bad', b'negative')]:
+                info = tarfile.TarInfo('home/.dsh/profiles/' + name + '/cordis.patch.yml')
+                info.size = len(data)
+                tar.addfile(info, io.BytesIO(data))
+        assert verify(path, patch, 'test.app'), 'symlinked profile directory must fail'
+        archive_raw(path, [('home/.dsh/profiles/web/cordis.patch.yml', patch),
+                           ('/home/.dsh/profiles/web/cordis.patch.yml', b'alias'),
+                           ('home/.dsh/profiles/headless/cordis.patch.yml', patch),
+                           ('home/.dsh/profiles/headless-bad/cordis.patch.yml', b'negative')])
+        assert verify(path, patch, 'test.app'), 'absolute duplicate profile path must fail'
+    print('snapshot profile identity self-test passed: 1 positive, 14 controlled negatives')
 
 
 def main():
