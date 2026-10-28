@@ -70,9 +70,9 @@ internal object ShellOps {
   /** 嵌套执行体再切一层的深度上限（与引擎侧 `MAX_NESTING` 相同）。 */
   private const val MAX_NESTING = 4
 
-  /** 只有实际命令头的固定 `sh -c` 启动形式可以提供可检查载荷。 */
+  /** 已知 shell 的选项簇尾部含 c 时，才能提供递归检查的脚本载荷。 */
   private val SHELL_C_PAYLOAD = Regex(
-    """^[ \t]*(?:(?:[A-Za-z_][A-Za-z0-9_]*=[^\s]+)[ \t]+)*(?:(?:env|command)[ \t]+)?(?:/system/bin/)?sh[ \t]+-c[ \t]+([\s\S]*)$""",
+    """^[ \t]*(?:(?:[A-Za-z_][A-Za-z0-9_]*=[^\s]+)[ \t]+)*(?:(?:env|command)[ \t]+)?(?:/system/bin/)?sh[ \t]+(?:[+-]o[ \t]+\S+[ \t]+|-[^\s]+[ \t]+)*-[a-zA-Z]*c[ \t]+([\s\S]*)$""",
   )
   /** Opaque script executors cannot be safely classified by command-word matching in restricted screen scopes. */
   private val OPAQUE_EXECUTION = Regex(
@@ -95,8 +95,12 @@ internal object ShellOps {
     """^(?:(?:[A-Za-z_][A-Za-z0-9_]*=[^\s]+)[ \t]+)*(?:command|builtin|exec|env|nohup|nice|timeout|setsid|time|!)(?=[ \t]|$)""",
     RegexOption.IGNORE_CASE,
   )
-  private val SAFE_SHELL_LAUNCHER_HEAD = Regex("""^(?:env|command)[ \t]+(?:/system/bin/)?sh[ \t]+-c[ \t]""")
-  private val TRUSTED_SHELL_PATH_HEAD = Regex("""^/system/bin/sh[ \t]+-c[ \t]""")
+  private val SAFE_SHELL_LAUNCHER_HEAD = Regex(
+    """^(?:env|command)[ \t]+(?:/system/bin/)?sh[ \t]+(?:[+-]o[ \t]+\S+[ \t]+|-[^\s]+[ \t]+)*-[a-zA-Z]*c[ \t]""",
+  )
+  private val TRUSTED_SHELL_PATH_HEAD = Regex(
+    """^/system/bin/sh[ \t]+(?:[+-]o[ \t]+\S+[ \t]+|-[^\s]+[ \t]+)*-[a-zA-Z]*c[ \t]""",
+  )
   private val SHELL_CONTROL_HEAD = Regex("""^(?:(?:[A-Za-z_][A-Za-z0-9_]*=[^\s]+)[ \t]+)*(?:if|then|elif|else|fi|while|until|for|select|case|esac|do|done|function|coproc)(?=[ \t]|$)""")
   private val OPAQUE_DISPLAY_API = Regex("""\b(?:cmd[ \t]+window|wm[ \t]+dump-visible-window-views|(?:am|cmd[ \t]+activity)[ \t]+instrument)\b""", RegexOption.IGNORE_CASE)
   /** A command found by path may be a user-written script that hides screen access from this text scan. */

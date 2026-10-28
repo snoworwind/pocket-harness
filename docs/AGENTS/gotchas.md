@@ -3321,3 +3321,7 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 588. **插件测试子进程继承 production NODE_ENV，React act 测试出现假红（2026-10-28）**
 
     现象：在父进程设置 `NODE_ENV=production` 时，插件测试子进程也进入 production 模式，React 禁用测试用的 `act()`，使本来与被测功能无关的测试报错。真因：`spawnSync` 默认继承父进程环境，门禁没有为测试运行时固定环境。修法：插件测试调用统一合并父环境和调用点附加值，再最后强制 `NODE_ENV=test`；WSL 子进程也显式设置该值。复验：`check-plugin-tests.mjs --self-test` 覆盖 production、只传 `NODE_OPTIONS`、无额外环境三种形态并确认 PATH 保留；移除强制值的受控负控在 production 父进程下按预期失败。当前 macOS 工作树的完整插件门禁还受未构建 `lib`/未安装依赖及 `/private/var` 与 `/var` 路径别名影响，需以准备完成的 CI 复核全套插件。
+
+589. **shell 短选项簇中的安全载荷曾被屏幕范围解析器保守拒绝（2026-10-28）**
+
+    现象：`sh -lc 'echo hi'`、`sh -o errexit -c 'echo hi'` 等常见包装被判 `deny-unparsed`，尽管这类命令可通过识别最终的 `c` 选项安全展开。对真实屏命令仍是拒绝，因此本地复核未确认范围绕过。真因：JS 与 Kotlin 两份载荷正则只覆盖分开的 `-c`，没有按 shell 的短选项簇和 `-o/+o` 前置选项识别载荷。修法：两侧同步识别原有受信入口 `sh` / `/system/bin/sh` 的末尾含 `c` 的短选项簇，再递归检查脚本；`bash`、`su` 和任意路径同名程序继续 fail-closed，不扩充信任边界。复验：S-13a–S-13m 跨语言夹具、bridge 插件全套测试、Kotlin `ShellOpsScreenCommandFixtureTest` 与两侧受控负控通过；源码和桥协议、执行地图已同步。设备验证按用户本轮指示未做；不得据此宣称设备验收或进入发版候选。
