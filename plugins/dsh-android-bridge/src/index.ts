@@ -356,7 +356,7 @@ function engineLevelReady(st: AdbStatus): boolean {
 }
 
 /** 0.13.5 W4：结构化授权事实（设置页与工具层共用，便于 AI 分卡定位失败原因）。 */
-/** ST-23：无障碍在线的新鲜窗口（队列取活心跳与壳侧独立心跳共用同一口径）。 */
+/** 无障碍独立心跳的新鲜窗口。 */
 export const A11Y_FRESH_MS = 20_000
 
 /**
@@ -374,10 +374,9 @@ const SCREEN_SCOPE_PROBE_TTL_MS = 3_000
 export interface ControlGateFacts {
   a11yEnabled: boolean
   /**
-   * ST-23：无障碍在线判定的**来源标注**——queue=控制队列取活心跳新鲜，heartbeat=壳侧独立
-   * 心跳线程新鲜（慢建树场景），off=两条都不新鲜。两口径并存时靠它区分，不再只能看一个布尔。
+   * 无障碍在线判定来源：heartbeat 为服务在场时写入的新鲜心跳，off 为未开启或心跳过期。
    */
-  a11ySource: 'queue' | 'heartbeat' | 'off'
+  a11ySource: 'heartbeat' | 'off'
   fullAccess: boolean
   allowSwitch: boolean
   paired: boolean
@@ -1081,26 +1080,17 @@ export class AndroidPrivilegeService {
     return readShellAdbState()?.connectPort
   }
 
-  /**
-   * ST-23：无障碍在线的**判定来源**。prefs 的 a11yEnabled 会在进程被 force-stop 后变成僵尸
-   * true（onDestroy 不保证执行），所以叠加两类心跳，同一个 20s 新鲜窗口：
-   *  - queue：控制队列最近一次取活（pollAgeMs）新鲜——慢建树的轮次里队列可能长时间没取活；
-   *  - heartbeat：壳侧独立心跳线程写的 live prefs 键 controlHeartbeat 新鲜（防慢建树被误判掉线）；
-   *  - off：都不新鲜 / prefs 未声明 a11yEnabled（fail-closed）。
-   * 两条口径并存时必须能看出走的哪条，故对外同时暴露 {@link a11ySource}。
-   */
-  a11ySource(): 'queue' | 'heartbeat' | 'off' {
+  /** 无障碍服务须有独立心跳；控制队列可在服务缺席时继续取活，不能证明服务在线。 */
+  a11ySource(): 'heartbeat' | 'off' {
     const live = readShellAdbState()
     if (live?.a11yEnabled !== true) return 'off'
-    if (this.#controlQueue && this.#controlQueue.pollAgeMs() < A11Y_FRESH_MS) return 'queue'
     const heartbeat = live.controlHeartbeat
-    if (typeof heartbeat === 'number' && Number.isFinite(heartbeat) && Date.now() - heartbeat < A11Y_FRESH_MS) {
-      return 'heartbeat'
-    }
+    const age = typeof heartbeat === 'number' ? Date.now() - heartbeat : Number.NaN
+    if (Number.isFinite(age) && age >= 0 && age < A11Y_FRESH_MS) return 'heartbeat'
     return 'off'
   }
 
-  /** 0.13.5 W4：无障碍服务是否**真的活着**（ST-23：队列心跳或独立心跳任一新鲜即可）。 */
+  /** 无障碍服务是否有新鲜心跳。 */
   a11yEnabled(): boolean {
     return this.a11ySource() !== 'off'
   }
@@ -1595,8 +1585,8 @@ function tools(svc: AndroidPrivilegeService, shellFace?: { resolve?(spec: Record
             '无障碍通道：' + (gates?.a11yEnabled
               ? '已开启（可用·来源 ' + String(gates?.a11ySource ?? 'unknown') + '）'
               : '未开启')
-              + (control?.tokenConfigured === true ? ' · 令牌已配置' : '')
-              + `${queueFresh ? ' · 壳侧轮询在线' : ' · 壳侧轮询离线'}`,
+              + (control?.tokenConfigured === true ? ' · 令牌已配置' : ''),
+            queueFresh ? '壳侧轮询：在线' : '壳侧轮询：离线',
             `ADB 通道：${gates?.adbReady ? '已就绪' : `未就绪（完全访问=${String(gates?.fullAccess)} 允许访问=${String(gates?.allowSwitch)} 配对=${String(gates?.paired)} 无线调试=${String(gates?.wirelessDebug)}）`}`,
             // A2（0.14.1 缺陷）：Shizuku 事实必须有**自己的行**。旧实现只按 adbReady 三选一，
             // 并把 Shizuku 的 message 挂在「ADB 提示：」标签下——唯一用来诊断通道的工具却把

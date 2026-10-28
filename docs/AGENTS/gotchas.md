@@ -3245,3 +3245,7 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 562. **升级 Linux bootstrap peer metadata 后未同步来源摘要清单，PR Linux 验证按预期拒绝（2026-10-27）**
 
     现象：PR #148 的 `build-linux-assets` 在 `check-linux-sources.mjs --self-test` 的仓库实体验证阶段报 `Linux source digest mismatch: plugins/dsh-linux-bootstrap/package-lock.json`。真因：Harness RC3 升级同步了 bootstrap 的 `package.json` 与 lockfile peer 版本，但 `linux-source-manifest.json` 的双份字节摘要仍指向 RC2；单测通过只证明负控有效，不代表仓库输入摘要已更新。修法：逐字节确认两文件只改变 client-settings peer 元数据，重算并同步 manifest 的 additional-source 与全局文件摘要，并更新对应 local-patch 理由；不放宽或跳过来源校验。复验：待 CI 对 PR #148 重跑 `build-linux-assets` 验证。
+
+563. **控制队列取活不能证明无障碍服务在线（2026-10-28）**
+
+    现象：残留的 `a11yEnabled=true` 与新鲜队列取活会让引擎报告无障碍可用，即使服务已经解绑。真因：控制队列由前台引擎服务独立承载，无障碍缺席也会轮询。修法：只接受启用标记和 20 秒内的独立心跳，拒绝未来时间戳；轮询状态单独展示。复验：OrbStack Linux Node 24 桥插件 176 项通过，含队列新鲜而服务心跳陈旧及未来时间戳反例。当前无在线设备，CDP 与 ADB 层未验收。历史坑 46 的队列判据已被本条取代。
