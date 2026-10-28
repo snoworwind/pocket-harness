@@ -1857,7 +1857,7 @@ flowchart LR
 - **嵌套与线程**：
   1. `build-apk-013.ps1`【PowerShell 主线程】→ `node scripts/check-*.mjs`【每个门禁一个短命进程，串行，`$LASTEXITCODE` 判定】→ 门禁内部多为单线程流式读 tar（`scripts/check-runtime-assets.mjs` 另 `spawnSync` 跑行为回归测试）。
   2. `check-release-gates.mjs --run`【node 主线程】→ `spawnSync(process.execPath, [scripts/<gate>])`【逐个子进程，串行，`maxBuffer` 128MB】→ 子进程 stdout 回写父进程，父进程用 `/SKIP=(\d+)/` 累计 SKIP（`scripts/check-release-gates.mjs:246`）。
-  3. pr-gate `static`【GitHub runner 的 bash 步骤，串行】→ `npm install/npm run build`【子进程】→ `node scripts/check-plugin-tests.mjs`【该门禁再 `spawnSync` 每个插件的 `node --test` 或 `npx vitest`】（`scripts/check-plugin-tests.mjs:54`）。CI 的 `static` 与 `compile` 两个作业并行，互不阻塞。
+  3. pr-gate `static`【GitHub runner 的 bash 步骤，串行】→ `npm install/npm run build`【子进程】→ `node scripts/check-plugin-tests.mjs`【该门禁再 `spawnSync` 每个插件的 `node --test` 或 `npx vitest`，强制测试子进程 `NODE_ENV=test`，避免父进程 production 环境关闭 React `act()`】（`scripts/check-plugin-tests.mjs`）。CI 的 `static` 与 `compile` 两个作业并行，互不阻塞。
 - **耦合**（点名符号）：
   - **唯一声明处**：`GATES` / `CI_GATES` / `ALL_GATES`（`scripts/check-release-gates.mjs:28`/`:106`/`:107`）与云端链的 `GATE_SCRIPTS`（`scripts/build-apk.mjs:61`）；`CI_GATES` 决定两仓 CI 必须出现的门禁名，`ALL_GATES` 决定两条链与发布链。
   - **注入集单一常量**：`scripts/plugin-dirs.json` 的 `dirs`/`externals` 被 `scripts/build-apk-013.ps1:174`、`scripts/build-apk.mjs`、`scripts/check-release-gates.mjs:164` 共同消费（`check-patch-mirror.mjs` 自 2026-10-15 起不再读它）；`scripts/release-plugin-src-gaps.json` 只承载 `$pluginSrcs ⊇ dirs` 的显式差集理由。
@@ -1917,7 +1917,7 @@ flowchart LR
 | check-strip-noop.mjs | 剥离清单项在产物里必须不存在（反 no-op） | 链（注入后 tar）/快照构建 `--stage` | 剥离键名写错或被后续步骤写回 | 需快照 |
 | check-combo-cache.mjs | 注入后每条 `client.js` 有 sha256 命中的缓存条目 | 仅链 | 降级步骤排在 combo 预计算之后 → 键全 miss（fail-open 回退） | 需注入后快照 |
 | check-tool-surface-budget.mjs | 模型面工具 name+description+parameters 字节 ≤ 基线 +2%（注册集 + 初始可见集） | CI（先 build 八个包）/链 | 新增工具使每会话固定预算膨胀；需归组掩蔽或改基线 | 需 plugins/*/lib |
-| check-plugin-tests.mjs | 每个插件 `test/*.test.mjs` 真跑且有效通过数 > 0（全 skip 判红） | CI（先 build）/链 | 测试全 skip；依赖没装（报错与真失败混报）；跨仓路径读不到文件 | 需 plugins/*/lib |
+| check-plugin-tests.mjs | 每个插件 `test/*.test.mjs` 真跑且有效通过数 > 0（全 skip 判红）；测试子进程固定 `NODE_ENV=test` | CI（先 build）/链 | 测试全 skip；依赖没装（报错与真失败混报）；跨仓路径读不到文件；production 环境关闭 React `act()` | 需 plugins/*/lib |
 | check-boot-budget.mjs | 冷启动 C1-C6（首个 HTTP 响应、事件循环 p99、compose 次数/同步块） | CI/链默认档；真检需设备产物 | C3 compose ≤2；C4 需采到 loop histogram；C6 需真实 TOTAL 耗时；无产物 → SKIP 只跑自证 | 需设备产物（boot-segments.log + P1 探针）；TOTAL 延迟 250ms 收口，LISTEN 前 TOTAL 在壳侧暂存并随 LISTEN 判据落盘 |
 | check-snapshot-builder-output.mjs | 构建器产出面构造在场 + slim 配置键无死键 + 与打包链路径同源 | CI/链 | 归档段被删 → 构建器 exit 0 不产 tar，静默复用陈旧快照 | 否 |
 | check-browser-syntax-floor.mjs | 发往浏览器的 bundle 不得含老内核解析不了的语法（AST + 双 arm 差分） | CI 只 `--self-test`；链 `--degrade`/`--scan` | vendor 无构建源未降级；降级排在 combo 预计算之后；顺序反了 13 条 combo 键必 miss | 真扫需构建树/快照 |

@@ -342,6 +342,7 @@ bootstrap 的 package-lock.json 与 package.json 一样属于逐字节来源输�
 - 证据落 `.deploy-tmp/local-gate/<tree12>.json` 与同名 `.log`：commit、tree、base、分类结果、逐步骤 rc/耗时、工具链钉值、verdict。`--dry-run` 只列将跑的步骤。
 - 镜像内的 `/workspace/local.properties` 以只读挂载覆盖为 `sdk.dir=/opt/android-sdk`，宿主的 macOS SDK 路径不会漏进容器，仓库文件也不被改写。
 - Gradle 与 pnpm 缓存用命名卷 `pocket-harness-gate-gradle` / `pocket-harness-gate-pnpm` 复用，热跑显著快于冷跑。
+- `scripts/check-plugin-tests.mjs` 对每个插件测试子进程强制 `NODE_ENV=test`（保留调用方 PATH 等环境）；可用 `node scripts/check-plugin-tests.mjs --self-test` 检查生产父环境、仅传 `NODE_OPTIONS` 和无额外环境三种启动形态。
 
 **CI 开关**：`pr-gate.yml` 的每个 job 都带 `vars.PR_GATE_MODE == 'on'`，仓库变量当前为 `on`（2026-10-20 起）。变量未设置时全部 job 跳过、PR 上只显示 skipped，可在配额或故障期间临时静默而不产生红色噪声。
 
