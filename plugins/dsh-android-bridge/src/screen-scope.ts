@@ -98,6 +98,8 @@ export interface DisplayOption {
 const SHORT_DISPLAY_OPTION = /(?:^|[ \t])-d[ \t]*(\d+)(?=$|[ \t])/g
 const LONG_DISPLAY_OPTION = /(?:^|[ \t])(--display|--display-id)[ \t=]+(\d+)/g
 const COMPACT_SHORT_DISPLAY_OPTION = /^-d(\d+)$/
+// `-d=7` can be interpreted as the default display after the value is parsed as `=7`.
+const MALFORMED_DISPLAY_OPTION = /(?:^|[ \t])-d(?:[ \t]*=[ \t]*\S|(?![0-9 \t\r\n])\S)/
 
 /** 扫描命令里出现的全部目标屏参数（含三种拼写，值原样字符串）。 */
 export function displayOptionsIn(text: string): DisplayOption[] {
@@ -163,7 +165,21 @@ const MAX_NESTING = 4
 /** Commands that can execute opaque scripts or stdin; restricted screen scopes cannot inspect their effects. */
 const OPAQUE_EXECUTION = /^(?:(?:[A-Za-z_][A-Za-z0-9_]*=[^\s]+)[ \t]+)*(?:eval|source|xargs|trap|awk|gawk|mawk|perl|python(?:[0-9.]*)?|node(?:js)?|ruby|php|lua|tclsh|js|alias|hash|read|run-as|runcon|chroot|app_process|dalvikvm|\.)(?:[ \t]|$)|(?:^|[ \t])find[ \t]+[^\n]*[ \t]-(?:exec|ok)(?:dir)?(?:[ \t]|$)|(?:^|[ \t])tar[ \t]+[^\n]*[ \t]--to-command(?:[ =]|$)/i
 const SHELL_INTERPRETER = /^(?:[^\s]*\/)?(?:sh|bash|mksh|ash|dash|zsh|busybox|toybox|su)(?=[ \t]|$)/i
-const COMMAND_LAUNCHER_HEAD = /^(?:(?:[A-Za-z_][A-Za-z0-9_]*=[^\s]+)[ \t]+)*(?:command|builtin|exec|env|nohup|nice|timeout|setsid|time|!)(?=[ \t]|$)/i
+const COMMAND_LAUNCHER_HEAD = /^(?:(?:[A-Za-z_][A-Za-z0-9_]*=[^\s]+)[ \t]+)*(?:command|builtin|exec|env|nohup|timeout|setsid|time|!)(?=[ \t]|$)/i
+const INTERPRETER_NAMES = new Set(['sh', 'bash', 'mksh', 'ash', 'dash', 'zsh', 'busybox', 'toybox', 'su'])
+const INTERPRETER_WRAPPERS = new Set([
+  'env', 'timeout', 'nohup', 'xargs', 'busybox', 'toybox', 'command', 'exec',
+  'nice', 'ionice', 'taskset', 'setsid', 'chrt', 'numactl', 'unshare',
+  'stdbuf', 'time', 'flock', 'watch',
+])
+const INTERPRETER_WRAPPER_VALUE_OPTIONS: Readonly<Record<string, ReadonlySet<string>>> = {
+  nice: new Set(['-n', '--adjustment']),
+  ionice: new Set(['-c', '--class', '-n', '--classdata', '-p', '--pid']),
+  taskset: new Set(['-c', '--cpu-list', '-p', '--pid']),
+  numactl: new Set(['--physcpubind', '--cpunodebind', '--membind', '--interleave', '--preferred']),
+  stdbuf: new Set(['-i', '-o', '-e']),
+  watch: new Set(['-n', '--interval', '-d', '--differences', '-t', '--precise']),
+}
 const SHELL_EXECUTABLE = String.raw`(?:\/system\/bin\/)?sh`
 const SHELL_C_OPTION_PREFIX = String.raw`(?:[+-]o[ \t]+\S+[ \t]+|-[^\s]+[ \t]+)*-[a-zA-Z]*c`
 const SAFE_SHELL_LAUNCHER_HEAD = new RegExp(
@@ -284,6 +300,57 @@ function shellCommandArgument(text: string): string | null {
   if (first === null) return null
   if (first.word !== '--') return first.word
   return firstShellArgument(first.rest)?.word ?? null
+}
+
+/** Detect a wrapper chain that reaches a shell or opaque program while allowing ordinary wrapped commands. */
+function interpreterPayloadUnparsed(segment: string): boolean {
+  let rest = segment.trim()
+  let wrapped = false
+  let activeWrapper = ''
+  let optionValueNext = false
+  for (let guard = 0; guard < 16 && rest.length > 0; guard += 1) {
+    const first = firstShellArgument(rest)
+    if (first === null || first.word.length === 0) return wrapped
+    const { word } = first
+    const base = word.replace(/^.*\//, '')
+    if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(word)) {
+      rest = first.rest.trim()
+      continue
+    }
+    if (INTERPRETER_WRAPPERS.has(base)) {
+      wrapped = true
+      activeWrapper = base
+      // flock consumes a lock path before its command; without a complete utility-specific parse, fail closed.
+      if (base === 'flock') return true
+      rest = first.rest.trim()
+      continue
+    }
+    if (!wrapped) return false
+    if (optionValueNext) {
+      optionValueNext = false
+      rest = first.rest.trim()
+      continue
+    }
+    if (/[ \t\r\n]/.test(word)) return true
+    if (word.startsWith('-')) {
+      const option = word.split('=')[0]
+      const hasInlineValue = word.startsWith('--') ? word.includes('=') : word.length > 2
+      optionValueNext = !hasInlineValue && (INTERPRETER_WRAPPER_VALUE_OPTIONS[activeWrapper]?.has(option) ?? false)
+      rest = first.rest.trim()
+      continue
+    }
+    if (/^(?:0[xX][0-9a-fA-F]+|\d+(?:\.\d+)?|\d+(?:,\d+)*)$/.test(word)) {
+      rest = first.rest.trim()
+      continue
+    }
+    if (base === '.' || base === 'source' || INTERPRETER_NAMES.has(base)) {
+      // Direct env/command -c payloads are already expanded by splitCommandSegments; wrapped -c stays opaque.
+      return !((activeWrapper === 'env' || activeWrapper === 'command') && base === 'sh' && SHELL_C_PAYLOAD.test(segment))
+    }
+    if (OPAQUE_EXECUTION.test(word) || word.includes('/')) return true
+    return false
+  }
+  return wrapped && rest.length > 0
 }
 
 /** A runtime expansion in command position changes which executable runs. */
@@ -433,6 +500,7 @@ export function splitCommandSegments(command: string): CommandSegments {
       || SHELL_CONTROL_HEAD.test(head)
       || COMMAND_GLOB_HEAD.test(head)
       || (EXECUTABLE_PATH_HEAD.test(head) && !TRUSTED_SHELL_PATH_HEAD.test(head))
+      || interpreterPayloadUnparsed(segment)
       || (COMMAND_LAUNCHER_HEAD.test(head) && !(SAFE_SHELL_LAUNCHER_HEAD.test(head) && SHELL_C_PAYLOAD.test(segment)))
       || EXECUTION_ENV_OVERRIDE.test(view)
       || (SHELL_INTERPRETER.test(head) && !SHELL_C_PAYLOAD.test(segment))
@@ -583,14 +651,19 @@ const SCREEN_COMMAND_FAMILIES: readonly ScreenCommandFamily[] = [
   {
     name: 'input',
     // Input sources and new verbs must not hide this command's screen access.
-    pattern: /\binput\b/i,
+    // Require an argv after `input`: this keeps filesystem paths such as `/dev/input` out of the command family.
+    pattern: /\binput[ \t]+\S+/i,
     targetFlags: ['-d'],
   },
   { name: 'wm', pattern: /\bwm[ \t]+(?:size|density)(?=[ \t]|$)/i, targetFlags: ['-d'] },
   { name: 'wm-unscoped', pattern: /\bwm[ \t]+(?!(?:size|density)(?=[ \t]|$))[^ \t]+/i, targetFlags: [] },
   // `uiautomator dump` 没有目标屏参数：dump 的就是**默认屏**的语义树 ⇒ 无法自证，恒拒。
   { name: 'uiautomator', pattern: /\buiautomator\b/i, targetFlags: [] },
-  { name: 'dumpsys', pattern: /\bdumpsys[ \t]+(?:window|display|input)\b/i, targetFlags: [] },
+  { name: 'dumpsys', pattern: /\bdumpsys[ \t]+(?:window|display|input|activity)\b/i, targetFlags: [] },
+  { name: 'sendevent', pattern: /\bsendevent\b/i, targetFlags: [] },
+  { name: 'getevent', pattern: /\bgetevent\b/i, targetFlags: [] },
+  // `cmd display` uses selectors outside the registered virtual-display identity contract, so it cannot self-certify.
+  { name: 'cmd-display', pattern: /\bcmd[ \t]+display\b/i, targetFlags: [] },
   // `am` / `cmd activity` 的启动显示参数是 `--display`；`-d` 是 Intent data，**不得**作为目标屏凭据（见上）。
   { name: 'am', pattern: /\bam[ \t]+(?:start(?=[ \t]|$)|start-activity(?=[ \t]|$)|start-in-vsync(?=[ \t]|$))/i, targetFlags: ['--display'] },
   { name: 'am-unscoped', pattern: /\bam[ \t]+(?:force-stop|kill|instrument|startservice|start-service|startforegroundservice|startfgservice|start-foreground-service|start-fg-service|broadcast)\b/i, targetFlags: [] },
@@ -679,6 +752,7 @@ export function screenCommandVerdict(
     if (isRuntimeCommandName(segment)) return 'deny-unparsed'
     const bare = scopeCommandText(segment) ?? ''
     const options = displayOptionsIn(bare)
+    if (MALFORMED_DISPLAY_OPTION.test(bare)) return 'deny-uncertified-target'
     const families = SCREEN_COMMAND_FAMILIES.filter(
       (family) => family.pattern.test(stripDisplayOptions(bare)),
     )
@@ -780,6 +854,7 @@ export function realScreenAdbCommandDenied(
     if (parsed.unparsed) return realOnlyScreenScopeMessage()
     for (const segment of parsed.segments) {
       const bare = scopeCommandText(segment) ?? ''
+      if (MALFORMED_DISPLAY_OPTION.test(bare)) return realOnlyScreenScopeMessage()
       const options = displayOptionsIn(bare)
       const families = SCREEN_COMMAND_FAMILIES.filter(
         (family) => family.pattern.test(stripDisplayOptions(bare)),
@@ -800,7 +875,7 @@ export function realScreenAdbCommandDenied(
   const verdict = screenCommandVerdict(command, ownedTargetPredicate(options))
   if (verdict === 'allow') return null
   const head = '用户当前开放屏幕范围为 virtual-only，不允许读取或操作真实屏内容'
-    + '（screencap/screenrecord/uiautomator/input/wm/dumpsys window|display|input/am/cmd activity/monkey）。'
+    + '（screencap/screenrecord/uiautomator/input/wm/dumpsys window|display|input|activity/am/cmd activity|display/monkey/sendevent/getevent）。'
   if (verdict === 'deny-unparsed') {
     return head + '本条命令含无法安全解析的 shell 语法、脚本执行器或屏幕命令别名，无法核对目标屏，故拒绝。'
       + '请改为直接、可静态核对的命令后重试。'

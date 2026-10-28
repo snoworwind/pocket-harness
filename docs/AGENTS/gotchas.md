@@ -3357,3 +3357,11 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 597. **无障碍状态缺少来源区分，会把未知/陈旧诊断成已关闭（2026-10-29）**
 
     现象：壳侧 SharedPreferences 没有 `a11yEnabled` 键、文件不可读或心跳过期时，状态工具仍显示「未开启」，调用方无法区分用户明确关闭与服务状态未知；能力查询异常也会被折成 `a11y: false`。真因：解析器把缺失布尔值默认为 false，诊断只保留 `heartbeat/off` 两态。修法：区分 `heartbeat/disabled/stale/unknown`，只让非未来且 20 秒内的独立无障碍心跳开放路由；保留带符号心跳年龄，未来时间戳继续 fail-closed。能力与路由诊断只对明确 disabled 输出 `available:false`，未知/陈旧提示调用方按实际结构化结果选备用路径。复验：bridge 全套测试、状态登记、桥对称和代码地图通过；本地完整工具输出 schema 门禁因引擎校验器缺席记为 `SKIP=1`，需由 PR Gate 强制运行；设备验证按用户要求未做，本改动尚不构成发布验收。
+
+598. **包装器和替代 CLI 可藏住真实屏访问，畸形 -d 也可能回落默认屏（上游 #785/#788，2026-10-29）**
+
+    现象：受限范围的 raw shell 门只识别既有命令族；`dumpsys activity` 可输出 View Hierarchy/bounds，`sendevent`/`getevent` 可读写默认输入设备，`cmd display` 可操作没有本仓身份认证的显示目标。包装器后的 shell/脚本解释器也可能通过 stdin 或文件运行；非屏幕命令里的 `echo -d=7`、`ls -dx` 曾因既无可抽取 selector 又未命中屏幕命令而放行。`input` 的裸单词匹配还会把 `/dev/input` 这类文件路径误识别成 input CLI。
+
+    真因：引擎与壳侧命令族表都漏了这些替代访问面；脚本扫描器只检查段首解释器，无法遍历可识别包装器后的命令；`-d=7` 不符合受支持的数值参数格式，却被错误地等同于“没有目标参数”。修法：两侧同步加入 `dumpsys activity`、`sendevent`、`getevent`、`cmd display` 的无可认证目标家族；对包装器链后的 shell、su、文件路径和不透明解释器 fail-closed，普通 `nice echo/getprop` 仍保留可用；显式拒绝畸形 `-d=...`/`-dx`，并将 input 词面改为要求 argv。`cmd window` 继续按多显示器窗口接口拒绝，`wm user-rotation` 由既有 `wm-unscoped` 拦截，不采用上游放宽语义。
+
+    复验：插件 screen-scope 测试与 `ShellOpsScreenCommandFixtureTest` 共读新增反例，涵盖 `nice sh/su/awk`、`taskset 0xff sh`、`env -S`、命令族拒绝、普通命令正控及 `/dev/input` 路径正控；real-only 另固定畸形 selector 拒绝。设备验证按用户要求未做，不能作为发版验收。
