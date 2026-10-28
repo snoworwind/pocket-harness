@@ -164,50 +164,37 @@ internal object SnapshotTransaction {
 
   fun previousRoot(filesDir: File): File = File(filesDir, PREVIOUS_NAME)
 
-  /**
-   * 写 marker（事务 journal）。**必须原子**，且**失败必须中止本次事务**。
-   *
-   * 【issue #273 ② 修复】旧实现三步：
-   *   tmp.writeText(text) → SnapshotFs.deletePath(target) → if (!tmp.renameTo(target)) { … }
-   * 中间那次 `deletePath(target)` 是**纯粹的多余窗口**：`rename` 本来就能覆盖目标文件，
-   * 先删只会制造一个「marker 已消失、新 marker 还没写上」的间隙。该间隙里进程被杀 ⇒
-   * **本次事务再无 journal** ⇒ 下次启动读不到 marker，既不会前滚也不会回滚，
-   * live 树停在半合并态（正是 #273 描述的丢数据形态）。
-   *
-   * 现在：① 先写 tmp（原样保留，它让「写一半被杀」最多留下一个可清理的 tmp）；
-   *       ② 直接 rename 覆盖目标，不再预删；
-   *       ③ rename 失败（个别挂载）才退化为直写——此时目标**本来就不存在**（见 ②），
-   *          直写等价于「创建」，不存在「先删后写」的窗口。
-   *
-   * 另：marker 是恢复权威，**写不进去就绝不能继续动树**。旧实现把这个失败咽掉，
-   * 调用方带着「可能没有 journal」的状态继续 replaceEntry——那是最危险的一种继续。
-   * 现在失败即抛 [SnapshotFsException] code=`snapshot-marker-write`，由调用方走正常失败路径。
-   *
-   * @throws SnapshotFsException code=`snapshot-marker-write` —— 写不进 journal，事务不得继续。
-   */
-  fun writeMarker(filesDir: File, marker: Marker) {
+  /** Journal publication must preserve the old recovery authority on any failure. */
+  fun writeMarker(
+    filesDir: File,
+    marker: Marker,
+    publish: (File, File) -> Boolean = { source, target -> SnapshotFs.atomicReplace(source, target) },
+  ) {
     val text = render(marker)
     val tmp = File(filesDir, TMP_MARKER_NAME)
     val target = markerFile(filesDir)
+    var ownsTmp = false
     try {
-      // ① 完整内容先落 tmp（同一个 filesDir，rename 必在同一文件系统内）。
-      tmp.writeText(text)
-      // ② 原子覆盖目标：**不再先删**（见上方注释）。
-      if (!tmp.renameTo(target)) {
-        // 个别挂载不支持 rename 覆盖；此时目标只可能是「不存在」（没有任何路径删过它），
-        // 直写等价于创建，不留窗口。
-        target.writeText(text)
-        SnapshotFs.deletePath(tmp)
+      for (path in listOf(target, tmp)) {
+        if (Files.exists(path.toPath(), NOFOLLOW_LINKS) && !Files.isRegularFile(path.toPath(), NOFOLLOW_LINKS)) {
+          throw IOException("Transaction journal path is not a regular file: " + path.absolutePath)
+        }
       }
+      ownsTmp = true
+      FileOutputStream(tmp).use { output ->
+        output.write(text.toByteArray(Charsets.UTF_8))
+        output.flush()
+        output.fd.sync()
+      }
+      if (!publish(tmp, target)) throw IOException("transaction journal publication failed")
+      ownsTmp = false
     } catch (t: Throwable) {
-      // 写不进 journal = 事务不得继续：继续动树就是「可能没有恢复点」。
-      SnapshotFs.deletePath(tmp)
+      if (ownsTmp) SnapshotFs.deletePath(tmp)
       if (t is SnapshotFsException) throw t
       throw SnapshotFsException(
         code = CODE_MARKER_WRITE,
         residue = listOf(target),
-        message = "写事务 journal 失败，已中止本次事务（marker 是恢复权威，写不进去就不能继续动树）："
-          + target.absolutePath + "（" + (t.message ?: t.javaClass.simpleName) + "）",
+        message = "写事务 journal 失败，已中止本次事务：" + target.absolutePath + "（" + (t.message ?: t.javaClass.simpleName) + "）",
         cause = t,
       )
     }

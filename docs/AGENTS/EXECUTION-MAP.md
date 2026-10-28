@@ -432,6 +432,8 @@ Linux 发现补充（P04，坑 373）：bootstrap `index.js` 串行发现 → `g
 |---|---|---|---|
 | K01 | 引擎进程与快照面 | EngineStartFlow 在工作线程调 refreshSnapshot/startEngine/engineProcessAlive，Activity 侧只传 Activity 与 pickToken | app/src/main/java/com/snoworwind/pocketharness/EngineStartFlow.kt:408 |
 | K01 | 快照事务（跨进程真源） | 0.14.8 P1：启动请求与安全模式重启都不得在刷新窗口内被静默丢弃。判据 = 事务 journal（`SnapshotTransaction.readMarker(filesDir)`，跨进程）而不是本 Activity 实例的内存态所有权；`start()`/`restart()` 的 destroyed 与 running 必须分开处置，安全模式重启在**停旧引擎之前**先判事务 | app/src/main/java/com/snoworwind/pocketharness/EngineStartFlow.kt:659；app/src/main/java/com/snoworwind/pocketharness/EngineManager.kt:211 |
+
+K01 journal 发布：`SnapshotTransaction.writeMarker` 拒绝目标或临时路径为非普通文件，写入并同步临时文件后才替换，失败不得直接截断旧 journal；模拟器三层验收仍未完成。
 | K01 | 引擎鉴权与探活 | HTTP 探活成功后注入首屏 cookie 并设置 `engineHttpReady`；`showWeb` 才发起首次导航，原生引导页保持到首个引擎文档 `onPageCommitVisible`，之后切入 WebView | app/src/main/java/com/snoworwind/pocketharness/MainActivity.kt:306；app/src/main/java/com/snoworwind/pocketharness/MainActivity.kt:1128；app/src/main/java/com/snoworwind/pocketharness/EngineStartFlow.kt:738 |
 | K01 | 前台服务与看门狗 | startEngineService 挂载前台服务，回撤阈值取 WatchdogV2.effectiveFailureCount | app/src/main/java/com/snoworwind/pocketharness/EngineStartFlow.kt:670 |
 | K01 | 诊断落盘 | 启动分段、引导页 stall、HTTP/TLS/渲染进程错误全部经 LogCollector 写壳侧自有文件 | app/src/main/java/com/snoworwind/pocketharness/MainActivity.kt:1113 |
