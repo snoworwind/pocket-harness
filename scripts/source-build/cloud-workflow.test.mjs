@@ -319,3 +319,15 @@ test('draft workflow builds read-only and publishes only this run artifacts as a
   assert.doesNotMatch(draft, /actions\/checkout|build-apk\.mjs|npm |gradle /)
   assert.doesNotMatch(workflow, /run-id:|repository:|workflow_run:|\n  push:/)
 })
+
+test('final injected snapshot is checked against profile identity before APK assembly', () => {
+  const source = readFileSync(new URL('../build-apk.mjs', import.meta.url), 'utf8')
+  const check = text => {
+    const injection = text.indexOf("snapIn = join(work, 'snap-final2.tar.xz')")
+    const call = text.indexOf("run(PYTHON, [gate('check-snapshot-profile-identity.py'), snapIn])")
+    const assembly = text.indexOf("run('node', [gate('check-inject-completeness.mjs'), snapIn])")
+    return injection >= 0 && call > injection && assembly > call
+  }
+  assert.equal(check(source), true)
+  assert.equal(check(source.replace("run(PYTHON, [gate('check-snapshot-profile-identity.py'), snapIn])", '')), false)
+})
