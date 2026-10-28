@@ -542,7 +542,8 @@ K01 journal 发布：`SnapshotTransaction.writeMarker` 拒绝目标或临时路�
 | P02 | 特权 shell 通道 | ADB 面经 execAdbShell 落 shExec、execAdbLine 落 shExec 与 shPull，命令词面在 bridge 侧按屏幕范围再判一次 | plugins/dsh-android-manage/src/index.ts:580 |
 | P02 | 虚拟屏执行面 | 别名枚举走 vdInfo、虚拟屏坐标点击走 vdInput、跨屏拉起走 vdLaunchApp | plugins/dsh-android-manage/src/index.ts:1519 |
 | P02 | 屏幕范围偏好 | guard 每次调用现读用户范围，默认 virtual-only，越界即结构化拒绝并给引导 | plugins/dsh-android-manage/src/index.ts:138 |
-| P02 | 引擎工具面 | defineTool 的 output.schema 与返回值受引擎整值校验，注册完整性由源码级门禁守 | plugins/dsh-android-manage/src/index.ts:2283 |
+| P02 | 引擎工具面 | defineTool 的 output.schema 与返回值受引擎整值校验，14 个工具的注册完整性由源码级门禁守 | plugins/dsh-android-manage/src/index.ts:2541 |
+| P02 | 设备数值事实 | 点击落点与截图尺寸只在壳侧返回完整有限值时输出；WebView 缺席或非有限的视口/滚动数显示为 `?`，附件像素尺寸独立于设备物理尺寸 | plugins/dsh-android-manage/src/index.ts:390, plugins/dsh-android-manage/src/index.ts:1756, plugins/dsh-android-manage/src/index.ts:2280 |
 | P02 | ADBKeyboard 输入法 | 广播 ADB_INPUT_TEXT 与 ADB_CLEAR_TEXT 带 nonce auth，壳侧接收器按 uid 白名单校验并逐条回执 | plugins/dsh-android-manage/src/index.ts:1992 |
 | P02 | 审计面 | priv.audit 写 files/audit/audit.ndjson，与 bridge 和壳侧 ControlAudit 同路径同格式 | plugins/dsh-android-manage/src/index.ts:152 |
 | P02 | vdisplay 工具面 | 失败文案把模型引到 android_vdisplay_input 与 android_vdisplay_status 承接坐标与状态 | plugins/dsh-android-manage/src/index.ts:1268 |

@@ -370,8 +370,8 @@ function tools(ctx: Context, priv: PrivilegeFace) {
   /** 截图工具的规范返回值（与 output.schema 一致；image 在场即内联回图）。 */
   type ShotValue = {
     imagePath: string
-    width: number
-    height: number
+    width?: number
+    height?: number
     denied: boolean
     text: string
     image?: { attachmentId: string; mediaType: string; bytes: number; width: number; height: number; name?: string }
@@ -383,13 +383,19 @@ function tools(ctx: Context, priv: PrivilegeFace) {
    * 图像输入时启用；否则回退到「返回路径」的旧行为（文件已落引擎可读目录，read_image 可用）。
    */
   async function inlineShot(
-    filePath: string, width: number, height: number, exec: ExecLike, channelNote: string,
+    filePath: string, width: number | undefined, height: number | undefined, exec: ExecLike, channelNote: string,
   ): Promise<ShotValue> {
+    // 仅发布成对、有限且为正的设备物理尺寸。未知尺寸不能伪装成 0 坐标基准；附件自身
+    // 的像素宽高仍单独放在 image 子对象中，不能覆盖这里的设备尺寸字段。
+    const sizeFields: { width?: number; height?: number } =
+      typeof width === 'number' && Number.isFinite(width) && width > 0
+        && typeof height === 'number' && Number.isFinite(height) && height > 0
+        ? { width, height }
+        : {}
     const fallback = (why: string): ShotValue => ({
       imagePath: filePath,
       denied: false,
-      width,
-      height,
+      ...sizeFields,
       text: `截图已保存：${filePath}（${channelNote}${why}）`,
     })
     const attachments = ctx.get('attachments') as AttachmentFace | undefined
@@ -422,8 +428,7 @@ function tools(ctx: Context, priv: PrivilegeFace) {
       return {
         imagePath: filePath,
         denied: false,
-        width: ref.width || width,
-        height: ref.height || height,
+        ...sizeFields,
         image: {
           attachmentId: ref.attachmentId,
           mediaType: ref.mediaType,
@@ -432,7 +437,7 @@ function tools(ctx: Context, priv: PrivilegeFace) {
           height: ref.height,
           ...(ref.name === undefined ? {} : { name: ref.name }),
         },
-        text: `截图已内联返回（${channelNote}；设备物理分辨率 ${width}x${height}，${ref.bytes} 字节，临时文件已删除）。`
+        text: `截图已内联返回（${channelNote}；${ref.bytes} 字节，临时文件已删除）。`
           + '图像就在本结果里，无需再调用 read_image；像素坐标换算用归一化 nx/ny。',
       }
     } catch (e) {
@@ -591,12 +596,17 @@ function tools(ctx: Context, priv: PrivilegeFace) {
             if (!priv.execAdbLine) return { imagePath: '', denied: false, text: '无障碍截屏未返回文件路径，且 ADB 通道未接通（无法回落）' }
             adbNote = '（无障碍截屏未返回文件路径——已回落 ADB 通道）'
           } else {
+            const width = typeof data.width === 'number' && Number.isFinite(data.width) && data.width > 0
+              ? data.width : undefined
+            const height = typeof data.height === 'number' && Number.isFinite(data.height) && data.height > 0
+              ? data.height : undefined
+            const size = width === undefined || height === undefined ? undefined : `${width}x${height}`
             return inlineShot(
               data.path,
-              data.width ?? 0,
-              data.height ?? 0,
+              size === undefined ? undefined : width,
+              size === undefined ? undefined : height,
               exec as ExecLike,
-              `无障碍通道，设备物理分辨率 ${data.width ?? '?'}x${data.height ?? '?'}`,
+              `无障碍通道，设备物理分辨率 ${size ?? '?x?'}`,
             )
           }
         }
@@ -660,7 +670,11 @@ function tools(ctx: Context, priv: PrivilegeFace) {
           : isVirtualTarget
             ? `（目标屏 ${screenId}，SurfaceFlinger token）`
             : `（目标屏 ${screenId}，displayId ${targetDisplayId}）`
-        return inlineShot(local, size.w, size.h, exec as ExecLike, `ADB 通道，设备物理分辨率 ${size.w}x${size.h}${scopeNote}${adbNote}`)
+        const sizeKnown = Number.isFinite(size.w) && size.w > 0 && Number.isFinite(size.h) && size.h > 0
+        const width = sizeKnown ? size.w : undefined
+        const height = sizeKnown ? size.h : undefined
+        return inlineShot(local, width, height, exec as ExecLike,
+          `ADB 通道，设备物理分辨率 ${sizeKnown ? `${size.w}x${size.h}` : '?x?'}${scopeNote}${adbNote}`)
       } catch (e) {
         return { imagePath: '', denied: false, text: '截图失败：' + String((e as Error).message) }
       }
@@ -1737,12 +1751,19 @@ return String(value.text ?? '') + (lines.length > 0 ? '\n' + lines.join('\n') : 
         const verdict = await verifyClick(undefined, exec as ExecLike, false)
         // issue #258：回显壳侧所用的归一化基准（basis/basisWidth/basisHeight）。
         const basis = coordBasisNote(r.data)
+        // 壳侧未回显时不输出坐标字段：0,0 是合法左上角，不能拿来代表未知落点。
+        // x/y 必须成对且有限，避免只回一半或 NaN 造成看似可用的结果。
+        const clickedXY = typeof clicked.x === 'number' && Number.isFinite(clicked.x)
+          && typeof clicked.y === 'number' && Number.isFinite(clicked.y)
+          ? { x: clicked.x, y: clicked.y }
+          : undefined
         return {
           ok: true, denied: false, ref: '', id: `norm(${nx!.toFixed(3)},${ny!.toFixed(3)})`, label: '归一化坐标',
-          x: clicked.x ?? 0, y: clicked.y ?? 0,
+          ...(clickedXY ?? {}),
           ...basisFields(r.data),
           text: `已按归一化坐标 (${nx!.toFixed(3)},${ny!.toFixed(3)}) 点击（无障碍通道，实际坐标 `
-            + `${Math.round(clicked.x ?? 0)},${Math.round(clicked.y ?? 0)}，${basis}）；${verdict}`,
+            + (clickedXY === undefined ? '未回显' : `${Math.round(clickedXY.x)},${Math.round(clickedXY.y)}`)
+            + `，${basis}）；${verdict}`,
         }
       }
       let cx = 0; let cy = 0; let hitId = ''; let label = ''
@@ -2256,6 +2277,8 @@ return String(value.text ?? '') + (lines.length > 0 ? '\n' + lines.join('\n') : 
       // D10：返回前按声明字段白名单映射——壳侧多带一个未声明键就会让整条 web_dump 被
       // additionalProperties:false 整值拒绝（声明面与实现面一致，不放宽 items 的 additionalProperties）。
       const nodes = (data.nodes ?? []).map(mapWebNode)
+      const numberLabel = (value: unknown): string =>
+        typeof value === 'number' && Number.isFinite(value) ? String(value) : '?'
       const lines = nodes.map((n) => {
         const flags = [n.disabled === true ? '禁用' : '', n.editable === true ? '可编辑' : '', n.inView === false ? '视口外' : ''].filter(Boolean).join('/')
         return `  ${String(n.ref)} ${String(n.role || n.tag || '')}${flags ? '[' + flags + ']' : ''} "${String(n.text ?? '').slice(0, 40)}" sel=${String(n.sel ?? '')}`
@@ -2268,7 +2291,7 @@ return String(value.text ?? '') + (lines.length > 0 ? '\n' + lines.join('\n') : 
         ...(typeof data.url === 'string' ? { url: data.url } : {}),
         ...(typeof data.title === 'string' ? { title: data.title } : {}),
         nodes: nodes as WebNode[],
-        text: `WebView DOM 快照：${data.title ?? ''} ${data.url ?? ''}（视口 ${data.vw ?? '?'}x${data.vh ?? '?'}，滚动 ${data.scrollY ?? 0}；`
+        text: `WebView DOM 快照：${data.title ?? ''} ${data.url ?? ''}（视口 ${numberLabel(data.vw)}x${numberLabel(data.vh)}，滚动 ${numberLabel(data.scrollY)}；`
           + `命中 ${data.total ?? nodes.length} 个可交互元素，返回 ${nodes.length} 个）\n` + lines.join('\n')
           + '\n点击用 ref=wN，或 css:<选择器> / text:<文本> / role:<role>。',
       }

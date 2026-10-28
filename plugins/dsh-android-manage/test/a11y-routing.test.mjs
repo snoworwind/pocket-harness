@@ -662,3 +662,55 @@ test('act_input 虚拟屏路径：壳侧拒绝时如实转述，不得谎报成�
   assert.equal(r.ok, false, '壳侧说没成，工具面不得说成功')
   assert.match(r.text, /虚拟屏幕尚未创建/)
 })
+
+test('未知值不得编造成 0：归一化点击只在壳侧回显时返回坐标', async () => {
+  const { face } = makeFace({ backend: 'a11y' })
+  const { byName } = applyManage(face)
+  const r = await byName('android_ui_click').execute({ nx: 0.5, ny: 0.5 }, exec)
+  assert.equal(r.ok, true, JSON.stringify(r).slice(0, 160))
+  assert.equal(Object.hasOwn(r, 'x'), false, '未回显时 x 必须缺席，不得伪装成 0')
+  assert.equal(Object.hasOwn(r, 'y'), false, '未回显时 y 必须缺席，不得伪装成 0')
+  assert.match(String(r.text), /实际坐标 未回显/)
+  assert.ok(!/实际坐标 0,0/.test(String(r.text)))
+})
+
+test('未知值不得编造成 0：点击坐标成对校验且拒绝非有限值', async () => {
+  for (const point of [{ x: 540 }, { x: Number.NaN, y: 1200 }, { x: 540, y: Number.POSITIVE_INFINITY }]) {
+    const { face } = makeFace({ backend: 'a11y' })
+    face.controlExec = async (op) => op === 'click'
+      ? { ok: true, data: { done: true, ...point } }
+      : { ok: true, data: { done: true } }
+    const { byName } = applyManage(face)
+    const r = await byName('android_ui_click').execute({ nx: 0.5, ny: 0.5 }, exec)
+    assert.equal(r.ok, true)
+    assert.equal(Object.hasOwn(r, 'x'), false, '不完整或非有限的坐标必须整对缺席')
+    assert.equal(Object.hasOwn(r, 'y'), false, '不完整或非有限的坐标必须整对缺席')
+    assert.match(String(r.text), /实际坐标 未回显/)
+  }
+})
+
+test('壳侧真回显时，归一化点击与 web_dump 必须保留真实数值', async () => {
+  const { face } = makeFace({ backend: 'a11y' })
+  face.controlExec = async (op) => {
+    if (op === 'click') return { ok: true, data: { done: true, x: 540, y: 1200 } }
+    if (op === 'webSnapshot') return { ok: true, data: { ok: true, vw: 412, vh: 915, scrollY: 204, nodes: [] } }
+    return { ok: true, data: { done: true } }
+  }
+  const { byName } = applyManage(face)
+  const click = await byName('android_ui_click').execute({ nx: 0.5, ny: 0.5 }, exec)
+  assert.equal(click.x, 540)
+  assert.equal(click.y, 1200)
+  assert.match(String(click.text), /实际坐标 540,1200/)
+  const dump = await byName('android_web_dump').execute({}, exec)
+  assert.match(String(dump.text).split('\n')[0], /视口 412x915，滚动 204/)
+})
+
+test('web_dump 的未知或非有限尺寸与滚动量统一显示为问号', async () => {
+  const { face } = makeFace({ backend: 'a11y' })
+  face.controlExec = async (op) => op === 'webSnapshot'
+    ? { ok: true, data: { ok: true, vw: Number.NaN, vh: Number.POSITIVE_INFINITY, scrollY: undefined, nodes: [] } }
+    : { ok: true, data: { done: true } }
+  const { byName } = applyManage(face)
+  const r = await byName('android_web_dump').execute({}, exec)
+  assert.match(String(r.text).split('\n')[0], /视口 \?x\?，滚动 \?；/)
+})
