@@ -31,6 +31,57 @@ const fail = (msg) => {
   process.exit(1)
 }
 
+const srcDir = join(ROOT, PLUGIN, 'src')
+const libDir = join(ROOT, PLUGIN, 'lib')
+const mtimeOf = (dir, name) => {
+  try { return statSync(join(dir, name)).mtimeMs } catch { return 0 }
+}
+/** Each top-level TS source must be no newer than its same-name JS output; orphan outputs are irrelevant. */
+const decideStaleness = (pairs) => pairs.some(({ srcMs, libMs }) => libMs === 0 || srcMs > libMs)
+const staleness = () => {
+  const sources = readdirSync(srcDir).filter((name) => name.endsWith('.ts') && statSync(join(srcDir, name)).isFile())
+  const pairs = sources.map((source) => {
+    const output = source.slice(0, -3) + '.js'
+    return { source, output, srcMs: mtimeOf(srcDir, source), libMs: mtimeOf(libDir, output) }
+  })
+  const pair = pairs.find(({ srcMs, libMs }) => libMs === 0 || srcMs > libMs) ?? null
+  return { pairs, pair, stale: pair !== null && decideStaleness(pairs) }
+}
+
+/** 判别力自测：逐源配对，不能让无关的新产物掩盖真正陈旧的配对产物。 */
+const selfTest = () => {
+  const checks = [
+    ['stale source is not masked by a newer unrelated output', decideStaleness([
+      { source: 'a.ts', output: 'a.js', srcMs: 300, libMs: 250 },
+      { source: 'b.ts', output: 'b.js', srcMs: 100, libMs: 200 },
+      { source: '', output: 'orphan.js', srcMs: 0, libMs: 400 },
+    ])],
+    ['missing paired output is stale', decideStaleness([{ source: 'a.ts', output: 'a.js', srcMs: 100, libMs: 0 }])],
+    ['all paired outputs newer are fresh', !decideStaleness([
+      { source: 'a.ts', output: 'a.js', srcMs: 100, libMs: 200 },
+      { source: 'b.ts', output: 'b.js', srcMs: 300, libMs: 400 },
+    ])],
+    ['orphan outputs alone do not make source fresh', decideStaleness([
+      { source: 'a.ts', output: 'a.js', srcMs: 300, libMs: 250 },
+    ])],
+    ['empty source set is fresh', !decideStaleness([])],
+  ]
+  const failed = checks.filter(([, ok]) => !ok)
+  for (const [label, ok] of checks) console.log((ok ? 'PASS' : 'FAIL') + '  [self-test] ' + label)
+  if (failed.length > 0) {
+    console.error('CHECK-PROTOCOL-V2 SELF-TEST FAILED（' + failed.length + '/' + checks.length + ' 项）')
+    process.exit(1)
+  }
+  console.log('CHECK-PROTOCOL-V2 SELF-TEST PASSED（' + checks.length + ' 项）')
+}
+if (process.argv.includes('--self-test')) { selfTest(); process.exit(0) }
+// Normal gate also self-certifies before reading build output, so CI cannot omit the pairing regression.
+{
+  const log = console.log
+  console.log = () => {}
+  try { selfTest() } finally { console.log = log }
+}
+
 if (!existsSync(TEST)) fail(`测试文件缺席：${TEST}`)
 if (!existsSync(join(FIXTURES, 'ui-probe.xml'))) fail(`探针 fixture 缺席：${join(FIXTURES, 'ui-probe.xml')}`)
 if (!existsSync(join(FIXTURES, 'ui-probe.expect.json'))) fail(`冻结基线缺席：${join(FIXTURES, 'ui-probe.expect.json')}`)
@@ -38,38 +89,19 @@ if (!existsSync(LIB)) {
   fail(`构建产物缺席：${LIB}\n  先构建：cd ${PLUGIN} && npm run build（注入链会自动构建，纯门禁场景需手动）`)
 }
 
-/** lib 时效：任一 src/*.ts 比 lib/*.js 新只是**触发**，真伪由重建哈希裁决（0.14.1 W1）。 */
-const newest = (dir, ext) => {
-  let newestMs = 0
-  let newestFile = ''
-  for (const name of readdirSync(dir)) {
-    const full = join(dir, name)
-    const st = statSync(full)
-    if (st.isDirectory()) continue
-    if (!name.endsWith(ext)) continue
-    if (st.mtimeMs > newestMs) { newestMs = st.mtimeMs; newestFile = name }
-  }
-  return { ms: newestMs, file: newestFile }
-}
-const srcDir = join(ROOT, PLUGIN, 'src')
-const libDir = join(ROOT, PLUGIN, 'lib')
-const staleness = () => {
-  const s = newest(srcDir, '.ts')
-  const l = newest(libDir, '.js')
-  return { s, l, stale: s.ms > l.ms }
-}
+/** lib 时效：逐个 src/*.ts 与同名 lib/*.js 比较；mtime 只是触发，真伪由重建哈希裁决（0.14.1 W1）。 */
 const cur = staleness()
 if (cur.stale) {
   const arb = arbitrateFreshness(join(ROOT, PLUGIN), { root: ROOT })
   if (arb.verdict === 'fresh') {
-    console.log('NOTE  src/' + cur.s.file + ' 比 lib/' + cur.l.file + ' 新，但重建逐字节一致（mtime 假阳性，按新鲜继续）')
+    console.log('NOTE  src/' + cur.pair.source + ' 比 lib/' + cur.pair.output + ' 新，但重建逐字节一致（mtime 假阳性，按新鲜继续）')
   } else if (arb.verdict === 'stale') {
     fail(`构建产物陈旧：${arb.detail}
   先构建：cd ${PLUGIN} && npm run build（构建链不代建插件，免得注入中途被重写）`)
   } else {
     // 重建不可裁决（无 typescript / 编译失败 / 产物在 lib 缺席）：本门禁的既有姿态是**不放过**——
     // 它判的正是「跑在 lib 产物上的往返」，产物可信度无从确认时不得判绿。
-    fail(`构建产物过期：src/${cur.s.file} 比 lib/${cur.l.file} 新，且重建不可裁决：${arb.detail}
+    fail(`构建产物过期：src/${cur.pair.source} 比 lib/${cur.pair.output} 新，且重建不可裁决：${arb.detail}
   先构建：cd ${PLUGIN} && npm install && npm run build（构建链不代建插件，免得注入中途被重写）`)
   }
 }
