@@ -122,6 +122,12 @@ test('工具面返回体：递归无 undefined + 无损往返 + 过 schema', () 
   // 队列缺失时 caps 整键不发；shell.caps 显式 null（协议字段，空值是有意的）
   assert.equal('caps' in payload.control.queue, false)
   assert.equal(payload.shell.caps, null)
+  assert.equal(payload.gates.a11yEnabled, false)
+  assert.equal(payload.gates.a11ySource, 'unknown', '缺少壳侧声明不能显示成已确认关闭')
+  const a11yAlternative = payload.route.snapshot.alternative
+  assert.equal(a11yAlternative.source, 'unknown')
+  assert.equal('available' in a11yAlternative, false, '未知状态不能伪装成确认不可用')
+  assert.match(a11yAlternative.missing, /状态未确认/)
 })
 
 test('候选队列存在时 caps 正常透出（不误删真实值）', () => {

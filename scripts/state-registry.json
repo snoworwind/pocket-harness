@@ -59,8 +59,8 @@
       "id": "a11y-control-channel",
       "holder": "壳侧（DeviceControlService）+ 插件 dsh-android-manage",
       "writePath": "dsh-mobile-apk/app/src/main/java/com/snoworwind/pocketharness/DeviceControlService.kt",
-      "sourceOfTruth": "AccessibilityManager 服务在线 + 控制队列轮询心跳",
-      "syncPath": "桥 a11yStatus() 实时读（含队列心跳），不缓存偏好（坑 46 僵尸 a11yEnabled 的根因）",
+      "sourceOfTruth": "壳侧 a11yEnabled 标记 + ControlPoller 心跳；插件只在显式启用且非未来、20 秒内心跳时开放路由，缺失/陈旧来源保留为 unknown/stale",
+      "syncPath": "桥 a11yStatus() 实时读；引擎解析 dsh-adb.xml 并映射 heartbeat/disabled/stale/unknown，未知与陈旧不作关闭事实（坑 46 僵尸 a11yEnabled 的根因）",
       "evidence": {
         "kind": "grep",
         "file": "dsh-mobile-apk/app/src/main/java/com/snoworwind/pocketharness/AndroidBridge.kt",
