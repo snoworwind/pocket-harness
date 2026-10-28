@@ -130,6 +130,26 @@ test('runtime dependency report order is stable while missing links remain a har
       ['@deepseek-ai/z-importer', 'z-dep'],
     ])
 
+    // A package at the correct path with the wrong exact version must not satisfy the pin.
+    writePackage(join(root, 'node_modules', 'a-dep', 'package.json'), { name: 'a-dep', version: '0.9.0' })
+    const savedError = console.error
+    console.error = () => {}
+    try {
+      assert.throws(() => checkDshRuntimeDependencies(root), /dependency presence failed/)
+    } finally { console.error = savedError }
+    writePackage(join(root, 'node_modules', 'a-dep', 'package.json'), { name: 'a-dep', version: '1.0.0' })
+    assert.equal(checkDshRuntimeDependencies(root).dependencyPresence, 'passed')
+    writePackage(join(scope, 'dsh-fs-local', 'package.json'), {
+      name: '@deepseek-ai/dsh-fs-local', version: '1.0.0', dependencies: { koffi: '3.1.1' },
+    })
+    writePackage(join(root, 'node_modules', 'koffi', 'package.json'), { name: 'koffi', version: '3.2.1' })
+    assert.equal(checkDshRuntimeDependencies(root).deliberatelyOverridden.length, 1)
+    writePackage(join(root, 'node_modules', 'koffi', 'package.json'), { name: 'koffi', version: '3.3.0' })
+    console.error = () => {}
+    try { assert.throws(() => checkDshRuntimeDependencies(root), /dependency presence failed/) }
+    finally { console.error = savedError }
+    writePackage(join(root, 'node_modules', 'koffi', 'package.json'), { name: 'koffi', version: '3.2.1' })
+
     writePackage(join(scope, 'a-importer', 'package.json'), {
       name: '@deepseek-ai/a-importer', version: '1.0.0', dependencies: { missing: '1.0.0' },
     })
