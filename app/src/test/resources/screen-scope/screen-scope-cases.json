@@ -976,24 +976,24 @@
       "why": "路径中的 input 只是文件系统参数，不是 input CLI；范围门应按命令与 argv 识别，避免误拒无关目录读取。"
     },
     {
-      "name": "非屏幕命令里的 -d=7 不是虚拟屏凭据且必须拒绝",
+      "name": "非屏幕命令里的 -d=7 不应被屏幕范围门误拦",
       "command": "echo -d=7",
       "ownedTargets": [
         "7",
         "11529215046816944610"
       ],
-      "expect": "deny-uncertified-target",
-      "why": "-d=7 不会按数字 display 选项认证；某些 Android 工具会把 =7 解析为无效值并落到默认屏，不能把未识别选项当作无目标屏命令放行。"
+      "expect": "allow",
+      "why": "该命令不是屏幕操作，屏幕范围门不应解释普通参数中的 -d=7。"
     },
     {
-      "name": "非屏幕命令里的 -dx 畸形短选项也必须拒绝",
+      "name": "非屏幕命令里的 -dx 不应被屏幕范围门误拦",
       "command": "ls -dx",
       "ownedTargets": [
         "7",
         "11529215046816944610"
       ],
-      "expect": "deny-uncertified-target",
-      "why": "短选项 -d 后紧跟非数字字符不能被当成无关参数直接放行；这是目标屏凭据形态不完整的 fail-closed 反例。"
+      "expect": "allow",
+      "why": "该命令不是屏幕操作，屏幕范围门不应解释普通参数中的 -dx。"
     }
   ]
 }

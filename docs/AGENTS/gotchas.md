@@ -3360,8 +3360,8 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 
 598. **包装器和替代 CLI 可藏住真实屏访问，畸形 -d 也可能回落默认屏（上游 #785/#788，2026-10-29）**
 
-    现象：受限范围的 raw shell 门只识别既有命令族；`dumpsys activity` 可输出 View Hierarchy/bounds，`sendevent`/`getevent` 可读写默认输入设备，`cmd display` 可操作没有本仓身份认证的显示目标。包装器后的 shell/脚本解释器也可能通过 stdin 或文件运行；非屏幕命令里的 `echo -d=7`、`ls -dx` 曾因既无可抽取 selector 又未命中屏幕命令而放行。`input` 的裸单词匹配还会把 `/dev/input` 这类文件路径误识别成 input CLI。
+    现象：受限范围的 raw shell 门只识别既有命令族；`dumpsys activity` 可输出 View Hierarchy/bounds，`sendevent`/`getevent` 可读写默认输入设备，`cmd display` 可操作没有本仓身份认证的显示目标。包装器后的 shell/脚本解释器也可能通过 stdin 或文件运行；selector 解析若不先识别屏幕命令，还会把普通 `echo -d=7`、`ls -dx` 参数误当作目标屏凭据。`input` 的裸单词匹配还会把 `/dev/input` 这类文件路径误识别成 input CLI。
 
-    真因：引擎与壳侧命令族表都漏了这些替代访问面；脚本扫描器只检查段首解释器，无法遍历可识别包装器后的命令；`-d=7` 不符合受支持的数值参数格式，却被错误地等同于“没有目标参数”。修法：两侧同步加入 `dumpsys activity`、`sendevent`、`getevent`、`cmd display` 的无可认证目标家族；对包装器链后的 shell、su、文件路径和不透明解释器 fail-closed，普通 `nice echo/getprop` 仍保留可用；显式拒绝畸形 `-d=...`/`-dx`，并将 input 词面改为要求 argv。`cmd window` 继续按多显示器窗口接口拒绝，`wm user-rotation` 由既有 `wm-unscoped` 拦截，不采用上游放宽语义。
+    真因：引擎与壳侧命令族表都漏了这些替代访问面；脚本扫描器只检查段首解释器，无法遍历可识别包装器后的命令；屏幕命令中的 `-d=7` 不符合受支持的数值参数格式，却被错误地等同于“没有目标参数”。修法：两侧同步加入 `dumpsys activity`、`sendevent`、`getevent`、`cmd display` 的无可认证目标家族；对包装器链后的 shell、su、文件路径和不透明解释器 fail-closed，普通 `nice echo/getprop` 仍保留可用；只在已识别的屏幕命令中拒绝畸形 `-d=...`/`-dx`，普通 `echo -d=7` 与 `ls -dx` 保持可用；input 词面要求有 argv。`cmd window` 继续按多显示器窗口接口拒绝，`wm user-rotation` 由既有 `wm-unscoped` 拦截，不采用上游放宽语义。
 
-    复验：插件 screen-scope 测试与 `ShellOpsScreenCommandFixtureTest` 共读新增反例，涵盖 `nice sh/su/awk`、`taskset 0xff sh`、`env -S`、命令族拒绝、普通命令正控及 `/dev/input` 路径正控；real-only 另固定畸形 selector 拒绝。设备验证按用户要求未做，不能作为发版验收。
+    复验：插件 screen-scope 测试与 `ShellOpsScreenCommandFixtureTest` 共读新增反例，涵盖 `nice sh/su/awk`、`taskset 0xff sh`、`env -S`、命令族拒绝、畸形屏幕 selector、普通 `-d` 参数正控及 `/dev/input` 路径正控。设备验证按用户要求未做，不能作为发版验收。

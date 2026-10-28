@@ -275,10 +275,10 @@ internal object ShellOps {
     if (parsed.unparsed) return false
     for (segment in parsed.segments) {
       val bare = scopeCommandText(segment) ?: ""
-      if (MALFORMED_DISPLAY_OPTION.containsMatchIn(bare)) return false
       val options = displayOptionsIn(bare)
       val normalized = stripDisplayOptions(bare)
       val families = SCREEN_FAMILIES.filter { it.pattern.containsMatchIn(normalized) }
+      if (families.isNotEmpty() && MALFORMED_DISPLAY_OPTION.containsMatchIn(bare)) return false
       for (family in families) {
         if (hasUncertifiedSelector(bare, family)) return false
         val relevant = options.filter { it.flag in family.targetFlags }
@@ -383,7 +383,6 @@ internal object ShellOps {
       if (isRuntimeCommandName(segment)) return ScreenCommandVerdict.DENY_UNPARSED
       val bare = scopeCommandText(segment) ?: ""
       val options = displayOptionsIn(bare)
-      if (MALFORMED_DISPLAY_OPTION.containsMatchIn(bare)) return ScreenCommandVerdict.DENY_UNCERTIFIED_TARGET
       val normalized = stripDisplayOptions(bare)
       val families = SCREEN_FAMILIES.filter { it.pattern.containsMatchIn(normalized) }
       if (families.isEmpty()) {
@@ -391,6 +390,7 @@ internal object ShellOps {
         if (options.isNotEmpty()) return ScreenCommandVerdict.DENY_ORPHAN_TARGET_TOKEN
         continue
       }
+      if (MALFORMED_DISPLAY_OPTION.containsMatchIn(bare)) return ScreenCommandVerdict.DENY_UNCERTIFIED_TARGET
       for (family in families) {
         if (hasUncertifiedSelector(bare, family)) return ScreenCommandVerdict.DENY_UNCERTIFIED_TARGET
         if (family.targetFlags.isEmpty()) return ScreenCommandVerdict.DENY_UNCERTIFIED_TARGET

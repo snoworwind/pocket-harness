@@ -752,7 +752,6 @@ export function screenCommandVerdict(
     if (isRuntimeCommandName(segment)) return 'deny-unparsed'
     const bare = scopeCommandText(segment) ?? ''
     const options = displayOptionsIn(bare)
-    if (MALFORMED_DISPLAY_OPTION.test(bare)) return 'deny-uncertified-target'
     const families = SCREEN_COMMAND_FAMILIES.filter(
       (family) => family.pattern.test(stripDisplayOptions(bare)),
     )
@@ -761,6 +760,7 @@ export function screenCommandVerdict(
       if (options.length > 0) return 'deny-orphan-target-token'
       continue
     }
+    if (MALFORMED_DISPLAY_OPTION.test(bare)) return 'deny-uncertified-target'
     for (const family of families) {
       if (hasUncertifiedSelector(bare, family)) return 'deny-uncertified-target'
       if (family.targetFlags.length === 0) return 'deny-uncertified-target'
@@ -854,11 +854,11 @@ export function realScreenAdbCommandDenied(
     if (parsed.unparsed) return realOnlyScreenScopeMessage()
     for (const segment of parsed.segments) {
       const bare = scopeCommandText(segment) ?? ''
-      if (MALFORMED_DISPLAY_OPTION.test(bare)) return realOnlyScreenScopeMessage()
       const options = displayOptionsIn(bare)
       const families = SCREEN_COMMAND_FAMILIES.filter(
         (family) => family.pattern.test(stripDisplayOptions(bare)),
       )
+      if (families.length > 0 && MALFORMED_DISPLAY_OPTION.test(bare)) return realOnlyScreenScopeMessage()
       for (const family of families) {
         if (hasUncertifiedSelector(bare, family)) return realOnlyScreenScopeMessage()
         // Commands without a display selector use Android's physical default display (0).
