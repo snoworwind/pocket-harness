@@ -29,6 +29,85 @@ function findInstalledPackage(engineRoot, fromDir, specifier) {
   return null
 }
 
+const TELEMETRY_RUNTIME_ROOTS = [
+  '@deepseek-ai/dsh-otel',
+  '@deepseek-ai/dsh-session-telemetry-otel',
+]
+const EXACT_VERSION_REQUEST = /^\d+\.\d+\.\d+(?:-[\w.-]+)?(?:\+[\w.-]+)?$/
+
+/** Walk the enabled telemetry consumers' physical dependency lookup tree.
+ *
+ * The first-party scan below checks exact requirements on first-party manifests,
+ * but it does not inspect requirements declared by third-party packages such as
+ * @opentelemetry/sdk-logs. Those transitive exact pins must resolve from the
+ * consumer's own Node lookup path; a stale root copy must not satisfy them.
+ */
+function inspectTelemetryRuntimeClosure(engineRoot, rootNames, platformDead) {
+  const failures = []
+  const deliberatelyAbsent = []
+  const visited = new Set()
+  const queue = []
+  let dependencyCount = 0
+  for (const name of rootNames) {
+    const root = findInstalledPackage(engineRoot, engineRoot, name)
+    if (!root) {
+      failures.push(`${name}: no installed package.json in the deploy tree`)
+      continue
+    }
+    queue.push({ directory: realpathSync(root), chain: [name] })
+  }
+  while (queue.length > 0) {
+    const { directory, chain } = queue.shift()
+    if (!within(engineRoot, directory)) {
+      failures.push(`${chain.join(' -> ')}: telemetry dependency escapes engine root`)
+      continue
+    }
+    if (visited.has(directory)) continue
+    visited.add(directory)
+    const packageFile = join(directory, 'package.json')
+    let manifest
+    try { manifest = JSON.parse(readFileSync(packageFile, 'utf8')) }
+    catch (error) {
+      failures.push(`${chain.join(' -> ')}: package metadata cannot be read (${error.message})`)
+      continue
+    }
+    for (const [dependency, requested] of Object.entries(manifest.dependencies ?? {}).sort(([a], [b]) => compareText(a, b))) {
+      dependencyCount++
+      const nextChain = [...chain, dependency]
+      const installedPath = findInstalledPackage(engineRoot, directory, dependency)
+      if (!installedPath) {
+        if (platformDead.has(dependency)) {
+          deliberatelyAbsent.push(nextChain.join(' -> '))
+          continue
+        }
+        const failure = `${nextChain.join(' -> ')}: no installed package.json in the deploy tree`
+        if (!failures.includes(failure)) failures.push(failure)
+        continue
+      }
+      const installedFile = join(installedPath, 'package.json')
+      let installed
+      try { installed = JSON.parse(readFileSync(installedFile, 'utf8')) }
+      catch (error) {
+        failures.push(`${nextChain.join(' -> ')}: package metadata cannot be read (${error.message})`)
+        continue
+      }
+      if (typeof requested === 'string' && EXACT_VERSION_REQUEST.test(requested)
+        && (installed.name !== dependency || installed.version !== requested)) {
+        const failure = `${nextChain.slice(0, -1).join(' -> ')} -> ${dependency}@${requested}: resolved ${installed.name ?? 'unknown'}@${installed.version ?? 'unknown'}`
+        if (!failures.includes(failure)) failures.push(failure)
+      }
+      queue.push({ directory: realpathSync(installedPath), chain: nextChain })
+    }
+  }
+  return {
+    roots: rootNames,
+    packageCount: visited.size,
+    dependencyCount,
+    deliberatelyAbsent,
+    failures,
+  }
+}
+
 export function checkDshRuntimeDependencies(engineRootArg) {
   const engineRoot = realpathSync(resolve(engineRootArg))
   const scopeRoot = join(engineRoot, 'node_modules', '@deepseek-ai')
@@ -105,6 +184,12 @@ export function checkDshRuntimeDependencies(engineRootArg) {
       })
     }
   }
+  // #656：当前启用的两个遥测服务有精确版本的第三方传递依赖。逐消费者遍历实际
+  // Node 查找路径，不能让归档根目录里的旧 OpenTelemetry 副本遮住消费者所需版本。
+  const telemetryClosure = inspectTelemetryRuntimeClosure(engineRoot, TELEMETRY_RUNTIME_ROOTS, platformDead)
+  for (const failure of telemetryClosure.failures) if (!failures.includes(failure)) failures.push(failure)
+  deliberatelyAbsent.push(...telemetryClosure.deliberatelyAbsent)
+
   resolvedDependencies.sort((a, b) => compareText(a.importer, b.importer)
     || compareText(a.dependency, b.dependency)
     || compareText(a.deployPath, b.deployPath))
@@ -128,12 +213,17 @@ export function checkDshRuntimeDependencies(engineRootArg) {
     failures,
     // 刻意剔除的平台死重（非故障）：声明仍在但包按设计不在树里。计数可见、理由见 slim.json。
     deliberatelyOverridden,
+    telemetryClosure: {
+      roots: telemetryClosure.roots,
+      packageCount: telemetryClosure.packageCount,
+      dependencyCount: telemetryClosure.dependencyCount,
+    },
     deliberatelyAbsentCount: deliberatelyAbsent.length,
     deliberatelyAbsent,
   }
   if (failures.length) {
     console.error(failures.join('\n'))
-    throw new Error(`source-built runtime dependency presence failed (${failures.length})`)
+    throw new Error(`source-built runtime dependency closure failed (${failures.length})`)
   }
   return report
 }
@@ -147,5 +237,5 @@ if (invokedDirectly) {
   }
   const report = checkDshRuntimeDependencies(engineRoot)
   if (reportPath) writeFileSync(resolve(reportPath), JSON.stringify(report, null, 2) + '\n')
-  console.log(`runtime dependency links passed: ${report.packageCount} packages, ${report.dependencyCount} required dependency links`)
+  console.log(`runtime dependency links passed: ${report.packageCount} first-party packages, ${report.dependencyCount} required links; telemetry closure ${report.telemetryClosure.packageCount} packages / ${report.telemetryClosure.dependencyCount} links`)
 }

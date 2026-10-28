@@ -153,7 +153,7 @@ available for offline mode`，22s 即 break），且该行把 gradle 输出重�
 
 **APK 根目录传递约定**：云端 workflow 与本地来源链都显式传 `DSH_APK_DIR`；`check-runtime-assets.mjs` 必须优先使用该绝对根目录，不能仅凭 `ROOT/dsh-mobile-apk` 猜测协调仓布局。`--require` 仍严格要求该根下 `app/src/main/assets/patched`、快照和 registry 在场；缺件不得 SKIP 或自动生成。 `build-apk-013.ps1` 同样保留前置布局自检测得到的 `$apkDir`，不得在版本解析后重新硬编码 `Root\dsh-mobile-apk`。 发布链临时文件也不得假设 `$env:TEMP` 在所有 PowerShell runner 上存在；跨平台脚本使用 `[IO.Path]::GetTempPath()`。
 
-**来源审计构建（ARM64）**：固定官方目标身份见 `scripts/contract.json` 与 [升级记录](ENGINE-UPGRADE-2026-10-19.md)。不启用 LFS、不读旧 base 快照；第一方由固定源码构建并记录 manifest/commit/hash。Desktop Electron 不属 Android CLI 闭包；使用官方独立编译步骤，无需重写根 manifest。Termux bootstrap 固定 SHA、InRelease 验签及逐 deb 哈希仍执行，native 输入继续分别披露。
+**来源审计构建（ARM64）**：固定官方目标身份见 `scripts/contract.json` 与 [升级记录](ENGINE-UPGRADE-2026-10-19.md)。不启用 LFS、不读旧 base 快照；第一方由固定源码构建并记录 manifest/commit/hash。Desktop Electron 不属 Android CLI 闭包；使用官方独立编译步骤，无需重写根 manifest。Termux bootstrap 固定 SHA、InRelease 验签及逐 deb 哈希仍执行，native 输入继续分别披露。 来源依赖闭包在 `scripts/source-build/check-dsh-runtime-dependencies.mjs` 检查；当前两个启用的遥测消费者会递归核对精确第三方传递版本，判据与 nested overlay pin 对应关系见 [执行地图 B01](EXECUTION-MAP.md#b01-来源审计-arm64-构建)。
 
 **同工作区复跑**：两处源码 clone 可复用，但固定 commit 的 fetch/detach/assert 仍执行；bootstrap 与 NDK 只在固定哈希命中时复用，损坏/半包重下，解包前校验不省略。Harness 阶段从本次 `GITHUB_SHA` 恢复权威 overlay，先复位专用源码 checkout（保留 ignored 依赖），deploy 只清理验证过的专用目标。`source-chain-rerun.test.mjs` 使用本 workflow 的实际守卫和本地假输入覆盖 cache-hit/miss、下载中断、坏字节拒绝解包、依赖保留与清理边界；CI 与本地预检均调用。来源链两次完整运行的证据不得由局部守卫测试代替。
 

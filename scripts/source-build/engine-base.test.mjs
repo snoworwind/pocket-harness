@@ -122,6 +122,11 @@ test('runtime dependency report order is stable while missing links remain a har
         dependencies: { 'z-dep': '1.0.0', 'a-dep': '1.0.0' },
       })
     }
+    // These services are enabled by the current profile. Keep empty roots in the base fixture,
+    // then add a consumer-local transitive exact dependency below.
+    for (const name of ['dsh-otel', 'dsh-session-telemetry-otel']) {
+      writePackage(join(scope, name, 'package.json'), { name: `@deepseek-ai/${name}`, version: '1.0.0' })
+    }
     const report = checkDshRuntimeDependencies(root)
     assert.deepEqual(report.resolvedDependencies.map(({ importer, dependency }) => [importer, dependency]), [
       ['@deepseek-ai/a-importer', 'a-dep'],
@@ -135,7 +140,7 @@ test('runtime dependency report order is stable while missing links remain a har
     const savedError = console.error
     console.error = () => {}
     try {
-      assert.throws(() => checkDshRuntimeDependencies(root), /dependency presence failed/)
+      assert.throws(() => checkDshRuntimeDependencies(root), /dependency closure failed/)
     } finally { console.error = savedError }
     writePackage(join(root, 'node_modules', 'a-dep', 'package.json'), { name: 'a-dep', version: '1.0.0' })
     assert.equal(checkDshRuntimeDependencies(root).dependencyPresence, 'passed')
@@ -146,7 +151,7 @@ test('runtime dependency report order is stable while missing links remain a har
     assert.equal(checkDshRuntimeDependencies(root).deliberatelyOverridden.length, 1)
     writePackage(join(root, 'node_modules', 'koffi', 'package.json'), { name: 'koffi', version: '3.3.0' })
     console.error = () => {}
-    try { assert.throws(() => checkDshRuntimeDependencies(root), /dependency presence failed/) }
+    try { assert.throws(() => checkDshRuntimeDependencies(root), /dependency closure failed/) }
     finally { console.error = savedError }
     writePackage(join(root, 'node_modules', 'koffi', 'package.json'), { name: 'koffi', version: '3.2.1' })
 
@@ -156,13 +161,81 @@ test('runtime dependency report order is stable while missing links remain a har
     const originalError = console.error
     console.error = () => {}
     try {
-      assert.throws(() => checkDshRuntimeDependencies(root), /dependency presence failed/)
+      assert.throws(() => checkDshRuntimeDependencies(root), /dependency closure failed/)
     } finally {
       console.error = originalError
     }
+
+    // Upstream #656: first-party direct pins were already checked, but the old gate never
+    // followed exact requirements declared by a third-party package in the consumer closure.
+    writePackage(join(scope, 'a-importer', 'package.json'), { name: '@deepseek-ai/a-importer', version: '1.0.0' })
+    const otelRoot = join(scope, 'dsh-otel')
+    const sessionOtelRoot = join(scope, 'dsh-session-telemetry-otel')
+    writePackage(join(otelRoot, 'package.json'), {
+      name: '@deepseek-ai/dsh-otel', version: '1.0.0',
+      dependencies: { '@opentelemetry/sdk-logs': '0.222.0' },
+    })
+    writePackage(join(sessionOtelRoot, 'package.json'), {
+      name: '@deepseek-ai/dsh-session-telemetry-otel', version: '1.0.0',
+      dependencies: { '@opentelemetry/api-logs': '0.222.0' },
+    })
+    writePackage(join(otelRoot, 'node_modules/@opentelemetry/sdk-logs/package.json'), {
+      name: '@opentelemetry/sdk-logs', version: '0.222.0', dependencies: { '@opentelemetry/core': '2.11.0' },
+    })
+    writePackage(join(sessionOtelRoot, 'node_modules/@opentelemetry/api-logs/package.json'), {
+      name: '@opentelemetry/api-logs', version: '0.222.0',
+    })
+    writePackage(join(root, 'node_modules/@opentelemetry/core/package.json'), {
+      name: '@opentelemetry/core', version: '2.11.0',
+    })
+    writePackage(join(otelRoot, 'node_modules/@opentelemetry/core/package.json'), {
+      name: '@opentelemetry/core', version: '2.9.0',
+    })
+    const suppressErrors = (run) => {
+      const saved = console.error
+      const captured = []
+      console.error = (...args) => captured.push(args.join(' '))
+      try { run(); return captured.join('\n') } finally { console.error = saved }
+    }
+    // A stale consumer-local copy wins over a matching root copy and must fail.
+    const staleClosure = suppressErrors(() => assert.throws(
+      () => checkDshRuntimeDependencies(root),
+      /dependency closure failed/,
+    ))
+    assert.match(staleClosure, /@deepseek-ai\/dsh-otel -> @opentelemetry\/sdk-logs -> @opentelemetry\/core@2\.11\.0: resolved @opentelemetry\/core@2\.9\.0/)
+    writePackage(join(otelRoot, 'node_modules/@opentelemetry/core/package.json'), {
+      name: '@opentelemetry/core', version: '2.11.0',
+    })
+    const telemetryReport = checkDshRuntimeDependencies(root)
+    assert.equal(telemetryReport.dependencyPresence, 'passed')
+    assert.deepEqual(telemetryReport.telemetryClosure.roots, [
+      '@deepseek-ai/dsh-otel', '@deepseek-ai/dsh-session-telemetry-otel',
+    ])
+    assert.ok(telemetryReport.telemetryClosure.packageCount >= 4)
   } finally {
     rmSync(root, { recursive: true, force: true })
   }
+})
+
+test('telemetry consumers carry their exact isolated OpenTelemetry closure', () => {
+  const overlay = JSON.parse(readFileSync(new URL('../snapshot-config/engine-overlay.json', import.meta.url), 'utf8'))
+  const licenses = JSON.parse(readFileSync(new URL('../snapshot-config/engine-overlay-licenses.json', import.meta.url), 'utf8')).licenses
+  assert.deepEqual(overlay.nested['@deepseek-ai/dsh-otel'], {
+    '@opentelemetry/api-logs': '0.222.0',
+    '@opentelemetry/core': '2.11.0',
+    '@opentelemetry/otlp-exporter-base': '0.222.0',
+    '@opentelemetry/otlp-transformer': '0.222.0',
+    '@opentelemetry/resources': '2.11.0',
+    '@opentelemetry/sdk-logs': '0.222.0',
+    '@opentelemetry/sdk-metrics': '2.11.0',
+    '@opentelemetry/sdk-trace': '2.11.0',
+  })
+  assert.deepEqual(overlay.nested['@deepseek-ai/dsh-session-telemetry-otel'], { '@opentelemetry/api-logs': '0.222.0' })
+  for (const name of [
+    '@opentelemetry/api-logs', '@opentelemetry/core', '@opentelemetry/otlp-exporter-base',
+    '@opentelemetry/otlp-transformer', '@opentelemetry/resources', '@opentelemetry/sdk-logs',
+    '@opentelemetry/sdk-metrics', '@opentelemetry/sdk-trace',
+  ]) assert.equal(licenses[name], 'Apache-2.0', `${name} license must be recorded`)
 })
 
 test('independent output drift fails instead of publishing a candidate', { skip: process.platform !== 'linux' }, () => fixture(a => fixture(b => {
