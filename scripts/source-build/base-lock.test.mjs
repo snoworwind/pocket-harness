@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
+import { devNull } from 'node:os'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import test from 'node:test'
@@ -121,5 +123,30 @@ test('verifyManifest binds lock, manifest, and every output byte', () => {
     assert.throws(() => verifyManifest(root, lock, 'engine', manifestPath, artifact), /unsafe manifest output path/)
   } finally {
     rmSync(root, { recursive: true, force: true })
+  }
+})
+
+// Git checkout must preserve the component-key input even with Windows autocrlf.
+test('engine overlay bytes survive autocrlf checkout, with a controlled missing-attribute negative', () => {
+  const attributes = readFileSync(new URL('../../.gitattributes', import.meta.url), 'utf8')
+  const bytes = readFileSync(new URL('../snapshot-config/engine-overlay.json', import.meta.url))
+  const env = { ...process.env, GIT_CONFIG_GLOBAL: devNull, GIT_CONFIG_NOSYSTEM: '1' }
+  for (const name of ['GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE', 'GIT_COMMON_DIR', 'GIT_OBJECT_DIRECTORY', 'GIT_ALTERNATE_OBJECT_DIRECTORIES']) delete env[name]
+  for (const negative of [false, true]) {
+    const root = mkdtempSync(join(tmpdir(), 'overlay-checkout-'))
+    const target = join(root, 'scripts/snapshot-config/engine-overlay.json')
+    const git = (...args) => execFileSync('git', ['-C', root, ...args], { env, stdio: 'pipe' })
+    try {
+      git('init', '-q')
+      git('config', 'core.autocrlf', 'true')
+      mkdirSync(dirname(target), { recursive: true })
+      writeFileSync(join(root, '.gitattributes'), negative ? attributes.replace(/^scripts\/snapshot-config\/engine-overlay\.json -text\r?\n/m, '') : attributes)
+      writeFileSync(target, bytes)
+      git('add', '.')
+      rmSync(target)
+      git('checkout-index', '--force', '--all')
+      assert.equal(readFileSync(target).equals(bytes), !negative)
+      assert.equal(readFileSync(target, 'utf8').replaceAll('\r\n', '\n'), bytes.toString())
+    } finally { rmSync(root, { recursive: true, force: true }) }
   }
 })
