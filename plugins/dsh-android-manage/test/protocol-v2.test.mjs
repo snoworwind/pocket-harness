@@ -280,6 +280,26 @@ test('坏载荷一律失败关闭（不静默产出空树）', () => {
   assert.equal(okEmpty.ok, true, 'n=0 是合法的空快照（不是坏载荷）')
 })
 
+test('V2 拒绝会被下游整数语义截断或误读的浮点字段', () => {
+  const valid = encodeV2FromRaw(parsed.raw, parsed.rotation, SCREEN, GEN, 'all')
+  for (const field of ['gen', 'rot']) {
+    const payload = { ...valid, [field]: 1.5 }
+    assert.equal(decodeV2(payload).ok, false, `${field} fractional metadata must fail closed`)
+  }
+  for (const value of [undefined, null]) {
+    const payload = { ...valid, rot: value }
+    if (value === undefined) delete payload.rot
+    const decoded = decodeV2(payload)
+    assert.equal(decoded.ok, true, 'missing/null rotation keeps the existing zero default')
+    if (decoded.ok) assert.equal(decoded.value.rotation, 0)
+  }
+  for (const field of ['scr', 'd', 'p', 'f', 'c', 'k', 'r', 'w', 't', 's', 'b', 'o']) {
+    const payload = structuredClone(valid)
+    payload[field][0] = 0.5
+    assert.equal(decodeV2(payload).ok, false, `${field} fractional value must fail closed`)
+  }
+})
+
 test('体积门禁：V2 必须比 V1 小 7 倍以上，且落在冻结基线 ±10%', () => {
   const v1 = v1EnvelopeBytes()
   const { bytes: v2Bytes } = v2EnvelopeBytes()

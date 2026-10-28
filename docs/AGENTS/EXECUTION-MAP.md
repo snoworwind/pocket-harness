@@ -1332,7 +1332,7 @@ flowchart TD
   - `plugins/dsh-android-manage/src/index.ts:571` — 虚拟屏截图反查 SF token；`:574` 反查不到即 fail-closed。
   - `plugins/dsh-android-manage/src/index.ts:1507` — nx/ny 在非 real 屏上的歧义拒绝；`:1519` 起 x/y + screenId 走 vdInput 坐标模式。
   - `plugins/dsh-android-manage/src/index.ts:2283` — 注册数组：14 个工具（`uiDetail` 是 0.14 D4 补回的第 14 个，见 `:2282` 注释）。
-  - `plugins/dsh-android-manage/src/protocol-v2.ts:114` — `o` 列（句柄 = 原始行号）；缺列或非严格递增即整体拒绝解码。
+  - `plugins/dsh-android-manage/src/protocol-v2.ts:114` — `o` 列（句柄 = 原始行号）；缺列、非整数或非严格递增即整体拒绝解码。
 - **不变量**：
   1. 返回面必须与 `output.schema` 逐键对齐（a11y、ADB、「未变」快路径三个分支都算），可选键缺省**整键不发**。违反症状：引擎整值校验 `ToolOutputError`，模型拿不到任何数据，而编译与人工看代码都发现不了（坑 72；门禁 `scripts/check-tool-output-schema.mjs:7`）。
   2. `guard` 必须收到**完整实参**（不是手搓子集），且范围判定必须走异步 `screenAccessResolved`。违反症状：screenId 像没生效——无论传什么都被按 real 判定，或已就绪的虚拟屏被判「尚未就绪」。

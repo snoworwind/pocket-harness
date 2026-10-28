@@ -34,6 +34,10 @@ HTML 文档预览使用 `sandbox="allow-scripts"` 的 opaque 子帧：它能看�
 | 壳↔引擎 | 精确受保护Android路由、控制队列、file-incoming与通知$events；本地HTTP/TCP探针NO_PROXY；回包须lossless JSON。 |
 | 插件↔壳 | androidPrivilege与ControlCarrier/ControlPoller；会话权限和native screen范围在执行点复查，不因UI展示值推断授权。 |
 
+### ControlProtocolV2 数值字段
+
+列式载荷的 `gen`、`rot`、`scr`、`d/p/f/c/k/r/w/t/s`、`b` 与 `o` 都按整数消费；解码器对这些字段拒绝小数、非有限值和非数字数组成员，避免符号表索引、位标志、父行句柄或坐标在 JavaScript 整数转换时被静默改写。`scr` 必须恰有宽、高两项；`b` 必须恰有每行四项。缺省或 `null` 的 `rot` 仍按兼容口径取 0。解码失败关闭，不产出部分节点表。壳侧编码器与引擎解码器的跨语言判据见 `scripts/check-protocol-v2.mjs`。
+
 ## 2. 0.14.3 当前增量
 
 ### 2.1 Root状态、维护与结果
