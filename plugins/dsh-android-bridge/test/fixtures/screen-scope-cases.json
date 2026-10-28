@@ -453,6 +453,20 @@
       "why": "脚本参数已由静态词完整提供，且替换前有参数分隔空白；替换只成为 shell 的位置参数，不改变执行脚本。"
     },
     {
+      "name": "S-12s sh -c -- 后的首个动态词仍是脚本载荷",
+      "command": "sh -c -- $(cat /sdcard/x.sh)",
+      "ownedTargets": ["7", "11529215046816944610"],
+      "expect": "deny-unparsed",
+      "why": "`--` 只终止 shell 选项；后一个动态词仍提供脚本本身，不能误判成安全的位置参数。"
+    },
+    {
+      "name": "S-12t sh -c -- 后的静态脚本与动态位置参数可用",
+      "command": "sh -c -- 'echo hi' $(date)",
+      "ownedTargets": ["7", "11529215046816944610"],
+      "expect": "allow",
+      "why": "可选 `--` 后已完整给出静态脚本；后续动态词仍只成为位置参数。"
+    },
+    {
       "name": "S-13a 组合短选项 -lc 中的 c 必须展开并拒绝真实屏",
       "command": "sh -lc 'screencap -p /sdcard/real.png'",
       "ownedTargets": ["7", "11529215046816944610"],

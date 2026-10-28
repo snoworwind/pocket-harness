@@ -712,7 +712,7 @@ internal object ShellOps {
     val match = SHELL_C_PAYLOAD.find(prefix) ?: return false
     if (prefix.lastOrNull() !in listOf(' ', '\t', '\r', '\n')) return true
     // A complete first script word means the expansion starts in argv ($0/$1), not in the script.
-    return firstShellArgument(match.groupValues[1]) == null
+    return shellCommandArgument(match.groupValues[1]) == null
   }
 
   /**

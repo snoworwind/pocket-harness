@@ -321,7 +321,7 @@ function runtimeExpansionInShellScript(prefix: string): boolean {
   if (match === null) return false
   if (!/[ \t\r\n]$/.test(prefix)) return true
   // A complete first script word means the expansion starts in argv ($0/$1), not in the script.
-  return firstShellArgument(match[1]) === null
+  return shellCommandArgument(match[1]) === null
 }
 
 /**
