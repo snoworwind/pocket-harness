@@ -794,6 +794,206 @@
       ],
       "expect": "deny-unparsed",
       "why": "展开队列达到上限时仍有待扫描命令段，不能把未检查尾部误当作安全；真实屏命令位于第 17 个 shell 段。"
+    },
+    {
+      "name": "nice 包装 shell 脚本仍按不透明载荷拒绝",
+      "command": "nice sh -c 'screencap -p /sdcard/real.png'",
+      "ownedTargets": [
+        "7",
+        "11529215046816944610"
+      ],
+      "expect": "deny-unparsed",
+      "why": "优先级包装器不能遮住 shell 的 -c 执行体；未完整解析包装器链时必须 fail-closed。"
+    },
+    {
+      "name": "nice 包装 su 仍按不透明解释器拒绝",
+      "command": "nice su -c 'screencap -p /sdcard/real.png'",
+      "ownedTargets": [
+        "7",
+        "11529215046816944610"
+      ],
+      "expect": "deny-unparsed",
+      "why": "su 的命令载荷不属于本仓受信 sh -c 解析路径，不能被 nice 包装器隐藏。"
+    },
+    {
+      "name": "nice 包装 awk 仍按不透明解释器拒绝",
+      "command": "nice awk 'BEGIN { system(\"screencap -p /sdcard/real.png\") }'",
+      "ownedTargets": [
+        "7",
+        "11529215046816944610"
+      ],
+      "expect": "deny-unparsed",
+      "why": "awk 能从脚本字符串执行任意屏幕命令；普通包装器不能让不透明解释器变透明。"
+    },
+    {
+      "name": "nice 包装普通只读命令保持可用",
+      "command": "nice echo hello",
+      "ownedTargets": [
+        "7",
+        "11529215046816944610"
+      ],
+      "expect": "allow",
+      "why": "可识别的普通包装器不应无差别禁止无害命令。"
+    },
+    {
+      "name": "nice 包装 getprop 仍保持可用",
+      "command": "nice -n 5 getprop ro.product.model",
+      "ownedTargets": [
+        "7",
+        "11529215046816944610"
+      ],
+      "expect": "allow",
+      "why": "包装器优先级参数被消费后，普通只读命令仍按原范围门规则通过。"
+    },
+    {
+      "name": "stdin 管道包装的裸 shell 必须拒绝",
+      "command": "echo 'screencap -p /sdcard/real.png' | nice sh",
+      "ownedTargets": [
+        "7",
+        "11529215046816944610"
+      ],
+      "expect": "deny-unparsed",
+      "why": "nice sh 会执行 stdin 脚本；外层 echo 的静态文本不能证明其运行时输入安全。"
+    },
+    {
+      "name": "setsid 自有选项后的裸 shell 必须拒绝",
+      "command": "echo 'screencap -p /sdcard/real.png' | setsid -w sh",
+      "ownedTargets": [
+        "7",
+        "11529215046816944610"
+      ],
+      "expect": "deny-unparsed",
+      "why": "跳过 setsid 包装器及其 -w 选项后仍须识别会读取 stdin 的 sh。"
+    },
+    {
+      "name": "ionice 包装的裸 shell 必须拒绝",
+      "command": "echo 'screencap -p /sdcard/real.png' | ionice sh",
+      "ownedTargets": [
+        "7",
+        "11529215046816944610"
+      ],
+      "expect": "deny-unparsed",
+      "why": "ionice 不能遮蔽后续从 stdin 执行命令的 shell。"
+    },
+    {
+      "name": "cmd window 维持多显示接口 fail-closed",
+      "command": "cmd window size 900x1600",
+      "ownedTargets": [
+        "7",
+        "11529215046816944610"
+      ],
+      "expect": "deny-unparsed",
+      "why": "cmd window 的目标身份语义未接入本仓虚拟屏注册表；本轮不采用上游 selector-aware 放宽。"
+    },
+    {
+      "name": "cmd window 参数不因已登记数字目标获得放行",
+      "command": "cmd window size 900x1600 -d 7",
+      "ownedTargets": [
+        "7",
+        "11529215046816944610"
+      ],
+      "expect": "deny-unparsed",
+      "why": "本仓没有设备证据证明该接口参数能绑定所登记虚拟屏；多显示器窗口接口继续整体拒绝。"
+    },
+    {
+      "name": "wm user-rotation 已由未认证 wm 家族拒绝",
+      "command": "wm user-rotation lock 1",
+      "ownedTargets": [
+        "7",
+        "11529215046816944610"
+      ],
+      "expect": "deny-uncertified-target",
+      "why": "wm-unscoped 已拒绝非 size/density 子命令；无需放宽为新目标参数语义。"
+    },
+    {
+      "name": "taskset 十六进制掩码后的 shell 脚本仍拒绝",
+      "command": "taskset 0xff sh /sdcard/job.sh",
+      "ownedTargets": [
+        "7",
+        "11529215046816944610"
+      ],
+      "expect": "deny-unparsed",
+      "why": "taskset 接受十六进制 CPU 掩码；包装器参数不能让后续文件脚本绕过不透明执行器拒绝。"
+    },
+    {
+      "name": "env -S 内嵌解释器命令保持不透明拒绝",
+      "command": "env -S 'sh -c screencap -p /sdcard/real.png'",
+      "ownedTargets": [
+        "7",
+        "11529215046816944610"
+      ],
+      "expect": "deny-unparsed",
+      "why": "env -S 的单一字符串会再被拆成命令和参数；当前静态解析器不能安全还原它，必须 fail-closed。"
+    },
+    {
+      "name": "dumpsys activity 属于不可自证的屏幕观察面",
+      "command": "dumpsys activity activities",
+      "ownedTargets": [
+        "7",
+        "11529215046816944610"
+      ],
+      "expect": "deny-uncertified-target",
+      "why": "Activity 状态输出可包含窗口/视图层级与边界，且没有已登记虚拟屏选择器。"
+    },
+    {
+      "name": "sendevent 不得在 virtual-only 下操作默认输入设备",
+      "command": "sendevent /dev/input/event1 1 1 1",
+      "ownedTargets": [
+        "7",
+        "11529215046816944610"
+      ],
+      "expect": "deny-uncertified-target",
+      "why": "sendevent 直接向输入设备节点注入事件，没有本仓可认证的虚拟屏选择器。"
+    },
+    {
+      "name": "getevent 不得在 virtual-only 下读取默认输入设备",
+      "command": "getevent -l",
+      "ownedTargets": [
+        "7",
+        "11529215046816944610"
+      ],
+      "expect": "deny-uncertified-target",
+      "why": "getevent 可观察物理输入设备事件，没有本仓可认证的虚拟屏选择器。"
+    },
+    {
+      "name": "cmd display 使用未登记的目标身份语义时拒绝",
+      "command": "cmd display set-brightness 0.5",
+      "ownedTargets": [
+        "7",
+        "11529215046816944610"
+      ],
+      "expect": "deny-uncertified-target",
+      "why": "cmd display 的 --id 语义未与注册虚拟屏身份契约接通，不能凭外部 selector 自证。"
+    },
+    {
+      "name": "读取 input 设备目录不误命中 input 命令族",
+      "command": "ls /dev/input",
+      "ownedTargets": [
+        "7",
+        "11529215046816944610"
+      ],
+      "expect": "allow",
+      "why": "路径中的 input 只是文件系统参数，不是 input CLI；范围门应按命令与 argv 识别，避免误拒无关目录读取。"
+    },
+    {
+      "name": "非屏幕命令里的 -d=7 不应被屏幕范围门误拦",
+      "command": "echo -d=7",
+      "ownedTargets": [
+        "7",
+        "11529215046816944610"
+      ],
+      "expect": "allow",
+      "why": "该命令不是屏幕操作，屏幕范围门不应解释普通参数中的 -d=7。"
+    },
+    {
+      "name": "非屏幕命令里的 -dx 不应被屏幕范围门误拦",
+      "command": "ls -dx",
+      "ownedTargets": [
+        "7",
+        "11529215046816944610"
+      ],
+      "expect": "allow",
+      "why": "该命令不是屏幕操作，屏幕范围门不应解释普通参数中的 -dx。"
     }
   ]
 }

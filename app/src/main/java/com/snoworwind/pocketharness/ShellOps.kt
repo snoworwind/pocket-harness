@@ -31,6 +31,8 @@ internal object ShellOps {
   private val SHORT_DISPLAY_OPTION = Regex("""(?:^|[ \t])-d[ \t]*(\d+)(?=$|[ \t])""")
   private val LONG_DISPLAY_OPTION = Regex("""(?:^|[ \t])(--display|--display-id)[ \t=]+(\d+)""")
   private val COMPACT_SHORT_DISPLAY_OPTION = Regex("""^-d(\d+)$""")
+  // `-d=7` can be interpreted as the default display after the value is parsed as `=7`.
+  private val MALFORMED_DISPLAY_OPTION = Regex("""(?:^|[ \t])-d(?:[ \t]*=[ \t]*\S|(?![0-9 \t\r\n])\S)""")
 
   /** 命令词家族：每个家族自带「哪种拼写才算它的目标屏」（与引擎侧 `SCREEN_COMMAND_FAMILIES` 同表）。 */
   private data class ScreenFamily(val name: String, val pattern: Regex, val targetFlags: List<String>)
@@ -41,15 +43,19 @@ internal object ShellOps {
     ScreenFamily("screenrecord", Regex("""\bscreenrecord\b""", RegexOption.IGNORE_CASE), listOf("--display-id")),
     ScreenFamily(
       "input",
-      Regex("""\binput\b""",
-        RegexOption.IGNORE_CASE),
+      // Require an argv after `input`: filesystem paths such as `/dev/input` are not this command.
+      Regex("""\binput[ \t]+\S+""", RegexOption.IGNORE_CASE),
       listOf("-d"),
     ),
     ScreenFamily("wm", Regex("""\bwm[ \t]+(?:size|density)(?=[ \t]|$)""", RegexOption.IGNORE_CASE), listOf("-d")),
     ScreenFamily("wm-unscoped", Regex("""\bwm[ \t]+(?!(?:size|density)(?=[ \t]|$))[^ \t]+""", RegexOption.IGNORE_CASE), emptyList()),
     // `uiautomator dump` 没有目标屏参数：dump 的是**默认屏**的语义树 ⇒ 无法自证，恒拒。
     ScreenFamily("uiautomator", Regex("""\buiautomator\b""", RegexOption.IGNORE_CASE), emptyList()),
-    ScreenFamily("dumpsys", Regex("""\bdumpsys[ \t]+(?:window|display|input)\b""", RegexOption.IGNORE_CASE), emptyList()),
+    ScreenFamily("dumpsys", Regex("""\bdumpsys[ \t]+(?:window|display|input|activity)\b""", RegexOption.IGNORE_CASE), emptyList()),
+    ScreenFamily("sendevent", Regex("""\bsendevent\b""", RegexOption.IGNORE_CASE), emptyList()),
+    ScreenFamily("getevent", Regex("""\bgetevent\b""", RegexOption.IGNORE_CASE), emptyList()),
+    // `cmd display` selectors do not use the registered virtual-display identity contract.
+    ScreenFamily("cmd-display", Regex("""\bcmd[ \t]+display\b""", RegexOption.IGNORE_CASE), emptyList()),
     // `am` / `cmd activity` 的启动显示参数是 `--display`；`-d` 是 Intent data，**不得**作为目标屏凭据。
     ScreenFamily("am", Regex("""\bam[ \t]+(?:start(?=[ \t]|$)|start-activity(?=[ \t]|$)|start-in-vsync(?=[ \t]|$))""", RegexOption.IGNORE_CASE),
       listOf("--display")),
@@ -85,8 +91,22 @@ internal object ShellOps {
     RegexOption.IGNORE_CASE,
   )
   private val COMMAND_LAUNCHER_HEAD = Regex(
-    """^(?:(?:[A-Za-z_][A-Za-z0-9_]*=[^\s]+)[ \t]+)*(?:command|builtin|exec|env|nohup|nice|timeout|setsid|time|!)(?=[ \t]|$)""",
+    """^(?:(?:[A-Za-z_][A-Za-z0-9_]*=[^\s]+)[ \t]+)*(?:command|builtin|exec|env|nohup|timeout|setsid|time|!)(?=[ \t]|$)""",
     RegexOption.IGNORE_CASE,
+  )
+  private val INTERPRETER_NAMES = setOf("sh", "bash", "mksh", "ash", "dash", "zsh", "busybox", "toybox", "su")
+  private val INTERPRETER_WRAPPERS = setOf(
+    "env", "timeout", "nohup", "xargs", "busybox", "toybox", "command", "exec",
+    "nice", "ionice", "taskset", "setsid", "chrt", "numactl", "unshare",
+    "stdbuf", "time", "flock", "watch",
+  )
+  private val INTERPRETER_WRAPPER_VALUE_OPTIONS = mapOf(
+    "nice" to setOf("-n", "--adjustment"),
+    "ionice" to setOf("-c", "--class", "-n", "--classdata", "-p", "--pid"),
+    "taskset" to setOf("-c", "--cpu-list", "-p", "--pid"),
+    "numactl" to setOf("--physcpubind", "--cpunodebind", "--membind", "--interleave", "--preferred"),
+    "stdbuf" to setOf("-i", "-o", "-e"),
+    "watch" to setOf("-n", "--interval", "-d", "--differences", "-t", "--precise"),
   )
   private val SAFE_SHELL_LAUNCHER_HEAD = Regex(
     """^(?:env|command)[ \t]+(?:/system/bin/)?sh[ \t]+(?:[+-]o[ \t]+\S+[ \t]+|-[^\s]+[ \t]+)*-[a-zA-Z]*c[ \t]""",
@@ -240,7 +260,7 @@ internal object ShellOps {
     }
     return JSONObject()
       .put("__error", "用户当前开放屏幕范围为 virtual-only，不允许经特权 shell 读取或操作真实屏幕"
-        + "（screencap / screenrecord / uiautomator / input / wm / dumpsys window|display|input / am / cmd activity / monkey）。"
+        + "（screencap / screenrecord / uiautomator / input / wm / cmd display / dumpsys window|display|input|activity / am / cmd activity / monkey / sendevent / getevent）。"
         + guidance)
       .put("reason", "screen-out-of-scope")
       .put("op", "shExec")
@@ -258,6 +278,7 @@ internal object ShellOps {
       val options = displayOptionsIn(bare)
       val normalized = stripDisplayOptions(bare)
       val families = SCREEN_FAMILIES.filter { it.pattern.containsMatchIn(normalized) }
+      if (families.isNotEmpty() && MALFORMED_DISPLAY_OPTION.containsMatchIn(bare)) return false
       for (family in families) {
         if (hasUncertifiedSelector(bare, family)) return false
         val relevant = options.filter { it.flag in family.targetFlags }
@@ -369,6 +390,7 @@ internal object ShellOps {
         if (options.isNotEmpty()) return ScreenCommandVerdict.DENY_ORPHAN_TARGET_TOKEN
         continue
       }
+      if (MALFORMED_DISPLAY_OPTION.containsMatchIn(bare)) return ScreenCommandVerdict.DENY_UNCERTIFIED_TARGET
       for (family in families) {
         if (hasUncertifiedSelector(bare, family)) return ScreenCommandVerdict.DENY_UNCERTIFIED_TARGET
         if (family.targetFlags.isEmpty()) return ScreenCommandVerdict.DENY_UNCERTIFIED_TARGET
@@ -555,6 +577,7 @@ internal object ShellOps {
             SHELL_CONTROL_HEAD.containsMatchIn(head) ||
             COMMAND_GLOB_HEAD.containsMatchIn(head) ||
             (EXECUTABLE_PATH_HEAD.containsMatchIn(head) && !TRUSTED_SHELL_PATH_HEAD.containsMatchIn(head)) ||
+            interpreterPayloadUnparsed(segment) ||
             (COMMAND_LAUNCHER_HEAD.containsMatchIn(head) && !(SAFE_SHELL_LAUNCHER_HEAD.containsMatchIn(head) && SHELL_C_PAYLOAD.containsMatchIn(segment))) ||
             EXECUTION_ENV_OVERRIDE.containsMatchIn(view) ||
             (SHELL_INTERPRETER.containsMatchIn(head) && !SHELL_C_PAYLOAD.containsMatchIn(segment))
@@ -673,6 +696,59 @@ internal object ShellOps {
     val first = firstShellArgument(text) ?: return null
     if (first.word != "--") return first.word
     return firstShellArgument(first.rest)?.word
+  }
+
+  /** Detect a wrapper chain that reaches a shell or opaque program while allowing ordinary wrapped commands. */
+  private fun interpreterPayloadUnparsed(segment: String): Boolean {
+    var rest = segment.trim()
+    var wrapped = false
+    var activeWrapper = ""
+    var optionValueNext = false
+    repeat(16) {
+      if (rest.isEmpty()) return wrapped
+      val first = firstShellArgument(rest) ?: return wrapped
+      if (first.word.isEmpty()) return wrapped
+      val word = first.word
+      val base = word.substringAfterLast('/')
+      if (Regex("^[A-Za-z_][A-Za-z0-9_]*=").containsMatchIn(word)) {
+        rest = first.rest.trim()
+        return@repeat
+      }
+      if (INTERPRETER_WRAPPERS.contains(base)) {
+        wrapped = true
+        activeWrapper = base
+        // flock consumes a lock path before its command; without a complete utility-specific parse, fail closed.
+        if (base == "flock") return true
+        rest = first.rest.trim()
+        return@repeat
+      }
+      if (!wrapped) return false
+      if (optionValueNext) {
+        optionValueNext = false
+        rest = first.rest.trim()
+        return@repeat
+      }
+      if (word.any { it == ' ' || it == '\t' || it == '\r' || it == '\n' }) return true
+      if (word.startsWith("-")) {
+        val option = word.substringBefore('=')
+        val hasInlineValue = if (word.startsWith("--")) word.contains('=') else word.length > 2
+        optionValueNext = !hasInlineValue && (INTERPRETER_WRAPPER_VALUE_OPTIONS[activeWrapper]?.contains(option) == true)
+        rest = first.rest.trim()
+        return@repeat
+      }
+      if (Regex("^(?:0[xX][0-9a-fA-F]+|\\d+(?:\\.\\d+)?|\\d+(?:,\\d+)*)$").matches(word)) {
+        rest = first.rest.trim()
+        return@repeat
+      }
+      if (base == "." || base == "source" || INTERPRETER_NAMES.contains(base)) {
+        // Direct env/command -c payloads are already expanded by splitCommandSegments; wrapped -c stays opaque.
+        return !((activeWrapper == "env" || activeWrapper == "command") && base == "sh" && SHELL_C_PAYLOAD.containsMatchIn(segment))
+      }
+      if (OPAQUE_EXECUTION.containsMatchIn(word) || word.contains('/')) return true
+      rest = first.rest.trim()
+      return false
+    }
+    return wrapped && rest.isNotEmpty()
   }
 
   /** A runtime expansion in command position changes which executable runs. */

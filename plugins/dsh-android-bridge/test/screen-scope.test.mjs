@@ -211,6 +211,9 @@ test('real-only raw shell admits physical targets and fails closed for virtual o
     'uiautomator dump /sdcard/tree.xml --display 2',
     'echo ok; input -d 0 tap 1 2; screencap -d 7 -p /sdcard/a.png',
     'sh -c "input -d 999 tap 1 2',
+    'screencap -d=7 -p /sdcard/a.png',
+    'input -dx tap 1 2',
+    'nice sh /sdcard/job.sh',
   ]
   for (const command of deniedCommands) {
     assert.ok(realScreenAdbCommandDenied('real-only', command), command)
@@ -222,6 +225,10 @@ test('real-only raw shell admits physical targets and fails closed for virtual o
     'dumpsys window',
     'am start -d https://example.test -n com.example/.Main',
     'getprop ro.product.model',
+    'nice echo hello',
+    'echo -d=7',
+    'ls -dx',
+    'ls /dev/input',
     'curl -d value https://example.test',
   ]) {
     assert.equal(realScreenAdbCommandDenied('real-only', command), null, command)
