@@ -250,7 +250,6 @@ object SnapshotExtractor {
           target.setExecutable(SnapshotFileMode.isDirectlyExecutable(prefix, prefixLength), true)
         }
       }
-      done += entry.size
       if (done % (1024 * 1024) < entry.size) onProgress(done, totalBytes)
       entry = tar.nextEntry
     }
