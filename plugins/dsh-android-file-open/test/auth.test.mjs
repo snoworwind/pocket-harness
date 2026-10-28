@@ -972,6 +972,39 @@ test('claim rejects a non-durable browser session before deleting queue state', 
   assert.deepEqual(snapshot(ws), before, '无效 session 不得消费队列或临时文件')
 })
 
+test('claim removes queue records when the admitted source is missing or replaced by a directory', async () => {
+  const ws = freshWorkspace()
+  const missing = join(ws, 'gone.jpg')
+  writeFileSync(missing, 'image')
+  const harness = makeCtx(undefined, { workspaces: [] })
+  await boot(harness.ctx)
+
+  await call(harness.ctx, ROUTES.list, { headers: legit(), body: { path: missing } })
+  const listedMissing = JSON.parse((await call(harness.ctx, ROUTES.list, { method: 'GET', headers: legit() })).body)
+  rmSync(missing, { force: true })
+  const missingClaim = await call(harness.ctx, ROUTES.claim, {
+    headers: legit(), body: { entryId: listedMissing.items[0].entryId, sessionId: 'session-abcdef12-missing' },
+  })
+  assert.equal(missingClaim.code, 410)
+  assert.equal(JSON.parse((await call(harness.ctx, ROUTES.list, { method: 'GET', headers: legit() })).body).items.length, 0,
+    'missing source must not leave a repeatedly claimable queue record')
+
+  const replaced = join(ws, 'replaced.jpg')
+  writeFileSync(replaced, 'image')
+  await call(harness.ctx, ROUTES.list, { headers: legit(), body: { path: replaced } })
+  const listedReplaced = JSON.parse((await call(harness.ctx, ROUTES.list, { method: 'GET', headers: legit() })).body)
+  const replacedEntry = listedReplaced.items.find(item => item.name === 'replaced.jpg')
+  assert.ok(replacedEntry)
+  rmSync(replaced, { force: true })
+  mkdirSync(replaced)
+  const replacedClaim = await call(harness.ctx, ROUTES.claim, {
+    headers: legit(), body: { entryId: replacedEntry.entryId, sessionId: 'session-abcdef12-directory' },
+  })
+  assert.equal(replacedClaim.code, 410)
+  assert.equal(JSON.parse((await call(harness.ctx, ROUTES.list, { method: 'GET', headers: legit() })).body).items.length, 0,
+    'non-file source must not leave a repeatedly claimable queue record')
+})
+
 test('claim accepts Android-equivalent /data/user/0 and /data/data workspace prefixes', async () => {
   const realHome = mkdtempSync(join(tmpdir(), 'dsh-real-home-'))
   const linkHome = join(mkdtempSync(join(tmpdir(), 'dsh-link-home-')), 'home')
