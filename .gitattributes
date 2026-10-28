@@ -36,3 +36,8 @@ plugins/dsh-linux-bootstrap/src/*.js -text
 app/src/main/assets/licenses/THIRD_PARTY_NOTICES.md -text
 # 许可原文须保留上游字节与空白，避免固定 SHA-256 被 autocrlf 改写。
 LICENSES/*.txt -text -whitespace
+
+# Preserve reviewed upstream stylesheet, protocol fixture, and undo source bytes.
+dsh-client-ui-responsive/src/client/mobile/upstream-browser/view/Browser.module.css -text
+plugins/dsh-android-bridge/test/fixtures/screen-scope-cases.json -text
+vendor/dsh-undo-savepoint/lib/core.mjs -text
