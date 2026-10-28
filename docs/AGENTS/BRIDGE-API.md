@@ -245,3 +245,7 @@ bootstrap 调用 `linuxPluginHost.install({directory,entry='lib/index.js',config
 
 
 当前 Shizuku 协议为 v5：namespace 与 AIDL descriptor 已统一迁移，服务 version 随协议增加以淘汰旧缓存；v4 引入的 configuration() 与全部 transaction 编号保持不变。升级与验证边界见 NAMESPACE-MIGRATION-2026-10-19.md。
+
+### 无障碍在线事实
+
+引擎 `a11ySource` 返回 `heartbeat` 或 `off`：只有 prefs 启用标记和非未来、20 秒内的独立心跳同时成立才视为在线。控制队列轮询可以在无障碍服务缺席时继续，独立展示，不作为服务在线凭据。此修复的设备侧验证尚未完成。

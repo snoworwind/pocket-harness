@@ -856,7 +856,7 @@ flowchart TD
   - 偏好键：`dsh-adb.xml`（`PREFS` :42）的 `a11yEnabled`/`controlToken`/`controlHeartbeat`（:246-258，token 18 字节 base64url，:235）；屏幕范围**不再是偏好键**：`ScreenScopePrefs` 只保存在进程内存（`ScreenScope.kt:52` 起），K05 只读，写面在设置页，插件经控制应答 `caps.screenScope`/`vdInfo.data.scope` 读回（A02）。
   - 路径：截图落 `filesDir/home/tmp/dsh-tmp`（:770），与引擎 `TMPDIR`（`EngineManager.kt:1442`）/`DSH_FILES_DIR`（:1439）同源；`pruneShots` 只认同目录下 `shot-` 前缀（:1175）；`AdbKeyboardService.nonceFile` = `filesDir/adb-keyboard-nonce`（`AdbKeyboardService.kt:122`，引擎 `adbKeyboardAuthArg` 读同一文件，`index.ts:42`）。
   - 常量与纯函数：`MAX_NODES=4000` / `MAX_DEPTH=40` / `TREE_BUDGET_MS=3000` / `TOKEN_BYTES=18`（:48-52）、`WindowPick.order`（:409，回归 `WindowPickTest.kt`）、`GlobalActionCatalog.TABLE`（`GlobalActionCatalog.kt:23`，回归 `GlobalActionCatalogTest.kt`）、`WEB_SNAPSHOT_JS`/`WEB_ACTION_JS`（:60/:131）依赖 `MainActivity.webViewRef`（:852）。
-  - 心跳口径：引擎 `a11ySource()`（`index.ts:829-840`）只认 `queue`（`pollAgeMs`）或 `heartbeat` 且同一 20s 窗口（`A11Y_FRESH_MS`，`index.ts:305`）。
+  - 心跳口径：引擎 `a11ySource()` 只认 prefs 的启用标记与 20 秒内的无障碍独立心跳；控制队列可在服务缺席时运行，不作为无障碍在线证据。
 - **关键坐标**：
   - `app/src/main/java/com/snoworwind/pocketharness/DeviceControlService.kt:607` — `handle` 唯一入口与 op 分支表（六面登记门禁的解析面）
   - `app/src/main/java/com/snoworwind/pocketharness/DeviceControlService.kt:678` — `REAL_SCREEN_OPS`（范围门覆盖面，含 state/webSnapshot/webAction）
