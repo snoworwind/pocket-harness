@@ -34,3 +34,16 @@ test('methods are nonenumerable, reject invalid receivers and callbacks, and pre
   assert.equal(evalIn(ctx, `(()=>{try{[].toSorted(null);return false}catch(e){return e instanceof TypeError}})()`), true)
   assert.equal(evalIn(ctx, `(()=>{try{Array.prototype.findLastIndex.call({length:1n},()=>false);return false}catch(e){return e instanceof TypeError}})()`), true)
 })
+
+test('existing at and replaceAll shims do not pollute for-in enumeration', () => {
+  const at = source.match(/`(if\(typeof Array\.prototype\.at[\s\S]*?)`,/);
+  const replaceAll = source.match(/`(if\(typeof String\.prototype\.replaceAll[\s\S]*?)`,/);
+  assert.ok(at && replaceAll)
+  const ctx = {}
+  runInNewContext('delete Array.prototype.at; delete String.prototype.replaceAll', ctx)
+  runInNewContext(at[1] + ';' + replaceAll[1], ctx)
+  assert.equal(evalIn(ctx, `Object.getOwnPropertyDescriptor(Array.prototype,'at').enumerable`), false)
+  assert.equal(evalIn(ctx, `Object.getOwnPropertyDescriptor(String.prototype,'replaceAll').enumerable`), false)
+  assert.equal(evalIn(ctx, `[1,2].at(-1)`), 2)
+  assert.equal(evalIn(ctx, `'aba'.replaceAll('a','x')`), 'xbx')
+})

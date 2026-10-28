@@ -3252,4 +3252,4 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 
 565. **rc.3 客户端在旧 WebView 缺少数组内建时无法渲染（2026-10-28）**
 
-    现象：旧 WebView 缺少 `toSorted` 或 `findLast` 等方法时，客户端模型列表、会话和定时任务调用会抛错。真因：rc.3 固定源码在这些客户端路径使用较新的数组内建，语法降级不提供运行时方法。修法：在既有 head 注入中仅补缺失的 `toSorted`、`findLast`、`findLastIndex`，不覆盖原生方法，属性不可枚举。复验：OrbStack Linux 插件测试与注入冒烟通过，包含稀疏数组、泛型、异常和原生保留反例；旧 WebView 设备复现及 CDP/ADB 三层尚未完成。
+    现象：旧 WebView 缺少 `toSorted` 或 `findLast` 等方法时，客户端模型列表、会话和定时任务调用会抛错。真因：rc.3 固定源码在这些客户端路径使用较新的数组内建，语法降级不提供运行时方法。修法：在既有 head 注入中仅补缺失的 `toSorted`、`findLast`、`findLastIndex`，不覆盖原生方法，属性不可枚举；现有 `at` 与 `replaceAll` 的缺失补丁也改成不可枚举，避免污染 `for...in`。复验：OrbStack Linux 插件测试与注入冒烟通过，包含稀疏数组、泛型、异常和原生保留反例；旧 WebView 设备复现及 CDP/ADB 三层尚未完成。

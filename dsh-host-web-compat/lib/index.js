@@ -23,9 +23,9 @@ const POLYFILLS = [
   // (issue #79: "Object.hasOwn is not a function"). Same semantics as Object.prototype.hasOwnProperty.call.
   `if(typeof Object.hasOwn==='undefined'){Object.hasOwn=function(o,k){return Object.prototype.hasOwnProperty.call(o,k)}}`,
   // Array.prototype.at: Chrome 92+/Safari 15.4+; missing on older WebViews.
-  `if(typeof Array.prototype.at==='undefined'){Array.prototype.at=function(i){var l=this.length,t=Number(i)||0;if(t<0)t=Math.max(l+t,0);return t<0||t>=l?undefined:this[t]}}`,
+  `if(typeof Array.prototype.at==='undefined'){Object.defineProperty(Array.prototype,'at',{value:function(i){var l=this.length,t=Number(i)||0;if(t<0)t=Math.max(l+t,0);return t<0||t>=l?undefined:this[t]},writable:true,configurable:true,enumerable:false})}`,
   // String.prototype.replaceAll: Chrome 85+/Safari 13.1+; optional last API on Chromium<85 WebViews.
-  `if(typeof String.prototype.replaceAll==='undefined'){String.prototype.replaceAll=function(s,r){if(s instanceof RegExp)throw new TypeError('replaceAll: search must be a string');return this.split(s).join(r)}}`,
+  `if(typeof String.prototype.replaceAll==='undefined'){Object.defineProperty(String.prototype,'replaceAll',{value:function(s,r){if(s instanceof RegExp)throw new TypeError('replaceAll: search must be a string');return this.split(s).join(r)},writable:true,configurable:true,enumerable:false})}`,
   // crypto.randomUUID: Chrome 92+ and requires a secure context; MIUI12-era WebViews (Chromium 87)
   // lack it while still offering crypto.getRandomValues (issue #110: randomUUID is not a function).
   // RFC 4122 v4: set version/variant bits, hex lowercase, canonical dashes.
