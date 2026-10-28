@@ -241,6 +241,14 @@ class SafeModeTest {
     return SafeMode.removedPluginNames(text, entries)
   }
 
+  @Test
+  fun removedThirdPartyDoesNotConsumeFollowingTopLevelComments() {
+    val input = "- insert:\n  - id: external\n    name: 'third-party'\n# keep this comment\n- id: next\n  value: 1\n"
+    val output = SafeMode.filterThirdPartyInserts(input, emptySet())
+    assertEquals("# keep this comment\n- id: next\n  value: 1\n", output)
+    assertEquals(listOf("third-party"), SafeMode.removedPluginNames(input, emptySet()))
+  }
+
   // ── ① 事务纪律：备份缺失/崩溃窗口 ──────────────────────────────────────────
 
   /**

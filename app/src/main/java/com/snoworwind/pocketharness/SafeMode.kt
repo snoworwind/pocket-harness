@@ -80,7 +80,7 @@ internal object SafeMode {
       if (!TOP_INSERT.containsMatchIn(line)) { out.add(line); i += 1; continue }
       // 收集本组：从 insert 行到下一个列 0 非空行之前。
       var end = i + 1
-      while (end < lines.size && !TOP_LEVEL.containsMatchIn(lines[end])) end += 1
+      while (end < lines.size && !endsInsertGroup(lines[end])) end += 1
       val body = lines.subList(i + 1, end)
       // 组内子条目缩进 = 组内第一个列表项的缩进。
       val itemIndent = body.firstOrNull { ITEM.containsMatchIn(it) }
@@ -103,7 +103,7 @@ internal object SafeMode {
     return out.joinToString("\n")
   }
 
-  private val TOP_LEVEL = Regex("""^-(?:\s|$)""")
+  private fun endsInsertGroup(line: String): Boolean = line.isNotBlank() && !line[0].isWhitespace()
   private val TOP_INSERT = Regex("""^- insert:\s*$""")
   private val ITEM = Regex("""^(\s*)-\s+(id|name):""")
   private val NAME_KEY = Regex("""^\s*-?\s*name:\s*['"]?([^'"\s]+)""")
@@ -629,7 +629,7 @@ internal object SafeMode {
     while (i < lines.size) {
       if (!TOP_INSERT.matches(lines[i])) { i++; continue }
       var end = i + 1
-      while (end < lines.size && !TOP_LEVEL.matches(lines[end])) end++
+      while (end < lines.size && !endsInsertGroup(lines[end])) end++
       val body = lines.subList(i + 1, end)
       val indent = body.firstOrNull { ITEM.containsMatchIn(it) }?.indexOfFirst { !it.isWhitespace() }
       if (indent != null) for (chunk in insertChildChunks(body, indent)) out += InsertEntry(itemId(chunk.lines), itemName(chunk.lines))
@@ -646,7 +646,7 @@ internal object SafeMode {
     while (i < lines.size) {
       if (!TOP_INSERT.containsMatchIn(lines[i])) { i += 1; continue }
       var end = i + 1
-      while (end < lines.size && !TOP_LEVEL.containsMatchIn(lines[end])) end += 1
+      while (end < lines.size && !endsInsertGroup(lines[end])) end += 1
       val body = lines.subList(i + 1, end)
       val itemIndent = body.firstOrNull { ITEM.containsMatchIn(it) }
         ?.let { it.indexOfFirst { c -> !c.isWhitespace() } }
