@@ -26,6 +26,142 @@ const check = (label, ok, detail) => {
   console.log((ok ? 'PASS  ' : 'FAIL  ') + label + (ok || detail === undefined ? '' : ' -> ' + detail))
   if (!ok) failures.push(label)
 }
+const DECLARED_RE = /\{ script: '([a-z0-9-]+\.mjs)'/g
+/** 从聚合入口源码提取声明集合（纯函数：自测可直接喂合成文本）。 */
+const parseDeclared = (text) => [...text.matchAll(DECLARED_RE)].map((m) => m[1])
+
+/** 宽松的名字出现扫描，只用于「门禁被提及」的正向断言。 */
+const parseInvoked = (text) =>
+  [...new Set([...text.matchAll(/["'\\/](check-[a-z0-9-]+\.mjs|elf-check\.mjs)/g)].map((m) => m[1]))]
+
+/** 读取普通 JS 字符串，供源码扫描器跳过注释与非执行文本。 */
+const readQuoted = (text, start) => {
+  const quote = text[start]
+  if (quote !== "'" && quote !== '"') return null
+  let value = ''
+  for (let i = start + 1; i < text.length; i += 1) {
+    const ch = text[i]
+    if (ch === '\\' && i + 1 < text.length) { value += text[i + 1]; i += 1; continue }
+    if (ch === quote) return { value, end: i + 1 }
+    value += ch
+  }
+  return null
+}
+
+/** 返回模板插值中匹配的 `}`；字符串、注释、对象字面量和嵌套模板不参与外层计数。 */
+function templateExpressionEnd(text, start) {
+  let depth = 0
+  for (let i = start; i < text.length;) {
+    if (text.startsWith('//', i)) {
+      const end = text.indexOf('\n', i + 2)
+      i = end < 0 ? text.length : end + 1
+      continue
+    }
+    if (text.startsWith('/*', i)) {
+      const end = text.indexOf('*/', i + 2)
+      i = end < 0 ? text.length : end + 2
+      continue
+    }
+    if (text[i] === "'" || text[i] === '"') {
+      const literal = readQuoted(text, i)
+      if (literal === null) return -1
+      i = literal.end
+      continue
+    }
+    if (text[i] === '`') {
+      const nested = readTemplate(text, i)
+      if (nested === null) return -1
+      i = nested.end
+      continue
+    }
+    if (text[i] === '{') depth += 1
+    else if (text[i] === '}') {
+      if (depth === 0) return i
+      depth -= 1
+    }
+    i += 1
+  }
+  return -1
+}
+
+/** 模板文本不执行；只返回 `${...}` 中实际执行的表达式供扫描器递归检查。 */
+function readTemplate(text, start) {
+  const expressions = []
+  for (let i = start + 1; i < text.length;) {
+    if (text[i] === '\\') { i += 2; continue }
+    if (text[i] === '`') return { expressions, end: i + 1 }
+    if (text.startsWith('${', i)) {
+      const end = templateExpressionEnd(text, i + 2)
+      if (end < 0) return null
+      expressions.push(text.slice(i + 2, end))
+      i = end + 1
+      continue
+    }
+    i += 1
+  }
+  return null
+}
+
+/** Node 执行点解析：跳过注释/字符串，只认裸 gate('file.mjs') 调用。 */
+const parseNodeExecutionSites = (text) => {
+  const out = new Set()
+  const ident = (ch) => ch !== undefined && /[A-Za-z0-9_$]/.test(ch)
+  for (let i = 0; i < text.length;) {
+    if (text.startsWith('//', i)) {
+      const end = text.indexOf('\n', i + 2)
+      i = end < 0 ? text.length : end + 1
+      continue
+    }
+    if (text.startsWith('/*', i)) {
+      const end = text.indexOf('*/', i + 2)
+      i = end < 0 ? text.length : end + 2
+      continue
+    }
+    if (text[i] === '`') {
+      const template = readTemplate(text, i)
+      if (template !== null) {
+        for (const expression of template.expressions) {
+          for (const name of parseNodeExecutionSites(expression)) out.add(name)
+        }
+        i = template.end
+      } else i += 1
+      continue
+    }
+    if (text[i] === "'" || text[i] === '"') {
+      const literal = readQuoted(text, i)
+      i = literal?.end ?? i + 1
+      continue
+    }
+    if (text.startsWith('gate', i) && !ident(text[i - 1]) && !ident(text[i + 4]) && text[i - 1] !== '.') {
+      let j = i + 4
+      while (/\s/.test(text[j] ?? '')) j += 1
+      if (text[j] === '(') {
+        j += 1
+        while (/\s/.test(text[j] ?? '')) j += 1
+        const literal = readQuoted(text, j)
+        if (literal !== null) {
+          j = literal.end
+          while (/\s/.test(text[j] ?? '')) j += 1
+          if (text[j] === ')' && /^(?:check-[a-z0-9-]+\.mjs|elf-check\.mjs)$/.test(literal.value)) out.add(literal.value)
+        }
+      }
+    }
+    i += 1
+  }
+  return out
+}
+
+/** 执行点解析：只认真实 gate(...) 调用或 PowerShell 的 node 命令行。 */
+const parseExecutionSites = (text, isNode) => {
+  if (isNode) return parseNodeExecutionSites(text)
+  const out = new Set()
+  for (const m of text.matchAll(/^\s*(?:\$\w+\s*=\s*)?node\s+[^\n]*?scripts[\\/](check-[a-z0-9-]+\.mjs|elf-check\.mjs)/gm)) out.add(m[1])
+  return out
+}
+
+/** SKIP 发射点判据：只认作为代码语句出现的字符串字面量 console.log/error。 */
+const emitsSkip = (line) => /^\s*console\.(?:log|error)\(\s*[`'"]\s*(?:FAIL\s+)?SKIP/.test(line)
+
 // 布局无关解析：协调仓根用 dsh-mobile-apk/...；apk 自包含根落到同名相对路径。
 const resolveRepoPath = (rel) => {
   const cands = String(rel).startsWith('dsh-mobile-apk/') ? [rel, String(rel).slice('dsh-mobile-apk/'.length)] : [rel]
@@ -35,18 +171,11 @@ const resolveRepoPath = (rel) => {
 const readIf = (rel) => { const p = resolveRepoPath(rel); return p === null ? null : readFileSync(p, 'utf8') }
 
 // ── 1. 声明集合 vs 实际文件 vs 两条链 ───────────────────────────────────────
-const aggText = readIf('scripts/check-release-gates.mjs')
-if (aggText === null) { console.error('CHECK-GATE-SKIPS FAILED：缺 scripts/check-release-gates.mjs'); process.exit(2) }
-const declared = [...aggText.matchAll(/\{ script: '([a-z0-9-]+\.mjs)'/g)].map((m) => m[1])
-check('声明集合非空', declared.length > 0, 'gates=' + declared.length)
-const missingFiles = declared.filter((g) => !existsSync(join(SCRIPTS, g)))
-check('声明集合里的门禁全部在场', missingFiles.length === 0, '缺: ' + missingFiles.join(', '))
-
 const invokedIn = (rel) => {
   const text = readIf(rel)
   if (text === null) return null
   // 兼容两种写法：'check-x.mjs'（node 侧数组/helper）与 "scripts\check-x.mjs"（PowerShell 调用）。
-  return [...new Set([...text.matchAll(/["'\\/](check-[a-z0-9-]+\.mjs|elf-check\.mjs)/g)].map((m) => m[1]))]
+  return parseInvoked(text)
 }
 /**
  * 执行点解析（0.14.2 实修）：只认「真的会 spawn 这个门禁」的写法，不认声明数组里的字符串字面量。
@@ -64,17 +193,85 @@ const invokedIn = (rel) => {
  * （elf-check / runtime-assets / file-modes / 逐 ABI 段等），不属声明清单，一律不纳入，
  * 避免把合法的分支调用误判成未接线。
  */
-const executionSites = (rel) => {
-  const text = readIf(rel)
+const executionSites = (rel, textOverride) => {
+  const text = textOverride === undefined ? readIf(rel) : textOverride
   if (text === null) return null
-  const out = new Set()
-  if (rel.endsWith('.mjs')) {
-    for (const m of text.matchAll(/gate\(\s*['"]([a-z0-9-]+\.mjs|elf-check\.mjs)['"]\s*\)/g)) out.add(m[1])
-  } else {
-    for (const m of text.matchAll(/^\s*(?:\$\w+\s*=\s*)?node\s+[^\n]*?scripts[\\/](check-[a-z0-9-]+\.mjs|elf-check\.mjs)/gm)) out.add(m[1])
-  }
-  return out
+  return parseExecutionSites(text, rel.endsWith('.mjs'))
 }
+
+const NODE_CHAIN = 'scripts/build-apk.mjs'
+const PWSH_CHAIN = 'scripts/build-apk-013.ps1'
+/** 判别力自测，覆盖声明/提及/真实执行点/SKIP 发射点的正反边界。 */
+const selfTest = (silent) => {
+  const fails = []
+  let checks = 0
+  const t = (label, ok, detail) => {
+    checks += 1
+    if (!ok) fails.push(label + (detail === undefined ? '' : ' -> ' + detail))
+    else if (!silent) console.log('PASS  [self-test] ' + label)
+  }
+
+  t('声明提取认单引号对象项',
+    parseDeclared("const G = [{ script: 'check-a.mjs' }, { script: 'check-b.mjs' }]").join(',') === 'check-a.mjs,check-b.mjs')
+  t('声明提取不吃双引号或裸字符串', parseDeclared('{ script: "check-a.mjs" }').length === 0)
+
+  const declarationOnly = "const GATE_SCRIPTS = [\n  'check-a.mjs',\n  'check-b.mjs',\n]\n"
+  t('宽松提及扫描可发现声明字面量', parseInvoked(declarationOnly).length === 2)
+  t('执行点扫描不把声明字面量当成运行', executionSites(NODE_CHAIN, declarationOnly).size === 0)
+  t('Node gate 单引号调用是执行点', [...executionSites(NODE_CHAIN, "gate('check-a.mjs')")].includes('check-a.mjs'))
+  t('Node gate 双引号调用是执行点', [...executionSites(NODE_CHAIN, 'gate("check-b.mjs")')].includes('check-b.mjs'))
+  t('Node 行注释不是执行点', executionSites(NODE_CHAIN, "// gate('check-a.mjs')").size === 0)
+  t('Node 块注释不是执行点', executionSites(NODE_CHAIN, "/* gate('check-a.mjs') */").size === 0)
+  t('Node 字符串提及不是执行点', executionSites(NODE_CHAIN, 'const note = "gate(\'check-a.mjs\')"').size === 0)
+  t('Node 模板文本提及不是执行点', executionSites(NODE_CHAIN, '`gate(\'check-a.mjs\')`').size === 0)
+  t('Node 模板插值中的调用是执行点', [...executionSites(NODE_CHAIN, '`${gate("check-a.mjs")}`')].includes('check-a.mjs'))
+  t('Node 模板插值中的字符串提及不是执行点', executionSites(NODE_CHAIN, '`${"gate(\'check-a.mjs\')"}`').size === 0)
+  t('Node 数组索引不算执行点', executionSites(NODE_CHAIN, 'GATE_SCRIPTS[0]').size === 0)
+  t('Node 无引号变量不算执行点', executionSites(NODE_CHAIN, 'gate(name)').size === 0)
+
+  t('PowerShell 行首 node 调用是执行点',
+    [...executionSites(PWSH_CHAIN, 'node "$PSScriptRoot\\scripts\\check-a.mjs"')].includes('check-a.mjs'))
+  t('PowerShell 赋值接 node 调用是执行点',
+    [...executionSites(PWSH_CHAIN, '$r = node scripts/check-b.mjs --x')].includes('check-b.mjs'))
+  t('PowerShell 注释不是执行点', executionSites(PWSH_CHAIN, '# node scripts\\check-a.mjs').size === 0)
+  t('PowerShell 字符串提及不是执行点', executionSites(PWSH_CHAIN, 'Write-Host "see scripts\\check-a.mjs"').size === 0)
+
+  // Split the synthetic call so this file does not make its own SKIP scanner match a test fixture.
+  const sample = (...parts) => parts.join('')
+  t('SKIP 计数行被识别', emitsSkip(sample('console.', 'log(', "'SKIP(#1) test'")))
+  t('未计数 SKIP 行也被识别', emitsSkip(sample('console.', 'log(', "'SKIP test'")))
+  t('FAIL 前缀 SKIP 行被识别', emitsSkip(sample('console.', 'error(', "'FAIL SKIP test'")))
+  t('普通注释提及 SKIP 不算发射点', !emitsSkip('// mentions SKIP'))
+  t('注释中的 console.log 不是发射点', !emitsSkip("// console.log('SKIP test')"))
+  t('console.warn 不在当前审计面', !emitsSkip("console.warn('SKIP test')"))
+  return { fails, checks }
+}
+
+if (argv.includes('--self-test')) {
+  const { fails: stFails, checks } = selfTest(false)
+  if (stFails.length > 0) {
+    console.error('CHECK-GATE-SKIPS SELF-TEST FAILED（' + stFails.length + ' 项）：' + stFails.join('；'))
+    process.exit(1)
+  }
+  console.log('CHECK-GATE-SKIPS SELF-TEST PASSED（' + checks + ' 项判别力断言）')
+  process.exit(0)
+}
+
+// 正常模式也先静默自证，避免判据自满足缺陷只靠人工记得传 --self-test。
+{
+  const { fails: stFails } = selfTest(true)
+  if (stFails.length > 0) {
+    console.error('CHECK-GATE-SKIPS FAILED：判据自证不通过（' + stFails.length + ' 项）—— ' + stFails.join('；'))
+    process.exit(1)
+  }
+}
+
+const aggText = readIf('scripts/check-release-gates.mjs')
+if (aggText === null) { console.error('CHECK-GATE-SKIPS FAILED：缺 scripts/check-release-gates.mjs'); process.exit(2) }
+const declared = parseDeclared(aggText)
+check('声明集合非空', declared.length > 0, 'gates=' + declared.length)
+const missingFiles = declared.filter((g) => !existsSync(join(SCRIPTS, g)))
+check('声明集合里的门禁全部在场', missingFiles.length === 0, '缺: ' + missingFiles.join(', '))
 const CHAINS = ['scripts/build-apk-013.ps1', 'dsh-mobile-apk/scripts/build-apk.mjs']
 const declaredSet = new Set(declared)
 for (const rel of CHAINS) {
@@ -114,7 +311,7 @@ for (const file of gateFiles) {
   const text = readFileSync(join(SCRIPTS, file), 'utf8')
   const lines = text.split('\n')
   // 只认「字符串字面量以 SKIP 开头」的发射点：审计/门禁文案里提到 SKIP 不算（否则本脚本自命中）。
-  const skipLines = lines.filter((l) => /console\.(?:log|error)\(\s*[`'"]\s*(?:FAIL\s+)?SKIP/.test(l))
+  const skipLines = lines.filter(emitsSkip)
   if (skipLines.length === 0) { skipAudit.push({ file, sites: 0, counted: true }); continue }
   const hasSummary = /SKIP=/.test(text)
   const uncounted = skipLines.filter((l) => !/#/.test(l) && !/SKIP=/.test(l))

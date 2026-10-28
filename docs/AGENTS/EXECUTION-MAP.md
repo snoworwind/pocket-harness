@@ -194,6 +194,7 @@ Linux 发现补充（P04，坑 373）：bootstrap `index.js` 串行发现 → `g
 | 高 | P01 | `sh -c "屏幕命令"` 后接重定向/位置参数曾绕过屏幕范围门 | `plugins/dsh-android-bridge/src/screen-scope.ts`、`app/src/main/java/com/snoworwind/pocketharness/ShellOps.kt` | 旧解析要求 `-c` 载荷直到段尾；尾随内容会使载荷不展开 | 已修：按 shell 规则只解析 `-c` 后第一个参数，后续重定向/位置参数不再隐藏命令体 |
 | 高 | P03 | 浏览器契约的 approval/confirm/full-access 曾只有声明，没有工具执行闸 | `plugins/dsh-android-browser/src/contract.ts`、`src/index.ts`、`src/tools.ts` | 导航/输入无逐项审批、身份切换无二次确认、截图未受会话完全访问档约束 | **源码已修（[PR #98](https://github.com/snoworwind/pocket-harness/pull/98) 待 CI）**：统一 pre-execute 审批 + 单调 guard；截图只认当前会话显式 danger-full-access；未构建 APK、未做设备验证 |
 | 高 | B02 | Kotlin 单测数量门禁可被**整类删除**绕过（A 判据只看现存类，B 判据对缺席类直接 continue） | `scripts/check-kotlin-test-count.mjs:129`、`scripts/check-kotlin-test-count.mjs:153` | 「防防线删失」被部分架空 | 未修 |
+| 中 | B02 | 门禁接线反向断言曾把 `GATE_SCRIPTS` 声明字面量误当成真实调用点 | `scripts/check-gate-skips.mjs` 的 Node / PowerShell 执行点扫描 | 门禁只登记未接线时仍可能假绿；SKIP 文本扫描也可能自命中注释与字符串 | 已修：只识别 `gate('file.mjs')` 与 PowerShell 行首 `node scripts\check-*.mjs` 调用；24 项 `--self-test` 和完整门禁通过，受控负控移除执行点解析后自测失败；见坑 590 |
 | 高 | B03 | `verify-vdisplay-float` 的「非法档位必须被拒」是**永久假通过**，且顺手改设备档位 | `scripts/verify-vdisplay-float.mjs:95-103` | 该断言永远绿；跑一次就把设备 scale 写成 `coerce` 后的值 | 未修 |
 | 高 | B03 | `verify-browser-panel` 的 `newTab:true` 是死参数（壳侧不解析） | `scripts/verify-browser-panel.mjs:123-128`、`app/src/main/java/com/snoworwind/pocketharness/BrowserHost.kt:384-394` | 「多页签」断言实际没建页签，属假覆盖 | 未修 |
 | 高 | B02 | apk CI 的「工具输出 schema 契约门禁」结构必红：它只自建 manage 一个包，而门禁要求 7 个插件的 lib 在场；且一条门禁红会让后续 11 条全部 skipped | `.github/workflows/pr-gate.yml` | 分支 CI 长期红，且掩盖其余门禁的真实结果 | **已修（本轮）**：schema 门禁移到「插件单测门禁」的全量构建之后；第一个 job 的全部门禁步骤补 `if: always()`（失败不再掩盖后续）；本地按 CI 顺序复跑该门禁 PASSED（7 插件 153 分支） |
@@ -1847,7 +1848,7 @@ flowchart LR
 - **一句话**：用 33 个 `scripts/check-*.mjs` 静态脚本守住「产物形态、跨层集合一致、SKIP 纪律」三类不变量，并由 `scripts/check-release-gates.mjs` 一处声明门禁集（当前 27 项），强制两仓 CI 与两条打包链逐项接线；发布链再以 `--run --require` 要求 SKIP=0。
 - **入口/触发**（四条路径，脚本集合同源、调用参数不同）：
   1. **两仓 CI**：`.github/workflows/pr-gate.yml`（apk 仓同名文件）——`pull_request` 与 `push main` 触发；`static` 作业串行 16 步，`compile` 作业跑 `compileDebugKotlin` + `:app:testDebugUnitTest` 全量。
-  2. **本地链**：`scripts/build-apk-013.ps1`（`pwsh -File scripts\build-apk-013.ps1 -Suffix ""`）——注入前 21 项门禁段 → 逐 ABI 注入 → 注入后 7 项产物级门禁 → 打包。
+  2. **本地链**：`scripts/build-apk-013.ps1`（`pwsh -File scripts\build-apk-013.ps1 -Suffix ""`）——注入前 24 项门禁段 → 逐 ABI 注入 → 注入后 7 项产物级门禁 → 打包。
   3. **云端链**：`.github/workflows/build-apk.yml` → `scripts/build-snapshot-013.mjs <abi>`（归档自检）→ `scripts/build-apk.mjs`（`GATE_SCRIPTS` 与本地链差集须为 0）。
   4. **发布链**：`scripts/build-release.ps1`——`node scripts/check-release-gates.mjs`（静态接线）→ `--run --require`（注入前）→ 手工快照注入 → `--run --require`（注入后产物体）→ gradle。
 - **运行顺序**（什么时候跑 / 被谁触发 / 跑完交给谁）：
