@@ -52,7 +52,7 @@ export function isV2Payload(data: unknown): boolean {
 }
 
 const isIntArray = (v: unknown): v is number[] =>
-  Array.isArray(v) && v.every((x) => typeof x === 'number' && Number.isFinite(x))
+  Array.isArray(v) && v.every((x) => Number.isInteger(x))
 
 /** 常数广播取值（§S2.3）：长度 1 且 n>1 ⇒ 整列同值。 */
 const pick = (arr: number[], i: number, n: number): number => (arr.length === 1 && n > 1 ? arr[0] : arr[i])
@@ -68,8 +68,10 @@ export function decodeV2(data: unknown): DecodeResult {
   const gen = Number(d.gen)
   const rot = Number(d.rot ?? 0)
   const scr = d.scr
-  if (!Number.isFinite(gen)) return { ok: false, error: 'gen 缺失或非数字' }
-  if (!isIntArray(scr) || scr.length !== 2) return { ok: false, error: 'scr 必须是 [宽, 高]' }
+  if (!Number.isInteger(gen)) return { ok: false, error: 'gen 缺失或非整数' }
+  if (!Number.isInteger(rot)) return { ok: false, error: `rot 必须是整数（收到 ${String(d.rot)}）` }
+  if (!isIntArray(scr)) return { ok: false, error: 'scr 必须是整数数组（[宽, 高]）' }
+  if (scr.length !== 2) return { ok: false, error: `scr 必须是 [宽, 高] 两项（收到 ${scr.length} 项）` }
 
   const str = d.str
   if (!Array.isArray(str) || !str.every((s) => typeof s === 'string')) return { ok: false, error: 'str 必须是字符串数组' }
@@ -103,9 +105,8 @@ export function decodeV2(data: unknown): DecodeResult {
     cols[key] = col
   }
   const b = d.b
-  if (!isIntArray(b) || b.length !== n * 4) {
-    return { ok: false, error: `b 长度必须为 4n=${n * 4}（收到 ${Array.isArray(b) ? b.length : '非数组'}）` }
-  }
+  if (!isIntArray(b)) return { ok: false, error: 'b 必须是整数数组（每行 x,y,w,h 四个整数像素）' }
+  if (b.length !== n * 4) return { ok: false, error: `b 长度必须为 4n=${n * 4}（收到 ${b.length}）` }
 
   // FX-206.1（P0）：句柄必须指回**壳侧 walk 全量行表**的原始行号。载荷行下标 fi 只是列内位置，
   // 壳侧 resolveTarget 用 rows[handle] 索引全量表；两者只在「没有节点被过滤」时偶然相等
