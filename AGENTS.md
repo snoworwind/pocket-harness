@@ -192,6 +192,7 @@ adb -s <serial> install -r -t out\v<版本>\pocket-harness-v<版本>-arm64.apk
 | `check-control-ops.mjs` | 控制 op 六面登记一致（新增 op 必须六处同改） |
 | `check-kotlin-comments.mjs` | Kotlin 嵌套块注释 |
 | `check-plugin-tests.mjs` | 每个插件的单测真实跑通（全 skip 判假绿） |
+| `check-gate-skips.mjs` | 门禁声明、真实调用点与 SKIP 计数一致；先跑 `--self-test` 判别扫描器边界 |
 | `check-tool-surface-budget.mjs` | 模型面 wire 预算（新增工具会撞；近义工具优先复用既有 + 参数） |
 | `check-patch-mirror.mjs` | 补丁 registry↔IMPLS id 双向闭合（**树内自洽**；跨树逐字节镜像层已按 §4 铁律 6 移除） |
 | `check-code-map.mjs` | 执行地图覆盖完整、锚点有效、编号一致（改代码后必跑；`--self-test` 自检） |
