@@ -3249,3 +3249,7 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 564. **引擎来源锁的 overlay 输入未固定检出字节（2026-10-28）**
 
     现象：启用 `core.autocrlf=true` 的检出会将 `engine-overlay.json` 的 LF 改为 CRLF，即使 JSON 语义不变。真因：引擎组件键按文件原始字节散列该输入，而该路径未声明检出字节属性。修法：对该文件设置 `-text`，保持 Git 对象中的原始字节，不更改内容或放宽来源锁。复验：`base-lock.test.mjs` 在隔离 Git 仓模拟 autocrlf 检出，验证属性在场时字节一致、删除该属性后字节不同；两臂均通过。未做设备验证，此改动不改变设备运行代码。
+
+572. **来源快照旧 profile 身份检查未接线且自包含布局找不到 applicationId（2026-10-28）**
+
+    现象：旧 `ci-verify-snapshot.py` 在本仓根目录布局读取 applicationId 得到空值，且来源构建路径没有调用它；插件成员检查不能证明 web/headless 的 profile patch 与应用私有路径一致。真因：旧检查器寻找协调仓布局，而当前来源链已独立且使用 pnpm，不能直接恢复旧链作为交付入口。修法：在本仓来源 APK 的最终注入快照上接入独立流式 profile 身份检查，核对真实 appId、四个路径、profile 原始字节及负控，避免套入旧检查器其他不适用的 npm 假设。复验：自检一正七负、OrbStack 接线测试和既有来源 APK 内嵌快照通过；最终新来源 APK 和设备三层未完成，不作为发版通过。
