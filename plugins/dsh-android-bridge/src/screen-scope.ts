@@ -294,7 +294,7 @@ function isRuntimeCommandName(segment: string): boolean {
     if (first === null) return false
     if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(first.word)) { rest = first.rest.trim(); continue }
     if (first.word.startsWith("$'") || first.word.startsWith('$"')) return false
-    return first.word.startsWith('$') || first.word.startsWith('`')
+    return first.word.includes('$') || first.word.includes('`')
   }
   return false
 }
@@ -302,15 +302,26 @@ function isRuntimeCommandName(segment: string): boolean {
 /** A substitution after complete leading assignments still supplies the command word. */
 function runtimeExpansionInCommandPosition(prefix: string): boolean {
   if (prefix.trim().length === 0) return true
-  if (!/[ \t\r\n]$/.test(prefix)) return false
   let rest = prefix.trim()
   for (let guard = 0; guard < 8 && rest.length > 0; guard += 1) {
     const first = firstShellArgument(rest)
     if (first === null) return true
-    if (!/^[A-Za-z_][A-Za-z0-9_]*=/.test(first.word)) return false
+    if (!/^[A-Za-z_][A-Za-z0-9_]*=/.test(first.word)) {
+      return first.rest.trim().length === 0 && !/[ \t\r\n]$/.test(prefix)
+    }
+    if (first.rest.trim().length === 0) return /[ \t\r\n]$/.test(prefix)
     rest = first.rest.trim()
   }
-  return rest.length === 0
+  return false
+}
+
+/** A substitution that joins to a `sh -c` script changes executable payload text. */
+function runtimeExpansionInShellScript(prefix: string): boolean {
+  const match = SHELL_C_PAYLOAD.exec(prefix)
+  if (match === null) return false
+  if (!/[ \t\r\n]$/.test(prefix)) return true
+  // A complete first script word means the expansion starts in argv ($0/$1), not in the script.
+  return firstShellArgument(match[1]) === null
 }
 
 /**
@@ -368,14 +379,14 @@ export function splitCommandSegments(command: string): CommandSegments {
       if (ch === '`') {
         const end = backtickEnd(text, i + 1)
         if (end < 0) { unparsed = true; buf += text.slice(i); i = text.length; continue }
-        if (runtimeExpansionInCommandPosition(buf) || PAYLOAD_SLOT_TAIL.test(buf)) unparsed = true
+        if (runtimeExpansionInCommandPosition(buf) || runtimeExpansionInShellScript(buf) || PAYLOAD_SLOT_TAIL.test(buf)) unparsed = true
         scan(text.slice(i + 1, end), depth + 1)
         buf += ' '; i = end + 1; continue
       }
       if (ch === '$' && text[i + 1] === '(') {
         const end = parenEnd(text, i + 2)
         if (end < 0) { unparsed = true; buf += text.slice(i); i = text.length; continue }
-        if (runtimeExpansionInCommandPosition(buf) || PAYLOAD_SLOT_TAIL.test(buf)) unparsed = true
+        if (runtimeExpansionInCommandPosition(buf) || runtimeExpansionInShellScript(buf) || PAYLOAD_SLOT_TAIL.test(buf)) unparsed = true
         scan(text.slice(i + 2, end), depth + 1)
         buf += ' '; i = end + 1; continue
       }

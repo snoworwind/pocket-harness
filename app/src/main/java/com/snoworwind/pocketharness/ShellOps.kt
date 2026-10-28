@@ -485,7 +485,7 @@ internal object ShellOps {
             i = text.length
             continue
           }
-          if (runtimeExpansionInCommandPosition(buf.toString()) || PAYLOAD_SLOT_TAIL.containsMatchIn(buf.toString())) unparsed = true
+          if (runtimeExpansionInCommandPosition(buf.toString()) || runtimeExpansionInShellScript(buf.toString()) || PAYLOAD_SLOT_TAIL.containsMatchIn(buf.toString())) unparsed = true
           scan(text.substring(i + 1, end), depth + 1)
           buf.append(' ')
           i = end + 1
@@ -499,7 +499,7 @@ internal object ShellOps {
             i = text.length
             continue
           }
-          if (runtimeExpansionInCommandPosition(buf.toString()) || PAYLOAD_SLOT_TAIL.containsMatchIn(buf.toString())) unparsed = true
+          if (runtimeExpansionInCommandPosition(buf.toString()) || runtimeExpansionInShellScript(buf.toString()) || PAYLOAD_SLOT_TAIL.containsMatchIn(buf.toString())) unparsed = true
           scan(text.substring(i + 2, end), depth + 1)
           buf.append(' ')
           i = end + 1
@@ -685,7 +685,7 @@ internal object ShellOps {
         rest = first.rest.trim()
       } else {
         if (first.word.startsWith("$'") || first.word.startsWith("$\"")) return false
-        return first.word.startsWith("$") || first.word.startsWith("`")
+        return first.word.contains('$') || first.word.contains('`')
       }
     }
     return false
@@ -694,15 +694,25 @@ internal object ShellOps {
   /** A substitution after complete leading assignments still supplies the command word. */
   private fun runtimeExpansionInCommandPosition(prefix: String): Boolean {
     if (prefix.isBlank()) return true
-    if (prefix.last() !in listOf(' ', '\t', '\r', '\n')) return false
     var rest = prefix.trim()
     repeat(8) {
       if (rest.isEmpty()) return true
       val first = firstShellArgument(rest) ?: return true
-      if (!Regex("^[A-Za-z_][A-Za-z0-9_]*=").containsMatchIn(first.word)) return false
+      if (!Regex("^[A-Za-z_][A-Za-z0-9_]*=").containsMatchIn(first.word)) {
+        return first.rest.trim().isEmpty() && prefix.lastOrNull() !in listOf(' ', '\t', '\r', '\n')
+      }
+      if (first.rest.trim().isEmpty()) return prefix.lastOrNull() in listOf(' ', '\t', '\r', '\n')
       rest = first.rest.trim()
     }
-    return rest.isEmpty()
+    return false
+  }
+
+  /** A substitution that joins to a `sh -c` script changes executable payload text. */
+  private fun runtimeExpansionInShellScript(prefix: String): Boolean {
+    val match = SHELL_C_PAYLOAD.find(prefix) ?: return false
+    if (prefix.lastOrNull() !in listOf(' ', '\t', '\r', '\n')) return true
+    // A complete first script word means the expansion starts in argv ($0/$1), not in the script.
+    return firstShellArgument(match.groupValues[1]) == null
   }
 
   /**

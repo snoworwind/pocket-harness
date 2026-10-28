@@ -586,6 +586,56 @@
       "why": "完整赋值词之后的命令替换输出成为命令名，仍是不可静态认证的执行目标。"
     },
     {
+      "name": "S-12n 静态前缀拼接运行时变量的命令名必须拒绝",
+      "command": "scr$CMD -p /sdcard/real.png",
+      "ownedTargets": [
+        "7",
+        "11529215046816944610"
+      ],
+      "expect": "deny-unparsed",
+      "why": "变量可以补全命令词而不出现在词首；命令名中任意位置的运行时展开都不能用静态前缀绕过检查。"
+    },
+    {
+      "name": "S-12o 命令替换拼接进命令名必须拒绝",
+      "command": "scr$(printf eencap) -p /sdcard/real.png",
+      "ownedTargets": [
+        "7",
+        "11529215046816944610"
+      ],
+      "expect": "deny-unparsed",
+      "why": "命令替换输出可补全屏幕命令名；即使替换体本身无害，也不能仅扫描其副作用后放行外层动态命令。"
+    },
+    {
+      "name": "S-12p 前置赋值后静态前缀拼接动态命令名必须拒绝",
+      "command": "MODE=1 scr$CMD -p /sdcard/real.png",
+      "ownedTargets": [
+        "7",
+        "11529215046816944610"
+      ],
+      "expect": "deny-unparsed",
+      "why": "命令名位置的动态展开在任意前置环境赋值后仍必须 fail-closed。"
+    },
+    {
+      "name": "S-12q 命令替换拼接进 sh -c 脚本必须拒绝",
+      "command": "sh -c 'echo hi'$(cat /sdcard/x.sh)",
+      "ownedTargets": [
+        "7",
+        "11529215046816944610"
+      ],
+      "expect": "deny-unparsed",
+      "why": "替换紧接静态脚本参数，输出会拼入 sh -c 可执行的脚本文本；递归扫描 cat 不足以证明动态载荷安全。"
+    },
+    {
+      "name": "S-12r sh -c 脚本已完整时的动态位置参数仍可用",
+      "command": "sh -c 'echo hi' $(date)",
+      "ownedTargets": [
+        "7",
+        "11529215046816944610"
+      ],
+      "expect": "allow",
+      "why": "脚本参数已由静态词完整提供，且替换前有参数分隔空白；替换只成为 shell 的位置参数，不改变执行脚本。"
+    },
+    {
       "name": "S-13a 组合短选项 -lc 中的 c 必须展开并拒绝真实屏",
       "command": "sh -lc 'screencap -p /sdcard/real.png'",
       "ownedTargets": [
