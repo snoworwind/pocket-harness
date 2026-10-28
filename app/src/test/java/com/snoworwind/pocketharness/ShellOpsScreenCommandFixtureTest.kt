@@ -116,6 +116,7 @@ class ShellOpsScreenCommandFixtureTest {
     // `input`，于是这种写法整条不进命令词面 ⇒ 直接放行。四条拼写都要命中。
     for (command in listOf(
       "input -d 0 tap 500 800",
+      "input -d7 tap 500 800",
       "input --display 0 tap 500 800",
       "input --display=0 tap 500 800",
       "input -d 9999 tap 500 800",
@@ -139,8 +140,11 @@ class ShellOpsScreenCommandFixtureTest {
   fun realOnlyShellGateAllowsOnlyPhysicalScreenTargetsAndPreservesNonScreenCommands() {
     val denied = listOf(
       "input -d 47 tap 10 20",
+      "input -d=47 tap 10 20",
+      "input tap 10 20 -d7",
       "input tap 10 20 --display=0",
       "screencap --display=47 -p /sdcard/a.png",
+      "sh -c -- 'screencap -p -d 47 /sdcard/a.png'",
       "sh -c \"screencap -d 0 -p; input -d 47 tap 10 20\"",
       "toybox sh -c \"input --display 999 tap 1 2\"",
       "screencap --display-id 999 -p /sdcard/a.png",
@@ -171,6 +175,8 @@ class ShellOpsScreenCommandFixtureTest {
     // 若把它当分隔符，判定看到的命令与 shell 执行的就不是同一条。
     assertEquals(emptyList<String>(), ShellOps.commandDisplayTokens("input\u3000-d 0 tap 1 2"))
     assertEquals(listOf("0"), ShellOps.commandDisplayTokens("input -d 0 tap 1 2"))
+    assertEquals(listOf("47"), ShellOps.commandDisplayTokens("input -d47 tap 1 2"))
+    assertEquals(emptyList<String>(), ShellOps.commandDisplayTokens("input -d=47 tap 1 2"))
     assertEquals(listOf("0"), ShellOps.commandDisplayTokens("input\t-d 0 tap 1 2"))
   }
 

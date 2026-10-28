@@ -3293,3 +3293,7 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 581. **WebView 验收探针只认中文导致本地化假红或假绿（2026-10-28）**
 
     现象：设备 UI 切换为英文时，「设置」「手机控制」「重置链接」和附件按钮选择器可能找不到真实控件；退役入口若只用中文查询，英文入口复活却会漏检。真因：live probe 把展示语言误当稳定 DOM 身份。修法：直接 Settings 优先，其次以账号菜单 accessible name 打开菜单，再回退文字 More；所有中英文标签使用完整匹配，并将来源字符串探针抽成自检可读取的真源码。缺入口、仅有侧栏 More 导航、控件隐藏/禁用和退役入口复活都必须有反证。复验：OrbStack Node 24 下 `verify-webview-015.mjs --self-test` 20/20、PR Gate/local-gate 回归 32/32、执行地图与维护文档门禁通过；未做设备 CDP/ADB 验收，jsdom 自检不替代设备层。
+
+582. **`sh -c --` 的选项终结符遮住真实屏命令（2026-10-28）**
+
+    现象：`virtual-only` 范围下，`sh -c -- 'screencap -p …'` 会被判为无屏幕操作而放行；合法 `input -d7`/`screencap -d7` 又会误拒。真因：`-c` 后的第一个 `--` 是 shell 选项终结符，旧解析器却把它当成脚本；短选项 `-d` 的粘连值也未按 Android CLI 语法解析。修法：只在识别 `-c` 的独立 `--` 参数后继续解析脚本；目标屏识别同时接受 `-d 7` 与 `-d7`，拒绝把 `-d=7` 当作目标 7；同步 Kotlin 与 bridge 实现，并用跨语言 fixture 固定真实屏拒绝、已注册虚拟屏放行及嵌套反例。复验：OrbStack Node 24 bridge 插件 178/178、`ShellOpsScreenCommandFixtureTest` 通过；设备三层按用户本轮指示未做，不能作为发版通过。
