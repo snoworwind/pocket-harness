@@ -328,6 +328,8 @@ try {
   }
 
   // ---- 4. 门禁（注入后；与 build-apk-013.ps1 同一份门禁集）----
+  log('门禁：最终快照 profile 与 applicationId 一致性…')
+  run(PYTHON, [gate('check-snapshot-profile-identity.py'), snapIn])
   log('门禁：patch 挂载集校验（双向差集）…')
   run('node', [gate('check-patch-mounts.mjs'), join(ROOT, 'scripts', 'profile-web.cordis.patch.yml'), ...pluginDirs, undo, market])
   // 注入面成员完整性（P0）：包内新增文件必须随注入进 tar，且相对导入不得悬空

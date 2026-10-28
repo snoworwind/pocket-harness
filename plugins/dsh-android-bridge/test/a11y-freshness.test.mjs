@@ -1,6 +1,4 @@
-// ST-23：无障碍在线的「队列心跳 OR 独立心跳」判定与来源标注。
-// 背景：壳侧 ControlPoller 已带独立心跳线程写 controlHeartbeat（防慢建树被误判掉线），
-// 但引擎侧从未读它 → 修复实际未生效。这里锁住新口径，并证明两口径可区分。
+// 无障碍心跳与独立控制队列分别验证，队列取活不能证明无障碍服务在线。
 import { test, after } from 'node:test'
 import assert from 'node:assert/strict'
 import { mkdtempSync, writeFileSync } from 'node:fs'
@@ -51,15 +49,15 @@ test('ST-23：两条都陈旧 → 离线（fail-closed）', () => {
   assert.equal(svc.gateFacts().a11ySource, 'off')
 })
 
-test('ST-23：队列新鲜优先（来源=queue），心跳陈旧不影响', () => {
+test('队列新鲜但无障碍心跳陈旧时不得误报在线', () => {
   prefs('<boolean name="a11yEnabled" value="true" />\n<long name="controlHeartbeat" value="' + (Date.now() - 5 * 60 * 1000) + '" />\n')
   const queue = new ControlQueue()
   queue.enqueue('snapshot', {})
   queue.take()
   const svc = service(queue)
-  assert.equal(svc.a11ySource(), 'queue')
-  assert.equal(svc.gateFacts().a11ySource, 'queue')
-  assert.equal(svc.a11yEnabled(), true)
+  assert.equal(svc.a11ySource(), 'off')
+  assert.equal(svc.gateFacts().a11ySource, 'off')
+  assert.equal(svc.a11yEnabled(), false)
 })
 
 test('ST-23：prefs 未声明 a11yEnabled → 离线，哪怕心跳很新', () => {
@@ -79,6 +77,11 @@ test('ST-23：无 prefs 文件 → 离线且队列在场也不假装在线', () 
   assert.equal(svc.a11yEnabled(), false)
 })
 
-test('ST-23：窗口常量是 20s（两口径共用，改动必须同批）', () => {
+test('ST-23：窗口常量是 20s', () => {
   assert.equal(A11Y_FRESH_MS, 20_000)
+})
+
+test('未来时间戳不能作为服务活跃证据', () => {
+  prefs('<boolean name="a11yEnabled" value="true" />\n<long name="controlHeartbeat" value="' + (Date.now() + 60_000) + '" />\n')
+  assert.equal(service(staleQueue).a11ySource(), 'off')
 })

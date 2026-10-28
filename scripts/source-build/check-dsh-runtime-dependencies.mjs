@@ -50,6 +50,14 @@ export function checkDshRuntimeDependencies(engineRootArg) {
       .platformDeadPackages ?? []).map((entry) => entry.name),
   )
   const deliberatelyAbsent = []
+  // Android deploy deliberately substitutes Koffi 3.2.1 for these pinned upstream
+  // consumers; the separate native runtime audit checks its Android binary and payload.
+  const koffiOverrideConsumers = new Set([
+    '@deepseek-ai/dsh-fs-local', '@deepseek-ai/dsh-host-directory-picker-native',
+    '@deepseek-ai/dsh-sandbox-windows-acl', '@deepseek-ai/dsh-session-persistence-jsonl',
+    '@deepseek-ai/dsh-subprocess-local', '@deepseek-ai/dsh-win32-process',
+  ])
+  const deliberatelyOverridden = []
 
   let packageCount = 0
   for (const packageFile of packageFiles) {
@@ -74,6 +82,22 @@ export function checkDshRuntimeDependencies(engineRootArg) {
         failures.push(`${manifest.name ?? packageFile} -> ${dependency}: no installed package.json in the deploy tree`)
         continue
       }
+      const requested = manifest.dependencies?.[dependency] ?? manifest.peerDependencies?.[dependency]
+      // Exact pins are part of the source contract: merely finding a package with the
+      // right name is insufficient when pnpm resolves a different installed version.
+      if (typeof requested === 'string' && /^\d+\.\d+\.\d+(?:-[\w.-]+)?(?:\+[\w.-]+)?$/.test(requested)) {
+        const installed = JSON.parse(readFileSync(join(installedPath, 'package.json'), 'utf8'))
+        if (installed.name !== dependency || installed.version !== requested) {
+          const reviewedKoffi = koffiOverrideConsumers.has(manifest.name)
+            && dependency === 'koffi' && requested === '3.1.1'
+            && installed.name === 'koffi' && installed.version === '3.2.1'
+          if (!reviewedKoffi) {
+            failures.push(`${manifest.name ?? packageFile} -> ${dependency}@${requested}: resolved ${installed.name ?? 'unknown'}@${installed.version ?? 'unknown'}`)
+            continue
+          }
+          deliberatelyOverridden.push(`${manifest.name} -> koffi@3.1.1 resolved koffi@3.2.1`)
+        }
+      }
       resolvedDependencies.push({
         importer: manifest.name ?? packageFile,
         dependency,
@@ -86,6 +110,7 @@ export function checkDshRuntimeDependencies(engineRootArg) {
     || compareText(a.deployPath, b.deployPath))
   failures.sort(compareText)
   deliberatelyAbsent.sort(compareText)
+  deliberatelyOverridden.sort(compareText)
   // 地板值与同链的 materialize-dsh-pnpm-packages.mjs:21 同源（那条断言 >= 266 个钉住的第一方
   // 工作区包；本函数数的是同一群体 + 引擎根包自身，故口径相同）。旧值 200 比真实值（316/317）
   // 低太多：静默少掉一百多个包也照样判绿，而这条门禁的名字正是「装饰链接都在场」。
@@ -102,6 +127,7 @@ export function checkDshRuntimeDependencies(engineRootArg) {
     resolvedDependencies,
     failures,
     // 刻意剔除的平台死重（非故障）：声明仍在但包按设计不在树里。计数可见、理由见 slim.json。
+    deliberatelyOverridden,
     deliberatelyAbsentCount: deliberatelyAbsent.length,
     deliberatelyAbsent,
   }

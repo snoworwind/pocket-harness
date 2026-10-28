@@ -278,6 +278,20 @@ class FactoryProfilePatchTest {
     assertFalse("禁止复用固定 .repair.tmp 落点", repair.contains(".repair.tmp"))
   }
 
+  @Test
+  fun profileNormalizationRequiresVerifiedBackupAndNeverTruncatesLiveFile() {
+    val src = listOf(
+      File("src/main/java/com/snoworwind/pocketharness/EngineManager.kt"),
+      File("app/src/main/java/com/snoworwind/pocketharness/EngineManager.kt"),
+    ).firstOrNull { it.isFile } ?: throw AssertionError("找不到 EngineManager.kt")
+    val normalize = src.readText().substringAfter("private fun normalizeLegacySinglePointPatch()")
+      .substringBefore("private fun ")
+    assertTrue(normalize.contains("SnapshotFs.replaceWithVerifiedBackup("))
+    assertTrue(normalize.contains("liveBytes"))
+    assertFalse(normalize.contains("target.writeText("))
+    assertFalse(normalize.contains(".normalize.tmp"))
+  }
+
   // ── 0.14.2 D10：合并粒度 = 条目（反证用例） ─────────────────────────────
 
   /**
