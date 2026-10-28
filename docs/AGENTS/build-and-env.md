@@ -105,6 +105,8 @@ node scripts/smoke-bridge.mjs
 
 **门禁接线与 SKIP 纪律**：门禁本身有判别力自测 `node scripts/check-gate-skips.mjs --self-test`（24 项，覆盖声明与执行点、注释/字符串排除及 SKIP 发射识别）；普通运行 `node scripts/check-gate-skips.mjs` 也会先静默自测，再核对两条构建链和 SKIP 计数。修改判据后必须先确认自测，再以一条受控负控证明旧/错误判据会失败。
 
+**协议 V2 产物时效**：`node scripts/check-protocol-v2.mjs --self-test` 自证逐源配对、缺失输出和无关 orphan 产物等边界；普通 `node scripts/check-protocol-v2.mjs` 逐个比较 `plugins/dsh-android-manage/src/<name>.ts` 与 `lib/<name>.js`，任一配对缺失或源码更新就触发重建哈希仲裁，不能被另一个较新的 JS 文件掩盖。缺 `lib` 时先在 manage 插件目录运行 `npm ci` 与 `npm run build`。
+
 `check-api-route-auth.mjs --snapshot <tar.xz>` 需要 Python 3.9+ 的 `tarfile`，流式读取固定的注入成员，并逐文件核对授权 marker；不能把 tar 多成员合并输出后对每个文件重复搜索同一段文本，否则一个包内的 marker 会掩盖另一个包缺失鉴权。
 
 **内嵌快照可解压门禁（0.14.7 / task-9）**：`scripts/check-snapshot-decode.mjs`——用**与设备同一套** streaming 解码器（`org.tukaani:xz` + `commons-compress`，版本对账 `app/build.gradle.kts` 的声明值，不一致即判红）把 `assets/snapshot.tar.xz` 完整解压一遍，判据 = 无异常 + 条目数 > 0 + 实读字节数 == 条目声明 size 之和。**为什么需要它**：`check-snapshot-fingerprint.mjs` 断言的是 `sha256(tar) == snapshot.sha256`，而声明值由同一条构建步骤自己写（自证）；`check-snapshot-asset.ps1` 只比对 APK 内嵌与传入的 xz —— 两条都**不解压**，于是「摘要自洽但字节流解不开」的资产能一路打包进 APK，直到用户真机上以 `CorruptedInputException` 爆出（见坑 285）。**执行点**：本地链 `build-apk-013.ps1` 在 `assemble` 之后 per-ABI 段，云端 `build-apk.mjs` 在组装后均对本次实际资产严格解码；PR CI 无生产快照，运行 `--self-test-runtime` 生成合成小归档，并用同一 Java streaming probe 验证有效输入通过、截断/字节翻转被拒，另独立自测 SHA-256 指纹门禁正反例。这些合成输入只证明门禁判别力，**不代表最终 APK 的快照已通过解码**。正式构建链仍须对实际资产运行 `--require`，无 Java、jar 或快照时拒绝继续。普通 `--self-test` 保留为不依赖 Java/Gradle 缓存的纯判据自测。**证据边界**：既往真实资产实测曾报告 `entries=49521 bytes=710586232`，这不是本次 PR CI 或最终候选包的验证结果；新版本的运行时合成自测由 CI 独立报告。
