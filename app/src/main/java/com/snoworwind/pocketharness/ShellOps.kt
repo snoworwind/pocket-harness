@@ -74,6 +74,7 @@ internal object ShellOps {
   private val SHELL_C_PAYLOAD = Regex(
     """^[ \t]*(?:(?:[A-Za-z_][A-Za-z0-9_]*=[^\s]+)[ \t]+)*(?:(?:env|command)[ \t]+)?(?:/system/bin/)?sh[ \t]+(?:[+-]o[ \t]+\S+[ \t]+|-[^\s]+[ \t]+)*-[a-zA-Z]*c[ \t]+([\s\S]*)$""",
   )
+  private val PAYLOAD_SLOT_TAIL = Regex("""(?:^|[ \t])(?:-[^\s]*c|eval|trap)[ \t]+$""")
   /** Opaque script executors cannot be safely classified by command-word matching in restricted screen scopes. */
   private val OPAQUE_EXECUTION = Regex(
     """^(?:(?:[A-Za-z_][A-Za-z0-9_]*=[^\s]+)[ \t]+)*(?:eval|source|xargs|trap|awk|gawk|mawk|perl|python(?:[0-9.]*)?|node(?:js)?|ruby|php|lua|tclsh|js|alias|hash|read|run-as|runcon|chroot|app_process|dalvikvm|\.)(?:[ \t]|$)|(?:^|[ \t])find[ \t]+[^\n]*[ \t]-(?:exec|ok)(?:dir)?(?:[ \t]|$)|(?:^|[ \t])tar[ \t]+[^\n]*[ \t]--to-command(?:[ =]|$)""",
@@ -81,14 +82,6 @@ internal object ShellOps {
   )
   private val SHELL_INTERPRETER = Regex(
     """^(?:[^\s]*/)?(?:sh|bash|mksh|ash|dash|zsh|busybox|toybox|su)(?=[ \t]|$)""",
-    RegexOption.IGNORE_CASE,
-  )
-  private val SCREEN_COMMAND_HEAD = Regex(
-    """^(?:(?:[A-Za-z_][A-Za-z0-9_]*=[^\s]+)[ \t]+)*(?:(?:[^\s]*/)?(?:screencap|screenrecord|input|uiautomator|wm|dumpsys|am|monkey|cmd[ \t]+(?:activity|window)))(?=[ \t]|$)""",
-    RegexOption.IGNORE_CASE,
-  )
-  private val SCREEN_COMMAND_WORD = Regex(
-    """\b(?:screencap|screenrecord|input|uiautomator|wm|dumpsys|am|monkey|cmd[ \t]+(?:activity|window))\b""",
     RegexOption.IGNORE_CASE,
   )
   private val COMMAND_LAUNCHER_HEAD = Regex(
@@ -366,6 +359,7 @@ internal object ShellOps {
     val parsed = splitCommandSegments(command)
     if (parsed.unparsed) return ScreenCommandVerdict.DENY_UNPARSED
     for (segment in parsed.segments) {
+      if (isRuntimeCommandName(segment)) return ScreenCommandVerdict.DENY_UNPARSED
       val bare = scopeCommandText(segment) ?: ""
       val options = displayOptionsIn(bare)
       val normalized = stripDisplayOptions(bare)
@@ -389,13 +383,6 @@ internal object ShellOps {
 
   /** 引号感知切段结果（与引擎侧 `CommandSegments` 同构）。 */
   internal class ParsedCommand(val segments: List<String>, val unparsed: Boolean)
-
-  private fun dynamicExpansionCanAffectScreenScope(prefix: String): Boolean {
-    val bare = stripQuotedText(prefix).trimEnd()
-    if (bare.trim().isEmpty() || (!bare.contains(' ') && !bare.contains('\t'))) return true
-    if (SHELL_C_PAYLOAD.containsMatchIn(bare) || SCREEN_COMMAND_HEAD.containsMatchIn(bare)) return true
-    return COMMAND_LAUNCHER_HEAD.containsMatchIn(bare) && SCREEN_COMMAND_WORD.containsMatchIn(bare)
-  }
 
   /**
    * 引号感知地把一条命令切成**可判定段**：顶层段 + 反引号 / `$()` / `sh -c` 的嵌套执行体。
@@ -451,9 +438,30 @@ internal object ShellOps {
               continue
             }
             if (text[j] == '"') break
-            // Double quotes still expand variables, $(...), and backticks. In a restricted
-            // screen scope their resulting executable words cannot be proven statically.
-            if (text[j] == '$' || text[j] == '`') unparsed = true
+            // Double-quoted command substitutions still execute. Inspect their commands recursively;
+            // whether their output becomes a command name is decided from the containing word below.
+            if (text[j] == '`') {
+              val end = backtickEnd(text, j + 1)
+              if (end < 0) {
+                unparsed = true
+                j = text.length
+                break
+              }
+              scan(text.substring(j + 1, end), depth + 1)
+              j = end + 1
+              continue
+            }
+            if (text[j] == '$' && j + 1 < text.length && text[j + 1] == '(') {
+              val end = parenEnd(text, j + 2)
+              if (end < 0) {
+                unparsed = true
+                j = text.length
+                break
+              }
+              scan(text.substring(j + 2, end), depth + 1)
+              j = end + 1
+              continue
+            }
             j += 1
           }
           if (j >= text.length) {
@@ -477,7 +485,7 @@ internal object ShellOps {
             i = text.length
             continue
           }
-          if (dynamicExpansionCanAffectScreenScope(buf.toString())) unparsed = true
+          if (runtimeExpansionInCommandPosition(buf.toString()) || runtimeExpansionInShellScript(buf.toString()) || PAYLOAD_SLOT_TAIL.containsMatchIn(buf.toString())) unparsed = true
           scan(text.substring(i + 1, end), depth + 1)
           buf.append(' ')
           i = end + 1
@@ -491,14 +499,12 @@ internal object ShellOps {
             i = text.length
             continue
           }
-          if (dynamicExpansionCanAffectScreenScope(buf.toString())) unparsed = true
+          if (runtimeExpansionInCommandPosition(buf.toString()) || runtimeExpansionInShellScript(buf.toString()) || PAYLOAD_SLOT_TAIL.containsMatchIn(buf.toString())) unparsed = true
           scan(text.substring(i + 2, end), depth + 1)
           buf.append(' ')
           i = end + 1
           continue
         }
-        // Bare parameter expansion can synthesize an executable command (`cmd=screencap; $cmd`).
-        if (ch == '$') unparsed = true
         // Process substitution also executes a nested command but is not represented by `$()`.
         if ((ch == '<' || ch == '>') && i + 1 < text.length && text[i + 1] == '(') unparsed = true
         if (ch == ';' || ch == '\n' || ch == '\r') {
@@ -667,6 +673,46 @@ internal object ShellOps {
     val first = firstShellArgument(text) ?: return null
     if (first.word != "--") return first.word
     return firstShellArgument(first.rest)?.word
+  }
+
+  /** A runtime expansion in command position changes which executable runs. */
+  private fun isRuntimeCommandName(segment: String): Boolean {
+    var rest = segment.trim()
+    repeat(8) {
+      if (rest.isEmpty()) return false
+      val first = firstShellArgument(rest) ?: return false
+      if (Regex("^[A-Za-z_][A-Za-z0-9_]*=").containsMatchIn(first.word)) {
+        rest = first.rest.trim()
+      } else {
+        if (first.word.startsWith("$'") || first.word.startsWith("$\"")) return false
+        return first.word.contains('$') || first.word.contains('`')
+      }
+    }
+    return false
+  }
+
+  /** A substitution after complete leading assignments still supplies the command word. */
+  private fun runtimeExpansionInCommandPosition(prefix: String): Boolean {
+    if (prefix.isBlank()) return true
+    var rest = prefix.trim()
+    repeat(8) {
+      if (rest.isEmpty()) return true
+      val first = firstShellArgument(rest) ?: return true
+      if (!Regex("^[A-Za-z_][A-Za-z0-9_]*=").containsMatchIn(first.word)) {
+        return first.rest.trim().isEmpty() && prefix.lastOrNull() !in listOf(' ', '\t', '\r', '\n')
+      }
+      if (first.rest.trim().isEmpty()) return prefix.lastOrNull() in listOf(' ', '\t', '\r', '\n')
+      rest = first.rest.trim()
+    }
+    return false
+  }
+
+  /** A substitution that joins to a `sh -c` script changes executable payload text. */
+  private fun runtimeExpansionInShellScript(prefix: String): Boolean {
+    val match = SHELL_C_PAYLOAD.find(prefix) ?: return false
+    if (prefix.lastOrNull() !in listOf(' ', '\t', '\r', '\n')) return true
+    // A complete first script word means the expansion starts in argv ($0/$1), not in the script.
+    return shellCommandArgument(match.groupValues[1]) == null
   }
 
   /**

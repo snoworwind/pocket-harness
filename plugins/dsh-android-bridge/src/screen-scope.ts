@@ -163,8 +163,6 @@ const MAX_NESTING = 4
 /** Commands that can execute opaque scripts or stdin; restricted screen scopes cannot inspect their effects. */
 const OPAQUE_EXECUTION = /^(?:(?:[A-Za-z_][A-Za-z0-9_]*=[^\s]+)[ \t]+)*(?:eval|source|xargs|trap|awk|gawk|mawk|perl|python(?:[0-9.]*)?|node(?:js)?|ruby|php|lua|tclsh|js|alias|hash|read|run-as|runcon|chroot|app_process|dalvikvm|\.)(?:[ \t]|$)|(?:^|[ \t])find[ \t]+[^\n]*[ \t]-(?:exec|ok)(?:dir)?(?:[ \t]|$)|(?:^|[ \t])tar[ \t]+[^\n]*[ \t]--to-command(?:[ =]|$)/i
 const SHELL_INTERPRETER = /^(?:[^\s]*\/)?(?:sh|bash|mksh|ash|dash|zsh|busybox|toybox|su)(?=[ \t]|$)/i
-const SCREEN_COMMAND_HEAD = /^(?:(?:[A-Za-z_][A-Za-z0-9_]*=[^\s]+)[ \t]+)*(?:(?:[^\s]*\/)?(?:screencap|screenrecord|input|uiautomator|wm|dumpsys|am|monkey|cmd[ \t]+(?:activity|window)))(?=[ \t]|$)/i
-const SCREEN_COMMAND_WORD = /\b(?:screencap|screenrecord|input|uiautomator|wm|dumpsys|am|monkey|cmd[ \t]+(?:activity|window))\b/i
 const COMMAND_LAUNCHER_HEAD = /^(?:(?:[A-Za-z_][A-Za-z0-9_]*=[^\s]+)[ \t]+)*(?:command|builtin|exec|env|nohup|nice|timeout|setsid|time|!)(?=[ \t]|$)/i
 const SHELL_EXECUTABLE = String.raw`(?:\/system\/bin\/)?sh`
 const SHELL_C_OPTION_PREFIX = String.raw`(?:[+-]o[ \t]+\S+[ \t]+|-[^\s]+[ \t]+)*-[a-zA-Z]*c`
@@ -180,13 +178,6 @@ const EXECUTABLE_PATH_HEAD = /^[^ \t]*\/[^ \t]*(?=[ \t]|$)/
 const COMMAND_GLOB_HEAD = /^[^ \t]*[*?\[]/
 /** Search paths, shell startup files and loader hooks can execute code absent from the submitted command. */
 const EXECUTION_ENV_OVERRIDE = /(?:^|[ \t])(?:(?:export|declare|typeset|local|readonly)[ \t]+(?:-[A-Za-z]+[ \t]+)*)?(?:PATH|ENV|BASH_ENV|SHELLOPTS|BASHOPTS|ZDOTDIR|LD_[A-Z0-9_]+)[ \t]*=/
-
-function dynamicExpansionCanAffectScreenScope(prefix: string): boolean {
-  const bare = stripQuotedText(prefix).trimEnd()
-  if (bare.trim().length === 0 || !/[ \t]/.test(bare)) return true
-  if (SHELL_C_PAYLOAD.test(bare) || SCREEN_COMMAND_HEAD.test(bare)) return true
-  return COMMAND_LAUNCHER_HEAD.test(bare) && SCREEN_COMMAND_WORD.test(bare)
-}
 
 /** 反引号段结束位置；`\`` 转义不算结束。返回 -1 = 未闭合。 */
 function backtickEnd(text: string, from: number): number {
@@ -231,6 +222,7 @@ function parenEnd(text: string, from: number): number {
 const SHELL_C_PAYLOAD = new RegExp(
   String.raw`^[ \t]*(?:(?:[A-Za-z_][A-Za-z0-9_]*=[^\s]+)[ \t]+)*(?:(?:env|command)[ \t]+)?${SHELL_EXECUTABLE}[ \t]+${SHELL_C_OPTION_PREFIX}[ \t]+([\s\S]*)$`,
 )
+const PAYLOAD_SLOT_TAIL = /(?:^|[ \t])(?:-[^\s]*c|eval|trap)[ \t]+$/
 
 /** Read one shell argument, removing its quoting; retain the suffix for `sh -c --`. */
 function firstShellArgument(text: string): { word: string; rest: string } | null {
@@ -294,6 +286,44 @@ function shellCommandArgument(text: string): string | null {
   return firstShellArgument(first.rest)?.word ?? null
 }
 
+/** A runtime expansion in command position changes which executable runs. */
+function isRuntimeCommandName(segment: string): boolean {
+  let rest = segment.trim()
+  for (let guard = 0; guard < 8 && rest.length > 0; guard += 1) {
+    const first = firstShellArgument(rest)
+    if (first === null) return false
+    if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(first.word)) { rest = first.rest.trim(); continue }
+    if (first.word.startsWith("$'") || first.word.startsWith('$"')) return false
+    return first.word.includes('$') || first.word.includes('`')
+  }
+  return false
+}
+
+/** A substitution after complete leading assignments still supplies the command word. */
+function runtimeExpansionInCommandPosition(prefix: string): boolean {
+  if (prefix.trim().length === 0) return true
+  let rest = prefix.trim()
+  for (let guard = 0; guard < 8 && rest.length > 0; guard += 1) {
+    const first = firstShellArgument(rest)
+    if (first === null) return true
+    if (!/^[A-Za-z_][A-Za-z0-9_]*=/.test(first.word)) {
+      return first.rest.trim().length === 0 && !/[ \t\r\n]$/.test(prefix)
+    }
+    if (first.rest.trim().length === 0) return /[ \t\r\n]$/.test(prefix)
+    rest = first.rest.trim()
+  }
+  return false
+}
+
+/** A substitution that joins to a `sh -c` script changes executable payload text. */
+function runtimeExpansionInShellScript(prefix: string): boolean {
+  const match = SHELL_C_PAYLOAD.exec(prefix)
+  if (match === null) return false
+  if (!/[ \t\r\n]$/.test(prefix)) return true
+  // A complete first script word means the expansion starts in argv ($0/$1), not in the script.
+  return shellCommandArgument(match[1]) === null
+}
+
 /**
  * 引号感知地把一条命令切成**可判定段**：顶层段 + 反引号 / `$()` / `sh -c` 的嵌套执行体。
  *
@@ -324,9 +354,22 @@ export function splitCommandSegments(command: string): CommandSegments {
         while (j < text.length) {
           if (text[j] === '\\') { j += 2; continue }
           if (text[j] === '"') break
-          // Unlike single quotes, double quotes still expand variables, $(...), and backticks.
-          // We cannot prove the resulting command word statically, so narrowed screen scopes fail closed.
-          if (text[j] === '$' || text[j] === '`') unparsed = true
+          // Double-quoted command substitutions still execute. Inspect their commands recursively;
+          // whether their output becomes a command name is decided from the containing word below.
+          if (text[j] === '`') {
+            const end = backtickEnd(text, j + 1)
+            if (end < 0) { unparsed = true; j = text.length; break }
+            scan(text.slice(j + 1, end), depth + 1)
+            j = end + 1
+            continue
+          }
+          if (text[j] === '$' && text[j + 1] === '(') {
+            const end = parenEnd(text, j + 2)
+            if (end < 0) { unparsed = true; j = text.length; break }
+            scan(text.slice(j + 2, end), depth + 1)
+            j = end + 1
+            continue
+          }
           j += 1
         }
         if (j >= text.length) { unparsed = true; buf += text.slice(i); i = text.length; continue }
@@ -336,19 +379,17 @@ export function splitCommandSegments(command: string): CommandSegments {
       if (ch === '`') {
         const end = backtickEnd(text, i + 1)
         if (end < 0) { unparsed = true; buf += text.slice(i); i = text.length; continue }
-        if (dynamicExpansionCanAffectScreenScope(buf)) unparsed = true
+        if (runtimeExpansionInCommandPosition(buf) || runtimeExpansionInShellScript(buf) || PAYLOAD_SLOT_TAIL.test(buf)) unparsed = true
         scan(text.slice(i + 1, end), depth + 1)
         buf += ' '; i = end + 1; continue
       }
       if (ch === '$' && text[i + 1] === '(') {
         const end = parenEnd(text, i + 2)
         if (end < 0) { unparsed = true; buf += text.slice(i); i = text.length; continue }
-        if (dynamicExpansionCanAffectScreenScope(buf)) unparsed = true
+        if (runtimeExpansionInCommandPosition(buf) || runtimeExpansionInShellScript(buf) || PAYLOAD_SLOT_TAIL.test(buf)) unparsed = true
         scan(text.slice(i + 2, end), depth + 1)
         buf += ' '; i = end + 1; continue
       }
-      // Bare parameter expansion can synthesize an executable command (`cmd=screencap; $cmd`).
-      if (ch === '$') unparsed = true
       // Process substitution also runs a nested command, but is not represented by `$()`.
       if ((ch === '<' || ch === '>') && text[i + 1] === '(') unparsed = true
       if (ch === ';' || ch === '\n' || ch === '\r') { flush(); i += 1; continue }
@@ -635,6 +676,7 @@ export function screenCommandVerdict(
   const { segments, unparsed } = splitCommandSegments(command)
   if (unparsed) return 'deny-unparsed'
   for (const segment of segments) {
+    if (isRuntimeCommandName(segment)) return 'deny-unparsed'
     const bare = scopeCommandText(segment) ?? ''
     const options = displayOptionsIn(bare)
     const families = SCREEN_COMMAND_FAMILIES.filter(

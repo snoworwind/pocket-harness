@@ -99,15 +99,15 @@
       "name": "S-2f 反引号嵌套执行体",
       "command": "echo `screencap -p /sdcard/real.png`",
       "ownedTargets": ["7", "11529215046816944610"],
-      "expect": "deny-unparsed",
-      "why": "反引号里的内容会被 shell 执行；当前保守解析先将动态展开判为不可认证，拒绝优先级为 deny-unparsed，不得放行读取真实屏。"
+      "expect": "deny-uncertified-target",
+      "why": "反引号里的内容会被 shell 执行；递归扫描后发现其没有可认证目标屏，必须拒绝。"
     },
     {
       "name": "S-2g $( ) 嵌套执行体",
       "command": "echo $(input tap 1 2)",
       "ownedTargets": ["7", "11529215046816944610"],
-      "expect": "deny-unparsed",
-      "why": "命令替换与反引号同性质（会被执行）；当前保守解析先返回 deny-unparsed，仍须保持拒绝，不得改为放行。"
+      "expect": "deny-uncertified-target",
+      "why": "命令替换会执行真实屏幕操作；递归扫描后发现 input 没有可认证目标屏，必须拒绝。"
     },
     {
       "name": "屏幕命令在 sh -c 重定向前的载荷仍须扫描",
@@ -148,8 +148,8 @@
       "name": "屏幕目标由命令替换动态生成时拒绝",
       "command": "screencap -p $(printf -- '-d 0') /sdcard/real.png",
       "ownedTargets": ["7", "11529215046816944610"],
-      "expect": "deny-unparsed",
-      "why": "命令替换会动态改变屏幕目标参数；只扫描替换体会丢失其输出值，两个范围档位都必须 fail-closed。"
+      "expect": "deny-uncertified-target",
+      "why": "命令替换目标值无法静态认证；替换输出不计作合法 display 参数，必须拒绝。"
     },
     {
       "name": "命令替换不能合成屏幕命令名",
@@ -325,6 +325,146 @@
       "ownedTargets": ["7", "11529215046816944610"],
       "expect": "allow",
       "why": "`--` 即使被引用仍是独立选项终结符；识别后应继续按既有规则接受已注册虚拟屏。"
+    },
+    {
+      "name": "S-12a sh -c 的脚本变量来自运行时必须拒绝",
+      "command": "sh -c \"$CMD\"",
+      "ownedTargets": ["7", "11529215046816944610"],
+      "expect": "deny-unparsed",
+      "why": "shell 命令体本身由变量决定，命令身份与屏幕效果都无法静态核对。"
+    },
+    {
+      "name": "S-12b sh -c 的脚本命令替换来自文件必须拒绝",
+      "command": "sh -c \"$(cat /sdcard/x.sh)\"",
+      "ownedTargets": ["7", "11529215046816944610"],
+      "expect": "deny-unparsed",
+      "why": "命令替换的输出成为 sh -c 脚本；递归检查 cat 不足以证明动态输出安全。"
+    },
+    {
+      "name": "S-12c sh -c 的无引号反引号脚本必须拒绝",
+      "command": "sh -c `cat /sdcard/x.sh`",
+      "ownedTargets": ["7", "11529215046816944610"],
+      "expect": "deny-unparsed",
+      "why": "反引号位于 shell 脚本载荷位置，替换输出会作为命令执行。"
+    },
+    {
+      "name": "S-12d trap 的命令替换载荷必须拒绝",
+      "command": "trap \"$(cat /sdcard/x.sh)\" EXIT",
+      "ownedTargets": ["7", "11529215046816944610"],
+      "expect": "deny-unparsed",
+      "why": "trap 会在退出时执行运行时生成的命令载荷，属于不透明文本执行器。"
+    },
+    {
+      "name": "S-12e eval 的命令替换载荷必须拒绝",
+      "command": "eval \"$(cat /sdcard/x.sh)\"",
+      "ownedTargets": ["7", "11529215046816944610"],
+      "expect": "deny-unparsed",
+      "why": "eval 会二次解析运行时输出，不能只按替换子命令判断。"
+    },
+    {
+      "name": "S-12f sh -c 内后续段的命令替换必须拒绝",
+      "command": "sh -c \"echo hi; $(cat /sdcard/x.sh)\"",
+      "ownedTargets": ["7", "11529215046816944610"],
+      "expect": "deny-unparsed",
+      "why": "分号后的命令名由运行时输出决定，即使前一段静态无害也不能放行。"
+    },
+    {
+      "name": "S-12g 顶层命令名由命令替换决定必须拒绝",
+      "command": "\"$(date)\" --flag",
+      "ownedTargets": ["7", "11529215046816944610"],
+      "expect": "deny-unparsed",
+      "why": "命令词由动态输出决定，无法确认实际执行的是哪条命令。"
+    },
+    {
+      "name": "S-12h 普通参数中的双引号命令替换可用",
+      "command": "echo \"$(date)\"",
+      "ownedTargets": ["7", "11529215046816944610"],
+      "expect": "allow",
+      "why": "替换只生成 echo 的参数；嵌套内容已单独检查，不能因参数动态就误拒整条命令。"
+    },
+    {
+      "name": "S-12i 静态 shell 脚本里的参数替换可用",
+      "command": "sh -c 'echo $(date)'",
+      "ownedTargets": ["7", "11529215046816944610"],
+      "expect": "allow",
+      "why": "脚本命令词 echo 静态可见，替换只提供其参数值。"
+    },
+    {
+      "name": "S-12j 变量赋值和普通参数展开可用",
+      "command": "x=$(cat /tmp/f); echo $x",
+      "ownedTargets": ["7", "11529215046816944610"],
+      "expect": "allow",
+      "why": "命令替换只给变量赋值，后续命令词仍是静态 echo。"
+    },
+    {
+      "name": "S-12k sh -c 载荷后的位置参数替换可用",
+      "command": "sh -c \"a b\" $(date)",
+      "ownedTargets": ["7", "11529215046816944610"],
+      "expect": "allow",
+      "why": "sh -c 脚本已静态给出，后续替换只是尾随 argv，不会改变执行内容。"
+    },
+    {
+      "name": "S-12l 前置赋值后的动态命令名必须拒绝",
+      "command": "CMD=screencap $CMD -p /sdcard/real.png",
+      "ownedTargets": ["7", "11529215046816944610"],
+      "expect": "deny-unparsed",
+      "why": "命令名位置的变量展开仍然决定实际可执行程序；前置环境赋值不得绕过动态命令检查。"
+    },
+    {
+      "name": "S-12m 前置赋值后的命令替换必须拒绝",
+      "command": "CMD=1 $(printf screencap) -p /sdcard/real.png",
+      "ownedTargets": ["7", "11529215046816944610"],
+      "expect": "deny-unparsed",
+      "why": "完整赋值词之后的命令替换输出成为命令名，仍是不可静态认证的执行目标。"
+    },
+    {
+      "name": "S-12n 静态前缀拼接运行时变量的命令名必须拒绝",
+      "command": "scr$CMD -p /sdcard/real.png",
+      "ownedTargets": ["7", "11529215046816944610"],
+      "expect": "deny-unparsed",
+      "why": "变量可以补全命令词而不出现在词首；命令名中任意位置的运行时展开都不能用静态前缀绕过检查。"
+    },
+    {
+      "name": "S-12o 命令替换拼接进命令名必须拒绝",
+      "command": "scr$(printf eencap) -p /sdcard/real.png",
+      "ownedTargets": ["7", "11529215046816944610"],
+      "expect": "deny-unparsed",
+      "why": "命令替换输出可补全屏幕命令名；即使替换体本身无害，也不能仅扫描其副作用后放行外层动态命令。"
+    },
+    {
+      "name": "S-12p 前置赋值后静态前缀拼接动态命令名必须拒绝",
+      "command": "MODE=1 scr$CMD -p /sdcard/real.png",
+      "ownedTargets": ["7", "11529215046816944610"],
+      "expect": "deny-unparsed",
+      "why": "命令名位置的动态展开在任意前置环境赋值后仍必须 fail-closed。"
+    },
+    {
+      "name": "S-12q 命令替换拼接进 sh -c 脚本必须拒绝",
+      "command": "sh -c 'echo hi'$(cat /sdcard/x.sh)",
+      "ownedTargets": ["7", "11529215046816944610"],
+      "expect": "deny-unparsed",
+      "why": "替换紧接静态脚本参数，输出会拼入 sh -c 可执行的脚本文本；递归扫描 cat 不足以证明动态载荷安全。"
+    },
+    {
+      "name": "S-12r sh -c 脚本已完整时的动态位置参数仍可用",
+      "command": "sh -c 'echo hi' $(date)",
+      "ownedTargets": ["7", "11529215046816944610"],
+      "expect": "allow",
+      "why": "脚本参数已由静态词完整提供，且替换前有参数分隔空白；替换只成为 shell 的位置参数，不改变执行脚本。"
+    },
+    {
+      "name": "S-12s sh -c -- 后的首个动态词仍是脚本载荷",
+      "command": "sh -c -- $(cat /sdcard/x.sh)",
+      "ownedTargets": ["7", "11529215046816944610"],
+      "expect": "deny-unparsed",
+      "why": "`--` 只终止 shell 选项；后一个动态词仍提供脚本本身，不能误判成安全的位置参数。"
+    },
+    {
+      "name": "S-12t sh -c -- 后的静态脚本与动态位置参数可用",
+      "command": "sh -c -- 'echo hi' $(date)",
+      "ownedTargets": ["7", "11529215046816944610"],
+      "expect": "allow",
+      "why": "可选 `--` 后已完整给出静态脚本；后续动态词仍只成为位置参数。"
     },
     {
       "name": "S-13a 组合短选项 -lc 中的 c 必须展开并拒绝真实屏",
