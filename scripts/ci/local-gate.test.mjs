@@ -16,11 +16,11 @@ test('step selection follows the workflow job conditions', () => {
   assert.equal(docsOnly.length, 2, 'docs-only runs the hygiene job only')
   assert.deepEqual(docsOnly.map((step) => step.job), ['docs-hygiene', 'docs-hygiene'])
 
-  assert.equal(noKotlin.length, 25, 'code change without apk runs hygiene + static')
-  assert.equal(noKotlin.filter((step) => step.job === 'static').length, 23)
+  assert.equal(noKotlin.length, 26, 'code change without apk runs hygiene + static')
+  assert.equal(noKotlin.filter((step) => step.job === 'static').length, 24)
   assert.equal(noKotlin.filter((step) => step.job === 'compile').length, 0)
 
-  assert.equal(withKotlin.length, 28, 'apk change adds the three compile gate steps')
+  assert.equal(withKotlin.length, 29, 'apk change adds the three compile gate steps')
   assert.deepEqual(withKotlin.filter((step) => step.job === 'compile').map((step) => step.name), [
     '编译与单元测试门禁（testDebugUnitTest 自动编译主代码和测试）',
     'Kotlin 单测数量反回归（逐类基线 + 无缺席 + 结果新鲜）',
