@@ -3297,3 +3297,7 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 582. **`sh -c --` 的选项终结符遮住真实屏命令（2026-10-28）**
 
     现象：`virtual-only` 范围下，`sh -c -- 'screencap -p …'` 会被判为无屏幕操作而放行；合法 `input -d7`/`screencap -d7` 又会误拒。真因：`-c` 后的第一个 `--` 是 shell 选项终结符，旧解析器却把它当成脚本；短选项 `-d` 的粘连值也未按 Android CLI 语法解析。修法：只在识别 `-c` 的独立 `--` 参数后继续解析脚本；目标屏识别同时接受 `-d 7` 与 `-d7`，拒绝把 `-d=7` 当作目标 7；同步 Kotlin 与 bridge 实现，并用跨语言 fixture 固定真实屏拒绝、已注册虚拟屏放行及嵌套反例。复验：OrbStack Node 24 bridge 插件 178/178、`ShellOpsScreenCommandFixtureTest` 通过；设备三层按用户本轮指示未做，不能作为发版通过。
+
+585. **虚拟屏空闲计时只从创建时起算，操作未续期且写入与回收不同步（2026-10-28）**
+
+    现象：空闲回收按 `Record.lastUsedAt` 判定，但活动中的虚拟屏在创建 10 分钟后仍可能被回收；回收线程与时间戳更新还会并发访问 `records` 中同一记录。真因：`touch()` 原本只有定义，没有任何调用点；它也未持有 `reclaimIdle()` 使用的 `lock`。修法：让选择、viewer 绑定、跨屏输入/拉起和已有屏幂等创建续期；`touch()` 与注册表/回收统一使用 `lock`，避免判旧后与续期交错。复验：`VdisplayTouchLockTest` 检查 monitor 锁争用及各操作接线，Kotlin 测试通过。设备侧虚拟屏矩阵按用户本轮指示未做，不能作为设备验收或发版通过。

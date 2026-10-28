@@ -92,7 +92,7 @@ object VdisplayController {
   private const val IDLE_RECLAIM_MS = 10 * 60 * 1000L
 
   /** 刷新某块屏（或全部）的使用时间；由所有会「用到屏」的操作调用。 */
-  private fun touch(alias: String?) {
+  private fun touch(alias: String?) = synchronized(lock) {
     val now = android.os.SystemClock.elapsedRealtime()
     if (alias == null) records.values.forEach { it.lastUsedAt = now }
     else records[alias]?.lastUsedAt = now
@@ -365,7 +365,10 @@ object VdisplayController {
     // 永不可达的上限分支，将来放宽 MAX 时会退化成「永远复用第一块」；单一判据两个语义都对）。
     val existing = synchronized(lock) { records.size }
     if (existing >= MAX_VIRTUAL_DISPLAYS) {
-      if (MAX_VIRTUAL_DISPLAYS == 1) return status(appContext)
+      if (MAX_VIRTUAL_DISPLAYS == 1) {
+        touch(synchronized(lock) { selectedAlias ?: records.keys.firstOrNull() })
+        return status(appContext)
+      }
       return status(appContext).put("ok", false).put("code", "vdisplay-limit")
         .put("guidance", "已达到本机虚拟屏上限（$MAX_VIRTUAL_DISPLAYS 块）；先销毁一块再创建。")
     }
@@ -391,7 +394,10 @@ object VdisplayController {
       // 必须在同一临界区内原子完成（monitor 可重入，锁内调 status 安全）。判据与锁外同源：
       // size >= MAX，MAX=1 即「存在即复用」。
       if (records.size >= MAX_VIRTUAL_DISPLAYS) {
-        if (MAX_VIRTUAL_DISPLAYS == 1) return status(appContext)
+        if (MAX_VIRTUAL_DISPLAYS == 1) {
+          touch(selectedAlias ?: records.keys.firstOrNull())
+          return status(appContext)
+        }
         return status(appContext).put("ok", false).put("code", "vdisplay-limit")
           .put("guidance", "已达到本机虚拟屏上限（$MAX_VIRTUAL_DISPLAYS 块）；先销毁一块再创建。")
       }
@@ -517,6 +523,7 @@ object VdisplayController {
         })
     synchronized(lock) {
       selectedAlias = record.alias
+      touch(record.alias)
       generation += 1
     }
     Log.i(TAG, "selected target=${record.alias}")
@@ -550,6 +557,7 @@ object VdisplayController {
       record.viewerId = id
       record.viewerSurface = surface
       selectedAlias = record.alias
+      touch(record.alias)
       runCatching { record.display.setSurface(surface) }
       generation += 1
     }
@@ -592,6 +600,7 @@ object VdisplayController {
         .put("guidance", "虚拟屏幕尚未创建，无法测试跨屏输入。")
     scopeDenial(context.applicationContext, record)?.let { return it }
     val id = record.displayId
+    touch(record.alias)
     val result = ShizukuTransport.runController(
       context.applicationContext,
       arrayOf("/system/bin/input", "-d", id.toString(), "keyevent", "4"),
@@ -619,6 +628,7 @@ object VdisplayController {
         .put("guidance", "虚拟屏幕尚未创建，无法拉起测试应用。")
     scopeDenial(context.applicationContext, record)?.let { return it }
     val id = record.displayId
+    touch(record.alias)
     val result = ShizukuTransport.runController(
       context.applicationContext,
       arrayOf("am", "start", "--display", id.toString(), "-a", "android.settings.SETTINGS"),
@@ -692,6 +702,7 @@ object VdisplayController {
       else -> return JSONObject().put("ok", false).put("code", "unknown-input-verb")
         .put("guidance", "verb 必须是 tap / swipe / keyevent / text。")
     }
+    touch(record.alias)
     val result = ShizukuTransport.runController(appContext, argv.toTypedArray())
     val out = JSONObject()
       .put("displayId", id)
@@ -734,6 +745,7 @@ object VdisplayController {
       ?: return status(appContext).put("ok", false).put("code", "screen-not-ready")
         .put("guidance", "虚拟屏幕尚未创建，无法在其上拉起应用；可先 android_vdisplay_create。")
     scopeDenial(appContext, record)?.let { return it }
+    touch(record.alias)
     val id = record.displayId
     // 拉起路径（0.14.0 模拟器逐条实测，**四条路只有最后一条成立**）：
     //
