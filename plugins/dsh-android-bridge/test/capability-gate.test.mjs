@@ -102,6 +102,15 @@ test('skill 条目必须带 source（上游 SkillSummary 必填；缺了会在�
   }
 })
 
+test('facade schema 声明可选的无障碍来源与心跳年龄', () => {
+  const h = harness()
+  installCapabilityGate(h.ctx, () => ({}), isolatedStore())
+  const channels = h.registered[0].output.schema.properties.channels.properties
+  assert.deepEqual(channels.a11ySource.enum, ['heartbeat', 'disabled', 'stale', 'unknown'])
+  assert.equal(channels.a11y.required, undefined)
+  assert.equal(channels.a11yHeartbeatAgeMs.type, 'number')
+})
+
 test('缺失 skills 服务或作用域注入时降级不抛（fail-open 到今天的可见性）', () => {
   const registered = []
   installCapabilityGate({ tools: { register: (tool) => { registered.push(tool) } } }, () => ({ a11y: false }), isolatedStore())
@@ -150,4 +159,47 @@ test('A1：channels 允许异步（引擎补探），门禁必须 await 得到�
   const one = await h.registered[0].execute({ group: 'all' }, { agent: h.state.agent })
   assert.deepEqual(one.channels, { a11y: true, shizuku: true })
   assert.match(one.text, /Shizuku 特权通道：就绪/)
+})
+
+test('无障碍诊断区分新鲜、明确关闭、陈旧与未知，且未知不冒充关闭', async () => {
+  const cases = [
+    {
+      facts: { a11y: true, a11ySource: 'heartbeat', a11yHeartbeatAgeMs: 12 },
+      expected: { a11y: true, a11ySource: 'heartbeat', a11yHeartbeatAgeMs: 12 },
+      text: /已开启（语义树/,
+    },
+    {
+      facts: { a11y: false, a11ySource: 'disabled', a11yHeartbeatAgeMs: 8 },
+      expected: { a11y: false, a11ySource: 'disabled', a11yHeartbeatAgeMs: 8 },
+      text: /壳侧已确认关闭/,
+    },
+    {
+      facts: { a11ySource: 'stale', a11yHeartbeatAgeMs: -1200 },
+      expected: { a11ySource: 'stale', a11yHeartbeatAgeMs: -1200 },
+      text: /位于未来 1 秒，服务状态未确认/,
+    },
+    {
+      facts: { a11ySource: 'unknown' },
+      expected: { a11ySource: 'unknown' },
+      text: /状态未确认/,
+    },
+  ]
+  for (const item of cases) {
+    const h = harness()
+    installCapabilityGate(h.ctx, () => item.facts, isolatedStore())
+    const one = await h.registered[0].execute({ group: 'all' }, { agent: h.state.agent })
+    assert.deepEqual(one.channels, item.expected)
+    const line = one.text.split('\n').find((value) => value.startsWith('- 无障碍'))
+    assert.match(line, item.text)
+  }
+})
+
+test('无障碍探测异常保持未知而不回退成已确认关闭', async () => {
+  const h = harness()
+  installCapabilityGate(h.ctx, () => { throw new Error('probe unavailable') }, isolatedStore())
+  const one = await h.registered[0].execute({ group: 'all' }, { agent: h.state.agent })
+  assert.deepEqual(one.channels, {})
+  const line = one.text.split('\n').find((value) => value.startsWith('- 无障碍'))
+  assert.match(line, /状态未确认/)
+  assert.doesNotMatch(line, /已确认关闭|未开启/)
 })

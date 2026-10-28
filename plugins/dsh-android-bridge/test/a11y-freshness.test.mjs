@@ -4,7 +4,7 @@ import assert from 'node:assert/strict'
 import { mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { A11Y_FRESH_MS, AndroidPrivilegeService } from '../lib/index.js'
+import { A11Y_FRESH_MS, AndroidPrivilegeService, parseAdbPrefsXml } from '../lib/index.js'
 import { ControlQueue } from '../lib/control-queue.js'
 
 const saved = process.env.DSH_ADB_PREFS_PATH
@@ -44,9 +44,10 @@ test('ST-23：心跳新鲜而队列陈旧 → 仍判在线，来源=heartbeat', 
 test('ST-23：两条都陈旧 → 离线（fail-closed）', () => {
   prefs('<boolean name="a11yEnabled" value="true" />\n<long name="controlHeartbeat" value="' + (Date.now() - 5 * 60 * 1000) + '" />\n')
   const svc = service(staleQueue)
-  assert.equal(svc.a11ySource(), 'off')
+  assert.equal(svc.a11ySource(), 'stale')
   assert.equal(svc.a11yEnabled(), false)
-  assert.equal(svc.gateFacts().a11ySource, 'off')
+  assert.equal(svc.gateFacts().a11ySource, 'stale')
+  assert.ok(svc.a11yFacts().heartbeatAgeMs >= A11Y_FRESH_MS)
 })
 
 test('队列新鲜但无障碍心跳陈旧时不得误报在线', () => {
@@ -55,16 +56,30 @@ test('队列新鲜但无障碍心跳陈旧时不得误报在线', () => {
   queue.enqueue('snapshot', {})
   queue.take()
   const svc = service(queue)
-  assert.equal(svc.a11ySource(), 'off')
-  assert.equal(svc.gateFacts().a11ySource, 'off')
+  assert.equal(svc.a11ySource(), 'stale')
+  assert.equal(svc.gateFacts().a11ySource, 'stale')
   assert.equal(svc.a11yEnabled(), false)
 })
 
-test('ST-23：prefs 未声明 a11yEnabled → 离线，哪怕心跳很新', () => {
-  prefs('<boolean name="a11yEnabled" value="false" />\n<long name="controlHeartbeat" value="' + Date.now() + '" />\n')
+test('未声明 a11yEnabled → 状态未知，哪怕有新心跳', () => {
+  prefs('<boolean name="allowSwitch" value="false" />\n<long name="controlHeartbeat" value="' + Date.now() + '" />\n')
   const svc = service(staleQueue)
-  assert.equal(svc.a11ySource(), 'off')
+  assert.equal(svc.a11ySource(), 'unknown')
   assert.equal(svc.a11yEnabled(), false)
+  assert.equal(svc.gateFacts().a11ySource, 'unknown')
+})
+
+test('prefs 显式 false → 已确认关闭，即使旧心跳仍新鲜', () => {
+  prefs('<boolean name="a11yEnabled" value="false" />\n<long name="controlHeartbeat" value="' + Date.now() + '" />\n')
+  const facts = service(staleQueue).a11yFacts()
+  assert.equal(facts.enabled, false)
+  assert.equal(facts.source, 'disabled')
+  assert.equal(typeof facts.heartbeatAgeMs, 'number')
+})
+
+test('prefs 解析保留未声明与明确 false 的差别', () => {
+  assert.equal(parseAdbPrefsXml('<map><boolean name="allowSwitch" value="false" /></map>').a11yEnabled, undefined)
+  assert.equal(parseAdbPrefsXml('<map><boolean name="a11yEnabled" value="false" /></map>').a11yEnabled, false)
 })
 
 test('ST-23：无 prefs 文件 → 离线且队列在场也不假装在线', () => {
@@ -73,7 +88,7 @@ test('ST-23：无 prefs 文件 → 离线且队列在场也不假装在线', () 
   queue.enqueue('snapshot', {})
   queue.take()
   const svc = service(queue)
-  assert.equal(svc.a11ySource(), 'off')
+  assert.equal(svc.a11ySource(), 'unknown')
   assert.equal(svc.a11yEnabled(), false)
 })
 
@@ -83,5 +98,8 @@ test('ST-23：窗口常量是 20s', () => {
 
 test('未来时间戳不能作为服务活跃证据', () => {
   prefs('<boolean name="a11yEnabled" value="true" />\n<long name="controlHeartbeat" value="' + (Date.now() + 60_000) + '" />\n')
-  assert.equal(service(staleQueue).a11ySource(), 'off')
+  const facts = service(staleQueue).a11yFacts()
+  assert.equal(facts.source, 'stale')
+  assert.equal(facts.enabled, false)
+  assert.ok(facts.heartbeatAgeMs < 0, '未来时间戳应保留负年龄供诊断')
 })
