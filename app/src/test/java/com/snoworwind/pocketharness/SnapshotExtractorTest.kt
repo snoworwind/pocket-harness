@@ -131,6 +131,35 @@ class SnapshotExtractorTest {
   }
 
   @Test
+  fun countsEachEntryOnceForTheTotalLimitAndProgress() {
+    val root = Files.createTempDirectory("snapshot-extractor-byte-accounting-test").toFile()
+    try {
+      val entrySize = 600_000
+      val totalSize = entrySize.toLong() * 2
+      val input = archive { tar ->
+        writeEntry(tar, "usr/first", ByteArray(entrySize))
+        writeEntry(tar, "usr/second", ByteArray(entrySize))
+      }
+      val progress = mutableListOf<Long>()
+      val dest = File(root, "dest")
+
+      SnapshotExtractor.extract(
+        input,
+        totalSize,
+        dest,
+        { done, _ -> progress += done },
+        limits = SnapshotExtractor.Limits(maxTotalBytes = 1_500_000L),
+      )
+
+      assertEquals("all bytes should extract below the actual total limit", entrySize.toLong(), File(dest, "usr/first").length())
+      assertEquals(entrySize.toLong(), File(dest, "usr/second").length())
+      assertEquals("progress must report actual, not doubled, bytes", listOf(totalSize), progress)
+    } finally {
+      SnapshotFs.deletePath(root)
+    }
+  }
+
+  @Test
   fun malformedHardArchiveCanFailAfterStagingWritesWithoutChangingLiveRuntime() {
     val root = Files.createTempDirectory("snapshot-extractor-hard-failure-test").toFile()
     try {
