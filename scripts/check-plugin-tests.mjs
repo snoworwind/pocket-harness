@@ -19,6 +19,20 @@ const HERE = dirname(fileURLToPath(import.meta.url))
 const ROOT = dirname(HERE)
 const PLUGIN_DIR = join(ROOT, 'plugins')
 
+/**
+ * Test child processes use a stable environment. In particular, production React disables `act()`,
+ * so inheriting NODE_ENV=production makes vitest report false failures. Preserve the caller's PATH
+ * and other environment values, while forcing NODE_ENV last so call sites cannot override it.
+ */
+const TEST_NODE_ENV = 'test'
+function testEnv(extra) {
+  return { ...process.env, ...(extra ?? {}), NODE_ENV: TEST_NODE_ENV }
+}
+
+function runTestCommand(bin, args, options) {
+  return spawnSync(bin, args, { ...options, env: testEnv(options?.env) })
+}
+
 /** Convert a Windows drive path for the WSL npm installation when it exists. */
 function toWslPath(path) {
   const full = resolve(path)
@@ -42,6 +56,38 @@ const plugins = existsSync(PLUGIN_DIR)
   ? readdirSync(PLUGIN_DIR).filter((n) => existsSync(join(PLUGIN_DIR, n, 'package.json')))
   : []
 if (plugins.length === 0) { console.error('CHECK-PLUGIN-TESTS FAILED：找不到任何插件'); process.exit(1) }
+
+// ── --self-test：确保测试进程环境不受调用者的 NODE_ENV 影响 ───────────────────────
+if (process.argv.includes('--self-test')) {
+  const probe = (extraEnv) => {
+    const r = runTestCommand(process.execPath,
+      ['-e', 'process.stdout.write(JSON.stringify({nodeEnv: process.env.NODE_ENV, hasPath: Boolean(process.env.PATH || process.env.Path)}))'],
+      { cwd: ROOT, encoding: 'utf8', env: extraEnv })
+    let data = null
+    try { data = JSON.parse(r.stdout ?? '') } catch {}
+    return { status: r.status, error: r.error?.code ?? null, data }
+  }
+  const checks = [
+    ['调用点指定 NODE_ENV=production', probe({ NODE_ENV: 'production' })],
+    ['调用点只传 NODE_OPTIONS', probe({ NODE_OPTIONS: '--no-deprecation' })],
+    ['调用点完全不传 env', probe(undefined)],
+  ]
+  let bad = 0
+  for (const [label, result] of checks) {
+    if (result.status !== 0 || result.data === null) {
+      bad += 1
+      console.error('FAIL  [self-test] ' + label + '：子进程无法启动或未返回 JSON（status=' + String(result.status) + ', error=' + String(result.error) + '）')
+    } else if (result.data.nodeEnv !== TEST_NODE_ENV || !result.data.hasPath) {
+      bad += 1
+      console.error('FAIL  [self-test] ' + label + '：NODE_ENV=' + JSON.stringify(result.data.nodeEnv) + ', PATH 在场=' + String(result.data.hasPath))
+    } else {
+      console.log('PASS  [self-test] ' + label + ' → NODE_ENV=test，PATH 在场')
+    }
+  }
+  if (bad > 0) { console.error('CHECK-PLUGIN-TESTS SELF-TEST FAILED（' + bad + '/' + checks.length + ' 项）'); process.exit(1) }
+  console.log('CHECK-PLUGIN-TESTS SELF-TEST PASSED（' + checks.length + ' 类调用形态）')
+  process.exit(0)
+}
 
 let ran = 0
 let failed = 0
@@ -70,7 +116,7 @@ for (const plugin of plugins.sort()) {
     ? args
     : ['vitest', 'run', '--root', join(PLUGIN_DIR, plugin), ...files.map((f) => f.slice(join(PLUGIN_DIR, plugin).length + 1))]
   const bin = usesNodeTest ? process.execPath : (process.platform === 'win32' ? 'npx.cmd' : 'npx')
-  const r2 = spawnSync(bin, spawnArgs, { cwd: join(PLUGIN_DIR, plugin), encoding: 'utf8' })
+  const r2 = runTestCommand(bin, spawnArgs, { cwd: join(PLUGIN_DIR, plugin), encoding: 'utf8' })
   const out2 = (r2.stdout ?? '') + (r2.stderr ?? '')
   // 通过数：node:test spec 报 'ℹ pass N'；vitest 报 'Tests N passed'。两者都接受，任一为 0 判红。
   // 通过数：node:test spec 报 'ℹ pass N'；vitest 报 'Tests N passed'；Node 20 TAP 报 '# pass N'。
@@ -168,14 +214,14 @@ for (const repo of SUBREPO_TESTS) {
   // ——重试只影响「怎么起 npm」，判据仍是它的退出码与通过数。
   const npmBin = process.platform === 'win32' ? 'npm.cmd' : 'npm'
   let r3 = useWslNpm
-    ? spawnSync('wsl.exe', ['--cd', wslDir, '--exec', 'env', 'npm_config_cache=/tmp/dsh-mobile-npm-cache', 'npm', 'test'], { cwd: dir, encoding: 'utf8' })
+    ? runTestCommand('wsl.exe', ['--cd', wslDir, '--exec', 'env', 'NODE_ENV=test', 'npm_config_cache=/tmp/dsh-mobile-npm-cache', 'npm', 'test'], { cwd: dir, encoding: 'utf8' })
     : useNpm
-      ? spawnSync(npmBin, ['test'], { cwd: dir, encoding: 'utf8' })
-      : spawnSync(process.execPath, ['--test', '--test-reporter=spec', ...bare], { cwd: dir, encoding: 'utf8' })
+      ? runTestCommand(npmBin, ['test'], { cwd: dir, encoding: 'utf8' })
+      : runTestCommand(process.execPath, ['--test', '--test-reporter=spec', ...bare], { cwd: dir, encoding: 'utf8' })
   if (useNpm && (r3.error !== undefined || r3.status === null)) {
     console.log('NOTE  ' + repo + '：npm 直调失败（' + String(r3.error?.code ?? 'no-status') + '），退到 shell 重试')
     // shell:true 在 Node 24 会打一条 DEP0190 弃用提示（noise，与被测对象无关），子进程关掉它。
-    r3 = spawnSync(npmBin, ['test'], { cwd: dir, encoding: 'utf8', shell: true, env: { ...process.env, NODE_OPTIONS: '--no-deprecation' } })
+    r3 = runTestCommand(npmBin, ['test'], { cwd: dir, encoding: 'utf8', shell: true, env: { NODE_OPTIONS: '--no-deprecation' } })
   }
   if (r3.error !== undefined && r3.error !== null) {
     failed += 1
