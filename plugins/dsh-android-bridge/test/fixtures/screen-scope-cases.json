@@ -327,6 +327,97 @@
       "why": "`--` 即使被引用仍是独立选项终结符；识别后应继续按既有规则接受已注册虚拟屏。"
     },
     {
+      "name": "S-13a 组合短选项 -lc 中的 c 必须展开并拒绝真实屏",
+      "command": "sh -lc 'screencap -p /sdcard/real.png'",
+      "ownedTargets": ["7", "11529215046816944610"],
+      "expect": "deny-uncertified-target",
+      "why": "mksh 的 -lc 会执行载荷；选项簇尾部 c 必须触发递归检查，不能因未展开而放过默认真实屏。"
+    },
+    {
+      "name": "S-13b 组合短选项 -ec 的载荷也必须检查",
+      "command": "sh -ec 'screencap -p /sdcard/real.png'",
+      "ownedTargets": ["7", "11529215046816944610"],
+      "expect": "deny-uncertified-target",
+      "why": "-ec 的 c 同样是执行载荷的选项，真实屏命令不得借组合写法隐藏。"
+    },
+    {
+      "name": "S-13c 未登记 bash 解释器即使指向虚拟屏也拒绝",
+      "command": "bash -xc 'input -d 7 tap 1 2'",
+      "ownedTargets": ["7", "11529215046816944610"],
+      "expect": "deny-unparsed",
+      "why": "屏幕范围只信任原有系统 sh 入口；其他 shell 解释器不能因为选项簇而获得可展开信任。"
+    },
+    {
+      "name": "S-13d su 解释器不能借组合选项取得虚拟屏放行",
+      "command": "su -lc 'screencap -p -d 7 /sdcard/virtual.png'",
+      "ownedTargets": ["7", "11529215046816944610"],
+      "expect": "deny-unparsed",
+      "why": "su 不属于本仓原先信任的系统 sh 包装，遇到它继续 fail-closed。"
+    },
+    {
+      "name": "S-13e sh -o errexit -c 仍展开真实屏命令",
+      "command": "sh -o errexit -c 'screencap -p /sdcard/real.png'",
+      "ownedTargets": ["7", "11529215046816944610"],
+      "expect": "deny-uncertified-target",
+      "why": "-o 单独消费 errexit 参数后仍有 -c 载荷；不得因中间参数让解析停止。"
+    },
+    {
+      "name": "S-13f sh +o errexit -c 仍展开真实屏命令",
+      "command": "sh +o errexit -c 'input tap 1 2'",
+      "ownedTargets": ["7", "11529215046816944610"],
+      "expect": "deny-uncertified-target",
+      "why": "+o 与 -o 一样消费一个参数，之后的 -c 载荷仍需检查。"
+    },
+    {
+      "name": "S-13g 无害 sh -lc 命令保持可用",
+      "command": "sh -lc 'echo hi'",
+      "ownedTargets": ["7", "11529215046816944610"],
+      "expect": "allow",
+      "why": "载荷可解析且不触碰屏幕时，不应因使用组合选项被误拒。"
+    },
+    {
+      "name": "S-13h sh -lc 中登记的虚拟屏仍放行",
+      "command": "sh -lc 'screencap -p -d 7 /sdcard/virtual.png'",
+      "ownedTargets": ["7", "11529215046816944610"],
+      "expect": "allow",
+      "why": "展开后命令明确指向已登记虚拟屏；解析改进不能把虚拟屏路径一并封死。"
+    },
+    {
+      "name": "S-13i sh -o errexit -c 的无害载荷保持可用",
+      "command": "sh -o errexit -c 'echo hi'",
+      "ownedTargets": ["7", "11529215046816944610"],
+      "expect": "allow",
+      "why": "带参数选项不会使正常非屏幕 shell 命令变成拒绝。"
+    },
+    {
+      "name": "S-13j env 包装的 sh -lc 仍检查真实屏",
+      "command": "env sh -lc 'screencap -p /sdcard/real.png'",
+      "ownedTargets": ["7", "11529215046816944610"],
+      "expect": "deny-uncertified-target",
+      "why": "受控 env 包装下的 shell 仍须展开载荷，不能因启动器封装漏检。"
+    },
+    {
+      "name": "S-13k 系统 shell 路径下登记的虚拟屏仍放行",
+      "command": "/system/bin/sh -lc 'screencap -p -d 7 /sdcard/virtual.png'",
+      "ownedTargets": ["7", "11529215046816944610"],
+      "expect": "allow",
+      "why": "可信系统 shell 路径的短选项簇也应递归检查并接受已登记目标。"
+    },
+    {
+      "name": "S-13l 短选项簇后的 -- 仍跳过终结符并检查载荷",
+      "command": "sh -lc -- 'screencap -p /sdcard/real.png'",
+      "ownedTargets": ["7", "11529215046816944610"],
+      "expect": "deny-uncertified-target",
+      "why": "选项簇与 -c 后的 -- 组合时，载荷解析仍需跳过终结符并拒绝真实屏操作。"
+    },
+    {
+      "name": "S-13m env 不得把任意路径下的 sh 当成系统 shell",
+      "command": "env /data/local/tmp/sh -lc 'screencap -p -d 7 /sdcard/virtual.png'",
+      "ownedTargets": ["7", "11529215046816944610"],
+      "expect": "deny-unparsed",
+      "why": "任意路径程序即使叫 sh，也不属于可信系统 shell；不能通过启动器安全例外。"
+    },
+    {
       "name": "超过 16 次嵌套展开预算必须 fail-closed",
       "command": "sh -c 'echo ok'; sh -c 'echo ok'; sh -c 'echo ok'; sh -c 'echo ok'; sh -c 'echo ok'; sh -c 'echo ok'; sh -c 'echo ok'; sh -c 'echo ok'; sh -c 'echo ok'; sh -c 'echo ok'; sh -c 'echo ok'; sh -c 'echo ok'; sh -c 'echo ok'; sh -c 'echo ok'; sh -c 'echo ok'; sh -c 'echo ok'; sh -c 'screencap -p -d 0 /sdcard/real.png'",
       "ownedTargets": ["7", "11529215046816944610"],

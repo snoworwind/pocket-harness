@@ -161,6 +161,35 @@ test('sh -c -- expands the script after its option terminator', () => {
   'a registered virtual target remains allowed after a quoted option terminator')
 })
 
+test('shell short option clusters expand only known payloads and preserve screen scope', () => {
+  const denyPhysical = [
+    "sh -lc 'screencap -p /sdcard/real.png'",
+    "sh -ec 'screencap -p /sdcard/real.png'",
+    "sh -o errexit -c 'screencap -p /sdcard/real.png'",
+    "sh +o errexit -c 'input tap 1 2'",
+    "env sh -lc 'screencap -p /sdcard/real.png'",
+    "sh -lc -- 'screencap -p /sdcard/real.png'",
+  ]
+  for (const command of denyPhysical) {
+    assert.equal(screenCommandVerdict(command, () => false), 'deny-uncertified-target', command)
+  }
+  for (const command of [
+    "bash -xc 'input -d 7 tap 1 2'",
+    "su -lc 'screencap -p -d 7 /sdcard/virtual.png'",
+    "env /data/local/tmp/sh -lc 'screencap -p -d 7 /sdcard/virtual.png'",
+  ]) {
+    assert.equal(screenCommandVerdict(command, (token) => token === '7'), 'deny-unparsed', command)
+  }
+  for (const command of [
+    "sh -lc 'echo hi'",
+    "sh -lc 'screencap -p -d 7 /sdcard/virtual.png'",
+    "sh -o errexit -c 'echo hi'",
+    "/system/bin/sh -lc 'screencap -p -d 7 /sdcard/virtual.png'",
+  ]) {
+    assert.equal(screenCommandVerdict(command, (token) => token === '7'), 'allow', command)
+  }
+})
+
 test('compact short display selectors are parsed without accepting equals as a target', () => {
   assert.equal(realScreenAdbCommandDenied('virtual-only', 'input -d7 tap 10 20', { virtualDisplayIds: [7] }), null)
   assert.equal(realScreenAdbCommandDenied('virtual-only', 'screencap -d7 -p /sdcard/virtual.png', { virtualDisplayIds: [7] }), null)
