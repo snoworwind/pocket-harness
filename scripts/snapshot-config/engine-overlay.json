@@ -483,6 +483,19 @@
       "debug": "2.6.9",
       "negotiator": "0.6.4",
       "ms": "2.0.0"
+    },
+    "@deepseek-ai/dsh-otel": {
+      "@opentelemetry/api-logs": "0.222.0",
+      "@opentelemetry/core": "2.11.0",
+      "@opentelemetry/otlp-exporter-base": "0.222.0",
+      "@opentelemetry/otlp-transformer": "0.222.0",
+      "@opentelemetry/resources": "2.11.0",
+      "@opentelemetry/sdk-logs": "0.222.0",
+      "@opentelemetry/sdk-metrics": "2.11.0",
+      "@opentelemetry/sdk-trace": "2.11.0"
+    },
+    "@deepseek-ai/dsh-session-telemetry-otel": {
+      "@opentelemetry/api-logs": "0.222.0"
     }
   },
   "keepUnpublished": [
