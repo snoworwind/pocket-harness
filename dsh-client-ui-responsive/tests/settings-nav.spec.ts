@@ -213,6 +213,20 @@ describe('二级页：点一级分类进入', () => {
 })
 
 describe('逐级返回', () => {
+  it('返回首页时当前行已隐藏就把焦点落到第一条可见一级行', () => {
+    const handle = buildPanel(['通用设置', '关于'])
+    nav = new MobileSettingsNav()
+    nav.attach()
+    const about = handle.rows.get('关于')!
+    about.click()
+    about.style.display = 'none'
+    back(handle.panel).click()
+    expect(handle.panel.getAttribute('data-dsh-settings-level')).toBe('home')
+    expect(document.activeElement).toBe(handle.rows.get('通用设置'))
+    // 焦点回退不伪造上游选择状态；导航真源仍指向 About。
+    expect(about.getAttribute('aria-current')).toBe('true')
+  })
+
   it('二级页返回 -> 首页，焦点回到当前一级行，内容列节点原样（未保存编辑不丢）', () => {
     const handle = buildPanel(['开发者选项'])
     nav = new MobileSettingsNav()
