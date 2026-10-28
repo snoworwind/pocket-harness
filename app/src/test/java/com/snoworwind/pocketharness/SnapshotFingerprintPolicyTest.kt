@@ -8,6 +8,10 @@ import org.junit.Test
 
 class SnapshotFingerprintPolicyTest {
   private val sha = "0123456789abcdef".repeat(4)
+  private fun source(name: String): String = listOf(
+    java.io.File("src/main/java/com/snoworwind/pocketharness", name),
+    java.io.File("app/src/main/java/com/snoworwind/pocketharness", name),
+  ).first { it.isFile }.readText()
 
   @Test fun missingShaNeverMakesAnExistingRuntimeFresh() {
     for (raw in listOf(null, "", "  \n")) {
@@ -39,6 +43,38 @@ class SnapshotFingerprintPolicyTest {
     assertFalse(SnapshotFingerprintPolicy.fresh(true, bundled, "f".repeat(64)))
   }
 
+  @Test fun failedFingerprintCommitPublicationPreservesThePreviousCommitPoint() {
+    val files = java.nio.file.Files.createTempDirectory("snapshot-fingerprint-commit-").toFile()
+    try {
+      val marker = java.io.File(files, ".snapshot-fingerprint").apply { writeText("old-fingerprint") }
+      val failure = try {
+        SnapshotTransaction.writeTextAtomic(
+          target = marker,
+          text = "new-fingerprint",
+          label = "snapshot fingerprint",
+          publish = { _, _ -> false },
+          validate = {},
+        )
+        null
+      } catch (t: SnapshotFsException) {
+        t
+      }
+      assertEquals("snapshot-atomic-write", failure?.code)
+      assertEquals("old-fingerprint", marker.readText())
+      val evidence = files.listFiles()!!.filter { it.name.startsWith(".pre-.snapshot-fingerprint-") }
+      assertEquals(1, evidence.size)
+      assertEquals("old-fingerprint", evidence.single().readText())
+
+      val manager = source("EngineManager.kt")
+      val commit = manager.substringAfter("private fun writeFingerprint(").substringBefore("private fun writeOnlineSnapshotIdentity(")
+      assertTrue("生产快照指纹必须走失败保全写入器", commit.contains("SnapshotTransaction.writeTextAtomic("))
+      assertFalse("发布失败不能先删旧指纹", commit.contains("deletePath(target)"))
+      assertFalse("发布失败不能直写截断旧指纹", commit.contains("target.writeText("))
+    } finally {
+      SnapshotFs.deletePath(files)
+    }
+  }
+
   @Test fun onlineSnapshotStaysFreshOnlyForTheSameEmbeddedBaseAndCommittedArchive() {
     val archive = "fedcba9876543210".repeat(4)
     assertTrue(SnapshotFingerprintPolicy.onlineFresh(true, sha, archive, sha, archive))
@@ -50,10 +86,6 @@ class SnapshotFingerprintPolicyTest {
   }
 
   @Test fun invalidBundledMetadataHasNoLegacyFreshnessOrDegradedStartupBypass() {
-    fun source(name: String): String = listOf(
-      java.io.File("src/main/java/com/snoworwind/pocketharness", name),
-      java.io.File("app/src/main/java/com/snoworwind/pocketharness", name),
-    ).first { it.isFile }.readText()
     val manager = source("EngineManager.kt")
     assertTrue(manager.contains("fun snapshotFresh(): Boolean {"))
     assertTrue(manager.contains("SnapshotFingerprintPolicy.fresh(nodeBin.exists(), bundledSnapshotFingerprint, committed)"))

@@ -3298,6 +3298,14 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 
     现象：`virtual-only` 范围下，`sh -c -- 'screencap -p …'` 会被判为无屏幕操作而放行；合法 `input -d7`/`screencap -d7` 又会误拒。真因：`-c` 后的第一个 `--` 是 shell 选项终结符，旧解析器却把它当成脚本；短选项 `-d` 的粘连值也未按 Android CLI 语法解析。修法：只在识别 `-c` 的独立 `--` 参数后继续解析脚本；目标屏识别同时接受 `-d 7` 与 `-d7`，拒绝把 `-d=7` 当作目标 7；同步 Kotlin 与 bridge 实现，并用跨语言 fixture 固定真实屏拒绝、已注册虚拟屏放行及嵌套反例。复验：OrbStack Node 24 bridge 插件 178/178、`ShellOpsScreenCommandFixtureTest` 通过；设备三层按用户本轮指示未做，不能作为发版通过。
 
+583. **快照指纹发布失败不能销毁旧提交点（2026-10-28）**
+
+    现象：快照树事务已经提交时，指纹临时文件重命名失败会先删掉旧 `.snapshot-fingerprint`，再尝试直接写目标；第二步失败会让已提交树失去唯一耐久身份，下一次启动无法安全判新旧。真因：指纹发布绕开事务层已有的同步临时文件与原子替换协议，并把替换失败误当成可安全直写。修法：统一走 `SnapshotTransaction.writeTextAtomic`；发布失败保留旧指纹并留下可发现的错误证据，不直接截断目标。复验：`SnapshotFingerprintPolicyTest.failedFingerprintCommitPublicationPreservesThePreviousCommitPoint` 和 `SnapshotTransactionTest` 通过，另有结构检查禁止 `EngineManager` 删除或直写指纹目标；设备三层按用户本轮指示未做，不能作为发版通过。
+
+584. **浏览器截图私有缓存不自动回收，压缩失败仍可能留下无效文件（2026-10-28）**
+
+    现象：BrowserHost 将 `browser-shot-*.png` 写进引擎可读的 `files/home/tmp/dsh-tmp`，但该目录不受 Android cache 回收；多轮截图会持续占用应用私有磁盘。`Bitmap.compress` 还返回 Boolean，忽略 `false` 会把空/残缺文件当成功结果返回。真因：截图按临时文件使用，却落在持久 `files/` 路径；实现既没有生命周期上限，也没有校验编码结果。修法：新增 `ShotCachePolicy`，仅清理本功能命名的 PNG，按 1 小时 TTL、32 张和 128 MiB 限制；发布后保留本次回执文件并核对限额，压缩失败、超限或缓存无法核实时删除新文件且不给成功路径。同步 browser_screenshot 工具说明，准确描述本地清理策略。复验：`ShotCachePolicyTest` 覆盖 TTL、数量/字节上限、旧图优先、保留本次新图、超大拒绝、异名文件与目录保护及 BrowserHost 接线；Kotlin 单测/编译与 browser 插件构建通过。未做设备验证。
+
 585. **虚拟屏空闲计时只从创建时起算，操作未续期且写入与回收不同步（2026-10-28）**
 
     现象：空闲回收按 `Record.lastUsedAt` 判定，但活动中的虚拟屏在创建 10 分钟后仍可能被回收；回收线程与时间戳更新还会并发访问 `records` 中同一记录。真因：`touch()` 原本只有定义，没有任何调用点；它也未持有 `reclaimIdle()` 使用的 `lock`。修法：让选择、viewer 绑定、跨屏输入/拉起和已有屏幂等创建续期；`touch()` 与注册表/回收统一使用 `lock`，避免判旧后与续期交错。复验：`VdisplayTouchLockTest` 检查 monitor 锁争用及各操作接线，Kotlin 测试通过。设备侧虚拟屏矩阵按用户本轮指示未做，不能作为设备验收或发版通过。

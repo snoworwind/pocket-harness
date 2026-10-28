@@ -993,7 +993,7 @@ export function browserTools(face: () => BrowserControlFace | undefined): unknow
     }),
     defineTool({
       name: BROWSER_TOOLS.screenshot,
-      description: '对浏览器工位实际画面矩形截图（不包含舞台留黑）。返回引擎可读的私有路径与字节数；截图落在应用私有目录，工具层读完即删。',
+      description: '对浏览器工位实际画面矩形截图（不包含舞台留黑）。返回引擎可读的私有路径与字节数；截图落在应用私有目录（系统不回收），同目录历史截图按 1 小时 TTL 与数量/总量上限自动清理。',
       parameters: { inline: { type: 'boolean', description: '保留参数；当前返回路径而不内联像素（避免大图进上下文）' } },
       output: {
         schema: objectSchema({

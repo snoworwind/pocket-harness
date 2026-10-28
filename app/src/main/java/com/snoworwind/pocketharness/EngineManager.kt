@@ -694,14 +694,14 @@ class EngineManager(private val context: Context, private val pickToken: String?
 
   /** The fingerprint is the transaction commit point, so it is written atomically. */
   private fun writeFingerprint(fingerprint: String) {
-    val target = fingerprintFile()
-    val tmp = File(target.parentFile, target.name + ".tmp")
-    tmp.writeText(fingerprint)
-    SnapshotFs.deletePath(target)
-    if (!tmp.renameTo(target)) {
-      target.writeText(fingerprint)
-      SnapshotFs.deletePath(tmp)
-    }
+    // This marker commits the snapshot swap. A failed publish must preserve the prior fingerprint
+    // so SnapshotTransaction can roll the live tree back to the generation it still identifies.
+    SnapshotTransaction.writeTextAtomic(
+      target = fingerprintFile(),
+      text = fingerprint,
+      label = "snapshot fingerprint",
+      validate = {},
+    )
   }
 
   private fun writeOnlineSnapshotIdentity(base: String, archive: String) {
