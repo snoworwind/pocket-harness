@@ -129,6 +129,8 @@ test('adb display target ids are extracted only from explicit -d/--display flags
   assert.deepEqual(adbCommandDisplayIds('screencap -p -d 47 /sdcard/a.png'), [47])
   assert.deepEqual(adbCommandDisplayIds('screencap -p --display 25 /sdcard/a.png'), [25])
   assert.deepEqual(adbCommandDisplayIds('input -d 47 tap 100 200'), [47])
+  assert.deepEqual(adbCommandDisplayTokens('input -d47 tap 100 200'), ['47'], 'Android 短选项允许粘连 display 值')
+  assert.deepEqual(adbCommandDisplayTokens('input -d=47 tap 100 200'), [], '等号短选项不得抽取成虚拟目标凭据')
   assert.deepEqual(adbCommandDisplayIds('screencap -p /sdcard/a.png'), [], '无 -d 时不得凭空得到目标屏')
   assert.deepEqual(adbCommandDisplayIds('dumpsys display'), [], 'display 是子命令词，不是目标屏')
 })
@@ -147,11 +149,33 @@ test('raw adb real-screen commands are denied outside the real-screen scope', ()
   assert.equal(realScreenAdbCommandDenied('all', 'input tap 1 1'), null)
 })
 
+test('sh -c -- expands the script after its option terminator', () => {
+  const hiddenPhysicalRead = "sh -c -- 'screencap -p /sdcard/real.png'"
+  assert.ok(realScreenAdbCommandDenied('virtual-only', hiddenPhysicalRead),
+    'the `--` option terminator must not hide the default physical-screen target')
+  assert.ok(realScreenAdbCommandDenied('virtual-only',
+    `sh -c -- "sh -c -- 'screencap -p /sdcard/real.png'"`),
+  'nested and quoted option terminators must keep the inner command visible')
+  assert.equal(realScreenAdbCommandDenied('virtual-only',
+    `sh -c "--" 'screencap -p -d 7 /sdcard/virtual.png'`, { virtualDisplayIds: [7] }), null,
+  'a registered virtual target remains allowed after a quoted option terminator')
+})
+
+test('compact short display selectors are parsed without accepting equals as a target', () => {
+  assert.equal(realScreenAdbCommandDenied('virtual-only', 'input -d7 tap 10 20', { virtualDisplayIds: [7] }), null)
+  assert.equal(realScreenAdbCommandDenied('virtual-only', 'screencap -d7 -p /sdcard/virtual.png', { virtualDisplayIds: [7] }), null)
+  assert.ok(realScreenAdbCommandDenied('virtual-only', 'input -d=7 tap 10 20', { virtualDisplayIds: [7] }))
+  assert.ok(realScreenAdbCommandDenied('virtual-only', 'screencap -d=7 -p /sdcard/real.png', { virtualDisplayIds: [7] }))
+  assert.ok(realScreenAdbCommandDenied('virtual-only', 'input tap 10 20 -d7', { virtualDisplayIds: [7] }),
+    'a trailing selector cannot certify an already-started input command')
+})
+
 test('real-only raw shell admits physical targets and fails closed for virtual or unknown targets', async () => {
   const deniedCommands = [
     'input -d 47 tap 10 20',
     'input tap 10 20 --display=0',
     'screencap --display=47 -p /sdcard/a.png',
+    "sh -c -- 'screencap -p -d 47 /sdcard/a.png'",
     'sh -c "screencap -d 0 -p; input -d 47 tap 10 20"',
     'toybox sh -c "input --display 999 tap 1 2"',
     'screencap --display-id 999 -p /sdcard/a.png',

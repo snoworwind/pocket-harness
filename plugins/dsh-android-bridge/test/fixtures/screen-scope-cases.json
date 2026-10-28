@@ -285,6 +285,48 @@
       "why": "看不懂的命令不放行：解析失败必须是显式拒绝态，而不是「没命中命令词 ⇒ 放行」。"
     },
     {
+      "name": "S-10l input 的粘连 -d7 是已注册虚拟目标",
+      "command": "input -d7 tap 100 200",
+      "ownedTargets": ["7", "11529215046816944610"],
+      "expect": "allow",
+      "why": "Android 短选项允许 `-d7`；解析器必须按 `-d 7` 认证同一虚拟显示目标。"
+    },
+    {
+      "name": "S-10m input 的 -d=7 不得伪装成虚拟目标",
+      "command": "input -d=7 tap 100 200",
+      "ownedTargets": ["7", "11529215046816944610"],
+      "expect": "deny-uncertified-target",
+      "why": "AOSP 对短选项使用整数转换；`-d=7` 的实际参数不等于 7，不能借此认证虚拟屏。"
+    },
+    {
+      "name": "S-10n screencap 的粘连 -d7 是已注册虚拟目标",
+      "command": "screencap -d7 -p /sdcard/virtual.png",
+      "ownedTargets": ["7", "11529215046816944610"],
+      "expect": "allow",
+      "why": "screencap 的 getopt 短选项允许粘连值；仅收窄拒绝条件会误拦可用虚拟屏。"
+    },
+    {
+      "name": "S-10o screencap 的 -d=7 不得伪装成虚拟目标",
+      "command": "screencap -d=7 -p /sdcard/real.png",
+      "ownedTargets": ["7", "11529215046816944610"],
+      "expect": "deny-uncertified-target",
+      "why": "等号形态不能提供目标 7 的证据；必须拒绝，防止默认真实屏被错误认证。"
+    },
+    {
+      "name": "S-10j sh -c -- 后的真实屏命令仍被展开并拒绝",
+      "command": "sh -c -- 'screencap -p /sdcard/real.png'",
+      "ownedTargets": ["7", "11529215046816944610"],
+      "expect": "deny-uncertified-target",
+      "why": "`--` 是 sh 的选项终结符，不是脚本；忽略其后的脚本会漏掉默认真实屏读取。"
+    },
+    {
+      "name": "S-10k 引号包裹的 sh -c -- 与合法虚拟目标",
+      "command": "sh -c \"--\" 'screencap -p -d 7 /sdcard/virtual.png'",
+      "ownedTargets": ["7", "11529215046816944610"],
+      "expect": "allow",
+      "why": "`--` 即使被引用仍是独立选项终结符；识别后应继续按既有规则接受已注册虚拟屏。"
+    },
+    {
       "name": "超过 16 次嵌套展开预算必须 fail-closed",
       "command": "sh -c 'echo ok'; sh -c 'echo ok'; sh -c 'echo ok'; sh -c 'echo ok'; sh -c 'echo ok'; sh -c 'echo ok'; sh -c 'echo ok'; sh -c 'echo ok'; sh -c 'echo ok'; sh -c 'echo ok'; sh -c 'echo ok'; sh -c 'echo ok'; sh -c 'echo ok'; sh -c 'echo ok'; sh -c 'echo ok'; sh -c 'echo ok'; sh -c 'screencap -p -d 0 /sdcard/real.png'",
       "ownedTargets": ["7", "11529215046816944610"],
