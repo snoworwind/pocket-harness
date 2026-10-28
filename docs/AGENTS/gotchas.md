@@ -3297,3 +3297,7 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 582. **`sh -c --` 的选项终结符遮住真实屏命令（2026-10-28）**
 
     现象：`virtual-only` 范围下，`sh -c -- 'screencap -p …'` 会被判为无屏幕操作而放行；合法 `input -d7`/`screencap -d7` 又会误拒。真因：`-c` 后的第一个 `--` 是 shell 选项终结符，旧解析器却把它当成脚本；短选项 `-d` 的粘连值也未按 Android CLI 语法解析。修法：只在识别 `-c` 的独立 `--` 参数后继续解析脚本；目标屏识别同时接受 `-d 7` 与 `-d7`，拒绝把 `-d=7` 当作目标 7；同步 Kotlin 与 bridge 实现，并用跨语言 fixture 固定真实屏拒绝、已注册虚拟屏放行及嵌套反例。复验：OrbStack Node 24 bridge 插件 178/178、`ShellOpsScreenCommandFixtureTest` 通过；设备三层按用户本轮指示未做，不能作为发版通过。
+
+583. **快照指纹发布失败不能销毁旧提交点（2026-10-28）**
+
+    现象：快照树事务已经提交时，指纹临时文件重命名失败会先删掉旧 `.snapshot-fingerprint`，再尝试直接写目标；第二步失败会让已提交树失去唯一耐久身份，下一次启动无法安全判新旧。真因：指纹发布绕开事务层已有的同步临时文件与原子替换协议，并把替换失败误当成可安全直写。修法：统一走 `SnapshotTransaction.writeTextAtomic`；发布失败保留旧指纹并留下可发现的错误证据，不直接截断目标。复验：`SnapshotFingerprintPolicyTest.failedFingerprintCommitPublicationPreservesThePreviousCommitPoint` 和 `SnapshotTransactionTest` 通过，另有结构检查禁止 `EngineManager` 删除或直写指纹目标；设备三层按用户本轮指示未做，不能作为发版通过。
