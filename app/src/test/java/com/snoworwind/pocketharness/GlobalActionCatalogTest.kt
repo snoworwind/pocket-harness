@@ -1,6 +1,5 @@
 package com.snoworwind.pocketharness
 
-import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
@@ -42,9 +41,10 @@ class GlobalActionCatalogTest {
     assertTrue(avail.contains("quickSettings"))
     assertFalse("系统未报告的动作不得宣传", avail.contains("menu"))
     assertFalse(avail.contains("lockScreen"))
-    // 空列表 = ROM 不报，按 API 下限放行（此时 menu 可用）
+    // 空列表 = ROM 不报，按 API 下限放行；API 35 仍不可用 API 36 才加入的动作。
     val romSilent = GlobalActionCatalog.available(emptySet(), 35)
-    assertTrue(romSilent.contains("menu"))
+    assertFalse("API 35 还没有 menu 全局动作", romSilent.contains("menu"))
+    assertFalse("API 35 还没有 mediaPlayPause 全局动作", romSilent.contains("mediaPlayPause"))
   }
 
   @Test
@@ -54,14 +54,24 @@ class GlobalActionCatalogTest {
     assertFalse(api26.contains("lockScreen"))
     assertFalse(api26.contains("takeScreenshot"))
     assertTrue(api26.contains("quickSettings"))
-    // API 28：放行锁屏与截图；menu（31）仍不可用
+    // API 28：放行锁屏与截图；menu（36）仍不可用
     val api28 = GlobalActionCatalog.available(emptySet(), 28)
     assertTrue(api28.contains("lockScreen"))
     assertTrue(api28.contains("takeScreenshot"))
     assertFalse(api28.contains("menu"))
-    // API 31：全表放行
+    // API 31-35：即使 ROM 不报系统列表，也不能放行 API 36 才加入的动作
     val api31 = GlobalActionCatalog.available(GlobalActionCatalog.TABLE.map { it.id }.toSet(), 31)
-    assertEquals(GlobalActionCatalog.TABLE.size, api31.size)
+    assertFalse(api31.contains("menu"))
+    assertFalse(api31.contains("mediaPlayPause"))
+    assertTrue(api31.contains("dismissNotificationShade"))
+    assertTrue(api31.contains("accessibilityShortcut"))
+
+    val api35 = GlobalActionCatalog.available(emptySet(), 35)
+    assertFalse(api35.contains("menu"))
+    assertFalse(api35.contains("mediaPlayPause"))
+    val api36 = GlobalActionCatalog.available(emptySet(), 36)
+    assertTrue(api36.contains("menu"))
+    assertTrue(api36.contains("mediaPlayPause"))
   }
 
   @Test

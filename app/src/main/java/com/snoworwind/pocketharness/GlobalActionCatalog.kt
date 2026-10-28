@@ -30,8 +30,8 @@ object GlobalActionCatalog {
     Entry("toggleSplitScreen", AccessibilityService.GLOBAL_ACTION_TOGGLE_SPLIT_SCREEN, 24),
     Entry("lockScreen", AccessibilityService.GLOBAL_ACTION_LOCK_SCREEN, 28),
     Entry("takeScreenshot", AccessibilityService.GLOBAL_ACTION_TAKE_SCREENSHOT, 28),
-    Entry("menu", AccessibilityService.GLOBAL_ACTION_MENU, 31),
-    Entry("mediaPlayPause", AccessibilityService.GLOBAL_ACTION_MEDIA_PLAY_PAUSE, 31),
+    Entry("menu", AccessibilityService.GLOBAL_ACTION_MENU, 36),
+    Entry("mediaPlayPause", AccessibilityService.GLOBAL_ACTION_MEDIA_PLAY_PAUSE, 36),
     Entry("dismissNotificationShade", AccessibilityService.GLOBAL_ACTION_DISMISS_NOTIFICATION_SHADE, 31),
     Entry("accessibilityShortcut", AccessibilityService.GLOBAL_ACTION_ACCESSIBILITY_SHORTCUT, 31),
   )
