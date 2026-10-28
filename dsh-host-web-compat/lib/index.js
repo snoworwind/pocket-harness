@@ -94,6 +94,17 @@ const POLYFILLS = [
     def('isSupersetOf',function(other){for(var v of other)if(!this.has(v))return false;return true});
     def('isDisjointFrom',function(other){for(var v of this)if(other.has(v))return false;return true});
   })();`,
+  // rc.3 client uses these on WebViews predating ES2022/2023. Install only absent methods.
+  `(function(){
+    var ap=Array.prototype;
+    var toObject=function(value){if(value==null)throw new TypeError('null or undefined receiver');return Object(value)};
+    var lengthOf=function(o){var n=+o.length;if(!n||n<0)return 0;return Math.min(Math.floor(n),9007199254740991)};
+    var define=function(name,fn){if(typeof ap[name]==='undefined')Object.defineProperty(ap,name,{value:fn,writable:true,configurable:true,enumerable:false})};
+    define('toSorted',function(compare){'use strict';if(compare!==undefined&&typeof compare!=='function')throw new TypeError('comparator must be a function');var o=toObject(this),n=lengthOf(o),out=new Array(n);for(var i=0;i<n;i++)out[i]=o[i];return ap.sort.call(out,compare)});
+    var find=function(value,predicate,thisArg,index){var o=toObject(value),n=lengthOf(o);if(typeof predicate!=='function')throw new TypeError('predicate must be a function');for(var i=n-1;i>=0;i--){var v=o[i];if(predicate.call(thisArg,v,i,o))return index?i:v}return index?-1:undefined};
+    define('findLast',function(predicate,thisArg){'use strict';return find(this,predicate,thisArg,false)});
+    define('findLastIndex',function(predicate,thisArg){'use strict';return find(this,predicate,thisArg,true)});
+  })();`,
   // Array.fromAsync: Chrome 121+；文档/会话分页装配可能用到。
   `if(typeof Array.fromAsync==='undefined'){Array.fromAsync=async function(items,mapFn){var out=[],i=0;for await (var v of items){out.push(mapFn?await mapFn(v,i++):v)}return out}}`,
 ];

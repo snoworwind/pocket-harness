@@ -3245,3 +3245,7 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 562. **升级 Linux bootstrap peer metadata 后未同步来源摘要清单，PR Linux 验证按预期拒绝（2026-10-27）**
 
     现象：PR #148 的 `build-linux-assets` 在 `check-linux-sources.mjs --self-test` 的仓库实体验证阶段报 `Linux source digest mismatch: plugins/dsh-linux-bootstrap/package-lock.json`。真因：Harness RC3 升级同步了 bootstrap 的 `package.json` 与 lockfile peer 版本，但 `linux-source-manifest.json` 的双份字节摘要仍指向 RC2；单测通过只证明负控有效，不代表仓库输入摘要已更新。修法：逐字节确认两文件只改变 client-settings peer 元数据，重算并同步 manifest 的 additional-source 与全局文件摘要，并更新对应 local-patch 理由；不放宽或跳过来源校验。复验：待 CI 对 PR #148 重跑 `build-linux-assets` 验证。
+
+565. **rc.3 客户端在旧 WebView 缺少数组内建时无法渲染（2026-10-28）**
+
+    现象：旧 WebView 缺少 `toSorted` 或 `findLast` 等方法时，客户端模型列表、会话和定时任务调用会抛错。真因：rc.3 固定源码在这些客户端路径使用较新的数组内建，语法降级不提供运行时方法。修法：在既有 head 注入中仅补缺失的 `toSorted`、`findLast`、`findLastIndex`，不覆盖原生方法，属性不可枚举。复验：OrbStack Linux 插件测试与注入冒烟通过，包含稀疏数组、泛型、异常和原生保留反例；旧 WebView 设备复现及 CDP/ADB 三层尚未完成。
