@@ -86,6 +86,7 @@ internal class BrowserHost(
      */
     private const val BLOCKED_REQUEST_LOG_LIMIT = 20
     private const val SNAPSHOT_MAX_NODES = 400
+    private const val SHOT_NOTE = "截图保存在应用私有目录；系统不回收，同目录历史截图按 1 小时 TTL 与数量/总量上限自动清理。"
     /** 无活动标签页时的只读占位（避免把“没有页面”误判成“有页面”） */
     private val ORPHAN_GENERATION = AtomicLong(0)
     private val ORPHAN_REFS = HashSet<String>()
@@ -1983,19 +1984,40 @@ a{display:inline-block;margin-top:16px;padding:10px 20px;border-radius:8px;backg
 
   private fun shotOp(args: JSONObject, target: ControlTarget): JSONObject = controlOnMain(target) {
     val browser = target.tab?.view ?: return@controlOnMain targetFailure(target, "browser-not-created")
+    var capture: File? = null
     try {
       if (browser.width <= 0 || browser.height <= 0) return@controlOnMain targetFailure(target, "viewport-unavailable")
       val bitmap = Bitmap.createBitmap(browser.width, browser.height, Bitmap.Config.ARGB_8888)
       try {
         browser.draw(Canvas(bitmap))
-        val dir = File(File(activity.filesDir, "home/tmp"), "dsh-tmp").apply { mkdirs() }
+        val dir = shotDir()
         val file = File.createTempFile("browser-shot-", ".png", dir)
-        FileOutputStream(file).use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        capture = file
+        val encoded = FileOutputStream(file).use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        if (!encoded) {
+          file.delete()
+          capture = null
+          return@controlOnMain targetFailure(target, "shot-failed:encode")
+        }
+        if (!ShotCachePolicy.prunePublished(dir, file)) {
+          file.delete()
+          capture = null
+          return@controlOnMain targetFailure(target, "shot-failed:cache-limit")
+        }
         pageReply(target).put("ok", true).put("path", file.absolutePath).put("bytes", file.length())
           .put("width", bitmap.width).put("height", bitmap.height).put("health", "ok")
-          .apply { if (!args.optBoolean("inline", false)) put("note", "截图落在应用私有目录的引擎可读路径；工具层读完即删。") }
+          .apply { if (!args.optBoolean("inline", false)) put("note", SHOT_NOTE) }
       } finally { bitmap.recycle() }
-    } catch (t: Throwable) { targetFailure(target, "shot-failed:" + t.javaClass.simpleName) }
+    } catch (t: Throwable) {
+      capture?.delete()
+      targetFailure(target, "shot-failed:" + t.javaClass.simpleName)
+    }
+  }
+
+  private fun shotDir(): File {
+    val dir = File(File(activity.filesDir, "home/tmp"), "dsh-tmp").apply { mkdirs() }
+    ShotCachePolicy.prune(dir)
+    return dir
   }
 
   // ── async plumbing ────────────────────────────────────────────────────────
