@@ -1,5 +1,5 @@
 // verify-webview-015.mjs — 追上游 0.1.5 适配的 WebView DOM 断言（0.13.7）
-// 用法：node scripts/verify-webview-015.mjs <cdp-ws-url>
+// 用法：node scripts/verify-webview-015.mjs <cdp-ws-url> [--wide]；探针本地自检：--self-test
 // 取 ws 地址：adb forward tcp:29225 localabstract:webview_devtools_remote_<app-pid>
 //             node -e "fetch('http://127.0.0.1:29225/json/list').then(r=>r.json()).then(j=>console.log(j[0].webSocketDebuggerUrl))"
 // 断言项对应 docs/UPSTREAM-0.1.5-ADAPT-2026-09-10.md §4 验收清单 1/3/8 的可在页内自证部分。
@@ -11,6 +11,13 @@
 // 旧写法用它硬编码期望「不是手机形态」，而「16384 横屏」实测跑在 freeform 浮窗里只有
 // 281x522 CSS px，页面**正确地**自判为手机形态，于是断言恒红且无产品含义
 // （实测 viewport 才是唯一可证伪的读点）。
+if (process.argv.includes("--self-test")) {
+  const { spawnSync } = await import("node:child_process");
+  const { fileURLToPath } = await import("node:url");
+  const result = spawnSync(process.execPath, ["--test", fileURLToPath(new URL("./verify-webview-settings.test.mjs", import.meta.url))], { stdio: "inherit" });
+  process.exit(result.status ?? 1);
+}
+
 const [, , wsUrl] = process.argv
 const wide = process.argv.includes('--wide')
 if (!wsUrl) { console.error('用法: node verify-015.mjs <ws-url> [--wide]'); process.exit(2) }
@@ -50,7 +57,11 @@ const CORNER_PROBE = "(() => { const c = document.querySelector('[data-conversat
  *
  * 失败态带上 steps，下次一眼看出卡在哪一步；打不开就如实判红，不用缺失冒充绿。
  */
-const RESET_BUTTON_PROBE = `(async () => { const sleep = (ms) => new Promise(r => setTimeout(r, ms)); const tap = (el) => { const b = el.getBoundingClientRect(); const x = b.x + b.width / 2; const y = b.y + b.height / 2; el.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, clientX: x, clientY: y })); el.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, clientX: x, clientY: y })); el.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, clientX: x, clientY: y })); el.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, clientX: x, clientY: y })); el.click(); }; const mobile = window.innerWidth <= ${MOBILE_FORM_MAX_WIDTH}; const section = () => !!document.querySelector('#dsh-phone-control-title'); const steps = []; const dlg = () => document.querySelectorAll('[role=dialog]').length; if (!section() && dlg() > 0) { for (let i = 0; i < 5 && dlg() > 0; i++) { const c = [...document.querySelectorAll('[role=dialog] button')].find(b => (b.getAttribute('aria-label') || '').trim() === '关闭'); if (c) tap(c); else document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await sleep(500); } steps.push('cleared:' + dlg()); } if (!section()) { if (mobile) { const t = document.querySelector('[data-dsh-sidebar-toggle]'); if (t) { tap(t); await sleep(900); steps.push('drawer'); } } const findSettings = () => [...document.querySelectorAll('button')].find(x => (x.getAttribute('aria-label') || '').trim() === '设置'); let s = findSettings(); if (!s) { const t = document.querySelector('[data-dsh-sidebar-toggle]'); if (t) { tap(t); await sleep(600); s = findSettings(); } } if (!s) return 'no-settings-entry'; tap(s); await sleep(2000); steps.push('settings'); if (!section()) { const tab = [...document.querySelectorAll('button,[role=tab]')].find(b => { const label = b.cloneNode(true); label.querySelectorAll('[data-dsh-settings-nav-desc], [data-dsh-settings-nav-chevron]').forEach(n => n.remove()); return /^手机控制$/.test((label.textContent || '').trim()); }); if (tab) { tap(tab); await sleep(1200); steps.push('tab'); } } } if (!section()) return 'settings-not-opened:' + steps.join(','); const btn = [...document.querySelectorAll('button')].find(b => /^重置链接$/.test((b.textContent || '').trim())); if (!btn) return 'button-absent'; const rc = btn.getBoundingClientRect(); return { steps, section: true, present: true, disabled: btn.disabled === true, visible: getComputedStyle(btn).display !== 'none', w: Math.round(rc.width), h: Math.round(rc.height) }; })()`
+
+const OPEN_SETTINGS_SRC = `const openSettings = async () => { const direct = [...document.querySelectorAll('button')].find(x => /^(设置|Settings)$/.test((x.getAttribute('aria-label') || '').trim())); if (direct) return { opener: 'direct', el: direct }; const accountMenu = [...document.querySelectorAll('button')].find(b => /^(账号菜单|Account menu)$/.test((b.getAttribute('aria-label') || '').trim())); const trigger = accountMenu || [...document.querySelectorAll('button')].find(b => /^(更多|More)$/.test((b.textContent || '').trim())); if (!trigger) return { opener: 'absent', el: null }; tap(trigger); await sleep(600); const name = /^(账号菜单|Account menu)$/.test((trigger.getAttribute('aria-label') || '').trim()) ? 'account-menu' : 'more'; const item = [...document.querySelectorAll('[role=menuitem],button')].find(b => /^(设置|Settings)$/.test((b.getAttribute('aria-label') || b.textContent || '').trim())); if (!item) { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await sleep(300); } return { opener: name + (item ? '' : ':no-item'), el: item || null }; };`
+const RESET_BUTTON_PROBE = `(async () => { const sleep = (ms) => new Promise(r => setTimeout(r, ms)); const tap = (el) => { const b = el.getBoundingClientRect(); const x = b.x + b.width / 2; const y = b.y + b.height / 2; el.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, clientX: x, clientY: y })); el.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, clientX: x, clientY: y })); el.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, clientX: x, clientY: y })); el.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, clientX: x, clientY: y })); el.click(); }; const mobile = window.innerWidth <= ${MOBILE_FORM_MAX_WIDTH}; const section = () => { const el = document.querySelector('#dsh-phone-control-title'); if (!el) return false; const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; }; const steps = []; const dlg = () => document.querySelectorAll('[role=dialog]').length; if (!section() && dlg() > 0) { for (let i = 0; i < 5 && dlg() > 0; i++) { const c = [...document.querySelectorAll('[role=dialog] button')].find(b => /^(关闭|Close)$/.test((b.getAttribute('aria-label') || '').trim())); if (c) tap(c); else document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await sleep(500); } steps.push('cleared:' + dlg()); } if (!section()) { if (mobile) { const t = document.querySelector('[data-dsh-sidebar-toggle]'); if (t) { tap(t); await sleep(900); steps.push('drawer'); } } ${OPEN_SETTINGS_SRC} let opened = await openSettings(); steps.push('open:' + opened.opener); let s = opened.el; if (!s) { const t = document.querySelector('[data-dsh-sidebar-toggle]'); if (t) { tap(t); await sleep(600); opened = await openSettings(); steps.push('open2:' + opened.opener); s = opened.el; } } if (!s) return 'no-settings-entry'; tap(s); await sleep(2000); steps.push('settings'); if (!section()) { const tab = [...document.querySelectorAll('button,[role=tab]')].find(b => { const label = b.cloneNode(true); label.querySelectorAll('[data-dsh-settings-nav-desc], [data-dsh-settings-nav-chevron]').forEach(n => n.remove()); return /^(手机控制|Phone control)$/.test((label.textContent || '').trim()); }); if (tab) { tap(tab); await sleep(1200); steps.push('tab'); } } } if (!section()) return 'settings-not-opened:' + steps.join(','); const btn = [...document.querySelectorAll('button')].find(b => /^(重置链接|Reset link)$/.test((b.textContent || '').trim())); if (!btn) return 'button-absent'; const rc = btn.getBoundingClientRect(); return { steps, section: true, present: true, disabled: btn.disabled === true, visible: getComputedStyle(btn).display !== 'none', w: Math.round(rc.width), h: Math.round(rc.height) }; })()`
+const RETIRED_OPEN_ENTRY_PROBE = `(() => { const active = !!document.querySelector('[data-dsh-frame] [data-phase="active"]'); const labels = ['在文件中打开', 'Open in file manager']; const hits = labels.filter((label) => document.querySelector('[aria-label="' + label + '"]') !== null); return { active, present: hits.length > 0, hits } })()`
+const FILE_BUTTON_PROBE = `(() => { const btn = document.querySelector('button[aria-label="添加文件或调用指令"], button[aria-label="Add files or run commands"]'); if (!btn) return 'absent'; return getComputedStyle(btn).display !== 'none'; })()`
 
 const checks = [
   ['移动形态标记与实测 viewport 一致（判据取自页内 innerWidth，与 --wide 无关）',
@@ -94,9 +105,9 @@ const checks = [
     (v) => !!v && v.corner === true && v.button === !v.open],
   // 0.14.2 P5 已按用户反馈退役 Session-header 文件夹入口；
   // dsh-client-ui-responsive/src/client/index.ts:352-356 记录删除注册的原因，组件仍供 open-with tab 使用。
-  // 此断言验证退役状态在空白页和活动会话中都成立，避免把历史 UI 入口误报为产品回归。
-  ['已退役的 Session-header「在文件中打开」入口不存在（两方向都判）',
-    "(() => { const active = !!document.querySelector('[data-dsh-frame] [data-phase=\"active\"]'); return { active, present: !!document.querySelector('[aria-label=\"在文件中打开\"]') } })()",
+  // 此断言兼容当前中英文 accessible name，任一入口复活都必须判红。
+  ['已退役的 Session-header「在文件中打开」入口不存在（中英文均判）',
+    RETIRED_OPEN_ENTRY_PROBE,
     (v) => !!v && v.present === false],
   ['桥 openPathChooser 已注入', "typeof window.androidBridge?.openPathChooser === 'function'", true],
   ['桥 downloadDebugLogs 已退役', "typeof window.androidBridge?.downloadDebugLogs === 'undefined'", true],
@@ -113,11 +124,9 @@ const checks = [
   // 陈旧选器修正（2026-09-24）：旧断言查 button[aria-label="添加附件"]，该字符串属**已退役**的
   // dsh-attachment-formats —— 0.1.7-rc.1 构建产物里 0 命中（实测 scripts/patches/tests/fixtures/
   // dsh-client-ui-conversation-0.1.7-rc.1/lib/client.js 全文件只有 "添加文件或调用指令"）。
-  // 本代活体 label 是「添加文件或调用指令」（上游 ui-conversation/src/client/locales.ts:22
-  // 'input.commands'，渲染点 skeleton/InputBar.tsx:423 aria-label），故改查活体 label，
-  // 并保留原语义「存在且 display !== none」。这是换正确选器而非删断言：选器一改，遮蔽回归即可证伪。
-  ['上游添加文件或调用指令按钮未被遮蔽（活体 label）',
-    "(async () => { const btn = document.querySelector('button[aria-label=\"添加文件或调用指令\"]'); if (!btn) return 'absent'; return getComputedStyle(btn).display !== 'none'; })()",
+  // 本代活体 label 随 UI locale 为中文或英文；两者都保留原有「存在且 display !== none」判据。
+  ['上游添加文件或调用指令按钮未被遮蔽（中英文活体 label）',
+    FILE_BUTTON_PROBE,
     true],
   ['名册含 ui-layout 与 ui-responsive',
     "(window.__DSH_BOOT__?.entries ?? []).map(e => e.id).filter(id => id.includes('ui-layout') || id.includes('ui-responsive'))",
