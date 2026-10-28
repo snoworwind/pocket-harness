@@ -166,8 +166,12 @@ const SHELL_INTERPRETER = /^(?:[^\s]*\/)?(?:sh|bash|mksh|ash|dash|zsh|busybox|to
 const SCREEN_COMMAND_HEAD = /^(?:(?:[A-Za-z_][A-Za-z0-9_]*=[^\s]+)[ \t]+)*(?:(?:[^\s]*\/)?(?:screencap|screenrecord|input|uiautomator|wm|dumpsys|am|monkey|cmd[ \t]+(?:activity|window)))(?=[ \t]|$)/i
 const SCREEN_COMMAND_WORD = /\b(?:screencap|screenrecord|input|uiautomator|wm|dumpsys|am|monkey|cmd[ \t]+(?:activity|window))\b/i
 const COMMAND_LAUNCHER_HEAD = /^(?:(?:[A-Za-z_][A-Za-z0-9_]*=[^\s]+)[ \t]+)*(?:command|builtin|exec|env|nohup|nice|timeout|setsid|time|!)(?=[ \t]|$)/i
-const SAFE_SHELL_LAUNCHER_HEAD = /^(?:env|command)[ \t]+(?:\/system\/bin\/)?sh[ \t]+-c[ \t]/
-const TRUSTED_SHELL_PATH_HEAD = /^\/system\/bin\/sh[ \t]+-c[ \t]/
+const SHELL_EXECUTABLE = String.raw`(?:\/system\/bin\/)?sh`
+const SHELL_C_OPTION_PREFIX = String.raw`(?:[+-]o[ \t]+\S+[ \t]+|-[^\s]+[ \t]+)*-[a-zA-Z]*c`
+const SAFE_SHELL_LAUNCHER_HEAD = new RegExp(
+  String.raw`^(?:env|command)[ \t]+${SHELL_EXECUTABLE}[ \t]+${SHELL_C_OPTION_PREFIX}[ \t]`,
+)
+const TRUSTED_SHELL_PATH_HEAD = new RegExp(String.raw`^\/system\/bin\/sh[ \t]+${SHELL_C_OPTION_PREFIX}[ \t]`)
 const SHELL_CONTROL_HEAD = /^(?:(?:[A-Za-z_][A-Za-z0-9_]*=[^\s]+)[ \t]+)*(?:if|then|elif|else|fi|while|until|for|select|case|esac|do|done|function|coproc)(?=[ \t]|$)/
 // These interfaces can inspect multiple displays and do not have one uniform target selector.
 const OPAQUE_DISPLAY_API = /\b(?:cmd[ \t]+window|wm[ \t]+dump-visible-window-views|(?:am|cmd[ \t]+activity)[ \t]+instrument)\b/i
@@ -223,8 +227,10 @@ function parenEnd(text: string, from: number): number {
   return -1
 }
 
-/** Only the actual, fixed `sh -c` launch may donate an inspectable payload. */
-const SHELL_C_PAYLOAD = /^[ \t]*(?:(?:[A-Za-z_][A-Za-z0-9_]*=[^\s]+)[ \t]+)*(?:(?:env|command)[ \t]+)?(?:\/system\/bin\/)?sh[ \t]+-c[ \t]+([\s\S]*)$/
+/** A known shell invocation may donate a payload only when its final short-option cluster contains `c`. */
+const SHELL_C_PAYLOAD = new RegExp(
+  String.raw`^[ \t]*(?:(?:[A-Za-z_][A-Za-z0-9_]*=[^\s]+)[ \t]+)*(?:(?:env|command)[ \t]+)?${SHELL_EXECUTABLE}[ \t]+${SHELL_C_OPTION_PREFIX}[ \t]+([\s\S]*)$`,
+)
 
 /** Read one shell argument, removing its quoting; retain the suffix for `sh -c --`. */
 function firstShellArgument(text: string): { word: string; rest: string } | null {
