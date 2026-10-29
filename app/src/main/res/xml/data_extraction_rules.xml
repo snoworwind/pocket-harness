@@ -4,6 +4,7 @@
 <data-extraction-rules>
   <cloud-backup>
     <exclude domain="file" path="home/.dsh/.credentials.yaml" />
+    <exclude domain="file" path="home/.dsh/profiles/" />
     <exclude domain="file" path="home/.dsh/sessions/" />
     <exclude domain="file" path="home/.dsh/storages/" />
     <exclude domain="file" path="home/.dsh/attachments/" />
@@ -17,6 +18,7 @@
   </cloud-backup>
   <device-transfer>
     <exclude domain="file" path="home/.dsh/.credentials.yaml" />
+    <exclude domain="file" path="home/.dsh/profiles/" />
     <exclude domain="file" path="home/.dsh/sessions/" />
     <exclude domain="file" path="home/.dsh/storages/" />
     <exclude domain="file" path="home/.dsh/attachments/" />

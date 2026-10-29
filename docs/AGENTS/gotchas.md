@@ -3389,3 +3389,6 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 602. **检出字节负控用 LF 字符串删属性，CRLF 台账会让负控失效（2026-10-29）**
 
     现象：`checkout-reviewed-bytes.test.mjs` 读入 `.gitattributes` 后用字面 `" -text\n"` 删除受测规则；在 `.gitattributes` 以 CRLF 检出的工作树上，替换不命中，所谓去属性负控实际仍带属性。真因：负控假定了宿主工作树的行尾格式，和它要覆盖的 autocrlf 风险相冲突。修法：按行尾无关的行列表精确删除唯一规则，并在隔离 Git 仓中分别使用 LF、CRLF 台账验证。复验：`node --test scripts/source-build/checkout-reviewed-bytes.test.mjs` 通过；每个目标文件在两种台账行尾下均有正控和去属性负控。
+607. **活动 profile 未列入 Android 备份与设备迁移排除清单（2026-10-29）**
+
+    现象：`home/.dsh/profiles/` 中的活动 profile patch 可能含供应商凭据，但 API 31+ 云备份/设备迁移规则与 API 30 以下备份规则都未显式排除该目录。真因：备份清单只登记了旧配置文件和部分敏感子目录，profile 迁移后没有同步扩展排除面；`allowBackup=false` 是主控制，平台/OEM 的设备迁移行为仍需验证。修法：在两份规则中显式排除整个 profiles 目录，作为纵深保护。复验：XML 解析与两份规则均含相同排除项；设备迁移行为未做实机验证。
