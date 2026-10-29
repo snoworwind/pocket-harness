@@ -111,7 +111,7 @@ sequenceDiagram
 
 安全出口补充（K02/K03，坑 372）：主 WebView 的 `shouldOverrideUrlLoading` → `DownloadSaver.openInExternalBrowser(url, request.hasGesture())` → `canOpenExternalBrowser` → BROWSABLE Intent。校验发生在实际启动出口；不把手势当成 frame 身份认证。
 
-备份导入补充（K05/P04，坑 374）：vendor `core.mjs` 的 `importSnapshots` 读取并检查原始字节 → 可选解密 → `zip.mjs/readZip(Buffer)` → 既有条目校验和导入。不再把明文写在归档相邻路径，不重新打开已经读取的归档；回归 `vendor/dsh-undo-savepoint/test/import-plaintext.test.mjs`。
+备份导入补充（K05/P04，坑 374、606）：vendor `core.mjs` 的 `importSnapshots` 读取并检查原始字节 → 可选解密 → `zip.mjs/readZip(Buffer)` → 绑定 manifest ID 并校验 blob 哈希与内容 → 仅导入有效快照引用的 blob → 写入快照。`readBlob` 对哈希路径 fail-closed；不把明文写在归档相邻路径、不重新打开已读取的归档；自动清理还通过 `collectReferencedBlobs` 保留消息撤销引用（坑 607）。回归 `vendor/dsh-undo-savepoint/test/import-plaintext.test.mjs`。
 
 - 悬浮球/光环/面板/报告栏：`app/src/main/java/com/snoworwind/pocketharness/OverlayService.kt:155`（`onCreate` 建三窗口）；
 - 通知中心与通知内应答：`NotifyCenter` → `NotifyStore`（偏移消费）→ `NotifyDecisionQueue`（耐久队列）→ `MuxClient`（`/api/remote.mux`）；
