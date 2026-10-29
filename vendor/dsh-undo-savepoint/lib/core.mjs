@@ -167,10 +167,10 @@ function blobDir(cfg) {
   return join(dirname(cfg.autoDir), 'blobs');
 }
 async function readBlob(cfg, hash) {
-  try { return await fs.readFile(join(blobDir(cfg), hash)); } catch { return null; }
+  try { if (typeof hash !== 'string' || !BLOB_NAME_RE.test(hash)) return null; return await fs.readFile(join(blobDir(cfg), hash)); } catch { return null; }
 }
 async function writeBlob(cfg, hash, buf) {
-  const dir = blobDir(cfg);
+  if (typeof hash !== 'string' || !BLOB_NAME_RE.test(hash)) throw new Error('invalid blob hash'); const dir = blobDir(cfg);
   const target = join(dir, hash);
   if (await pathExists(target)) return;
   await fs.mkdir(dir, { recursive: true });
@@ -2875,6 +2875,27 @@ async function exportSnapshots(cfg, password) {
  *  写入时保留原大小写，保证与 manifest 里记录的 hash 字符串一致）。快照 id 必须匹配 makeId 格式。 */
 const BLOB_NAME_RE = /^[0-9a-f]{40}$/i;
 const SNAP_ID_RE = /^\d{8}-\d{6}-[0-9a-f]{4}$/i;
+function collectManifestBlobHashes(manifest) {
+  const hashes = new Set();
+  const collect = (files) => {
+    if (files == null) return true;
+    if (!Array.isArray(files)) return false;
+    for (const file of files) {
+      if (!file || typeof file !== 'object' || Array.isArray(file)) return false;
+      if (typeof file.hash !== 'string' || !BLOB_NAME_RE.test(file.hash)) return false;
+      hashes.add(file.hash);
+    }
+    return true;
+  };
+  if (!collect(manifest.profileFiles)) return null;
+  if (manifest.plugins != null) {
+    if (!Array.isArray(manifest.plugins)) return null;
+    for (const plugin of manifest.plugins) {
+      if (!plugin || typeof plugin !== 'object' || Array.isArray(plugin) || !collect(plugin.files)) return null;
+    }
+  }
+  return hashes;
+}
 function assertSafeZipEntry(name, what) {
   if (typeof name !== 'string' || name === ''
     || name.includes('..') || name.startsWith('/') || name.startsWith('\\')
@@ -2911,19 +2932,15 @@ async function importSnapshots(cfg, zipPath, password) {
     } else {
       entries = await readZip(raw);
     }
-    // 先把 blobs/ 目录内容写入共享 blob 库，再处理每个快照目录
     const blobs = entries.filter((e) => e.name.startsWith('blobs/') && !e.name.endsWith('/'));
-    if (blobs.length > 0) {
-      const destBlob = blobDir(cfg);
-      await fs.mkdir(destBlob, { recursive: true });
-      for (const e of blobs) {
-        assertSafeZipEntry(e.name, 'blob entry');
-        const name = e.name.slice('blobs/'.length).normalize('NFC');
-        if (!BLOB_NAME_RE.test(name)) { rejected++; continue; } // 非 sha1 命名的条目一律跳过（含穿越尝试）
-        if (!(await pathExists(join(destBlob, name)))) {
-          await fs.writeFile(join(destBlob, name), e.data);
-        }
-      }
+    const destBlob = blobDir(cfg);
+    const blobEntries = new Map();
+    for (const e of blobs) {
+      assertSafeZipEntry(e.name, 'blob entry');
+      const name = e.name.slice('blobs/'.length).normalize('NFC');
+      if (!BLOB_NAME_RE.test(name)) { rejected++; continue; } // 非 sha1 命名的条目一律跳过（含穿越尝试）
+      if (sha1Hex(e.data).toLowerCase() !== name.toLowerCase()) { rejected++; continue; }
+      if (!blobEntries.has(name)) blobEntries.set(name, e.data);
     }
     const dirs = entries.filter((e) => e.name.split('/').length >= 2 && e.name.endsWith('/'));
     // 查找所有含 manifest.json 的快照目录条目
@@ -2935,6 +2952,8 @@ async function importSnapshots(cfg, zipPath, password) {
       const parts = dir.split('/');
       if (parts.length >= 2) snapDirs.add(dir); // 形如 manual/<id> 或 auto/<id>
     }
+    const validSnapshots = [];
+    const referencedBlobHashes = new Set();
     for (const dir of snapDirs) {
       const mf = entries.find((e) => e.name === `${dir}/manifest.json`);
       const id = dir.split('/').pop().normalize('NFC');
@@ -2942,16 +2961,36 @@ async function importSnapshots(cfg, zipPath, password) {
       try { manifest = mf ? JSON.parse(mf.data.toString('utf8')) : null; } catch { manifest = null; }
       if (!SNAP_ID_RE.test(id) || !manifest || typeof manifest !== 'object' || Array.isArray(manifest)
           || manifest.id !== id) { rejected++; continue; } // manifest 身份必须绑定其 ZIP 目录名
+      const blobHashes = collectManifestBlobHashes(manifest);
+      if (blobHashes === null) { rejected++; continue; } // manifest blob 引用必须是内容寻址哈希
+      let missingBlob = false;
+      for (const hash of blobHashes) {
+        if (!(await pathExists(join(destBlob, hash))) && !blobEntries.has(hash)) { missingBlob = true; break; }
+      }
+      if (missingBlob) { rejected++; continue; }
+      for (const hash of blobHashes) referencedBlobHashes.add(hash);
       const kind = manifest.kind ?? 'auto';
       const dest = (kind === 'manual' ? cfg.manualDir : cfg.autoDir);
-      if (await pathExists(join(dest, id))) { skipped++; continue; }
-      const destDir = join(dest, id);
+      if (await pathExists(join(dest, id))) { skipped++; validSnapshots.push({ dir, id, dest, write: false }); continue; }
+      validSnapshots.push({ dir, id, dest, write: true });
+    }
+    // 只导入被有效快照引用且内容哈希匹配的 blob，拒绝条目不留下共享库残片。
+    if (referencedBlobHashes.size > 0) {
+      await fs.mkdir(destBlob, { recursive: true });
+      for (const hash of referencedBlobHashes) {
+        const data = blobEntries.get(hash);
+        if (data && !(await pathExists(join(destBlob, hash)))) await fs.writeFile(join(destBlob, hash), data);
+      }
+    }
+    for (const snap of validSnapshots) {
+      if (!snap.write) continue;
+      const destDir = join(snap.dest, snap.id);
       await fs.mkdir(destDir, { recursive: true });
       // 将该目录名下（不含深层子目录？快照目录是平的）所有条目写入
       for (const e of entries) {
-        if (!e.name.startsWith(`${dir}/`)) continue;
+        if (!e.name.startsWith(`${snap.dir}/`)) continue;
         assertSafeZipEntry(e.name, 'snapshot file entry');
-        const rel = e.name.slice(`${dir}/`.length);
+        const rel = e.name.slice(`${snap.dir}/`.length);
         if (!rel || rel.includes('/') || rel.includes('..')) continue; // 只取该快照目录下的顶层文件
         await fs.writeFile(join(destDir, rel.normalize('NFC')), e.data);
       }
