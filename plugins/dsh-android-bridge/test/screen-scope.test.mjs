@@ -214,6 +214,9 @@ test('real-only raw shell admits physical targets and fails closed for virtual o
     'screencap -d=7 -p /sdcard/a.png',
     'input -dx tap 1 2',
     'nice sh /sdcard/job.sh',
+    'cmd=screencap; $cmd -d 11529215046816944610 -p /sdcard/a.png',
+    'cmd=input; $cmd -d 7 tap 1 2',
+    'cmd=screencap; scr$CMD -d 7 -p /sdcard/a.png',
   ]
   for (const command of deniedCommands) {
     assert.ok(realScreenAdbCommandDenied('real-only', command), command)

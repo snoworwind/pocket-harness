@@ -853,6 +853,9 @@ export function realScreenAdbCommandDenied(
     const parsed = splitCommandSegments(command)
     if (parsed.unparsed) return realOnlyScreenScopeMessage()
     for (const segment of parsed.segments) {
+      // A runtime expansion in command position can turn an apparently harmless segment into
+      // any screen command after this check. Keep real-only fail-closed like virtual-only.
+      if (isRuntimeCommandName(segment)) return realOnlyScreenScopeMessage()
       const bare = scopeCommandText(segment) ?? ''
       const options = displayOptionsIn(bare)
       const families = SCREEN_COMMAND_FAMILIES.filter(
