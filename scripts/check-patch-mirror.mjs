@@ -18,15 +18,22 @@
 // （检出私有协调仓需要 PAT，0.14.0 实测已失效）。留着它只会制造「有防线」的错觉，并把权威写在
 // 别人仓库上。移除只减断言、不加能力，不削弱本分支产物依赖的判据。
 //
-// 用法：node scripts/check-patch-mirror.mjs [--self]（--self 保留为兼容别名；本门禁现在只有自洽面）
+// 用法：node scripts/check-patch-mirror.mjs [--self] [--root <测试树>]（--self 保留为兼容别名；本门禁现在只有自洽面）
 // 退出码：0 = 通过；1 = 判据失败（构建链与 CI 以此拒打包/拒合并）；2 = 传了已移除的跨树参数。
 import { readFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { spawnSync } from 'node:child_process'
+import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
-const ROOT = dirname(HERE)
 const argv = process.argv.slice(2)
+if (argv.includes('--self-test')) {
+  const result = spawnSync(process.execPath, ['--test', join(HERE, 'check-patch-mirror.test.mjs')], { stdio: 'inherit' })
+  process.exit(result.status ?? 1)
+}
+/** `--root <dir>` exists only for isolated registry/implementation closure tests. */
+const rootArgIdx = argv.indexOf('--root')
+const ROOT = rootArgIdx >= 0 ? resolve(argv[rootArgIdx + 1] ?? '') : dirname(HERE)
 
 // 已移除的跨树参数必须**显式拒绝**而不是静默忽略：静默忽略会让调用方以为比对发生了。
 const removedFlags = argv.filter((a) => a === '--require-peer' || a === '--peer' || a.startsWith('--peer='))

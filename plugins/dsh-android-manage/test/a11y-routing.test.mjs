@@ -2,6 +2,7 @@
 // 策略说 a11y → 工具走 controlExec（不发 ADB）；策略说 adb → 工具走 ADB 且不碰队列。
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { pathToFileURL } from 'node:url'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -258,18 +259,27 @@ test('android_screenshot 的 ADB 回落对虚拟屏必须传 SF token（不是 d
     return { ok: true, stdout: 'Virtual Display 11529215046816944610\n    name="DSH virtual-1"\n' }
   }
   // 让截图像「已落地」：桩的 adbLine 回执需含文件名，否则工具走「未落地」分支提前返回。
+  let localPath = ''
   face.execAdbLine = async (line) => {
     calls.adbLine.push(line)
-    return { ok: true, stdout: '/tmp/dsh-shot-1.png\n-rw-rw-rw- 1 shell shell 1234 dsh-shot-1.png' }
+    localPath = line.match(/adb pull \S+ (.+?) && ls -l/)?.[1] ?? ''
+    assert.ok(localPath, '截图命令应包含 pull 回本地的目标路径')
+    mkdirSync(dirname(localPath), { recursive: true })
+    writeFileSync(localPath, 'fixture screenshot')
+    return { ok: true, stdout: `${localPath}\n-rw-rw-rw- 1 shell shell 1234 dsh-shot-1.png` }
   }
   const { byName } = applyManage(face)
-  const r = await byName('android_screenshot').execute({ screenId: 'virtual-1', textRedact: true }, exec)
-  const line = calls.adbLine.find((l) => /screencap/.test(l))
-  assert.ok(line, 'ADB 回落路径必须真的发起 screencap')
-  assert.match(line, /screencap -p -d 11529215046816944610/, '必须把 SF token 落到 screencap 上')
-  assert.ok(!/ -d 25 /.test(line), 'displayId 不得出现在 -d 上（对虚拟屏恒 Status -2）')
-  assert.match(String(r.text ?? ''), /360x640/, '分辨率锚点必须是目标虚拟屏自己的像素')
-  assert.match(String(r.text ?? ''), /SurfaceFlinger token/, '说明必须点名 token，避免模型按 displayId 排查')
+  try {
+    const r = await byName('android_screenshot').execute({ screenId: 'virtual-1', textRedact: true }, exec)
+    const line = calls.adbLine.find((l) => /screencap/.test(l))
+    assert.ok(line, 'ADB 回落路径必须真的发起 screencap')
+    assert.match(line, /screencap -p -d 11529215046816944610/, '必须把 SF token 落到 screencap 上')
+    assert.ok(!/ -d 25 /.test(line), 'displayId 不得出现在 -d 上（对虚拟屏恒 Status -2）')
+    assert.match(String(r.text ?? ''), /360x640/, '分辨率锚点必须是目标虚拟屏自己的像素')
+    assert.match(String(r.text ?? ''), /SurfaceFlinger token/, '说明必须点名 token，避免模型按 displayId 排查')
+  } finally {
+    if (localPath) rmSync(localPath, { force: true })
+  }
 })
 
 test('android_screenshot 虚拟屏反查不到 SF token 时必须 fail-closed（不回落真实屏）', async () => {

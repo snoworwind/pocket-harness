@@ -347,6 +347,7 @@ bootstrap 的 package-lock.json 与 package.json 一样属于逐字节来源输�
 - 镜像内的 `/workspace/local.properties` 以只读挂载覆盖为 `sdk.dir=/opt/android-sdk`，宿主的 macOS SDK 路径不会漏进容器，仓库文件也不被改写。
 - Gradle 与 pnpm 缓存用命名卷 `pocket-harness-gate-gradle` / `pocket-harness-gate-pnpm` 复用，热跑显著快于冷跑。
 - `scripts/check-plugin-tests.mjs` 对每个插件测试子进程强制 `NODE_ENV=test`（保留调用方 PATH 等环境）；可用 `node scripts/check-plugin-tests.mjs --self-test` 检查生产父环境、仅传 `NODE_OPTIONS` 和无额外环境三种启动形态。
+- 三个关键登记门禁先跑临时树反证，再检查真实仓库：控制 op 六面登记、模型面预算、补丁 registry↔IMPLS 树内自洽分别支持 `node scripts/check-control-ops.mjs --self-test`、`node scripts/check-tool-surface-budget.mjs --self-test`、`node scripts/check-patch-mirror.mjs --self-test`。测试根目录与 ledger 都在系统临时目录，故意破坏的负控不会触碰仓库台账或补丁；PR Gate 固定先自测后跑真实门禁。补丁测试只守本仓，不恢复被用户移除的 kelai141 跨树依赖。
 
 **CI 开关**：`pr-gate.yml` 的每个 job 都带 `vars.PR_GATE_MODE == 'on'`，仓库变量当前为 `on`（2026-10-20 起）。变量未设置时全部 job 跳过、PR 上只显示 skipped，可在配额或故障期间临时静默而不产生红色噪声。
 
@@ -387,3 +388,5 @@ engine 的 checkout/upstream/overlay/patches/build/deploy 步骤集中到 `scrip
 来源快照依赖检查按实际 pnpm 解析路径核对第一方包的直接依赖及必需 peer：精确版本声明必须命中同名同版本；范围声明仍只检查存在，不宣称传递依赖或范围版本已校验。Android 的六个受审 Koffi 消费者从声明 `3.1.1` 解析到 `3.2.1` 时单独记录为有意覆盖，其原生载荷仍由 `check-android-native-runtime-packages.mjs` 验证；其他错配失败关闭。上游版本或覆盖政策变化须重新核对该名单和设备验证。
 来源 APK 注入完成后，`scripts/check-snapshot-profile-identity.py` 直接流式读取最终 `snapIn`：要求 web/headless profile 为普通文件且与仓内权威 patch 逐字节一致，`headless-bad` 负控必须存在且保持不同；拒绝重复、非规范 tar 成员路径、profile 父路径链接/非目录、超大条目及被覆盖的负控 profile。同时从本仓 Gradle 取唯一 applicationId，验证四个 shell 路径位于该应用 `files/` 且是顶层规范路径。`--self-test` 覆盖缺项、错字节、重复、绝对/点段/父段路径别名、错误包名、应用路径穿越、文件与目录符号链接、超大条目及负控缺失/被覆盖；`cloud-workflow.test.mjs` 守注入后接线。既有 APK 资产可作兼容性反证，不能替代最终候选验证。
 上游浏览器样式 `Browser.module.css`、屏幕范围跨语言 fixture 的源文件与 undo-savepoint `core.mjs` 保持 Git 原始检出字节；前者的来源摘要登记于 `upstream-browser/SOURCE.json`，后两者分别参与夹具生成和精确上下文补丁测试。`node --test scripts/source-build/checkout-reviewed-bytes.test.mjs` 验证 autocrlf 正控和逐文件去属性负控。
+
+执行地图锚点同时验证文件/行存在、既有源码行快照与新/移动引用的显式内容片段。新锚点写成 ``path:line#expect=<URI 编码片段>``，片段应短且能区分目标源码；旧引用基线在 `scripts/check-code-map-anchor-baseline.json`。检查器变更先运行 `node scripts/check-code-map.mjs --self-test`，再跑正式检查。只有审阅所有源码行差异后才运行 `node scripts/check-code-map.mjs --refresh-anchor-baseline`；刷新会拒绝未标注的新坐标和旧坐标新增引用，除非先为其添加 `#expect=`。不得以刷新基线代替核对执行地图语义。耦合矩阵证据仍独立检查文件存在与行号范围。判据反例见 [gotchas.md](gotchas.md) 坑 601。

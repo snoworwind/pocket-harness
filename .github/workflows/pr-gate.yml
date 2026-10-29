@@ -167,6 +167,7 @@ jobs:
         if: always()
         run: |
           # registry/IMPLS 集合一致（自洽面；跨树比对已按用户决定移除）。
+          node scripts/check-patch-mirror.mjs --self-test
           node scripts/check-patch-mirror.mjs --self
           # 0.14.2 T6：夹具停在上一代引擎时补丁回归测试是结构性假绿（本仓同样携带 tests/ 镜像面）
           node scripts/check-patch-fixtures.mjs
@@ -199,7 +200,9 @@ jobs:
           node scripts/check-protocol-v2.mjs
       - name: 控制 op 登记链门禁
         if: always()
-        run: node scripts/check-control-ops.mjs
+        run: |
+          node scripts/check-control-ops.mjs --self-test
+          node scripts/check-control-ops.mjs
       # 跨语言 op 清单对等（0.14.1）：引擎 REAL_SCREEN_CONTROL_OPS 与壳侧 REAL_SCREEN_OPS 必须逐条相同。
       # 两份清单漂移就是「virtual-only 下点击校验/WebView 路径全不可用」的根因（壳侧多带 3 条不读屏的 op）。
       - name: op 清单跨语言对等门禁
@@ -273,6 +276,7 @@ jobs:
           node scripts/check-gate-skips.mjs
           node scripts/check-kotlin-comments.mjs
           # 执行地图覆盖与锚点（0.14.2 D7）：纳入聚合声明集后，apk 侧 CI 也必须有独立调用点。
+          node scripts/check-code-map.mjs --self-test
           node scripts/check-code-map.mjs
           node scripts/check-build-chain-abort.mjs
           node scripts/check-perf-instrumentation.test.mjs
@@ -282,6 +286,7 @@ jobs:
       - name: 模型面工具 wire 预算门禁
         if: always()
         run: |
+          node scripts/check-tool-surface-budget.mjs --self-test
           node scripts/check-tool-surface-budget.mjs
 
   compile:
