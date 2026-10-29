@@ -138,7 +138,7 @@ adb -s <serial> install -r -t out\v<版本>\pocket-harness-v<版本>-arm64.apk
 3. **原子化交付 + 分档验证**：一个 PR = 一个逻辑改动，可独立 revert；禁止把「修 bug + 重构 + 顺手优化」混在一个 PR 里。**但「原子 PR」不等于「不验」**——每个 PR 必须携带与其风险类相符的**最廉价充分证据**：L0 文档/注释 → CI 绿即可；L1 门禁/脚本逻辑 → `--self-test` + **一条受控负控**；L2 安全敏感面（快照事务 / 签名 / 门禁自身判据 / 桥协议）→ **即时三层**；L3 UI/UX 与壳侧行为 → **即时模拟器三层**。
    统一全量测试（ARM64 全链 + 冷启动矩阵 + 真机补充门禁）前移到**发布计划确定时**执行，且它**只做集成验证、替代不了上面每档的证据**。细则见协调仓 `docs/0.14.8-DELIVERY-PLAN-2026-10-14.md` §3。
 4. **默认改动走 PR**（仓库自 2026-10-20 起为公开仓：标准托管 runner 免费、`main` 已启用分支保护，直接 push 会被拒绝，合并方式只保留 merge commit）：建分支 → 提交（`<type>: <描述>`）→ 推分支 → 开 PR（1-3 标签）→ CI 绿（必检项与保护配置见 `docs/AGENTS/build-and-env.md`；本地门禁 `node scripts/ci/local-gate.mjs` 可先自查）→ 合并 → 删分支。**禁止直接 push `main`**。本仓以 `main` 为长期维护线，首个提交为基线导入；后续改动按 PR 合入，来源链构建与安全加固规则继续适用，详见 `docs/AGENTS/SECURITY-HARDENING.md`。其他例外仅限不改仓库内容的外部动作（Release 资产、issue 评论与开关、标签）。
-5. **子仓副本同步（幽灵缺陷防线）**：改 `dsh-client-ui-responsive` / `dsh-host-web-compat` / `dsh-shell-termux` / `plugins/dsh-android-*` 的源码或 bump 版本后，**必须把源码、`package.json` 与 `lib/` 产物同步进本仓同名目录**（本分支树内副本即权威，不存在需要对端的第二棵树）。漏了 → 构建注入旧副本，**编译通过但功能缺失**。
+5. **子仓副本同步（幽灵缺陷防线）**：改 `dsh-client-ui-responsive` / `dsh-host-web-compat` / `dsh-shell-termux` / `plugins/dsh-android-*` 后，**必须把源码与 `package.json` 同步进本仓同名目录**（本分支树内副本即权威，不存在需要对端的第二棵树）。`plugins/*/lib/` 是 `.gitignore` 明确排除的构建产物；PR Gate 和来源构建在打包前通过锁文件安装依赖并从同步源码重建 `lib/`，不提交生成目录。漏同步源码或清单会让构建注入旧副本，**编译通过但功能缺失**。
    - 只同步**镜像清单内的文件**，切勿对 `scripts/` 等目录整体 `/MIR`——会删掉本仓独有的设备脚本（真实事故）。
 6. **跨树权威已收归本仓（2026-10-15，按用户决定）**：原先声明 `scripts/patches/**`、`scripts/check-patch-mirror.mjs`、`scripts/build-apk-013.ps1` 等是「协调仓的逐字节镜像，单边演进即拒；补丁改动先合本仓镜像 PR、再合协调仓权威源 PR」。本分支既然只从源码构建、且不依赖 kelai141 名下任何仓库（见 `docs/AGENTS/SECURITY-HARDENING.md` 的「独立」口径），**跨树镜像层已从门禁中整体移除**——`check-patch-mirror.mjs` 只保留 registry↔IMPLS 自洽面，`check-release-gates.mjs` 的「两树同版」断言已删除（它原先在对端缺席时打印 PASS 却从未比对）。树内副本即权威，这些文件在本分支按本仓评审与门禁正常演进，不需要对端配合。
    - 代价已记账：这些文件自此与协调仓**永久分叉**，将来若引入上游改动，这几处必冲突（见 `docs/AGENTS/known-gaps.md`）。
@@ -189,15 +189,15 @@ adb -s <serial> install -r -t out\v<版本>\pocket-harness-v<版本>-arm64.apk
 |---|---|
 | `check-bridge-symmetry.mjs` | 桥面对称性（改桥方法必跑） |
 | `check-api-route-auth.mjs` | 新增 `/api` 路由必须自带鉴权并登记 policy |
-| `check-control-ops.mjs` | 控制 op 六面登记一致（新增 op 必须六处同改） |
+| `check-control-ops.mjs` | 控制 op 六面登记一致（新增 op 必须六处同改）；`--self-test` 用临时树覆盖各面漂移、known-gap 和坏台账负控 |
 | `check-kotlin-comments.mjs` | Kotlin 嵌套块注释 |
 | `check-plugin-tests.mjs` | 每个插件的单测真实跑通（全 skip 判假绿） |
 | `check-gate-skips.mjs` | 门禁声明、真实调用点与 SKIP 计数一致；先跑 `--self-test` 判别扫描器边界 |
 | `check-protocol-v2.mjs` | 协议 V2 产物往返与体积基线；逐个配对 `src/*.ts` / `lib/*.js`，先跑 `--self-test` |
 | `check-dsh-runtime-dependencies.mjs` | 来源构建第一方依赖精确版本与已启用遥测消费者的传递闭包 |
-| `check-tool-surface-budget.mjs` | 模型面 wire 预算（新增工具会撞；近义工具优先复用既有 + 参数） |
-| `check-patch-mirror.mjs` | 补丁 registry↔IMPLS id 双向闭合（**树内自洽**；跨树逐字节镜像层已按 §4 铁律 6 移除） |
-| `check-code-map.mjs` | 执行地图覆盖完整、锚点有效、编号一致（改代码后必跑；`--self-test` 自检） |
+| `check-tool-surface-budget.mjs` | 模型面 wire 预算（新增工具会撞；近义工具优先复用既有 + 参数）；`--self-test` 反证阈值、名字和掩蔽名单判据 |
+| `check-patch-mirror.mjs` | 补丁 registry↔IMPLS id 双向闭合（**树内自洽**；`--self-test` 反证缺失/多余 ID；跨树逐字节镜像层已按 §4 铁律 6 移除） |
+| `check-code-map.mjs` | 执行地图覆盖完整、源码锚点内容/基线、耦合证据行号、编号一致（改代码后必跑；CI 先跑 `--self-test`） |
 | `check-op-registry-parity.mjs` | 引擎与壳侧两份「会读设备屏的 op」清单逐条相同（漂移 = 缺省 virtual-only 下工具大面积不可用） |
 | `check-tool-name-promises.mjs` | 指引里承诺的 `android_*` 工具名必须有声明位（防「指引指向一条不存在的路」） |
 

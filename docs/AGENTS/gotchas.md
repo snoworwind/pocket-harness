@@ -376,7 +376,7 @@
     两者在所有现有文档与代码注释里都被当作同一个数——这就是「-d 传对了也不出图」的真因。
     另注：`Status: -2` 与「display id 合法但 SF 认不出」同形，故错误码本身不区分这两种输入。
 
-    影响面（**已交叉核对，非仅 F6**）：`plugins/dsh-android-manage/src/index.ts:549-552` 的截图回落
+    影响面（**已交叉核对，非仅 F6**）：`plugins/dsh-android-manage/src/index.ts:550#expect=additionalProperties%3A%20false%2C` 的截图回落
     路径就是 `adb shell screencap -p -d <screenAccessResolved().displayId>`，即传的是
     DisplayManager 的 `displayId` ⇒ **该回落路径对虚拟屏截图在当前实现下必然失败**
     （0.13.8 修的是「忽略 screenId」，本轮暴露的是「传了 screenId 但 id 空间错」）。
@@ -2538,7 +2538,7 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 
 384. **ADBKeyboard 的 auth nonce 未加引号拼进 uid 2000 命令（2026-10-17 登记；后续修复见修复账本）**
 
-真因：`plugins/dsh-android-manage/src/index.ts:43-52` 的 ` --es auth '${nonce}'` 未做引号转义（同函数对 `msg` 做了 `'` 转义，`:2006`/`:2029`）。nonce 正常是纯十六进制，属防御纵深缺口：同 uid 写坏 `adb-keyboard-nonce` 后，`android_ui_input` 的 uid 2000 命令可在单引号处断出。增量能力有限（模型本就有 `android_shell_exec`），但「输入文本」变 shell 应登记。
+真因：`plugins/dsh-android-manage/src/index.ts:44#expect=*%2F` 的 ` --es auth '${nonce}'` 未做引号转义（同函数对 `msg` 做了 `'` 转义，`:2006`/`:2029`）。nonce 正常是纯十六进制，属防御纵深缺口：同 uid 写坏 `adb-keyboard-nonce` 后，`android_ui_input` 的 uid 2000 命令可在单引号处断出。增量能力有限（模型本就有 `android_shell_exec`），但「输入文本」变 shell 应登记。
 
 385. **最终快照与源码没有字节级绑定（2026-10-17 登记；后续修复见修复账本）**
 
@@ -3365,3 +3365,19 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
     真因：引擎与壳侧命令族表都漏了这些替代访问面；脚本扫描器只检查段首解释器，无法遍历可识别包装器后的命令；屏幕命令中的 `-d=7` 不符合受支持的数值参数格式，却被错误地等同于“没有目标参数”。修法：两侧同步加入 `dumpsys activity`、`sendevent`、`getevent`、`cmd display` 的无可认证目标家族；对包装器链后的 shell、su、文件路径和不透明解释器 fail-closed，普通 `nice echo/getprop` 仍保留可用；只在已识别的屏幕命令中拒绝畸形 `-d=...`/`-dx`，普通 `echo -d=7` 与 `ls -dx` 保持可用；input 词面要求有 argv。`cmd window` 继续按多显示器窗口接口拒绝，`wm user-rotation` 由既有 `wm-unscoped` 拦截，不采用上游放宽语义。
 
     复验：插件 screen-scope 测试与 `ShellOpsScreenCommandFixtureTest` 共读新增反例，涵盖 `nice sh/su/awk`、`taskset 0xff sh`、`env -S`、命令族拒绝、畸形屏幕 selector、普通 `-d` 参数正控及 `/dev/input` 路径正控。设备验证按用户要求未做，不能作为发版验收。
+
+599. **三条高影响登记门禁曾无判据级反证测试（上游 #761/#762/#765，2026-10-29）**
+
+    现象：控制 op 六面登记、模型工具 wire 预算与补丁 registry↔IMPLS 自洽都接入 PR Gate，但各自核心断言没有独立反证；阈值、差集或树内闭合逻辑一旦被误删，真实仓库仍可能因当前数据恰好一致而绿。真因：这些门禁直接读取生产树与生产基线，缺少可隔离的 fixture 根，因此无法稳定构造正例和受控漂移。修法：为控制 op 门禁加入临时 shell/plugin 根、`--ledger` 与既有 `--gaps` 注入口；工具预算门禁增加仅供测试的 `--root`，基线跟随临时树；补丁自洽门禁只加本树 `--root`，不恢复已移除的跨仓 peer 语义。三个 `.test.mjs` 覆盖合法树通过、关键差异失败、明确豁免/更新行为、坏台账 fail-closed 等，并接入 PR Gate。复验：每个测试文件均独立跑通，且至少一个受控负控对预期判据返回非零；设备验证不适用（L1 门禁改动）。
+
+600. **截图数量上限只在写入前清理且枚举失败被吞掉（上游 #749，2026-10-29）**
+
+    现象：`dsh-shot-*` 数量上限仅在新截图写入前执行；已有 20 个文件时本轮截图会短暂发布为第 21 个，且 `readdir/stat` 异常被吞掉后仍返回路径。ADB pull 失败时也可能留下部分本地文件。真因：清理函数把目录枚举当作尽力而为，而发布前没有对含本次产物的最终集合再核算；因此失败时既不能证明上限，也不会阻止新文件继续可读。修法：新增独立 `tmp-cache.ts`，截图完整落地后按 mtime 清理旧项并优先保留本次截图；目录清单缺失/枚举、stat、旧项删除失败时，删除本次产物并拒绝发布路径；ADB 失败与未落地路径清理部分文件。非截图 XML/detail 缓存路径不改变。复验：Manage 插件全量 Node 24 测试含缓存清理正例、null/throw 枚举负例、stat 与删除负例；本轮设备验证按用户要求未做，截图体验仍须在发布验收中确认。
+
+601. **执行地图锚点只检查文件与行号，源码移动后仍可能静默指错（上游 #718/#781/#789，2026-10-29）**
+
+    现象：`path:line` 仍落在文件有效范围内，但该行内容已因插入/重排变成另一段代码；旧门禁只看行数，因此排查地图可静默指向错误调用点。刷新旧基线若不约束引用计数，也可能把新增或移动坐标悄悄登记成旧锚点。真因：锚点判据没有读取源码内容，也没有固定历史坐标的引用数量。
+
+    修法：检查器读取目标行内容；旧引用用 `scripts/check-code-map-anchor-baseline.json` 保存行快照和引用数，新/移动引用必须写 `#expect=<URI 编码片段>`。刷新拒绝未标注的新坐标或旧坐标新增引用；耦合证据原有文件存在和行号范围检查保留。CI 先跑检查器自检再跑正式门禁。
+
+    复验：自检覆盖内容匹配/错配、损坏 URI、源码漂移、新坐标、移到已登记坐标、耦合证据内容与越界；正式门禁和受保护刷新负控通过。此为 L1 门禁改动，不需设备验收。

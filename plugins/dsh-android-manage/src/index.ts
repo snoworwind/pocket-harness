@@ -5,14 +5,14 @@
  * 按可用权限自动降级（未授权 → 失败关闭：返回引导，不静默降级、不绕行）。
  *
  * 工具集（全部经 ctx.androidPrivilege 前置校验 + 审计）：
- *  - android_screenshot      截屏（接既有视觉链路读图；授权通道执行 screencap）
- *  - android_ui_tree         控件树（uiautomator）：**无障碍关时的控件树来源**，与 ui_dump 同形、可 ref 操作
- *  - android_device_info     设备与屏幕信息 + 前台应用（dumpsys 为只读面）
- *  - android_act_input       输入事件（点按/滑动/按键/文本）——高风险动作类，主屏审批前不执行
- *  - android_ui_dump         语义控件清单（ADB 2.0 Phase A：解析+剪枝+编号，紧凑 JSON）
- *  - android_ui_click        语义点击（按 id/text/desc 引用，bounds 中心 tap；不可点回退祖先）
- *  - android_ui_scroll       语义滚动（按节点或屏幕方向/fraction swipe）
- *  - android_ui_input        语义文本输入（ASCII 走 input text；非 ASCII 走 ADBKeyboard 广播）
+ *  - android_screen_list / android_screenshot  屏幕能力枚举 / 当前屏幕截图
+ *  - android_ui_tree / android_ui_detail       默认真实屏控件树 / 最近清单的分页明细
+ *  - android_device_info                       设备与屏幕信息 + 前台应用
+ *  - android_act_input                         输入事件（虚拟屏走 vdInput，真实屏走 ADB）
+ *  - android_ui_dump / android_ui_click         语义控件清单 / 语义点击
+ *  - android_ui_scroll / android_ui_input       语义滚动 / 文本输入
+ *  - android_web_dump / android_env_prepare     壳自有 WebView DOM / 设备控制环境准备
+ *  - android_app_launch / android_ui_global     应用拉起 / 返回、主页等全局动作
  *  调用序（PRD-0.13.2 §3.2）：无障碍开 → android_ui_dump；无障碍关（纯 Shizuku）→ android_ui_tree；两者失败再截图兜底。
  *
  * 边界声明（PRD F1.6）：仅操作已授权设备；不做账号接管/验证码/支付/绕过风控；
@@ -29,6 +29,7 @@ import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSyn
 import { parseUiTreeXml, pruneNodes, resolveRef, findActionableAncestor, checkUiTreeParse, type UiNode, actionableAncestorV2, scopePoolV2 } from './ui-tree.js'
 import { cacheFromV2, decodeV2, isV2Payload, type V2Decoded } from './protocol-v2.js'
 import { detailRecord, pageRows, writeDetailStore } from './detail-store.js'
+import { prunePublishedTmpFiles } from './tmp-cache.js'
 import { resolveVirtualDisplayToken, vdTokenMissingText } from './vd-shot.js'
 import { ADB_KEYBOARD_IME, ADB_KEYBOARD_RECEIVER, isInputMethodEnabled } from './ime-component.js'
 import { buildAdbKeyboardBroadcast, mayContinueAfterKeyboardClear, parseAdbKeyboardBroadcastResult, quoteAdbShellArgument } from './ime-broadcast.js'
@@ -613,10 +614,13 @@ function tools(ctx: Context, priv: PrivilegeFace) {
       }
       // 0.14 真实通道：adbd（shell uid）执行 screencap → adb pull 回引擎私有临时目录（app uid 可读）。
       if (!priv.execAdbLine) return { imagePath: '', denied: false, text: 'ADB 执行通道未接通（dsh-android-bridge 未提供 execAdbLine）' }
+      let localPath = ''
       try {
         const n = Date.now()
         const remote = `/data/local/tmp/dsh-shot-${n}.png`
-        const local = join(pruneTmp('dsh-shot-', 20), `dsh-shot-${n}.png`)
+        const tmpDir = join(process.env.TMPDIR ?? '/tmp', 'dsh-tmp')
+        mkdirSync(tmpDir, { recursive: true })
+        localPath = join(tmpDir, `dsh-shot-${n}.png`)
         // 目标屏（0.14.0 设备实锤修正）：无障碍离线时走这条 ADB 回落，而它此前**完全忽略 screenId**——
         // 无参数地 `screencap` 只会抓默认屏（display 0），于是模型对虚拟屏截图拿到的是真实屏画面，
         // 却以为自己在看虚拟屏（设备会话里 agent 正是据此误判「设置没开在虚拟屏上」）。
@@ -645,10 +649,25 @@ function tools(ctx: Context, priv: PrivilegeFace) {
         } else if (targetDisplay !== undefined && targetDisplay.ok === true && targetDisplay.displayId !== 0) {
           displayFlag = `-d ${targetDisplay.displayId} `
         }
-        const r = await priv.execAdbLine(`adb shell screencap -p ${displayFlag}${remote} && adb pull ${remote} ${local} && ls -l ${local}; adb shell rm -f ${remote}`)
-        if (!r.ok) return { imagePath: '', denied: false, text: r.guidance ?? (r.stdout || '截图执行失败') }
-        if (!/^-rw|^-|^total|dsh-shot/.test(r.stdout.trim()) && !existsSync(local)) {
+        const r = await priv.execAdbLine(`adb shell screencap -p ${displayFlag}${remote} && adb pull ${remote} ${localPath} && ls -l ${localPath}; adb shell rm -f ${remote}`)
+        if (!r.ok) {
+          try { rmSync(localPath, { force: true }) } catch { /* 失败文本不暴露文件路径；目录仍由后续清理排查 */ }
+          return { imagePath: '', denied: false, text: r.guidance ?? (r.stdout || '截图执行失败') }
+        }
+        if (!/^-rw|^-|^total|dsh-shot/.test(r.stdout.trim()) && !existsSync(localPath)) {
+          try { rmSync(localPath, { force: true }) } catch { /* best effort 清掉 adb pull 的部分文件 */ }
           return { imagePath: '', denied: false, text: '截图未落地：' + (r.stdout.trim().slice(-400) || '无输出') }
+        }
+        // 只在截图落地后发布前收口。若枚举、stat 或删除失败，helper 会删除本次新产物并拒绝回传路径；
+        // 这样临时目录无法证明数量上限时，不会继续向 read_image 发布一个未受缓存约束的文件。
+        try {
+          prunePublishedTmpFiles(tmpDir, 'dsh-shot-', 20, localPath, {
+            listFiles: (dir) => readdirSync(dir),
+            mtimeMs: (filePath) => statSync(filePath).mtimeMs,
+            remove: (filePath) => rmSync(filePath, { force: true }),
+          })
+        } catch (error) {
+          return { imagePath: '', denied: false, text: '截图缓存无法安全收口，已阻止发布：' + String((error as Error).message) }
         }
         // F2 统一坐标系：回传物理分辨率锚点。模型侧读图可能降采样（maxDim 2048），
         // 严禁直接用截图像素坐标点击——归一化用 android_ui_click 的 nx/ny。
@@ -673,9 +692,12 @@ function tools(ctx: Context, priv: PrivilegeFace) {
         const sizeKnown = Number.isFinite(size.w) && size.w > 0 && Number.isFinite(size.h) && size.h > 0
         const width = sizeKnown ? size.w : undefined
         const height = sizeKnown ? size.h : undefined
-        return inlineShot(local, width, height, exec as ExecLike,
+        return inlineShot(localPath, width, height, exec as ExecLike,
           `ADB 通道，设备物理分辨率 ${sizeKnown ? `${size.w}x${size.h}` : '?x?'}${scopeNote}${adbNote}`)
       } catch (e) {
+        if (localPath) {
+          try { rmSync(localPath, { force: true }) } catch { /* best effort 清理部分产物 */ }
+        }
         return { imagePath: '', denied: false, text: '截图失败：' + String((e as Error).message) }
       }
     },

@@ -18,15 +18,20 @@
 //   E. ROUTE_OPS ⊂ ControlOp（诊断面刻意只列常用 op；子集 + 非空 + 无越界项）
 //   F. longClick 存量漂移专项：壳侧在场而引擎 ControlOp/A11Y_OPS 缺席 → 必须收口（或进 known-gaps）
 //
-// 用法：node scripts/check-control-ops.mjs [--shell-root <含 app/src/main 的树>] [--plugin-root <含 plugins/ 的树>]
+// 用法：node scripts/check-control-ops.mjs [--shell-root <含 app/src/main 的树>] [--plugin-root <含 plugins/ 的树>] [--ledger <控制 op 台账>]
 // 退出码：0 = 通过；1 = 登记漂移（拒打包/拒合）或树定位失败。
 import { readFileSync, existsSync } from 'node:fs'
+import { spawnSync } from 'node:child_process'
 import { join, dirname, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const ROOT = dirname(HERE)
 const argv = process.argv.slice(2)
+if (argv.includes('--self-test')) {
+  const result = spawnSync(process.execPath, ['--test', join(HERE, 'check-control-ops.test.mjs')], { stdio: 'inherit' })
+  process.exit(result.status ?? 1)
+}
 const optOf = (name) => {
   const i = argv.indexOf('--' + name)
   return i >= 0 ? argv[i + 1] : undefined
@@ -172,7 +177,7 @@ show('manage 工具面', manageOps)
 // manage 不承载它们——但主体仍必须与 handle/SUPPORTED_OPS 一致（A/B/C 项不变）。
 // review §2.3（2026-09-14）：旧实现把「台账缺失」降级 WARN 不判红——一次并批提交的秒级并发窗口
 // 就足以让 D 项整段失效，属假绿。现改为：短重试（3 × 150ms）消化并发窗口；仍缺段/不可解析即 FAIL。
-const PENDING_PATH = join(ROOT, 'scripts', 'control-ops-pending.json')
+const PENDING_PATH = optOf('ledger') ?? join(ROOT, 'scripts', 'control-ops-pending.json')
 let ledger = null
 let ledgerError = null
 for (let attempt = 0; attempt < 3 && ledger === null; attempt += 1) {
