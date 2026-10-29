@@ -323,14 +323,7 @@ export async function runConfirmedActiveProbe(
     report.notes.push(`主动 reasoning probe 未执行：API 方言「${provider.api ?? 'unknown'}」没有已验证的主动请求序列化，能力保持未知`)
     return
   }
-  const requestedLevels = options.levels?.length ? options.levels : ['low', 'medium', 'high']
-  if (requestedLevels.length > MAX_ACTIVE_PROBE_LEVELS) {
-    report.notes.push(`主动 reasoning probe 未执行：档位最多 ${MAX_ACTIVE_PROBE_LEVELS} 个`)
-    return
-  }
-  const levels = [...new Set(requestedLevels.filter((level) =>
-    level !== 'off' && THINKING_LEVELS.includes(level as typeof THINKING_LEVELS[number]),
-  ))]
+  const levels = activeProbeLevels(options.levels, report)
   for (const id of provider.models ?? []) {
     const model = report.models.find((item) => item.id === id)
     const compat = effectiveCompat(provider, id, model?.compat)
@@ -1430,3 +1423,14 @@ export function apply(ctx: Context, config: PluginConfig = {}) {
 
 /** Keep a user-confirmed active probe bounded even when called outside the tool schema. */
 const MAX_ACTIVE_PROBE_LEVELS = THINKING_LEVELS.length - 1
+
+function activeProbeLevels(levels: string[] | undefined, report: ProbeReport): string[] {
+  const requested = levels?.length ? levels : ['low', 'medium', 'high']
+  if (requested.length > MAX_ACTIVE_PROBE_LEVELS) {
+    report.notes.push(`主动 reasoning probe 未执行：档位最多 ${MAX_ACTIVE_PROBE_LEVELS} 个`)
+    return []
+  }
+  return [...new Set(requested.filter((level) =>
+    level !== 'off' && THINKING_LEVELS.includes(level as typeof THINKING_LEVELS[number]),
+  ))]
+}
