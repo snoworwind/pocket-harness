@@ -1723,7 +1723,9 @@ class EngineManager(private val context: Context, private val pickToken: String?
         }
       }
       try {
-        File(dir, "info.txt").writeText(EngineAuth.redact(buildDiagnosticsText(reason)))
+        val file = File(dir, "info.txt")
+        val safe = LogSanitizer.sanitizeOrNull(buildDiagnosticsText(reason))
+        if (safe == null) file.delete() else file.writeText(safe)
       } catch (_: Throwable) {
       }
       try {
@@ -1732,7 +1734,11 @@ class EngineManager(private val context: Context, private val pickToken: String?
         // #211.1：三态结果——超时态写形态标记（不再把已读部分/超时混成同一形态）。
         val out = ProcIo.readBounded(p, 10)
         val body = out.textWithMarkers()
-        if (body.isNotEmpty()) File(dir, "logcat-recent.txt").writeText(EngineAuth.redact(body))
+        if (body.isNotEmpty()) {
+          val file = File(dir, "logcat-recent.txt")
+          val safe = LogSanitizer.sanitizeOrNull(body)
+          if (safe == null) file.delete() else file.writeText(safe)
+        }
       } catch (_: Throwable) {
       }
       LogCollector.log(TAG, "diagnostics mirrored: " + dir.absolutePath)
@@ -2628,7 +2634,7 @@ internal const val ENGINE_LOG_GENERATIONS = 5
 
 /**
  * 诊断镜像的有界单份复制（#211.3，JVM 单测）：只读 [limitBytes] 上限内的**尾部**字节，
- * 出口过 EngineAuth.redact（launch token 不进共享副本），超限在尾部标注截断。
+ * 出口过完整 [LogSanitizer]（launch token 与其他凭据都不进共享副本），超限在尾部标注截断。
  * 相比原来的 readText() → redact → writeText()（峰值约 3× 单份日志），这里既不再整份读入，
  * 也不把「读到一半」伪装成完整现场。绝不抛出。
  *
@@ -2651,7 +2657,11 @@ internal fun mirrorLogBounded(src: File, dst: File, limitBytes: Long = MIRROR_LO
     if (start > 0L) {
       text += "\n[diagnostic mirror truncated: first " + start + " bytes omitted; source " + len + " bytes]\n"
     }
-    dst.writeText(EngineAuth.redact(text))
+    val safe = LogSanitizer.sanitizeOrNull(text) ?: run {
+      dst.delete()
+      return false
+    }
+    dst.writeText(safe)
     true
   } catch (_: Throwable) {
     false

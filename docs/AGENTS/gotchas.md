@@ -3389,3 +3389,6 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 602. **检出字节负控用 LF 字符串删属性，CRLF 台账会让负控失效（2026-10-29）**
 
     现象：`checkout-reviewed-bytes.test.mjs` 读入 `.gitattributes` 后用字面 `" -text\n"` 删除受测规则；在 `.gitattributes` 以 CRLF 检出的工作树上，替换不命中，所谓去属性负控实际仍带属性。真因：负控假定了宿主工作树的行尾格式，和它要覆盖的 autocrlf 风险相冲突。修法：按行尾无关的行列表精确删除唯一规则，并在隔离 Git 仓中分别使用 LF、CRLF 台账验证。复验：`node --test scripts/source-build/checkout-reviewed-bytes.test.mjs` 通过；每个目标文件在两种台账行尾下均有正控和去属性负控。
+608. **自动共享诊断副本只复用令牌脱敏，未覆盖其余凭据形态（2026-10-29）**
+
+    现象：诊断包与日志镜像的脱敏口径不同；自动镜像的 `engine.log`、`info.txt` 和 `logcat-recent.txt` 仅过 `EngineAuth.redact`，没有覆盖 PEM、授权头、Cookie、厂商密钥、敏感键值、环境变量和 URL 查询参数。真因：较早的 token 脱敏被误当成完整共享诊断出口的充分保护。修法：三类自动诊断文本和有界日志镜像统一调用 `LogSanitizer.sanitizeOrNull`，失败时丢弃对应输出。复验：新增镜像回归验证 API key、password 和 Authorization 值均不出现在共享副本；由 PR Gate 执行 JVM 测试。

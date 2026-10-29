@@ -56,6 +56,24 @@ class DiagnosticsMirrorTest {
   }
 
   @Test
+  fun mirrorUsesTheFullCredentialSanitizer() {
+    val apiKey = "AIzaSyD-EXAMPLE-1234567890abcdef"
+    val password = "hunter2-SuperSecret"
+    val bearer = "eyJhbGciOiJIUzI1NiJ9.synthetic.signature"
+    val src = tmp.newFile("engine.log")
+    src.writeText("apiKey: $apiKey\npassword: $password\nAuthorization: Bearer $bearer\n")
+
+    val dst = File(tmp.root, "engine-copy.log")
+    assertTrue(mirrorLogBounded(src, dst, limitBytes = 64 * 1024))
+    val text = dst.readText()
+
+    assertFalse("厂商密钥不得进入共享诊断副本", text.contains(apiKey))
+    assertFalse("口令不得进入共享诊断副本", text.contains(password))
+    assertFalse("Authorization 令牌不得进入共享诊断副本", text.contains(bearer))
+    assertTrue("非 EngineAuth 凭据规则必须生效", text.contains(LogSanitizer.MASK))
+  }
+
+  @Test
   fun missingSourceIsReportedAsNotWritten() {
     val dst = File(tmp.root, "engine-copy.log")
     assertFalse(mirrorLogBounded(File(tmp.root, "absent.log"), dst, 1024))
