@@ -63,6 +63,9 @@ import {
 
 export const name = 'dsh-model-capability'
 
+/** Keep a user-confirmed active probe bounded even when called outside the tool schema. */
+const MAX_ACTIVE_PROBE_LEVELS = THINKING_LEVELS.length - 1
+
 /**
  * `settings` is the write-back seam; `tools` registers the discovery tools.
  *
@@ -323,7 +326,14 @@ export async function runConfirmedActiveProbe(
     report.notes.push(`主动 reasoning probe 未执行：API 方言「${provider.api ?? 'unknown'}」没有已验证的主动请求序列化，能力保持未知`)
     return
   }
-  const levels = options.levels?.length ? options.levels : ['low', 'medium', 'high']
+  const requestedLevels = options.levels?.length ? options.levels : ['low', 'medium', 'high']
+  if (requestedLevels.length > MAX_ACTIVE_PROBE_LEVELS) {
+    report.notes.push(`主动 reasoning probe 未执行：档位最多 ${MAX_ACTIVE_PROBE_LEVELS} 个`)
+    return
+  }
+  const levels = [...new Set(requestedLevels.filter((level) =>
+    level !== 'off' && THINKING_LEVELS.includes(level as typeof THINKING_LEVELS[number]),
+  ))]
   for (const id of provider.models ?? []) {
     const model = report.models.find((item) => item.id === id)
     const compat = effectiveCompat(provider, id, model?.compat)
@@ -870,7 +880,7 @@ export function apply(ctx: Context, config: PluginConfig = {}) {
       provider: { type: 'string', required: true, description: 'llm-pi-ai provider route id, e.g. "my-gateway"' },
       active: { type: 'boolean', description: 'Run billable probes (default false)' },
       confirm: { type: 'boolean', description: 'Required with active=true' },
-      levels: { type: 'array', items: { type: 'string' }, description: 'Candidate levels (default low/medium/high)' },
+      levels: { type: 'array', maxItems: MAX_ACTIVE_PROBE_LEVELS, items: { type: 'string' }, description: 'Candidate levels (default low/medium/high)' },
       apply: { type: 'boolean', description: 'Write discovered capabilities back to settings (missing fields only)' },
       offline: { type: 'boolean', description: 'Skip network entirely and use only the engine catalog (default false)' },
       source: { type: 'string', description: 'Source stage (default auto)' },
