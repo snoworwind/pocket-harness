@@ -2256,19 +2256,15 @@ async function pruneAuto(cfg, list) {
     });
   const excessPre = pre.slice(0, Math.max(0, pre.length - cfg.keepPre));
   for (const snap of excessPre) { await remove(snap); removed.removedPre++; }
-  removed.removedBlobs = await pruneOrphanBlobs(cfg, list);
+  removed.removedBlobs = await pruneOrphanBlobs(cfg);
   return removed;
 }
-async function pruneOrphanBlobs(cfg, list) {
+async function pruneOrphanBlobs(cfg) {
   const blob = blobDir(cfg);
   if (!(await pathExists(blob))) return 0;
-  const refs = new Set();
-  for (const s of list) {
-    for (const p of (s.plugins ?? [])) {
-      for (const f of (p.files ?? [])) if (f.hash) refs.add(f.hash);
-    }
-    for (const f of (s.profileFiles ?? [])) if (f.hash) refs.add(f.hash);
-  }
+  // Re-read live snapshots after pruneAuto deletes old directories, and include
+  // message beforeHash references through the same collector used by undoCompact.
+  const refs = await collectReferencedBlobs(cfg);
   let removed = 0;
   for (const entry of await fs.readdir(blob, { withFileTypes: true })) {
     if (!entry.isFile()) continue;
@@ -2940,13 +2936,13 @@ async function importSnapshots(cfg, zipPath, password) {
       if (parts.length >= 2) snapDirs.add(dir); // 形如 manual/<id> 或 auto/<id>
     }
     for (const dir of snapDirs) {
-      let kind = 'auto';
       const mf = entries.find((e) => e.name === `${dir}/manifest.json`);
-      if (mf) {
-        try { kind = (JSON.parse(mf.data.toString('utf8'))).kind ?? 'auto'; } catch { /* default auto */ }
-      }
       const id = dir.split('/').pop().normalize('NFC');
-      if (!SNAP_ID_RE.test(id)) { rejected++; continue; } // 非法快照 id（含 .. 穿越尝试）
+      let manifest;
+      try { manifest = mf ? JSON.parse(mf.data.toString('utf8')) : null; } catch { manifest = null; }
+      if (!SNAP_ID_RE.test(id) || !manifest || typeof manifest !== 'object' || Array.isArray(manifest)
+          || manifest.id !== id) { rejected++; continue; } // manifest 身份必须绑定其 ZIP 目录名
+      const kind = manifest.kind ?? 'auto';
       const dest = (kind === 'manual' ? cfg.manualDir : cfg.autoDir);
       if (await pathExists(join(dest, id))) { skipped++; continue; }
       const destDir = join(dest, id);

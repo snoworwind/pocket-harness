@@ -3389,3 +3389,10 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 602. **检出字节负控用 LF 字符串删属性，CRLF 台账会让负控失效（2026-10-29）**
 
     现象：`checkout-reviewed-bytes.test.mjs` 读入 `.gitattributes` 后用字面 `" -text\n"` 删除受测规则；在 `.gitattributes` 以 CRLF 检出的工作树上，替换不命中，所谓去属性负控实际仍带属性。真因：负控假定了宿主工作树的行尾格式，和它要覆盖的 autocrlf 风险相冲突。修法：按行尾无关的行列表精确删除唯一规则，并在隔离 Git 仓中分别使用 LF、CRLF 台账验证。复验：`node --test scripts/source-build/checkout-reviewed-bytes.test.mjs` 通过；每个目标文件在两种台账行尾下均有正控和去属性负控。
+605. **Undo 导入的目录 ID 与 manifest ID 可分叉（2026-10-29）**
+
+    现象：ZIP 目录名通过快照 ID 格式检查，但 manifest 中的 `id` 原样持久化；后续列表和查找按 manifest 身份读取，目录身份与逻辑身份不一致时会产生歧义。真因：导入只验证路径形状，没有把持久化身份绑定到归档目录。修法：快照写入前解析 manifest，并要求它是对象且 `manifest.id` 与目录 ID 完全一致；不匹配计为拒绝条目。复验：新增同一测试文件中的身份不匹配 ZIP 回归，确认不创建快照目录；由 PR Gate 执行。
+
+606. **自动快照清理未把消息撤销 blob 纳入引用集合（2026-10-29）**
+
+    现象：自动 prune 只从快照清单收集 blob 哈希，却会删除仍由消息批次 `beforeHash` 引用的内容；之后执行消息撤销会报告 before 内容缺失。真因：自动清理使用独立且较窄的引用逻辑，绕过同时覆盖快照与消息操作的公共收集器。修法：快照删除后重新收集当前引用，并与 `undoCompact` 共用 `collectReferencedBlobs`。复验：新增消息 beforeHash 被自动 prune 保留的回归用例；由 PR Gate 执行。

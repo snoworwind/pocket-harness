@@ -7,7 +7,7 @@ import { pathToFileURL, fileURLToPath } from 'node:url';
 import { writeZip, readZip } from '../lib/zip.mjs';
 
 // A previous core can be selected for a controlled negative run.
-const { importSnapshots, encryptBuffer } = await import(pathToFileURL(
+const { importSnapshots, encryptBuffer, pruneAuto, blobDir } = await import(pathToFileURL(
   process.env.DSH_UNDO_IMPORT_UUT ?? fileURLToPath(new URL('../lib/core.mjs', import.meta.url)),
 ).href);
 
@@ -72,3 +72,38 @@ test('plain import and wrong-password rejection preserve existing behavior', () 
   assert.equal(result.ok, false);
   assert.equal(result.code, 'bad-password');
 }));
+
+test('import rejects a manifest whose ID differs from its archive directory', () => fixture(async ({ cfg, zip, id }) => {
+  const differentId = '20261017-120000-dead';
+  const manifest = Buffer.from(JSON.stringify({ kind: 'manual', id: differentId }));
+  await writeZip(zip, [{ name: `manual/${id}/manifest.json`, data: manifest }]);
+  const result = await importSnapshots(cfg, zip);
+  assert.equal(result.ok, true, result.error);
+  assert.equal(result.imported, 0);
+  assert.equal(result.rejected, 1);
+  assert.equal(await lstat(join(cfg.manualDir, id)).then(() => true, () => false), false);
+}));
+
+test('automatic pruning keeps blobs referenced by message undo records', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'undo-prune-message-'));
+  try {
+    const autoDir = join(root, 'undo', 'auto');
+    const manualDir = join(root, 'undo', 'manual');
+    const cfg = { autoDir, manualDir, keepAuto: 0, keepPre: 0, autoCleanup: true };
+    const hash = 'a'.repeat(40);
+    const blob = join(blobDir(cfg), hash);
+    await mkdir(autoDir, { recursive: true });
+    await mkdir(manualDir, { recursive: true });
+    await mkdir(blobDir(cfg), { recursive: true });
+    await writeFile(blob, 'message before-state');
+    await mkdir(join(autoDir, 'message-ops'), { recursive: true });
+    await writeFile(join(autoDir, 'message-ops', 'batch.json'), JSON.stringify({ ops: [{ beforeHash: hash }] }));
+
+    const result = await pruneAuto(cfg, []);
+
+    assert.equal(result.removedBlobs, 0);
+    assert.equal(await readFile(blob, 'utf8'), 'message before-state');
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
