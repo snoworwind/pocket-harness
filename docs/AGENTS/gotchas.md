@@ -3400,3 +3400,25 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
     修法：插件自身拒绝超过六项的数组；请求前只保留唯一、已知且非 `off` 的档位，并在归一化结果为空时直接返回，不能继续发送负控请求；工具描述同步告知最多六项，运行时检查作为权威限制。
 
     复验：新增重复档位只触发一轮请求，超长列表在任何供应商请求（含负控）之前拒绝；`node scripts/check-code-map.mjs` 通过。PR Gate run `40851258072` 的插件单测、静态门禁与源码回归、Kotlin 编译和其余检查全部通过；PR #184 于 2026-10-29 以 merge commit `9e4198baf7c27782b54caf8b5a01601fd2d9b3aa` 合入。未做设备验证；此为插件逻辑改动，不是发版设备验收证据。
+
+605. **real-only raw shell 门漏检运行时生成的命令词（2026-10-29）**
+
+    现象：`cmd=screencap; $cmd -d <registered-display> -p ...` 的第二段命令名由 shell 变量展开决定；`real-only` 仅按静态命令词匹配屏幕命令族，因此引擎侧和 Kotlin 执行点都可能把该段当作非屏幕命令放行。`input` 与 `scr$CMD` 前缀拼接也具有同类风险。
+
+    真因：动态命令词拒绝已接入 `virtual-only` 的 `screenCommandVerdict`，但 `realScreenAdbCommandDenied` 与 `ShellOps.realOnlyScreenCommandAllowed` 是独立判据，循环内未调用同一 `isRuntimeCommandName` 检查。
+
+    修法：两侧 `real-only` 循环在静态家族分类前复用 `isRuntimeCommandName`；把前置赋值后的 `$cmd`、`input` 与静态前缀拼接反例加入插件与 Kotlin 回归测试。普通参数位置的运行时展开仍按原规则处理。
+
+    复验：插件构建及 `npm test` 全量 184 项通过；`ShellOpsScreenCommandFixtureTest` Kotlin 单测、`check-bridge-symmetry.mjs`、`check-code-map.mjs`（含 `--self-test`）通过。ADB 当前无连接设备；现有 Pixel_Android16 AVD 配置是 API 36 `default/arm64-v8a`，不符合协议要求的 Google APIs 镜像；来源 APK 链只允许 `main`，不能从 PR 分支产出含本改动的 APK。因此设备层验收未做，不能作为设备验收或发版证据。
+
+606. **Undo 导入只校验 manifest 身份仍会残留拒绝条目的 blob 或读取目录外文件（2026-10-30）**
+
+    现象：ID 不匹配的快照会被拒绝，但旧顺序先把 ZIP 中所有 blob 写入共享库；伪造 manifest 还可用 `../` 哈希让 `readBlob` 读取 blob 目录之外的文件。真因：导入先产生 blob 副作用，且 blob 路径只检查 ZIP 条目名，没有约束 manifest 内的哈希引用与内容寻址关系。
+
+    修法：先验证 manifest ID、嵌套 blob 哈希格式和 blob 内容 SHA-1；只把通过校验且被有效快照引用的 blob 写入。`readBlob` / `writeBlob` 对哈希格式再次 fail-closed。
+
+    复验：`import-plaintext.test.mjs` 覆盖拒绝快照不留 blob、`../` 哈希不能越界、内容与文件名哈希不匹配时不导入；与消息撤销 beforeHash 清理回归一并通过。
+
+607. **自动快照清理未把消息撤销 blob 纳入引用集合（2026-10-29）**
+
+    现象：自动 prune 只从快照清单收集 blob 哈希，却会删除仍由消息批次 `beforeHash` 引用的内容；之后执行消息撤销会报告 before 内容缺失。真因：自动清理使用独立且较窄的引用逻辑，绕过同时覆盖快照与消息操作的公共收集器。修法：快照删除后重新收集当前引用，并与 `undoCompact` 共用 `collectReferencedBlobs`。复验：新增消息 beforeHash 被自动 prune 保留的回归用例；由 PR Gate 执行。
