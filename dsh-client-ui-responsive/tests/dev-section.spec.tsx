@@ -17,6 +17,7 @@ type Bridge = {
   hasAllFilesAccess?: () => boolean
   getOverlayEnabled?: () => boolean
   setOverlayEnabled?: (enabled: boolean) => boolean
+  exportConfig?: () => string
 }
 
 /** 悬浮球开关（开发者选项里的第二个复选框；按标签文本定位，不依赖顺序）。 */
@@ -63,6 +64,24 @@ describe('DevSection（开发者选项设置页）', () => {
     expect(texts).toContain('刷新界面')
     expect(texts).toContain('打开控制台')
     expect(el.querySelector('input[type=checkbox]')).not.toBeNull()
+  })
+
+  it('配置导出回显实际路径与桥侧凭据提示', async () => {
+    const path = '/storage/emulated/0/Documents/dshdata/exports/config/cordis.patch.yml'
+    const exportConfig = vi.fn(() => JSON.stringify({
+      ok: true,
+      path,
+      hint: '导出的是活动配置，可能包含供应商密钥；共享目录中的副本请妥善保管',
+    }))
+    const el = await render({ exportConfig })
+    const button = [...el.querySelectorAll('button')].find((item) => item.textContent === '导出配置')!
+
+    await act(async () => { button.click() })
+
+    const message = [...el.querySelectorAll('p')].find((item) => item.textContent?.includes(path))
+    expect(exportConfig).toHaveBeenCalledOnce()
+    expect(message?.textContent).toContain('可能包含供应商密钥')
+    expect(message?.textContent).toContain('共享目录中的副本请妥善保管')
   })
 
   it('重启：点击后先弹二次确认，确认后才调桥并短暂禁用按钮', async () => {

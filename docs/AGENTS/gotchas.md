@@ -3389,6 +3389,10 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 602. **检出字节负控用 LF 字符串删属性，CRLF 台账会让负控失效（2026-10-29）**
 
     现象：`checkout-reviewed-bytes.test.mjs` 读入 `.gitattributes` 后用字面 `" -text\n"` 删除受测规则；在 `.gitattributes` 以 CRLF 检出的工作树上，替换不命中，所谓去属性负控实际仍带属性。真因：负控假定了宿主工作树的行尾格式，和它要覆盖的 autocrlf 风险相冲突。修法：按行尾无关的行列表精确删除唯一规则，并在隔离 Git 仓中分别使用 LF、CRLF 台账验证。复验：`node --test scripts/source-build/checkout-reviewed-bytes.test.mjs` 通过；每个目标文件在两种台账行尾下均有正控和去属性负控。
+603. **配置导出提示称不含密钥，但活动 profile 会原样复制（2026-10-29）**
+
+    现象：设置页称导出不含 API 密钥；实际导出源是活动 profile patch，壳侧会原样复制并已返回“可能包含供应商密钥”的提示，但页面既丢弃该提示，也把文件名写死为 `settings.yaml`。真因：文案依据旧配置文件形态，未跟随迁移后的 profile 导出实现，且桥回执中的安全提示未被展示。修法：明确说明导出可能含供应商 API 密钥，展示壳侧返回的提示和实际路径。复验：新增 DevSection UI 回归核对实际路径和警告文本；PR Gate 将执行组件测试。本轮未完成 Android UI 三层设备验收，不能作为发版验收。
+
 604. **主动 reasoning probe 档位数组缺少上限，重复值会放大请求（2026-10-29）**
 
     现象：主动 reasoning probe 接受任意长档位数组并逐项请求；相同有效档位重复出现时会重复向供应商请求。真因：工具 schema 的参数 DSL 不支持 `maxItems`，而插件运行时最初信任上游调用方且未做去重，导致模型或 schema 外调用能放大请求扇出。
@@ -3397,6 +3401,28 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 
     复验：新增重复档位只触发一轮请求，超长列表在任何供应商请求（含负控）之前拒绝；`node scripts/check-code-map.mjs` 通过。PR Gate run `40851258072` 的插件单测、静态门禁与源码回归、Kotlin 编译和其余检查全部通过；PR #184 于 2026-10-29 以 merge commit `9e4198baf7c27782b54caf8b5a01601fd2d9b3aa` 合入。未做设备验证；此为插件逻辑改动，不是发版设备验收证据。
 
-607. **活动 profile 未列入 Android 备份与设备迁移排除清单（2026-10-29）**
+605. **real-only raw shell 门漏检运行时生成的命令词（2026-10-29）**
 
-    现象：`home/.dsh/profiles/` 中的活动 profile patch 可能含供应商凭据，但 API 31+ 云备份/设备迁移规则与 API 30 以下备份规则都未显式排除该目录。真因：备份清单只登记了旧配置文件和部分敏感子目录，profile 迁移后没有同步扩展排除面；`allowBackup=false` 是主控制，平台/OEM 的设备迁移行为仍需验证。修法：在两份规则中显式排除整个 profiles 目录，作为纵深保护。复验：XML 解析与两份规则均含相同排除项；设备迁移行为未做实机验证。
+    现象：`cmd=screencap; $cmd -d <registered-display> -p ...` 的第二段命令名由 shell 变量展开决定；`real-only` 仅按静态命令词匹配屏幕命令族，因此引擎侧和 Kotlin 执行点都可能把该段当作非屏幕命令放行。`input` 与 `scr$CMD` 前缀拼接也具有同类风险。
+
+    真因：动态命令词拒绝已接入 `virtual-only` 的 `screenCommandVerdict`，但 `realScreenAdbCommandDenied` 与 `ShellOps.realOnlyScreenCommandAllowed` 是独立判据，循环内未调用同一 `isRuntimeCommandName` 检查。
+
+    修法：两侧 `real-only` 循环在静态家族分类前复用 `isRuntimeCommandName`；把前置赋值后的 `$cmd`、`input` 与静态前缀拼接反例加入插件与 Kotlin 回归测试。普通参数位置的运行时展开仍按原规则处理。
+
+    复验：插件构建及 `npm test` 全量 184 项通过；`ShellOpsScreenCommandFixtureTest` Kotlin 单测、`check-bridge-symmetry.mjs`、`check-code-map.mjs`（含 `--self-test`）通过。ADB 当前无连接设备；现有 Pixel_Android16 AVD 配置是 API 36 `default/arm64-v8a`，不符合协议要求的 Google APIs 镜像；来源 APK 链只允许 `main`，不能从 PR 分支产出含本改动的 APK。因此设备层验收未做，不能作为设备验收或发版证据。
+
+606. **Undo 导入只校验 manifest 身份仍会残留拒绝条目的 blob 或读取目录外文件（2026-10-30）**
+
+    现象：ID 不匹配的快照会被拒绝，但旧顺序先把 ZIP 中所有 blob 写入共享库；伪造 manifest 还可用 `../` 哈希让 `readBlob` 读取 blob 目录之外的文件。真因：导入先产生 blob 副作用，且 blob 路径只检查 ZIP 条目名，没有约束 manifest 内的哈希引用与内容寻址关系。
+
+    修法：先验证 manifest ID、嵌套 blob 哈希格式和 blob 内容 SHA-1；只把通过校验且被有效快照引用的 blob 写入。`readBlob` / `writeBlob` 对哈希格式再次 fail-closed。
+
+    复验：`import-plaintext.test.mjs` 覆盖拒绝快照不留 blob、`../` 哈希不能越界、内容与文件名哈希不匹配时不导入；与消息撤销 beforeHash 清理回归一并通过。
+
+607. **自动快照清理未把消息撤销 blob 纳入引用集合（2026-10-29）**
+
+    现象：自动 prune 只从快照清单收集 blob 哈希，却会删除仍由消息批次 `beforeHash` 引用的内容；之后执行消息撤销会报告 before 内容缺失。真因：自动清理使用独立且较窄的引用逻辑，绕过同时覆盖快照与消息操作的公共收集器。修法：快照删除后重新收集当前引用，并与 `undoCompact` 共用 `collectReferencedBlobs`。复验：新增消息 beforeHash 被自动 prune 保留的回归用例；由 PR Gate 执行。
+
+608. **活动 profile 未列入 Android 备份与设备迁移排除清单（2026-10-29）**
+
+    现象：`home/.dsh/profiles/` 中的活动 profile patch 可能含供应商凭据，但 API 31+ 云备份/设备迁移规则与 API 30 以下备份规则都未显式排除该目录。真因：备份清单只登记了旧配置文件和部分敏感子目录，profile 迁移后没有同步扩展排除面；`allowBackup=false` 是主控制，平台/OEM 的设备迁移行为仍需验证。修法：在两份规则中显式排除整个 profiles 目录，作为纵深保护。复验：XML 解析与两份规则均含相同排除项；未做设备验证，设备迁移行为尚未实机验证。

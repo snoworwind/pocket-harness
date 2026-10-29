@@ -274,6 +274,8 @@ internal object ShellOps {
     val parsed = splitCommandSegments(command)
     if (parsed.unparsed) return false
     for (segment in parsed.segments) {
+      // A runtime expansion can select a screen command after static classification; fail closed.
+      if (isRuntimeCommandName(segment)) return false
       val bare = scopeCommandText(segment) ?: ""
       val options = displayOptionsIn(bare)
       val normalized = stripDisplayOptions(bare)
