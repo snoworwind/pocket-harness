@@ -323,7 +323,7 @@ export async function runConfirmedActiveProbe(
     report.notes.push(`主动 reasoning probe 未执行：API 方言「${provider.api ?? 'unknown'}」没有已验证的主动请求序列化，能力保持未知`)
     return
   }
-  const levels = activeProbeLevels(options.levels, report)
+  const levels = activeProbeLevels(options.levels, report); if (levels.length === 0) return
   for (const id of provider.models ?? []) {
     const model = report.models.find((item) => item.id === id)
     const compat = effectiveCompat(provider, id, model?.compat)
