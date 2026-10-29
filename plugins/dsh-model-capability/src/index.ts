@@ -63,9 +63,6 @@ import {
 
 export const name = 'dsh-model-capability'
 
-/** Keep a user-confirmed active probe bounded even when called outside the tool schema. */
-const MAX_ACTIVE_PROBE_LEVELS = THINKING_LEVELS.length - 1
-
 /**
  * `settings` is the write-back seam; `tools` registers the discovery tools.
  *
@@ -880,7 +877,7 @@ export function apply(ctx: Context, config: PluginConfig = {}) {
       provider: { type: 'string', required: true, description: 'llm-pi-ai provider route id, e.g. "my-gateway"' },
       active: { type: 'boolean', description: 'Run billable probes (default false)' },
       confirm: { type: 'boolean', description: 'Required with active=true' },
-      levels: { type: 'array', maxItems: MAX_ACTIVE_PROBE_LEVELS, items: { type: 'string' }, description: 'Candidate levels (default low/medium/high)' },
+      levels: { type: 'array', items: { type: 'string' }, description: 'Candidate levels (maximum six; default low/medium/high)' },
       apply: { type: 'boolean', description: 'Write discovered capabilities back to settings (missing fields only)' },
       offline: { type: 'boolean', description: 'Skip network entirely and use only the engine catalog (default false)' },
       source: { type: 'string', description: 'Source stage (default auto)' },
@@ -1430,3 +1427,6 @@ export function apply(ctx: Context, config: PluginConfig = {}) {
     diag(`auto-apply 未启用（autoApply=${String(config.autoApply)} settings=${settings ? 'yes' : 'no'}）`)
   }
 }
+
+/** Keep a user-confirmed active probe bounded even when called outside the tool schema. */
+const MAX_ACTIVE_PROBE_LEVELS = THINKING_LEVELS.length - 1

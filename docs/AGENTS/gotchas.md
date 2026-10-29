@@ -3391,4 +3391,4 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
     现象：`checkout-reviewed-bytes.test.mjs` 读入 `.gitattributes` 后用字面 `" -text\n"` 删除受测规则；在 `.gitattributes` 以 CRLF 检出的工作树上，替换不命中，所谓去属性负控实际仍带属性。真因：负控假定了宿主工作树的行尾格式，和它要覆盖的 autocrlf 风险相冲突。修法：按行尾无关的行列表精确删除唯一规则，并在隔离 Git 仓中分别使用 LF、CRLF 台账验证。复验：`node --test scripts/source-build/checkout-reviewed-bytes.test.mjs` 通过；每个目标文件在两种台账行尾下均有正控和去属性负控。
 604. **能力探测档位可重复提交导致重复请求（2026-10-29）**
 
-    现象：主动 reasoning probe 接受任意长档位数组并逐项请求，同一有效档位重复出现时也会重复向供应商发请求。真因：工具 schema 未设数组上限，运行时信任上游调用方且未做去重。修法：插件自身拒绝超过六项的列表，并在请求前只保留唯一、已知且非 `off` 的档位；schema 同步设 `maxItems=6`。复验：新增重复档位只触发一轮请求、超长列表不触网的假 fetch 回归；由 PR Gate 执行。
+    现象：主动 reasoning probe 接受任意长档位数组并逐项请求，同一有效档位重复出现时也会重复向供应商发请求。真因：工具 schema 未设数组上限，运行时信任上游调用方且未做去重；当前 `dsh-tools` 参数 DSL 不支持 `maxItems`，不能把数组约束只写在 schema。修法：插件自身拒绝超过六项的列表，并在请求前只保留唯一、已知且非 `off` 的档位；工具描述同步告知上限，运行时检查作为权威限制。复验：新增重复档位只触发一轮请求、超长列表不触网的假 fetch 回归；PR Gate 首轮发现 schema 不兼容，已移除不支持的 `maxItems` 并将常量移到文件末尾以保留代码地图锚点，后续 CI 重跑待确认。
