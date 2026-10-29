@@ -1,6 +1,6 @@
 # emulator-test-protocol.md — 模拟器验收规范（代码层 + CDP 层 + ADB 用户实际体验层，三层必跑）
 
-> **现行模拟器范围（2026-10-25 用户决定）**：模拟器验收统一使用 Android Studio 的 Google 官方 Android Emulator，运行 Android 16（API 36）Pixel AVD，并选 ARM64-v8a Google APIs 系统映像以匹配本仓 ARM64 产品 APK。MuMu/x86_64 记录仅供历史追溯，不作为当前验收证据。发版候选仍须补充 ARM64 真机验收；缺设备时设备层不得记 PASS。
+> **现行模拟器范围（2026-10-29 用户决定）**：模拟器验收统一使用 Android Studio 的 Google 官方 Android Emulator，运行 Android 16（API 36）Pixel AVD，默认采用 `default/arm64-v8a` 系统映像（SDK 包 `system-images;android-36;default;arm64-v8a`）以匹配本仓 ARM64 产品 APK。MuMu/x86_64 记录仅供历史追溯，不作为当前验收证据。发版候选仍须补充 ARM64 真机验收；缺设备时设备层不得记 PASS。
 
 > 本文件是 `AGENTS.md` §2.1「模拟器测试规范」的**详档**：AGENTS.md 只放强制条款，命令与判据在这里。
 > 一句话：**任一层红都说明这个系统有问题**——代码层红是代码有问题，CDP 层绿而人做不到是交互逻辑错，
@@ -80,7 +80,7 @@ Coordination-only tools and delivery plans are external prerequisites, not files
 
 ## 3. 设备与前置检查（跑之前先过一遍）
 
-设备矩阵、装机命令、CDP 端口与探活见 `AGENTS.md` §2 与 `docs/AGENTS/adb-chain.md`。使用 Android Studio Device Manager 创建 Pixel Phone AVD，在 SDK Manager 安装 Android 16（API 36）官方 ARM64-v8a Google APIs 系统映像及最新 Android Emulator。Android 官方步骤见 [Get Android 16](https://developer.android.com/about/versions/16/get)；系统映像按 ABI 的说明见 [SDK Platform release notes](https://developer.android.com/tools/releases/platforms)。本规范只列**跑验收前**必须确认的前置：
+设备矩阵、装机命令、CDP 端口与探活见 `AGENTS.md` §2 与 `docs/AGENTS/adb-chain.md`。使用 Android Studio Device Manager 创建 Pixel Phone AVD，在 SDK Manager 安装 Android 16（API 36）`default` ARM64-v8a 系统映像（包名 `system-images;android-36;default;arm64-v8a`）及最新 Android Emulator；这是本仓默认验收镜像。Android 官方步骤见 [Get Android 16](https://developer.android.com/about/versions/16/get)；系统映像按 ABI 的说明见 [SDK Platform release notes](https://developer.android.com/tools/releases/platforms)。本规范只列**跑验收前**必须确认的前置：
 
 ```bash
 # 0. Android 16 AVD 在线；serial 从设备清单读取，不硬编码

@@ -154,6 +154,9 @@ class ShellOpsScreenCommandFixtureTest {
       "screencap -d=7 -p /sdcard/a.png",
       "input -dx tap 1 2",
       "nice sh /sdcard/job.sh",
+      "cmd=screencap; \$cmd -d 11529215046816944610 -p /sdcard/a.png",
+      "cmd=input; \$cmd -d 7 tap 1 2",
+      "cmd=screencap; scr\$CMD -d 7 -p /sdcard/a.png",
     )
     for (command in denied) {
       assertFalse("real-only 必须拒绝虚拟/未知目标：$command", ShellOps.realOnlyScreenCommandAllowed(command))
