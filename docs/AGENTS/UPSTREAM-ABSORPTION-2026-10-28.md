@@ -50,7 +50,7 @@
 | [#155](https://github.com/snoworwind/pocket-harness/pull/155) | journal 拒绝非普通路径并保留旧记录；事务 Kotlin 62 项通过，草稿，设备中断恢复与三层未完成。 |
 | [#156](https://github.com/snoworwind/pocket-harness/pull/156) | 安全模式 insert 后顶层注释保留；Kotlin 38 项通过，草稿，设备三层未完成。 |
 | [#157](https://github.com/snoworwind/pocket-harness/pull/157) | 第一方直接依赖精确版本检查；OrbStack 8 项及现有安装包只读检查通过，草稿，最终候选设备三层未完成。 |
-| [#159](https://github.com/snoworwind/pocket-harness/pull/159) | 上游浏览器样式、屏幕范围夹具和 undo 源的检出字节保护；隔离 Git 正负控通过，CI 待确认，未做设备验证。 |
+| [#159](https://github.com/snoworwind/pocket-harness/pull/159) | 上游浏览器样式、屏幕范围夹具和 undo 源的检出字节保护；PR Gate 六项检查成功（run [40631128959](https://github.com/snoworwind/pocket-harness/actions/runs/40631128959)），已由 merge commit `c5881fc29183596759184f0c40af8d14a6c4766b` 合并；未做设备验证。 |
 
 模拟器 `emulator-5554` 已启动、API 36、`arm64-v8a`，本次按用户指定使用 default 映像；已安装 `0.14.9-source`，快照指纹存在且事务标记不存在。该 APK 不可调试，标准热推的 `run-as` 不可用；上述新代码未在设备运行。现行 main-only 来源 APK 规则、PR 合并前即时三层验收与不可调试现有包之间的取证时序尚未闭合，不能将旧 APK 或 CI 编译冒充新候选。设备事实与来源链规则均不能因进度压力放宽。
 
