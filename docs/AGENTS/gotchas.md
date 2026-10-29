@@ -3389,3 +3389,6 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 602. **检出字节负控用 LF 字符串删属性，CRLF 台账会让负控失效（2026-10-29）**
 
     现象：`checkout-reviewed-bytes.test.mjs` 读入 `.gitattributes` 后用字面 `" -text\n"` 删除受测规则；在 `.gitattributes` 以 CRLF 检出的工作树上，替换不命中，所谓去属性负控实际仍带属性。真因：负控假定了宿主工作树的行尾格式，和它要覆盖的 autocrlf 风险相冲突。修法：按行尾无关的行列表精确删除唯一规则，并在隔离 Git 仓中分别使用 LF、CRLF 台账验证。复验：`node --test scripts/source-build/checkout-reviewed-bytes.test.mjs` 通过；每个目标文件在两种台账行尾下均有正控和去属性负控。
+603. **配置导出提示称不含密钥，但活动 profile 会原样复制（2026-10-29）**
+
+    现象：设置页称导出不含 API 密钥；实际导出源是活动 profile patch，壳侧会原样复制并已返回“可能包含供应商密钥”的提示，但页面既丢弃该提示，也把文件名写死为 `settings.yaml`。真因：文案依据旧配置文件形态，未跟随迁移后的 profile 导出实现，且桥回执中的安全提示未被展示。修法：明确说明导出可能含供应商 API 密钥，展示壳侧返回的提示和实际路径。复验：静态核对 UI 回执字段与壳侧返回契约一致；本轮未完成 Android UI 三层设备验收，不能作为发版验收。

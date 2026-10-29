@@ -254,8 +254,10 @@ export function DevSection({ renderSlot }: DevSectionProps) {
   const exportConfig = useCallback(() => {
     try {
       const raw = window.androidBridge?.exportConfig?.()
-      const j = JSON.parse(raw ?? '{}') as { ok?: boolean; path?: string; error?: string }
-      setConfigMsg(j.ok ? `已导出到 ${j.path ?? 'exports/config/settings.yaml'}` : `导出失败：${j.error ?? '未知错误'}`)
+      const j = JSON.parse(raw ?? '{}') as { ok?: boolean; path?: string; hint?: string; error?: string }
+      setConfigMsg(j.ok
+        ? `已导出到 ${j.path ?? 'exports/config/活动配置文件'}。${j.hint ?? '活动配置可能包含供应商 API 密钥；共享副本请妥善保管。'}`
+        : `导出失败：${j.error ?? '未知错误'}`)
     } catch {
       setConfigMsg('导出失败：应用内连接不可用（仅安卓应用内可用）——请重新打开应用后重试')
     }
@@ -335,9 +337,9 @@ export function DevSection({ renderSlot }: DevSectionProps) {
         <button type="button" className="dsh-dev-btn" onClick={importConfig}>导入配置</button>
       </div>
       {configMsg !== null && <p className="dsh-dev-hint">{configMsg}</p>}
-      {/* 数据安全说明必须保留（配置不含密钥）；路径保留（用户要拿它去改）。 */}
+      {/* 配置会从活动 profile 原样复制；不能暗示已剔除凭据。 */}
       <p className="dsh-dev-hint">
-        导出到 Documents/dshdata/exports/config/settings.yaml，改完点「导入配置」生效。导出不含 API 密钥。
+        导出的是当前活动配置，可能包含供应商 API 密钥；共享目录中的副本请妥善保管。修改后点「导入配置」生效。
       </p>
 
       {/* 0.14.1 块 E（详档 §4.3）：运行时缓存清理——白名单制、先给可回收体积再执行、逐项落审计。 */}
