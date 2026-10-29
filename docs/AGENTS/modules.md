@@ -7,44 +7,6 @@
 
 ## 4. 目录与源文件作用（关键函数带代码位置；文件行数随版本变化，以函数名为准）
 
-> **维护者文档（权威登记处，0.13.5 起迁入 docs
-				22 Titelgruppe Tableiste
-					23 Einblendmenü Registerkarten suchen
-					24 container
-						25 Titelgruppe
-							26 Titel (selected, settable, boolean) Value: on, raw.githubusercontent.com/snoworwind/pocket-harness/main/docs/AGENTS/modules.md – Hohe Speicherauslastung – 883 MB
-								27 Taste Tab schließen
-							28 Titel (settable, boolean) 哔哩哔哩 (゜-゜)つロ 干杯~-bilibili, Value: off
-								29 Taste Tab schließen
-							30 Titel (settable, boolean) 新三国up锐评老三国25：夫人，你也不想让张家灭族吧？_哔哩哔哩_bilibili – Speicherauslastung – 445 MB, Value: off
-								31 Taste Tab schließen
-							32 Rollbereich
-					33 Taste Neuer Tab
-	34 Schließen-Taste
-	35 Taste „Vollbildmodus“ Help: mit dieser Taste wird auch das Fenster vergrößert, Secondary Actions: Fenster zoomen
-	36 Taste zum Minimieren
-37 menu bar
-	38 Edge
-	39 Datei
-	40 Bearbeiten
-	41 Anzeigen
-	42 Verlauf
-	43 Favoriten
-	44 Profile
-	45 Tab
-	46 Fenster
-	47 Hilfe
-
-Selected text: ```
-# modules.md — 目录与源文件作用（关键函数锚点）
-
-第二轮安全修复新增 `NotifyConfirmActivity.kt`：通知动作的原生界面与系统凭据认证，认证后签发内存一次性许可给 `NotifyActionReceiver`。`MainActivity.confirmPrivilegedChange` 负责敏感桥授权的原生确认、系统凭据回调、超时撤销；`EngineTransport.admit` 在 selector 上限制未认证连接并在分配后端前验证 relay 凭据。授权存储与兼容变化见 [修复账本](SECURITY-REMEDIATION-2026-10-17-R2.md)。
-
-> grep 用法：`grep -n "<文件名>.kt" docs/AGENTS/modules.md`。行号随版本漂移，以函数名为准。
-> 与 docs/AGENTS/ARCHITECTURE.md 冲突时以 ARCHITECTURE.md 为准。
-
-## 4. 目录与源文件作用（关键函数带代码位置；文件行数随版本变化，以函数名为准）
-
 > **维护者文档（权威登记处，0.13.5 起迁入 docs/AGENTS/）**：`docs/AGENTS/ARCHITECTURE.md`（.kt 模块地图 + 依赖方向 + assets 结构 + manifest 组件）/ `docs/AGENTS/BRIDGE-API.md`（桥协议 + 通道 + 增量节）/ `docs/AGENTS/ANDROID-API-USAGE.md`（android.* 按域分组 + API 等级守卫点）/ `docs/AGENTS/DEPENDENCIES.md`（gradle 依赖 + 升级策略）/ `docs/AGENTS/RUNTIME-PATCHES.md`（assets/patched 文件登记 + 构建期 patches 分工）。本节保留速查职能，与五文档冲突时以文档（源码 grep 实证）为准。
 
 `app/src/main/java/com/snoworwind/pocketharness/`：
