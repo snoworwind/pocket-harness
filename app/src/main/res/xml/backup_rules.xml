@@ -3,6 +3,7 @@
      「将来有人改回 true」时的兜底：凭据/会话/工作区/引擎鉴权 prefs 永不进云备份。 -->
 <full-backup-content>
   <exclude domain="file" path="home/.dsh/.credentials.yaml" />
+  <exclude domain="file" path="home/.dsh/profiles/" />
   <exclude domain="file" path="home/.dsh/sessions/" />
   <exclude domain="file" path="home/.dsh/storages/" />
   <exclude domain="file" path="home/.dsh/attachments/" />

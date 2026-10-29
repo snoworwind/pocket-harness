@@ -3422,3 +3422,7 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 607. **自动快照清理未把消息撤销 blob 纳入引用集合（2026-10-29）**
 
     现象：自动 prune 只从快照清单收集 blob 哈希，却会删除仍由消息批次 `beforeHash` 引用的内容；之后执行消息撤销会报告 before 内容缺失。真因：自动清理使用独立且较窄的引用逻辑，绕过同时覆盖快照与消息操作的公共收集器。修法：快照删除后重新收集当前引用，并与 `undoCompact` 共用 `collectReferencedBlobs`。复验：新增消息 beforeHash 被自动 prune 保留的回归用例；由 PR Gate 执行。
+
+608. **活动 profile 未列入 Android 备份与设备迁移排除清单（2026-10-29）**
+
+    现象：`home/.dsh/profiles/` 中的活动 profile patch 可能含供应商凭据，但 API 31+ 云备份/设备迁移规则与 API 30 以下备份规则都未显式排除该目录。真因：备份清单只登记了旧配置文件和部分敏感子目录，profile 迁移后没有同步扩展排除面；`allowBackup=false` 是主控制，平台/OEM 的设备迁移行为仍需验证。修法：在两份规则中显式排除整个 profiles 目录，作为纵深保护。复验：XML 解析与两份规则均含相同排除项；未做设备验证，设备迁移行为尚未实机验证。
