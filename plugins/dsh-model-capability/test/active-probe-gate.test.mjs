@@ -131,3 +131,35 @@ test('accepting the negative control never writes active-probe capability', asyn
   assert.equal(result.models.length, 0)
   assert.match(result.notes.join('\n'), /负控未能证明/)
 })
+
+test('active probes deduplicate recognized levels before issuing provider requests', async () => {
+  const result = report()
+  const efforts = []
+  await runConfirmedActiveProbe(provider(), result, {
+    active: true,
+    confirm: true,
+    levels: ['low', 'low', 'medium'],
+    fetchImpl: async (_url, init) => {
+      const body = JSON.parse(init.body)
+      efforts.push(body.reasoning?.effort)
+      if (body.reasoning?.effort === '__dsh_invalid_effort__') {
+        return { ok: false, status: 400, text: async () => 'invalid reasoning effort' }
+      }
+      return { ok: true, status: 200, text: async () => '{}' }
+    },
+  })
+  assert.deepEqual(efforts, ['__dsh_invalid_effort__', 'low', 'medium'])
+})
+
+test('active probes reject an overlong level list before contacting the provider', async () => {
+  const result = report()
+  let calls = 0
+  await runConfirmedActiveProbe(provider(), result, {
+    active: true,
+    confirm: true,
+    levels: ['low', 'low', 'low', 'low', 'low', 'low', 'low'],
+    fetchImpl: async () => { calls++; throw new Error('must not request') },
+  })
+  assert.equal(calls, 0)
+  assert.match(result.notes.join('\n'), /最多 6 个/)
+})
