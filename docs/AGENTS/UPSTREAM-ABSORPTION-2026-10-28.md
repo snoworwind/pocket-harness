@@ -19,7 +19,7 @@
 
 固定范围变更按路径初分：原生生产 23、runtime 22、构建与门禁 20、CI 5、测试 26、文档 27、其他 1。数字按 GitHub compare 文件列表计算，代表路径而非功能。提交和文件均须继续逐项核对，不能以此分类代替完整审查。
 
-上游 APK/运行时更新与 dev 快速打包不符合本仓 main 来源链；上游镜像门禁依赖协调仓，本仓已收归树内权威。远程 renderer 的管道和重连修复针对上游多进程实现，本仓 BrowserHost 架构不同，需查对应生产路径而非复制类。修复助手的冷启动恢复依赖本仓不存在的原生 AI 修复助手。双语、下载页与上游发布配置按实际产品需求审查，不直接同步。PR Gate 已有同 PR 并发取消，来源工作流已有部分超时，其他 workflow 的超时应以本仓耗时及失败语义评估。
+上游 APK/运行时更新与 dev 快速打包不符合本仓 main 来源链；上游镜像门禁依赖协调仓，本仓已收归树内权威。远程 renderer 的管道和重连修复针对上游多进程实现，本仓 BrowserHost 架构不同，需查对应生产路径而非复制类；本仓截图编码失败处理与缓存清理已由 `b4f5c80a` 独立修复，设备侧截图验收仍待最终候选验证。修复助手的冷启动恢复依赖本仓不存在的原生 AI 修复助手。双语、下载页与上游发布配置按实际产品需求审查，不直接同步。PR Gate 已有同 PR 并发取消，来源工作流已有部分超时，其他 workflow 的超时应以本仓耗时及失败语义评估。
 
 ## 执行约束及当前证据
 
@@ -31,13 +31,13 @@
 - 来源字节：本仓已对上游补丁、registry、fixture、许可文本及 compat JS 设置行尾属性；`scripts/snapshot-config/engine-overlay.json` 没有对应属性，而 `base-lock.mjs` 以文件原始字节计入组件键。来源脚本会从 Git 对象恢复该文件，但其他计算调用点是否先于恢复尚需确定。需在 `core.autocrlf=true` 的隔离检出做正反控并检查所有调用链，再决定是否需要属性变更。
 - 本仓 `ci-verify-snapshot.py` 的 applicationId 查找仍遗漏自包含仓根，但此脚本不在当前来源链的对应调用路径中；旧打包脚本不能成为交付路径。不能只照搬上游接线，应先核对来源链已有的应用路径、快照资产和 ABI 验证，避免把旧链加入权威链。
 - 无障碍不仅是陈旧 prefs：`a11ySource()` 在 prefs 为 true 时优先接受独立队列的新鲜时间，控制队列在服务缺席时仍能运行；这是源码上可构造的误报。心跳改动还须验证服务绑定竞态、恢复时序与旧时间戳，且桥返回值变化属于协议变更。
-- 浏览器远程渲染：本仓没有上游 `RemoteRendererHost`/`CapturePipeDrain`，BrowserHost 按 Activity 所有并在原生 WebView 中管理标签，不能直接迁移上游 Binder 管道修复；仍需独立检查本仓截图资源生命周期才能排除同类问题。
+- 浏览器远程渲染：本仓没有上游 `RemoteRendererHost`/`CapturePipeDrain`，BrowserHost 按 Activity 所有并在原生 WebView 中管理标签，不能直接迁移上游 Binder 管道修复。本仓截图编码失败处理、异常文件清理与有界缓存已由 `b4f5c80a` 修复；最终候选的设备截图验收仍待完成。
 
 ## 2026-10-28 继续核验
 
 - 固定 Harness checkout 为 `1f81c047fc48fa190a683e469daa699857e9afe8`，与本仓 rc.3 overlay 一致。其产品客户端中，`ui-model-selection`、`ui-settings-models`、`ui-schedule` 使用 `toSorted`；`ui-chat` 多处使用 `findLast`/`findLastIndex`。因此旧 WebView 的内建兼容是有实际调用点的候选，仍需设备复现、规范语义测试和最终产品验收。
 - 无障碍修复提交 `a7bdd979`：仅独立心跳可作为在线证据；在 OrbStack Linux Node 24 下插件 176/176、桥对称和执行地图门禁通过。用户指定本次使用现有 Android 16 ARM64 default 映像，安装 Google APIs 映像的尝试已取消；此选择仅针对本次验收。CDP 与 ADB 证据待运行，未验收。
-- 上游截图管道涉及独立进程与 Binder 管道，本仓 `BrowserHost.shotOp` 在本地 WebView 绘制，使用 `FileOutputStream.use` 和 `finally` 回收 bitmap；上游的管道读线程泄漏形态不对应本仓此调用链。压缩返回值与临时文件失败清理是另一项待核对问题，不得将其算作已验证。
+- 上游截图管道涉及独立进程与 Binder 管道，本仓 `BrowserHost.shotOp` 在本地 WebView 绘制，使用 `FileOutputStream.use` 和 `finally` 回收 bitmap；上游的管道读线程泄漏形态不对应本仓此调用链。本仓 `Bitmap.compress` 失败处理、异常临时文件清理及截图缓存上限已由 `b4f5c80a` 修复；设备侧截图验收仍未完成。
 
 ## 已启动的独立交付（2026-10-28）
 
@@ -51,6 +51,7 @@
 | [#156](https://github.com/snoworwind/pocket-harness/pull/156) | 安全模式 insert 后顶层注释保留；Kotlin 38 项通过，草稿，设备三层未完成。 |
 | [#157](https://github.com/snoworwind/pocket-harness/pull/157) | 第一方直接依赖精确版本检查；OrbStack 8 项及现有安装包只读检查通过，草稿，最终候选设备三层未完成。 |
 | [#159](https://github.com/snoworwind/pocket-harness/pull/159) | 上游浏览器样式、屏幕范围夹具和 undo 源的检出字节保护；PR Gate 六项检查成功（run [40631128959](https://github.com/snoworwind/pocket-harness/actions/runs/40631128959)），已由 merge commit `c5881fc29183596759184f0c40af8d14a6c4766b` 合并；未做设备验证。 |
+| [#160](https://github.com/snoworwind/pocket-harness/pull/160) | 来源 APK 组装前核对最终快照的 profile 权威字节、负控、规范路径、applicationId 与应用路径；`--self-test` 含 1 个正例和 14 个受控负例。已由 merge commit `fdb0136047a15c7a5ad761431112b7176c53787f` 合并；未做设备验证，最终来源候选仍须补验。 |
 
 模拟器 `emulator-5554` 已启动、API 36、`arm64-v8a`，本次按用户指定使用 default 映像；已安装 `0.14.9-source`，快照指纹存在且事务标记不存在。该 APK 不可调试，标准热推的 `run-as` 不可用；上述新代码未在设备运行。现行 main-only 来源 APK 规则、PR 合并前即时三层验收与不可调试现有包之间的取证时序尚未闭合，不能将旧 APK 或 CI 编译冒充新候选。设备事实与来源链规则均不能因进度压力放宽。
 
@@ -69,7 +70,7 @@
 | Safe Mode insert 边界（#637） | #156 三处读取统一边界；设备验证未完成。旧状态迁移两文件相同后删除旧文件的上游做法仍待查：本仓有多入口且 `status` 未同步，不能仅凭比较时相同就认定跨进程删除无竞态。 |
 | 快照 journal 非文件目标（#595） | #155 同时拒绝临时路径非普通文件，并取消直接写目标回退；需设备中断恢复验收。 |
 | 无障碍可用性（#666） | #153 采用心跳而非独立队列作为服务证据。没有照搬 prefs 纠正写入；服务重连和设备真实关闭/开启仍待验证。 |
-| 隔离浏览器重连、截图管道 EOF 与读线程（#582/#627/#636） | 本仓无上游 RemoteRendererHost/Binder 管道，当前截图路径是本地 WebView 绘制；该修复不适用。本仓 `Bitmap.compress` 返回值和异常残留文件需单独反证，尚不能断言截图链无缺陷。 |
+| 隔离浏览器重连、截图管道 EOF 与读线程（#582/#627/#636） | 本仓无上游 RemoteRendererHost/Binder 管道，当前截图路径是本地 WebView 绘制；该修复不适用。本仓压缩失败处理、异常残留文件清理与有界缓存已由 `b4f5c80a` 单独修复；设备侧截图验收仍待最终候选验证。 |
 | 剪贴板模型配置与 onboarding（#626 等） | 新增原生读取桥、用户授权与凭据处理能力，非既有窄修复；需先确定本仓产品需求和读取/撤销安全边界，不自动引入。 |
 | About 恢复与焦点（#589） | 上游 `about-entry.ts` 在本仓不存在，不能复制；本仓设置返回焦点是否存在同类问题待真实页面验证。 |
 | ES 数组内建（#619/#624） | #152 按 rc.3 已见调用点补三个方法；本仓没有照搬上游完整四件套。旧 WebView 实机、其他使用者及规范边界尚待验证。 |
