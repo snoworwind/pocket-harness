@@ -3381,3 +3381,7 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
     修法：检查器读取目标行内容；旧引用用 `scripts/check-code-map-anchor-baseline.json` 保存行快照和引用数，新/移动引用必须写 `#expect=<URI 编码片段>`。刷新拒绝未标注的新坐标或旧坐标新增引用；耦合证据原有文件存在和行号范围检查保留。CI 先跑检查器自检再跑正式门禁。
 
     复验：自检覆盖内容匹配/错配、损坏 URI、源码漂移、新坐标、移到已登记坐标、耦合证据内容与越界；正式门禁和受保护刷新负控通过。此为 L1 门禁改动，不需设备验收。
+
+602. **检出字节负控用 LF 字符串删属性，CRLF 台账会让负控失效（2026-10-29）**
+
+    现象：`checkout-reviewed-bytes.test.mjs` 读入 `.gitattributes` 后用字面 `" -text\n"` 删除受测规则；在 `.gitattributes` 以 CRLF 检出的工作树上，替换不命中，所谓去属性负控实际仍带属性。真因：负控假定了宿主工作树的行尾格式，和它要覆盖的 autocrlf 风险相冲突。修法：按行尾无关的行列表精确删除唯一规则，并在隔离 Git 仓中分别使用 LF、CRLF 台账验证。复验：`node --test scripts/source-build/checkout-reviewed-bytes.test.mjs` 通过；每个目标文件在两种台账行尾下均有正控和去属性负控。

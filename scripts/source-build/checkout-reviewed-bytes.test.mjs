@@ -15,24 +15,36 @@ const paths = [
 const env = { ...process.env, GIT_CONFIG_GLOBAL: devNull, GIT_CONFIG_NOSYSTEM: '1' }
 for (const name of ['GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE', 'GIT_COMMON_DIR', 'GIT_OBJECT_DIRECTORY', 'GIT_ALTERNATE_OBJECT_DIRECTORIES']) delete env[name]
 
+function withoutPathAttribute(text, path) {
+  const lines = text.split(/\r?\n/)
+  const rule = path + ' -text'
+  const remaining = lines.filter(line => line !== rule)
+  assert.equal(lines.length - remaining.length, 1, 'expected exactly one attribute rule for ' + path)
+  return remaining.join('\n')
+}
+
 test('reviewed inputs survive autocrlf checkout; omitted attributes are detected', () => {
   for (const path of paths) {
     const bytes = readFileSync(new URL('../../' + path, import.meta.url))
-    for (const negative of [false, true]) {
-      const root = mkdtempSync(join(tmpdir(), 'reviewed-checkout-'))
-      const git = (...args) => execFileSync('git', ['-C', root, ...args], { env, stdio: 'pipe' })
-      try {
-        git('init', '-q')
-        git('config', 'core.autocrlf', 'true')
-        const target = join(root, path)
-        mkdirSync(dirname(target), { recursive: true })
-        writeFileSync(join(root, '.gitattributes'), negative ? attributes.replace(path + ' -text\n', '') : attributes)
-        writeFileSync(target, bytes)
-        git('add', '.')
-        rmSync(target)
-        git('checkout-index', '--force', '--all')
-        assert.equal(readFileSync(target).equals(bytes), !negative, path + ' negative=' + negative)
-      } finally { rmSync(root, { recursive: true, force: true }) }
+    for (const eol of ['\n', '\r\n']) {
+      for (const negative of [false, true]) {
+        const root = mkdtempSync(join(tmpdir(), 'reviewed-checkout-'))
+        const git = (...args) => execFileSync('git', ['-C', root, ...args], { env, stdio: 'pipe' })
+        try {
+          git('init', '-q')
+          git('config', 'core.autocrlf', 'true')
+          const target = join(root, path)
+          mkdirSync(dirname(target), { recursive: true })
+          const sourceAttributes = negative ? withoutPathAttribute(attributes, path) : attributes
+          const fixtureAttributes = sourceAttributes.replace(/\r?\n/g, eol)
+          writeFileSync(join(root, '.gitattributes'), fixtureAttributes)
+          writeFileSync(target, bytes)
+          git('add', '.')
+          rmSync(target)
+          git('checkout-index', '--force', '--all')
+          assert.equal(readFileSync(target).equals(bytes), !negative, path + ' eol=' + JSON.stringify(eol) + ' negative=' + negative)
+        } finally { rmSync(root, { recursive: true, force: true }) }
+      }
     }
   }
 })
