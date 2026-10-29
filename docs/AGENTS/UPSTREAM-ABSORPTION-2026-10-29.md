@@ -5,7 +5,7 @@
 - 来源仓：`kelai141/dsh-mobile-apk`。
 - 固定增量：`b665ce40..345c142c8270d8bc2a1406e6438e20995cd0e79`。compare 清单为 35 个提交、300 个变更文件，净改动 +3373/-145；合并提交计入提交数，不视为独立功能数。
 - **停止点**：`345c142c8270d8bc2a1406e6438e20995cd0e79`。本轮不检查该提交之后的任何上游提交或 PR 更新。
-- 对照本仓：吸收 screen-scope 上游修复的 PR #179 merge commit `a3509042`；本报告对应的余项在 `codex/gate-self-test-coverage` 上归并为一个 PR。
+- 对照本仓：吸收 screen-scope 上游修复的 PR #179 merge commit `a3509042`；本报告对应的余项归并在 [PR #180](https://github.com/snoworwind/pocket-harness/pull/180)，其 CI 与合并状态以 GitHub 页面为准。
 - 审查口径：固定 compare 的提交与文件清单、按生产/构建/门禁/测试/文档类别追到本仓对应路径；对可移植候选逐项核对 PR 差异与本仓真实调用链、风险边界和既有实现。上游截图、构建结果和设备记录不作为本仓验收证据。
 
 ## 吸收决策
