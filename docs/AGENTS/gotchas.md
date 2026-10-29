@@ -3426,3 +3426,7 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 608. **活动 profile 未列入 Android 备份与设备迁移排除清单（2026-10-29）**
 
     现象：`home/.dsh/profiles/` 中的活动 profile patch 可能含供应商凭据，但 API 31+ 云备份/设备迁移规则与 API 30 以下备份规则都未显式排除该目录。真因：备份清单只登记了旧配置文件和部分敏感子目录，profile 迁移后没有同步扩展排除面；`allowBackup=false` 是主控制，平台/OEM 的设备迁移行为仍需验证。修法：在两份规则中显式排除整个 profiles 目录，作为纵深保护。复验：XML 解析与两份规则均含相同排除项；未做设备验证，设备迁移行为尚未实机验证。
+
+609. **自动共享诊断副本只复用令牌脱敏，未覆盖其余凭据形态（2026-10-29）**
+
+    现象：诊断包与日志镜像的脱敏口径不同；自动镜像的 `engine.log`、`info.txt` 和 `logcat-recent.txt` 仅过 `EngineAuth.redact`，没有覆盖 PEM、授权头、Cookie、厂商密钥、敏感键值、环境变量和 URL 查询参数。真因：较早的 token 脱敏被误当成完整共享诊断出口的充分保护。修法：三类自动诊断文本和有界日志镜像统一调用 `LogSanitizer.sanitizeOrNull`，失败时丢弃对应输出。复验：新增镜像回归验证 API key、password 和 Authorization 值均不出现在共享副本；由 PR Gate 执行 JVM 测试。未做设备验证（按用户指示暂缓）。
