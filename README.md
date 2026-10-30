@@ -51,7 +51,7 @@ node scripts/source-build/run-local-source-chain.mjs
 
 ## 致谢
 
-特别感谢 [kelai141/dsh-mobile-apk](https://github.com/kelai141/dsh-mobile-apk) 项目。Pocket Harness 独立建立时，基于我们 fork 的该仓库中的 `security/hardening` 分支。
+特别感谢 [kelai141/dsh-mobile-apk](https://github.com/kelai141/dsh-mobile-apk) 项目。Pocket Harness 独立建立时基于 [snoworwind/dsh-mobile-apk](https://github.com/snoworwind/dsh-mobile-apk) 的 `security/hardening` 分支。
 
 ## 许可
 
