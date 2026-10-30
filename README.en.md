@@ -1,251 +1,54 @@
-# pocket-harness — a pocket-sized agent shell for Android
+# Pocket Harness: an Android shell for agents
 
-[中文 README](README.md)
+[中文](README.md) · [Latest release](https://github.com/snoworwind/pocket-harness/releases/latest)
 
-![DeepSeek Harness](https://img.shields.io/badge/DeepSeek_Harness-blue?style=flat&logo=DeepSeek&logoSize=auto&color=%232D5F9E)
-![Android](https://img.shields.io/badge/Android-blue?style=flat&logo=Android&logoSize=auto&color=%2397CA00)
+Pocket Harness is an Android shell for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness). It bundles the WebView UI and a Termux runtime snapshot in one APK, so an agent can use bash and device capabilities without installing the Termux app.
 
-> Independent project built from commit `cb1c315` on the `security/hardening` branch of
-> [dsh-mobile-apk](https://github.com/snoworwind/dsh-mobile-apk); the runtime is still
-> [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness). See the
-> [project baseline](docs/AGENTS/BASELINE.md) for the import boundary and identifiers that were not migrated.
+## What it does
 
-Android shell for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness): WebView UI
-over an **embedded Termux runtime snapshot** (extract-and-run, no Termux app needed), SAF directory
-bridge, keep-alive foreground service, engine watchdog, and bundled snapshot deployment and recovery. One APK to
-install: it boots a full dsh web agent that can really execute bash.
+- **Run an agent** with an embedded Linux runtime, including bash, Node.js and project plugins.
+- **Control the phone** through accessibility and Shizuku channels for UI inspection, input and screenshots.
+- **Browse the web** in a browser workbench isolated from the main UI, with page and tab management.
+- **Use a virtual display** to run and control third-party apps on a separate screen (requires Shizuku).
+- **Handle files** through Android's file picker, share entry point and SAF directory bridge.
 
-> **Project charter: maximize security and verifiability.** See [the security charter](docs/AGENTS/SECURITY-HARDENING.md) for scope, principles, accepted risks and evidence requirements.
+Model-visible capabilities are provided by plugins; the shell does not register tools directly. See the [bridge API](docs/AGENTS/BRIDGE-API.md) and plugin documentation for details.
 
-The app is named `Pocket Harness` and uses the independent package `com.snoworwind.pocketharness` (the Kotlin namespace is also `com.snoworwind.pocketharness`),
-source version and versionCode follow the [build declarations](app/build.gradle.kts), with the suffix supplied by build properties; Pocket Harness v0.14.9 has been released with the embedded engine source target `@deepseek-ai/dsh` 0.2.1-rc.3. The release smoke test passed, but full device acceptance is incomplete; see the [release notes](release/v0.14.9/notes.md). See the [project baseline](docs/AGENTS/BASELINE.md) for the migration boundary of the app name, applicationId and APK artifact prefix.
+## Download and install
 
-See the [namespace migration record](docs/AGENTS/NAMESPACE-MIGRATION-2026-10-19.md) for upgrade limitations, before/after checks and source-build progress.
-
-> **Plugin-marketplace caveat**: the built-in marketplace covers many third-party plugins, and
-> **most of them are likely unavailable or buggy on phones** (mobile vs desktop differ in WebView
-> engine / filesystem / permission model / runtime). Mobile adaptation is long-term work — treat this
-> beta as usability validation & feedback, not a production dependency.
-> Report plugin issues to the [issue tracker](https://github.com/snoworwind/pocket-harness/issues)
-> with device model / version / reproduction steps.
-
-## Features
-
-### Runtime and lifecycle
-
-- **Embedded runtime** — xz snapshot bundling node + git + bash + coreutils + dsh + plugins + pnpm +
-  python/perl/ruby; first launch extracts in 2–4 min (`refreshSnapshot`), engine listens on
-  `127.0.0.1:3080`; fully offline.
-- **Manual app upgrades** — this project removes in-app update checks, downloads and installation.
-  Download a new APK for the device ABI and install it over the existing app.
-- **Bundled snapshot deployment and recovery** — the runtime ships in the APK. Refreshes extract to
-  staging, verify completeness and swap transactionally. Interrupted deployment and historical online
-  transactions remain recoverable, preserving sessions, attachments, settings, credentials and workspaces.
-- **Keep-alive** — foreground service + 5s watchdog (relaunches a wedged engine) + 3s UI poll +
-  crash rollback gate (UndoGate).
-- **Built-in console** — a standalone interactive bash terminal (`assets/console.html`) that works
-  even when the engine is down.
-
-### AI browser (isolated WebView workbench)
-
-- A separate workbench in the right sidebar, backed by a **second WebView fully isolated** from the
-  main UI. The AI can open tabs and manage multiple pages at once; opening the sidebar lets a human
-  view several tabs simultaneously — **the UI is for humans, the AI reads pages through tools**.
-- **Resolution = CSS viewport** (document-start injection of `width=<cssW>` plus a letterboxed
-  physical rect), so `window.innerWidth` equals the requested value exactly; **PC / mobile identity**
-  is switchable (UA-CH capability gate; WebView 110 "degraded" is reported honestly).
-- The viewport **no longer collapses to 0x0** when the sidebar is collapsed (visibility uses
-  `INVISIBLE` rather than `GONE`, preserving layout, with a non-degenerate rect derived from the
-  last stage size).
-- `browser_snapshot` now renders a ref per line (previously only a count, leaving the model with no
-  clickable targets).
-- Scroll avoidance, Edge-style error page, close-to-destroy, and failure rendering with a real error.
-
-### Virtual display (run third-party apps on a separate screen)
-
-- Creates a virtual display through the **Shizuku privileged channel**, so third-party apps run on a
-  separate screen **without taking over the user's foreground**; single instance, max 1, with alias
-  reuse (`virtual-1` is always the fresh-screen number).
-- **The only workable cross-screen launch path**: the shell-side Shizuku UserService running
-  `am start --display <id> -n <component>` (fixed argv, component resolved first via
-  `cmd package resolve-activity`). The other three paths were measured and do not work
-  (`monkey --display` has no such option / shell `am start` is unreliable / in-process
-  `setLaunchDisplayId` is rejected by `SafeActivityOptions`).
-  Model-facing usage: `android_app_launch { pkg, screenId: "virtual-N" }`.
-- **Coordinate input** — absolute `x/y` plus `screenId` on a virtual display (injected through
-  `input -d <displayId>`, leaving the real screen untouched); normalized `nx/ny` is **explicitly
-  rejected** on virtual displays (an ambiguous denominator silently taps the real screen).
-- **Screenshot respects the target** — both `android_screenshot { screenId }` channels now land on
-  the target displayId and report that screen's own pixel dimensions as the resolution anchor
-  (previously the ADB fallback ignored `screenId` and captured the real screen).
-- Aspect-preserving fit (letterboxed and centered by content aspect ratio, never stretched),
-  10-minute idle reclaim, and a "phone control" settings section with force-destroy (triple-tap).
-
-### Phone control (accessibility + Shizuku, dual channel)
-
-- **Accessibility channel** — semantic tree / ref actions / virtual-display semantic tree.
-  **Shizuku privileged channel** — executes system commands as uid 2000 (`screencap` / `uiautomator` /
-  `dumpsys` / `input`, read-only and input classes only; system-configuration writes are always rejected).
-- **ref addressing** — node handles are retained at dump time so relocation never re-walks
-  `childPath`; the window id is pinned when the tree is built (focus changes no longer switch trees);
-  the UI cache TTL is 10 minutes.
-- **screenId triple** — `screenId` / `displayId` / `scope` are backfilled per entry, and `guard()`
-  resolves aliases asynchronously (a virtual-display alias to a dynamic displayId must ask the
-  shell-side registry; the synchronous surface cannot do it).
-- **"Phone control" settings section** — Shizuku status and guidance, screen scope, virtual-display
-  scale, floating-window toggle, accessibility entry, force destroy.
-
-### Attachments and files
-
-- **Paperclip pop-up menu** (DSH-native visuals): the paperclip shows "Upload attachment / Upload
-  image", and it opens on a **single tap** (no more double-tap). The two rows go to the **system file
-  picker** and the **system photo gallery** respectively (an explicit image type routes to
-  `PickMultipleVisualMedia`, the system photo picker on API 33+).
-- **File-to-session** — "Open with / Share" auto-jumps into this app and forces a fresh temp workspace
-  session for the file; temp workspaces get a 7-day TTL auto-cleanup.
-- **SAF bridge** — `pickDirectory` maps the chosen directory to a real path.
-
-## Download / install
-
-The ARM64 APK for Pocket Harness v0.14.9 is [formally released](https://github.com/snoworwind/pocket-harness/releases/tag/hardening-source-625fd8e0311d-40473155658-1). The source chain builds ARM64 only and names artifacts
-`pocket-harness-v<version>-source-arm64.apk`, signed with the independent release key held in repository secrets. See the [release notes](release/v0.14.9/notes.md) for its device-acceptance scope and limitations.
+The current release is **v0.14.9**, with ARM64 APKs only: [release notes and acceptance scope](release/v0.14.9/notes.md) · [GitHub Release](https://github.com/snoworwind/pocket-harness/releases/tag/hardening-source-625fd8e0311d-40473155658-1).
 
 ```sh
-adb install -r -t <apk>    # in-place upgrade, same signature
+adb install -r -t <apk>
 ```
 
-**The ABI must match the device.** A mismatch crashes the engine on start — node ELF `EM_X86_64` vs
-`EM_AARCH64`. Use the arm64 package on real hardware and ARM64 Android emulators; x86_64 emulators are not supported.
+Match the APK ABI to your device; x86_64 emulators are not supported. On first launch or after an in-place upgrade, the runtime snapshot takes several minutes to extract. Wait for it to finish and do not force-stop the app during extraction. Virtual displays and privileged shell features require Shizuku to be installed and authorized.
 
-> **After an in-place upgrade, wait for the first extraction to finish** (snapshot fingerprint flip),
-> and do not force-kill the app while it runs.
+Third-party marketplace plugins have not all been adapted for phones and may be unusable or buggy. Do not rely on them as production dependencies. The current release passed its smoke test, but full three-layer device acceptance is incomplete; see the release notes for details.
 
 ## Build
 
-This project only allows source-chain builds; it does not depend on the coordination repo and does not
-read the legacy LFS base archives. Current source builds are ARM64 only.
+APK files must be produced through the source-build chain. Only ARM64 is currently supported. To start a cloud build:
 
-```bash
-# GitHub Actions: build the current commit on main
+```sh
 gh workflow run build-apk-source.yml --repo snoworwind/pocket-harness --ref main
-# Linux / WSL: builds the committed HEAD in an isolated checkout
+```
+
+For a local Linux / WSL source build (committed `HEAD` only):
+
+```sh
 node scripts/source-build/run-local-source-chain.mjs
 ```
 
-Cloud source-build runs provide the APK and provenance as Actions artifacts. The optional draft flow
-creates an unpublished pre-release; Pocket Harness v0.14.9 is the current published release. Local
-prerequisites, artifact scope and checks are in [build-and-env.md](docs/AGENTS/build-and-env.md#github-actions-来源构建入口2026-10-17); delivery
-boundaries are in [RELEASE.md](docs/RELEASE.md#5-来源链预发布草稿2026-10-17-按用户决定). A green build
-is not device acceptance.
+See [build and environment](docs/AGENTS/build-and-env.md) and the [release policy](docs/RELEASE.md) for prerequisites, artifacts and verification requirements.
 
-## Bridge protocol v1 (`window.androidBridge`)
+## Project docs
 
-The shell exposes **51 `@JavascriptInterface` methods**; the page feature-detects through
-`androidBridge.version`, which keeps APK and dsh versions decoupled.
-
-**Synchronous getters**
-
-| Method | Purpose |
-|---|---|
-| `version` | App version string, for feature detection |
-| `getSystemDark` | System dark mode (works around some vendors' broken `matchMedia`, used for the first-frame theme) |
-| `checkEngine` | Probes `127.0.0.1:3080`; JSON `{running, latencyMs, error?}` |
-| `hasAllFilesAccess` | Whether "All files access" is granted |
-| `getPickToken` | One-shot session token for the directory-picker bridge (validated by the engine-side pick endpoint) |
-| `copyText` | Writes to the system clipboard (fallback when WebView `clipboard.writeText` is denied) |
-| `getDevLogEnabled` / `setDevLogEnabled` | Dev-log switch fact (refuses optimistic reporting) |
-| `getImmersiveMode` / `setImmersiveMode` | Immersive status bar (authoritative shell-side value) |
-| `getOverlayEnabled` / `setOverlayEnabled` | Overlay toggle |
-| `getScreenScope` / `setScreenScope` | Screen scope (virtual-only / real-only / all) |
-| `getVdisplayScale` / `setVdisplayScale` | Virtual-display resolution scale |
-| `getVdisplayFloatEnabled` / `setVdisplayFloatEnabled` | Auto floating window on background |
-| `a11yStatus` | Accessibility control-channel status JSON |
-
-**Browser workbench**
-
-| Method | Purpose |
-|---|---|
-| `browserHostStatus` | Workbench status |
-| `browserHostShow` | Open / reopen (including the zero-arg overload — the WebView bridge matches by actual arity) |
-| `browserHostHide` / `browserHostClose` | Hide / close-and-destroy the current page |
-| `browserHostReload` | Reload (implies `browserHostShow`) |
-| `browserHostBounds` / `browserHostViewport` | Stage geometry / resolution (CSS viewport) |
-| `browserHostIdentity` | Identity profile switch (PC / mobile), payload `{profile, ua}` |
-
-**Virtual display**
-
-| Method | Purpose |
-|---|---|
-| `vdisplayStatus` / `vdisplayCreate` / `vdisplayDestroy` | Status / create (idempotent) / destroy |
-| `vdisplaySelect` | Select the presentation target (only owned virtual aliases are selectable) |
-| `vdisplayBounds` | Publishes sidebar stage geometry (native cover-view alignment) |
-| `forceDestroyVdisplay` | Force-destroys all virtual displays (same semantics as the settings section) |
-
-**Commands**
-
-| Method | Purpose |
-|---|---|
-| `pickDirectory` | SAF directory pick; the result returns asynchronously via `window.__dshBridge.onDirectoryPicked(callbackId, path)` |
-| `openPathChooser` | Path picker (workspace / shared dirs) |
-| `openNativePath` | "Open with another app" for a native path |
-| `settingsPath` / `exportSettingsDocument` / `exportConfig` / `importConfig` | Settings-document import / export |
-| `keepScreenOn` / `showNotification` | Keep screen on / notification test channel |
-| `requestAllFilesAccess` | Opens the system "All files access" grant page (special permission) |
-| `openA11ySettings` / `unlockRestrictedSettings` | Accessibility settings / one-tap unlock of restricted settings on Android 13+ |
-| `restartEngine` / `shutdownToGuide` / `reloadWebUI` / `openConsole` | Engine and UI lifecycle |
-| `incomingWorkspacePath` | Incoming-session workspace path |
-
-## Tool surface (model-visible capabilities)
-
-**Every AI-visible capability comes from a plugin**; the shell never registers tools directly. There
-are currently 45 tools, disclosed progressively by capability group (call `android_capabilities`
-first — only then do the tools appear in the list):
-
-- **phone** (14): `android_ui_dump` / `android_ui_click` / `android_ui_input` / `android_ui_scroll` /
-  `android_ui_tree` / `android_ui_detail` / `android_ui_global` / `android_screenshot` /
-  `android_screen_list` / `android_app_launch` / `android_device_info` / `android_act_input` /
-  `android_web_dump` / `android_env_prepare`
-- **browser** (19): `browser_open` / `browser_snapshot` / `browser_click` / `browser_type` / … (17 more)
-- **virtual-display** (3): `android_vdisplay_create` / `android_vdisplay_destroy` / `android_vdisplay_status`
-- plus bridge (4), model-capability (2), linux-env (2), file-open (1)
-
-**Cross-screen usage**: any tool that accepts `screenId` runs on a virtual display when passed
-`"virtual-N"` (`android_screen_list` lists the current aliases and scope); the default `real` means
-the physical screen.
-
-## Permissions
-
-| Permission | Purpose |
-|---|---|
-| `INTERNET` | WebView + engine probe |
-| `POST_NOTIFICATIONS` | Notification channel (runtime request on API 33+) |
-| `FOREGROUND_SERVICE` + `FOREGROUND_SERVICE_DATA_SYNC` | Keep-alive foreground service |
-| `MANAGE_EXTERNAL_STORAGE` | "All files access" (required for external workspaces; special permission, granted manually) |
-
-SAF directory and image picking need no permission. Virtual displays and privileged shell require the
-user to install, start and authorize **Shizuku**.
-
-## Version history
-
-The full version history lives in [`docs/AGENTS/changelog-archive.md`](docs/AGENTS/changelog-archive.md)
-(reverse chronological, newest first). The development map and pitfall library are in
-[`AGENTS.md`](AGENTS.md) and [`docs/AGENTS/gotchas.md`](docs/AGENTS/gotchas.md).
+- [Security goals and hardening principles](docs/AGENTS/SECURITY-HARDENING.md)
+- [Module and architecture map](docs/AGENTS/modules.md) · [Full version history](docs/AGENTS/changelog-archive.md)
+- [Device acceptance protocol](docs/AGENTS/emulator-test-protocol.md)
+- [Development entry point and repository conventions](AGENTS.md)
 
 ## License
 
-MIT, with both copyright notices: the original project
-[`kelai141/dsh-mobile-apk`](https://github.com/kelai141/dsh-mobile-apk) and this repository
-[`snoworwind/pocket-harness`](https://github.com/snoworwind/pocket-harness). This project is a modified
-version of the original and **retains its copyright notice**; the modifications are released under the
-same MIT terms. See [LICENSE](LICENSE).
-Third-party components under their own licenses (see the dependency notices). GPL compliance:
-the full copyleft text ships in three forms — snapshot `usr/share/LICENSES/`, repo `LICENSES/`, and
-APK `assets/licenses/`.
-
-## Thanks
-
-Thanks to the [`kelai141/dsh-mobile-apk`](https://github.com/kelai141/dsh-mobile-apk) repository and its
-community for the code, documentation, and experience that provide an important foundation for this
-project.
-
-Development and maintenance conventions live in [`AGENTS.md`](AGENTS.md).
+MIT; original project copyright notices are retained. See [LICENSE](LICENSE). Third-party components are distributed under their respective licenses.
