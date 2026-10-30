@@ -51,7 +51,7 @@ See [build and environment](docs/AGENTS/build-and-env.md) and the [release polic
 
 ## Acknowledgments
 
-Special thanks to [kelai141/dsh-mobile-apk](https://github.com/kelai141/dsh-mobile-apk) and its `security/hardening` branch, which provided the foundation for establishing Pocket Harness as an independent project.
+Special thanks to [kelai141/dsh-mobile-apk](https://github.com/kelai141/dsh-mobile-apk). Pocket Harness was established as an independent project from the `security/hardening` branch in our fork of that repository.
 
 ## License
 
