@@ -49,6 +49,10 @@ node scripts/source-build/run-local-source-chain.mjs
 - [设备验收规范](docs/AGENTS/emulator-test-protocol.md)
 - [开发入口与仓库约定](AGENTS.md)
 
+## 致谢
+
+特别感谢 [kelai141/dsh-mobile-apk](https://github.com/kelai141/dsh-mobile-apk) 项目。Pocket Harness 独立建立时，基于我们 fork 的该仓库中的 `security/hardening` 分支。
+
 ## 许可
 
 项目采用 MIT 许可，保留原项目版权声明；详见 [LICENSE](LICENSE)。第三方组件按各自许可发布。
