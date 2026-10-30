@@ -769,8 +769,7 @@
     **规模与纪律**：models.dev 实测 **223 provider / 8181 模型 / 压缩后约 1.3 MiB**；只保留上列字段（其余全丢），落盘前先量尺寸，超 `MODELS_DEV_MAX_BYTES`（8 MiB）拒写。
     **网络只在 `ensureModelsDev` 一处**：tick 路径传 `allowNetwork = false` 走**纯缓存读**（`$DSH_HOME/models-dev.json`），**0 次网络**；
     证据 = E-P2-4 单测（自动补给路径 fetch 计数为空 + 反证证明该计数面确实能观测 fetch + tick 的 describe 次数不因 S3/S5 合流增加，上界仍为 2）。
-    **合流不是替换**：[0.14.2-preview-SHIZUKU-RESET-AND-MODEL-FILL.md](../../../docs/0.14.2-preview-SHIZUKU-RESET-AND-MODEL-FILL.md) §1 的对比结论是
-    **两个实现合流**（S3/S5 作为新增两级插进既有四级），不是用一个替换另一个。
+    **合流不是替换**：实现中的 S3/S5 是新增两级，插入既有四级能力来源链，而非用一个替换另一个；当前实现见 [`capability-probe.ts`](../../plugins/dsh-model-capability/src/capability-probe.ts)。
     **为什么记进坑位**：这类缺陷的形态是「界面看起来对、数据是编的」——最坏的一种，因为没有任何断言会红。
 
 180. **快照指纹相同 ≠ 插件内容相同：设备验收必须逐文件核 sha256（2026-09-26，task-56 实证）**
@@ -1305,7 +1304,7 @@
 232. **su/Binder本地超时或杀客户端不是特权后代结算，应用重启也不能清UNKNOWN（0.14.3源码修订）**：
     **真因**：root helper/远端RPC可能已写盘，destroyForcibly、pipe close、reader join只描述本地进程/管道；同boot进程重建丢内存标志会重新派发并与旧helper并行。裸读tryLock还可插队公平写者。
     **修法**：UID0真正派发前RootMaintenanceLease同步commit；Context栅栏锁前/锁内读lease，公平零毫秒timed读锁；helper只有完整JSON+确定exit0/2可finish，已确认部分信封仍ok=false。exit/drain/read/cleanup/Binder未知持续隔离新派发、维护、startup；同boot app restart/recreate不清，只有同boot-id/boot-count方案的真boot变化清。无手工清除。
-    **证据**：当前源码与RPC wiring fixture在场，未执行；真实boot/late ack/commit失败与副作用反证见 [外部测试需求](<docs/0.14.3-TEST-REQUIREMENTS.md>)。不沿用旧head或声称已测安全。
+    **证据**：源码与 RPC wiring fixture 的登记状态见 [Root维护记录](ROOT-MAINTENANCE.md) §6；真实 boot/late ack/commit 失败与副作用反证须按[模拟器验收规范](emulator-test-protocol.md)留证。不沿用旧 head 或声称已测安全。
 
 233. **cleanup也能阻塞waiter；不完整capture不可当ready文件（0.14.3源码修订）**：
     **真因**：直接destroy/close可能永久等待，晚到drainer继续写让“已返回partial”变化；发布仍被writer占用的spool会把半文件交后续pull。

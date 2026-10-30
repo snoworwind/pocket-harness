@@ -3,7 +3,7 @@
 [![awesome · DSH plugin](https://awesome-dsh-plugin.com/badge.svg)](https://awesome-dsh-plugin.com)
 [![CI](https://github.com/lire1131/dsh-undo-savepoint/actions/workflows/ci.yml/badge.svg)](https://github.com/lire1131/dsh-undo-savepoint/actions/workflows/ci.yml)
 
-> English | [中文](README.md) | [Changelog](CHANGELOG.en.md)
+> English | [中文](README.md) | [Changelog](https://github.com/lire1131/dsh-undo-savepoint/blob/master/CHANGELOG.en.md)
 
 **An undo/rollback system for [DeepSeek Harness (DSH)](https://github.com/deepseek-ai/deepseek-harness): every plugin install, skin switch or settings change is auto-snapshotted; manual saves whenever you want; one-click undo / redo / restore to any version. And when DSH won't even boot, the offline WebUI / GUI / CLI still have your back.**
 
@@ -31,7 +31,7 @@ Dreading DSH crashes? Afraid a tiny edit becomes a disaster? One-click rollback 
 | **Crash attribution** | After an abnormal exit, classifies the crash by log signature (`session-corrupt` / `bundle-check` / `patch-tree`), names the concrete last-known-good snapshot and offers a one-click rollback — no guessing |
 | **Session-file scan & repair** | `undo_scan` scans `<home>/sessions/**/session.jsonl.zstd`: single-frame layout violations (the 8/18 crash root cause) and synthetic-closer seq overlap (interrupted-turn seq overlap after undo/snapshot restores) are repaired in place (original kept as `.bak` + quarantine copy) with triple verification; undecodable files are only isolated, never touched. Offline via `dsh-undo.ps1 scan [--fix]` (requires Node ≥22.15; degrades to a notice on Node 20) |
 | **One-click diagnostic & boot preflight** | Store side: snapshot store writability, blob integrity (missing/orphan), settings health, snapshot scale. Boot side preflights the hard failures that kill DSH before any plugin is mounted: profile manifest BOM/JSON/shape, every declared `dsh.profile.bundles` entry resolvable, `patchReload` value, `link:` junction targets, duplicate loader ids in patch files, unfinished previous boot. Structured ok/warn/error report; repairable checks are marked `[fixable]` and can be repaired in one step (`undo_doctor fix=true` in chat, `dsh-undo.ps1 doctor -Fix` offline, or the "Repair fixable" button in the standalone WebUI diagnostic panel), with a manual snapshot taken before and an automatic re-check after |
-| **Safe cross-machine migration** | Restore preflights missing plugins and warns clearly; snapshots export/import as one-click ZIP, optional AES-256-GCM encryption (see [docs/migration.en.md](docs/migration.en.md)) |
+| **Safe cross-machine migration** | Restore preflights missing plugins and warns clearly; snapshots export/import as one-click ZIP, optional AES-256-GCM encryption (see the [migration guide (Chinese)](https://github.com/lire1131/dsh-undo-savepoint/blob/master/docs/migration.md)) |
 | **Offline emergency kit** | WebUI + GUI window + CLI + auto-created desktop shortcut: undo / restore / SAFE MODE / crash banner / rollback log — everything works when DSH is down |
 | **Auto slimming** | Orphan-blob GC (`undo_compact`) frees disk; size gates keep the plugin tiny (~0.6 MB) with zero runtime dependencies |
 

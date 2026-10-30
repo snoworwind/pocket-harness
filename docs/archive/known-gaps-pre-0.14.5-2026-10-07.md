@@ -6,7 +6,7 @@
 
 ## 0.14.3 当前交接（源码已登记；**开发方已构建 + 代码层已验，设备三层验收未做**）
 
-用户当前停止点为#308正常GitHub CI/review合并、完整0.14.3同步、arm64/x86_64 tester APK交付。外部tests/typecheck/门禁反证/CDP/ADB由用户另行安排，本source/doc任务未执行；“待外测”不作为暂停合并的占位阻塞，但也不等于安全、功能、三层或发布验收通过。开发方侧本轮**已构建**（`build-apk-013.ps1 -Suffix ""` exit 0，双 ABI 全链 49 条门禁 PASSED / 0 FAILED）、**代码层已跑**（Kotlin 965 项通过，含 #309 的 19 例）并产出 tester APK 与 SHA256（见 `docs/0.14.3-TEST-REQUIREMENTS.md` §8）。**三层设备验收（代码/CDP/ADB 用户层）明确未做**，由外部测试人员执行；CI/review 与本地构建都不能替代它。发布未授权。
+用户当前停止点为#308正常GitHub CI/review合并、完整0.14.3同步、arm64/x86_64 tester APK交付。外部tests/typecheck/门禁反证/CDP/ADB由用户另行安排，本source/doc任务未执行；“待外测”不作为暂停合并的占位阻塞，但也不等于安全、功能、三层或发布验收通过。开发方侧本轮**已构建**（`build-apk-013.ps1 -Suffix ""` exit 0，双 ABI 全链 49 条门禁 PASSED / 0 FAILED）、**代码层已跑**（Kotlin 965 项通过，含 #309 的 19 例）并产出 tester APK 与 SHA256；当时的外测清单未随该历史归档保留。**三层设备验收（代码/CDP/ADB 用户层）明确未做**，由外部测试人员执行；CI/review 与本地构建都不能替代它。当前设备验收流程见[模拟器验收规范](../AGENTS/emulator-test-protocol.md)。发布未授权。
 
 | 项 | 当前源码事实 | 剩余职责 / 外部证据 |
 |---|---|---|
@@ -29,7 +29,7 @@
 | 缺口（本轮如实登记）：隔离 BrowserHost 页面内的插件失败 | 不在本契约内——本轮只覆盖主 WebView。 | 隔离页无桥、不走 `onConsoleMessage` 的同一路由，需要单独设计（未排期）。 |
 | 缺口（本轮如实登记）：WebView 内核过旧导致的 polyfill 缺口（坑 61 族） | 回滚对这类失败无效（要修的是注入脚本对新内核的可解析性，不是插件清单）。 | 属另一条线（`dsh-host-web-compat/scripts/smoke-injections.mjs` 防线③ 目前红，见执行地图 S01 可疑点）。 |
 
-完整限制见 [Root维护](../AGENTS/ROOT-MAINTENANCE.md)；逐项外验见 [测试需求](../0.14.3-TEST-REQUIREMENTS.md)。以下历史章节保留其当时版本/设备证据，不作为0.14.3现状或新head验收。
+完整限制见 [Root维护](../AGENTS/ROOT-MAINTENANCE.md)；当前设备验收流程见[模拟器验收规范](../AGENTS/emulator-test-protocol.md)。以下历史章节保留其当时版本/设备证据，不作为0.14.3现状或新 head 验收。
 
 ## 8. 历史待办与缺口（需结合当前源码复核）
 

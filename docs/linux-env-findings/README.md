@@ -1,10 +1,10 @@
 # DSH Linux 环境调查 · 文档索引
 
-> main 已集成 Termux PRoot runtime/bootstrap `0.6.1` 的 rootfs `/dev/shm` 修复，来源构建和签名已通过 run [39899439859](https://github.com/snoworwind/pocket-harness/actions/runs/39899439859)，草稿标签为 [`hardening-source-511b7e38e237-39899439859-1`](https://github.com/snoworwind/pocket-harness/releases/tag/hardening-source-511b7e38e237-39899439859-1)。用户提供的新设备复现还发现 PRoot seccomp exit 182 和 Debian login profile 覆盖共享 Node PATH；当前源码推进 0.6.2 候选修复，尚待来源 APK 构建与 ARM64 设备验收，详见[修复记录](REMEDIATION-ANDROID-PROOT-2026-10-23.md)。当前架构、安全限制、来源与待验项目见[PRoot 迁移记录](PROOT-MIGRATION-2026-10-22.md)。
+> runtime/bootstrap `0.6.2` 已包含在 0.14.9 来源提交 `625fd8e0311d`；来源构建、独立 APK 核验和签名由 run [40473155658](https://github.com/snoworwind/pocket-harness/actions/runs/40473155658) 通过并发布。PRoot 安装和工具执行仍未完成 ARM64 设备端到端验收，不能据构建成功宣称 Linux 可用。此前 0.6.1 的 `/dev/shm` 修复与草稿构建 run [39899439859](https://github.com/snoworwind/pocket-harness/actions/runs/39899439859) 是历史状态。0.6.2 的缺陷与源码修复见[修复记录](REMEDIATION-ANDROID-PROOT-2026-10-23.md)；当前架构、安全限制、来源与验收边界见[PRoot 迁移记录](PROOT-MIGRATION-2026-10-22.md)。
 
 ## 当前结论
 
-1. **实现路线已更换，功能仍待验收。** Termux 官方签名仓库提供的 ARM64 PRoot 包与锁定依赖用于运行 Debian/glibc rootfs。Android app 域中的 PRoot 执行入口、guest ELF、DNS、apt/dpkg 和多级子进程仍需来源 APK 与 ARM64 设备证据。
+1. **实现路线已更换，功能仍待验收。** Termux 官方签名仓库提供的 ARM64 PRoot 包与锁定依赖用于运行 Debian/glibc rootfs；当前 0.14.9 来源 APK 已包含 runtime/bootstrap 0.6.2。Android app 域中的 PRoot 执行入口、guest ELF、DNS、apt/dpkg 和多级子进程仍需 ARM64 设备证据。
 2. **PRoot 不是安全沙箱。** guest 程序仍按应用 UID 执行；`-0` 不会授予 Android root。宿主 `/proc` 不映射给 guest，以减少进程元数据和 app 私有路径暴露；工作区路径 allowlist 仍不是同 UID 强制隔离。
 3. **硬链接降级有明确代价。** 被 Android 拒绝的普通文件硬链接最多复制 1 GiB；副本不共享 inode、会多占空间，也可能与依赖硬链接的安装/更新语义不同，必须用真实 dpkg 场景验证。
 

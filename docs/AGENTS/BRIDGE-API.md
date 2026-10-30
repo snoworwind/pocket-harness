@@ -38,13 +38,13 @@ HTML 文档预览使用 `sandbox="allow-scripts"` 的 opaque 子帧：它能看�
 
 列式载荷的 `gen`、`rot`、`scr`、`d/p/f/c/k/r/w/t/s`、`b` 与 `o` 都按整数消费；解码器对这些字段拒绝小数、非有限值和非数字数组成员，避免符号表索引、位标志、父行句柄或坐标在 JavaScript 整数转换时被静默改写。`scr` 必须恰有宽、高两项；`b` 必须恰有每行四项。缺省或 `null` 的 `rot` 仍按兼容口径取 0。解码失败关闭，不产出部分节点表。壳侧编码器与引擎解码器的跨语言判据见 `scripts/check-protocol-v2.mjs`。
 
-## 2. 0.14.3 当前增量
+## 2. 0.14.3 增量（历史快照，不代表当前构建或验收状态）
 
 ### 2.1 Root状态、维护与结果
 
 rootGrantState返回有效AI授权（raw switch且当前versionCode consent），rootAccessState仅读应用su状态，不触发弹窗。requestRootAccess显式发起有界真实UID检测，不保证管理器弹窗；setRootConsent(false)同时关开关。root Shizuku与显式su授权为替代路径，uid2000不是root。repairRootOwnership立即返回repair-started/repair-running，rootGrantState().ownership轮询结果。
 
-ownership包含running/overdue/startedAt/completedAt/elapsedMs/operation/result?/lease?；当前耐久lease未finish即保持pending、completedAt=0，旧result不能覆盖当前UNKNOWN。UID0派发前耐久commit，完整回执才finish；部分已确认helper信封可结算但不报修复成功。timeout/drain/read/cleanup/Binder未知阻止新派发/维护/启动，不fallback重放；同boot应用重启或resetShizuku不清lease，只有同epoch方案真boot变化可解除。详见 [Root维护契约](<dsh-mobile-apk/docs/AGENTS/ROOT-MAINTENANCE.md>)。
+ownership包含running/overdue/startedAt/completedAt/elapsedMs/operation/result?/lease?；当前耐久lease未finish即保持pending、completedAt=0，旧result不能覆盖当前UNKNOWN。UID0派发前耐久commit，完整回执才finish；部分已确认helper信封可结算但不报修复成功。timeout/drain/read/cleanup/Binder未知阻止新派发/维护/启动，不fallback重放；同boot应用重启或resetShizuku不清lease，只有同epoch方案真boot变化可解除。详见 [Root维护契约](ROOT-MAINTENANCE.md)。
 
 Shizuku v4以追加configuration()回读完整app UID/anchor，AIDL旧transaction不重编号；root执行点查真实UID和有效consent。每个pull/push chunk在RPC紧前复查，回包offsetFact=acknowledged-bytes、partial/noReplay是事实，不表示失败chunk毫无副作用。exec/capture回包保留exitTimedOut/drainTimedOut/cleanupIncomplete/truncated/readError/resultComplete/spoolReady；私有不完整capture不发布路径。
 
@@ -64,7 +64,7 @@ exportConfig()/importConfig()/settingsPath()/exportSettingsDocument()现由MainA
 
 exportConfig返回实际path与可能含provider密钥的共享目录警告hint；importConfig只读exports/config下匹配当前格式的文件、先保存.import-backup再原子替换。旧共享settings.yaml不覆盖已迁移patch；settingsDocumentExport是用户显式公共副本动作，不把private配置目录授予外部app。DirectoryPickerController仍在同名源码文件中承载SAF，未退役。
 
-页面恢复由ForegroundPageRecoveryPolicy限定前台generation和一次quiet retry/recreate，不把destroyed WebView重新reload；Activity recreation重绑所有holder且保留userClosed/userShutdown，不重启共享引擎。新增fixture仅登记、未执行；详见 [外部测试需求](<docs/0.14.3-TEST-REQUIREMENTS.md>)。
+页面恢复由ForegroundPageRecoveryPolicy限定前台generation和一次quiet retry/recreate，不把destroyed WebView重新reload；Activity recreation重绑所有holder且保留userClosed/userShutdown，不重启共享引擎。0.14.3 交接中新增fixture当时仅登记、未在该轮执行；这不是当前 CI 或设备验收状态。当前设备验收流程见[模拟器验收规范](emulator-test-protocol.md)。
 
 ## 3. 历史增量（不作为当前构建或验收证据）
 

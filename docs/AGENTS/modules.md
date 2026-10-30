@@ -47,7 +47,7 @@
 | **RootAccess.kt** | 应用 su 授权检测、最后执行点授权门与固定属主维护 | `requestGrant` 是显式、有界 uid 检测，不承诺管理器弹窗；`execRoot` 经有效 AI 同意与 `RootExecutionFence.command`；`repairOwnership` 仅从已安装签名 APK 运行 `RootRepairMain`，五个固定参数、`ProcIo.readBoundedMillis`、完整 JSON 与退出码联合校验，不执行 find/chown/restorecon 文本链；**2026-10-01 结算硬化**：`execPrivileged` 拉不起 su（spawn 异常）⇒ granted 缓存立即降级 denied（缓存不得比 su 本体活得久），`su-exec-failed` 按「未派发」结算租约（不进 UNKNOWN 隔离）；**2026-10-02 派发证据**：`execPrivileged` 在真正派发前，若此刻有在飞租约就 `markDispatched(context, "su")`——`synchronized` 证明不了外部 su 子进程已退出，故此后只允许用户显式清除，不再自动清算。 |
 | **OwnershipRepairCore.kt** / **OwnershipRepair.kt** | 共享有界 DFS 与 Android held-FD 适配 | core 可注入 fake backend；cap/depth/deadline 在访问/变更前检查；Android O_PATH/O_NOFOLLOW pin、fstat/fchown、protected_hardlinks 前置；失败/截断/未验证变更不报成功，SELinux 不重标。 |
 | **RootRepairMain.kt** | su 固定 signed-APK helper | `parse` 验证完整 app UID、可信 anchor、相对路径、cap/deadline；`main` 仅输出一个有界 JSON，成功 exit0，否则 exit2。 |
-| **RootExecutionFence.kt** / **RootOwnershipJobs.kt** | Context 感知公平读写栅栏与 honest pending single flight | 命令零毫秒 timed read tryLock、维护 write；锁前/锁内查耐久 lease；UI立即回、caller最多30s；每租约 pending/UNKNOWN 不被旧结果或 worker返回清掉，关闭caller不取消共享worker。详见 [Root维护](<dsh-mobile-apk/docs/AGENTS/ROOT-MAINTENANCE.md>)。 |
+| **RootExecutionFence.kt** / **RootOwnershipJobs.kt** | Context 感知公平读写栅栏与 honest pending single flight | 命令零毫秒 timed read tryLock、维护 write；锁前/锁内查耐久 lease；UI立即回、caller最多30s；每租约 pending/UNKNOWN 不被旧结果或 worker返回清掉，关闭caller不取消共享worker。详见 [Root维护](ROOT-MAINTENANCE.md)。 |
 | **LocalDocs.kt** | 0.14.2-fx-2-root.1 新增：APK 内本地文档唯一出口（免责声明通道） | 与 `ExternalLinks` 同形但**不走 https 判据**（assets 不是外链）：页面只传 key（`root-disclaimer`），登记表 `TARGETS` 在壳侧；`read` 从 assets 读全文，`open` 用 AlertDialog+WebView 应用内渲染（`loadDataWithBaseURL` 固定 asset 路径）；文档缺失 → `missing-asset`（打包漏文档 fail-closed 报出来，不白屏） |
 | **ShizukuTransport.resetConnection(context)** | 设置页「重置链接」与超时恢复 | 立即作废 `activeAttempt`、清空 `service/connectedAt/configuredForAge`，放行旧代次 latch，失效 caps 缓存；`discardOnMain` 在 SDK 回调所在主线程依次 `remove=false` 注销缓存、`remove=true` 移除远端。每次绑定有独立回调与 latch；SDK 注册、注销和重建按主线程队列排序。重置响应 `ok=true/reset=true` 表示动作已提交，通道事实由 status 回读；主线程调用者不等待建链。 |
 | **ControlCarrier.invalidateShizukuCache()** | 0.14.2 P1 新增函数：令 `shizukuReady` 缓存立即失效 | **只把时间戳置 0、不顺带改 ready 值**——下一次读取会重新真问一次 Shizuku（唯一权威面）；猜一个值就把「缓存失效」变成了「伪造状态」 |
@@ -100,7 +100,7 @@
 | S6 | `active-probe` | 仅在调用方显式批准时（会发真实最小补全请求） |
 
 **不变量**：没有任何一级报出的能力**保持缺失（绝不猜测）**；每个报出的能力**都带 `source`**；`reasoningEfforts` 是**逐模型**值，本模块**从不**产出供应商级设置。
-**合流不是替换**：S3/S5 是插进既有四级的两级，不是用一个实现替换另一个（判据见 `docs/0.14.2-preview-SHIZUKU-RESET-AND-MODEL-FILL.md` §1）。
+**合流不是替换**：S3/S5 是插进既有四级的两级，不是用一个实现替换另一个（实现见 [`capability-probe.ts`](../../plugins/dsh-model-capability/src/capability-probe.ts)）。
 
 ### 4.2 快照面板的客户端所有权
 
@@ -108,7 +108,7 @@
 
 `dsh-client-ui-responsive/src/client/mobile/incoming-runtime.ts` 是来件草稿的 Cordis 适配边界：`sessions` 负责 refresh/scope，`uiWorkspace` 负责 connect/openSession；来件只有在目标 scope 建立后才 claim 文件并交给正常 composer 草稿路径。导航服务归属与测试见 `gotchas.md` 坑 472。
 
-## 0.14.3 新模块与职责（源码登记，未执行验证）
+## 0.14.3 新模块与职责（历史登记；当时未执行验证）
 
 | 新模块 | 职责 / 关键入口 |
 |---|---|
@@ -132,7 +132,7 @@
 
 共享 core/Android held-FD/helper 已在上表逐项登记。新增同文件类型：ShizukuCaptureIo（private .part、immutable snapshot、只完整publish）；StartupFlowOwnership（CAS generation/token）；StartupOwnershipRetryBudget（六次2/4/8/16/30/30秒）；WatchdogV2.WakeLockOwner 与 EpochResourceOwner（按Service epoch持有/迟到释放）。MainActivity配置桥现接 EngineManager，legacy ConfigTransfer 未挂载；同文件 DirectoryPickerController 仍服务 SAF，不误删其用途。
 
-新增JVM覆盖账本见 [执行地图](<dsh-mobile-apk/docs/AGENTS/EXECUTION-MAP.md>) 与 [外部测试需求](<docs/0.14.3-TEST-REQUIREMENTS.md>)；“文件在场”不等于用例已运行。0.14.3尚未构建，不写APK/hash/测试通过。
+当时登记的JVM覆盖账本见[执行地图](EXECUTION-MAP.md)；“文件在场”不等于用例已运行。0.14.3 阶段未构建的记录仅描述当时交接状态，不代表当前版本；当前构建与发布状态见[版本历史](changelog-archive.md)，设备验收流程见[模拟器验收规范](emulator-test-protocol.md)。
 
 ## 5. 桥与通道说明
 

@@ -1,6 +1,8 @@
 # Linux 环境迁移到 Termux PRoot（2026-10-22）
 
-## 决定与当前状态
+> 阶段记录：本文的来源构建状态止于 0.14.8 草稿。后续 runtime/bootstrap `0.6.2` 已进入 0.14.9 正式来源 APK；当前 Linux 状态与仍待完成的 ARM64 设备验收见本目录[索引](README.md)。
+
+## 决定与迁移阶段状态
 
 Linux 执行后端由 Bionilux 改为 Termux PRoot。Bionilux 在目标 Android app 域中无法直接执行 Debian glibc loader；改为进程内装载还需要补齐完整的后续 `execve` 链，工程量接近重写 PRoot。本轮不继续维护这条自研 loader 路线。
 
