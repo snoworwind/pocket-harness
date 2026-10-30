@@ -6,6 +6,8 @@
 > 文档在 `docs/AGENTS/`（ARCHITECTURE / BRIDGE-API / modules / RUNTIME-PATCHES 等）与 `AGENTS.md`；
 > 0.14.0 起 Shizuku 已是正式特权 transport（ShizukuTransport/ShizukuUserService），不再只是
 > best-effort 保活增强。本文仅作历史背景阅读。
+>
+> 2026-08-20 原生界面重设计的实施计划已完成并清理；保留的设计规格见[UI 重设计规格](superpowers/specs/2026-08-20-ui-redesign-design.md)。
 
 ---
 

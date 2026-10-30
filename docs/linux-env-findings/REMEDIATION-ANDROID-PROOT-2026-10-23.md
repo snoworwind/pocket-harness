@@ -1,5 +1,7 @@
 # Android PRoot 安装探针修复（2026-10-23）
 
+> 状态更新（2026-10-31）：本文记录的 runtime/bootstrap `0.6.2` 已包含在 0.14.9 来源提交 `625fd8e0311d`；来源构建、APK 核验、签名与发布由 run [40473155658](https://github.com/snoworwind/pocket-harness/actions/runs/40473155658) 完成。本文下方“来源 APK 待构建”是 2026-10-23 的阶段状态；ARM64 设备端到端验收仍待完成。
+
 ## 现场复现
 
 用户提供的设备报告记录了 HarmonyOS / Android 16 / Linux 6.6.98 上的安装失败状态：

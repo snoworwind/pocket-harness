@@ -1,30 +1,26 @@
 # known-gaps.md — 当前缺口与验收入口
 
-> 本分支宗旨及当前验证边界见 [SECURITY-HARDENING.md](SECURITY-HARDENING.md)。源码有改动不等于新包已验收；来源构建状态以 [变更记录](changelog-archive.md) 最新条目为准。
-
-- Pocket Harness 独立身份与签名改造已完成：`applicationId=com.snoworwind.pocketharness`、仅 ARM64 下载与产物、独立 PKCS12 证书 pin。2026-10-20，main `9ebe0fc1589a070cb2ee12417f27d89236f7153a` 的云端来源 run [39374235296](https://github.com/snoworwind/pocket-harness/actions/runs/39374235296) 已通过双路独立 ARM64 构建、APK payload 比对、完整 Kotlin 单测、生产签名及来源证明核验，并创建 Draft + prerelease。当前草稿尚未公开；详见 [候选说明](../../release/v0.14.8/notes.md) 与 [构建环境记录](build-and-env.md)。
-- 该候选尚未完成 ARM64 设备安装、升级及代码/CDP/ADB 三层验收；按用户要求，设备验证暂缓。设备验收完成前不得公开发布或称为已验收版本。
+> 本分支宗旨及当前验证边界见 [SECURITY-HARDENING.md](SECURITY-HARDENING.md)。源码有改动不等于新包已验收；来源构建状态以 [变更记录](changelog-archive.md) 最新条目为准。下方带日期的状态只描述对应审查时点；当前发布范围见[最新版本说明](../../release/v0.14.9/notes.md)。
 
 ## 当前入口
 
 - **2026-10-24 R3 复审二轮登记的残余面（坑 546/548 复审发现，未修复）**：① LogSanitizer 的分块边界处理只覆盖 PEM 类——`readEngineLog` 按 256KB 切 chunk，`sk-` 密钥/Authorization 头/环境变量导出行被切在边界时「带标记的半段」被打码、另一半段不匹配任何规则，明文落共享存储日文件；修复需要跨 tick 的 carry-over 状态（保留尾部残行拼入下一 chunk）而非逐 chunk 正则，属设计级改动，登记待独立 PR。② check-gate-skips 的「全白名单一致」断言硬编码同一份 7 项清单自镜像比对——新增支持 `--require` 的门禁若忘传严格档，该断言不可见（漏检方向）；根治需从 check-release-gates 的实际传参行解析清单再做差集。③（坑 549 复审追加）凭据键值掩码的 JSON **转义**形态（`\"password\":\"x\"`，`String(d.arguments)` 一类 JSON 序列化后再掩的文本）键与冒号间被反斜杠隔开，桥侧 maskCredentialShapes 与壳侧 LogSanitizer 的键值规则都不掩——桥侧只影响瞬态 .live.ndjson 显示路径（audit.ndjson 掩解析后的原始值已覆盖；厂商密钥/Bearer 形态仍被各自规则掩住），壳侧日志行同族形态同理；根治需在两处规则统一支持 `\\?` 前缀容错或改为解析后掩码。见 [R3 修复账本](SECURITY-REMEDIATION-2026-10-24-R3.md) 复审二轮段与全量复审轮段。
 - **2026-10-23 Auto Review 默认策略（PR #103 已合并，PR Gate 通过）**：新会话默认 Auto；模型审查覆盖原生工具、PTC 外层程序与内层调用。high 分类在执行边界硬拒绝，用户不能批准该调用；medium 拒绝可逐次确认；reviewer 错误和 Auto 集成缺席 fail closed。reviewer 卸载时活跃会话回退到 `workspace-write`，Android Shell 会在 spawn 前拒绝该受限档位。该决定基于模型提示分类，存在误判/漏判可能，不是确定性数据流分析；Android 工具仍以应用 UID 运行，没有路径级文件系统沙箱。切换当前会话的权限档位会停用 Auto Review，默认值只影响新会话。实现和测试边界见 [坑 503](gotchas.md#503-auto-review-高风险拒绝必须绕过用户审批并由单调守卫收口)；**未做 APK、CDP/ADB 设备验证**。
-- **2026-10-23 Linux 安装失败修复候选**：main 上的 runtime/bootstrap `0.6.1` 已补建 Debian 缺省的 `/dev/shm` 挂载点，ARM64 来源构建和签名由 run [39899439859](https://github.com/snoworwind/pocket-harness/actions/runs/39899439859) 通过。用户随后提供的目标设备实测显示安装探针仍会遇到 Android PRoot seccomp exit 182，且 Debian login profile 把共享 Node PATH 覆盖导致 exit 127；当前源码候选一致关闭 Android PRoot seccomp 加速，探针和 `linux_bash` 改用非 login Bash，并扩展持久诊断。runtime manager 35/35、bootstrap vendor 自检、30 个 Linux source 哈希与 code-map 均通过。候选版本为 0.6.2；来源 APK 构建、签名和目标设备验收尚待完成，细节见[修复记录](../linux-env-findings/REMEDIATION-ANDROID-PROOT-2026-10-23.md)与[坑 510](gotchas.md#510-android-proot-seccomp-偶发静默退出login-bash-又覆盖共享-node-path)。PRoot 仍不是沙箱，guest 以 app UID 执行；ARM64 设备上的 apt/dpkg 和多级子进程也仍待验证。
-- **2026-10-22 Linux 后端已改为 Termux PRoot，runtime/bootstrap 0.6.1 已构建**：rootfs `/dev/shm` 修复已合入 commit `511b7e3`，ARM64 来源构建、双构建 APK 字节比对、签名和草稿预发布均由 run [39899439859](https://github.com/snoworwind/pocket-harness/actions/runs/39899439859) 验证通过；设备验收尚未完成。Bionilux launcher/preload/native loader 构建链与 Cargo 许可收集器已移除，bootstrap 的历史来源仍保留。PRoot 资产来自 Termux 官方签名 ARM64 仓库包，Debian/Node/原生依赖的锁和 provenance 已改为对应来源。PRoot 不提供沙箱，guest 仍以 app UID 执行；宿主 `/proc` 不绑定进 guest，依赖 guest procfs 的工具可能不完整。硬链接拒绝最多复制 1 GiB，但副本不是共享 inode，dpkg 兼容性和磁盘行为仍待 ARM64 实机验收。原生 PRoot 版本探针已修为接受 Termux ASCII banner 中的精确版本 token，见 [坑 496](gotchas.md)。[PR #102](https://github.com/snoworwind/pocket-harness/pull/102) 固定 recipe commit/hash 后，又发现把滚动 `stable` 的 InRelease 摘要放进提交锁会随官方发布过期；PR #105 已合入，通过每轮验签并记录摘要、由同一预检 job 把已验证包快照交给两路构建。PR #102 的两次失败 run 与结构修复见 [坑 506](gotchas.md#506-滚动-termux-stable-摘要不能作为提交级固定输入)；跨时间包字节复现仍不保证。此前 0.5.x Bionilux 记录仅作历史证据，不代表当前实现。
+- **Linux PRoot 设备验收仍开放（runtime/bootstrap 0.6.2）**：0.6.2 的 Android PRoot seccomp、login Bash PATH 与持久诊断修复已进入 0.14.9 来源提交 `625fd8e0311d`；来源 APK 构建、独立核验、签名和发布由 run [40473155658](https://github.com/snoworwind/pocket-harness/actions/runs/40473155658) 完成。PRoot 安装、更新、重装、卸载、`linux_bash`、apt/dpkg 与多级子进程尚未在 ARM64 设备完成端到端验收，因此不能据 APK 已构建/发布宣称 Linux 可用。PRoot 不是沙箱，guest 以 app UID 执行；宿主 `/proc` 不映射到 guest；拒绝硬链接时最多复制 1 GiB，副本不共享 inode，dpkg 兼容性和磁盘行为仍待设备验证。实现与修复证据见 [PRoot 修复记录](../linux-env-findings/REMEDIATION-ANDROID-PROOT-2026-10-23.md)、[PRoot 迁移记录](../linux-env-findings/PROOT-MIGRATION-2026-10-22.md)、[坑 510](gotchas.md#510-android-proot-seccomp-偶发静默退出login-bash-又覆盖共享-node-path)；0.6.1 的 `/dev/shm` 修复和早期来源构建记录保留在各历史条目中。
 
 - 2026-10-20：继续比较上游源码后新增悬浮服务退出候选：本仓 OverlayService 缺少上游 #443 的服务自停/非粘性策略，现有 EngineService 的收尾不覆盖其未启动场景；实际任务划除复活仍待本仓设备复现。输入清空/回执与虚拟屏弹层差异也已细化反例。证据和静态推导见 [第二轮源码复核](UPSTREAM-SOURCE-REVIEW-2026-10-20.md)，实施依赖见 [吸收计划](UPSTREAM-ABSORPTION-PLAN-2026-10-20.md)。**本轮仅文档，未修复、未构建 APK、未做设备验证，不构成候选通过。**
 
 - 2026-10-22：Android `dsh-shell-termux` 尚无真实路径级执行围栏；源码现对 `read-only`/`workspace-write` 在 spawn 前 fail-closed，并要求每次会话策略显式选择 `danger-full-access` 才启动 bash。该档仍以应用 UID 运行，app-domain 不是工作区隔离；独立 UID/Landlock、秘密隔离与设备行为仍未验收。详见 [dsh-shell-termux 沙箱边界审计](SHELL-TERMUX-SANDBOX-AUDIT-2026-10-19.md)。本轮有宿主代码回归，**未构建 APK、未做设备验证**。
 
-- 2026-10-22：能力组撤销/解锁的持久化失败语义已在源码修复：写入失败不再返回成功，撤销仍立即锁住当前会话并提示旧磁盘授权在重启后可能恢复；只有原子写成功才承诺跨重启状态。源码反例与落盘/rename 失败用例通过；[PR #97](https://github.com/snoworwind/pocket-harness/pull/97) 待 CI/设备层验证，**未构建 APK、未做设备验证**。实现见 [能力持久化坑位](gotchas.md#498-能力组撤销与解锁必须等待持久状态写入成功)；这不等于写入失败时能清除旧授权。
+- 2026-10-22：能力组撤销/解锁的持久化失败语义已在源码修复：写入失败不再返回成功，撤销仍立即锁住当前会话并提示旧磁盘授权在重启后可能恢复；只有原子写成功才承诺跨重启状态。源码反例与落盘/rename 失败用例通过；[PR #97](https://github.com/snoworwind/pocket-harness/pull/97) 已合入 main。该轮未构建 APK、未做设备验证，持久化失败恢复路径仍需随当前候选补设备证据。实现见 [能力持久化坑位](gotchas.md#498-能力组撤销与解锁必须等待持久状态写入成功)；这不等于写入失败时能清除旧授权。
 
-- 2026-10-22：浏览器工具的 `approval`/`confirm`/`full-access` 契约已接入执行闸：用户批准逐次绑定到工具调用，身份切换要求两次确认，截图要求会话显式选择 `danger-full-access`；拒绝、取消、审批服务缺席与策略缺席均 fail-closed。[PR #98](https://github.com/snoworwind/pocket-harness/pull/98) 等待 CI；源码回归 `plugins/dsh-android-browser/npm test` 23/23，完整插件套件 38/38。**未构建 APK、未做 CDP/ADB 设备验证**，设备层仍待补。
+- 2026-10-22：浏览器工具的 `approval`/`confirm`/`full-access` 契约已接入执行闸：用户批准逐次绑定到工具调用，身份切换要求两次确认，截图要求会话显式选择 `danger-full-access`；拒绝、取消、审批服务缺席与策略缺席均 fail-closed。[PR #98](https://github.com/snoworwind/pocket-harness/pull/98) 已合入 main；源码回归 `plugins/dsh-android-browser/npm test` 23/23，完整插件套件 38/38。该轮未构建 APK、未做 CDP/ADB 设备验证；设备层仍待补。
 
-- 2026-10-22：会话导出下载现仅接受 `shouldOverrideUrlLoading` 提供的真实用户手势；`DownloadListener` 无手势/frame 来源参数，命中导出端点即拒绝，不会触发带引擎 Cookie 的 HTTP 请求。[PR #99](https://github.com/snoworwind/pocket-harness/pull/99) 等待 CI；纯判据与 Kotlin 编译通过。WebView 上实际触发回调的路径仍待设备复现。**未构建 APK、未做设备验证**。
+- 2026-10-22：会话导出下载现仅接受 `shouldOverrideUrlLoading` 提供的真实用户手势；`DownloadListener` 无手势/frame 来源参数，命中导出端点即拒绝，不会触发带引擎 Cookie 的 HTTP 请求。[PR #99](https://github.com/snoworwind/pocket-harness/pull/99) 已合入 main；纯判据与 Kotlin 编译通过。WebView 上实际触发回调的路径仍待设备复现；该轮未构建 APK、未做设备验证。
 
-- 2026-10-22：P2-2 源码修复已加入客户端 Session 删除收敛与 `workspaceClose` 窄桥命令：连续三次官方列表缺席后销毁对应 WebView、请求删除该 nonDefault profile，并重试失败；共享兼容 Cookie jar 保留。[PR #100](https://github.com/snoworwind/pocket-harness/pull/100) 等待 CI。profile 磁盘清理可能异步，**未构建 APK、未做设备验证**，真实 BrowserHost/Sidebar/WebView 生命周期仍待设备复验。
+- 2026-10-22：P2-2 源码修复已加入客户端 Session 删除收敛与 `workspaceClose` 窄桥命令：连续三次官方列表缺席后销毁对应 WebView、请求删除该 nonDefault profile，并重试失败；共享兼容 Cookie jar 保留。[PR #100](https://github.com/snoworwind/pocket-harness/pull/100) 已合入 main。profile 磁盘清理可能异步；该轮未构建 APK、未做设备验证，真实 BrowserHost/Sidebar/WebView 生命周期仍待设备复验。
 
-- 2026-10-22/23：P2-4 的 recipe URL 已改用不可变 Termux commit 和文件 SHA（[PR #102](https://github.com/snoworwind/pocket-harness/pull/102)）；后续 run [39809445254](https://github.com/snoworwind/pocket-harness/actions/runs/39809445254)、[39820055985](https://github.com/snoworwind/pocket-harness/actions/runs/39820055985) 证明不能把滚动 stable InRelease 摘要当作提交级 pin。PR #105 改为单独 job 每轮验签、记录 provenance 并上传一份包闭包供两路 ARM64 构建共用，当前等待远端验证；跨时间包字节复现仍不保证。详见 [坑 506](gotchas.md#506-滚动-termux-stable-摘要不能作为提交级固定输入)。本机没有 `gpg/gpgv`；未完成 APK 构建、未做设备验证。
+- 2026-10-22/23（调查时点记录）：P2-4 的 recipe URL 已改用不可变 Termux commit 和文件 SHA（[PR #102](https://github.com/snoworwind/pocket-harness/pull/102)）；后续 run [39809445254](https://github.com/snoworwind/pocket-harness/actions/runs/39809445254)、[39820055985](https://github.com/snoworwind/pocket-harness/actions/runs/39820055985) 证明不能把滚动 stable InRelease 摘要当作提交级 pin。PR #105 随后合入，改为每轮验签、记录 provenance 并将同一份已验证包闭包交给两路 ARM64 构建；0.14.9 来源 run [40473155658](https://github.com/snoworwind/pocket-harness/actions/runs/40473155658) 已完成构建与 APK 核验。跨时间包字节复现仍不保证，Linux 设备验收仍未完成。详见 [坑 506](gotchas.md#506-滚动-termux-stable-摘要不能作为提交级固定输入)。
 
 - 2026-10-18 在 main `187246a` 上的分区复审发现原生 relay 准入遗漏、屏幕范围内存/旧 XML 断链、路由门禁注释假绿，以及文件/虚拟屏/来源续跑等问题，见 [项目分区复审](PROJECT-AUDIT-2026-10-18.md)。**A01–A14 已在源码层修复**，实现、宿主反例与新增测试见 [修复账本](AUDIT-REMEDIATION-2026-10-18.md) 的「项目分区复审 A01–A14」一节。本轮未重建 APK、未做设备验证（无在线 ARM64 设备与 Android SDK）；L2/L3 面进入发版候选前仍须来源链新包的三层验收。与下方此前综合审查的 A01–A10 是不同编号集合。
 
@@ -33,8 +29,8 @@
 - 第二轮 376–392 已进入源码修复；以 [修复账本](SECURITY-REMEDIATION-2026-10-17-R2.md) 为当前状态。设备实测按用户决定暂缓，基本修复完成后统一执行；期间保留 **未做设备验证** 状态，不能据此发布。
 
 - 2026-10-19：浏览器在无 `MULTI_PROFILE` 的设备上不再整块拒绝。用户显式启用兼容模式后使用进程级 Default cookie jar（`profileIsolation=shared`，loopback 仍拒，UI 明示共享），以可用性换隔离；每会话隔离与“不回 Default”的旧口径只对显式兼容模式例外。**未做设备验证**，需真机验证面板提示、第三站点导航与 `browser_*`。详见 [坑 437](gotchas.md)。
-- 2026-10-19：修复了 Linux 插件依赖闭包导致的路由/bootstrap 未加载问题（源码层）：`@dsh-android/dsh-android-linux-env` 的 `xz-decompress`/`tar-stream` 原先只在引擎树，profile 路径解析不到，插件 import 失败。注入器现把运行时依赖闭包复制进插件自己的 `node_modules/`，`check-inject-completeness` 新增 C1/C2 可达性判据与负控；详见 [坑 436](gotchas.md)。这修复的是插件加载接线，不解决被测 ROM 上 `/data/data` 的 `noexec` 对 glibc loader 的阻断（见 [Linux 环境调查](../linux-env-findings/README.md)）。此源码修复未做设备验收，run [39374235296](https://github.com/snoworwind/pocket-harness/actions/runs/39374235296) 已生成来源 APK，后续设备 `engine.log`、面板与 `linux_bash` 流程仍待验。同一轮修复了引擎重启后 reinstall/uninstall 必失败（持久化 pinned manifest 摘要、卸载时重新激活取 manager，见 [坑 438](gotchas.md)）。
-- Linux ARM64 离线资产链已接入 APK 来源 workflow：同一提交从源码构建资产、校验来源 commit / 清单 sidecar / 每个资产摘要和长度，再嵌入 ARM64 Termux 快照；离线 bootstrap 已注册、编译客户端 bundle，并由 `linux-env` 提供已签名快照内资产和原始清单摘要。runtime manager 另有 Node 启动探测、有限输出与超时终止。本地单测与自检通过；main `9ebe0fc1589a070cb2ee12417f27d89236f7153a` 的来源 run [39374235296](https://github.com/snoworwind/pocket-harness/actions/runs/39374235296) 已通过，证明来源资产进入同提交 APK。该结果只证明构建与封装：设备端完整流程仍未验收，且 2026-10-19 实测 ROM 的 `/data/data` 为 `tmpfs noexec`，glibc loader 无法执行。Linux 保持实验功能，不得宣称可发布；详见 [Linux 环境调查](../linux-env-findings/README.md)。
+- 2026-10-19（Bionilux 路线历史）：修复了 Linux 插件依赖闭包导致的路由/bootstrap 未加载问题（源码层）：`@dsh-android/dsh-android-linux-env` 的 `xz-decompress`/`tar-stream` 原先只在引擎树，profile 路径解析不到，插件 import 失败。注入器现把运行时依赖闭包复制进插件自己的 `node_modules/`，`check-inject-completeness` 新增 C1/C2 可达性判据与负控；详见 [坑 436](gotchas.md)。当时的 `/data/data` `noexec` 证据针对 Bionilux/glibc loader 路线；2026-10-22 后端已迁移到 PRoot，不能据此推断当前后端状态，当前验收边界见 [Linux 环境调查](../linux-env-findings/README.md)。当时的源码修复未做设备验收，run [39374235296](https://github.com/snoworwind/pocket-harness/actions/runs/39374235296) 已生成来源 APK。同一轮修复了引擎重启后 reinstall/uninstall 必失败（持久化 pinned manifest 摘要、卸载时重新激活取 manager，见 [坑 438](gotchas.md)）。
+- 2026-10-18（首次离线资产接入时点）：Linux ARM64 离线资产链接入 APK 来源 workflow，同一提交从源码构建资产、校验来源 commit / 清单 sidecar / 每个资产摘要和长度，再嵌入 ARM64 Termux 快照；当时离线 bootstrap 已注册并由 `linux-env` 提供签名快照内资产。main `9ebe0fc1589a070cb2ee12417f27d89236f7153a` 的来源 run [39374235296](https://github.com/snoworwind/pocket-harness/actions/runs/39374235296) 证明该版本来源资产进入 APK。记录中的 `/data/data` `tmpfs noexec` 结论针对当时 Bionilux/glibc loader 路线；2026-10-22 后端迁移后不代表当前 PRoot 状态。当前版本已包含 bootstrap 0.6.2；Linux 功能仍因 ARM64 端到端设备验收未完成而保持实验状态，见 [Linux 环境调查](../linux-env-findings/README.md)。
 
 
 - 本轮安全团队审计修复四类边界，见 [SECURITY-AUDIT-2026-10-17.md](SECURITY-AUDIT-2026-10-17.md) 与坑 372–375。**未做设备验证**：WSL ADB 无设备且两个模拟器端口拒绝连接；没有本轮来源 APK/CDP/ADB 自主任务证据。L2/L3 三层仍阻塞验收及发布；普通 web 重定向的手势兼容需设备复核。宿主回归不得代替这项缺口。
@@ -98,7 +94,7 @@
 
 | 项 | 当前事实 | 结论 / 后续 |
 |---|---|---|
-| R2 长按拖动：拖到列表边缘不自动滚动 | `sidebar-reorder.ts` 在拖动期间 `preventDefault` 拦原生滚动（否则手指下列表滚动会让命中行漂移、插入位置乱跳）。Spec §2.2 有「拖到列表边缘自动滚动」一句，本轮**未实现**。 | 已裁定本轮不做（需滚动容器 + rAF 边缘推进，属独立增量）。**用户可见影响：长列表远端目标需分两次拖动**。建议 0.14.8 独立项。 |
+| R2 长按拖动：拖到列表边缘不自动滚动 | `sidebar-reorder.ts` 在拖动期间 `preventDefault` 拦原生滚动（否则手指下列表滚动会让命中行漂移、插入位置乱跳）。Spec §2.2 有「拖到列表边缘自动滚动」一句，本轮**未实现**。 | 已裁定本轮不做（需滚动容器 + rAF 边缘推进，属独立增量）。**用户可见影响：长列表远端目标需分两次拖动**。应另立独立项，版本未定。 |
 | R2 驱动上游 DnD 依赖合成事件 | 触摸屏无原生 drag 触发路径，故用合成 `dragstart/dragover/drop/dragend` 驱动上游 `Rows.tsx` / `WorkspaceBrowser.tsx` 的既有 handler。合成事件 `isTrusted=false`。 | 已核实上游当前**不校验** `isTrusted`。**若上游将来加该校验，本方案会静默失效** —— 届时需改为上游原生触摸拖放或请求上游提供触摸入口。 |
 | #348 键盘遮挡：本机无法给出真机键盘证据 | 成因已修（弹层高度钳制纳入 `visualViewport` 底边，见 `composer-popup-guard.ts`）；本机可复现缺口（合成视口关系下溢出 196/96px 归零）。但本机仅有搜狗输入法、`mInputShown` 恒 false，真实键盘弹出态不可得。 | 记「**成因已修 + 待真机键盘复验**」，**不记 PASS**。票据所述澎湃 OS / Android 17 触发条件本机不可覆盖。 |
 | Android 16/17 与澎湃 OS 专有行为 | 本机为 Android 15（MuMu x86_64）。`keyboard-boundary.ts` 注释记录的「Android 16 edge-to-edge 上 adjustResize 不缩布局视口」无法在本机复现验证。 | 本机**不可覆盖**，未计入通过项，需真机补充。 |
@@ -110,13 +106,13 @@
 
 本仓交付实验性、默认不启用的宿主服务/API 与条件设置入口。bootstrap 与 runtime 是**我们自己的实验性内部插件**：按用户口径应随应用放入**内置（hard）插件目录**，但**默认不启用（存在不等于启用）**；应用更新或插件新版本发布都不得启用插件，也不得重新启用用户停用的插件。
 
-现状与缺口（如实登记）：bootstrap 源码 vendored 于 `plugins/dsh-linux-bootstrap/`（当前候选 `@dsh-android/linux-bootstrap` 0.6.2；历史上游为 `kelai141/dsh-bionilux@3f86a85` 的 `packages/linux-bootstrap`，这是 bootstrap 来源，不代表执行后端仍用 Bionilux）。它进入 `scripts/plugin-dirs.json`、`scripts/contract.json` 与 profile 插件挂载；来源链重建 `lib/index.js`/`lib/client.js`，并将 PRoot、Debian ARM64 rootfs、glibc Node 和插件资产嵌入快照 `usr/share/pocket-harness/linux-assets`。`linux-env` 以 APK 签名保护下的快照资产、原始 manifest SHA-256 sidecar 和应用版本配置 bootstrap。工具 runtime 不默认启用；安装/激活要求用户明确操作。0.6.2 候选针对 Android PRoot seccomp exit 182、login Bash 覆写 Node PATH 和探针诊断不足作修复；来源 APK 与 ARM64 设备验收未完成。工厂 workflow 的 artifact 仅用于独立检查，APK 来源 workflow 对当前提交重新构建。PRoot 安全边界和未验项以本节上方的迁移与修复记录为准。
+现状与缺口（如实登记）：bootstrap 源码 vendored 于 `plugins/dsh-linux-bootstrap/`（当前 `@dsh-android/linux-bootstrap` 0.6.2；历史上游为 `kelai141/dsh-bionilux@3f86a85` 的 `packages/linux-bootstrap`，这是 bootstrap 来源，不代表执行后端仍用 Bionilux）。它进入 `scripts/plugin-dirs.json`、`scripts/contract.json` 与 profile 插件挂载；来源链重建 `lib/index.js`/`lib/client.js`，并将 PRoot、Debian ARM64 rootfs、glibc Node 和插件资产嵌入快照 `usr/share/pocket-harness/linux-assets`。`linux-env` 以 APK 签名保护下的快照资产、原始 manifest SHA-256 sidecar 和应用版本配置 bootstrap。工具 runtime 不默认启用；安装/激活要求用户明确操作。0.6.2 针对 Android PRoot seccomp exit 182、login Bash 覆写 Node PATH 和探针诊断不足的修复已进入 0.14.9 来源 APK；PRoot 安装、更新、重装、卸载与工具执行的 ARM64 设备验收仍未完成。工厂 workflow 的 artifact 仅用于独立检查。PRoot 安全边界和未验项以本节上方的迁移与修复记录为准。
 
 漂移由 `scripts/check-vendored-linux-bootstrap.mjs` 守（`--self-test` 含 1 正控 + 3 负控）：断言 vendored 文件集 == 上游包去掉 `test/` 加本仓两个文件、9 个上游一致文件的 EOL 归一秒摘要、以及三条刻意偏差（`exports` 指 `./lib`、保留 `build` 脚本、去掉 `test` 脚本、`private:true`）。它**不进** `check-release-gates.mjs` 的 `GATES`（进册即要求本地链与云端链同时接线，而那是镜像面文件），故以文档化命令 + 自检形式提供。
 
 `kelai141/dsh-bionilux` 的内部 bootstrap 需被启用后提供 `linuxBootstrap` 服务、调用 `linuxPluginHost`（含 `isInjected` 在场查询）后再激活；构造/下载/解包由 bootstrap 拥有，运行时 manager 装配由宿主从激活作用域读出并交回（`install` 返回 `{manager, rollback?}`）。runtime 插件源码位于 `vendor/dsh-linux-runtime/`，APK 来源链从本仓源码构建插件 bundle 并嵌入离线资产，不依赖外部 Release 下载。**未覆盖**：离线生产 bundle 尚未在 Android 设备上实际安装/激活，`linuxPluginHost.install` 与 manager 交接仍只有源码/受控 Cordis 回归证据。
 
-端到端设备验收仍未完成：尚未在 Android 上完整验收离线 manifest/资产读取、PRoot 安装、更新、重装、卸载及工具执行。2026-10-19 的 ROM 证据针对 Bionilux 旧路线，不能直接推断 PRoot 当前能否启动；PRoot 的 app 域 ptrace/nativeLibraryDir、guest `/proc` 缺失影响、DNS、guest ELF、多级子进程、apt/dpkg 和 hard-link fallback 都须用最终 ARM64 APK 验证。内部插件不默认激活，APK 更新不得自行启用；完整安全边界见 [PRoot 迁移记录](../linux-env-findings/PROOT-MIGRATION-2026-10-22.md)。
+端到端设备验收仍未完成：尚未在 Android 上完整验收离线 manifest/资产读取、PRoot 安装、更新、重装、卸载及工具执行。2026-10-19 的 ROM 证据针对 Bionilux 旧路线，不能直接推断 PRoot 当前能否启动；PRoot 的 app 域 ptrace/nativeLibraryDir、guest `/proc` 缺失影响、DNS、guest ELF、多级子进程、apt/dpkg 和 hard-link fallback 都须在 ARM64 设备上验证。当前发布 APK 为 0.14.9，含 runtime/bootstrap 0.6.2；内部插件不默认激活，APK 更新不得自行启用；完整安全边界见 [PRoot 迁移记录](../linux-env-findings/PROOT-MIGRATION-2026-10-22.md)。
 
 **2026-10-20 真机证据与首个修复**：Huawei Mate 80 Pro Max（SGT-AL10，Android 16 / API 36，arm64-v8a）上的修复前 APK `862e17cffc7bb4a5395ae960eec3f364c953ce73f476ac754f69bcd2166cadbf` 在 `linux-bootstrap` 的 Cordis `apply()` 阶段因读取未声明的 `ctx.filesDir` 失败；配置已提供 `linuxBootstrapConfig.dataDir`，但 JS 在访问后续 `DSH_FILES_DIR` 回退前就抛错，导致服务未注册、状态路由 503、运行时未安装。PR #77 已移除此属性读取并新增真实 Cordis 激活回归用例；合入 main 的来源双构建和签名校验通过，生成草稿 APK `hardening-source-f37eaafe887c-39424480383-1`，SHA-256 `a2d1d85735b98a7168c0c5ea406a542518e5b9c1b82802a6ed0b2860d39d63dd`，尚未设备复验。此结果没有测试 Bionilux、loader、guest ELF 映射、noexec 或 SELinux；这些仍按 [Linux 恢复方案](../linux-env-findings/RECOVERY-PROPOSAL-2026-10-20.md) 保持未验收。
 
@@ -124,7 +120,7 @@
 
 已落地并有反证：`LinuxAssetIO`（来源面/落点面/摘要+体量/解包面判据，复用 `SnapshotExtractor` 与 `SnapshotBundledAsset`）与 `LinuxAssetPrepare`（客户端触发入口，`@JavascriptInterface` `linuxAssetPrepare`/`linuxAssetPrepareStatus`）。五条负控（穿越、符号链接逃逸、炸弹、摘要不符、字节数不符）在 Kotlin 侧各有真实用例，且失败一律不发布产物。
 
-**接入与验收边界**：壳侧 `LinuxAssetPrepare` 的网络准备面继续保留原有职责；离线 Linux bootstrap 使用另一条受 APK 签名保护的内置资产路径，不回退到网络下载。离线构建接线、自检与插件单测已经落地；来源 APK 云端全链已由 run [39374235296](https://github.com/snoworwind/pocket-harness/actions/runs/39374235296) 验证通过，Android 设备端到端验收仍未完成，不能记为 Linux 功能可用。
+**接入与验收边界**：壳侧 `LinuxAssetPrepare` 的网络准备面继续保留原有职责；离线 Linux bootstrap 使用另一条受 APK 签名保护的内置资产路径，不回退到网络下载。离线构建接线、自检与插件单测已经落地；run [39374235296](https://github.com/snoworwind/pocket-harness/actions/runs/39374235296) 是 0.14.5 时期的来源证据，不代表当前候选。0.14.9 已从包含 bootstrap 0.6.2 的提交完成来源构建和发布；Android 设备端到端验收仍未完成，不能记为 Linux 功能可用。
 
 以下三条是 **Bionilux 后端时期的历史记录**，已由 2026-10-22 的 PRoot 迁移替代，不描述当前 Linux 执行入口。
 
@@ -152,7 +148,7 @@
 上游 `e3e728b` 已同步到安全分支工作树；本轮 **未做设备验证**，模拟器两端口拒绝连接且无在线真机。管理中心、气泡导航、Shizuku 及新增 Linux 桥的 CDP/ADB 层均未关闭；本轮没有来源链新 APK，不得沿用上游设备截图作为本分支验收。源码检查和本机测试证据见 SECURITY-HARDENING.md 同日复核。
 
 
-2026-10-17 Linux 安全复核当时 **未做设备验证**，并发现 bootstrap 未进入注入集、页面没有准备桥调用者。后续源码已完成离线 bootstrap 注册、准备桥与运行时依赖接线（见上述 Linux 内部插件边界及 [坑 436](gotchas.md)）；来源 APK 链已由 2026-10-20 run [39374235296](https://github.com/snoworwind/pocket-harness/actions/runs/39374235296) 验证通过。设备端到端验收仍未完成，且被测 ROM 上的 `noexec` 限制使 Linux 运行时不可用，详见 [Linux 环境调查](../linux-env-findings/README.md)。
+2026-10-17 Linux 安全复核当时 **未做设备验证**，并发现 bootstrap 未进入注入集、页面没有准备桥调用者。后续源码已完成离线 bootstrap 注册、准备桥与运行时依赖接线（见上述 Linux 内部插件边界及 [坑 436](gotchas.md)）；来源 APK 链已由 2026-10-20 run [39374235296](https://github.com/snoworwind/pocket-harness/actions/runs/39374235296) 验证通过。该复核中的 `/data/data` `noexec` 结论针对当时 Bionilux/glibc loader 路线；PRoot 迁移后不作为当前后端判据。当前 Linux 设备端到端验收仍未完成，详见 [Linux 环境调查](../linux-env-findings/README.md)。
 
 ## 2026-10-17 晚第二轮发现状态（发现记录保留，当前状态逐项核对）
 
@@ -190,17 +186,6 @@
 
 源码适配、真实构建产物及代码验证已实施，最终 main 来源双构建与设备证据按 [升级记录](ENGINE-UPGRADE-2026-10-19.md) 收口。ADB 实际为空，目标 ARM64 设备 ABI 不可读；CDP、ADB 自主任务、横竖屏与覆盖升级未验收。旧 runtime-capture 退为历史，不移植参考仓的设备结论；模型能力插件暂保留至替代设置能力实际验收。
 
-## Engine base 复用收口（2026-10-20，PR #61；lock PR 待合入）
+## 已收口事项的历史详档
 
-PR #61 修正了 capture/report 顺序差异；main run 39357008785 的两个独立构建、完整 tree compare、cache 与 candidate artifact 均通过，真实 candidate 在 Linux gate 容器 materialize 成功。当前 PR 将候选提交为仓内 trust root；合入后仍需 draft source workflow 确认正式 cache restore → materialize → ARM64 source build。详见 [ENGINE-BASE-2026-10-19.md](ENGINE-BASE-2026-10-19.md) 与坑 457、458。
-
-| 项 | 当前事实 | 必须取得的结论 |
-|---|---|---|
-| Java 钉值 | **已修复并由 runner 验证**：`engine-toolchain.json` 与两条 workflow 均固定到真实存在的 `17.0.20+8`；plan 在 runs 39354019902、39357008785 通过 | 已通过 |
-| 本地双构建 | `buildRun` 固定到 `GITHUB_RUN_ID`；独立本地 run 会在 identity 判据失败 | 仅是本地复现限制；正式证据使用 main 上的 hosted 双构建，不放宽 compare |
-| 输出树确定性 | PR #61 只规范根 JSON/YAML 无序映射并固定依赖回执顺序；绝对 `file://` 路径仍按原字节计入 | run 39357008785 跨两个 hosted runner 的完整 tree compare 成功；未来路径不同仍会硬失败 |
-| 真实 `materialize` | run 39357008785 candidate 与 lock 在隔离 main clone 的固定 Linux gate 容器中通过；materialized 检查为 345 packages / 2435 links | 已通过；lock 合入后由 draft source workflow 复验正式缓存使用 |
-| 设备验证 | 按用户要求，本次草稿 release 不做设备验证；不会宣称设备验收或公开发布 | 创建草稿时 notes 必须明示未做设备验证；转公开前仍须补足 §2.1 三层验收 |
-## 发布状态（2026-10-20）
-
-仓库已公开，但**尚未对外发布 APK**：三个 `hardening-source-*` 预发布已转为草稿，对外不可见（未认证 API 返回 0 条）。对外发布需先完成设备三层验收，再由维护者手动把草稿转正；当前 ARM64 真机不可用，故该项保持未完成。
+Engine base 复用的实现与阶段证据保留在 [ENGINE-BASE-2026-10-19.md](ENGINE-BASE-2026-10-19.md)；该文档记录 2026-10-19/20 的构建阶段，不作为当前阻塞清单。版本发布与设备验收范围以本页顶部链接和 [版本历史](changelog-archive.md) 为准。

@@ -75,9 +75,9 @@ raw npm overlay 不自动保留官方 pnpm patch。六 provider streaming 补丁
 
 ## 5. 升级回归与证据
 
-版本变更需同步来源pin、lock根声明、同源补丁/资产、双仓副本及许可来源。运行时资产从目标版本原始产物完整重建，不叠旧资产；逐字节一致与全部补丁marker/精确verifier都要成立。webKit升级重点验证profile首次赋值、worker/cookie/storage隔离、不支持provider失败、UA-CH与Activity重建holder；Shizuku重点验证旧AIDL服务、工作资料UID、chunk撤consent与耐久UNKNOWN。快照/SAF/Files/通知/控制台/引擎流式任务按 [外部测试需求](<docs/0.14.3-TEST-REQUIREMENTS.md>) 执行。
+版本变更需同步来源pin、lock根声明、同源补丁/资产、双仓副本及许可来源。运行时资产从目标版本原始产物完整重建，不叠旧资产；逐字节一致与全部补丁marker/精确verifier都要成立。webKit升级重点验证profile首次赋值、worker/cookie/storage隔离、不支持provider失败、UA-CH与Activity重建holder；Shizuku重点验证旧AIDL服务、工作资料UID、chunk撤consent与耐久UNKNOWN。快照/SAF/Files/通知/控制台/引擎流式任务按[模拟器验收规范](emulator-test-protocol.md)执行。
 
-当前候选的自检、构建与三层验收状态见对应版本的阶段交接记录；本文件只登记依赖与升级联动，不独立宣称发布批准。0.14.3 外部测试需求属于历史版本证据，不能代替当前候选验收。
+当前候选的自检、构建与三层验收状态见对应版本的阶段交接记录；本文件只登记依赖与升级联动，不独立宣称发布批准。旧 0.14.3 测试需求记录已退出当前树，不能代替当前候选验收。
 
 
 ## Linux 插件归档解码依赖（2026-10-17）

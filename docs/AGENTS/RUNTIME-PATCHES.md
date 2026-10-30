@@ -187,7 +187,7 @@ A1只适配native启动，不提供process confinement provider，不改policy/a
 
 统一runner已读取多文件实现，source-build reconcile-engine-patch-copies展开所有additionalTargets、对逻辑目标运行exact verifier后复制到同包pnpm物理副本，最终source snapshot检查复用同一口径。普通build-snapshot-013的post-apply已改为再次调用统一runner --check --scope engine，成功日志明确包含全部companion与exact upstream verifier；不会把streaming020说明marker当源码literal。apply前capture-only留目标原始fixture字节用于外部回归，不执行测试。本source/doc任务未运行任何构建/检查。
 
-三条runtime asset当前仍为历史目标的完整文件；0.14.3尺寸/hash/同源结论留空待实际重出与终包对账，不虚构测量。所有新增补丁文件、官方patch与0.2 fixture均登记于 [执行地图覆盖账本](<dsh-mobile-apk/docs/AGENTS/EXECUTION-MAP.md>)。
+三条runtime asset当前仍为历史目标的完整文件；0.14.3尺寸/hash/同源结论留空待实际重出与终包对账，不虚构测量。所有新增补丁文件、官方patch与0.2 fixture均登记于 [执行地图覆盖账本](EXECUTION-MAP.md)。
 
 镜像纪律（0.13.8 PR-A1 起）：本仓 `scripts/patches/**` 是协调仓权威源的**逐字节镜像**（云端
 自包含构建检出本仓），`scripts/check-patch-mirror.mjs` 在两仓 CI 与构建链强制比对——

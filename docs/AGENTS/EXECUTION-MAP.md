@@ -753,7 +753,7 @@ K01 journal 发布：`SnapshotTransaction.writeMarker` 拒绝目标或临时路�
 
 - **已删除会话的 BrowserHost 清理**：`NativeBrowserPlacement` 仅在某 Session 曾出现在官方会话列表、随后连续三次轮询缺席时退休它；先关闭该 Session 的 Sidebar 浏览 occurrence，再向 `browserHostCommand` 发送 `workspaceClose`。`BrowserHost` 按精确 Session 销毁全部 WebView 并请求 ProfileStore 删除隔离 profile；失败保持退休状态并按秒重试，不清共享兼容 Cookie jar。ProfileStore 磁盘清理可异步完成，设备运行时尚未验收。
 
-- **0.14.3当前桥增量**：browserHostCommand为session/uiTab/nativeTab窄导航，不暴露任意JS/controlExec；配置桥MainActivity→EngineManager→SnapshotUserData，不mounted legacy ConfigTransfer。root状态的ownership合并当前lease给honest pending，request不是repair已完成；v4 configuration追加回读完整UID/anchor、旧transaction不重排。当前签名与线程/结果语义见 [桥协议](<dsh-mobile-apk/docs/AGENTS/BRIDGE-API.md>)。下方旧坐标是原始历史协议描述，不作为本轮新head验证。
+- **0.14.3桥增量（历史快照）**：browserHostCommand为session/uiTab/nativeTab窄导航，不暴露任意JS/controlExec；配置桥MainActivity→EngineManager→SnapshotUserData，不mounted legacy ConfigTransfer。root状态的ownership合并当前lease给honest pending，request不是repair已完成；v4 configuration追加回读完整UID/anchor、旧transaction不重排。当前签名与线程/结果语义见 [桥协议](BRIDGE-API.md)。下方旧坐标是原始历史协议描述，不作为当前构建或验收证据。
 
 
 
@@ -938,7 +938,7 @@ flowchart TD
 - **判据/留痕**：唯一root通道判据＝`ShizukuTransport.probeRootChannel`（原始信号经可注入的`RootProbeEnv`）＋纯函数`decideNoRootChannel`，只认三类证明、其余UNKNOWN；自动清算准入＝纯函数`autoClearAllowed`（通道ABSENT 且未派发 且租约结果可信即`!unknown` 且无在飞维护，四条件缺一不可），`LeaseClearProbe` 把每次判定与原始信号明细写 `files/lease-clear-probe.log`（有界8 KiB）。
 - **honest pending**：RootOwnershipJobs合并当前lease与worker，lease未finish则running/pending/completedAt=0/operation/overdue；旧result不盖新UNKNOWN。caller最多30s，cancel只caller，不cancel shared worker、不重复helper；UI立即request，既有poll读实际结果。
 - **immutable IO/capture**：ProcIo独立kill/各stream close daemon与共同cleanup join预算，readError不是EOF，返回partial不随late reader变；ShizukuCaptureIo private .part，writer/flush/close全结束且flags完整才publish，失败spoolReady=false/path空。transfer offset仅acknowledged bytes；`readChunk` 仅在 `0..file.length` 接受 offset，精确 EOF 返回空块，越界/负值失败，避免远端文件缩短后把部分拉取误报成功；partial/noReplay不承诺失败chunk无副作用。
-- **固定维护**：held-FD no-follow、访问前cap/depth/deadline、fstat/fchown/fstat、signed-APK helper五参数；protected_hardlinks不明拒绝，foreign/hardlink/device/root-writable-by-others拒绝；不restorecon、不隔离外部root namespace。详见 [Root维护](<dsh-mobile-apk/docs/AGENTS/ROOT-MAINTENANCE.md>)。
+- **固定维护**：held-FD no-follow、访问前cap/depth/deadline、fstat/fchown/fstat、signed-APK helper五参数；protected_hardlinks不明拒绝，foreign/hardlink/device/root-writable-by-others拒绝；不restorecon、不隔离外部root namespace。详见 [Root维护](ROOT-MAINTENANCE.md)。
 - **当前锚点**：[lease](<../../app/src/main/java/com/snoworwind/pocketharness/RootMaintenanceLease.kt#L23-L105>)、[fence](<../../app/src/main/java/com/snoworwind/pocketharness/RootExecutionFence.kt#L18-L34>)、[jobs](<../../app/src/main/java/com/snoworwind/pocketharness/RootOwnershipJobs.kt#L21-L91>)、[su ack](<../../app/src/main/java/com/snoworwind/pocketharness/RootAccess.kt#L219-L342>)、[RPC lease](<../../app/src/main/java/com/snoworwind/pocketharness/ShizukuTransport.kt#L727-L800>)、[capture](<../../app/src/main/java/com/snoworwind/pocketharness/ShizukuUserService.kt#L309-L389>)、[IO](<../../app/src/main/java/com/snoworwind/pocketharness/ProcIo.kt#L84-L174>)。
 - **文件边界**：legacy ConfigTransfer未mounted；配置由EngineManager→SnapshotUserData；同文件SAF picker仍在。FileIncoming 的外部入口先校验系统 content 读授权与 Provider UID，file 来源只许规范化后的共享存储并复核实际持有的 FD；copyIn 自身重新检查来源，不依赖 Activity 预检；目标排他创建，失败不覆盖已有叶文件。PathOpen 的出站白名单不随此入站策略或 Browser HTTP 放宽。新增fixtures未执行，非真实UID0验收。
 
@@ -1221,7 +1221,7 @@ flowchart TD
 - **职责**：pure policy/core、process/capture settlement、源码wiring、instrumentation各自留账，源码扫描不证明真实UID0/Binder/SharedPreferences/PowerManager效果；不写固定测试总数、不把文件在场当PASS。
 - **actual新增类**：OwnershipRepairCoreTest、RootMaintenanceLeaseTest、ProcIoSettlementFixtureTest、ShizukuCaptureSettlementFixtureTest、ShizukuRpcLeaseWiringFixtureTest、StartupLifecycleOwnershipTest、ForegroundPageRecoveryPolicyTest、ForegroundPageRecoveryWiringTest、SnapshotFingerprintPolicyTest、SnapshotMigrationPolicyTest、BrowserHostCommandWiringTest；既有RootGrant/RootOwnership、Browser navigation/cleartext tests随源码更新。客户端插件装配失败两条新链：ClientPluginFailRouteTest（22 例：前缀逐字一致/失败行识别/failedIds 解析含 '-'、空、超限、截断/路由不吞第三方日志/latch 置位与清除/健康启动零动作）与 ClientRollbackGateTest（21 例：唯一命中才拔/多命中拒绝/命中硬清单拒绝/缺 id 拒绝/一次性入口 EXECUTE 与 SUPPRESS 两态/execute 传入 clientFailure 时走外科分支）。
 - **coverage职责**：held-node cap/race/schema；lease pure newBoot/scheme/wiring（真实prefs/root另验）；IO immutable partial/blocked cleanup/read/interrupt；capture writer不publish；每RPC授权/actualUID0lease；generation旧finally/caller-vs-worker/finite6/wakeowner；foreground quiet retry/recreate/userShutdown/holder；strictSHA；importmarker/活patch/quarantine；browser capturedSession/tab/profile-first/atomicopen。
-- **证据**：以下覆盖账本显式列新类并保留全JVM glob；实际执行人留Gradle XML/基线与日志。本doc委派未执行tests/typecheck/checks/build；外部按 [测试需求](<docs/0.14.3-TEST-REQUIREMENTS.md>) 三层留证，不作为#308待外测merge-blocker；正常CI/review仍required。
+- **证据与时间范围（0.14.3交接）**：以下覆盖账本显式列新类并保留全JVM glob；当时的执行人应留Gradle XML/基线与日志。本 doc 编制任务当时未执行 tests/typecheck/checks/build；这只描述 0.14.3 交接，不代表当前 CI 或发布状态。设备验收流程见[模拟器验收规范](emulator-test-protocol.md)，当前构建与发布状态见 [known-gaps.md](known-gaps.md) 和 [版本历史](changelog-archive.md)。
 
 
 ### 引擎侧插件（TypeScript，权威源在协调仓 plugins/）

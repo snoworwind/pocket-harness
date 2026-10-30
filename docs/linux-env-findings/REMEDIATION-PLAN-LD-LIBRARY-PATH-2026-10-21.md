@@ -1,7 +1,7 @@
 # Linux 环境安装失败修复计划：宿主子进程动态库路径（2026-10-21）
 
 > 状态：源码修复已实现；按用户要求未做实机测试，不能据此判定 Linux 环境已恢复。依据更新后的 `linux-env-install-failure-20261021-2117(1).log` 与当前仓库源码。原始日志保存在仓库外的用户临时目录，没有复制进仓库。
-> 范围：修复已观测到的 rootfs 预处理失败，并单独登记后续执行入口门槛；不把不同阶段的故障合并为一个根因。
+> 范围：修复已观测到的 rootfs 预处理失败，并单独登记后续执行入口门槛；不把不同阶段的故障合并为一个根因。本文记录的是 Bionilux 后端时期；该后端已由 2026-10-22 的 Termux PRoot 迁移取代，不作为当前操作指南。
 
 ## 1. 已确认的失败
 
@@ -22,7 +22,7 @@ links=$(find "$ROOTFS" -type l) || exit 1
 
 1. [`manager.js`](../../vendor/dsh-linux-runtime/modules/manager.js) 的 `HOST_ENV_ALLOWLIST` 没有 `LD_LIBRARY_PATH`；`cleanHostEnvironment()` 因而丢弃引擎实际使用的 Termux 库目录。
 2. `_prepareRootfs()` 用 `cleanHostEnvironment()` 启动 `sh`，但传入的 `PATH` 仍包含 `$PREFIX/bin`。
-3. [`prepare-rootfs.sh`](../../vendor/bionilux/scripts/prepare-rootfs.sh) 按 PATH 找到 `$PREFIX/bin/find`，动态链接失败后退出，runtime 安装事务回滚。
+3. 当时的 `vendor/bionilux/scripts/prepare-rootfs.sh` 按 PATH 找到 `$PREFIX/bin/find`，动态链接失败后退出，runtime 安装事务回滚。Bionilux 源码目录已随后端迁移移除。
 4. 同一环境构造函数也被 `_probeRuntime()` 和 `_executionEnvironment()` 使用，故修复范围需要覆盖相同环境契约，并验证不会把宿主库路径错误地带进 glibc guest。
 
 这解释了本次 HTTP 500；网络不参与安装，内置资产摘要、存储空间和 bootstrap 激活均不是本次失败点。路由原先把异常折叠为泛化 500，bootstrap 安装失败原先只更新内存 `lastError`、没有持久化；这两处已一并修复为稳定错误码、持久化诊断和页面脱敏摘要，但不是 `find` 失败的原因。

@@ -3,7 +3,7 @@
 [![awesome · DSH plugin](https://awesome-dsh-plugin.com/badge.svg)](https://awesome-dsh-plugin.com)
 [![CI](https://github.com/lire1131/dsh-undo-savepoint/actions/workflows/ci.yml/badge.svg)](https://github.com/lire1131/dsh-undo-savepoint/actions/workflows/ci.yml)
 
-> 中文 | [English](README.en.md) | [更新日志](CHANGELOG.md)
+> 中文 | [English](README.en.md) | [更新日志](https://github.com/lire1131/dsh-undo-savepoint/blob/master/CHANGELOG.md)
 
 **为 [DeepSeek Harness (DSH)](https://github.com/deepseek-ai/deepseek-harness) 打造的撤销/回退系统：装插件、换皮肤、改设置，自动保存即存档；手动保存随时存档；一键撤销 / 恢复 / 回退到任意版本。DSH 启动不了时，还有局外 WebUI / GUI / CLI 兜底。**
 
@@ -37,10 +37,10 @@
 | **快照时间线（Time Machine）** | 快照按日期分组卡片化（备注 / 标签芯片，尊重 `prefers-reduced-motion`）+ 文件级 diff（新增 / 删除行高亮、目录树导航、逐文件浏览）+ 一键回滚 |
 | **快照管理** | 备注 / 标签（`undo_note`，时间线可直接编辑）、定时快照（间隔制，自动建档 + 保留清理）、孤儿 blob GC（`undo_compact`，释放磁盘）、ZIP 导出 / 导入（可选 AES-256-GCM 加密，兼容 PowerShell 明文互操作） |
 | **一键诊断与启动预检 `undo_doctor`** | 存储侧：快照目录可写性、blob 完整性（缺失 / 孤儿）、设置文件健康、快照规模分布。启动侧预检那些会让 DSH 在挂载任何插件之前就崩掉的硬失败：profile 清单 BOM / JSON / 结构、`dsh.profile.bundles` 逐项可解析、`patchReload` 取值、`link:` junction 落点、patch 里重复的 loader id、上次启动未完成。输出 ok / warn / err 结构化报告，可修项标 `[fixable]`，对话里 `undo_doctor fix=true`、离线 `dsh-undo.ps1 doctor -Fix`、局外 WebUI 诊断面板的「修复可修项」按钮都能一键修复（改前先落手动快照，修完自动复查） |
-| **跨机迁移安全** | 恢复前自动预检缺失插件并明确提示；快照可一键导出 / 导入 ZIP 迁移（见 [docs/migration.md](docs/migration.md)） |
+| **跨机迁移安全** | 恢复前自动预检缺失插件并明确提示；快照可一键导出 / 导入 ZIP 迁移（见[迁移说明](https://github.com/lire1131/dsh-undo-savepoint/blob/master/docs/migration.md)） |
 | **局外急救** | DSH 挂了也能用：WebUI + GUI 窗口 + CLI + 桌面快捷方式，时间线 / 回滚 / 对比 / 安全模式 / 诊断一应俱全 |
 
-> 基础能力（键盘快捷键、对话指令、自动清理、双模式保存、可配置参数等）见下文与[更新日志](CHANGELOG.md)。
+> 基础能力（键盘快捷键、对话指令、自动清理、双模式保存、可配置参数等）见下文与[更新日志](https://github.com/lire1131/dsh-undo-savepoint/blob/master/CHANGELOG.md)。
 
 ## 平台支持
 

@@ -1,8 +1,8 @@
-# Engine base 复用：实现、实跑证据与收口状态（2026-10-19）
+# Engine base 复用：实现与历史验证记录（2026-10-19）
 
-本文件记录 `build-base.yml` / `engine-base.mjs` 这套 engine base 复用机制在 PR #51（head `7ca0cae`）上的实现边界、PR #51 合并后的首次云端双构建结果，以及 `base-lock.json` 的收口步骤与当前证据。
+本文件记录 `build-base.yml` / `engine-base.mjs` 这套 engine base 复用机制在 PR #51（head `7ca0cae`）上的实现边界、PR #51 合并后的首次云端双构建结果，以及 `base-lock.json` 的阶段收口证据。文中的“当前状态”“未决问题”和复验顺序只描述 2026-10-19/20 的检查点；后续 PR #62、#63、#64 已合入 main，这些旧待办不再代表当前阻塞。当前版本发布与设备验收范围见 [版本历史](changelog-archive.md) 和[最新版本说明](../../release/v0.14.9/notes.md)。
 
-当前状态：PR #51 与顺序确定性修复 PR #61 已合并。main commit `7fe0597` 的 run 39357008785 中 resolve、两个独立 build、完整 tree compare 与 cache 保存全部成功；候选 key 为 `engine-v1-941e395d…7a28`。真实候选已在临时 main clone 的 Linux gate 容器中通过 `materialize`，且 materialized runtime dependency 检查通过。当前独立 lock PR 正在提交该候选；它合入后再由来源草稿 workflow 验证真实 cache restore → materialize → ARM64 source build。未做设备验证，不能当作设备验收或公开发布依据。
+阶段证据：PR #51 与顺序确定性修复 PR #61 已合并。main commit `7fe0597` 的 run 39357008785 中 resolve、两个独立 build、完整 tree compare 与 cache 保存全部成功；候选 key 为 `engine-v1-941e395d…7a28`。真实候选已在临时 main clone 的 Linux gate 容器中通过 `materialize`，且 materialized runtime dependency 检查通过。该轮记录中的 lock PR 待合入状态后来由 PR #62 及后续修复取代。本文件不代表当前设备验收或发布批准。
 
 ---
 
@@ -68,7 +68,7 @@ run 39357008785 绑定 main commit `7fe0597ec1ed05ccf90b8de8418e104fea3e6b61`，
 
 ---
 
-## 3. 未决问题（合并前必须处理）
+## 3. 当时未决问题（历史阶段检查点）
 
 ### 3.1 `engine-toolchain.json` 的 Java 钉值不存在
 
@@ -109,7 +109,7 @@ PR #61、#63、#64 的 hosted 必检通过；Linux gate 容器对 base-lock 与�
 
 依次完成 effective overlay 修复 PR → main 上同一可信 key 的 cache restore/materialize → 两副本 runtime snapshot 与 APK source build → 从实际 APK 字节做独立双构建 compare → 隔离 job production signing 与身份/包校验 → 验证资产集合和 SHA256 后创建 draft+prerelease。任何步骤红都必须修复并重新走全链；本次明确不做设备验证，release notes 需写明这一限制，草稿不得公开发布。
 
-## 4. 复验入口
+## 4. 当时的复验入口
 
 已取得并仍须保留的复验证据：
 
@@ -118,4 +118,4 @@ PR #61、#63、#64 的 hosted 必检通过；Linux gate 容器对 base-lock 与�
 3. 真实 candidate 在 Linux gate 容器 materialize 成功，post-materialize dependency closure 与 marketplace patch-byte parity 通过；
 4. effective overlay 修复 PR 合入后，draft source workflow 必须成功完成 cache restore → materialize → 双副本 ARM64 source build → APK compare → 独立签名 → 资产核验与 draft 创建。按用户要求该 draft 不做设备验证，notes 必须明确标注。
 
-本文件记录的是实现边界与未决项，不构成任何验收结论；设备与发布链状态以 `docs/AGENTS/known-gaps.md` 与 `SECURITY-HARDENING.md` 为准。
+本文件记录的是实现边界与阶段未决项，不构成当前验收结论；当前发布链与设备验收状态以 [版本历史](changelog-archive.md)、对应版本说明和 [安全加固记录](SECURITY-HARDENING.md) 为准。

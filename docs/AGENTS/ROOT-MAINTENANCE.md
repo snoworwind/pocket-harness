@@ -46,4 +46,4 @@ Activity 的 StartupFlowOwnership 用一份 CAS 状态绑定 running、token/gen
 
 ## 6. 外部验证与未覆盖边界
 
-新增 pure core、参数解析、I/O/capture settlement、RPC lease wiring、startup ownership fixtures 已写，未在本次 source/doc 分工执行。源码扫描类 fixture 只证明接线形状，不代替实际 UID0/Binder/设备副作用取证；RootMaintenanceLeaseTest已登记pure newBoot/scheme切换与源码wiring，但durable lease同boot新进程restore、真实boot、commit失败及late acknowledgement仍需外部行为反证。测试需求见 [0.14.3 测试交接](<docs/0.14.3-TEST-REQUIREMENTS.md>)。不得沿用原作者 head 的测试/设备证据，不宣称完整三层、安全或可发布验收通过。
+0.14.3 交接时登记了 pure core、参数解析、I/O/capture settlement、RPC lease wiring 与 startup ownership fixtures；该轮没有执行这些 fixture。源码扫描类 fixture 只证明接线形状，不代替实际 UID0/Binder/设备副作用取证。RootMaintenanceLeaseTest 当时登记的 pure newBoot/scheme 切换与源码 wiring，以及 durable lease 同 boot 新进程 restore、真实 boot、commit 失败和 late acknowledgement 的行为反证，均应按[模拟器验收规范](emulator-test-protocol.md)记录；不要沿用原作者 head 的测试/设备证据或宣称完整三层、安全、可发布验收通过。
