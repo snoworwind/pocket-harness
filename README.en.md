@@ -49,6 +49,10 @@ See [build and environment](docs/AGENTS/build-and-env.md) and the [release polic
 - [Device acceptance protocol](docs/AGENTS/emulator-test-protocol.md)
 - [Development entry point and repository conventions](AGENTS.md)
 
+## Acknowledgments
+
+Special thanks to [kelai141/dsh-mobile-apk](https://github.com/kelai141/dsh-mobile-apk) and its `security/hardening` branch, which provided the foundation for establishing Pocket Harness as an independent project.
+
 ## License
 
 MIT; original project copyright notices are retained. See [LICENSE](LICENSE). Third-party components are distributed under their respective licenses.
