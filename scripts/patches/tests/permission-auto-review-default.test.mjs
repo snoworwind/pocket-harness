@@ -4,7 +4,7 @@ import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { spawnSync } from 'node:child_process'
-import { pathToFileURL } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { versionedFixture } from './lib/fixture.mjs'
 import {
   AUTO_REVIEW_FALLBACK_MARKER,
@@ -22,7 +22,7 @@ const PATCH_ID = 'permission-auto-review-default-AR1'
 const permissionSource = readFileSync(versionedFixture('dsh-permission-presets', 'lib', 'index.js'), 'utf8')
 const autoReviewSource = readFileSync(versionedFixture('dsh-experimental-auto-review', 'lib', 'index.js'), 'utf8')
 const clientSource = readFileSync(versionedFixture('dsh-client-ui-permission-presets', 'lib', 'client.js'), 'utf8')
-const profileSource = readFileSync('scripts/profile-web.cordis.patch.yml', 'utf8')
+const profileSource = readFileSync('scripts/profile-web.cordis.patch.yml', 'utf8').replace(/\r\n/g, '\n')
 const patchedPermission = patchPermissionPresetsAutoDefault(permissionSource)
 const patchedAutoReview = patchAutoReviewDefaultBehavior(autoReviewSource)
 const patchedClient = patchPermissionPresetsClientAutoDefault(clientSource)
@@ -185,7 +185,7 @@ test('AR1 runs through the engine patch runner and rejects damaged input', () =>
     ['usr/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-client-ui-permission-presets/lib/client.js', clientSource],
   ]
   const runner = new URL('../apply-patches.mjs', import.meta.url)
-  const run = mode => spawnSync(process.execPath, [runner.pathname, stage, mode, '--scope', 'engine', '--only', PATCH_ID], { encoding: 'utf8' })
+  const run = mode => spawnSync(process.execPath, [fileURLToPath(runner), stage, mode, '--scope', 'engine', '--only', PATCH_ID], { encoding: 'utf8' })
   try {
     for (const [relative, source] of targets) {
       const target = join(stage, relative)
