@@ -3445,3 +3445,7 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 613. **来源预检仍解析已移除的 workflow 市场包固定语句（2026-10-31）**
 
     现象：`preflight-source-chain.mjs --self-test` 在进入自检前报「workflow 真源解析失败」。真因：市场包 URL、版本和摘要已迁入 `scripts/contract.json`，workflow 只记录消费的发布包和路径，预检仍要求旧版 shell `printf` 与版本断言。修法：从合同读取唯一的市场包元数据，并核对 workflow 的 URL 与消费路径；自检对 workflow 两项及合同三项分别做受控负控。复验：本机自检 1 正 5 负通过，缓存发布包哈希及补丁镜像逐字节检查通过；完整 Windows 预检在 `normalize-snapshot.test.mjs` 的 GNU tar 成员路径分隔符处失败，Linux/CI 结果待验，未做设备验证。
+
+614. **GitHub CLI 的 release view JSON 不包含 Latest 字段（2026-10-31）**
+
+    现象：发布收尾 workflow 若用 `gh release view --json isLatest` 核验 Latest，会因 CLI 拒绝未知 JSON 字段而失败。真因：REST Release 元数据和 CLI 的 `--json` 字段集合并不相同，`isLatest` 不属于当前 CLI 暴露的字段。修法：一次性 v0.14.10 收尾实现改用 `gh api repos/$GH_REPO/releases/latest` 读取官方 Latest 端点并比较 `tag_name`；正式 Release 更新完成后已删除该 workflow、脚本和专用测试。复验：PR #203 的 workflow 合同测试通过；main run [41191254678](https://github.com/snoworwind/pocket-harness/actions/runs/41191254678) 更新正文和校验清单后，线上 Release、实际下载的 `notes.md` / `SHA256SUMS.txt`、API 资产摘要与 Latest tag 均由校验器验证通过。

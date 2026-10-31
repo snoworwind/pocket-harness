@@ -66,6 +66,7 @@ gh workflow run build-apk.yml --repo snoworwind/pocket-harness --ref main -f dra
 
 构建或证据核验失败不进入写权限任务。上传失败可能留下部分资产的草稿，不得直接公开；检查该次失败记录后重跑，新 attempt 创建独立草稿。来源证明支撑链路追溯，不等于 APK 字节可复现或设备已验收。
 
+
 ## 6. 来源链产物命名
 
 APK 由 `scripts/build-apk.mjs` 按 `pocket-harness-v<versionName><suffix>-arm64.apk` 命名。当前来源工作流固定 `--abi arm64 --suffix -source`；下载入口与证据清单见 [构建详档](AGENTS/build-and-env.md)。
