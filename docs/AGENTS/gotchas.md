@@ -3449,3 +3449,7 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 614. **GitHub CLI 的 release view JSON 不包含 Latest 字段（2026-10-31）**
 
     现象：发布收尾 workflow 若用 `gh release view --json isLatest` 核验 Latest，会因 CLI 拒绝未知 JSON 字段而失败。真因：REST Release 元数据和 CLI 的 `--json` 字段集合并不相同，`isLatest` 不属于当前 CLI 暴露的字段。修法：一次性 v0.14.10 收尾实现改用 `gh api repos/$GH_REPO/releases/latest` 读取官方 Latest 端点并比较 `tag_name`；正式 Release 更新完成后已删除该 workflow、脚本和专用测试。复验：PR #203 的 workflow 合同测试通过；main run [41191254678](https://github.com/snoworwind/pocket-harness/actions/runs/41191254678) 更新正文和校验清单后，线上 Release、实际下载的 `notes.md` / `SHA256SUMS.txt`、API 资产摘要与 Latest tag 均由校验器验证通过。
+
+615. **Auto Review 会话被中断写入后恢复成非审查档（2026-10-31）**
+
+    现象：持久化会话已有 `permission/preset=auto`，但进程在写 `sandbox/mode` 或 `approval/policy` 事实前退出；恢复路径按全局 shell/approval 默认补齐缺失字段后，`permissionPresets.current(session)` 会变为 `workspace-write`，reviewer 不再审查该会话。真因：新会话首次 pin Auto 时按 preset 规格写入三个独立事实，但部分恢复分支原先把缺失旋钮当作普通档位、继承全局默认。修法：只要持久化身份是 Auto，缺失旋钮就按固定 Auto spec 补齐；reviewer 注册前 fail-closed guard 同时检查持久化与有效身份，注册时再对现存会话执行准入与 pin。复验：rc.5 权限服务运行时回归 5/5；补丁清单 32 文件、76 项通过，另 2 项为已登记 Windows symlink 平台限制；补丁夹具与 26/26 引擎补丁锚点通过，执行地图覆盖检查通过。无 ADB/Android SDK，设备三层验收未做。
