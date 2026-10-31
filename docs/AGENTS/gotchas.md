@@ -3441,3 +3441,7 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 612. **最终快照 profile 门禁把测试负控当成生产输入并忽略真实 YAML 缩进（2026-10-31）**
 
     现象：带 `draft_release=true` 的 ARM64 构建在 `check-snapshot-profile-identity.py` 报所有 shell 路径缺少应用私有前缀，并称缺少 `headless-bad`；同一脚本的合成自检却通过。真因：真实权威 patch 将 bashPath/prefix/home/cwd 缩进在 `shell-termux.config` 下，自检只用列零键；生产快照由 `seed-dsh-profiles.mjs` 只创建 web/headless，headless-bad 是注入器明确跳过的测试负控，不应进入生产 APK。修法：验证器识别实际缩进的唯一键，只强制 web/headless；负控缺席可通过，若存在仍必须与权威 patch 不同。自检加入仓内真实 patch 正控、负控缺席正控及覆盖负控反例。复验：自检与 PR Gate 待完成；草稿 CI run `41172476782` 的 source build reference 在真实 snapshot 上证实旧判据会误拒，修复合入后必须重跑来源草稿 CI。
+
+613. **来源预检仍解析已移除的 workflow 市场包固定语句（2026-10-31）**
+
+    现象：`preflight-source-chain.mjs --self-test` 在进入自检前报「workflow 真源解析失败」。真因：市场包 URL、版本和摘要已迁入 `scripts/contract.json`，workflow 只记录消费的发布包和路径，预检仍要求旧版 shell `printf` 与版本断言。修法：从合同读取唯一的市场包元数据，并核对 workflow 的 URL 与消费路径；自检对 workflow 两项及合同三项分别做受控负控。复验：本机自检 1 正 5 负通过，缓存发布包哈希及补丁镜像逐字节检查通过；完整 Windows 预检在 `normalize-snapshot.test.mjs` 的 GNU tar 成员路径分隔符处失败，Linux/CI 结果待验，未做设备验证。
