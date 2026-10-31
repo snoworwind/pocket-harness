@@ -1,19 +1,25 @@
 # ACCESSIBILITY-API.md — 无障碍控制通道 API 与权限面全量参考
 
-> **权威数据来源**：本机 Android SDK `platforms/android-36/data/api-versions.xml`（API 级别）
-> + AOSP `core/java/android/accessibilityservice/AccessibilityService.java` 源码
-> （2026-09-10 抽取；SDK 升级后重跑 `node .deploy-tmp/0135/api-surface.mjs <api-versions.xml> <class>` 复核）。
+> **API 级别来源**：当前 Android SDK 的 API 元数据与 AOSP
+> `core/java/android/accessibilityservice/AccessibilityService.java` 实现。2026-09-10 的临时抽取脚本
+> `.deploy-tmp/0135/api-surface.mjs` 不在仓库内，不是可复用命令；SDK 升级时应直接对照新 SDK 元数据与官方 API 文档复核。
 >
-> 本文件是**能力面与权限面**的唯一依据；实现与本文不一致时以源码为准并当场修正。
-> 通道设计（队列协议/门禁矩阵/协作结论）见协调仓 `docs/A11Y-CONTROL-DESIGN.md`。
+> 本文件记录平台 API、权限和本仓实现映射；实现与本文不一致时以源码为准并当场修正。
+> 本仓控制队列、屏幕范围与工具路由见 [BRIDGE-API.md](BRIDGE-API.md) 及 [ARCHITECTURE.md](ARCHITECTURE.md)。
 
 ## 0. 一句话
 
-无障碍通道**不是 ADB 的降级替代**：Android 11（API 30）起自带 `takeScreenshot()`（截屏不再需要 ADB）。
-Android 13 起 AOSP 存在无障碍输入法（`FLAG_INPUT_METHOD_EDITOR`）设计，但**本项目实测不可用**：
-javap 校验 android-36 的 `android.jar`，`AccessibilityNodeInfo` 无该符号（见 known-gaps.md 与
-0.13.8 批 F 登记），中文输入由 `ACTION_SET_TEXT` + ADBKeyboard 承担。
-真正只能靠系统面/ADB 的：**shell 执行、pm/dumpsys/appops 等系统面、以及 API <30 的字节级截图**。
+Android 11（API 30）起，无障碍服务提供 `takeScreenshot()`。`DeviceControlService` 的截图操作本身
+不切换通道；模型工具 `android_screenshot` 会先尝试无障碍截图，失败时在特权 shell 可用的情况下
+回落到 Shizuku shell。API<30 时无障碍操作明确报不支持，但模型工具仍可尝试该特权回落；不使用无线 ADB。
+Android 13（API 33）起平台支持无障碍输入法：`AccessibilityServiceInfo.FLAG_INPUT_METHOD_EDITOR`
+以及 `AccessibilityService.onCreateInputMethod()` / `getInputMethod()`。本仓当前没有设置该 flag 或实现
+相应输入链；这是**尚未接入**，不是 SDK 不支持。中文输入继续由 `ACTION_SET_TEXT` + ADBKeyboard 承担。
+平台契约见 [AccessibilityServiceInfo](https://developer.android.com/reference/android/accessibilityservice/AccessibilityServiceInfo#FLAG_INPUT_METHOD_EDITOR)
+与 [AccessibilityService](https://developer.android.com/reference/android/accessibilityservice/AccessibilityService#onCreateInputMethod())。
+真正属于特权系统面的：**shell 执行、pm/dumpsys/appops 等系统操作**。Android 11（API 30）以下
+没有 `AccessibilityService.takeScreenshot()`；当前无障碍截图操作会明确报 API 不支持。壳侧特权 shell
+经 Shizuku 承载，可由独立 shell 工具执行截图命令；无障碍工具不会自动切换通道。
 
 ## 1. 服务级能力（`AccessibilityServiceInfo.CAPABILITY_*` ↔ XML 属性）
 
@@ -27,7 +33,7 @@ javap 校验 android-36 的 `android.jar`，`AccessibilityNodeInfo` 无该符号
 | `CAPABILITY_CAN_REQUEST_FILTER_KEY_EVENTS` | 18 | `canRequestFilterKeyEvents` | 不用 |
 | `CAPABILITY_CAN_REQUEST_ENHANCED_WEB_ACCESSIBILITY` | 18 | `canRequestEnhancedWebAccessibility` | 不用（已废弃方向） |
 | `CAPABILITY_CAN_REQUEST_FINGERPRINT_GESTURES` | 26 | `canRequestFingerprintGestures` | 不用 |
-| `FLAG_INPUT_METHOD_EDITOR` | 33 | （flag） | **不可用**：android-36 android.jar 无相关符号（known-gaps 已核实）；中文输入走 `ACTION_SET_TEXT` + ADBKeyboard |
+| `AccessibilityServiceInfo.FLAG_INPUT_METHOD_EDITOR` | 33 | `accessibilityFlags` / `setServiceInfo()` | 平台支持；**本仓未接入**，中文输入走 `ACTION_SET_TEXT` + ADBKeyboard |
 
 ## 2. 服务 API（含 API 级别）
 
@@ -56,7 +62,7 @@ javap 校验 android-36 的 `android.jar`，`AccessibilityNodeInfo` 无该符号
 |---|---|---|
 | **`takeScreenshot(displayId, Executor, TakeScreenshotCallback)`** | **30** | 回调给 `ScreenshotResult{hardwareBuffer, colorSpace, timestamp}`；`Bitmap.wrapHardwareBuffer(...)` 转位图；**限频约 333ms**（`ACCESSIBILITY_TAKE_SCREENSHOT_REQUEST_INTERVAL_TIMES_MS`） |
 | `takeScreenshotOfWindow(windowId, …)` | 34 | 单窗口 |
-| `GLOBAL_ACTION_TAKE_SCREENSHOT` | 28 | 走系统截屏（**存相册，不回传数据**）——API<30 的降级 |
+| `GLOBAL_ACTION_TAKE_SCREENSHOT` | 28 | 走系统截屏（**存相册，不回传数据**）；不是本工具 API<30 的回传降级 |
 
 失败错误码（`onFailure(errorCode)`）：
 
@@ -74,7 +80,7 @@ javap 校验 android-36 的 `android.jar`，`AccessibilityNodeInfo` 无该符号
 |---|---|---|
 | `getSoftKeyboardController().switchToInputMethod(imeId)` | 24 | 切换输入法（**替代 ADB `ime set`**） |
 | `getSoftKeyboardController().setInputMethodEnabled(imeId, enabled)` | 33 | 启用/停用 IME（限同包） |
-| `onCreateInputMethod()` / `getInputMethod()` | 33 | 无障碍输入法（配 `FLAG_INPUT_METHOD_EDITOR`）——**本 SDK 无此符号，不可用**（known-gaps） |
+| `onCreateInputMethod()` / `getInputMethod()` | 33 | 无障碍输入法（须启用 `AccessibilityServiceInfo.FLAG_INPUT_METHOD_EDITOR`）；本仓未实现 |
 | `getSoftKeyboardController().setShowMode(...)` | 24 | 软键盘显示策略 |
 
 ### 2.5 其他
@@ -134,7 +140,7 @@ javap 校验 android-36 的 `android.jar`，`AccessibilityNodeInfo` 无该符号
 | 清单 | `android.permission.BIND_ACCESSIBILITY_SERVICE` + `<intent-filter action="android.accessibilityservice.AccessibilityService">` | 只有系统可绑定；缺一即被系统忽略 |
 | 服务声明 | `android:exported="true"` + `<meta-data android:name="android.accessibilityservice" android:resource="@xml/accessibility_service_config"/>` | 能力只能走 XML |
 | 用户开关 | 系统设置 → 无障碍 → 已下载的服务 → 「DSH 设备控制」 | 一次性；`disableSelf()` 可自关 |
-| Android 13+ | 侧载应用可能被「受限设置」挡住开关 | `appops set <pkg> ACCESS_RESTRICTED_SETTINGS allow`（本仓 `AdbState.unlockRestrictedSettings`，走 ADB 通道） |
+| Android 13+ | 侧载应用可能被「受限设置」挡住开关 | 用户确认后由 `MainActivity.unlockRestrictedSettingsViaShizuku()` 调用 Shizuku 特权 shell 执行 `appops`；不走无线 ADB |
 | 截屏 | `canTakeScreenshot="true"`（API 30+） | 无额外运行时权限；`FLAG_SECURE` 窗口拒绝；~333ms 限频 |
 | 手势 | `canPerformGestures="true"`（API 24+） | |
 | 读树 | `canRetrieveWindowContent="true"` | |
@@ -153,17 +159,19 @@ javap 校验 android-36 的 `android.jar`，`AccessibilityNodeInfo` 无该符号
 | 屏幕范围失败关闭 | `ScreenScopePrefs` + `DeviceControlService.realScreenScopeError()`；每次 real op 重查，切换范围使旧 snapshot/ref 失效；`virtual-1` 未 ready 时不映射 display 0 |
 | 队列客户端（长轮询 + 心跳 + 回填） | `ControlPoller.kt` |
 | 状态与令牌 | `DeviceControlService.statusJson()` / `token()`；prefs `dsh-adb.xml` 的 `a11yEnabled` / `controlToken` |
-| 桥方法 | `AndroidBridge.a11yStatus()/openA11ySettings()/unlockRestrictedSettings()`（MainActivity 接线） |
-| 引擎侧门禁与路由 | 协调仓 `plugins/dsh-android-bridge/src/control-policy.ts` / `control-queue.ts`；工具面在 `plugins/dsh-android-manage` |
+| 桥方法 | `AndroidBridge.a11yStatus()/openA11ySettings()/unlockRestrictedSettings()`；受限设置操作在 `MainActivity` 由 Shizuku 实现 |
+| 引擎侧门禁与路由 | 本仓 `plugins/dsh-android-bridge/src/control-policy.ts` / `control-queue.ts`；工具面在 `plugins/dsh-android-manage` |
+| 模型工具截图回落 | `plugins/dsh-android-manage/src/index.ts` 的 `android_screenshot`：先走无障碍，失败后在 `execAdbLine` 可用时尝试特权 shell；壳侧执行由 `ShellOps` / `ShizukuTransport` 承载 |
 
-## 7. 状态与待办（2026-09-14 对账）
+## 7. 实现状态与未接入项（2026-10-31 源码对账）
 
-已完成：服务 + 能力声明、树快照、click/setText/scroll/global、队列长轮询 + 心跳、门禁双通道、
-设置页无障碍优先、`takeScreenshot`（设备实测通过）、**全局动作面由 `getSystemActions()` 驱动**
-（0.13.8 E6，`GlobalActionCatalog`）、**无障碍截屏失败回落 ADB**（E6）、**屏幕范围执行点复查**
+已接入：服务 + 能力声明、树快照、click/setText/scroll/global、队列长轮询 + 心跳、设备控制门禁、
+设置页无障碍控制入口、`takeScreenshot`（API 30+，本节只陈述代码能力）、`android_screenshot` 在特权 shell 可用时的失败回落、**全局动作面由 `getSystemActions()` 驱动**
+（0.13.8 E6，`GlobalActionCatalog`）、**屏幕范围执行点复查**
 （`ScreenScopePrefs` + `DeviceControlService.realScreenScopeError`）。
 
-待办：① ~~无障碍输入法~~ **已核实不可用**（android-36 无符号）；② ~~`getSystemActions()` 驱动全局动作面~~ **已落地**；
-③ 长按已接，展开/折叠/复制/翻页/拖拽等节点动作仍未暴露给模型；④ `takeScreenshotOfWindow`(34) 单窗口观察未接；
-⑤ 多窗口 `getWindows()` 的窗口选择面未接；⑥ 回落 ADB 路径只在本机 API 35 验过「无障碍可用」分支，API<30 真机回落未验。
+已知未接入项：① 平台的无障碍输入法 API（API 33+）尚未由本仓接入，文本写入由 `ACTION_SET_TEXT` 等现有路径承担；
+② 展开/折叠/复制/翻页/拖拽等节点动作尚未全部暴露给模型；③ `takeScreenshotOfWindow()`（API 34）未接入。
+虚拟屏语义树读取已通过 `getWindowsOnAllDisplays()` + `WindowPick.order` 选择窗口根节点；当前没有把窗口 ID 作为独立模型参数暴露。API<30 时 `DeviceControlService` 的无障碍截图明确报不支持；
+`android_screenshot` 工具层会在 Shizuku 特权 shell 可用时回落，且仍须按候选说明和 [known-gaps.md](known-gaps.md) 对账设备验收状态。
 完整缺口清单维护在 `known-gaps.md`（本文件只登记 API 参考与实现映射）。

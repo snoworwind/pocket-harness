@@ -46,7 +46,7 @@ MainActivity 33 / OverlayService 20 / **BrowserHost 18** / OverlayPanel 15 / Con
 |---|---|---|
 | TYPE_APPLICATION_OVERLAY 悬浮球三窗口 | API 26+ | minSdk 26 直用，无分支（OverlayService.kt:175,199,242） |
 | NotificationChannel | API 26+ | minSdk 26 直用（MainActivity.kt:616、NotifyCenter.kt） |
-| isExternalStorageManager（All Files Access） | API 30 | 显式分支 7 处：AndroidBridge.kt:133、AdbState.kt:307、ConfigTransfer.kt:229,272、GuidePageRenderer.kt:161、LogCollector.kt:76、DownloadSaver.kt:140（SDK<30 走 SAF+legacy 权限分代，#120） |
+| isExternalStorageManager（All Files Access） | API 30 | 仅在 `Build.VERSION.SDK_INT >= 30` 时调用；当前调用点用 `rg -n "Environment\\.isExternalStorageManager" app/src/main/java` 现查。API 30 以下沿用 SAF 与 legacy 权限分代（#120）。 |
 | POST_NOTIFICATIONS 运行时权限 | API 33 | Build.VERSION 分支 + ActivityResult 请求（MainActivity.kt:84-85,598-613）；NotifyCenter.hasPermission 在投递前复判并回调界面（D9，不再只写日志） |
 | 渠道 importance 只能降不能升 | 全等级（API 26+ 语义） | NotifyCenter.Face 候选 ID 序列 + getNotificationChannel/getImportance/hasUserSetImportance 三态判定；弹窗类首次即 HIGH 建，静默类换新 ID（§6.1.2） |
 | PendingIntent.FLAG_MUTABLE | 常量 API 31+ | minSdk 26 上该常量可用（未知标志被平台忽略），语义仅在 31+ 生效；只对 RemoteInput 回复动作用 |
@@ -77,9 +77,9 @@ MainActivity 33 / OverlayService 20 / **BrowserHost 18** / OverlayPanel 15 / Con
 ## 7. 无障碍 API（0.13.5 W4 新增，全量参考见 ACCESSIBILITY-API.md）
 
 - 服务级能力：`canRetrieveWindowContent`(18) / `canPerformGestures`(24) / **`canTakeScreenshot`(30)** / `flagRetrieveInteractiveWindows`(21) / `flagReportViewIds`(18) —— 全部在 `res/xml/accessibility_service_config.xml` 声明。
-- 代码级 API 守卫：`takeScreenshot()`（API 30，`Build.VERSION_CODES.R` 分支，低于则明确报错引导 ADB）；`getSoftKeyboardController().switchToInputMethod()`（API 24）；`onCreateInputMethod()`（API 33，未接）。
+- 代码级 API 守卫：`takeScreenshot()`（API 30，`Build.VERSION_CODES.R` 分支，低于时 `DeviceControlService` 明确返回不支持；模型工具 `android_screenshot` 可在 Shizuku 特权 shell 可用时回落）；`getSoftKeyboardController().switchToInputMethod()`（API 24）；`onCreateInputMethod()`（API 33，平台支持但本仓未接）。
 - 无需额外运行时权限：截屏/手势/读树都靠服务能力声明 + 用户在系统设置开启一次；`FLAG_SECURE` 窗口系统直接拒绝截屏。
-- Android 13+ 侧载受限设置：`appops set <pkg> ACCESS_RESTRICTED_SETTINGS allow`（`AdbState.unlockRestrictedSettings`）。
+- Android 13+ 侧载受限设置：需用户确认后由 `MainActivity.unlockRestrictedSettingsViaShizuku()` 经 `ShizukuTransport` 执行 `appops set --user 0 <pkg> ACCESS_RESTRICTED_SETTINGS allow`；这里不再经过已退役的内置 ADB 服务。
 
 ## 8. 通知 API（0.14.0-preview §6 新增）
 
@@ -115,11 +115,13 @@ MainActivity 33 / OverlayService 20 / **BrowserHost 18** / OverlayPanel 15 / Con
 ## 9. 0.14 新增面（Shizuku / 虚拟屏 / 浏览器宿主 / 返回网关）
 
 - **Shizuku（外部依赖，非 android.*）**：`dev.rikka.shizuku:api/provider 13.1.5`。`ShizukuTransport` 管理
-  UserService 生命周期（权限状态、bind 超时 4s、`ShizukuUserServiceArgs`）；`ShizukuUserService` 实现既有
-  AIDL v1（uid/protocolVersion/exec(argv)，16KB 输出上限）。所有调用 fail-closed；授权只能由用户在
-  Shizuku App 内授予。`ShizukuSupport`/`ShizukuProbe` 仍走反射（探针可注入式降级）。
-- **虚拟屏**：`VdisplayController` 在**应用进程**建 `PUBLIC|OWN_CONTENT_ONLY|SUPPORTS_TOUCH|DESTROY_CONTENT_ON_REMOVAL`
-  的 VirtualDisplay，输出先用 `ImageReader` 兜底；viewer 挂接后 `setSurface(viewerSurface)`，释放回 reader。
+  UserService 生命周期（权限状态、bind 超时 4s、`ShizukuUserServiceArgs`）；当前 AIDL 协议版本为 v5，
+  含完整 UID/配置确认、`exec(argv)`、特权 shell 与分块文件传输。普通 exec 的 inline 输出上限为 16 KiB；
+  capture 以 spool + 分块读取承载，单文件上限 256 MiB。所有调用 fail-closed；授权只能由用户在
+  Shizuku App 内授予。`ShizukuSupport`/debug-only `ShizukuProbe` 仍走反射。
+- **虚拟屏**：`VdisplayController` 在**应用进程**建 VirtualDisplay，传入
+  `PUBLIC|OWN_CONTENT_ONLY|SUPPORTS_TOUCH|DESTROY_CONTENT_ON_REMOVAL|ROTATES_WITH_CONTENT`；Android 13+ 上 `PUBLIC` 对非系统应用创建的屏幕不生效，
+  运行时仍是 private display。输出先用 `ImageReader` 兜底；viewer 挂接后 `setSurface(viewerSurface)`，释放回 reader。
   运行时 displayId 动态，产品别名 `virtual-N` 稳定；`ScreenTargets.REAL` 固定 display 0 且不可镜像。
 - **浏览器宿主**：`BrowserHost` 惰性创建第二个 WebView（不 `addJavascriptInterface`），
   `BrowserHostNavigationPolicy` 只放行 http(s)/about:blank 且拒绝 loopback；stage 几何用物理

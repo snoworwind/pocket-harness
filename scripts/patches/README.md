@@ -1,6 +1,6 @@
-# scripts/patches/ — vendor 固化插件统一补丁模块（Phase 2a，2026-09-05）
+# scripts/patches/ — 来源快照构建期补丁
 
-快照注入链全部 vendor 补丁的**唯一入口**。此前补丁散落 `patch-marketplace.mjs`（A-D）与 `patch-undo-mobile.mjs`（E1-E7）两份脚本、双仓各一副本，漂移风险实锤（apk 仓副本曾缺补丁 C/D，云端构建产出缺补丁 APK）——本目录将其统合为一框架。
+`apply-patches.mjs` 是来源快照构建期补丁的 runner，统一处理 vendor 与 engine 补丁。当前补丁集合以本仓 `registry.json` 和 runner 内的 `IMPLS` 为准；门禁检查两者闭合，并不再与其他仓库做逐字节镜像比较。历史双仓漂移事件仅作为 2026-09 的背景记录。
 
 ## 组成
 
@@ -11,19 +11,20 @@
 | `data/compat-map.json` | 补丁 D 的兼容性数据（COMPAT_MAP/NOTE）。增补别名只改此文件，`--apply` 对已修补文件做 map 幂等刷新 |
 | `README.md` | 本文档 |
 
-## 补丁清单（详见 registry.json）
+## 活动补丁与 vendor 版本
 
-- **permission-auto-review-default-AR1（2026-10-23）**：新会话默认 Auto Review 并挂载对应审查插件；审查覆盖原生工具、PTC 外层程序和内层调用。high 风险结论直接硬拒绝并记录到单调 `tools.guard`，不会进入用户审批链；medium 拒绝仍可逐次询问。审查失败与集成缺席时 fail closed；reviewer 卸载时活跃会话回退到 `workspace-write`，Android Shell 在 spawn 前拒绝该受限档位。Android 没有路径级文件系统沙箱，工具仍在 app UID 权限下运行；切换当前会话权限档位会退出 Auto Review。三个固定 npm 包夹具、幂等、运行时拒绝/审批、完整补丁 runner 与损坏输入回归见 `tests/permission-auto-review-default.test.mjs`。
-- **workspace-write-boundary-warning-WW1（2026-10-23）**：用户选择 `workspace-write` 时先确认 Android 没有覆盖所有工具的路径级文件系统沙箱。当前会话选择器、新会话默认设置与 `/permission` 命令均给出确认；选中后设置说明和会话选择器提示持续可见。文案明确 Termux Shell 会在启动 bash 前拒绝该档位，其他原生工具/插件依各自实现、不能保证仅访问工作区，并仍受 app UID 权限边界约束。回归 `tests/workspace-write-boundary-warning.test.mjs`。
-- **sidebar-bubble-reorder-B1（2026-10-17）**：`dsh-client-ui-sidebar-right/lib/client.js` 增加 `reorderIn(session, tab, before)`。复用原 store 的 `placeTab`，恢复原活动标签；仅操作当前挂载会话的 dock 同分栏，拒绝失效会话、浮动页、跨分栏与无效/无变化目标。补丁接受本代 npm 发布包和 Android 源码构建的两条精确锚点；未知或部分损坏字节拒绝写入。真实夹具、幂等、损坏输入和 runner 集成测试见 `tests/sidebar-bubble-reorder.test.mjs`。
+活动补丁 ID、目标、依赖与退役登记以 `registry.json` 为准；查看当前清单：
 
-- **dshmarketplace-plugin 0.1.5**：A pre-execute 守卫（全工具崩溃）、B execPath 安全化（apk#83/#89 bad ELF magic）、C 不可安装置灰（soft：锚点失配仅告警不拒打包）、D 移动兼容徽章 + `mobile:` 过滤（server/client 两侧）、**U2 exact 路由鉴权**（search/install 复用 `connection.requestRejection()`，缺服务也 401）。
-- **dsh-undo-savepoint 0.3.8**：E1-E7 移动端裁剪（头部只留快照徽章、移除快捷键行与全局键盘监听、徽章宽度封顶）+ **E8 徽章折叠成小绿点**（2026-09-10 用户定例：360dp 竖屏头部已被模式徽章/打开方式/…/右栏键占满，文字徽章挤标题且更窄处错位；数量与含义挪进 title/aria-label，点击行为不变，20x20 圆形后置 CSS 覆盖胶囊样式——注意 E7 的 marker 串保持不动，改它会让 E7 误判未应用后二次施加失配）+ **U1 `/api/undo` 鉴权**（Host/Origin/浏览器会话或壳侧实时 controlToken，所有读写均在 body/快照操作前失败关闭）。
+```bash
+node scripts/patches/apply-patches.mjs vendor --list
+```
+
+Vendor 包版本以各自 `package.json` 为准，不在本文重复维护。补丁实现仍会明确标注必要的来源、marker 与行为边界；历史章节保留变更时点的包版本和验证信息，不代表当前活动集合。
 
 ## 用法
 
 ```bash
-# 构建门禁（build-apk-013.ps1 / build-apk.mjs 已接入；默认 ensure 语义=缺席即施加）
+# 来源快照构建内部会运行；默认 ensure 语义=缺席即施加
 node scripts/patches/apply-patches.mjs vendor
 
 # 只验证不写（严格门禁）
@@ -38,8 +39,8 @@ node scripts/patches/apply-patches.mjs vendor --list
 1. 在 `apply-patches.mjs` 的 `IMPLS` 加实现（`file` / `check(src)` / `apply(src)`；apply 抛错 = 锚点失配拒写）；
 2. 在 `registry.json` 加同 id 条目（摘要 + 来源登记）——漏加即启动交叉校验失败；
 3. 跑 `--apply` 验证幂等与自验；锚点用**足够长的唯一字符串**（minified 代码短锚点易误伤）；
-4. 双仓同步（铁律）：本目录整体镜像到 `dsh-mobile-apk/scripts/patches/`；
-5. 两仓 AGENTS.md 更新记录表登记。
+4. 将补丁的验证方式和维护边界写入对应文档；活动 registry 区由 `check-maintenance-docs.mjs --write` 更新到 `docs/AGENTS/RUNTIME-PATCHES.md`。
+5. 不同步到协调仓；本仓树内副本是权威来源。
 
 ## 锚点失效处置
 
@@ -47,7 +48,7 @@ node scripts/patches/apply-patches.mjs vendor --list
 
 ## 历史
 
-- 2026-09-05 Phase 2a：统合 patch-marketplace.mjs（A/B/C/D）+ patch-undo-mobile.mjs（E1-E7）为本模块，旧脚本删除；双仓 scripts 同版（雷点 10）。
+- 2026-09-05 Phase 2a：统合 `patch-marketplace.mjs`（A-D）与 `patch-undo-mobile.mjs`（E1-E7）为本模块，旧脚本删除；当时采用双仓副本。跨树镜像要求于 2026-10-15 退役，现行边界见本文开头和 `docs/AGENTS/SECURITY-HARDENING.md`。
 ## 2026-09-10 追上游 0.1.5-rc.1 的补丁增减
 
 - **退役 pi-drift-F1**：上游 0.1.5 的 dsh-llm-pi-ai 原生实现了同类容错——

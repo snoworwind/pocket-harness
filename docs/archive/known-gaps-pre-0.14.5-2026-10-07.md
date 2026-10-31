@@ -2,6 +2,8 @@
 
 > 2026-10-07 从 AGENTS/known-gaps.md 保留的历史原文。版本、路径、外测安排和“本轮”均指当时上下文，不构成当前指令或验收结论。未复核事项没有因此关闭；当前索引见 [known-gaps.md](../AGENTS/known-gaps.md)。
 
+> 勘误（2026-10-31）：本档案中“无障碍输入法已核实不可行 / SDK 无相关符号”的结论不正确。检查错了类型：API 33 的 `FLAG_INPUT_METHOD_EDITOR` 属于 `AccessibilityServiceInfo`，`onCreateInputMethod()` / `getInputMethod()` 属于 `AccessibilityService`。官方定义见 [AccessibilityServiceInfo](https://developer.android.com/reference/android/accessibilityservice/AccessibilityServiceInfo#FLAG_INPUT_METHOD_EDITOR) 与 [AccessibilityService](https://developer.android.com/reference/android/accessibilityservice/AccessibilityService#onCreateInputMethod())。本仓未接入该输入链；档案保留当时误判的历史记录，不代表平台不支持。
+
 # known-gaps.md — 当前缺口、外部待验与历史记录
 
 ## 0.14.3 当前交接（源码已登记；**开发方已构建 + 代码层已验，设备三层验收未做**）
@@ -167,7 +169,7 @@
      拿 SF token 再 `screencap -d <token>`；反查失败**fail-closed**（不回 displayId、不回真实屏）。
 - **a11y 路线的定性已更正（2026-09-19 收口轮，设备实测）**：原记「对虚拟屏**不可用**」——该结论
   **只对当时（0.14.0 装机版、F1 未修）成立**，真因是**范围门按 op 名/real 一刀切**（screen-blind），
-  不是 a11y 能力缺失。F1（`bridge/index.ts:832-838` 按 `args.screenId` 经 `screenAccessResolved` 判定）
+   不是 a11y 能力缺失。F1（当时按 `args.screenId` 经 `screenAccessResolved` 判定；具体源码行号不作为本档案内容）
   之后，virtual-only 下指虚拟屏的 a11y op 不再被门拒。当日设备实测（MuMu x86_64 / API 35，
   虚拟屏 active、a11y 服务 bound）：
   - `dumpsys window windows` → `WindowsForAccessibilityObserver{mDisplayId=10, mInitialized=true}`

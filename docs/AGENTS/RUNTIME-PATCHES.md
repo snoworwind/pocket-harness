@@ -54,13 +54,14 @@
 | 0.14.1 文件写工具链路 | `write` 工具在 Android 上**建不了新文件**（`createIfAbsent` 的 `link(2)` 无回退，apk issue #246）→ fs-local 重新入册 + 构建期 `fs-local-link-F8`。教训：退役理由「上游已原生覆盖」必须**逐站点**核对，不能按文件整体判定——上游把回退加在替换路径上，而新增的独占创建路径又裸用了 `link(2)` |
 | 目标包缺席语义 | 上游裁包（如某版本依赖图变动）时跳过而非报错/硬写，避免死覆盖（:440-446） |
 
-## 6. 与协调仓 scripts/patches/ 的分工边界
+## 6. 来源链构建期补丁边界
 
-**协调仓 `scripts/patches/`（apply-patches.mjs + registry.json + data/compat-map.json）是快照注入链的构建期补丁框架**，按 `scope` 分两路：
-- `scope: vendor` 打 vendor 固化插件（dshmarketplace-plugin B/D + **U2 exact-route browser-session 鉴权**；dsh-undo-savepoint E1-E8 + **S1 safe 保留自有插件** + **U1 `/api/undo` connection/token 鉴权与 no-store**），在 `build-apk-013.ps1` 阶段施加；对应行为回归在 `scripts/patches/tests/{undo-route-auth,market-route-auth}.test.mjs`。
+构建期补丁由本仓 `scripts/patches/` 管理，按 `scope` 处理 vendor 固化插件或 Harness 引擎包。来源链调用 `scripts/build-snapshot-013.mjs` 生成快照；该脚本不是独立发布入口。活动集合以本节生成表和 `scripts/patches/registry.json` 为准，批次记录见 §7。
+- Vendor 补丁修改本仓 `vendor/` 的固化副本；包版本以各自 `package.json` 和 `PATCHES.md` 为准。
   - **2026-09-26 追版**：两个插件都追到上游新版（marketplace 0.1.5→0.1.7、undo 0.3.8→0.4.9）。已退役：marketplace A（上游 0.1.7 原生修 next 兜底）、marketplace C（上游 0.1.7 用 `installCheck==="passed"` 过滤掉不可安装条目）；新增 undo S1（safe 生成对齐壳侧 `SafeMode.kt`：只摘第三方、保留 `@dsh-android/*` 与全部 `disable` 行——上游原实现整份覆写会重开无鉴权的 `client-hmr` SSE）。详见各 vendor 的 `PATCHES.md` 与 `registry.json` 的 `retired` 段。undo 0.4.9 另有安全收益：`settings.yaml` 纳入脱敏（0.3.8 时代在快照范围内却不脱敏 ⇒ 明文进包）。
 - `scripts/check-api-route-auth.mjs` 与 `api-route-auth-policy.json` 不属于运行时 asset：它们扫描所有 mobile-owned WebServer registration source，要求 protected guard 或窄公开白名单，并在本地/云端/CI/发布链接线。file-incoming 的 queue、claim、content、complete、clean 五个 exact route 均属于 protected 面；content 只接受进程内 ticket，不能返回源绝对路径。
-- `scope: engine` 打引擎树内上游包，在 `build-snapshot-013.mjs` 0f 步施加并逐个复查 marker / exact verifier；当前活动清单见下方生成区。§7 的批次说明记录历史实现，不作为活动全集。
+- Engine 补丁修改来源链构建出的引擎树。runner 按 registry marker 和 verifier 逐项检查，不能以历史夹具或旧 stage 的结果代替当前来源构建输入。
+- 本仓树内副本是权威来源。跨仓逐字节镜像规则已于 2026-10-15 退役；不要求将 `scripts/patches/` 或子仓副本同步到协调仓。
 
 ### 6.1 当前活动构建期补丁（registry 生成）
 
@@ -113,7 +114,7 @@
 已退役登记：`market-A`、`market-C`、`atomic-stale-lock-F4`。历史章节保留退役前语义；活动状态以本表和 registry 为准。
 <!-- generated:active-registry:end -->
 
-**与本节 assets/patched/ 的分界**：同一份引擎文件的修复若能在构建期落地（随发行快照固化），优先走 `scope: engine`；运行时 asset 只承担「必须每次启动前覆盖」或「与引擎版本无关的壳侧定制」（见 §3-2）。已退役：pi-drift-F1（上游 0.1.5 原生 strict/deferred 校验）。**assets/patched/ 是设备端运行时补丁**——壳在每次引擎启动前对快照内上游引擎包做覆盖。两者层不同、目标不同、幂等机制不同（构建期 = registry 幂等标记；运行时 = 内容指纹），勿混用；构建期补丁登记见协调仓 scripts/patches/README.md 与 registry.json。
+**与本节 `assets/patched/` 的分界**：同一份引擎文件的修复若能随发行快照固化，优先走 `scope: engine`；运行时 asset 只承担必须在启动前覆盖或与引擎版本无关的壳侧定制（见 §3）。两者目标、幂等方式不同，不要互换。构建期补丁详见本仓 [补丁模块说明](../../scripts/patches/README.md) 与 `scripts/patches/registry.json`。
 
 ## 7. 0.13.7 重出（引擎 0.1.5-rc.1，2026-09-10）
 
@@ -173,7 +174,7 @@
 
 | `permission-auto-review-default-AR1` | `dsh-permission-presets/lib/index.js`、`dsh-experimental-auto-review/lib/index.js`、`dsh-client-ui-permission-presets/lib/client.js` | 新会话默认 Auto Review，审查原生工具、PTC 外层 `run_code` 与内层调用；high 直接拒绝并由 `tools.guard` 防后续 hook 覆盖，不进入用户审批；medium 拒绝仍可逐次确认。审查故障/集成缺席 fail closed，插件卸载将活跃会话回退到 `workspace-write`。Auto 风险提示明确 app UID、无路径级沙箱与切换权限档位即退出 Auto。回归 `scripts/patches/tests/permission-auto-review-default.test.mjs`；未改 `assets/patched`，§2 字节数不变。
 | `workspace-write-boundary-warning-WW1` | `dsh-client-ui-permission-presets/lib/client.js` | 当前会话、设置默认值与 `/permission` 选择 `workspace-write` 前要求确认 Android 路径级沙箱不覆盖所有工具；说明 Termux Shell 会在 bash 启动前拒绝该档位，其他 native tools/plugins 的实际访问范围依实现且仍受 app UID 约束。选中后持续显示有限性说明。回归 `scripts/patches/tests/workspace-write-boundary-warning.test.mjs`；未改 `assets/patched`。
-### 7.1a 0.14.3 新增/变更补丁与构建钩子（源码在场，未执行）
+### 7.1a 历史记录：0.14.3 新增/变更补丁与构建钩子
 
 | 补丁/文件 | 真实目标与职责 | 登记 / 回归状态 |
 |---|---|---|
@@ -183,15 +184,13 @@
 | terminal-inspector-android-D1 | dsh-subprocess-local的runner-launch-B2zsQ1Dz（按targetDiscovery发现版本bundle）；createProcessInspector把android归入既有Linux分支，其它平台throw不放宽 | registry在场；版本重锚/最终bundle核实由父构建完成，不推断0.2已验收。 |
 | atomic-stale-lock-F4 | dsh-atomic-write | registry自0.1.7-rc.2已移入retired：上游原生takeOverExitedLock吸收孤儿锁语义；0.14.3仍不施加，历史§7.1行不是当前登记。 |
 
-A1只适配native启动，不提供process confinement provider，不改policy/approval/sandbox默认。有效danger-full-access沿既有授权直跑；read-only/workspace-write缺provider仍sandbox-unavailable，不能自动downgrade/root或把自动审批当full-access。
+A1只适配native启动，不提供process confinement provider，不改policy/approval/sandbox默认。有效danger-full-access沿既有授权直跑；read-only/workspace-write缺provider仍sandbox-unavailable，不能自动downgrade/root或把自动审批当full-access。这是 0.14.3 阶段的边界记录。
 
-统一runner已读取多文件实现，source-build reconcile-engine-patch-copies展开所有additionalTargets、对逻辑目标运行exact verifier后复制到同包pnpm物理副本，最终source snapshot检查复用同一口径。普通build-snapshot-013的post-apply已改为再次调用统一runner --check --scope engine，成功日志明确包含全部companion与exact upstream verifier；不会把streaming020说明marker当源码literal。apply前capture-only留目标原始fixture字节用于外部回归，不执行测试。本source/doc任务未运行任何构建/检查。
+当时的实现记录：统一 runner 已读取多文件补丁；source-build reconciliation 会展开 `additionalTargets`，对逻辑目标运行 exact verifier 后复制到同包 pnpm 物理副本；最终 source snapshot 检查复用同一口径。普通 `build-snapshot-013` 的 post-apply 会再次调用统一 runner `--check --scope engine`。这段描述的是 0.14.3 阶段的构建结构；当前补丁清单与仓内门禁以本文件 §3、`scripts/patches/registry.json` 和现行来源构建脚本为准。
 
-三条runtime asset当前仍为历史目标的完整文件；0.14.3尺寸/hash/同源结论留空待实际重出与终包对账，不虚构测量。所有新增补丁文件、官方patch与0.2 fixture均登记于 [执行地图覆盖账本](EXECUTION-MAP.md)。
+0.14.3 阶段未记录三条 runtime asset 的尺寸/hash/同源结论，不能将当时的空缺解释为当前状态；每个发行版本的实际资产状态见对应版本阶段交接和终产物证据。相关补丁文件、官方 patch 与 fixture 的源码锚点登记于 [执行地图覆盖账本](EXECUTION-MAP.md)。
 
-镜像纪律（0.13.8 PR-A1 起）：本仓 `scripts/patches/**` 是协调仓权威源的**逐字节镜像**（云端
-自包含构建检出本仓），`scripts/check-patch-mirror.mjs` 在两仓 CI 与构建链强制比对——
-改补丁必须双树同批，单边演进即拒打包/拒合并（apk #171 的教训）。
+历史边界（已退役）：2026-09 曾要求本仓与协调仓逐字节同步 `scripts/patches/**`。用户于 2026-10-15 决定本仓树内副本为权威并移除跨树镜像门禁；此处保留该阶段的历史经过，不构成现行同步要求。现行仓库边界见 [安全加固原则](SECURITY-HARDENING.md)。
 
 F3/F4 只影响引擎内部（无 WebView/壳侧定制面），快照固化即可，无需运行时 asset 每次启动重写；F2 的
 运行时侧由既有 attachment asset 承担——**两处必须同源**。

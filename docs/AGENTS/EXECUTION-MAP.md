@@ -225,9 +225,8 @@ Linux 发现补充（P04，坑 373）：bootstrap `index.js` 串行发现 → `g
 - [K02] 3. 【已确认的代码事实，现场未证实】启动窗保护依赖同一个可被清零的时间戳：`bootAgeMs = now - EngineManager.lastStartAttemptAt`（EngineService.kt:129 + WatchdogV2.kt:146），而该字段在 stopEngine:1271 / resetCooldown:1333 / rollbackToOld:1382 / EngineStartFlow.restart:702 都被置 0，置 0 后 bootAgeMs 变成 epoch 量级，「托管子进程仍在启动窗内」这条保护立即失效，刚 spawn 的引擎可能被 RESTART(force) 再杀一次；且时间戳取的是 kill 前的 `now`（:825 取、:867 写，中间 killExistingEngine 最长约 13s），实际启动窗比 90s 短。
 - [K02] 4. 【未证实，属设计取舍】`DEGRADED_LOG` 无计数、无阶梯：WatchdogV2.kt:96-99 命中 engine.log 尾 4KB 的 `plugin tree failed to load`/`UncaughtException` 即判 DEGRADED_LOG，而 :70-71 只对 DEGRADED_HTTP 计数、:136 直接早退 IDLE（EngineService.kt:140 还每拍 `UndoGate.disarm`）。影响：HTTP 活着但插件树挂死的引擎永不自愈（理由「重开会打断活动 turn」成立），但也没有任何升级路径或用户提示，只能手动重启。 **2026-09-21 部分修复**：`plugin tree failed to load` 这条签名（装配失败，**不可自愈**）已放行到 undo 决策并免于熔断锁死（`WatchdogPluginTreeTest` 5 例，含改前必红断言）；`UncaughtException` 仍保持 IDLE（活动 turn 不得被打扰）。
 - [K02] 5. 【已确认的代码事实，误杀未证实】`killExistingEngine` 的 pkill 比注释宽：注释称「pnpm/脚本子进程不含 bin.js web 特征，不会被误杀」（:1314-1316），实际命令是 `pkill -f "bin.js"`（:1318），没有 web 约束；同 uid 下任何命令行含 `bin.js` 的进程（例如 agent 工具里跑 `node xxx/bin.js`）都会被每次启动/重启杀掉。另 `.waitFor()` 无超时，同步阻塞调用线程（含看门狗线程）。
-- [K02] 漂移：`历史 BRIDGE-API 副本（当前契约见§6 K04）` 说 `shellEnv()` 注入 `DSH_ADB_*`/`DSH_ADB_FULLACCESS`，源码 `EngineManager.kt:1464-1465` 注明 0.14.0 内置 adb 已退役、环境 map 里没有这两个键。
-- [K02] 漂移：`docs/AGENTS/ARCHITECTURE.md:45` 说 WatchdogV2.kt 负责「boot 恢复用户同意状态」，源码该文件已无任何 Receiver（`ActivityManager`/`BroadcastReceiver`/`Intent`/`IntentFilter` 只剩零使用的 import，WatchdogV2.kt:3-8），BOOT_COMPLETED 处理在 `BootReceiver.kt:23-36`。
-- [K02] 漂移：`docs/AGENTS/ARCHITECTURE.md:76` 给 LogCollector.kt 记 332 行（2026-09-14 实测），现为 931 行；同表 EngineService.kt 记 201 行，现为 246 行。
+- [K02] 已修（2026-10-31）：本仓现行环境与桥协议说明不再声称 `shellEnv()` 注入 `DSH_ADB_*`；旧无线 ADB 状态字段只为兼容与诊断保留。
+- [K02] 已修（2026-10-31）：架构表将 BOOT_COMPLETED 自启动归给 `BootReceiver`，并移除 LogCollector/EngineService 的易漂移行数。
 - [K03] 1. `app/src/main/java/com/snoworwind/pocketharness/EngineManager.kt:196-198` —— 刷新失败 catch 里 `SnapshotTransaction.rollback(...)` 的返回值未判、紧接着无条件 `clearMarker`，与 `SnapshotTransaction.recover` 的 D-3 处理（SnapshotTransaction.kt:688-699「回滚失败不得无条件清 marker」）自相矛盾，也与同文件的 `applyRecovery`（:308-313 把失败明细写进 `pendingRecoveryFailure`）不对称。触发：swap 中途抛异常且回滚有任一条目失败（例如删不净的 live 子树），marker 被清、失败条目无人上报。后果链：下一次刷新若在写 SWAPPING 之前就抛异常（空间断言拒绝 §7.2-F-4、或 stage 派生的任何异常），catch 会走 `rollback(marker=STAGED)`，而 `collectDisplacedNames`(SnapshotTransaction.kt:798) 会把残留的 `.snapshot-previous` 当成回滚源逐条覆盖回 live —— 即旧的工厂树被静默“复活”盖在新树上；此后 `hasResidue && snapshotFresh()` 的回收门（:253）也可能把仍需的残渣删掉。建议按 `recover` 的口径改：`if (!result.ok) { 保留 marker + 上报告警 } else clearMarker()`。
 - [K03] 2. `app/src/main/java/com/snoworwind/pocketharness/SnapshotTransaction.kt:283-289` —— 空间断言覆盖面窄于审查 §7.2-F-4 / B12 的原始发现：断言跑在解压完成之后（stage 已付过 2.5 GB 量级空间），解压阶段本身仍无任何 StatFs 前置检查（`EngineManager.extractSnapshotTo` :434 直调解压），所以「解压中途 ENOSPC → 报运行时更新失败」的原症状还在；且 required 只由 live profiles 体积推导（`backupBytes + 25% + 64MB`），当 live profiles 明显小于 staged（回滚补偿删剩 / 半合并的现场，正是「失败→留残渣→空间紧→更易失败」的自我强化回路）时，`mergeTree` 补入文件的新分配不在预算内，`SnapshotFs.sizeOf`(:89) 还会把不可读条目按 0 静默低估。后果：断言放行后仍在合并中途 ENOSPC。另有一致性问题：`InsufficientSpaceException` 的可照做文案只进 `lastRefreshFailure`/boot-fail.log，用户界面拿到的是通用「运行时更新失败」（EngineStartFlow.kt:497），B12 要的「专门文案」只实现了一半。
 - [K03] 3. 在线更新指纹错配已由共享事务与 `.online-snapshot` 身份绑定修复：freshness 同时要求当前内嵌 SHA 等于记录的 base SHA、committed fingerprint 等于 archive SHA；在线探活确认前保留 journal/source，冷启对未确认 SWAPPED 回滚。本分支已删除在线下载和新事务入口；仅保留历史状态恢复。既有恢复用例保留，本轮未执行测试或设备验收。
@@ -244,20 +243,19 @@ Linux 发现补充（P04，坑 373）：bootstrap `index.js` 串行发现 → `g
 - [K05] 3. 【已确认·审查 §4.1-V-C0b（P1，0.14.0 报告、0.14.1 状态表标「未修」）】`api-below-30` 被映射成「等待重试/改用坐标」两条错指引。`rootProbe` 在 API<30 产出 `reason="api-below-30"`（:362-364），而 `handleSnapshot` 的文案只有 no-window 与 else 两支（:903-910），于是 API<30 的虚拟屏取树失败会得到「已有窗口但当前读不到语义树（可能仍在启动/切换中）：等待 1-2 秒后重试 android_ui_dump」——真因是平台没有 `getWindowsOnAllDisplays`，重试永不成功。对照 `handleScreenshot` 的 API<30 分支（:746-748）文案是对的，两处口径不一致。
 - [K05] 4. 【已确认·代码】截屏回填超时零余量，壳侧那句超时永远不会被模型看到。壳侧 `latch.await(12, SECONDS)`（:802）与引擎侧 `a11yExec('screenshot', …, 12_000)`（`plugins/dsh-android-manage/src/index.ts:581#expect=a11yExec('screenshot'`）同为 12s，而引擎从 enqueue 起算、壳侧从收到请求起算（前面还有最长 5s 的长轮询等待，`ControlPoller.kt:49`）→ 壳侧触到 12s 时引擎必然已先超时，模型看到的是「设备控制超时（12000ms 内壳侧未回填结果）——检查无障碍服务是否在运行」，把「截屏慢」误导成「无障碍没在跑」，而图其实已落盘。同族 R3：这 12s 内单在途队列上的其他 op（含 `vdInput`/`shExec`）全部排队。
 - [K05] 5. 【未证实】`global` op 没有屏维度却按屏回执。`performGlobalAction(entry.id)`（:1330）不接受 displayId，但 `global ∈ REAL_SCREEN_OPS`，成功后回执被补上 `screenId`/`displayId`/`actionMode=a11y`（:669-674）。于是 `android_ui_global {screenId:"virtual-1", action:"back"}` 会回「已在 virtual-1 执行」，而 BACK 实际落在持有输入焦点的屏（通常是真实屏）。未证实：本轮为只读排查，未在设备上验证虚拟屏 active 时 `performGlobalAction` 的真实落点。
-- [K05] 漂移：`docs/AGENTS/ARCHITECTURE.md:68` 说 `DeviceControlService.kt` 是 1094 行、能力面到「屏幕范围执行点复查」为止，源码 `app/src/main/java/com/snoworwind/pocketharness/DeviceControlService.kt` 现场为 1333 行（`wc -l`），且含该表未列的虚拟屏窗口选择面 `rootProbe`/`WindowPick`（:353-434）与 browser*/vd*/sh* 分支（:634-664）。
-- [K05] 漂移：`docs/AGENTS/ARCHITECTURE.md:65` 说 ShizukuProbe.kt 被 MainActivity、DeviceControlService、VdisplayController 依赖，源码零引用——`grep -rl ShizukuProbe app/src/main` 只命中 `app/src/main/java/com/snoworwind/pocketharness/ShizukuProbe.kt` 自身（main 与 test 均无其它引用）。
-- [K05] 漂移：`docs/AGENTS/ACCESSIBILITY-API.md:167` 说「⑤ 多窗口 `getWindows()` 的窗口选择面未接」，源码已接：`getWindowsOnAllDisplays()` + `WindowPick.order`（`app/src/main/java/com/snoworwind/pocketharness/DeviceControlService.kt:353-434`，回归 `app/src/test/java/com/snoworwind/pocketharness/WindowPickTest.kt`）。
+- [K05] 已修（2026-10-31）：架构表补入 DeviceControlService 的虚拟屏窗口选根与 browser/vd/sh dispatcher 面，并将 `ShizukuProbe` 标为 debug-only、当前无生产代码调用者。
+- [K05] 已修（2026-10-31）：`ACCESSIBILITY-API.md` 已区分虚拟屏语义树内部的窗口枚举/选根（`getWindowsOnAllDisplays()` + `WindowPick.order`）与尚未提供的独立模型窗口选择参数；实现见 `DeviceControlService.kt`，纯函数回归见 `WindowPickTest.kt`。
 - [K05] 已修：`ACCESSIBILITY-API.md` 记载 `MENU` / `MEDIA_PLAY_PAUSE` 自 API 36 起可用，源码目录的两项 `minSdk` 现已与之相同；API 35 拒绝与 API 36 放行由 `GlobalActionCatalogTest` 覆盖。
 - [K06] 1. 双引号内的命令替换不被扫描 → 范围门 fail-open（S-1/S-2 家族的残留面，已确认）。`ShellOps.kt:457#expect=if%20(ch%20%3D%3D%20%27%22%27)` 的 `"` 分支整段吞掉引号区域且不递归；`decideScreenCommand` 再经 `stripQuotedText` 抹白引号，于是该段既无命令词也无目标屏参数 → `ALLOW`。引擎侧 `plugins/dsh-android-bridge/src/screen-scope.ts:242-250` 同一形态（跨语言 fixture 因此恒绿，`test/fixtures/screen-scope-cases.json` 只覆盖裸 `` ` ``/`$()`）。触发：scope=virtual-only 时 `shExec('echo "$(screencap -p /sdcard/real.png)"')`（或 `sh -c 'echo "$(input -d 0 tap 1 2)"'`）→ 放行且内层真实执行，随后 `shPull` 取回（`shPull` 无范围门）→ 范围门被绕过的净效果。
 - [K06] 2. `capture`/spool 面无任何生产调用方，大输出被 16 KiB 内联路径截断（S-6 面，已确认）。`ShellOps.exec` 的 `capture = args.optBoolean("capture", false)`（`ShellOps.kt:99`）在引擎 `execAdbShell`/`execAdbLine` 的投递参数里都不存在（`index.ts:1052-1055`、`:1092`），故走 `ShizukuUserService.exec`：读满 16 KiB 即 `break` 并关闭管道（`ShizukuUserService.kt:70-75`、`:29`）。总输出超过约 64 KiB 管道缓冲时子进程会被提前关闭的读端打死 → `ok=false` 而引擎却按 128 KiB 承诺（`index.ts:1063`）；AIDL 注释与 `ShizukuTransport.kt:806` 都按「capture 在用」措辞。
 - [K06] 3. 「危险命令黑名单在壳侧复查」不成立，且 `controlExec` 直连路径没有这层（S-5 残留，已确认）。`app/src/main/aidl/com/snoworwind/pocketharness/ShizukuUserService.aidl:31` 声称黑名单在壳侧；壳侧 Kotlin 无任何黑名单（`app/src/main` grep `黑名单|dangerous|危险命令` 零命中），黑名单只在引擎 `index.ts:368/1038/1074/1375`，而 `controlExec` 只做档位门（`index.ts:949-956`）。连带：`shRemove` 全仓零调用方（仅登记面），却可经 uid 2000 删除任意绝对路径且目录递归（`ShellOps.kt:123-129`、`ShizukuUserService.kt:207-233`）——登记了但没有任何一层守。未证实是否有意预留。
 - [K06] 4. `ensureBound` 15s 预算与 `shExec` 20s 执行时限叠加可越过引擎 25s 入队时限（S-6 不变量的缺口，已确认代码路径、未证实实机频度）。冷启动/Shizuku 重启后最早几条命令最坏 15s+20s=35s > 25s：引擎在 25s 放弃并报「设备控制超时」，壳侧稍后仍会执行该命令 → 正是 S-6 想消灭的「假失败 + 副作用已发生」（非幂等命令会被模型重试二次执行）。叠加 `ControlPoller` 单线程（`ControlPoller.kt:96` 循环、`:125` 执行）：慢命令期间 a11y/browser/vd 全部排队。
 - [K06] 5. `MainActivity` 两处直连 `ShizukuTransport.runShell`，绕开 `ShellOps.scopeDenied` 这个执行点（未证实有实害）。`unlockLegacyStorageApi29`（`MainActivity.kt:1054`、`:1059`）与 `unlockRestrictedSettingsViaShizuku`（`MainActivity.kt:1076`）的命令是固定 argv、不含屏幕命令词，故当前不构成真实屏绕过；但「所有特权命令都过执行点复查」这条不变量在此不成立，后续若有人把模型可控串接进来即失守。
-- [K06] 漂移：`历史 BRIDGE-API 副本（当前契约见§6 K04）` 说 ShizukuTransport/ShizukuUserService 是「固定 argv、16KB 输出上限；页面/引擎拿不到原始 binder 或任意 shell 面」（AIDL v1），源码 `ShizukuUserService.kt:30` 是 `PROTOCOL_VERSION = 2`（execCapture 落盘面 + 单文件 256 MiB），`ShizukuTransport.kt:821-846` 与 `ShellOps.kt:91-103` 交给引擎的正是任意 `sh -c` 命令面。
-- [K06] 漂移：`历史 BRIDGE-API 副本（当前契约见§6 K04）` 说 ScreenScope「执行点复查在 DeviceControlService」，源码 `ShellOps.kt:132`（scopeDenied）才是特权 shell 通道的执行点复查，`DeviceControlService.kt:703`（realScreenScopeError）只管无障碍 op 面。
-- [K06] 漂移（注释）：`app/src/main/aidl/com/snoworwind/pocketharness/ShizukuUserService.aidl:31` 说「危险命令黑名单仍在壳侧判定」，源码壳侧无任何黑名单（`app/src/main` 下 grep `黑名单|dangerous|危险命令` 零命中），黑名单只在 `plugins/dsh-android-bridge/src/index.ts:368`。
-- [K06] 漂移（注释）：`app/src/main/res/xml/file_paths.xml:3` 说安全边界「与 MainActivity.OPEN_READER_ROOTS 同步」，全仓无该符号（仅此注释一处），运行时白名单实为 `app/src/main/java/com/snoworwind/pocketharness/FileIncoming.kt:467` 的 `isReaderAllowed`。
-- [K06] 漂移（提示文案）：`app/src/main/java/com/snoworwind/pocketharness/ShizukuProbe.kt:71` 说「本应用清单尚未声明 rikka.shizuku.ShizukuProvider，属已知未落地项」，`app/src/main/AndroidManifest.xml:158` 已声明该 provider（authorities 为 `${applicationId}.shizuku`）。
+- [K06] 已修（2026-10-31）：现行 Android API、架构与桥 API 文档已记录 AIDL v5、16 KiB 普通 exec inline 上限、256 MiB capture 文件上限及 Shizuku shell 执行边界。
+- [K06] 已修（2026-10-31）：现行桥 API 文档区分 `ShellOps.scopeDenied` 的特权 shell 范围复查与 `DeviceControlService.realScreenScopeError` 的无障碍 op 范围复查。
+- [K06] 已修（2026-10-31）：AIDL 注释已说明危险命令策略不在 Shizuku UserService 内；调用策略在引擎侧、范围复查由 `ShellOps` 负责。
+- [K06] 已修：`file_paths.xml` 注释已改为指向实际运行时校验 `FileIncoming.isReaderAllowed` 与 `PathOpen.isChooserAllowed`。
+- [K06] 已修（2026-10-31）：`ShizukuProbe` 的 API 类不可达提示已移除“Manifest 未声明 provider”的错误诊断，改为提示检查 API 依赖和版本兼容性。
 - [K06] 补充：本轮抽查的 6 个桥接镜像文件（`plugins/dsh-android-bridge/src/screen-scope.ts`、`src/index.ts`、`src/shell-ops.ts`、`src/control-queue.ts`、`test/screen-scope.test.mjs`、`test/fixtures/screen-scope-cases.json`）协调仓与 apk 仓副本逐字节一致；壳侧 fixture 副本 `app/src/test/resources/screen-scope/screen-scope-cases.json` 与插件侧权威源仅排版不同（规范化后的标准形态），内容等价。
 - [K07] 1. 已确证（V-R0 / F-10）：`touch()` 全仓零调用点（`VdisplayController.kt:84` 只有定义），`lastUsedAt` 的唯一写入是 `Record` 构造默认值（`:60`）。于是「空闲回收」实际是「建屏后满 10 分钟必回收」：长任务里模型第一条 vd 调用会在解析阶段把屏删掉并回 `screen-not-ready`，guidance 只说「已回收空闲虚拟屏」，归因误导。插件侧 `tools-callable.test.mjs` 只断言 `reclaimIdle/IDLE_RECLAIM_MS/lastUsedAt` 三个字符串在场，所以失效不会判红。
 - [K07] 2. 未证实（有触发条件，与 S-8 同族）：`touch()` 的 `records.values.forEach`（`:86`）与 `status()` 里的 `records[selected]`（`:253`）都在 `synchronized(lock)` 之外读 `records`，而 `records` 有两个跨线程写者（控制队列线程的 `create/destroy`、主线程 reaper 的 `reclaimIdle`）。今天 `touch` 是死代码所以不发作；F-10 的修法（在 status/select/input/screens 里刷新）一落地，主线程就会在遍历中撞上控制线程的 `records.remove` → ConcurrentModificationException 打穿主线程 = 闪退。修 F-10 时必须同时把刷新点收进锁内。
@@ -272,8 +270,8 @@ Linux 发现补充（P04，坑 373）：bootstrap `index.js` 串行发现 → `g
 - [K08] 4. 【已确认，H-7 / F-1 / F-4 / F-8】回执与能力不实四处：① `caps()` 的 `rendererProcesses:0`、`cdpEnabled:false`、`browserWebViewAvailable:true`、`androidxWebkitCompiled:true`、`densityOverrideSupported:false`（:1015-1017）与 `status().available:true`（:912）全是常量，被 P03 的 `facts.ts/tier.ts` 当设备事实消费；② `applyDocumentStartScript` 在能力门不过时静默 `return`（:1196），而 `viewportOp`/`setViewport` 成功体只有 `ok/route/width/height`（:1117、:1131），不报 `scriptApplied/degraded`（隔壁 `identityResult`:1182-1189 是如实上报的）→ 视口没生效也回 ok；③ 视口区间两侧不同源：面板 240..4096（dsh-client-ui-responsive/src/client/mobile/native-browser-adapter.ts:203、browser-tab.tsx:54）vs 壳侧 240..3840（:482、:1122、:1159），面板校验通过、壳侧拒、面板不渲染错误 → 用户看到「什么都没发生」；④ 隔离 WebView 无 `onReceivedHttpError`、无 `setDownloadListener`（grep 只命中可信 WebView：MainActivity.kt:565、:648），404/403/500 与「点了 PDF」在 `loadState` 上仍报 `loaded`、在工具回执上仍是 `ok:true, changed:false`。
 - [K08] 5. 【已确认，S-3 / F-9】「隔离」只是无桥，不是存储隔离：`app/src/main/java` 全域无 `setDataDirectorySuffix` / `removeAllCookies` / `WebStorage.deleteAllData`，也无 `browserClearData` 一类清理 op（grep 零命中），而引擎鉴权 cookie 注入的是进程级 `CookieManager`（MainActivity.kt:815）。影响：隔离 WebView 与引擎会话共用 cookie/存储池，AI 访问过的站点 cookie/localStorage 持久驻留且用户无撤销入口；请求级过滤一旦出现缺口，被解析到回环同源的请求会带引擎 cookie。
 - [K08] 未证实：请求级过滤把 `ws`/`wss` 也纳入 scheme 判定（BrowserHostNavigationPolicy.kt:87），似假定 WebSocket 握手会进 `shouldInterceptRequest`；Android 是否真把 WS 升级交进该回调，本轮未在设备上确认。若否，页面可用 `ws://127.0.0.1:3080/` 绕过 403 面（验证法：加载公网页后 `new WebSocket("ws://127.0.0.1:3080/")`，看 `blockedRequests` 是否 +1、logcat 是否出 `dsh-browser`）。
-- [K08] 漂移：`docs/AGENTS/ARCHITECTURE.md:18` 说 `BrowserHostNavigationPolicy.kt` / `BrowserOverlayPolicy.kt` 为 210 / 82 行，现场 `wc -l` 是 231 / 86 行（同行的 BrowserHost.kt 1813 与文档一致）。
-- [K08] 漂移：`dsh-client-ui-responsive/src/client/mobile/native-browser-presentation.ts:20` 注释说「原生层 foreignViewer 亦 fail-closed」，源码 `BrowserHost.kt:810-814` 明写 foreignViewer 判定已随按会话隔离删除（全仓只剩这条注释提及该符号）；同文件 `:398-401` 的口径才是现状。
+- [K08] 已修（2026-10-31）：架构模块表没有硬编码 BrowserHostPolicy 类行数。
+- [K08] 已修（2026-10-31）：旧客户端 `foreignViewer` 注释已从 `native-browser-presentation.ts` 移除；`BrowserHost.kt` 注释说明按会话隔离后的呈现行为。
 - [K09] 1. `activeSessionId` 的 id 域混用（已确认代码事实，影响未在设备复现）：`OverlayService.kt:473-474` 把 `api-session/status` 的 agentId 写进 `activeSessionId`，而 `OverlayPanel.kt:1060-1061` 的 A-R5 口径明说「agent id 不得当 session id」，且清理只发生在 `userPinnedSession` 为真时（`:1062-1064`）。该值随后被三处消费——`session/prompt` 的 sessionId（`OverlayService.kt:621`）、pending 匹配（`OverlayPanel.kt:179-181`）、完成位比对门（`OverlayReport.kt:370-372`）。两者不同域时症状为发送落到不存在/别的会话、待答卡不显示、完成文案永不出现。源码自述该映射未确证（`OverlayService.kt:502-503`）。
 - [K09] 2. 面板窗 addView 失败被静默吞掉（已确认）：`OverlayService.kt:299` `try { wm.addView(unit, pp) } catch (_: Exception) {}`，而 `expanded` 已在 `:274` 置 true，异常既无日志也无回滚。用户只见「点球没反应」，且下一次点球会走 hidePanel。同族 picker（`OverlayPanel.kt:1177-1179`）与报告栏（`OverlayReport.kt:164-166`）都留了 `LogCollector` 痕迹（判据见坑 149）；对照 `:254` 的球窗 addView 未包 try，那边抛异常会直接崩服务。
 - [K09] 3. 自动收起守卫覆盖不到待答卡草稿（已确认）：守卫是 `!panel.hasDraft()`（`OverlayService.kt:509`），而 `hasDraft`（`OverlayPanel.kt:947`）只看输入行 `inputBox`；提问卡的「输入你的答案」存在 `qCustom` 与卡片 EditText（`OverlayPanel.kt:73`、`:734-744`）。轮次结束时先 `dropPendingFor`（`OverlayService.kt:499` 使 `pendingKind` 变空）再过 900ms 自动收起（`:509-515`）。触发：展开面板 → 提问卡输入到一半 → 不提交 → 引擎轮次结束或 `turn_end` 清理（`OverlayLiveFeed.kt:160`）→ 答案与卡片一起消失且无提示。
@@ -282,21 +280,19 @@ Linux 发现补充（P04，坑 373）：bootstrap `index.js` 串行发现 → `g
 - [K09] 漂移：`dsh-mobile-apk/docs/AGENTS/ARCHITECTURE.md:27-34` 说 OverlayService.kt 772 / OverlayHalo.kt 164 / OverlayPanel.kt 1217 / OverlayReport.kt 325 行，源码实测 `OverlayService.kt` 785 / `OverlayHalo.kt` 168 / `OverlayPanel.kt` 1222 / `OverlayReport.kt` 384（差 59 行正是块H 的 CompletionNotice 段）
 - [K09] 漂移：`dsh-mobile-apk/docs/AGENTS/ARCHITECTURE.md:29` 与 `dsh-mobile-apk/docs/AGENTS/modules.md:39` 说「应答 POST /api/respond 全信封，approval value={sessionId,approvalId,outcome}；question 取消发 ok:false error cancelled」，源码 `OverlayPanel.kt:818` 是 POST /api/$events/result、payload={args:{clientId,eventId,outcome}}，审批取值 allowed-once/rejected（`OverlayPanel.kt:616-617`）、提问跳过是 kind=rejected 加 error{name:UserQuestionError,code:cancelled}（`OverlayPanel.kt:904-908`）；同族过期注释仍在源码里：`OverlayPanel.kt:24`、`OverlayPanel.kt:489`、`OverlayLiveFeed.kt:166`
 - [K09] 漂移：`dsh-mobile/docs/0.14.1-preview-OVERLAY-COMPLETION-CARD.md` 的 1.1 表说 OverlayService.kt 673 / OverlayPanel.kt 1046 / OverlayLiveFeed.kt 172 / OverlayHalo.kt 91 / OverlayTheme.kt 33 行，源码实测 785 / 1222 / 196 / 168 / 38；该详档被源码注释当准绳引用（`OverlayService.kt:106`、`OverlayReport.kt:252`）
-- [K09] 漂移：`app/src/main/java/com/snoworwind/pocketharness/NotifyCenter.kt:141` 说 flashStatus 在 `OverlayService.kt:669`，源码该函数在 `OverlayService.kt:683`
+- [K09] 已修（2026-10-31）：NotifyCenter KDoc 已改为引用 `OverlayService.flashStatus` 符号，不再固定源码行号。
 - [K10] 1. 决策链与动作链的记账只走 `LogCollector`（`NotifyDecisionQueue.kt:194/200/229/271/281/299/316/334/338/367/382/388`、`NotifyActionReceiver.kt:89/101/110/119/127`），而 `LogCollector.log` 在采集器未开时直接 return（`LogCollector.kt:785`，闸门 `MainActivity.kt:1167` 缺键即 false）⇒ 默认设备上「点了动作 → 是否落盘 → 是否投递成功」全链路零可观测面，`files/notify-responder.log` 里没有任何 decision 行（只有 `NotifyBridge` 的 waterfall/ready/cancel 行）。这与已修的 J-2（`NotificationContractTest.kt:206` 要求投递结果改走 `NotifyProbe`）是同一族缺陷，只是当时只修了 `NotifyStore`。影响：用户报「批准没生效」时无法从设备取证。
 - [K10] 2. 历史 N-8/H-17：前台延后队列原本只在内存。fx2 改为 `notify.deferred.v1` 私有 preferences 日志，`NotifyStore.start` 恢复；同步提交失败不推进来源偏移，补投结算失败保留原条目。既有八条容量、五分钟 TTL 和会话覆盖保持。JVM 自检通过，进程回收、通知撤销与磁盘失败的设备验收仍待第三阶段；系统通知与日志不具备原子事务。
 - [K10] 3. `PostStatus.STALE` 分支（`NotifyDecisionQueue.kt:323-327`，404/410 才触发）在本版本不可达：设备实测网关对未知 eventId 返回 200 no-op（`coord:docs/0.14.0-preview-ACCEPTANCE-LEDGER.md:177` 的 NT-17 注、`coord:docs/NEXT-ITERATION-PLAN-2026-09-12.md:1440` NT-17B）⇒ 旧事件会被判 `OK`、标记 `submitted` 并本地撤通知（`NotifyDecisionQueue.kt:310-316`），用户以为答复已提交而引擎从未收到，「该请求已失效」文案永不出现。已登记为未决项，未证实有壳侧可行替代信号（评审建议查 cancel 帧）。
 - [K10] 4. FIX-2 的可见反馈面是 `OverlayService.flashStatus`，而它要求面板展开且只闪现 2.5s（`OverlayService.kt:683-692` 的 `if (expanded)` 守卫，坑 148 已记该可见性条件）⇒ 「通知已延后」「通知未授权」这类提示在面板收起（最需要提示的前台场景）时依然不可见，`ShellListener`（`NotifyCenter.kt:145-167`）只解决了「零实现」，没解决「不可见」。影响：开启抑制后用户仍可能观察到「什么都没发生」。
 - [K10] 5. 已修：缓存/prefs 渠道映射现在复查系统渠道，空映射或已删除渠道会重新解析；通知探针轮转保留上一代日志（上游功能吸收）。复验见本节可疑点 5 与坑位 553；设备验证按用户要求暂缓。
-- [K10] 漂移：
-- [K10] 漂移：`docs/AGENTS/ARCHITECTURE.md:70` 说 `NotifyCenter.kt` 834 行，源码（`wc -l`）是 1051 行。
-- [K10] 漂移：`docs/AGENTS/ARCHITECTURE.md:71` 说 `NotifyStore.kt` 287 行，源码是 537 行。
-- [K10] 漂移：`docs/AGENTS/ARCHITECTURE.md` 模块表缺 `NotifySuppressQueue.kt`（0.14.1 新增，只在 `docs/AGENTS/modules.md:36` 有条目）。
-- [K10] 漂移：`app/src/main/java/com/snoworwind/pocketharness/OverlayReport.kt:233-234` 注释说与 `notify-projection.ts` 的 `reportOutcomeLabel` 逐字同构，实际 `interrupted` 文案不同——`plugins/dsh-android-bridge/src/notify-projection.ts:68` 是「被中断（进程重启）」，`OverlayReport.kt:244` 与 `NotifyCenter.kt:1048` 是「被中断」。
-- [K10] 漂移：`app/src/main/java/com/snoworwind/pocketharness/NotifyCenter.kt:141` 注释指向 `OverlayService.kt:669` 的 `flashStatus`，实际在 `OverlayService.kt:683`。
-- [K10] 漂移：`app/src/main/java/com/snoworwind/pocketharness/OverlayService.kt:706` 注释说先例在 `NotifyCenter.kt:612-613`，实际 `Intent(app, MainActivity::class.java)` 在 `NotifyCenter.kt:829`（605-606 是 `deferredKey` 的注释）。
-- [K10] 漂移：`plugins/dsh-android-bridge/src/index.ts:1458` 注释说「壳侧 FileObserver 按偏移消费后截断/轮转」，实际壳侧只读不截断不轮转（`NotifyStore.kt:18-20` 明写「引擎超过 512KB 时轮转 .1」，轮转方是引擎）。
-- [K10] 漂移：`docs/0.14.1-preview-NOTIFY-REALTIME-AND-STATE-SYNC.md` §0/§1.2 仍用旧行号（`:377` 抑制判定、`:114` 默认值、`:88-97` Listener、`:307-311` Result），当前源码对应 `NotifyCenter.kt:631`、`:49` / `:191`、`:111-120`、`:500-514`。
+- [K10] 文档对账与代码注释漂移：
+- [K10] 已修（2026-10-31）：架构模块表移除 NotifyCenter/NotifyStore 的硬编码行数，并登记 `NotifySuppressQueue.kt`。
+- [K10] 已修（2026-10-31）：OverlayReport KDoc 改为说明结果类别对应、标签文案不保证逐字相同。
+- [K10] 已修（2026-10-31）：NotifyCenter KDoc 改为引用 `OverlayService.flashStatus` 符号，不再固定行号。
+- [K10] 已修（2026-10-31）：OverlayService KDoc 改为引用 `NotifyCenter.contentIntent`，不再指向过期行号。
+- [K10] 已修（2026-10-31）：引擎通知信道注释说明由壳侧按偏移消费、由引擎写入方负责轮转，不再声称壳侧截断文件。
+- [K10] 已退役：旧 `0.14.1-preview-NOTIFY-REALTIME-AND-STATE-SYNC.md` 不在当前仓库；现行通知契约见 `ARCHITECTURE.md`、`modules.md` 与 `BRIDGE-API.md`。
 - [K11] 1. 已确认：判据的产出者与消费者分属两条链。唯一产出结果的执行点是 `.github/workflows/pr-gate.yml:140`（CI 跑 gradle），而数量门禁只在打包/发布链里（`scripts/build-apk.mjs:197`、`scripts/build-apk-013.ps1:145`，均 `--allow-missing`；`scripts/check-release-gates.mjs:104` 登记 `ci: false`），CI 里的 `check-release-gates.mjs`（`.github/workflows/pr-gate.yml:91`）不带 `--run`，只断接线不跑门禁。且两条构建链自己只跑 `:app:assembleDebug`（`scripts/build-apk.mjs:347`、`scripts/build-apk-013.ps1:388`），从不跑 `:app:testDebugUnitTest`。影响：CI 里删掉一个测试类（gradle exit 仍 0）全绿，本地链则只能读到上一次手动跑留下的 XML——改了测试源码就判陈旧。两半防线各自成立，但没有一条链同时具备「产出 + 判据」。
 - [K11] 2. 已确认：`app/build.gradle.kts:88` 的 `unitTests.isReturnDefaultValues = true` 把 android.* 打桩成 0/null/false。本目录已有两条针对性反桩判据（`app/src/test/java/com/snoworwind/pocketharness/CallSiteContractTest.kt:294` 禁 `Color.argb`、`app/src/test/java/com/snoworwind/pocketharness/OverlayHaloInvariantTest.kt:92` 要求四态色互不相同），说明风险真实；将来任何新增的 android.graphics/Log 断言会静默恒真。已确认配置在场；未证实本目录还存在其它被桩恒真的断言（49 文件逐个读过，除 `app/src/test/java/com/snoworwind/pocketharness/NotifyCenterChannelTest.kt:33` 的常量同义反复外未发现）。
 - [K11] 3. 已确认：`app/src/test/java/com/snoworwind/pocketharness/SnapshotUserDataTest.kt:84` 在宿主不允许建符号链接时 `assumeTrue(..., false)` → 整例被 JUnit 假设失败跳过；而 `scripts/check-kotlin-test-count.mjs:143-147` 只对 failures/errors 判红，不判 skipped，基线仍按 5 例计。现场件：`app/build/test-results/testDebugUnitTest/` 下该类的 XML `skipped="1"`，即当前 456 例里实际执行 455 例（总数与基线比对完全一致，这个 skip 不会被任何判据点出来）。
@@ -363,7 +359,7 @@ Linux 发现补充（P04，坑 373）：bootstrap `index.js` 串行发现 → `g
 - [P02] 3. x/y 绝对坐标在缺省/real 屏没有有效执行路径：`plugins/dsh-android-manage/src/index.ts:1643#expect=const%20useAbs` 只有 virtual-N 分支走 vdInput（`plugins/dsh-android-manage/src/index.ts:1669#expect=controlExec%3F.('vdInput'`）；其余分支把未定义 nx/ny 放入载荷（`plugins/dsh-android-manage/src/index.ts:1764#expect=payload.nx%20%3D%20nx`），ADB 会将其换算为 NaN（`plugins/dsh-android-manage/src/index.ts:1811#expect=Math.round(nx!%20*%20size.w)`）并执行 input tap NaN NaN（`plugins/dsh-android-manage/src/index.ts:1840#expect=input%20tap%20`）。这是代码路径判定；未做设备验证。
 - [P02] 4. 单槽 uiCache 没有屏幕归属：`plugins/dsh-android-manage/src/index.ts:1212#expect=let%20uiCache%3A` 的缓存类型不保存 screenId；`plugins/dsh-android-manage/src/index.ts:1259#expect=const%20treeFingerprint` 的指纹也不含屏幕维度。不同屏幕内容相同或相近时，最近一次 dump 的 ref 可能被后续屏幕调用覆盖；该跨屏交错尚未设备复现。
 - [P02] 5. vdInput 成功回执把 displayId 写入 x 键（已确认代码事实）：`plugins/dsh-android-manage/src/index.ts:1686#expect=x%3A%20typeof%20data.displayId`；schema 中 x/y 的含义是点击坐标，模型若据此推算下一步会拿到错误数值。
-- [P02] 漂移：`docs/AGENTS/gotchas.md:178` 说坑 72 的锚点是 `plugins/dsh-android-manage/src/lossless-json.ts` 与 `plugins/dsh-android-manage/test/privilege-status.test.mjs`，源码里这两个文件只在 bridge 插件下（`plugins/dsh-android-bridge/src/lossless-json.ts:1`、`plugins/dsh-android-bridge/test/privilege-status.test.mjs:1`），manage 当前源文件另有本轮新增 `tmp-cache.ts`。
+- [P02] 已修（2026-10-31）：坑 72 的文件锚点已改为 `plugins/dsh-android-bridge/src/lossless-json.ts` 与 `plugins/dsh-android-bridge/test/privilege-status.test.mjs`。
   - `plugins/dsh-android-manage/src/index.ts:2563#expect=return%20%5BscreenList%2C%20screenshot%2C%20uiTree` — 注册数组共 14 个工具（uiDetail 是 0.14 D4 补回的第 14 个）。
 - [P02] 耦合边允许外部角色右端已修：可见耦合表只对符合查点 ID 形状的右端检查登记；注释与判定分别见 `scripts/check-code-map.mjs:323#expect=%E5%8F%B3%E7%AB%AF%E5%8F%AF%E4%BB%A5%E6%98%AF%E3%80%8C%E5%A4%96%E9%83%A8%E8%A7%92%E8%89%B2%E3%80%8D%E6%96%87%E5%AD%97`、`scripts/check-code-map.mjs:327#expect=if%20(ID_SHAPE.test(c.to)`
 - [P03] 1. 已修（浏览器权限面）：旧 `tools.ts` 曾以已移除的壳侧 owner 锁作为不加授权闸的理由，同时 `contract.ts` 的 approval/full-access/confirm 只有声明。当前 `index.ts` 在 `tools/pre-execute` 调用户审批服务，confirm 连续请求两次；`tools.guard` 在 waterfall 后单调拒绝未批准调用；截图要求 `sandboxPolicy.overrideOf(session)` 与 `resolve({session})` 都指向显式 danger-full-access。宿主用例覆盖拒绝、缺少服务、二次确认、默认档不算显式选择和 monotonic guard；**未构建 APK、未做设备验证**。
@@ -387,13 +383,13 @@ Linux 发现补充（P04，坑 373）：bootstrap `index.js` 串行发现 → `g
 - [B01] 4. `scripts/build-apk-013.ps1:141-144` 注释称「本次构建前必须重跑 Kotlin 单测由发布链步骤保证」，但 `build-release.ps1` 全文没有 `testDebugUnitTest`（已确认）：发布链经 `check-release-gates.mjs --run --require` 调用 `check-kotlin-test-count.mjs`（`:104` 条目、通用 argvFor 不带 `--allow-missing`），干净机器上无结果即 `exit 1`。本地链用 `--allow-missing`（ps1:145）所以不红——症状是「本地全绿、发布链在干净机器上红」（协调仓 `coord:docs/COMPAT-REVIEW-0.14.0-2026-09-19.md:1334` 记 I-1，P1）。
 5. 【历史项已退役（2026-10-15）】旧 MIRROR_TOP 覆盖缺口只针对已移除的跨树逐字节镜像；现行本仓门禁只校验 registry↔IMPLS 自洽，不能把旧清单当作当前缺陷。入口见 `scripts/check-patch-mirror.mjs:53#expect=const%20regPath`。
 - [B01] 补充（非可疑，语义澄清）：坑 63 的「只替换已有成员、新增文件丢弃」在主链已被 inject-all.py 修复（`:204-208` 注释 + `:321-338` 补缺循环 + 门禁 `check-inject-completeness.mjs:2`），但 `inject-snapshot.py:106-121`（只在整包缺席时走 need_add）仍是另外一条路径的注入器：`build-release.ps1:109`。（0.14.5：原先还有 apk 仓的独立快照 workflow（`build-snapshot.yml`，注入步），它只注入 3 个包、不做引擎 overlay/引擎补丁/语法降级，故也带坑 63 语义；**该 workflow 已删除**——快照构建入口已收敛为 `build-apk.yml` / `release.yml` 单一链，故其注入器语义不再适用。**2026-10-15：`release.yml` 亦已退役（本分支不出 Release，只允许来源链构建，见 AGENTS §4 铁律 9）**。）
-- [B01] 漂移：`docs/AGENTS/build-and-env.md:32,41-42` 说快照归档/解压用 `xz -T0`/`xz -dT0`，源码 `scripts/build-snapshot-013.mjs:985` 是 `xz -T${XZ_THREADS} -6`、`:120` 是 `xz -dT${XZ_THREADS}`（`scripts/lib/shell.mjs:31` 默认 8，`scripts/check-build-parallel-cap.mjs` 把「吃满全部核心」判红）。
-- [B01] 漂移：`历史 BRIDGE-API 副本（当前契约见§6 K04）` 同一句「瘦身 + xz -T0 归档」与源码 `scripts/build-snapshot-013.mjs:985` 的 `xz -T${XZ_THREADS}` 不符（该文件的构建段落是 build-and-env.md 的拷贝）。
-- [B01] 漂移：`历史 BRIDGE-API 副本（当前契约见§6 K04）` 说聚合门禁「当前 17 项」，源码 `scripts/check-release-gates.mjs:28-104` 声明 27 项（构建环境说明现以 --list 现数，不再固定数量）。
+- [B01] 已修（2026-10-31）：`build-and-env.md` 已按源码说明共享 `XZ_THREADS` 与 `DSH_CPU_THREADS` 覆写。
+- [B01] 已退役：执行地图中的旧构建描述仅作发现时快照；当前线程配置与来源链步骤以 `build-and-env.md` 和来源构建源码为准。
+- [B01] 已退役：门禁数量为易漂移数据；当前按 `scripts/check-release-gates.mjs --list` 现数，旧桥文档快照的数字不作现状。
 - [B01] 历史漂移已修（2026-10-29）：build-and-env.md 已把旧本地链描述标作历史并以来源链实际调用为准；当前门禁接线由 PR Gate 检查。
-- [B01] 漂移：`docs/AGENTS/RUNTIME-PATCHES.md:56` 说 scope=vendor 补丁「在 build-apk-013.ps1 阶段施加」，源码 `scripts/build-apk-013.ps1:211` 的调用无 `--apply`/`--scope` → `scripts/patches/apply-patches.mjs:1568,1572` 默认 `mode=check`（只校验不施加；`docs/AGENTS/0.13.7-CERTIFICATION.md:11` 也记 mode=check）。
+- [B01] 已修（2026-10-31）：`RUNTIME-PATCHES.md` 已将活动补丁执行边界改为本仓来源链 runner，不再称旧本地脚本会施加 vendor 补丁。
 - [B01] 漂移（**2026-09-25 已修**）：`docs/AGENTS/RUNTIME-PATCHES.md` 原写 engine 补丁「当前全量」14 项；该文件已按现数改为 **15 项**（`scripts/patches/registry.json` 实测 30 条总 / 15 条 engine / 15 条 vendor）。原条目点名的四条缺口（combo-single-lazy-A5、combo-parallel-C3、combo-probe-P1、boot-third-party-isolation-G3）中，**A5 与 C3 已于 0.14.2 追版时按实测撤销**（见 RUNTIME-PATCHES §7.4 与 `scripts/patches/README.md` 撤销段），P1 与 G3 仍在册 ⇒ 清单已与源码同源，此处不再是漂移。
-- [B01] 漂移：`AGENTS.md:21` 说 `vendor/`（marketplace / undo-savepoint / dsh-model-sync），源码实际 `vendor/` 只有 `dsh-undo-savepoint` 与 `dshmarketplace-plugin`（model-sync 已随 0.14.1 整体摘除，见 `scripts/profile-web.cordis.patch.yml:128-138`；镜像面清单已于 2026-10-15 移除，此处不再引用它）。
+- [B01] 已修（2026-10-31）：`AGENTS.md` 的 vendor 目录摘要已与本仓现存 marketplace 与 undo-savepoint 副本一致。
 - [B02] 1. 【已确认，源码可复现】Kotlin 单测数量门禁的「防净零抵消」可被整类删除绕过：A 判据只对现存源码测试类要求有结果（`scripts/check-kotlin-test-count.mjs:129`），B 判据对结果里缺席的类直接 `continue`（`:153`）→ 删掉整个测试文件（例如 29 例的 `SnapshotTransactionTest.kt`）再在别处补足总数即恒绿。影响：一整类防线被无声削掉，而该门禁不在 CI（`ci:false`），只在两条链以 `--allow-missing` 跑。
 - [B02] 2. 【已确认】发布链的「SKIP=0」存在盲区：聚合入口用 `/SKIP=(\d+)/` 统计（`scripts/check-release-gates.mjs:246`），而 `scripts/check-boot-budget.mjs` 真检缺席时打印的是 `SKIP(#1)(real-data)`（`:681`）并立刻 `selfTest()` 退出（`:684`）——该 SKIP 既不入合计、在 `--require` 档下也不判红；唯一能判红的 `--require-real` 零调用点（仅注释提到）。影响：无设备产物时发布链可打印 SKIP=0 全绿，冷启动预算真判据从未执行。
 - [B02] 3. 【已确认，apk 树结构性必红】`plugins/dsh-android-vdisplay/test/tools-callable.test.mjs:122`（另 `:144`/`:161`/`:174`）用 `../../../dsh-mobile-apk/app/src/main/java/com/snoworwind/pocketharness/VdisplayController.kt` 读壳侧源码——该相对路径只在协调仓布局成立；apk 自包含树里 4 个用例 `readFileSync` 抛错。而 `scripts/check-plugin-tests.mjs` 在 `GATES` 里 `ci:true`，apk 仓 `.github/workflows/pr-gate.yml:64` 会跑它。影响：apk 仓 CI 与 apk 自包含构建结构性变红（对应协调仓评审 S-11 第二项 / §4.4-V-M4，本轮工作树仍未修）。
@@ -537,7 +533,7 @@ K01 journal 发布：`SnapshotTransaction.writeMarker` 拒绝目标或临时路�
 | P01 | K07 虚拟屏宿主 | vdInfo 注册表投影用于别名到 displayId 与 SF token 核对，注册表不可达一律空集 fail-closed | plugins/dsh-android-bridge/src/index.ts:645 |
 | P01 | K10 通知中心 | .notify.ndjson 的 kind/report/todo 字段与 popup 是跨层唯一契约；提问与审批不走本文件而走 WS waterfall | plugins/dsh-android-bridge/src/index.ts:1612 |
 | P01 | 壳侧 prefs 写端 | 授权三门口、屏幕范围、控制令牌、心跳全部由壳侧 AdbState/ScreenScopePrefs/DeviceControlService 写，插件只读 | plugins/dsh-android-bridge/src/index.ts:234 |
-| P01 | P04 | file-open 的来件三条 exact 路由复用同一枚 shellControlToken 与 authorizeMobileRoute，不另造令牌方案 | plugins/dsh-android-bridge/src/index.ts:251 |
+| P01 | P04 | file-open 的来件五条 exact 路由复用同一枚 shellControlToken 与 authorizeMobileRoute，不另造令牌方案 | plugins/dsh-android-bridge/src/index.ts:251 |
 | P01 | 门禁链 | check-control-ops 六面 / gen-screen-scope-fixture 跨语言 fixture / check-tool-surface-budget 从 DEVICE_TOOL_GROUPS 推导初始可见集 | plugins/dsh-android-bridge/src/capability-gate.ts:12 |
 | P02 | 授权桥与控制队列 | guard 经 bindSession、screenAccessResolved 与 gateFor 做会话/范围/档位门；服务缺失即 fail-closed 桩 | `plugins/dsh-android-manage/src/index.ts:143#expect=const%20guard%20%3D%20async`、`plugins/dsh-android-manage/src/index.ts:147#expect=priv.bindSession%3F.` |
 | P02 | 无障碍执行面 | a11yExec 通过 controlExec 投递 snapshot/click/longClick/setText/scroll/global/screenshot/state/nodeText/webSnapshot/webAction | `plugins/dsh-android-manage/src/index.ts:1382#expect=const%20a11yExec%20%3D%20async` |
@@ -896,9 +892,9 @@ flowchart TD
   4. 【已确认·代码】截屏回填超时零余量，壳侧那句超时永远不会被模型看到。壳侧 `latch.await(12, SECONDS)`（:802）与引擎侧 `a11yExec('screenshot', …, 12_000)`（`plugins/dsh-android-manage/src/index.ts:518#expect=try%20%7B%20rmSync(join(dir%2C%20x.f)%2C%20%7B%20force%3A%20true%20%7D)%20%7D%20catch%20%7B%20%2F*%20%E5%BF%BD%E7%95%A5%20*%2F%20%7D`）同为 12s，而引擎从 enqueue 起算、壳侧从收到请求起算（前面还有最长 5s 的长轮询等待，`ControlPoller.kt:49`）→ 壳侧触到 12s 时引擎必然已先超时，模型看到的是「设备控制超时（12000ms 内壳侧未回填结果）——检查无障碍服务是否在运行」，把「截屏慢」误导成「无障碍没在跑」，而图其实已落盘。同族 R3：这 12s 内单在途队列上的其他 op（含 `vdInput`/`shExec`）全部排队。
   5. 【未证实】`global` op 没有屏维度却按屏回执。`performGlobalAction(entry.id)`（:1330）不接受 displayId，但 `global ∈ REAL_SCREEN_OPS`，成功后回执被补上 `screenId`/`displayId`/`actionMode=a11y`（:669-674）。于是 `android_ui_global {screenId:"virtual-1", action:"back"}` 会回「已在 virtual-1 执行」，而 BACK 实际落在持有输入焦点的屏（通常是真实屏）。未证实：本轮为只读排查，未在设备上验证虚拟屏 active 时 `performGlobalAction` 的真实落点。
 
-漂移：`docs/AGENTS/ARCHITECTURE.md:68` 说 `DeviceControlService.kt` 是 1094 行、能力面到「屏幕范围执行点复查」为止，源码 `app/src/main/java/com/snoworwind/pocketharness/DeviceControlService.kt` 现场为 1333 行（`wc -l`），且含该表未列的虚拟屏窗口选择面 `rootProbe`/`WindowPick`（:353-434）与 browser*/vd*/sh* 分支（:634-664）。
-漂移：`docs/AGENTS/ARCHITECTURE.md:65` 说 ShizukuProbe.kt 被 MainActivity、DeviceControlService、VdisplayController 依赖，源码零引用——`grep -rl ShizukuProbe app/src/main` 只命中 `app/src/main/java/com/snoworwind/pocketharness/ShizukuProbe.kt` 自身（main 与 test 均无其它引用）。
-漂移：`docs/AGENTS/ACCESSIBILITY-API.md:167` 说「⑤ 多窗口 `getWindows()` 的窗口选择面未接」，源码已接：`getWindowsOnAllDisplays()` + `WindowPick.order`（`app/src/main/java/com/snoworwind/pocketharness/DeviceControlService.kt:353-434`，回归 `app/src/test/java/com/snoworwind/pocketharness/WindowPickTest.kt`）。
+- 已修（2026-10-31）：`ARCHITECTURE.md` 已更新 `DeviceControlService` 职责，纳入虚拟屏窗口选根和 browser/vd/sh 分派，不再记录易漂移行数。
+- 已修（2026-10-31）：`ARCHITECTURE.md` 已将 `ShizukuProbe` 标为 debug-only 诊断探针，并说明当前没有生产代码调用者。
+已修（2026-10-31）：`ACCESSIBILITY-API.md` 已区分虚拟屏语义树内部的窗口枚举/选根（`getWindowsOnAllDisplays()` + `WindowPick.order`）与尚未提供的独立模型窗口选择参数；实现见 `DeviceControlService.kt`，纯函数回归见 `WindowPickTest.kt`。
 已修：`ACCESSIBILITY-API.md` 记载 `MENU` / `MEDIA_PLAY_PAUSE` 自 API 36 起可用，源码目录的两项 `minSdk` 现已与之相同；API 35 拒绝与 API 36 放行由 `GlobalActionCatalogTest` 覆盖。
 
 ```mermaid
@@ -1006,9 +1002,9 @@ flowchart TD
   5. **已确证（S-8）**：`VdisplayHost.onMain`（`:207-213`）没有 catch —（a）`block` 在主线程抛异常时（`releaseViewerSurface → status → kickBind/Shizuku 往返`）经 `main.post` 成为**主线程未捕获异常 = 进程闪退**；（b）2s `latch.await` 超时只回 `main-thread-timeout`，不报是哪个 block。`BrowserHost.kt` 是同一份实现的第二份（S-8 要求两份同改）。
 
 - **漂移**：
-  - 漂移：`docs/AGENTS/ARCHITECTURE.md:90` 说 `VdisplayController.kt` 389 行、`:91` 说 `VdisplayHost.kt` 177 行，源码 `app/src/main/java/com/snoworwind/pocketharness/VdisplayController.kt` 是 766 行、`VdisplayHost.kt` 是 214 行（`wc -l` 现场数）。
-  - 漂移：`历史 BRIDGE-API 副本（当前契约见§6 K04）` 与 `:195` 说页面桥面有 `vdisplayLaunchSettingsProbe`/`backProbe`，源码 `app/src/main/java/com/snoworwind/pocketharness/AndroidBridge.kt:319-351` 没有这两个方法（`sendBackProbe` 只有定义、无调用点，`VdisplayController.kt:529`）；实际存在的 `vdisplaySelect`、`get/setVdisplayScale`、`get/setVdisplayFloatEnabled`、`forceDestroyVdisplay` 未列出。
-  - 漂移：`docs/AGENTS/ARCHITECTURE.md:136` 与 `历史 BRIDGE-API 副本（当前契约见§6 K04）` 说建屏 flag 是「公开 `PUBLIC|OWN_CONTENT_ONLY|SUPPORTS_TOUCH`」，源码 `VdisplayController.kt:372-373` 是 5 个（另含 `DESTROY_CONTENT_ON_REMOVAL`、`ROTATES_WITH_CONTENT`），且同文件 `:366-368` 的实测注释已写明 13+ 上 `FLAG_PUBLIC` 不生效。
+  - 已修（2026-10-31）：架构文档不再固定 VdisplayController/VdisplayHost 行数；由桥对称门禁现取页面桥方法数。
+  - 已修（2026-10-31）：BRIDGE-API 与模块表已列出现行虚拟屏桥方法；设置启动探针/返回探针不是当前 `AndroidBridge` 公开方法。
+  - 已修（2026-10-31）：架构与桥 API 文档已登记建屏五个 flag，并说明 Android 13+ 上 `PUBLIC` 对非系统应用创建的屏幕不生效。
   - 漂移：`VdisplayController.kt:124` 的 `ops()` 说支持 5 个 vd op（缺 `vdLaunchApp`/`vdInput`，且把只回 `unsupported` 的 `vdMoveTask` 列成支持），而 `VdisplayOps.kt:21-44` 实际分发 7 个，引擎侧 `plugins/dsh-android-vdisplay/src/status.ts:14` 的 `VD_OPS` 也是 7 个 —— 面板读载荷里的 `ops`（`mapStatusPayload`）时 capabilities 会少报两条。
 
 ```mermaid
@@ -1104,7 +1100,7 @@ flowchart TD
 
 漂移：`dsh-mobile/docs/0.14.1-preview-OVERLAY-COMPLETION-CARD.md` 的 1.1 表说 OverlayService.kt 673 / OverlayPanel.kt 1046 / OverlayLiveFeed.kt 172 / OverlayHalo.kt 91 / OverlayTheme.kt 33 行，源码实测 785 / 1222 / 196 / 168 / 38；该详档被源码注释当准绳引用（`OverlayService.kt:106`、`OverlayReport.kt:252`）
 
-漂移：`app/src/main/java/com/snoworwind/pocketharness/NotifyCenter.kt:141` 说 flashStatus 在 `OverlayService.kt:669`，源码该函数在 `OverlayService.kt:683`
+- 已修（2026-10-31）：NotifyCenter KDoc 已改为引用 `OverlayService.flashStatus` 符号，不再固定源码行号。
 
 ```mermaid
 flowchart TD
@@ -1163,26 +1159,25 @@ flowchart TD
   11. 多问通知动作的 PendingIntent 身份包含 `eventId`、动作、选项和 `questionId`；Android 不按 extras 区分 PendingIntent，同一事件内相同选项文字也必须生成不同 requestCode（`NotifyCenter.kt:1168-1187`）。
 - **症状 → 排查**：
   1. 「前台仍然收不到工作汇报」：`run-as cat shared_prefs/dsh-notify.xml | grep suppressForeground`；再 `grep -E "suppressForeground (set to|migration)" files/notify-responder.log` 看是 `explicit=true`（磁盘被显式写成开）还是 `implicit`（走新默认 false）。
-  2. 「汇报只在划到后台后才弹」：先分辨**没投**还是**投了不弹**——`run-as cat shared_prefs/dsh-notify.xml | grep notify.offset` 与 `run-as ls -l files/home/.dsh/.notify.ndjson` 对长度：**offset 小于文件长度** ⇒ 消费停摆（没投），看 `grep -E "notify drain trigger=|notify tick alive" files/notify-responder.log`：只有 `watch:` 触发、没有 `tick` ⇒ 兜底没跑；`watchEventAgeMs` 一直很大而 `lag` 一直 >0 ⇒ watcher 失聪（目录 inode 被换过，如快照重解包）。**offset 等于长度**再查投递面：`grep -E "result=SUPPRESSED_FOREGROUND|suppress deferred|suppress deferred flushed"`；只有 `deferred` 没有 `flushed` ⇒ 延后条目随进程一起没了（见可疑点 2）。
+  2. 「汇报只在划到后台后才弹」：先分辨**没投**还是**投了不弹**——`run-as cat shared_prefs/dsh-notify.xml | grep notify.offset` 与 `run-as ls -l files/home/.dsh/.notify.ndjson` 对长度：**offset 小于文件长度** ⇒ 消费停摆（没投），看 `grep -E "notify drain trigger=|notify tick alive" files/notify-responder.log`：只有 `watch:` 触发、没有 `tick` ⇒ 兜底没跑；`watchEventAgeMs` 一直很大而 `lag` 一直 >0 ⇒ watcher 失聪（目录 inode 被换过，如快照重解包）。**offset 等于长度**再查投递面：`grep -E "result=SUPPRESSED_FOREGROUND|suppress deferred|suppress deferred flushed"`；只有 `deferred` 没有 `flushed` 时，检查 `dsh-notify/notify.deferred.v1` 的 journal、TTL、启动恢复与提交/投递错误；当前实现会跨进程恢复，不应再归因为进程死亡即丢失。
   2b. 「长按查看汇报是空的」：`run-as tail -3 files/home/.dsh/.notify.ndjson | grep '"kind":"report"'`——文件里有 report 行就说明内容源在（面板回落路径，`NotifyStore.kt:127`），空面板即内存槽与回落都失败；文件里没有 ⇒ 引擎侧没写出报告行（查 `files/home/.dsh/.notify-probe.log` 的 `apply-ran` / `listener-registered`），不是壳侧通知问题。
   3. 「点了批准/回复没反应」：`run-as cat files/notify-decisions.ndjson` 看该 `requestId` 的 `state` 与 `waitAttempts`；再 `grep -E "decision (queued|waiting|delivered|failed)|NOT_READY budget"`——注意这些行默认落空（见可疑点 1），只能靠 decisions 文件本身。
   4. 「引擎重启后点旧通知」：`grep "settle re-post ok"` 有行、decisions 是 `submitted`，但引擎侧无动作 ⇒ 网关对未知 eventId 的 200 no-op 路径（NT-17），不是投递成功。
   5. 「渠道显示已降级或映射渠道被删」：查看 `shared_prefs/dsh-notify.xml` 中的 `channel.<category>`，再触发一条通知；`channelFor` 会重新校验并解析空/失效映射。若仍无可用渠道，探针应有 `notify dropped (no usable channel)`；渠道选择细节仅在调试采集器开启时写入 LogCollector。
 - **可疑点**：
   1. 决策链与动作链的记账**只走 `LogCollector`**（`NotifyDecisionQueue.kt:194/200/229/271/281/299/316/334/338/367/382/388`、`NotifyActionReceiver.kt:89/101/110/119/127`），而 `LogCollector.log` 在采集器未开时直接 return（`LogCollector.kt:785`，闸门 `MainActivity.kt:1167` 缺键即 false）⇒ 默认设备上「点了动作 → 是否落盘 → 是否投递成功」全链路零可观测面，`files/notify-responder.log` 里没有任何 decision 行（只有 `NotifyBridge` 的 waterfall/ready/cancel 行）。这与已修的 J-2（`NotificationContractTest.kt:206` 要求投递结果改走 `NotifyProbe`）是同一族缺陷，只是当时只修了 `NotifyStore`。影响：用户报「批准没生效」时无法从设备取证。
-  2. `NotifySuppressQueue` 是**纯进程内** `@Volatile List`（`NotifySuppressQueue.kt:83`），而 `drain` 早已推进字节偏移（`NotifyStore.kt:398`）⇒ 命中抑制后进程被回收（后台被杀的常见场景）即永久丢该条，与 FIX-1「抑制＝延后而非丢弃」的承诺只对存活进程成立。已登记：评审 `N-8`（`coord:docs/COMPAT-REVIEW-0.14.0-2026-09-19.md:1238`，锚点正是 `NotifySuppressQueue.kt:83` 与 `:153-167`）与 `H-17`（`coord:docs/0.14.1-REVIEW-CHECKLIST-PROGRESS.md:94`），修法为落盘 sidecar + 启动恢复。
+  2. 已修（2026-10-31）：`NotifySuppressQueue` 已以 `dsh-notify/notify.deferred.v1` 持久 journal 保存待投条目，并由 `NotifyStore.start` 恢复、续投；旧的「纯进程内列表，进程死亡即丢」风险已关闭。当前仍需按设备证据核对 TTL、恢复、投递与结算结果；持久化不承诺跨系统通知与 preferences 的原子 exactly-once。
   3. `PostStatus.STALE` 分支（`NotifyDecisionQueue.kt:323-327`，404/410 才触发）在本版本**不可达**：设备实测网关对未知 eventId 返回 200 no-op（`coord:docs/0.14.0-preview-ACCEPTANCE-LEDGER.md:177` 的 NT-17 注、`coord:docs/NEXT-ITERATION-PLAN-2026-09-12.md:1440` NT-17B）⇒ 旧事件会被判 `OK`、标记 `submitted` 并本地撤通知（`NotifyDecisionQueue.kt:310-316`），用户以为答复已提交而引擎从未收到，「该请求已失效」文案永不出现。已登记为未决项，未证实有壳侧可行替代信号（评审建议查 cancel 帧）。
   4. FIX-2 的可见反馈面是 `OverlayService.flashStatus`，而它要求面板展开且只闪现 2.5s（`OverlayService.kt:683-692` 的 `if (expanded)` 守卫，坑 148 已记该可见性条件）⇒ 「通知已延后」「通知未授权」这类提示在面板收起（最需要提示的前台场景）时依然不可见，`ShellListener`（`NotifyCenter.kt:145-167`）只解决了「零实现」，没解决「不可见」。影响：开启抑制后用户仍可能观察到「什么都没发生」。
   5. 已修：缓存或 prefs 中的渠道映射此前未复查 `getNotificationChannel`，删除系统渠道后会继续指向失效 ID，空串降级映射也无法重新判定。现在 `channelFor` 对缓存/prefs 命中校验系统渠道，缺失或空值时调用 `resolveChannel`；通知探针轮转保留上一代日志。回归由 `NotifyCenterChannelTest` 与 `NotificationContractTest` 锁定；设备复现未做。
-漂移：
-- 漂移：`docs/AGENTS/ARCHITECTURE.md:70` 说 `NotifyCenter.kt` 834 行，源码（`wc -l`）是 1051 行。
-- 漂移：`docs/AGENTS/ARCHITECTURE.md:71` 说 `NotifyStore.kt` 287 行，源码是 537 行。
-- 漂移：`docs/AGENTS/ARCHITECTURE.md` 模块表缺 `NotifySuppressQueue.kt`（0.14.1 新增，只在 `docs/AGENTS/modules.md:36` 有条目）。
-- 漂移：`app/src/main/java/com/snoworwind/pocketharness/OverlayReport.kt:233-234` 注释说与 `notify-projection.ts` 的 `reportOutcomeLabel` **逐字同构**，实际 `interrupted` 文案不同——`plugins/dsh-android-bridge/src/notify-projection.ts:68` 是「被中断（进程重启）」，`OverlayReport.kt:244` 与 `NotifyCenter.kt:1048` 是「被中断」。
-- 漂移：`app/src/main/java/com/snoworwind/pocketharness/NotifyCenter.kt:141` 注释指向 `OverlayService.kt:669` 的 `flashStatus`，实际在 `OverlayService.kt:683`。
-- 漂移：`app/src/main/java/com/snoworwind/pocketharness/OverlayService.kt:706` 注释说先例在 `NotifyCenter.kt:612-613`，实际 `Intent(app, MainActivity::class.java)` 在 `NotifyCenter.kt:829`（605-606 是 `deferredKey` 的注释）。
-- 漂移：`plugins/dsh-android-bridge/src/index.ts:1458` 注释说「壳侧 FileObserver 按偏移消费后截断/轮转」，实际壳侧只读不截断不轮转（`NotifyStore.kt:18-20` 明写「引擎超过 512KB 时轮转 .1」，轮转方是引擎）。
-- 漂移：`docs/0.14.1-preview-NOTIFY-REALTIME-AND-STATE-SYNC.md` §0/§1.2 仍用旧行号（`:377` 抑制判定、`:114` 默认值、`:88-97` Listener、`:307-311` Result），当前源码对应 `NotifyCenter.kt:631`、`:49` / `:191`、`:111-120`、`:500-514`。
+- 文档对账与代码注释漂移：
+- 已修（2026-10-31）：架构模块表已移除 NotifyCenter/NotifyStore 的易漂移行数。
+- 已修（2026-10-31）：`ARCHITECTURE.md` 模块表已登记 `NotifySuppressQueue.kt`，职责和持久化边界与 `modules.md` / `PERSISTENT-DATA.md` 对齐。
+- 已修（2026-10-31）：OverlayReport KDoc 改为说明结果类别对应、标签文案不保证逐字相同。
+- 已修（2026-10-31）：NotifyCenter KDoc 已改为引用 `OverlayService.flashStatus` 符号，不再固定源码行号。
+- 已修（2026-10-31）：OverlayService KDoc 改为引用 `NotifyCenter.contentIntent`，不再指向过期行号。
+- 已修（2026-10-31）：引擎通知信道注释说明由壳侧按偏移消费、由引擎写入方负责轮转，不再声称壳侧截断文件。
+- 已退役：旧 `0.14.1-preview-NOTIFY-REALTIME-AND-STATE-SYNC.md` 不在当前仓库；现行通知契约见 `ARCHITECTURE.md`、`modules.md` 与 `BRIDGE-API.md`。
 
 ```mermaid
 flowchart TD
@@ -1280,7 +1275,7 @@ flowchart TD
   R --> S["壳侧 FileObserver 消费 交 K10"]
 ```
 
-漂移：`dsh-mobile-apk/docs/archive/known-gaps-pre-0.14.5-2026-10-07.md:170` 说 0.14.1 块G F1 落在 `bridge/index.ts` 第 832-838 行，源码该处是 `a11ySource()` 的心跳判定（`plugins/dsh-android-bridge/src/index.ts:829-838`），F1 的「按 args.screenId 经 screenAccessResolved 判定」实际在 `plugins/dsh-android-bridge/src/index.ts:991-997`。
+- [P01] 已修（2026-10-31）：历史缺口档案移除了会漂移的 `bridge/index.ts` 行号，保留 F1 按 `args.screenId` 经 `screenAccessResolved` 判定的历史语义。
 漂移：`dsh-mobile-apk/docs/AGENTS/ARCHITECTURE.md:151`（§9「0.13.5 设备控制面」）说 `adb → execAdbLine/execAdbShell（shell 执行、原图截图、pm/dumpsys 等系统面）`，源码 `plugins/dsh-android-bridge/src/index.ts:1034`/`:1070` 与 `plugins/dsh-android-bridge/src/shell-ops.ts:120` 已在 0.14.0 改成经控制队列投递壳侧 Shizuku、不再有 adb 客户端语义（该节自带 0.13.5 标注，属历史段落，按「以源码为准」记录）。
 
 #### P02 管理插件（dsh-android-manage）
@@ -1357,7 +1352,7 @@ flowchart TD
   3. x/y 绝对坐标 + 非虚拟屏的组合没有执行路径（已确认代码事实）：`plugins/dsh-android-manage/src/index.ts:1516#expect=%7D%20else%20%7B` 的 `useAbs` 一旦通过就不再校验 screenId；screenId 缺省或为 `real` 时，a11y 分支发 `nx/ny = undefined`（`:1615`，壳侧回「需要 row 或 nx/ny」），ADB 分支 `Math.round(nx! * size.w)` 得 NaN（`:1650`）后执行 `input tap NaN NaN`（`:1678`）。触发条件：模型按 `SCREEN_PARAM` 文案（real|virtual-N）传 x/y + `screenId:"real"`，或只传 x/y。
   4. 单槽 `uiCache` 不记录屏幕归属（未证实，代码路径可读证）：`plugins/dsh-android-manage/src/index.ts:923#expect=let%20prevWin%20%3D%20''` 的缓存结构没有 screenId，`:948` 的结构指纹也不含屏幕维度。多屏会话里「dump 虚拟屏 → dump 真实屏 → 用虚拟屏的 n3 点击」会按最新一次缓存解析 ref，命中另一块屏的同名 n3，载荷再带上本次调用的 screenId，返回仍是 `ok:true` 与一组坐标；排查时表现为「点击坐标与预期不符」而看不出是串屏。
   5. vdInput 分支把 displayId 塞进 `x` 键（已确认代码事实）：`plugins/dsh-android-manage/src/index.ts:1559#expect=const%20webHint%20%3D%20webNode` 返回 `x: data.displayId, y: 0`，而 schema 与工具描述里的 `x`/`y` 语义是点击坐标（真实坐标只在 `text` 里）。影响：模型若据返回值的 x/y 推算下一步点击会拿到无意义坐标。
-- 漂移：`docs/AGENTS/gotchas.md:178` 说坑 72 的锚点是 `plugins/dsh-android-manage/src/lossless-json.ts` 与 `plugins/dsh-android-manage/test/privilege-status.test.mjs`，源码里这两个文件只在 bridge 插件下（`plugins/dsh-android-bridge/src/lossless-json.ts:1`、`plugins/dsh-android-bridge/test/privilege-status.test.mjs:1`），manage 当前源文件另有本轮新增 `tmp-cache.ts`。
+- 已修（2026-10-31）：坑 72 的文件锚点已改为 bridge 插件中的实现与回归文件。
   - `plugins/dsh-android-manage/src/index.ts:2563#expect=return%20%5BscreenList%2C%20screenshot%2C%20uiTree` — 注册数组共 14 个工具（uiDetail 是 0.14 D4 补回的第 14 个）。
 - 漂移已修（2026-10-29）：耦合矩阵右端为外部角色文字时曾被要求登记查点 ID；当前只在右端符合 ID 形状时检查，并由自检覆盖正反例。判定见 `scripts/check-code-map.mjs:327#expect=if%20(ID_SHAPE.test(c.to)`
 
@@ -1476,9 +1471,9 @@ flowchart TD
   V --> Z
 ```
 
-漂移：`plugins/dsh-android-browser/src/tools.ts:407` 说壳侧 `reason` 在 `BrowserHost.kt:818` 的 `lastError`，同文件 `:160` 说 `tabSummaries()` 在 `BrowserHost.kt:80-91`；源码 `lastError` 声明在 `app/src/main/java/com/snoworwind/pocketharness/BrowserHost.kt:304`、`tabSummaries()` 在 `:91`（`:818` 是 `ORPHAN_REFS`），注释锚点按 0.14.0 基线写死。
-漂移：`docs/AGENTS/ARCHITECTURE.md:17` 说 AndroidBridge.kt 383 行、`:90` 说 VdisplayController.kt 389 行、`:91` 说 VdisplayHost.kt 177 行；源码现数 422 / 766 / 214 行（`wc -l`，文件末行分别为 `app/src/main/java/com/snoworwind/pocketharness/AndroidBridge.kt:425`、`VdisplayController.kt:766`、`VdisplayHost.kt:214`），同文档 `:18` 自己注明「行数每次改都会漂、不要写死」。
-漂移：`历史 BRIDGE-API 副本（当前契约见§6 K04）` 与 `:195` 把虚拟屏桥面写成 `vdisplayStatus/create/destroy/launchSettingsProbe/backProbe/bounds`，未列 `vdisplaySelect`（`app/src/main/java/com/snoworwind/pocketharness/AndroidBridge.kt:333`）、`forceDestroyVdisplay`（`:348`）与 Scale/Float 四个存取（`:334/:337/:341/:344`），而面板侧正在调用前两个（`plugins/dsh-android-vdisplay/src/client/index.ts:84`、`:89`）。
+- 已修（2026-10-31）：browser 工具注释改为引用 `BrowserHost.lastError` 符号，去掉过期源码行号。
+- 已修（2026-10-31）：架构文档已移除 AndroidBridge/VdisplayController/VdisplayHost 的易漂移行数。
+- 已修（2026-10-31）：BRIDGE-API 虚拟屏方法清单现与 `AndroidBridge.kt` 对齐。
 
 #### P04 文件打开、Linux 环境与模型能力插件
 
@@ -1545,8 +1540,8 @@ vendored bootstrap 与注入集的关系（0.15.0）：`plugins/dsh-linux-bootst
   4. 【已确认（代码面），配置写入面】`planModelPatch` 的旧判据 `changes.length > 0 || next !== entry` 中对象身份恒真且 `changes` 跨 patch 累积，可能把无实际字段写入的字符串模型项规范化。2026-10-05 已改为 per-patch changed 判据并添加回归用例；待插件测试/镜像验证。
   5. 【2026-10-11 已修；原条目为历史记录】曾：诊断轨迹默认开启且 `tick()` 在早退前无条件写一行、**每 5 秒**一次 → `$DSH_HOME/model-capability.log` 约 1.7 万行/天。**现已两条都改掉**：0.14.2 改 120 秒兜底，本轮 A7 再**整体移除定时器** ⇒ **纯事件驱动（settings/document-updated），全插件无任何定时器**（启动期仅一次首读基线，同样不排定时器），且不再每轮无条件写日志。**仍成立**：日志无轮转/无上限（`plugins/dsh-model-capability/src/index.ts:181-185`）且不在运行时缓存白名单里（`plugins/dsh-android-linux-env/src/runtime-cache.ts:59`/`:73`），「清除运行时缓存」仍收不回这份增长。
 - **漂移**：
-  - 漂移：`app/src/main/java/com/snoworwind/pocketharness/FileIncoming.kt:326` 注释说「三条 file-incoming exact 路由」（`plugins/dsh-android-file-open/src/index.ts:20` 同样写「三条」），实际注册五条（`plugins/dsh-android-file-open/src/index.ts:527/605/697/752/813`，`scripts/api-route-auth-policy.json` 也列五条），`历史 BRIDGE-API 副本（当前契约见§6 K04）` 按五条记。
-  - 漂移：`app/src/main/java/com/snoworwind/pocketharness/FileIncoming.kt:97-99` 注释说「canonical 形态会被插件 `safeResolveInside` 的**词法首门**拒绝」，源码 `plugins/dsh-android-file-open/src/index.ts:431-452` 是**两侧都 realpath 后**比较（只有 ws 侧 realpath 抛错时才回落词法），不存在会拒 canonical 的词法首门——该注释会把维护者引向不必要的路径形态限制。
+  - 已修（2026-10-31）：FileIncoming 与 file-open 插件注释已将 exact 路由数更正为五条；只描述故障当时规模的句子改为「当时已注册的路由」。
+  - 已修（2026-10-31）：`FileIncoming.safeTarget` 注释现说明保留原始 DSH_HOME 前缀是契约要求；插件仍会 realpath 工作区与候选路径后再检查归属。
 
 ```mermaid
 flowchart TD
@@ -1692,7 +1687,7 @@ flowchart TD
 
 漂移：`dsh-mobile-apk/docs/AGENTS/gotchas.md:103`（坑 61）说防线③是「常驻 `node dsh-host-web-compat/scripts/smoke-injections.mjs` 门禁」，源码 `dsh-host-web-compat/lib/index.js:783,791` 已是两次 `tapIndex`，而 `dsh-host-web-compat/scripts/smoke-injections.mjs:50` 仍断言 `transforms.length === 1` —— 该门禁当下是红的（apk 仓 `.github/workflows` 不跑它）。
 
-漂移：`历史 BRIDGE-API 副本（当前契约见§6 K04）` 说 AndroidBridge 桥面「方法计数由 `check-bridge-symmetry.mjs` 从源码守」，但该清单及其余各表都未收录 0.14.1 新增的 `getNotifySetting` / `setNotifySetting`，源码 `app/src/main/java/com/snoworwind/pocketharness/AndroidBridge.kt:375,381` 已实现，页面 `dsh-client-ui-responsive/src/client/dev-section/notify-settings.tsx:66,86` 已在调用。
+- 已修（2026-10-31）：现行 BRIDGE-API 方法清单已与 `AndroidBridge.kt` 同步，包含通知设置 getter/setter。
 
 漂移：apk 仓 `dsh-shell-termux/README.md` 与协调仓同名副本不是逐字节镜像（6 行行尾 CRLF/LF 差异，正文逐字相同，无功能影响）。
 
@@ -1764,13 +1759,13 @@ flowchart TD
   5. 【历史项已退役（2026-10-15）】旧 MIRROR_TOP 覆盖缺口只针对已移除的跨树逐字节镜像；现行本仓门禁只校验 registry↔IMPLS 自洽，不能把旧清单当作当前缺陷。入口见 `scripts/check-patch-mirror.mjs:53#expect=const%20regPath`。
   - 补充（非可疑，语义澄清）：坑 63 的「只替换已有成员、新增文件丢弃」在**主链已被 inject-all.py 修复**（`:204-208` 注释 + `:321-338` 补缺循环 + 门禁 `check-inject-completeness.mjs:2`），但 `inject-snapshot.py:106-121`（只在整包缺席时走 need_add）仍是另外一条路径的注入器：`build-release.ps1:109`。（0.14.5：原先还有 apk 仓的独立快照 workflow（`build-snapshot.yml`，注入步），它只注入 3 个包、不做引擎 overlay/引擎补丁/语法降级，故也带坑 63 语义；**该 workflow 已删除**——快照构建入口已收敛为 `build-apk.yml` / `release.yml` 单一链，故其注入器语义不再适用。**2026-10-15：`release.yml` 亦已退役（本分支不出 Release，只允许来源链构建，见 AGENTS §4 铁律 9）**。）
 
-漂移：`docs/AGENTS/build-and-env.md:32,41-42` 说快照归档/解压用 `xz -T0`/`xz -dT0`，源码 `scripts/build-snapshot-013.mjs:985` 是 `xz -T${XZ_THREADS} -6`、`:120` 是 `xz -dT${XZ_THREADS}`（`scripts/lib/shell.mjs:31` 默认 8，`scripts/check-build-parallel-cap.mjs` 把「吃满全部核心」判红）。
-漂移：`历史 BRIDGE-API 副本（当前契约见§6 K04）` 同一句「瘦身 + xz -T0 归档」与源码 `scripts/build-snapshot-013.mjs:985` 的 `xz -T${XZ_THREADS}` 不符（该文件的构建段落是 build-and-env.md 的拷贝）。
-漂移：`历史 BRIDGE-API 副本（当前契约见§6 K04）` 说聚合门禁「当前 17 项」，源码 `scripts/check-release-gates.mjs:28-104` 声明 27 项（构建环境说明现以 --list 现数，不再固定数量）。
+- 已修（2026-10-31）：`build-and-env.md` 已按源码说明共享 `XZ_THREADS` 与 `DSH_CPU_THREADS` 覆写。
+- 已退役：执行地图中的旧构建描述仅作发现时快照；当前线程配置与来源链步骤以 `build-and-env.md` 和来源构建源码为准。
+- 已退役：门禁数量为易漂移数据；当前按 `scripts/check-release-gates.mjs --list` 现数，旧桥文档快照的数字不作现状。
 - [B01] 历史漂移已修（2026-10-29）：build-and-env.md 已把旧本地链描述标作历史并以来源链实际调用为准；当前门禁接线由 PR Gate 检查。
-漂移：`docs/AGENTS/RUNTIME-PATCHES.md:56` 说 scope=vendor 补丁「在 build-apk-013.ps1 阶段施加」，源码 `scripts/build-apk-013.ps1:211` 的调用无 `--apply`/`--scope` → `scripts/patches/apply-patches.mjs:1568,1572` 默认 `mode=check`（只校验不施加；`docs/AGENTS/0.13.7-CERTIFICATION.md:11` 也记 mode=check）。
+- 已修（2026-10-31）：`RUNTIME-PATCHES.md` 已将活动补丁执行边界改为本仓来源链 runner，不再称旧本地脚本会施加 vendor 补丁。
 漂移（**2026-09-25 已修**）：`docs/AGENTS/RUNTIME-PATCHES.md` 原写 engine 补丁「当前全量」14 项；该文件已按现数改为 **15 项**（`scripts/patches/registry.json` 实测 30 条总 / 15 条 engine / 15 条 vendor）。原条目点名的四条缺口（combo-single-lazy-A5、combo-parallel-C3、combo-probe-P1、boot-third-party-isolation-G3）中，**A5 与 C3 已于 0.14.2 追版时按实测撤销**（见 RUNTIME-PATCHES §7.4 与 `scripts/patches/README.md` 撤销段），P1 与 G3 仍在册 ⇒ 清单已与源码同源，此处不再是漂移。
-漂移：`AGENTS.md:21` 说 `vendor/`（marketplace / undo-savepoint / dsh-model-sync），源码实际 `vendor/` 只有 `dsh-undo-savepoint` 与 `dshmarketplace-plugin`（model-sync 已随 0.14.1 整体摘除，见 `scripts/profile-web.cordis.patch.yml:128-138`；镜像面清单已于 2026-10-15 移除，此处不再引用它）。
+- 已修（2026-10-31）：`AGENTS.md` 的 vendor 目录摘要已与本仓现存 marketplace 与 undo-savepoint 副本一致。
 
 ```mermaid
 flowchart TD
@@ -2446,54 +2441,52 @@ scripts/verify-webview-settings.test.mjs
 
 - [K01] 漂移：`dsh-mobile-apk/docs/AGENTS/ARCHITECTURE.md:12` 说 EngineStartFlow.kt 为 539 行（同表 :9 MainActivity 918、:10 GuidePageRenderer 404），源码实测为 773 / 1175 / 419 行（`wc -l`，见该表自称「2026-09-14 当场实测」）。
 - [K01] 漂移：`dsh-mobile-apk/docs/AGENTS/ARCHITECTURE.md:15` 说 WebUiChrome.kt 的职责是「沉浸式/剪贴板/常亮/主题推送（真源统一走 ShellState）」，源码里剪贴板/常亮/主题推送三组只有定义、无调用点（WebUiChrome.kt:37/54/94），生效面是 MainActivity.kt:850/967/874 的私有副本。
-- [K02] 漂移：`历史 BRIDGE-API 副本（当前契约见§6 K04）` 说 `shellEnv()` 注入 `DSH_ADB_*`/`DSH_ADB_FULLACCESS`，源码 `EngineManager.kt:1464-1465` 注明 0.14.0 内置 adb 已退役、环境 map 里没有这两个键。
-- [K02] 漂移：`docs/AGENTS/ARCHITECTURE.md:45` 说 WatchdogV2.kt 负责「boot 恢复用户同意状态」，源码该文件已无任何 Receiver（`ActivityManager`/`BroadcastReceiver`/`Intent`/`IntentFilter` 只剩零使用的 import，WatchdogV2.kt:3-8），BOOT_COMPLETED 处理在 `BootReceiver.kt:23-36`。
-- [K02] 漂移：`docs/AGENTS/ARCHITECTURE.md:76` 给 LogCollector.kt 记 332 行（2026-09-14 实测），现为 931 行；同表 EngineService.kt 记 201 行，现为 246 行。
-- [K05] 漂移：`docs/AGENTS/ARCHITECTURE.md:68` 说 `DeviceControlService.kt` 是 1094 行、能力面到「屏幕范围执行点复查」为止，源码 `app/src/main/java/com/snoworwind/pocketharness/DeviceControlService.kt` 现场为 1333 行（`wc -l`），且含该表未列的虚拟屏窗口选择面 `rootProbe`/`WindowPick`（:353-434）与 browser*/vd*/sh* 分支（:634-664）。
-- [K05] 漂移：`docs/AGENTS/ARCHITECTURE.md:65` 说 ShizukuProbe.kt 被 MainActivity、DeviceControlService、VdisplayController 依赖，源码零引用——`grep -rl ShizukuProbe app/src/main` 只命中 `app/src/main/java/com/snoworwind/pocketharness/ShizukuProbe.kt` 自身（main 与 test 均无其它引用）。
-- [K05] 漂移：`docs/AGENTS/ACCESSIBILITY-API.md:167` 说「⑤ 多窗口 `getWindows()` 的窗口选择面未接」，源码已接：`getWindowsOnAllDisplays()` + `WindowPick.order`（`app/src/main/java/com/snoworwind/pocketharness/DeviceControlService.kt:353-434`，回归 `app/src/test/java/com/snoworwind/pocketharness/WindowPickTest.kt`）。
+- [K02] 已修（2026-10-31）：本仓现行环境与桥协议说明不再声称 `shellEnv()` 注入 `DSH_ADB_*`；旧无线 ADB 状态字段只为兼容与诊断保留。
+- [K02] 已修（2026-10-31）：架构表将 BOOT_COMPLETED 自启动归给 `BootReceiver`，不再描述为 WatchdogV2 的 receiver 职责。
+- [K02] 已修（2026-10-31）：架构文档移除了 LogCollector/EngineService 的易漂移行数。
+- [K05] 已修（2026-10-31）：架构表补入 DeviceControlService 的虚拟屏窗口选根与 browser/vd/sh dispatcher 面；不再固定源码行数。
+- [K05] 已修（2026-10-31）：架构表把 `ShizukuProbe` 标为 debug-only、当前无生产代码调用者。
+- [K05] 已修（2026-10-31）：`ACCESSIBILITY-API.md` 已区分虚拟屏语义树内部的窗口枚举/选根（`getWindowsOnAllDisplays()` + `WindowPick.order`）与尚未提供的独立模型窗口选择参数；实现见 `DeviceControlService.kt`，纯函数回归见 `WindowPickTest.kt`。
 - [K05] 已修：`ACCESSIBILITY-API.md` 记载 `MENU` / `MEDIA_PLAY_PAUSE` 自 API 36 起可用，源码目录的两项 `minSdk` 现已与之相同；API 35 拒绝与 API 36 放行由 `GlobalActionCatalogTest` 覆盖。
-- [K06] 漂移：`历史 BRIDGE-API 副本（当前契约见§6 K04）` 说 ShizukuTransport/ShizukuUserService 是「固定 argv、16KB 输出上限；页面/引擎拿不到原始 binder 或任意 shell 面」（AIDL v1），源码 `ShizukuUserService.kt:30` 是 `PROTOCOL_VERSION = 2`（execCapture 落盘面 + 单文件 256 MiB），`ShizukuTransport.kt:821-846` 与 `ShellOps.kt:91-103` 交给引擎的正是任意 `sh -c` 命令面。
-- [K06] 漂移：`历史 BRIDGE-API 副本（当前契约见§6 K04）` 说 ScreenScope「执行点复查在 DeviceControlService」，源码 `ShellOps.kt:132`（scopeDenied）才是特权 shell 通道的执行点复查，`DeviceControlService.kt:703`（realScreenScopeError）只管无障碍 op 面。
-- [K07] 漂移：`docs/AGENTS/ARCHITECTURE.md:90` 说 `VdisplayController.kt` 389 行、`:91` 说 `VdisplayHost.kt` 177 行，源码 `app/src/main/java/com/snoworwind/pocketharness/VdisplayController.kt` 是 766 行、`VdisplayHost.kt` 是 214 行（`wc -l` 现场数）。
-- [K07] 漂移：`历史 BRIDGE-API 副本（当前契约见§6 K04）` 与 `:195` 说页面桥面有 `vdisplayLaunchSettingsProbe`/`backProbe`，源码 `app/src/main/java/com/snoworwind/pocketharness/AndroidBridge.kt:319-351` 没有这两个方法（`sendBackProbe` 只有定义、无调用点，`VdisplayController.kt:529`）；实际存在的 `vdisplaySelect`、`get/setVdisplayScale`、`get/setVdisplayFloatEnabled`、`forceDestroyVdisplay` 未列出。
-- [K07] 漂移：`docs/AGENTS/ARCHITECTURE.md:136` 与 `历史 BRIDGE-API 副本（当前契约见§6 K04）` 说建屏 flag 是「公开 `PUBLIC|OWN_CONTENT_ONLY|SUPPORTS_TOUCH`」，源码 `VdisplayController.kt:372-373` 是 5 个（另含 `DESTROY_CONTENT_ON_REMOVAL`、`ROTATES_WITH_CONTENT`），且同文件 `:366-368` 的实测注释已写明 13+ 上 `FLAG_PUBLIC` 不生效。
+- [K06] 已修（2026-10-31）：现行 Android API、架构与桥 API 文档已记录 AIDL v5、16 KiB 普通 exec inline 上限、256 MiB capture 文件上限及 Shizuku shell 执行边界。
+- [K06] 已修（2026-10-31）：现行桥 API 文档区分 `ShellOps.scopeDenied` 的特权 shell 范围复查与 `DeviceControlService.realScreenScopeError` 的无障碍 op 范围复查。
+- [K07] 已修（2026-10-31）：架构与 API 文档已移除易漂移的虚拟屏类行数。
+- [K07] 已修（2026-10-31）：桥方法表已列出现行 `vdisplaySelect`、缩放/浮窗配置和 `forceDestroyVdisplay`，剔除不存在的探针方法名。
+- [K07] 已修（2026-10-31）：建屏 flag 与 Android 13+ `PUBLIC` 语义已在现行文档中更正。
 - [K07] 漂移：`VdisplayController.kt:124` 的 `ops()` 说支持 5 个 vd op（缺 `vdLaunchApp`/`vdInput`，且把只回 `unsupported` 的 `vdMoveTask` 列成支持），而 `VdisplayOps.kt:21-44` 实际分发 7 个，引擎侧 `plugins/dsh-android-vdisplay/src/status.ts:14` 的 `VD_OPS` 也是 7 个 —— 面板读载荷里的 `ops`（`mapStatusPayload`）时 capabilities 会少报两条。
-- [K08] 漂移：`docs/AGENTS/ARCHITECTURE.md:18` 说 `BrowserHostNavigationPolicy.kt` / `BrowserOverlayPolicy.kt` 为 210 / 82 行，现场 `wc -l` 是 231 / 86 行（同行的 BrowserHost.kt 1813 与文档一致）。
-- [K08] 漂移：`dsh-client-ui-responsive/src/client/mobile/native-browser-presentation.ts:20` 注释说「原生层 foreignViewer 亦 fail-closed」，源码 `BrowserHost.kt:810-814` 明写 foreignViewer 判定已随按会话隔离删除（全仓只剩这条注释提及该符号）；同文件 `:398-401` 的口径才是现状。
+- [K08] 已修（2026-10-31）：架构模块表没有硬编码 BrowserHostPolicy 类行数，变更后无需追着更新数字。
+- [K08] 已修（2026-10-31）：旧客户端 `foreignViewer` 注释已从 `native-browser-presentation.ts` 移除；`BrowserHost.kt` 注释说明按会话隔离后的呈现行为。
 - [K09] 漂移：`dsh-mobile-apk/docs/AGENTS/ARCHITECTURE.md:27-34` 说 OverlayService.kt 772 / OverlayHalo.kt 164 / OverlayPanel.kt 1217 / OverlayReport.kt 325 行，源码实测 `OverlayService.kt` 785 / `OverlayHalo.kt` 168 / `OverlayPanel.kt` 1222 / `OverlayReport.kt` 384（差 59 行正是块H 的 CompletionNotice 段）
 - [K09] 漂移：`dsh-mobile-apk/docs/AGENTS/ARCHITECTURE.md:29` 与 `dsh-mobile-apk/docs/AGENTS/modules.md:39` 说「应答 POST /api/respond 全信封，approval value={sessionId,approvalId,outcome}；question 取消发 ok:false error cancelled」，源码 `OverlayPanel.kt:818` 是 POST /api/$events/result、payload={args:{clientId,eventId,outcome}}，审批取值 allowed-once/rejected（`OverlayPanel.kt:616-617`）、提问跳过是 kind=rejected 加 error{name:UserQuestionError,code:cancelled}（`OverlayPanel.kt:904-908`）；同族过期注释仍在源码里：`OverlayPanel.kt:24`、`OverlayPanel.kt:489`、`OverlayLiveFeed.kt:166`
 - [K09] 漂移：`dsh-mobile/docs/0.14.1-preview-OVERLAY-COMPLETION-CARD.md` 的 1.1 表说 OverlayService.kt 673 / OverlayPanel.kt 1046 / OverlayLiveFeed.kt 172 / OverlayHalo.kt 91 / OverlayTheme.kt 33 行，源码实测 785 / 1222 / 196 / 168 / 38；该详档被源码注释当准绳引用（`OverlayService.kt:106`、`OverlayReport.kt:252`）
-- [K09] 漂移：`app/src/main/java/com/snoworwind/pocketharness/NotifyCenter.kt:141` 说 flashStatus 在 `OverlayService.kt:669`，源码该函数在 `OverlayService.kt:683`
-- [K10] 漂移：
-- [K10] 漂移：`docs/AGENTS/ARCHITECTURE.md:70` 说 `NotifyCenter.kt` 834 行，源码（`wc -l`）是 1051 行。
-- [K10] 漂移：`docs/AGENTS/ARCHITECTURE.md:71` 说 `NotifyStore.kt` 287 行，源码是 537 行。
-- [K10] 漂移：`docs/AGENTS/ARCHITECTURE.md` 模块表缺 `NotifySuppressQueue.kt`（0.14.1 新增，只在 `docs/AGENTS/modules.md:36` 有条目）。
-- [K10] 漂移：`app/src/main/java/com/snoworwind/pocketharness/OverlayReport.kt:233-234` 注释说与 `notify-projection.ts` 的 `reportOutcomeLabel` 逐字同构，实际 `interrupted` 文案不同——`plugins/dsh-android-bridge/src/notify-projection.ts:68` 是「被中断（进程重启）」，`OverlayReport.kt:244` 与 `NotifyCenter.kt:1048` 是「被中断」。
-- [K10] 漂移：`app/src/main/java/com/snoworwind/pocketharness/NotifyCenter.kt:141` 注释指向 `OverlayService.kt:669` 的 `flashStatus`，实际在 `OverlayService.kt:683`。
-- [K10] 漂移：`app/src/main/java/com/snoworwind/pocketharness/OverlayService.kt:706` 注释说先例在 `NotifyCenter.kt:612-613`，实际 `Intent(app, MainActivity::class.java)` 在 `NotifyCenter.kt:829`（605-606 是 `deferredKey` 的注释）。
-- [K10] 漂移：`plugins/dsh-android-bridge/src/index.ts:1458` 注释说「壳侧 FileObserver 按偏移消费后截断/轮转」，实际壳侧只读不截断不轮转（`NotifyStore.kt:18-20` 明写「引擎超过 512KB 时轮转 .1」，轮转方是引擎）。
-- [K10] 漂移：`docs/0.14.1-preview-NOTIFY-REALTIME-AND-STATE-SYNC.md` §0/§1.2 仍用旧行号（`:377` 抑制判定、`:114` 默认值、`:88-97` Listener、`:307-311` Result），当前源码对应 `NotifyCenter.kt:631`、`:49` / `:191`、`:111-120`、`:500-514`。
-- [P01] 漂移：`dsh-mobile-apk/docs/archive/known-gaps-pre-0.14.5-2026-10-07.md:170` 说 0.14.1 块G F1 落在 `bridge/index.ts` 第 832-838 行，源码该处是 `a11ySource()` 的心跳判定（`plugins/dsh-android-bridge/src/index.ts:829-838`），F1 的「按 args.screenId 经 screenAccessResolved 判定」实际在 `plugins/dsh-android-bridge/src/index.ts:991-997`。
+- [K09] 已修（2026-10-31）：NotifyCenter KDoc 已改为引用 `OverlayService.flashStatus` 符号，不再固定源码行号。
+- [K10] 文档对账与代码注释漂移：
+- [K10] 已修（2026-10-31）：架构模块表移除了 NotifyCenter/NotifyStore 的硬编码行数，并加入 `NotifySuppressQueue.kt`。
+- [K10] 已修（2026-10-31）：OverlayReport KDoc 改为说明结果类别对应、标签文案不保证逐字相同。
+- [K10] 已修（2026-10-31）：NotifyCenter KDoc 已改为引用 `OverlayService.flashStatus` 符号，不再固定源码行号。
+- [K10] 已修（2026-10-31）：OverlayService KDoc 改为引用 `NotifyCenter.contentIntent`，不再指向过期行号。
+- [K10] 已修（2026-10-31）：引擎通知信道注释说明由壳侧按偏移消费、由引擎写入方负责轮转，不再声称壳侧截断文件。
+- [K10] 已退役：旧 `0.14.1-preview-NOTIFY-REALTIME-AND-STATE-SYNC.md` 不在当前仓库；本仓通知契约见 `ARCHITECTURE.md`、`modules.md` 与 `BRIDGE-API.md`，不再维护该旧稿行号。
+- [P01] 已修（2026-10-31）：历史缺口档案移除了会漂移的 `bridge/index.ts` 行号，保留 F1 按 `args.screenId` 经 `screenAccessResolved` 判定的历史语义。
 - [P01] 漂移：`dsh-mobile-apk/docs/AGENTS/ARCHITECTURE.md:151`（§9「0.13.5 设备控制面」）说 `adb → execAdbLine/execAdbShell（shell 执行、原图截图、pm/dumpsys 等系统面）`，源码 `plugins/dsh-android-bridge/src/index.ts:1034`/`:1070` 与 `plugins/dsh-android-bridge/src/shell-ops.ts:120` 已在 0.14.0 改成经控制队列投递壳侧 Shizuku、不再有 adb 客户端语义（该节自带 0.13.5 标注，属历史段落，按「以源码为准」记录）。
 - [P02] 漂移：`docs/AGENTS/gotchas.md:178` 说坑 72 的锚点是 `plugins/dsh-android-manage/src/lossless-json.ts` 与 `plugins/dsh-android-manage/test/privilege-status.test.mjs`，源码里这两个文件只在 bridge 插件下（`plugins/dsh-android-bridge/src/lossless-json.ts:1`、`plugins/dsh-android-bridge/test/privilege-status.test.mjs:1`），manage 当前源文件另有本轮新增 `tmp-cache.ts`。
   - `plugins/dsh-android-manage/src/index.ts:2563#expect=return%20%5BscreenList%2C%20screenshot%2C%20uiTree` — 注册数组共 14 个工具（uiDetail 是 0.14 D4 补回的第 14 个）。
 - [P02] 耦合边允许外部角色右端已修：可见耦合表只对符合查点 ID 形状的右端检查登记；注释与判定分别见 `scripts/check-code-map.mjs:323#expect=%E5%8F%B3%E7%AB%AF%E5%8F%AF%E4%BB%A5%E6%98%AF%E3%80%8C%E5%A4%96%E9%83%A8%E8%A7%92%E8%89%B2%E3%80%8D%E6%96%87%E5%AD%97`、`scripts/check-code-map.mjs:327#expect=if%20(ID_SHAPE.test(c.to)`
-- [P03] 漂移：`plugins/dsh-android-browser/src/tools.ts:407` 说壳侧 `reason` 在 `BrowserHost.kt:818` 的 `lastError`，同文件 `:160` 说 `tabSummaries()` 在 `BrowserHost.kt:80-91`；源码 `lastError` 声明在 `app/src/main/java/com/snoworwind/pocketharness/BrowserHost.kt:304`、`tabSummaries()` 在 `:91`（`:818` 是 `ORPHAN_REFS`），注释锚点按 0.14.0 基线写死。
-- [P03] 漂移：`docs/AGENTS/ARCHITECTURE.md:17` 说 AndroidBridge.kt 383 行、`:90` 说 VdisplayController.kt 389 行、`:91` 说 VdisplayHost.kt 177 行；源码现数 422 / 766 / 214 行（`wc -l`，文件末行分别为 `app/src/main/java/com/snoworwind/pocketharness/AndroidBridge.kt:425`、`VdisplayController.kt:766`、`VdisplayHost.kt:214`），同文档 `:18` 自己注明「行数每次改都会漂、不要写死」。
-- [P03] 漂移：`历史 BRIDGE-API 副本（当前契约见§6 K04）` 与 `:195` 把虚拟屏桥面写成 `vdisplayStatus/create/destroy/launchSettingsProbe/backProbe/bounds`，未列 `vdisplaySelect`（`app/src/main/java/com/snoworwind/pocketharness/AndroidBridge.kt:333`）、`forceDestroyVdisplay`（`:348`）与 Scale/Float 四个存取（`:334/:337/:341/:344`），而面板侧正在调用前两个（`plugins/dsh-android-vdisplay/src/client/index.ts:84`、`:89`）。
-- [P04] 漂移：`app/src/main/java/com/snoworwind/pocketharness/FileIncoming.kt:326` 注释说「三条 file-incoming exact 路由」（`plugins/dsh-android-file-open/src/index.ts:20` 同样写「三条」），实际注册五条（`plugins/dsh-android-file-open/src/index.ts:527/605/697/752/813`，`scripts/api-route-auth-policy.json` 也列五条），`历史 BRIDGE-API 副本（当前契约见§6 K04）` 按五条记。
-- [P04] 漂移：`app/src/main/java/com/snoworwind/pocketharness/FileIncoming.kt:97-99` 注释说「canonical 形态会被插件 `safeResolveInside` 的词法首门拒绝」，源码 `plugins/dsh-android-file-open/src/index.ts:431-452` 是两侧都 realpath 后比较（只有 ws 侧 realpath 抛错时才回落词法），不存在会拒 canonical 的词法首门——该注释会把维护者引向不必要的路径形态限制。
+- [P03] 已修（2026-10-31）：browser 工具注释改为引用 `BrowserHost.lastError` 符号，去掉过期源码行号。
+- [P03] 已修（2026-10-31）：`ARCHITECTURE.md` 已移除 AndroidBridge/VdisplayController/VdisplayHost 的易漂移行数。
+- [P03] 已修（2026-10-31）：BRIDGE-API 虚拟屏方法清单现与 `AndroidBridge.kt` 对齐。
+- [P04] 已修（2026-10-31）：FileIncoming 与 file-open 插件注释已将 exact 路由数更正为五条；只描述故障当时规模的句子改为「当时已注册的路由」。
+- [P04] 已修（2026-10-31）：`FileIncoming.safeTarget` 注释现说明保留原始 DSH_HOME 前缀是契约要求；插件仍会 realpath 工作区与候选路径后再检查归属。
 - [S01] 漂移：`dsh-mobile-apk/docs/AGENTS/gotchas.md:103`（坑 61）说防线③是「常驻 `node dsh-host-web-compat/scripts/smoke-injections.mjs` 门禁」，源码 `dsh-host-web-compat/lib/index.js:783,791` 已是两次 `tapIndex`，而 `dsh-host-web-compat/scripts/smoke-injections.mjs:50` 仍断言 `transforms.length === 1` —— 该门禁当下是红的（apk 仓 `.github/workflows` 不跑它）。
-- [S01] 漂移：`历史 BRIDGE-API 副本（当前契约见§6 K04）` 说 AndroidBridge 桥面「方法计数由 `check-bridge-symmetry.mjs` 从源码守」，但该清单及其余各表都未收录 0.14.1 新增的 `getNotifySetting` / `setNotifySetting`，源码 `app/src/main/java/com/snoworwind/pocketharness/AndroidBridge.kt:375,381` 已实现，页面 `dsh-client-ui-responsive/src/client/dev-section/notify-settings.tsx:66,86` 已在调用。
+- [S01] 已修（2026-10-31）：现行 BRIDGE-API 方法清单已与 `AndroidBridge.kt` 同步，包含通知设置 getter/setter。
 - [S01] 漂移：apk 仓 `dsh-shell-termux/README.md` 与协调仓同名副本不是逐字节镜像（6 行行尾 CRLF/LF 差异，正文逐字相同，无功能影响）。
-- [B01] 漂移：`docs/AGENTS/build-and-env.md:32,41-42` 说快照归档/解压用 `xz -T0`/`xz -dT0`，源码 `scripts/build-snapshot-013.mjs:985` 是 `xz -T${XZ_THREADS} -6`、`:120` 是 `xz -dT${XZ_THREADS}`（`scripts/lib/shell.mjs:31` 默认 8，`scripts/check-build-parallel-cap.mjs` 把「吃满全部核心」判红）。
-- [B01] 漂移：`历史 BRIDGE-API 副本（当前契约见§6 K04）` 同一句「瘦身 + xz -T0 归档」与源码 `scripts/build-snapshot-013.mjs:985` 的 `xz -T${XZ_THREADS}` 不符（该文件的构建段落是 build-and-env.md 的拷贝）。
-- [B01] 漂移：`历史 BRIDGE-API 副本（当前契约见§6 K04）` 说聚合门禁「当前 17 项」，源码 `scripts/check-release-gates.mjs:28-104` 声明 27 项（构建环境说明现以 --list 现数，不再固定数量）。
+- [B01] 已修（2026-10-31）：`build-and-env.md` 已改为共享 `XZ_THREADS` 设置与 `DSH_CPU_THREADS` 覆写，不再写死 `-T0` 或线程数。
+- [B01] 已退役：执行地图中的旧构建描述仅作发现时快照；当前线程配置与来源链步骤以 `build-and-env.md` 和来源构建源码为准。
+- [B01] 已退役：门禁数量为易漂移数据；当前按 `scripts/check-release-gates.mjs --list` 现数，旧桥文档快照的数字不作现状。
 - [B01] 历史漂移已修（2026-10-29）：build-and-env.md 已把旧本地链描述标作历史并以来源链实际调用为准；当前门禁接线由 PR Gate 检查。
-- [B01] 漂移：`docs/AGENTS/RUNTIME-PATCHES.md:56` 说 scope=vendor 补丁「在 build-apk-013.ps1 阶段施加」，源码 `scripts/build-apk-013.ps1:211` 的调用无 `--apply`/`--scope` → `scripts/patches/apply-patches.mjs:1568,1572` 默认 `mode=check`（只校验不施加；`docs/AGENTS/0.13.7-CERTIFICATION.md:11` 也记 mode=check）。
+- [B01] 已修（2026-10-31）：`RUNTIME-PATCHES.md` 已将活动补丁归于本仓来源链 runner，不再称旧 `build-apk-013.ps1` 会施加 vendor 补丁。
 - [B01] 漂移（**2026-09-25 已修**）：`docs/AGENTS/RUNTIME-PATCHES.md` 原写 engine 补丁「当前全量」14 项；该文件已按现数改为 **15 项**（`scripts/patches/registry.json` 实测 30 条总 / 15 条 engine / 15 条 vendor）。原条目点名的四条缺口（combo-single-lazy-A5、combo-parallel-C3、combo-probe-P1、boot-third-party-isolation-G3）中，**A5 与 C3 已于 0.14.2 追版时按实测撤销**（见 RUNTIME-PATCHES §7.4 与 `scripts/patches/README.md` 撤销段），P1 与 G3 仍在册 ⇒ 清单已与源码同源，此处不再是漂移。
-- [B01] 漂移：`AGENTS.md:21` 说 `vendor/`（marketplace / undo-savepoint / dsh-model-sync），源码实际 `vendor/` 只有 `dsh-undo-savepoint` 与 `dshmarketplace-plugin`（model-sync 已随 0.14.1 整体摘除，见 `scripts/profile-web.cordis.patch.yml:128-138`；镜像面清单已于 2026-10-15 移除，此处不再引用它）。
+- [B01] 已修（2026-10-31）：`AGENTS.md` 的 vendor 目录摘要只列本仓当前的 marketplace 与 undo-savepoint 副本。
 - [B02] 历史漂移已复核：门禁数量由 `scripts/check-release-gates.mjs --list` 现数，`docs/AGENTS/build-and-env.md` 的当前门禁段落不再固定数量；历史「17/27 项」文本不代表现状。
 - [B02] 漂移：5 个门禁脚本的两仓副本行尾不同（协调仓 CRLF、apk 仓 LF），`cmp` 字节不等、归一化后内容一致：`scripts/check-boot-budget.mjs`、`scripts/check-browser-syntax-floor.mjs`、`scripts/check-build-parallel-cap.mjs`、`scripts/check-snapshot-builder-output.mjs`、`scripts/check-tool-output-schema.mjs`；当时镜像门禁只按「仅行尾差异」告警放行——「逐字节镜像」在行尾层并不成立（**2026-10-15：镜像层已整体移除，本项随之失效**）。
 - [B02] 漂移：`scripts/check-code-map.mjs` 只在 apk 仓存在（协调仓 `scripts/` 无此文件），且原先未被列进 `MIRROR_TOP` → 当时这条门禁自身没有镜像守护（**2026-10-15：`MIRROR_TOP` 与整个镜像层已按用户决定移除，本项随之失效**）。

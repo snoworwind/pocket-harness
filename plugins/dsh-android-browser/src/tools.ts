@@ -395,7 +395,7 @@ export function browserTools(face: () => BrowserControlFace | undefined): unknow
           url: typeof state.url === 'string' ? state.url : url,
           title: typeof state.title === 'string' ? state.title : '',
           loadState: typeof state.loadState === 'string' ? state.loadState : 'unknown',
-          // issue #232：壳侧 status() 的 reason（BrowserHost.kt:818 `lastError`，如 `load-error:-1`）
+          // issue #232：壳侧 status() 的 reason（BrowserHost.lastError，如 `load-error:-1`）
           // 此前被整条丢弃 —— 回执既不知道失败、也无法诊断。整键缺席而非空串（lossless JSON 纪律）。
           ...(typeof state.reason === 'string' && state.reason !== '' ? { reason: state.reason } : {}),
           pageGeneration: pageGenerationOf({ ...opened.data, ...state }),

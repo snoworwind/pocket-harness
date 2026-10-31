@@ -67,8 +67,8 @@ object ShizukuProbe {
     }
     if (cls == null) {
       return out.put("ok", false).put("code", "shizuku-absent")
-        .put("guidance", "Shizuku 应用在场但 API 类不可达（缺少 provider 声明或版本过旧）："
-          + "本应用清单尚未声明 rikka.shizuku.ShizukuProvider，属已知未落地项。")
+        .put("guidance", "Shizuku 应用在场但 API 类不可达（可能是依赖缺失或版本不兼容）："
+          + "请检查应用构建中的 Shizuku API 依赖，并确认 Shizuku App 已更新。")
     }
 
     val running = runCatching { cls.getMethod("pingBinder").invoke(null) as? Boolean ?: false }.getOrDefault(false)

@@ -135,8 +135,8 @@ object FileIncoming {
    * 归属断言后的落点（0.13.8 #177，fail-closed）：返回 null = 拒绝落盘。
    * 断言用双侧 canonical 比较（Android 会把 /data/user/0 解析为 /data/data，只做一侧
    * 会「永远拒绝」）；**返回值保留 dir 原始形态**——引擎侧 DSH_HOME 契约是 filesDir 的
-   * 原样字符串（/data/user/0 形态），canonical 形态会被插件 safeResolveInside 的
-   * 词法首门拒绝（坑 67 实测）。
+   * 原样字符串（/data/user/0 形态）。插件 `safeResolveInside` 会先对工作区与候选路径做
+   * realpath 再比较；保留原始前缀是为了遵守 DSH_HOME 契约，不是为了绕过归属检查。
    */
   internal fun safeTarget(dir: File, name: String): File? {
     return try {
@@ -488,7 +488,7 @@ object FileIncoming {
   /** 单次投递尝试（无内部重试）。端点语义：HTTP 200 但 body `{ok:false}` = 拒收
    *  （路径形态/不存在）——必须核对 body 的 ok 字段，只看状态码会把拒收当成功（静默丢件）。
    *
-   *  鉴权（FX-205.1/.6）：三条 file-incoming exact 路由绕过上游 /api 前缀栅栏（上游 match()
+   *  鉴权（FX-205.1/.6）：五条 file-incoming exact 路由绕过上游 /api 前缀栅栏（上游 match()
    *  先查 exact 表），必须带共享控制令牌头 `X-DSH-Control-Token`（与无障碍控制队列同一枚
    *  DeviceControlService.token；引擎侧实时读壳侧 prefs 比对）。不带 = 401 fail-closed，
    *  表现为「投递静默失败」——因此投递方与鉴权必须同批发布。 */

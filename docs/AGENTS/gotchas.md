@@ -177,7 +177,7 @@
 72. **工具返回面聚合体不得含 `undefined` 成员（0.13.8 批 B0/B1 实锤）**：工具体对返回值做 lossless JSON 判定，
     含 `undefined` 成员的整值被拒收（不是丢字段，是整条结果失败）。铁律：可选键缺省**整键不发**，
     源头（构造对象处）与出口（序列化前）双修；新增/修改返回字段必须在**同一次改动**里进 `output.schema`。
-    锚点：`plugins/dsh-android-manage/src/lossless-json.ts` + `plugins/dsh-android-manage/test/privilege-status.test.mjs`。
+    锚点：`plugins/dsh-android-bridge/src/lossless-json.ts` + `plugins/dsh-android-bridge/test/privilege-status.test.mjs`。
 73. **`defineTool` 之后必须确认进了 `tools()` 的 return 数组**：不进注册数组就是死代码，而提示文案还在引导
     模型去调它（表现为「工具明明写了却 always unknown tool」）。注册完整性**不得**用硬编码名单比对——
     要源码级抽取 `defineTool` 名集合与注册名集合求差集（本轮 T2 门禁 `check-tool-output-schema.mjs`）。

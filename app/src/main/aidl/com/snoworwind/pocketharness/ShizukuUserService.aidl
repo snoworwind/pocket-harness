@@ -27,7 +27,8 @@ interface ShizukuUserService {
 
     /**
      * 在常驻 shell 内执行 argv（argv 直传，不经本地 shell；退出码与 stdout/stderr 原样回传）。
-     * 危险命令黑名单仍在壳侧判定，不因通道变化而放宽；审计字段含 transport/uid/op。
+     * 本服务不实施危险命令黑名单；调用链的桥接策略在引擎侧执行，范围复查由 ShellOps 负责。
+     * 审计字段含 transport/uid/op；新增命令入口必须保持等价的授权与范围检查。
      * 内联上限 16 KiB；更大输出用 {@link #execCapture}。
      */
     Bundle exec(in String[] argv, int timeoutMs) = 3;

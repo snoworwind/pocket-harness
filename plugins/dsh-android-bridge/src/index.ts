@@ -1869,7 +1869,7 @@ export function apply(ctx: Context, config: Record<string, unknown> = {}) {
     } catch { /* 标记失败不阻断（通知不是关键路径） */ }
   }
   // ── 通知信道 `.notify.ndjson`（0.14.0-preview §6.2.1）──
-  // 唯一权威新信道：逐行 JSON、追加写、壳侧 FileObserver 按偏移消费后截断/轮转。
+  // 唯一权威新信道：逐行 JSON、追加写；壳侧 NotifyStore 按偏移消费，文件轮转由引擎写入方负责。
   // `kind` 是唯一分类权威（silent/todo/report/question/approval/resolve）；本插件只写
   // report（turn/end）与 todo（todo/write）——提问/审批的弹窗由壳侧 NotifyBridge 从
   // `$events` waterfall 直接投放（应答必须走 mux + `$events/result`，不经本文件）。

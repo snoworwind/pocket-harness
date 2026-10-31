@@ -165,7 +165,7 @@ object NotifyCenter {
    * 也没有应用内提示，是「一切正常与彻底失败不可区分」的静默失败形态。
    *
    * 本实现只依赖**既有公开面**：`OverlayService.instance`（companion 里已有）与
-   * `OverlayService.flashStatus`（`OverlayService.kt:669`，internal，同模块可见）。
+   * `OverlayService.flashStatus`（internal，同模块可见）。
    * 因此在**调用时刻**惰性解析实例——不持有 Activity/Service 引用，无泄漏面；服务不在时
    * 退化为探针一行（可 run-as 读），绝不抛异常到 MuxClient 读线程。
    */
