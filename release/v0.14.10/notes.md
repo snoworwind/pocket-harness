@@ -21,6 +21,6 @@
 - 已合并 PR #196 修复 Windows 测试的 CRLF 与路径转换问题；WSL Ubuntu 下完整补丁回归清单 77/77 通过。Windows 原生运行有 2 项因已登记的 symlink 平台限制跳过；PR Gate 全绿。
 - 最终 main 来源草稿 CI [run #41180533767](https://github.com/snoworwind/pocket-harness/actions/runs/41180533767) 成功：提交 `701773c` 的 ARM64 primary/reference 双构建、交叉核验、签名检查和草稿资产准备全部通过；实际 APK 字节重建 digest 为 `7b782d8d4f10f0909c87dbe59780095b3331676252c1082acef2ed985615f8b0`。预发布草稿 [`untagged-b74e0f24963968b9599e`](https://github.com/snoworwind/pocket-harness/releases/tag/untagged-b74e0f24963968b9599e) 含 4 项资产，仍未公开。
 - PR #199 修复来源预检从已移除的 workflow 固定语句读取 marketplace 输入的问题；`preflight-source-chain.mjs --self-test` 的 1 个真实输入和 5 个受控负控通过，PR Gate 通过。
-- **未做设备验证**：尚未完成 CDP、ADB 用户操作、横屏或 ARM64 真机验收。本轮执行环境访问 WSL 返回 `Wsl/E_ACCESSDENIED`，因此无法确认或使用 WSL 中的 Android SDK/ADB。
+- **未做设备验证**：尚未完成 CDP、ADB 用户操作、横屏或 ARM64 真机验收。本轮通过提升权限后的调用可启动 WSL Ubuntu，并在当前 main 上重跑完整补丁回归清单：32 个文件、77/77 通过；WSL 中未找到 `adb`，因此仍无法安装 APK 或执行设备验收。普通沙箱进程访问 WSL 仍返回 `Wsl/E_ACCESSDENIED`。
 
 本文件是开发草稿，不代表可发布版本；候选进入发布前必须从最终 main 重跑来源链，并完成仓库验收规范要求的设备验证。
