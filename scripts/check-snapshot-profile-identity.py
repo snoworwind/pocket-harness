@@ -13,7 +13,9 @@ PROFILE = re.compile(r'^home/\.dsh/profiles/([^/]+)/cordis\.patch\.yml$')
 PROFILE_DIR = 'home/.dsh/profiles'
 PROFILE_PARENTS = {'home', 'home/.dsh', PROFILE_DIR}
 APP_ID = re.compile(r'\bapplicationId\s*=\s*"([a-zA-Z0-9_.]+)"')
-REQUIRED = {'web', 'headless', 'headless-bad'}
+# Only shipped assembly profiles are required. headless-bad is a negative-control
+# fixture used by tests; if an input snapshot happens to contain it, never overwrite it.
+REQUIRED = {'web', 'headless'}
 MAX_PATCH = 1024 * 1024
 
 
@@ -24,7 +26,10 @@ def verify(snapshot, authoritative, app_id):
     except UnicodeDecodeError:
         return ['authoritative patch is not UTF-8']
     for key in ('bashPath', 'prefix', 'home', 'cwd'):
-        values = re.findall(r'^' + key + r':\s*(\S+)\s*$', text, re.M)
+        # The patch stores these under `config` for the shell-termux row, so real
+        # authoritative keys are indented. Anchoring at column zero made the source
+        # build reject every path despite the self-test's flat synthetic fixture.
+        values = re.findall(r'^\s*' + key + r':\s*(\S+)\s*$', text, re.M)
         prefixes = (f'/data/data/{app_id}/files/', f'/data/user/0/{app_id}/files/')
         if len(values) != 1 or not values[0].startswith(prefixes) or posixpath.normpath(values[0]) != values[0]:
             errors.append(f'{key} must have one application-owned files path')
@@ -70,7 +75,13 @@ def verify(snapshot, authoritative, app_id):
 
 
 def self_test():
-    patch = b'bashPath: /data/data/test.app/files/usr/bin/bash\nprefix: /data/data/test.app/files/usr\nhome: /data/data/test.app/files/home\ncwd: /data/data/test.app/files/home\n'
+    patch = (b'- insert:\n'
+             b'    - id: shell-termux\n'
+             b'      config:\n'
+             b'        bashPath: /data/data/test.app/files/usr/bin/bash\n'
+             b'        prefix: /data/data/test.app/files/usr\n'
+             b'        home: /data/data/test.app/files/home\n'
+             b'        cwd: /data/data/test.app/files/home\n')
     def archive(path, entries):
         with tarfile.open(path, 'w:xz') as tar:
             for name, data in entries:
@@ -94,8 +105,9 @@ def self_test():
             (good + [('web', patch)], patch, 'test.app', True),
             ([('web/../web', patch), ('headless', patch), ('headless-bad', b'negative')], patch, 'test.app', True),
             ([('./home/.dsh/profiles/web/cordis.patch.yml', patch), ('home/.dsh/profiles/headless/cordis.patch.yml', patch), ('home/.dsh/profiles/headless-bad/cordis.patch.yml', b'negative')], patch, 'test.app', True),
-            ([('web', patch), ('headless', patch)], patch, 'test.app', True),
-            ([('web', patch.replace(b'prefix:', b'  prefix:')), ('headless', patch.replace(b'prefix:', b'  prefix:')), ('headless-bad', b'negative')], patch.replace(b'prefix:', b'  prefix:'), 'test.app', True),
+            ([('web', patch), ('headless', patch)], patch, 'test.app', False),
+            ([('web', patch + b'        prefix: /data/data/test.app/files/usr\n'),
+              ('headless', patch), ('headless-bad', b'negative')], patch, 'test.app', True),
             (good, patch, 'wrong.app', True),
             (good, patch.replace(b'/files/usr/bin/bash', b'/files/../../outside'), 'test.app', True),
             ([('web', patch), ('headless', patch), ('headless-bad', patch)], patch, 'test.app', True),
@@ -104,6 +116,12 @@ def self_test():
         for entries, authority, app_id, expect_failure in cases:
             archive(path, entries)
             assert bool(verify(path, authority, app_id)) == expect_failure
+        real_patch = (ROOT / 'scripts' / 'profile-web.cordis.patch.yml').read_bytes()
+        gradle = (ROOT / 'app' / 'build.gradle.kts').read_text(encoding='utf-8')
+        real_ids = APP_ID.findall(gradle)
+        assert len(real_ids) == 1, 'real project applicationId must be unique'
+        archive(path, [('web', real_patch), ('headless', real_patch)])
+        assert verify(path, real_patch, real_ids[0]) == [], 'real nested shell-termux config must pass'
         with tarfile.open(path, 'w:xz') as tar:
             web = tarfile.TarInfo('home/.dsh/profiles/web/cordis.patch.yml')
             web.type = tarfile.SYMTYPE
@@ -129,7 +147,7 @@ def self_test():
                            ('home/.dsh/profiles/headless/cordis.patch.yml', patch),
                            ('home/.dsh/profiles/headless-bad/cordis.patch.yml', b'negative')])
         assert verify(path, patch, 'test.app'), 'absolute duplicate profile path must fail'
-    print('snapshot profile identity self-test passed: 1 positive, 14 controlled negatives')
+    print('snapshot profile identity self-test passed: 3 positive, 13 controlled negatives')
 
 
 def main():
