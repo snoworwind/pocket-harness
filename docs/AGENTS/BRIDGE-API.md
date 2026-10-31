@@ -183,30 +183,30 @@ exportConfig返回实际path与可能含provider密钥的共享目录警告hint�
 JS interface count is checked from source by `scripts/check-bridge-symmetry.mjs`; do not retain the obsolete 0.13.x count after adding bridge methods.
 `<input type=file>` 的 `onShowFileChooser` 通道保留（上游附件按钮依赖）。
 
-## 0.14.0 施工增量（部分已随 0.14.0-preview 发布、部分仍未验收）
+## 0.14.0 桥面增量（源码现状）
 
-> 已随 0.14.0-preview（vc38）发布的桥面以 `release/v0.14.0-preview/notes.md` 为准；下表中
-> BrowserHost 与虚拟屏两组方法属**发布后工作区施工**（未提交、未验收），ScreenScope 与
-> file-incoming 已进入发布会话的验收记录。方法计数一律以 `check-bridge-symmetry.mjs` 从源码现取，
-> 本节只登记语义。
+> 本节保留 0.14.0 以来新增桥面的语义与实现落点；不要把历史预览版说明当成当前源码或发布范围。
+> BrowserHost、虚拟屏、屏幕范围与 file-incoming 均已进入当前源码。方法计数一律由
+> `check-bridge-symmetry.mjs` 从源码现取；本节不代表 0.14.10 候选通过设备验收。
 
 | 方向 | 方法/通道 | 位置 | 说明 |
 |---|---|---|---|
 | 壳 → 引擎 | 带浏览器 Cookie 的原生 HTTP 请求 | `EngineAuth.attach` 两个入口 | 读取凭据前校验精确引擎源并关闭自动重定向；3xx 由调用方读取原始状态，未初始化/无 Cookie 时也施加连接约束。见坑 316。 |
-| 引擎 → 壳 | `execAdbShell/execAdbLine` → `shExec` 屏幕范围门 | bridge `screen-scope.ts` → `ShellOps` | 两侧还原静态 shell 参数，排除注释与重定向落点，并按 Android CLI 的目标参数拼写和位置核对显示目标；受信 `sh` 短选项簇递归展开。运行时命令词、包装器后的 stdin/文件解释器与不透明执行器在 `real-only` / `virtual-only` 两种受限档位均 fail-closed；屏幕命令中的畸形 `-d=7`/`-dx` 拒绝，非屏幕命令不因同形参数误拦。受限范围拒绝 `dumpsys activity`、`sendevent`、`getevent`、`cmd display` 及多显示器窗口接口；登记的虚拟屏目标仍可通过。细节与反例见坑 313/314/589/598/605；本轮设备验证未做。 |
+| 引擎 → 壳 | `execAdbShell/execAdbLine` → `shExec` 屏幕范围门 | bridge `screen-scope.ts` → `ShellOps` | 两侧还原静态 shell 参数，排除注释与重定向落点，并按 Android CLI 的目标参数拼写和位置核对显示目标；受信 `sh` 短选项簇递归展开。运行时命令词、包装器后的 stdin/文件解释器与不透明执行器在 `real-only` / `virtual-only` 两种受限档位均 fail-closed；屏幕命令中的畸形 `-d=7`/`-dx` 拒绝，非屏幕命令不因同形参数误拦。受限范围拒绝 `dumpsys activity`、`sendevent`、`getevent`、`cmd display` 及多显示器窗口接口；登记的虚拟屏目标仍可通过。细节与反例见坑 313/314/589/598/605；0.14.10 候选设备验收状态见版本说明。 |
 | 引擎 → 壳 | ADBKeyboard 输入/清空广播 | manage → `AdbKeyboardReceiver` → `AdbKeyboardService` | 每条 `am broadcast -n com.snoworwind.pocketharness/.AdbKeyboardReceiver` 独立解析结果码：1=编辑调用已派发、2=IME 未就绪、3=来源拒绝、4=请求非法、5=无输入连接、6=编辑未确认；只有有序广播写回码，auth nonce 不进入隐式广播。旧壳缺码/默认 0 只允许同目标回读兼容，任何未知结果均不自动重放。见坑 312、464。 |
 | 页面 → 壳 | `getScreenScope()` / `setScreenScope(scope)` | AndroidBridge → MainActivity → `ScreenScopePrefs` | 用户设置唯一写面；wire 值仅 `virtual-only`、`real-only`、`all`，未知值回落 `virtual-only`。模型工具没有 setter。设置页落在开发者选项「屏幕与 Shizuku 控制」。 |
 | 页面 → 壳 | `browserHostStatus/show/hide/reload/bounds/viewport/close/identity` | AndroidBridge → MainActivity → `BrowserHost` | Files 右栏的可信页面把 CSS stage bounds 与视口预设传给壳；第二 WebView 只覆盖该 stage（letterbox rect，不做 CSS 缩放），不挂 JavaScript bridge。`browserHostBounds` 可见挂载1000ms续租、4000ms过期隐藏；hidden/detach停止续租，普通几何消息仍去重。 |
-| 页面 → 壳 | `vdisplayStatus/create/destroy/launchSettingsProbe/backProbe/bounds` | AndroidBridge → MainActivity → `VdisplayController`/`VdisplayHost` | 建屏/销毁/`am start --display` 探针/`input -d` 回退探针/viewer stage 几何。`virtual-1` 建成前一律 `screen-not-ready`，绝不映射 display 0。 |
+| 页面 → 壳 | `vdisplayStatus/create/destroy/bounds/select/getVdisplayScale/setVdisplayScale/getVdisplayFloatEnabled/setVdisplayFloatEnabled/forceDestroyVdisplay` | AndroidBridge → MainActivity → `VdisplayController`/`VdisplayHost` | 状态、建屏/销毁、viewer stage 几何、选中别名、浮窗缩放与启用状态、用户显式强制销毁。设置页启动探针与返回探针不是当前 `AndroidBridge` 公开方法。`virtual-1` 建成前一律 `screen-not-ready`，绝不映射 display 0。 |
 | 页面 → 壳 | `dshBackBridge.setAvailable/getBackAvailable` | BackGateBridge（独立 @JavascriptInterface 对象） | 注入层回传页内层栈可用性；URL 由 Activity 决策，`getBackAvailable` 为只读事实。 |
 | 引擎 → 壳 | 屏幕范围读回（A02 修复后） | `caps.screenScope` + `vdInfo.data.scope` → bridge `screenScope()`/`refreshScreenScope()` | 原生授权只在进程内存；插件产品链路不再读 `shared_prefs/dsh_screen_scope.xml`（同 uid 可写且原生已不维护）。caps 随每条控制应答下发；冷启动或范围拒绝时插件经 `vdInfo` 补探一次（neverA11y）。测试专用 `DSH_SCREEN_SCOPE_TEST` 仍保留，不构成产品真源。 |
 | 引擎 → 壳 | `android_vdisplay_input` → `vdInput` | bridge `controlExec` → `VdisplayOps` → `VdisplayController.input` | `real-only` 下 bridge 与壳执行点均返回稳定 `screen-out-of-scope`，壳在 Shizuku `input -d` 前复核；显式 target 优先于 selected，不能重定向输入。`virtual-only`/`all` 允许已登记虚拟目标。 |
 | 壳 ↔ 引擎 ↔ 页面 | file-incoming queue / claim / content / complete / clean | FileIncoming → dsh-android-file-open → ui-responsive | 五条 exact 路由全部受保护；队列状态只给 opaque entry metadata；成功导航后 claim 得进程内 ticket，再经同源 content 读取字节并交给上游 composer 形成未发送 generic file attachment。路径不进入页面或模型，重启不恢复草稿。 |
 | 壳 ↔ 引擎 | 通知应答流 `$events`（streamId=`dsh-notify-responder`） | NotifyBridge ↔ MuxClient | 与悬浮球事件流独立；waterfall 投放通知、cancel 撤通知、`$events/result` 投递回答。 |
 
-`VdisplayController` 已能建真实 VirtualDisplay（公开 `PUBLIC|OWN_CONTENT_ONLY|SUPPORTS_TOUCH`），并把
+`VdisplayController` 创建时组合 `PUBLIC|OWN_CONTENT_ONLY|SUPPORTS_TOUCH|DESTROY_CONTENT_ON_REMOVAL|ROTATES_WITH_CONTENT`，
+但 Android 13+ 上 `PUBLIC` 对非系统应用创建的屏幕不生效，运行时仍是 private display；它把
 别名 `virtual-1` 映射到运行时 displayId；viewer Surface 重挂、实时多屏选择与 BrowserHost 视口的
-设备回归仍未收口（见 `known-gaps.md`）。本节记录代码施工状态，不表示已通过设备验证。
+设备回归仍未收口（见 `known-gaps.md`）。本节记录源码状态，不表示已通过设备验证。
 
 ## Linux 内部插件宿主（实验性 internal，默认不启用）
 
@@ -232,7 +232,7 @@ bootstrap 调用 `linuxPluginHost.install({directory,entry='lib/index.js',config
 
 ### 资产准备（0.15.0，(iii) 形态：客户端触发）
 
-**为什么由宿主准备字节、而不是 bootstrap 自取**：`.tar.xz` 的解码在引擎侧没有实现（Node 的 zlib 不含 xz，本仓 node_modules 无任何 xz/tar 包），而宿主已有生产级的解包能力可复用；更要紧的是**引擎侧没有反向通道**调用宿主——壳侧是客户端，长轮询引擎的 `/api/android/ui/pending`（`ControlPoller.kt:48/101-113`），而那条队列就是设备控制队列，其策略要求 `danger-full-access`（`control-policy.ts:68/84-87`）。把下载挂上去等于「装 Linux 必须先开设备控制档」，与「Linux 不是沙箱、不要只靠 danger-full-access」相悖。客户端触发走 `@JavascriptInterface` 直连，不经过那条队列，也不需要新增任何引擎→壳能力。
+**为什么由宿主准备字节、而不是 bootstrap 自取**：`.tar.xz` 的解码在引擎侧没有实现（Node 的 zlib 不含 xz，本仓 node_modules 无任何 xz/tar 包），而宿主已有生产级的解包能力可复用；更要紧的是**引擎侧没有反向通道**调用宿主——壳侧是客户端，控制轮询由 `ControlCarrier` 持有。把下载挂入设备控制队列会把 Linux 准备绑定到设备控制权限档；客户端触发走 `@JavascriptInterface` 直连，不经过该队列，也不需要新增任何引擎→壳能力。
 
 | JS 桥方法（`androidBridge`） | 语义 |
 |---|---|
@@ -243,7 +243,7 @@ bootstrap 调用 `linuxPluginHost.install({directory,entry='lib/index.js',config
 
 **职责边界（2026-10-17 安全修复）**：Kotlin 负责下载与宿主暂存；bootstrap 每次复制归档并复核 SHA-256/字节数，引擎适配器用固定版本 `xz-decompress` 与 `tar-stream` 在进程内重新解码到全新 staging，再核对 unpackedSize、包名与入口。宿主 `unpacked/` 和缓存标记不作为代码来源，不再按总字节数复用槽位；无已准备归档时失败关闭、不自行下载。预检失败只返回本次错误，不修改活动准备任务的状态；活动任务独占 busy，结果绑定代次，执行器或工作体异常也收敛到 failed。HTTP 层在收到明确确认后向真实 bootstrap 传 confirmed（安装/重装另带 activate），不绕过其执行边界确认。
 
-**端到端仍未打通（不记通过）**：客户端调用 `linuxAssetPrepare` 的那一步、以及引擎侧 bootstrap 的透传接线都**尚未落地**；且 bootstrap 包本身还没进注入集，因此**不会随应用分发**。本轮交付的是宿主侧「可准备」的能力与其反证，不是可安装的系统。
+**源码接线已落地，设备验收仍未完成**：客户端通过 `linuxAssetPrepare` / `linuxAssetPrepareStatus` 调用宿主准备任务；内部 bootstrap 与 runtime 资产已纳入本仓来源快照构建，0.14.9 正式 APK 含 bootstrap 0.6.2。下载、摘要复核、解包、资产发布与引擎侧安装仍各有独立失败关闭边界。尚未在 ARM64 设备端到端验收安装、更新、重装、卸载和工具执行；因此不得据源码接线或 APK 已构建宣称 Linux 功能可用。当前状态见 [known-gaps.md](known-gaps.md) 与 [候选说明](../../release/v0.14.10/notes.md)。
 
 页面状态由 `normalizeLinuxStatus` 映射，同时接受 0.5.x 旧版 bootstrap 字段与此前提案字段；其中两条插件 `releaseUrl` 来自 bootstrap 状态（`pluginReleaseUrls` 或 `plugins.*.releaseUrl`），不拼接默认最新版本。Linux rootfs 是 glibc 运行支持，不是安全沙箱；guest root 不等于 Android root；Termux/Bionic Bash 与 Debian/glibc Linux Bash 分开展示，共享 glibc Node 不替换原有 Termux Node。已安装但 runtime 被手工移除时，页面显式显示「自动更新已停用」并要求重新放回并启用，而不是静默停更。内部 bootstrap 成品接线及真实安装验收状态见 `known-gaps.md`。
 

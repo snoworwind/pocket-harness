@@ -11,7 +11,7 @@ DeepSeek Harness 的独立安卓应用 **Pocket Harness**（包名与 Kotlin nam
 
 本项目基于 [dsh-mobile-apk](https://github.com/snoworwind/dsh-mobile-apk) 的 `security/hardening` 分支提交 `cb1c315` 独立建立；应用名、applicationId、发布签名与 APK 产物名已迁移，具体边界见 [项目基线](docs/AGENTS/BASELINE.md)。
 
-**职责边界**：只保留安卓平台权能与桥——前台服务 / 看门狗 / WebView（主 + 隔离 BrowserHost）/ SAF 桥 / 快照解压 / UndoGate / Shizuku 特权 transport 与虚拟屏 / 无障碍与 ADB 授权 / 通知中心与通知内应答 / 返回网关 / 审计 / 控制台 / 日志。
+**职责边界**：只保留安卓平台权能与桥——前台服务 / 看门狗 / WebView（主 + 隔离 BrowserHost）/ SAF 桥 / 快照解压 / UndoGate / Shizuku 特权 transport 与虚拟屏 / 无障碍与 Shizuku 授权 / 通知中心与通知内应答 / 返回网关 / 审计 / 控制台 / 日志。
 
 **关键约束：AI 可见的能力全部来自插件**，壳侧不直接注册工具。
 
@@ -142,7 +142,7 @@ adb -s <serial> install -r -t out\v<版本>\pocket-harness-v<版本>-arm64.apk
 6. **跨树权威已收归本仓（2026-10-15，按用户决定）**：原先声明 `scripts/patches/**`、`scripts/check-patch-mirror.mjs`、`scripts/build-apk-013.ps1` 等是「协调仓的逐字节镜像，单边演进即拒；补丁改动先合本仓镜像 PR、再合协调仓权威源 PR」。本分支既然只从源码构建、且不依赖 kelai141 名下任何仓库（见 `docs/AGENTS/SECURITY-HARDENING.md` 的「独立」口径），**跨树镜像层已从门禁中整体移除**——`check-patch-mirror.mjs` 只保留 registry↔IMPLS 自洽面，`check-release-gates.mjs` 的「两树同版」断言已删除（它原先在对端缺席时打印 PASS 却从未比对）。树内副本即权威，这些文件在本分支按本仓评审与门禁正常演进，不需要对端配合。
    - 代价已记账：这些文件自此与协调仓**永久分叉**，将来若引入上游改动，这几处必冲突（见 `docs/AGENTS/known-gaps.md`）。
 7. **禁 emoji**：提交信息、PR 标题/描述、文档、标签一律不用。
-8. **工作区卫生**：`.deploy-tmp` 只增不减会拖垮开发机（实测 2026-10-14 达 34.8 GB / 313,393 文件，是开发机第一大空间消耗，文件数本身就在拖慢目录遍历类工具）。每完成一轮交付，在协调仓根跑 `node scripts/clean-deploy-tmp.mjs`（默认 dry-run，`--apply` 执行）。判定口径与保留清单见该脚本头注释；**注册的 git worktree 与近 3 天内活动过的目录一律保留**。
+8. **工作区卫生**：`.deploy-tmp` 需要定期清理，但本仓未包含 `scripts/clean-deploy-tmp.mjs`，当前工作区也没有可核对的协调仓副本。清理脚本属于外部协调工具；只有拿到该工具的仓库与提交后，才能在对应根目录运行其默认 dry-run 或显式 `--apply`。未取得前不得声称已执行清理，也不得用未经审查的递归删除代替。注册的 git worktree 与近 3 天活动目录应按该工具的保留策略处理。
 9. **APK 只能从源码构建（本仓 `main`）**：本仓任何 APK 都**必须**由来源链产出（云端 `build-apk-source.yml`，本地 `node scripts/source-build/run-local-source-chain.mjs`），**禁止**用 `build-apk-013.ps1` / `build-release.ps1` 等本地或协调仓链产出、归集或发布 APK。判据、当前缺口与发布链状态见 `docs/AGENTS/SECURITY-HARDENING.md`。
 10. **禁止强制推送**：不得对任何远端分支使用 `git push --force`、`--force-with-lease`、`--force-if-includes`、`--mirror`、`+<ref>` 或任何等价方式改写/删除远端引用。分支一旦推送，只能用追加提交更新；需要修正时提交新 commit，或新建分支/PR。合并后按流程删除已合并分支不在此限，但禁止删除后重建分支来覆盖历史。
 11. **Git 历史只追加，不得覆盖或改写**：已推送/共享的提交历史绝对不可改写；本仓默认连本地提交也按只追加处理。禁止使用 `commit --amend`、`rebase`、`reset --hard` 等操作改写历史，禁止改写后继续使用同一分支；禁止 `filter-branch`、`filter-repo`、替换/删除远端 ref 来改写历史（合并后按流程删除已合并分支不在此限）。修正一律新增提交。PR 合并一律使用 merge commit，保留分支提交链；禁止 squash/rebase 合并。`main` 只接受通过 PR 追加的提交。

@@ -3013,7 +3013,7 @@
       "插件授权增量见 `BRIDGE-API.md`：固定动画设置 API 与私有 SurfaceFlinger 查询分离，公共调用不能声明 `internal` 权限。"
     ],
     "docs/AGENTS/ARCHITECTURE.md:151": [
-      ""
+      "权限以 AndroidManifest.xml 实际声明为准（INTERNET / ACCESS_NETWORK_STATE / MANAGE_EXTERNAL_STORAGE / READ_EXTERNAL_STORAGE maxSdk32 / WRITE_EXTERNAL_STORAGE maxSdk29 / POST_NOTIFICATIONS / FOREGROUND_SERVICE(+DATA_SYNC) / RECEIVE_BOOT_COMPLETED / WAKE_LOCK / REQUEST_IGNORE_BATTERY_OPTIMIZATIONS / QUERY_ALL_PACKAGES / SYSTEM_ALERT_WINDOW），逐条理由见清单注释；本分支已撤销应用内 APK 安装权限。"
     ],
     "docs/AGENTS/ARCHITECTURE.md:17": [
       "> 职责：安卓壳源码的权威模块登记（assets 资产、manifest 组件）。**文件数与行数请用命令现数**（`find app/src/main -name '*.kt' | wc -l`、`wc -l <file>`）；本表不维护这些易漂移的数字。「被引用」为名称级 grep（含少量注释提及），调用关系以源码为准。源码根：`app/src/main/java/com/snoworwind/pocketharness/`。"

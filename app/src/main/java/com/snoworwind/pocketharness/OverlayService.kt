@@ -747,7 +747,7 @@ class OverlayService : Service() {
   /**
    * 块H-A3：三击状态行 → 回到 DSH 主界面。
    *
-   * 参照 NotifyCenter.kt:605-606 的既有先例：`Intent(app, MainActivity::class.java)` +
+   * 参照 `NotifyCenter.contentIntent` 的显式 `MainActivity` Intent 与 task flags：
    * `FLAG_ACTIVITY_NEW_TASK or FLAG_ACTIVITY_SINGLE_TOP`。
    * **SINGLE_TOP 是「已在前台时不重建 Activity」的关键**：Activity 已在栈顶时该 flag 让系统
    * 复用现有实例（只回调 onNewIntent），不会新建实例导致 WebView 重新加载

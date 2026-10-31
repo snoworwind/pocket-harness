@@ -16,7 +16,7 @@ Pocket Harness 是 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-ha
 
 ## 下载与安装
 
-当前正式版本为 **v0.14.9**，仅提供 ARM64 APK：[版本说明与验收范围](release/v0.14.9/notes.md) · [GitHub Release](https://github.com/snoworwind/pocket-harness/releases/tag/hardening-source-625fd8e0311d-40473155658-1)。
+从 [GitHub Releases](https://github.com/snoworwind/pocket-harness/releases/latest) 下载当前公开版本。安装包架构、升级方式和验收范围以该版本的 Release 说明为准。
 
 ```sh
 adb install -r -t <apk>

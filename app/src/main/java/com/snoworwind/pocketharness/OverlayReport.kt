@@ -508,8 +508,8 @@ internal fun statusUpAction(moved: Boolean, longFired: Boolean, tapCount: Int): 
 /**
  * 块H-A1 语义映射：`.live.ndjson` 的 `turn_end.kind` → 完成态标签。
  *
- * 与 `plugins/dsh-android-bridge/src/notify-projection.ts` 的 `reportOutcomeLabel(kind)`
- * **逐字同构**（那是「已完成/失败/被阻塞/…」的唯一权威定义处，`'completed' -> '已完成'`）。
+ * 与 `plugins/dsh-android-bridge/src/notify-projection.ts` 的 `reportOutcomeLabel(kind)` 按结果类别对应；
+ * 两端标签文案不保证逐字相同，例如 Kotlin 将 `interrupted` 简写为「被中断」。
  * 未知 kind 一律「结果未知」——**不得**退化成「已完成」（把失败误报为完成是本需求最危险的错误，
  * 详档 §3.1）。
  */

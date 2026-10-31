@@ -94,8 +94,8 @@ node scripts/smoke-bridge.mjs
 当前来源链调用快照/打包脚本作为内部步骤；不得绕过来源链直接用这些脚本生成 APK。详细入口与产物说明见文末。
 
 > **多线程/并行优先铁律（2026-09-08 用户定例，改任何构建脚本都适用）**：编译、构建、打包、归档、解压**一律使用多线程脚本**，不得用单线程等价命令替代——目的就是省掉一切可以省掉的构建时间。现行落点：
-> - 快照归档 `tar -c ... | xz -T8 -6`（默认 8 线程，由 `DSH_CPU_THREADS` 覆写）（多线程压缩；裸 `tar -cJf` 单线程 ≈380s vs 多线程 `xz` ≈48s，2c 实测）；
-> - 快照/基座解压 `xz -dT8 | tar -x`（与构建线程上限一致）（多线程解压，替代 `tar -xJf` 的单线程解码）；
+> - 快照归档 `tar -c ... | xz -T${XZ_THREADS} -6`；线程数由 `scripts/lib/shell.mjs` 提供，默认 8，可用 `DSH_CPU_THREADS` 覆写（2c 历史实测：裸 `tar -cJf` 约 380s，多线程约 48s）；
+> - 快照/基座解压 `xz -dT${XZ_THREADS} | tar -x`，同样使用共享线程设置，替代 `tar -xJf` 的单线程解码；
 > - 注入链单 pass（`inject-all.py`，压缩次数 ×4→×1）+ dev 循环 `-Fast`（单 ABI + `DSH_INJECT_PRESET=1`）；
 > - gradle `org.gradle.parallel=true` / `caching` / `configuration-cache`（`gradle.properties`）；
 > - 门禁脚本能用流式并行就用（Python 侧 `tarfile` 单遍流式，勿反复解压同一归档）。
@@ -173,7 +173,7 @@ Harness 与 vendor 源码均跟随当前官方目标；`prepare-harness-vendor-o
 
 `check-android-native-runtime-packages.mjs` 对部署树中的 `.node` / `.node.wasm` 逐文件计数、取哈希，并只接受已审计包族。固定 Harness 当前依赖图还带入 trycua、ubjs、sherpa-onnx 与 node-addon-require-builtin 的 Linux GNU 原生文件；它们作为跨平台部署的外平台 payload 记录，不视为 Android 绑定。新增版本、不同架构路径或未知包族继续拒绝；匹配用例在 PR 与来源构建入口运行（坑 197）。
 
-快照构建器沿用boot-pending标签调用当前dsh-app-boot的auditStartupEntries回归，required pending/failed致命、optional第三方告警；该构建内置检查不是本轮外部验收。当前验收证据见协调仓重构台账；该内置检查不替代设备三层验收。
+快照构建器调用当前 `dsh-app-boot` 的 `auditStartupEntries` 回归，required pending/failed 致命、optional 第三方告警；该构建内置检查不是候选外部验收。当前验收证据见本仓 [known-gaps.md](known-gaps.md) 与对应版本说明；该内置检查不替代设备三层验收。
 
 `check-dsh-source-snapshot.mjs` 的内置预设载体断言与权威门禁 `check-engine-overlay.mjs` 的 CARRIERS 同源，清单在 `scripts/source-build/preset-carriers.mjs`：载体是 `agent-preset/skills/` 与 `web-app/presets/`（0.1.7 把 `dsh-agent-presets` 拆成 agent-preset + agent-preset-registry 后的新形态），判据是目录在场且递归文件数 ≥ 1。`preset-carriers.test.mjs` 读权威源文本双向比对两侧载体集合——权威源重锚而本侧没跟上的话，判红落在秒级的 PR 门禁上，而不是四十分钟后的云端构建（坑 200）。
 
@@ -247,7 +247,7 @@ Harness 与 vendor 源码均跟随当前官方目标；`prepare-harness-vendor-o
 |---|---|---|
 | Windows Node 26 与 UI 测试 | Vitest 2/jsdom 的 localStorage 在当前 Node 26.5.0 worker 中为 undefined；不要删用例或用 storage mock 掩盖。使用本机来源链的 Node 22.22.1、相同输入和完整兄弟 vendor 布局复核可全部通过；保存失败与复核日志，隔离包目录内不要挂整个 vendor（会误收集 Node test 文件） | 坑 342 |
 | WSL（Windows 特有） | 快照构建必须在 WSL（tar 解压/符号链接/relocate 需 Linux 语义）；Windows 直读 WSL 9p 文件 = EACCES，校验走 `wsl tar -tvf` 视图；wsl.exe 输出前有 localhost 代理噪音行，解析时过滤 | 坑 6 |
-| ADB 真机特有步骤 | Pocket Harness 发布 APK 用同一独立证书才能覆盖升级；本地 debug 包签名不同。配对走真实 `adb pair`、码值只进 argv（第 4 节 AdbState.kt）；CDP 每次重启 pid 变 | 坑 10/14、第 2/4 节 |
+| ADB 真机验收步骤 | ADB 是测试主机操作设备与采集截图的工具，不是 Pocket Harness 当前特权 transport；产品侧 Shizuku 授权在 Shizuku 管理器完成，不走应用内 `adb pair`。发布 APK 用独立证书才能覆盖升级，本地 debug 包签名不同；CDP 每次重启 pid 会变化 | 坑 10/14、[adb-chain.md](adb-chain.md) |
 | run-as 限制 | run-as 裸环境无 termux-exec 钩子 → `not executable: 64-bit ELF` / `CANNOT LINK` 是**假错误**；验证快照内二进制须带全套引擎 env（`LD_PRELOAD` + `TERMUX_EXEC__*` + `LD_LIBRARY_PATH` + `OPENSSL_CONF`） | 坑 22 |
 | Linux PRoot 外部输入 | Termux recipe commit/hash 固定；滚动 `stable` InRelease 每次来源 workflow 验签并记入本轮 provenance，单份包快照由两路 ARM64 构建共享；Packages.gz 与 `.deb` 逐项按签名校验，缺失包或索引不一致时失败关闭 | 坑 502、506、Linux 环境迁移记录 |
 | PowerShell 转义 | 双引号内 `$var` 本地展开（引号地狱）；二进制经 `adb exec-out`/push 传输 | 坑 8 |

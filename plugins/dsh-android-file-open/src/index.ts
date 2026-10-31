@@ -18,7 +18,7 @@ import { StringDecoder } from 'node:string_decoder'
 import { join, resolve, sep, basename, dirname } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import { defineTool } from '@deepseek-ai/dsh-tools'
-// FX-205.1：三条 exact 路由与 dsh-android-bridge 控制队列共用同一枚壳侧控制令牌
+// FX-205.1：五条 exact 路由与 dsh-android-bridge 控制队列共用同一枚壳侧控制令牌
 // （shellControlToken = controlTokenFrom(env, 壳侧 prefs)）；鉴权实现见 route-auth.ts。
 import { shellControlToken } from '@dsh-android/dsh-android-bridge'
 import {
@@ -538,7 +538,7 @@ export function apply(ctx: Context, _config: Record<string, unknown> = {}) {
       token: shellControlToken,
       // 必须走 ctx.get（无 inject 要求）：未声明 inject 时 cordis 的属性陷阱会抛
       // 「cannot get property "connection" without inject」（ReflectService.handler.get）——
-      // 设备实测该异常被上游 webserver 的兜底 catch 成 **400**，三条路由因此整组 400
+      // 设备实测该异常被上游 webserver 的兜底 catch 成 **400**，当时已注册的路由因此整组 400
       // （FX-205 验收全灭）。ctx.get 缺失时返回 undefined，此处退化为「只认令牌」。
       connection: ctx.get('connection') as ConnectionFace | undefined,
     })

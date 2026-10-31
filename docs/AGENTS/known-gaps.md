@@ -1,6 +1,6 @@
 # known-gaps.md — 当前缺口与验收入口
 
-> 本分支宗旨及当前验证边界见 [SECURITY-HARDENING.md](SECURITY-HARDENING.md)。源码有改动不等于新包已验收；来源构建状态以 [变更记录](changelog-archive.md) 最新条目为准。下方带日期的状态只描述对应审查时点；当前发布范围见[最新版本说明](../../release/v0.14.9/notes.md)。
+> 本分支宗旨及当前验证边界见 [SECURITY-HARDENING.md](SECURITY-HARDENING.md)。源码有改动不等于新包已验收；来源构建状态以 [变更记录](changelog-archive.md) 最新条目为准。下方带日期的状态只描述对应审查时点；正式发布版本仍为 0.14.9，当前 0.14.10 是未验收开发候选，见[候选说明](../../release/v0.14.10/notes.md)。
 
 ## 当前入口
 
@@ -75,20 +75,19 @@
 | 本机跑套件的环境坑 | `process.execPath` 在本机是 `/apex/com.android.runtime/bin/linker64`（node 是经 linker 启动的 ELF 共享对象），凡是用它派生子 node 进程的东西必失败：`node --test` 报 `expected absolute path: "--test-concurrency=0"`、vitest 默认 `forks` 池报 `EPIPE`、`check-release-gates.mjs` 的「171 个脚本全部可解析」整项判红（手工 `node --check <单文件>` 却 exit 0）；另 `pnpm install` 在 sdcard（FUSE）上因 symlink/rename 失败（`ERR_PNPM_ENOSYS` / `ERR_PNPM_ENOENT`） | 绕行：逐文件直跑、`--pool=threads`、装到 `$HOME` 或 `--node-linker=hoisted --package-import-method=copy`。属环境限制而非仓库缺陷，**不得据此判仓库红**；根因、实测矩阵与判据见坑 335，pnpm 见 [SECURITY-HARDENING.md](SECURITY-HARDENING.md) 该轮证据段 |
 | 上游锚点漂移（已知缺口的现实样本） | 上游写进执行地图的 `EngineStartFlow.kt:700`、`EngineManager.kt:207`、`EngineManager.kt:813、1344-1369` 在本分支合并后全部指错位置，而 `check-code-map.mjs` 仍 `exit 0`（它只验「行号 ∈ [1, 文件行数]」） | 本轮按实际行号手工重取；再次印证下方「锚点只验行号存在性、不验语义」那条缺口——门禁绿不等于锚点对，改代码后必须自查锚点语义 |
 
-## 本轮仍需收口
+## 0.14.10 候选当前验收缺口（截至 2026-10-31）
 
 | 项 | 当前事实 | 必须取得的结论 |
 |---|---|---|
 | **本机 3080 伪造监听者凭据泄露（高风险，源码已修、设备待验）** | 壳进程持续持有 TCP 端口，转发仅连应用私有 Unix socket 并验证已连接对端 app UID；覆盖探活、refresh、RPC、通知、mux、控制队列、来件与 WebView。根因见 [坑 350，修复及证据见坑 352](gotchas.md) | 宿主 HTTP/WS 正反证已通过；**未做设备验证**（ADB 为空，两个模拟器拒绝连接）。须来源链新包执行 fresh-process 伪造监听者 instrumentation 负控，再补 CDP/ADB 自主任务与双方向验收；补验前不得将此项记为完整关闭 |
-| Hard / Soft 插件状态 | 可信 factory identity、四态与真实冷启动健康正在实施；live 用户 patch 不能成为 Hard 来源 | 冻结后统一测试；Disabled 官方条目不能阻止健康；隔离不丢源码/config；退出 Safe Mode 恢复用户配置 |
+| Hard / Soft 插件状态 | 来源中已实现 fingerprint 绑定的 Hard 身份清单、Hard bundle 选择、Soft 组合摘要与双次成功启动健康确认，以及 Safe Mode 的授权恢复；细节见 [PERSISTENT-DATA.md](PERSISTENT-DATA.md) | 0.14.10 候选尚未做设备验收；须在官方 Android 16 API 36 ARM64 AVD 与可用 ARM64 真机上核验冷启动、Disabled Hard 项、Soft/config 保留及 Safe Mode 恢复，不把源码实现记成设备通过 |
 | 历史 ONLINE 事务与健康 | 本分支已删除新在线更新入口，保留旧 journal、usr-only 交换与 probation/commit/rollback 的恢复兼容 | 最终新包验证历史中断恢复不改用户 HOME；仅 HTTP 活着不得提前提交；失败后可恢复 |
 | 回撤节流纪元 | `.undo-auto-done` schema 2 仅抑制相同安装指纹 + 回滚前失败 patch digest，成功回滚后原子写入；身份变化重开观察窗，旧数字时间戳在有效期内保守抑制并记诊断；显式用户重启在确认本壳子进程停止后清 marker，自动重试不清。纯逻辑与源码接线测试已补，仍待本批 Gradle fresh 验证 | 同一失败配置防循环，新安装/新配置不继承旧事件；marker 写入只发生在成功整份恢复后 |
 | 许可证 | Shizuku api/provider/aidl/shared 13.1.5 官方 POM 均为 MIT；已补固定许可文本、矩阵、notices 生成及版本/文本反例 | 最终 APK assets/licenses 内含 MIT 全文与 SDK notices；当前源码门禁通过不等于实包已确认 |
 | MiMo 与配置保留 | 旧基线真实 wire on/off 成功；虚拟屏目标达成但旧任务 13 次工具调用超出事先 10 次限制，整例未通过 | 新正式包自主任务预先约定可行预算并按真实事件计数；保留既有配置/会话/凭据 |
-| UI / 范围 / 通知 / 浏览器 | 有旧版和阶段证据；最终当前树尚未完成三层回归 | 两个模拟器横竖屏、透明度、拒绝面、文件选择、后台任务和旧会话均按同一产物复验 |
-| 真机 | MuMu x86_64 是开发首验；arm64 真机是发布前补充 | 华为 WebView identity/安装反馈不能以模拟器替代真机证据 |
-| Actions 列表与维护线 | 2026-10-17 API 清单仍含 active 的 `release`，因默认分支仍为 `main`；本仓已删除该文件。旧 `Snapshot Build` / `ADB runtime patch` 已不在该次清单中 | 本仓仅使用显式 `--ref main` 的来源构建入口；Actions 列表中可见历史/其他分支工作流不等于本仓允许运行 |
-| `check-code-map.mjs` 锚点语义覆盖仍有限 | 已修复历史「只验行号存在」问题：旧锚点由 `scripts/check-code-map-anchor-baseline.json` 固定源码行内容与引用次数；新增或移动坐标须带 `#expect=<URI 编码片段>`，避免用宽窗口猜符号。自检覆盖内容错配、源码漂移、坐标移动、重复引用、URI 错误和负控；锚点基线刷新会拒绝未标注的新坐标或旧坐标新增引用。剩余限制：尚未为执行地图全部既有引用补齐预期片段，旧锚点依赖行快照而非符号解析；刷新基线仍须人工审阅 diff。 | 2026-10-29 已实现并验证；详见 [UPSTREAM-ABSORPTION-2026-10-29.md](UPSTREAM-ABSORPTION-2026-10-29.md)。
+| UI / 范围 / 通知 / 浏览器 / 虚拟屏 | 0.14.10 候选尚未完成 CDP 与 ADB 用户实际体验层验收 | 在 Google 官方 Android 16（API 36）`default/arm64-v8a` AVD 上按真实任务完成三层验证；范围、Shizuku、虚拟屏改动先跑 `verify-screen-scope-matrix.mjs` |
+| ARM64 真机 | 当前 V2425A 设备暂不可用；0.14.10 候选尚未安装到 ARM64 真机 | 如实保持未验收；设备恢复后补充竖屏、横屏和 tap 级截图证据。不能用 MuMu/x86_64 代替 |
+| `check-code-map.mjs` 锚点语义覆盖仍有限 | 已修复「只验行号存在」问题：旧锚点由 `scripts/check-code-map-anchor-baseline.json` 固定源码行内容与引用次数；新增或移动坐标须带 `#expect=<URI 编码片段>`。剩余限制：部分旧坐标仍依赖行快照而非符号解析；刷新基线仍须人工审阅 diff。 | 2026-10-29 实现并验证；详见 [UPSTREAM-ABSORPTION-2026-10-29.md](UPSTREAM-ABSORPTION-2026-10-29.md)。
 
 ## 0.14.7 已知限制（本轮如实登记，非缺陷隐瞒）
 

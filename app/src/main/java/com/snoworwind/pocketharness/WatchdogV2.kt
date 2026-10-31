@@ -16,9 +16,9 @@ import java.io.File
  *   可达表示插件树健康）+ 引擎日志尾部异常扫描（engine.log 末尾 fatal/Error 关键字）。
  * - 熔断与指数退避：连续失败 → 指数退避（5s→10s→20s→40s→80s 封顶），超过熔断阈值（12 次连续失败）
  *   暂停看门狗并记录（界面提示由 GuideChrome 状态区显示），用户交互或探活成功自动复位。
- * - 开机自启：BOOT_COMPLETED 接收器恢复用户上次同意的运行状态（EngineService.userShutdown 持久化）。
+ * - 开机自启策略由 BootReceiver 依据 EngineService 持久化的 userShutdown 决定；本类不接收 BOOT_COMPLETED。
  * - 前台唤醒锁：引擎前台运行期间持有（PARTIAL_WAKE_LOCK，标准档位；获取失败降级尽力模式并记录）。
- * - 授权状态探活：ADB 配对断线时记录（F2.9，桥引导重新配对由桥层返回）。
+ * - 特权执行授权由 ShizukuTransport 管理；本类不探测或恢复无线 ADB 配对状态。
  */
 object WatchdogV2 {
 

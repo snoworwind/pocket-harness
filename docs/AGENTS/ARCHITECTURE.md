@@ -76,15 +76,16 @@
 |---|---|---|
 | AdbKeyboardService.kt | 内嵌 ADBKeyboard 协议 IME（android_ui_input 中文输入；仅活跃时提交） | AdbKeyboardReceiver（静态 handle 转发） |
 | AdbKeyboardReceiver.kt | ADB_INPUT_TEXT/ADB_CLEAR_TEXT 广播入口 | manifest 注册（无代码调用方） |
-| BootReceiver.kt | BOOT_COMPLETED 恢复用户同意状态 + BatteryWhitelist 引导 | manifest 注册（无代码调用方） |
+| BootReceiver.kt | 收到 BOOT_COMPLETED 后检查持久化 `userShutdown`，未关停时启动 EngineService；提供 BatteryWhitelist 状态与设置页 Intent 辅助 | manifest 注册（无代码调用方） |
 | ShizukuSupport.kt | Shizuku 反射探活（历史：引导页状态行只读展示） | EngineStartFlow（状态行） |
-| ShizukuProbe.kt | Shizuku 五态探针（absent/not-running/denied/prev11 等错误码 + guidance，fail-closed） | MainActivity、DeviceControlService、VdisplayController |
-| ControlPoller.kt | 无障碍控制队列客户端（引擎侧 exact 路由长轮询 + 心跳 + 回填；协议版本/能力声明） | EngineStartFlow、DeviceControlService |
+| ShizukuProbe.kt | debug-only Shizuku 五态诊断探针（absent/not-running/denied/prev11 等错误码 + guidance，fail-closed） | 当前无生产代码调用者；特权 transport 由 ShizukuTransport 承担 |
+| ControlPoller.kt | 无障碍控制队列客户端（引擎侧 exact 路由长轮询 + 心跳 + 回填；协议版本/能力声明） | ControlCarrier |
 | ControlProtocolV2.kt | 控制协议 V2 列式编码器（壳侧唯一编码入口；句柄 = 原始行号；与引擎解码器由跨语言门禁锁定） | ControlPoller、DeviceControlService |
-| DeviceControlService.kt | 无障碍服务（语义控制面）：能力声明、树快照、动作执行、截屏、屏幕范围执行点复查 | ControlPoller、ControlPolicy（引擎侧） |
+| DeviceControlService.kt | 无障碍服务兼设备控制队列 dispatcher：能力声明、语义树与动作、虚拟屏 `getWindowsOnAllDisplays()` / `WindowPick` 选根、截屏和范围复查；browser/vd/sh op 转交专属执行器 | ControlCarrier、ControlPolicy（引擎侧） |
 | GlobalActionCatalog.kt | 全局动作目录（名称 ↔ 平台常量 ↔ minSdk，纯数据；可用性由 getSystemActions() 驱动） | DeviceControlService |
 | NotifyCenter.kt | 引擎事件→系统通知：五类渠道、六类 kind 分流、弹窗/静默形态、自检面 | MainActivity、WatchdogV2、NotifyStore |
 | NotifyStore.kt | `.notify.ndjson` 偏移消费（FileObserver + 字节偏移持久化 + 双读不双发） | NotifyCenter |
+| NotifySuppressQueue.kt | 前台抑制时的耐久延后投递队列，启动恢复、TTL/容量限制、同会话覆盖和自续 flush | NotifyCenter、NotifyStore |
 | NotifyBridge.kt | 专用 `$events` 应答流（waterfall 投放 / cancel 撤通知 / $events/result 投递） | NotifyCenter、NotifyDecisionQueue |
 | NotifyDecisionQueue.kt | 决策耐久队列（先落盘再投递、指数退避 ≤60s、失败态可见、NOT_READY 墙钟预算） | NotifyActionReceiver |
 | NotifyActionReceiver.kt | 通知动作接收器（回复/选项/批准/拒绝/重试）：outcome 构造 + 入队 + 快速投递，不 startActivity | manifest 注册 |
@@ -103,7 +104,7 @@
 | 文件 | 职责一句话 | 被引用 |
 |---|---|---|
 | ShizukuTransport.kt | 应用侧 Shizuku UserService 生命周期（权限状态、bind/解绑、固定 argv 与经授权的 `sh -c` 执行） | VdisplayController、MainActivity、ShellOps |
-| ShizukuUserService.kt | shell/root 侧 v4 服务，确认完整 app UID/可信数据 anchor；有界执行、文件传输和共享 FD 属主修复 | ShizukuTransport |
+| ShizukuUserService.kt | shell/root 侧 AIDL v5 服务（v4 加入配置确认，v5 随 namespace 迁移更新 descriptor）；确认完整 app UID/可信数据 anchor；有界执行、capture 文件传输和共享 FD 属主修复 | ShizukuTransport |
 | RootGrant.kt / RootAccess.kt | 有效 AI 同意与 su 授权是独立门；最后可信派发点检查，固定维护例外不暴露任意 shell | ShizukuTransport、ShellOps、AndroidBridge |
 | OwnershipRepairCore.kt / OwnershipRepair.kt / RootRepairMain.kt | 共享有界遍历与 Android FD 适配；su 只加载已安装 APK 的固定 helper | RootAccess、ShizukuUserService |
 | RootExecutionFence.kt / RootMaintenanceLease.kt / RootOwnershipJobs.kt | Context感知公平零时限读栅栏/维护写栅栏；UID0派发前耐久lease；同boot UNKNOWN阻止新派发/维护/启动；共享job状态按当前lease诚实pending | RootAccess、ShizukuTransport、EngineStartFlow、EngineService、RootGrant |
@@ -149,38 +150,41 @@
 
 权限以 AndroidManifest.xml 实际声明为准（INTERNET / ACCESS_NETWORK_STATE / MANAGE_EXTERNAL_STORAGE / READ_EXTERNAL_STORAGE maxSdk32 / WRITE_EXTERNAL_STORAGE maxSdk29 / POST_NOTIFICATIONS / FOREGROUND_SERVICE(+DATA_SYNC) / RECEIVE_BOOT_COMPLETED / WAKE_LOCK / REQUEST_IGNORE_BATTERY_OPTIMIZATIONS / QUERY_ALL_PACKAGES / SYSTEM_ALERT_WINDOW），逐条理由见清单注释；本分支已撤销应用内 APK 安装权限。
 
-## 8. 0.14 当前屏幕控制构造（施工中）
+## 8. 屏幕范围与屏幕控制
 
 ```
-android_screen_list (metadata only; no screen content)
-   └─ androidPrivilege.screenAccess(screenId)  ← reads caps.screenScope / vdInfo.scope (native memory; A02 fixed)
-        ├─ virtual-only / real-only / all user range check
-        ├─ virtual-1 not ready (no VirtualDisplay yet) → screen-not-ready, never display 0
-        └─ allowed real → gateFor(session) requires danger-full-access
-             └─ ControlPolicy.decideControl(op) → a11y or legacy ADB fallback
-                  └─ DeviceControlService repeats scope check and invalidates old refs on range change
+androidPrivilege reads the user-selected range from native ScreenScopePrefs
+   ├─ per-control response caps.screenScope; on cold start / scope rejection, refresh via vdInfo.data.scope
+   ├─ screenAccess(screenId): virtual-only / real-only / all range check
+   ├─ virtual-1 before VirtualDisplay is ready → screen-not-ready; never maps to display 0
+   └─ allowed operation → session must be danger-full-access
+        ├─ a11y-capable operations → AccessibilityService control queue
+        └─ privileged shell / browser / vdisplay operations → Shizuku-backed ControlCarrier
+             └─ shell operations pass ShellOps scope checks; DeviceControlService rechecks real-screen ops
 ```
 
-`VdisplayController` 已能建真实 VirtualDisplay（公开 `PUBLIC|OWN_CONTENT_ONLY|SUPPORTS_TOUCH`）并把
-别名 `virtual-1` 映射到运行时 displayId；viewer Surface 重挂与多屏选择面仍未收口（见 known-gaps.md）。
-本节记录代码施工状态，不表示已通过设备验收。
+`ScreenScopePrefs` 只保存在原生进程内存，进程重启回落 `virtual-only`。引擎从每条控制应答中的
+`caps.screenScope` 读取范围；冷启动与拒绝路径通过 `vdInfo` 刷新，插件不再读取旧 XML。
+Shizuku shell 与壳侧执行点都复核屏幕范围；`virtual-1` 尚未建成时绝不回落到真实显示器 0。
+`VdisplayController` 创建时组合 `PUBLIC|OWN_CONTENT_ONLY|SUPPORTS_TOUCH|DESTROY_CONTENT_ON_REMOVAL|ROTATES_WITH_CONTENT`；
+Android 13+ 上 `PUBLIC` 对非系统应用创建的屏幕不生效，运行时仍是 private display。创建后映射别名，
+但 viewer Surface 重挂、实时多屏选择及最终设备回归仍有缺口，见 [known-gaps.md](known-gaps.md)。
+这些源码事实不代表当前候选已完成设备验收。
 
-原生 `ScreenScopePrefs` 已仅使用进程内存，进程重启回落 `virtual-only`；上图插件读取旧 XML 的实现尚未同步到该真源。新安装授权真实屏仍被插件拒绝，属于未修复的跨层断链，见 [项目审计 A02](PROJECT-AUDIT-2026-10-18.md#a02-p1-屏幕范围真源迁移后插件仍读旧文件)。
-
-## 9. 0.13.5 设备控制面（双通道）
+## 9. 设备控制通道与特权传输
 
 ```
-AI 工具（dsh-android-manage）
-   └─ androidPrivilege.gateFor(session)   ← 会话档位 danger-full-access 恒需
-        ├─ 无障碍通道在线（prefs a11yEnabled + 队列心跳 <20s）
-        └─ 或 ADB 三道人门齐备（完全访问 + 允许访问 + 配对；0.14 起为迁移面，正式通道转 Shizuku）
-   └─ ControlPolicy.decideControl(op)     ← 后端选择（a11y 优先，ADB 回退，fail-closed）
-        ├─ a11y → ControlQueue（引擎侧 exact 路由 /api/android/ui/{pending,result}，共享令牌）
-        │        ↕ 长轮询（壳侧 ControlPoller，空闲 5s/有活即时，轮询即心跳）
-        │        DeviceControlService（AccessibilityService：树快照 + performAction + takeScreenshot）
-        └─ adb  → execAdbLine/execAdbShell（shell 执行、原图截图、pm/dumpsys 等系统面）
+AI tool → androidPrivilege.gateFor(session)  ← danger-full-access required
+   └─ ControlCarrier owns the authenticated control queue and dispatches op families
+        ├─ a11y ops → DeviceControlService (tree, node actions, API 30+ screenshots)
+        ├─ browser* → BrowserHost (isolated native WebView; no main-page JS bridge)
+        ├─ vd* → VdisplayOps / VdisplayController (virtual display and Shizuku shell operations)
+        └─ sh* compatibility ops → ShellOps → ShizukuTransport / ShizukuUserService
 ```
 
-两条通道**等价且无障碍优先**（PRD-0.13.2 §3.3 B3）；授权面在设置页「设备控制授权」：无障碍为主入口，ADB 折叠为高级/脚本面。
+`execAdbShell` / `execAdbLine` 是兼容工具协议名称；当前壳侧 shell 执行由 Shizuku UserService 承载，
+不代表仍通过无线 ADB 配对或 ADB server 执行。BrowserHost 和虚拟屏是同一控制队列里的原生 op 家族，
+但不等同于 shell 命令；逐方法授权和范围检查见 [BRIDGE-API.md](BRIDGE-API.md)、
+[ACCESSIBILITY-API.md](ACCESSIBILITY-API.md) 和 [adb-chain.md](adb-chain.md)。
 
 Kotlin、AIDL 与安装身份现统一为 com.snoworwind.pocketharness；Shizuku 协议 v5 使旧 descriptor 缓存服务失效。组件升级边界见 NAMESPACE-MIGRATION-2026-10-19.md。

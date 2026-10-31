@@ -8,7 +8,7 @@ import android.os.Build
 import android.os.PowerManager
 import android.util.Log
 
-/** 开机自启（零改动原则：仅恢复用户上次同意状态；白名单/厂商跳转引导由设置面承托）。
+/** 开机自启：依据持久化 userShutdown 决定是否启动 EngineService；白名单/厂商跳转引导由设置面承托。
  *  独立成文件（Phase 3）：与 AndroidManifest 组件一一对齐——manifest 注册的
  *  receiver 不应寄居在 WatchdogV2.kt 文件尾部。
  *

@@ -1,18 +1,21 @@
-# scripts/snapshot-config/ — 快照构建数据模块（Phase 2b，2026-09-05）
+# 快照构建配置
 
-`build-snapshot-013.mjs`（编排器）消费的全部清单与模板。**数据与流程分离**：改预装包/镜像/剥离/瘦身策略只动本目录，不动编排器；双仓（协调仓/apk 仓 scripts/）必须同版（雷点 10）。
+本目录保存 `scripts/build-snapshot-013.mjs` 和来源构建所用的配置与模板。目录内文件由本仓维护；来源链从已提交的 Pocket Harness 树读取，不要求同步到其他仓库。`build-snapshot-013.mjs` 是来源链内部步骤，不应单独用它生成发布 APK；构建入口见 [构建与环境](../../docs/AGENTS/build-and-env.md) 和 [安全加固原则](../../docs/AGENTS/SECURITY-HARDENING.md)。
 
-| 文件 | 消费点 | 内容 |
-|---|---|---|
-| `preinstall.json` | 预装/下载链 | Termux 镜像链、npm 镜像链、TARGETS 预装包清单、pnpm/canvas 版本 |
-| `seed-settings.yaml` | 机密剥离后写回 | 出厂 settings.yaml 非机密模板（verbatim 写入快照 home/.dsh/settings.yaml） |
-| `strip.json` | base-dsh 合并后 | secretLeaves（机密文件）/ stalePnpmState（陈旧 pnpm 状态）/ runtimeDirs（运行时目录） |
-| `slim.json` | 7e-2/8a/8a2 | nodePtyPrebuilds / reflinkGlobs / misplacedDirs / sourcemapDelete |
-| `apt.conf.template` | 7d 包管理器路径覆盖 | APT_CONFIG 主文件；`@@PREFIX@@` 构建期替换设备端前缀 |
-| `install-clang.sh` | 0.13.1 W6 工具链 | C 工具链按需安装器（随快照分发）；`@@PREFIX@@` 同上 |
+| 文件 | 用途 |
+|---|---|
+| `preinstall.json` | Termux/npm 下载源、预装包、工具和版本输入。 |
+| `engine-overlay.json` | 来源链构建 Harness 引擎时使用的依赖覆盖与补充包。 |
+| `engine-overlay-licenses.json` | 引擎 overlay 组件的许可登记，由来源构建与许可检查消费。 |
+| `seed-settings.yaml` | 剥离机密后写入快照的非机密出厂设置模板。 |
+| `strip.json` | 剥离机密文件、陈旧包管理状态和运行时目录的清单。 |
+| `slim.json` | 快照瘦身与不适用平台包的清单。 |
+| `apt.conf.template` | APT 配置模板；构建时将 `@@PREFIX@@` 替换为设备端前缀。 |
+| `install-clang.sh` | 随快照分发的按需 C 工具链安装器；构建时替换 `@@PREFIX@@`。 |
 
-## 约定
+## 维护约束
 
-- `@@PREFIX@@` 是模板占位符，只允许出现在模板文件中；替换发生在 build-snapshot 构建期，**构建期本地 stage 路径不可烧入快照**（实测泄漏史）。
-- seed-settings.yaml 的空对象语义不可改回裸键（settings-file section() 对 null 抛 TypeError → 模型页全灭，fx-1 实锤）。
-- slim.json 的 reflink 删除走 `find -name`（glob 在双引号内不被 shell 展开，`rm "path/*.node"` 是静默 no-op）。
+- `@@PREFIX@@` 只允许出现在模板文件中。构建产物不得包含构建机临时目录或 stage 路径。
+- `seed-settings.yaml` 中空对象的语义不可改回裸键：`settings-file` 对 `null` section 会抛错并导致模型设置页失效。
+- `slim.json` 的清单键必须继续由构建器消费；`check-snapshot-builder-output.mjs` 会检查死键。删除 reflink 项时保留 `find -name` 匹配方式，避免带引号的 shell glob 静默不展开。
+- 引擎 overlay、预装清单或模板的具体锁定与验证规则，以同目录配置和 `scripts/source-build/` 的来源构建实现为准。
