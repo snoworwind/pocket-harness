@@ -16,9 +16,7 @@ Model-visible capabilities are provided by plugins; the shell does not register 
 
 ## Download and install
 
-The current release is **v0.14.9**, with ARM64 APKs only: [release notes and acceptance scope](release/v0.14.9/notes.md) · [GitHub Release](https://github.com/snoworwind/pocket-harness/releases/tag/hardening-source-625fd8e0311d-40473155658-1).
-
-The repository is preparing a **v0.14.10 development candidate**. Its three-layer device acceptance is incomplete, and its draft release is unpublished; do not treat it as a stable release. See the [candidate notes](release/v0.14.10/notes.md) for progress.
+Download the current public release from [GitHub Releases](https://github.com/snoworwind/pocket-harness/releases/latest). Check that release's notes for the APK architecture, upgrade instructions and acceptance scope.
 
 ```sh
 adb install -r -t <apk>
