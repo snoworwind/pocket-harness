@@ -16,8 +16,8 @@
 
 - rc.5 官方 npm tarball 夹具检查通过，26/26 引擎补丁锚点命中。
 - 固定 rc.5 官方源码树合同检查通过：93 个客户端槽位、187 个上游行，15/15 个运行期 peer 判定通过。
-- 补丁回归全套门禁在本机 Windows 未通过：存在 CRLF/Windows 路径测试问题，另有 2 个已登记的 Windows symlink 限制；Linux PR Gate 尚未运行。
+- 已合并 PR #196 修复 Windows 测试的 CRLF 与路径转换问题；WSL Ubuntu 下完整补丁回归清单 77/77 通过。Windows 原生运行有 2 项因已登记的 symlink 平台限制跳过；PR Gate 全绿。
 - 正式源码构建、APK 双构建与签名核验尚未完成。
-- **未做设备验证**：当前环境没有 Android SDK 或 ADB，未完成 CDP 检查、ADB 用户操作、横屏或 ARM64 真机验收。
+- **未做设备验证**：WSL 当前没有 Android SDK 或 ADB，未完成 CDP 检查、ADB 用户操作、横屏或 ARM64 真机验收。
 
 本文件是开发草稿，不代表可发布版本；候选进入发布前必须完成仓库验收规范要求的来源链和设备验证。

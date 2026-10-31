@@ -22,7 +22,7 @@ Pocket Harness 当前正式版仍是 v0.14.9，来源目标为 DeepSeek Harness 
 
 - `scripts/check-patch-fixtures.mjs` 通过；当前 53 个补丁夹具由官方 npm 发布 tarball 捕获，台账明确标为 `published-tarball`，不是本轮来源构建产物。
 - `node scripts/probe-engine-anchors.mjs` 对这些 rc.5 发布包的 26 个引擎补丁全部命中。正式来源链会从固定源码重建包并重新捕获夹具；该来源构建尚未执行，发布包夹具不能替代来源构建产物的逐字节证据。
-- `node scripts/check-patch-test-manifest.mjs` 在本机 Windows 未通过：77 个用例中 66 通过、11 失败，其中 2 个是既有 symlink 平台限制；其余 9 个在提权复跑后有 6 个被确认为沙箱临时文件 rename 限制，剩余 3 个来自测试脚本对 CRLF 的假设和 Windows `URL.pathname` 路径处理。Linux PR Gate 尚未运行，补丁回归门禁当前不能记为通过。
-- 本机未检测到 Android SDK 或 ADB，无法构建并安装最终 ARM64 APK，也未完成 CDP/ADB 三层设备验收。当前是开发候选，不可标记为已验收或发布。
+- Windows 测试可移植性修复已由 [PR #196](https://github.com/snoworwind/pocket-harness/pull/196) 合并，修正 CRLF profile 处理与 `URL.pathname` 的 Windows 路径转换；两个受影响文件的用例 5/5 通过。随后在 WSL Ubuntu 运行 `node scripts/check-patch-test-manifest.mjs`，32 个文件、77/77 用例通过；Windows 原生复跑为 75 项通过、2 项失败但均属于台账已登记的 symlink 平台限制，门禁按登记规则通过。PR #196 的 PR Gate 全部成功。
+- WSL 未配置 Android SDK 或 ADB，当前尚未构建并安装最终 ARM64 APK，也未完成 CDP/ADB 三层设备验收。当前是开发候选，不可标记为已验收或发布。
 
 进入发版前，必须从最终提交运行 ARM64 来源链，核对两份独立构建与签名，并按[模拟器验收规范](emulator-test-protocol.md)补齐设备三层验收；设备缺席须在发布说明中保留限制。
