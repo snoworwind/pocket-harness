@@ -1,0 +1,73 @@
+name: finalize-v01410-release
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - release/v0.14.10/notes.md
+
+permissions:
+  contents: read
+
+concurrency:
+  group: finalize-v01410-release
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.12'
+      - name: Test release metadata validation
+        run: |
+          python3 -m unittest discover -s scripts/source-build -p 'test_finalize_published_release.py' -v
+          python3 scripts/source-build/finalize-published-release.py --self-test
+          python3 scripts/source-build/finalize-published-release.py --self-test-negative
+      - name: Read the existing stable release asset digests
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: hardening-source-701773cdd2e4-41180533767-1
+        run: gh api "repos/$GH_REPO/releases/tags/$RELEASE_TAG" > release-metadata.json
+      - name: Prepare corrected notes and checksums
+        run: python3 scripts/source-build/finalize-published-release.py --prepare release-metadata.json release/v0.14.10/notes.md release-assets
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: finalized-v01410-release-assets-${{ github.sha }}
+          path: release-assets/*
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    needs: prepare
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: finalized-v01410-release-assets-${{ github.sha }}
+          path: release-assets
+      - name: Replace draft-time notes and checksum assets, then verify the public release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: hardening-source-701773cdd2e4-41180533767-1
+          RELEASE_TITLE: Pocket Harness v0.14.10 (DeepSeek Harness 0.2.1-rc.5)
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release upload "$RELEASE_TAG" release-assets/notes.md release-assets/SHA256SUMS.txt --clobber --repo "$GH_REPO"
+          gh release edit "$RELEASE_TAG" --title "$RELEASE_TITLE" --notes-file release-assets/notes.md --draft=false --latest --repo "$GH_REPO"
+          gh api "repos/$GH_REPO/releases/tags/$RELEASE_TAG" > release-assets/release-after.json
+          python3 release-assets/verify-release.py --verify release-assets/release-after.json release-assets
+          gh api "repos/$GH_REPO/releases/latest" > release-assets/latest-release.json
+          python3 -c 'import json, os; r=json.load(open("release-assets/latest-release.json", encoding="utf-8")); assert r["tag_name"] == os.environ["RELEASE_TAG"], r'
