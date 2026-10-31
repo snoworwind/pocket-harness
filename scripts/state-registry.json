@@ -124,6 +124,18 @@
         "file": "dsh-mobile-apk/app/src/main/java/com/snoworwind/pocketharness/EngineStartFlow.kt",
         "pattern": "ENGINE_BOOT_BUDGET_MS"
       }
+    },
+    {
+      "id": "auto-session-permission",
+      "holder": "引擎 dsh-permission-presets 的 PermissionPresetService 持有会话权限投影写权；Auto reviewer 控制 Auto 会话是否可执行",
+      "writePath": "scripts/patches/data/permission-auto-review-default.mjs:PermissionPresetService.pinInitialPermission → permission/preset、sandbox/mode、approval/policy",
+      "sourceOfTruth": "引擎 session event journal 中的 permission/preset、sandbox/mode、approval/policy；新会话默认档由 scripts/profile-web.cordis.patch.yml 的 permission.defaultPreset 选择",
+      "syncPath": "新建及恢复时按档位固定会话权限；中断恢复时 Auto 使用固定 Auto spec 补齐缺失的 sandbox/approval 事实；reviewer 注册后重钉存量会话，注册前按持久化或有效 Auto 身份拒绝工具执行。回归：node --test scripts/patches/tests/permission-auto-review-default.test.mjs。",
+      "evidence": {
+        "kind": "grep",
+        "file": "scripts/patches/data/permission-auto-review-default.mjs",
+        "pattern": "restoreSpec\\?\\.sandbox"
+      }
     }
   ]
 }

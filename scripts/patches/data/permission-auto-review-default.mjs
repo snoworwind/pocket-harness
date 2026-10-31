@@ -4,6 +4,7 @@ export const AUTO_REVIEW_FALLBACK_MARKER = 'dsh-mobile auto review withdraws to 
 export const AUTO_REVIEW_HIGH_DENY_MARKER = 'dsh-mobile auto review hard-denies high risk (AR1)'
 export const AUTO_REVIEW_HIGH_GUARD_MARKER = 'dsh-mobile auto review high-risk denial is monotonic (AR1)'
 export const PERMISSION_AUTO_UI_MARKER = 'dsh-mobile auto review default confirmation (AR1)'
+export const AUTO_REVIEW_RESTORE_MARKER = 'dsh-mobile restores Auto sessions before reviewer registration (AR1)'
 
 function replaceOnce(source, before, after, label) {
   const first = source.indexOf(before)
@@ -30,6 +31,11 @@ export function patchPermissionPresetsAutoDefault(source) {
       '[...Object.keys(this.presets), AUTO_PRESET].map((name) => this.optionOf(name))',
       'return this.presets[name] ?? (name === AUTO_PRESET ? AUTO_PRESET_SPEC : void 0);',
       'this.autoAdmit?.();',
+      AUTO_REVIEW_RESTORE_MARKER,
+      'const restoreSpec = preset === AUTO_PRESET ? this.resolve(AUTO_PRESET) : void 0;',
+      'restoreSpec?.sandbox ?? this.ctx.shell.sandboxMode',
+      'restoreSpec?.approval ?? this.ctx.approval.config.policy ?? "ask"',
+      'this.permissionState(agent.session).preset === AUTO_PRESET',
       'Auto review integration is unavailable; tool execution was blocked.',
     ]) if (!source.includes(marker)) throw new Error('partial permission Auto default patch detected: ' + marker)
     return source
@@ -56,19 +62,27 @@ export function patchPermissionPresetsAutoDefault(source) {
     'permission auto registration')
   out = replaceOnce(out,
     '\t\t\tif (preset === "auto") {\n\t\t\t\tif (this.autoAdmit === void 0) throw new Error("permission: cannot restore preset \\"auto\\" without its active integration");\n\t\t\t\tthis.autoAdmit();\n\t\t\t}',
-    '\t\t\tif (preset === "auto") this.autoAdmit?.();',
+    '\t\t\t// ' + AUTO_REVIEW_RESTORE_MARKER + ': restore durable Auto state before registration; the execution guard blocks it until review is live.\n\t\t\tif (preset === AUTO_PRESET) this.autoAdmit?.();',
     'permission auto restoration')
   out = replaceOnce(out,
     '\t\t\treturn this.presets[name] ?? (name === "auto" && this.autoAdmit !== void 0 ? AUTO_PRESET_SPEC : void 0);',
     '\t\t\treturn this.presets[name] ?? (name === AUTO_PRESET ? AUTO_PRESET_SPEC : void 0);',
     'permission Auto preset specification')
   out = replaceOnce(out,
+    '\t\t\tif (sandbox === null) setSandboxMode(session, this.ctx.shell.sandboxMode);\n\t\t\tif (approval === null) setApprovalPolicy(session, this.ctx.approval.config.policy ?? "ask");',
+    '\t\t\tconst restoreSpec = preset === AUTO_PRESET ? this.resolve(AUTO_PRESET) : void 0;\n\t\t\tif (sandbox === null) setSandboxMode(session, restoreSpec?.sandbox ?? this.ctx.shell.sandboxMode);\n\t\t\tif (approval === null) setApprovalPolicy(session, restoreSpec?.approval ?? this.ctx.approval.config.policy ?? "ask");',
+    'persisted Auto permission facts')
+  out = replaceOnce(out,
     '\t\t\tctx.on("session/created", (session) => {\n\t\t\t\tthis.pinInitialPermission(session);\n\t\t\t});',
-    '\t\t\tctx.on("session/created", (session) => {\n\t\t\t\tthis.pinInitialPermission(session);\n\t\t\t});\n\t\t\tctx.on("tools/pre-execute", (exec, next) => {\n\t\t\t\tconst agent = exec.agent;\n\t\t\t\tif (agent !== void 0 && this.current(agent.session) === AUTO_PRESET && this.autoAdmit === void 0) return { kind: "deny", reason: "Auto review integration is unavailable; tool execution was blocked." };\n\t\t\t\treturn next();\n\t\t\t}, { prepend: true });',
+    '\t\t\tctx.on("session/created", (session) => {\n\t\t\t\tthis.pinInitialPermission(session);\n\t\t\t});\n\t\t\tctx.on("tools/pre-execute", (exec, next) => {\n\t\t\t\tconst agent = exec.agent;\n\t\t\t\tif (agent !== void 0 && (this.permissionState(agent.session).preset === AUTO_PRESET || this.current(agent.session) === AUTO_PRESET) && this.autoAdmit === void 0) return { kind: "deny", reason: "Auto review integration is unavailable; tool execution was blocked." };\n\t\t\t\treturn next();\n\t\t\t}, { prepend: true });',
     'permission Auto fail-closed guard')
   if (!out.includes('for (const session of this.ctx.sessions.list()) this.pinInitialPermission(session);')
     || !out.includes('this.names.map((name) => this.optionOf(name))')
     || !out.includes('this.autoAdmit?.();')
+    || !out.includes(AUTO_REVIEW_RESTORE_MARKER)
+    || !out.includes('restoreSpec?.sandbox ?? this.ctx.shell.sandboxMode')
+    || !out.includes('restoreSpec?.approval ?? this.ctx.approval.config.policy ?? "ask"')
+    || !out.includes('this.permissionState(agent.session).preset === AUTO_PRESET')
     || !out.includes('Auto review integration is unavailable; tool execution was blocked.')) {
     throw new Error('permission Auto default patch verification failed')
   }

@@ -11,6 +11,7 @@ import {
   AUTO_REVIEW_HIGH_DENY_MARKER,
   AUTO_REVIEW_HIGH_GUARD_MARKER,
   AUTO_REVIEW_RUN_CODE_MARKER,
+  AUTO_REVIEW_RESTORE_MARKER,
   PERMISSION_AUTO_DEFAULT_MARKER,
   PERMISSION_AUTO_UI_MARKER,
   patchAutoReviewDefaultBehavior,
@@ -27,6 +28,64 @@ const patchedPermission = patchPermissionPresetsAutoDefault(permissionSource)
 const patchedAutoReview = patchAutoReviewDefaultBehavior(autoReviewSource)
 const patchedClient = patchPermissionPresetsClientAutoDefault(clientSource)
 
+async function loadPermissionRuntime(source) {
+  const dir = mkdtempSync(join(tmpdir(), 'permission-auto-restore-runtime-'))
+  const modulePath = join(dir, 'permission-runtime.mjs')
+  const prelude = `
+const schemaChain = new Proxy(function () {}, {
+  apply: () => schemaChain,
+  get: (_target, key) => key === 'then' ? undefined : schemaChain,
+});
+const schemaFactory = new Proxy({}, { get: () => (..._args) => schemaChain });
+const z = schemaFactory;
+const z$1 = schemaFactory;
+const CommandDefinitionId = value => value;
+const Remote = () => method => method;
+class TypertRemoteService { constructor(ctx) { this.ctx = ctx; } }
+const SANDBOX_MODES = ['read-only', 'workspace-write', 'danger-full-access'];
+const APPROVAL_POLICIES = ['ask', 'never'];
+const setSandboxMode = (session, mode) => session.append('sandbox/mode', { mode });
+const setApprovalPolicy = (session, policy) => session.append('approval/policy', { policy });
+`
+  const stripped = source.replace(/^import .*?;\r?\n/gm, '')
+  writeFileSync(modulePath, prelude + stripped)
+  try {
+    return { module: await import(pathToFileURL(modulePath).href), dir }
+  } catch (error) {
+    rmSync(dir, { recursive: true, force: true })
+    throw error
+  }
+}
+
+function permissionRuntimeHarness(sessions) {
+  const handlers = new Map()
+  const ctx = {
+    inject() {},
+    shell: { sandboxMode: 'workspace-write' },
+    approval: { config: { policy: 'ask' }, setPolicy() {} },
+    sessionProjections: {
+      register() {},
+      stateOf(session) { return session.state },
+    },
+    on(event, handler) { handlers.set(event, handler); return () => {} },
+    sessions: { list: () => sessions },
+    effect(operation) { return operation() },
+    events: { dispatch: () => [] },
+    logger: { warn() {} },
+  }
+  const makeSession = state => ({
+    state: { preset: null, sandbox: null, approval: null, seeded: false, ...state },
+    events: [],
+    append(type, data) {
+      this.events.push({ type, data })
+      if (type === 'permission/preset') this.state.preset = data.preset
+      if (type === 'sandbox/mode') this.state.sandbox = data.mode
+      if (type === 'approval/policy') this.state.approval = data.policy
+    },
+  })
+  return { ctx, handlers, makeSession }
+}
+
 test('profile makes Auto the new-session default and mounts the matching reviewer', () => {
   const permissionRow = profileSource.indexOf('- id: permission\n')
   const defaultRow = profileSource.indexOf('defaultPreset: auto', permissionRow)
@@ -37,12 +96,77 @@ test('profile makes Auto the new-session default and mounts the matching reviewe
   }
 })
 
+test('persisted Auto sessions restore before reviewer registration and stay fail-closed until it is live', async () => {
+  const { module, dir } = await loadPermissionRuntime(patchPermissionPresetsAutoDefault(permissionSource))
+  try {
+    const persisted = {
+      state: { preset: 'auto', sandbox: null, approval: null, seeded: true },
+      events: [],
+      append(type, data) {
+        this.events.push({ type, data })
+        if (type === 'permission/preset') this.state.preset = data.preset
+        if (type === 'sandbox/mode') this.state.sandbox = data.mode
+        if (type === 'approval/policy') this.state.approval = data.policy
+      },
+    }
+    const sessions = [persisted]
+    const { ctx, handlers, makeSession } = permissionRuntimeHarness(sessions)
+    const service = new module.PermissionPresetService(ctx, {
+      presets: {
+        'read-only': { sandbox: 'read-only', approval: 'ask', name: 'read-only' },
+        'workspace-write': { sandbox: 'workspace-write', approval: 'ask', name: 'workspace-write' },
+        'danger-full-access': { sandbox: 'danger-full-access', approval: 'never', name: 'danger-full-access' },
+      },
+      defaultPreset: { get: () => 'auto' },
+    })
+
+    assert.deepEqual(persisted.state, {
+      preset: 'auto', sandbox: 'danger-full-access', approval: 'ask', seeded: true,
+    })
+    assert.equal(service.current(persisted), 'auto', 'restoration preserves the identity observed by the reviewer')
+    assert.ok(persisted.events.some(event => event.type === 'sandbox/mode' && event.data.mode === 'danger-full-access'))
+    assert.ok(persisted.events.some(event => event.type === 'approval/policy' && event.data.policy === 'ask'))
+
+    const gate = handlers.get('tools/pre-execute')
+    let downstreamCalls = 0
+    const exec = { agent: { session: persisted } }
+    const denied = gate(exec, () => { downstreamCalls++; return { kind: 'allow' } })
+    assert.equal(denied.kind, 'deny')
+    assert.match(denied.reason, /integration is unavailable/)
+    assert.equal(downstreamCalls, 0)
+
+    const fresh = makeSession()
+    handlers.get('session/created')(fresh)
+    assert.equal(fresh.state.preset, 'auto')
+    assert.equal(fresh.state.sandbox, 'danger-full-access')
+    assert.equal(fresh.state.approval, 'ask')
+    sessions.push(fresh)
+
+    let admissions = 0
+    service.registerAuto(() => { admissions++ })
+    assert.equal(admissions, 2, 'the live reviewer admits each restored Auto session')
+    assert.equal(service.current(persisted), 'auto')
+    const allowed = gate(exec, () => { downstreamCalls++; return { kind: 'allow' } })
+    assert.equal(allowed.kind, 'allow')
+    assert.equal(downstreamCalls, 1)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
 test('AR1 patches current artifacts, parses, and remains idempotent', () => {
   assert.ok(patchedPermission.includes(PERMISSION_AUTO_DEFAULT_MARKER))
+  assert.ok(patchedPermission.includes(AUTO_REVIEW_RESTORE_MARKER))
   assert.ok(patchedPermission.includes('[...Object.keys(this.presets), AUTO_PRESET].map((name) => this.optionOf(name))'))
+  assert.ok(patchedPermission.includes('restoreSpec?.sandbox ?? this.ctx.shell.sandboxMode'))
+  assert.ok(patchedPermission.includes('restoreSpec?.approval ?? this.ctx.approval.config.policy ?? "ask"'))
   assert.ok(patchedPermission.includes('return this.presets[name] ?? (name === AUTO_PRESET ? AUTO_PRESET_SPEC : void 0);'))
   assert.ok(patchedPermission.includes('Auto review integration is unavailable; tool execution was blocked.'))
   assert.equal(patchPermissionPresetsAutoDefault(patchedPermission), patchedPermission)
+  assert.throws(
+    () => patchPermissionPresetsAutoDefault(patchedPermission.replace(AUTO_REVIEW_RESTORE_MARKER, 'removed restore marker')),
+    /partial permission Auto default patch detected/,
+  )
 
   for (const marker of [AUTO_REVIEW_RUN_CODE_MARKER, AUTO_REVIEW_FALLBACK_MARKER, AUTO_REVIEW_HIGH_DENY_MARKER, AUTO_REVIEW_HIGH_GUARD_MARKER]) {
     assert.ok(patchedAutoReview.includes(marker), marker)
