@@ -3437,3 +3437,7 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 611. **来源发布测试夹具仍使用 rc.3 路径，升级后的必需证据 glob 无法命中（2026-10-31）**
 
     现象：PR Gate 的「来源审计源码替换回归」报告 `missing evidence: scripts/patches/tests/fixtures/*-0.2.1-rc.5/**`，依赖草稿的正常输出测试在验证 APK 前就失败。真因：`prepare-source-release.py` 从当前 `build-apk-source.yml` 读取必需证据路径，但 `test_prepare_source_release.py` 的合成输入仍创建 rc.3 目录，版本夹具没有跟随升级合同。修法：将合成目录和 `test_inject_all.py` 中代表当前引擎的 runtime peer 样本同步到 rc.5。复验：两组 Python 回归各 6/6 通过；PR Gate 全量重跑待完成。
+
+612. **最终快照 profile 门禁把测试负控当成生产输入并忽略真实 YAML 缩进（2026-10-31）**
+
+    现象：带 `draft_release=true` 的 ARM64 构建在 `check-snapshot-profile-identity.py` 报所有 shell 路径缺少应用私有前缀，并称缺少 `headless-bad`；同一脚本的合成自检却通过。真因：真实权威 patch 将 bashPath/prefix/home/cwd 缩进在 `shell-termux.config` 下，自检只用列零键；生产快照由 `seed-dsh-profiles.mjs` 只创建 web/headless，headless-bad 是注入器明确跳过的测试负控，不应进入生产 APK。修法：验证器识别实际缩进的唯一键，只强制 web/headless；负控缺席可通过，若存在仍必须与权威 patch 不同。自检加入仓内真实 patch 正控、负控缺席正控及覆盖负控反例。复验：自检与 PR Gate 待完成；草稿 CI run `41172476782` 的 source build reference 在真实 snapshot 上证实旧判据会误拒，修复合入后必须重跑来源草稿 CI。
