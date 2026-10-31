@@ -8,7 +8,7 @@
 // 覆盖（都是本地可复现、且历史上真的判红过的面）：
 //   独立仓只验证固定输入和树内合同；不要求配置 upstream 或合并外部 main。
 //   2. 登记表补丁对仓库镜像自洽（apply-patches --check）
-//   3. 市场插件链：按 workflow 里钉的 URL+sha256 取发布产物 → 解包 → 打补丁 → 与镜像逐字节比对
+//   3. 市场插件链：按合同的 URL+sha256 取发布产物，核对 workflow 消费路径 → 解包 → 打补丁 → 与镜像逐字节比对
 //   4. 来源链单测（预设载体漂移守卫、overlay 钉还原、锁文件根声明、vendor 锁对齐）
 //   5. 静态门禁（执行地图）
 //
@@ -22,6 +22,7 @@ import { basename, join, resolve } from 'node:path'
 
 const ROOT = resolve(import.meta.dirname, '..', '..')
 const WORKFLOW = join(ROOT, '.github', 'workflows', 'build-apk-source.yml')
+const CONTRACT = join(ROOT, 'scripts', 'contract.json')
 const CACHE = join(ROOT, '.deploy-tmp', 'component-sources')
 const NO_NETWORK = process.argv.includes('--no-network')
 const sha256 = (value) => createHash('sha256').update(value).digest('hex')
@@ -31,13 +32,23 @@ let failures = 0
 const ok = (label, detail = '') => console.log(`  PASS  ${label}${detail ? `：${detail}` : ''}`)
 const fail = (label, detail = '') => { failures += 1; console.error(`  FAIL  ${label}${detail ? `：${detail}` : ''}`) }
 
-/** 从 workflow 里读真源（不在本脚本里重复钉版本/哈希：两处登记必漂移）。 */
-function workflowFacts(text = readFileSync(WORKFLOW, 'utf8')) {
-  const url = /https:\/\/registry\.npmjs\.org\/dshmarketplace-plugin\/-\/dshmarketplace-plugin-([\w.-]+)\.tgz/.exec(text)
-  const sha = /printf '%s  %s\\n' '([0-9a-f]{64})' "\$marketplace_tarball"/.exec(text)
-  const version = /require\('\.\/vendor\/dshmarketplace-plugin\/package\.json'\)\.version"\)" = "([\w.-]+)"/.exec(text)
-  if (!url || !sha || !version || !/^\d+\.\d+\.\d+(?:-[\w.-]+)?$/.test(version[1]) || url[1] !== version[1]) throw new Error('workflow 真源解析失败（URL / sha256 / 版本必须在场且一致）')
-  return { url: url[0], tarball: `dshmarketplace-plugin-${url[1]}.tgz`, expectedSha256: sha[1], expectedVersion: version[1] }
+/** 合同是发布包和摘要的真源；workflow 必须消费同一发布包。 */
+function workflowFacts(text = readFileSync(WORKFLOW, 'utf8'), contract = JSON.parse(readFileSync(CONTRACT, 'utf8'))) {
+  const deltas = (contract.runtimeCompat?.metadataDeltas ?? []).filter(delta => delta.pkg === 'dshmarketplace-plugin')
+  if (deltas.length !== 1) throw new Error('marketplace 合同必须恰有一项')
+  const delta = deltas[0]
+  const url = delta.publishedTarball
+  const version = delta.packageVersion
+  const sha = delta.publishedTarballSha256
+  if (!/^https:\/\/registry\.npmjs\.org\/dshmarketplace-plugin\/-\/dshmarketplace-plugin-([\w.-]+)\.tgz$/.test(url)
+    || !/^\d+\.\d+\.\d+(?:-[\w.-]+)?$/.test(version)
+    || !/^[0-9a-f]{64}$/.test(sha)
+    || !url.endsWith(`dshmarketplace-plugin-${version}.tgz`)
+    || !text.includes(`publishedTarball: '${url}'`)
+    || !text.includes(`const tarball = '.deploy-tmp/component-sources/dshmarketplace-plugin-${version}.tgz'`)) {
+    throw new Error('workflow 与 marketplace 合同的 URL / sha256 / 版本不一致')
+  }
+  return { url, tarball: `dshmarketplace-plugin-${version}.tgz`, expectedSha256: sha, expectedVersion: version }
 }
 
 function stepRegistryAgainstMirror() {
@@ -127,12 +138,19 @@ function stepStaticGates() {
 if (process.argv.includes('--self-test')) {
   const facts = workflowFacts()
   if (!facts.url.startsWith('https://registry.npmjs.org/')) throw new Error('unexpected marketplace source')
-  for (const field of [facts.url, facts.expectedSha256, facts.expectedVersion]) {
+  for (const field of [facts.url, `const tarball = '.deploy-tmp/component-sources/${facts.tarball}'`]) {
     let rejected = false
     try { workflowFacts(readFileSync(WORKFLOW, 'utf8').replaceAll(field, 'INVALID')) } catch { rejected = true }
     if (!rejected) throw new Error('invalid workflow input was accepted')
   }
-  console.log('PASS source preflight self-test: real workflow and three invalid-input controls; no upstream required')
+  for (const key of ['publishedTarball', 'publishedTarballSha256', 'packageVersion']) {
+    const contract = JSON.parse(readFileSync(CONTRACT, 'utf8'))
+    contract.runtimeCompat.metadataDeltas.find(delta => delta.pkg === 'dshmarketplace-plugin')[key] = 'INVALID'
+    let rejected = false
+    try { workflowFacts(readFileSync(WORKFLOW, 'utf8'), contract) } catch { rejected = true }
+    if (!rejected) throw new Error(`invalid marketplace ${key} was accepted`)
+  }
+  console.log('PASS source preflight self-test: real workflow and five invalid-input controls; no upstream required')
   process.exit(0)
 }
 console.log('来源链派发前预检（独立仓固定输入，不要求 upstream）')
