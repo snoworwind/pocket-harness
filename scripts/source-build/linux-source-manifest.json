@@ -73,11 +73,11 @@
     },
     "plugins/dsh-linux-bootstrap/package-lock.json": {
       "upstreamSha256": "0000000000000000000000000000000000000000000000000000000000000000",
-      "reason": "Synchronize the deterministic internal package lock to 0.6.2 and the Harness 0.2.1-rc.3 client-settings peer; no transitive package versions changed."
+      "reason": "Synchronize the deterministic internal package lock to 0.6.2 and the Harness 0.2.1-rc.5 client-settings peer; no transitive package versions changed."
     },
     "plugins/dsh-linux-bootstrap/package.json": {
       "upstreamSha256": "350dbe6b61e96c4723aec5414a1b7d33fd7ad249852f95908178ad4085dfd0db",
-      "reason": "Bump the internal bootstrap package identity to 0.6.2 and align its client-settings peer with Harness 0.2.1-rc.3."
+      "reason": "Bump the internal bootstrap package identity to 0.6.2 and align its client-settings peer with Harness 0.2.1-rc.5."
     },
     "plugins/dsh-linux-bootstrap/src/index.js": {
       "upstreamSha256": "27708c714ba0a102a89a72611443c144a107307686146acc49b9fa4b4c1ba4b2",

@@ -12,7 +12,7 @@ import { canonicalizePackedManifest } from './normalize-snapshot.mjs'
 
 const repo = resolve(process.argv[2] ?? '')
 const cache = resolve(process.argv[3] ?? '')
-const expectedCommit = '1f81c047fc48fa190a683e469daa699857e9afe8'
+const expectedCommit = 'b830ec950faba0a46dda564be3e2d854afed94f1'
 const overlayPath = resolve('scripts/snapshot-config/engine-overlay.json')
 if (!process.argv[2] || !process.argv[3]) {
   console.error('usage: node scripts/source-build/export-dsh-engine.mjs <dsh-source-root> <overlay-cache>')
@@ -25,9 +25,9 @@ if (commit !== expectedCommit) throw new Error(`unexpected DeepSeek Harness comm
 
 const overlay = JSON.parse(readFileSync(overlayPath, 'utf8'))
 const sourcePackage = JSON.parse(readFileSync(join(repo, 'package.json'), 'utf8'))
-if (sourcePackage.version !== '0.2.1-rc.3' || sourcePackage.packageManager !== 'pnpm@11.28.5'
-  || overlay.engineVersion !== '0.2.1-rc.3' || overlay.rootPackage?.version !== '0.2.1-rc.3') {
-  throw new Error('source export requires official 0.2.1-rc.3 source/overlay and pnpm 11.28.5')
+if (sourcePackage.version !== '0.2.1-rc.5' || sourcePackage.packageManager !== 'pnpm@11.28.5'
+  || overlay.engineVersion !== '0.2.1-rc.5' || overlay.rootPackage?.version !== '0.2.1-rc.5') {
+  throw new Error('source export requires official 0.2.1-rc.5 source/overlay and pnpm 11.28.5')
 }
 const lockfilePath = join(repo, 'pnpm-lock.yaml')
 if (!existsSync(lockfilePath)) throw new Error('pinned Harness source is missing pnpm-lock.yaml')

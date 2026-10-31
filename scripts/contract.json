@@ -1,14 +1,14 @@
 {
-  "baseline": "0.2.1-rc.3",
+  "baseline": "0.2.1-rc.5",
   "cordis": "4.0.5",
   "schemastery": "3.18.5",
   "upstreamRepo": ".deploy-tmp/deepseek-harness",
   "upstream": {
-    "$comment": "0.14.9 source-only target identity. Inventories are being read from official 1f81c047fc48fa190a683e469daa699857e9afe8; upstreamRepo and adaptationSourceRepo select the disposable pinned build checkout. The official rc.3 tag is pinned; npm rc.4 has no matching public source tag at this review point. No build, patch validation or runtime acceptance is implied.",
-    "tag": "dsh-v0.2.1-rc.3",
-    "describe": "dsh-v0.2.1-rc.3",
-    "commit": "1f81c047fc48fa190a683e469daa699857e9afe8",
-    "rootVersion": "0.2.1-rc.3",
+    "$comment": "Pocket Harness v0.14.10 development target: official DeepSeek Harness dsh-v0.2.1-rc.5, pinned to b830ec950faba0a46dda564be3e2d854afed94f1. The target advances cumulatively from rc.3 through rc.4 and rc.5; the source lockfile remains unchanged. Build and device acceptance are not implied.",
+    "tag": "dsh-v0.2.1-rc.5",
+    "describe": "dsh-v0.2.1-rc.5",
+    "commit": "b830ec950faba0a46dda564be3e2d854afed94f1",
+    "rootVersion": "0.2.1-rc.5",
     "adaptationSourceRepo": ".deploy-tmp/deepseek-harness"
   },
   "runtimeCompat": {
@@ -38,19 +38,19 @@
         "packageVersion": "0.1.7",
         "publishedTarball": "https://registry.npmjs.org/dshmarketplace-plugin/-/dshmarketplace-plugin-0.1.7.tgz",
         "publishedTarballSha256": "881c21ec33a4a91ad65c61676540faab4122440e3f9685f69939533a6dbbc0c1",
-        "targetSourceCommit": "1f81c047fc48fa190a683e469daa699857e9afe8",
+        "targetSourceCommit": "b830ec950faba0a46dda564be3e2d854afed94f1",
         "fields": [
           {
             "section": "peerDependencies",
             "name": "@deepseek-ai/dsh-native-command",
             "from": "^0.1.0-rc.6",
-            "to": "0.2.1-rc.3"
+            "to": "0.2.1-rc.5"
           },
           {
             "section": "peerDependencies",
             "name": "@deepseek-ai/dsh-tools",
             "from": "^0.1.0-rc.6",
-            "to": "0.2.1-rc.3"
+            "to": "0.2.1-rc.5"
           }
         ],
         "reason": "The published 0.1.7 caret peers reject the 0.2 prerelease. This explicitly recorded Android declaration delta prevents silent row disabling; no vendor runtime payload is changed and runtime compatibility is not claimed."
@@ -244,8 +244,8 @@
     "upstreamUniverse": {
       "$comment": "G-1 反向判据的登记集：上游**声明面**槽位全集（见 scanUpstreamSlots 的枚举范围），不是「上游一共有多少座位」的哲学断言——它只负责让「新长出来/被删掉」两类漂移判红。追版换树后必须重新 --capture-slots 并逐条判定新增项。",
       "scanScope": "packages/client/<pkg>/src/**（排除 tests/__tests__ 与 *.test.tsx）里的 `'slot': { kind: …; scope: … }`",
-      "capturedFrom": "dsh-v0.2.1-rc.3",
-      "capturedReason": "rc.3 adds three list/root More-menu slots. The included upstream entry-customization web-app row consumes all three for plugin browsing and creation; Pocket Harness local plugins do not register them.",
+      "capturedFrom": "dsh-v0.2.1-rc.5",
+      "capturedReason": "rc.5 重新枚举保持 93 项 key 且 kind/scope 无变化；reasoning body props 增加 rawText 并明确 text 为展示文本，本地无消费者",
       "total": 93,
       "entries": [
         {
@@ -843,8 +843,8 @@
   },
   "upstreamRows": {
     "$comment": "G-4 判据的登记集：上游 base + web-app 两个 bundle 的全部行 id（含我们未挂载的）。新增行必须逐条判「挂载 / 明确不挂」后重新登记——0.14.2 追版时 `mcp-resources` 这类新行走的就是这里。",
-    "capturedFrom": "dsh-v0.2.1-rc.3",
-    "capturedReason": "rc.3 adds entry-customization to web-app. Keep the official row enabled on Android and add its source package to the overlay for the left sidebar, Conversation Views, and right-sidebar guide More menus.",
+    "capturedFrom": "dsh-v0.2.1-rc.5",
+    "capturedReason": "rc.5 重新核对保持 187 个 web-app rows；rc.4/rc.5 无 Cordis row 增删",
     "total": 187,
     "entries": [
       {
