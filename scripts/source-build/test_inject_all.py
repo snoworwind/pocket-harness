@@ -91,7 +91,7 @@ class InjectAllPackageIdentityTest(unittest.TestCase):
                 'name': '@dsh-android/dsh-android-linux-env',
                 'dependencies': {
                     '@dsh-android/dsh-android-bridge': 'file:../dsh-android-bridge',
-                    '@deepseek-ai/dsh-tools': '0.2.1-rc.3',
+                    '@deepseek-ai/dsh-tools': '0.2.1-rc.5',
                     'runtime-a': '1.0.0',
                 },
             }), encoding='utf-8')

@@ -8,8 +8,8 @@ mkdir -p .deploy-tmp
 if [ ! -d .deploy-tmp/deepseek-harness/.git ]; then
   git clone --filter=blob:none --no-checkout --depth=1 https://github.com/deepseek-ai/deepseek-harness.git .deploy-tmp/deepseek-harness
 fi
-git -C .deploy-tmp/deepseek-harness fetch --depth=1 origin 1f81c047fc48fa190a683e469daa699857e9afe8
-git -C .deploy-tmp/deepseek-harness fetch --depth=1 origin refs/tags/dsh-v0.2.1-rc.3:refs/tags/dsh-v0.2.1-rc.3
+git -C .deploy-tmp/deepseek-harness fetch --depth=1 origin b830ec950faba0a46dda564be3e2d854afed94f1
+git -C .deploy-tmp/deepseek-harness fetch --depth=1 origin refs/tags/dsh-v0.2.1-rc.5:refs/tags/dsh-v0.2.1-rc.5
 # A previous interrupted build may have modified tracked inputs before this checkout.
 # Reset only this dedicated source checkout; preserve ignored dependency caches.
 test "$(realpath .deploy-tmp/deepseek-harness)" = "$(realpath .)/.deploy-tmp/deepseek-harness"
@@ -19,11 +19,11 @@ if [ -n "$(git -C .deploy-tmp/deepseek-harness ls-files)" ]; then
   git -C .deploy-tmp/deepseek-harness checkout -- .
   git -C .deploy-tmp/deepseek-harness clean -fdq
 fi
-git -C .deploy-tmp/deepseek-harness checkout --detach 1f81c047fc48fa190a683e469daa699857e9afe8
-test "$(git -C .deploy-tmp/deepseek-harness rev-parse HEAD)" = "1f81c047fc48fa190a683e469daa699857e9afe8"
-test "$(git -C .deploy-tmp/deepseek-harness describe --tags --always)" = "dsh-v0.2.1-rc.3"
-node -e 'const c=require("./scripts/contract.json"); if(c.upstreamRepo!==".deploy-tmp/deepseek-harness" || c.baseline!=="0.2.1-rc.3" || c.upstream.commit!=="1f81c047fc48fa190a683e469daa699857e9afe8") throw Error("source workflow identity does not match contract")'
-node -e 'const p=require("./.deploy-tmp/deepseek-harness/package.json"); if(p.version!=="0.2.1-rc.3" || p.packageManager!=="pnpm@11.28.5" || p.engines.node!=="^22.19.0 || >=24.0.0") throw Error("official Harness runtime policy changed")'
+git -C .deploy-tmp/deepseek-harness checkout --detach b830ec950faba0a46dda564be3e2d854afed94f1
+test "$(git -C .deploy-tmp/deepseek-harness rev-parse HEAD)" = "b830ec950faba0a46dda564be3e2d854afed94f1"
+test "$(git -C .deploy-tmp/deepseek-harness describe --tags --always)" = "dsh-v0.2.1-rc.5"
+node -e 'const c=require("./scripts/contract.json"); if(c.upstreamRepo!==".deploy-tmp/deepseek-harness" || c.baseline!=="0.2.1-rc.5" || c.upstream.commit!=="b830ec950faba0a46dda564be3e2d854afed94f1") throw Error("source workflow identity does not match contract")'
+node -e 'const p=require("./.deploy-tmp/deepseek-harness/package.json"); if(p.version!=="0.2.1-rc.5" || p.packageManager!=="pnpm@11.28.5" || p.engines.node!=="^22.19.0 || >=24.0.0") throw Error("official Harness runtime policy changed")'
 
 
 set -euo pipefail
