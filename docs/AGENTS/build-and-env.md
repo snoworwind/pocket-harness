@@ -280,6 +280,8 @@ gh workflow run build-apk-source.yml --repo snoworwind/pocket-harness --ref main
 
 成功后从该次 Actions 的 Artifacts 下载 `pocket-harness-arm64-source-<commit>`，内含 APK、SHA-256 和列举的来源证明文件；上传显式包含隐藏目录内的证据，且不上传整个临时目录。签名 Termux 包闭包在内部 job 间以 tar 文件传递，避免合法 Debian epoch 文件名中的冒号触发 Actions Artifact 路径限制。当前仅 ARM64、版本后缀固定 `-source`，不支持 x86_64 或双 ABI，草稿发布见 [RELEASE.md §5](../RELEASE.md)。云端任务上限 180 分钟，沿用来源链全部测试与产物门禁。入口回归为 `node --test scripts/source-build/cloud-workflow.test.mjs`，含旧链与条件分流的受控负控。该 L1 入口改动未做设备验证，云端成功也不等于设备验收通过。
 
+已公开 Release 的资产/说明纠正不重跑 APK 来源构建。v0.14.10 专用 `finalize-v01410-release.yml` 在发布说明文件合入 main 后，先验证目标 tag、稳定发布状态、资产名及 APK/来源证明 API 摘要，再由隔离写权限 job 更新说明与 SHA-256 清单，并核验正文、资产摘要和 Latest tag。其自检和受控负控为 `python3 -m unittest discover -s scripts/source-build -p 'test_finalize_published_release.py' -v`、`finalize-published-release.py --self-test` / `--self-test-negative` 与 `node --test scripts/source-build/finalize-published-release.test.mjs`；流程细节见 [RELEASE.md §5](../RELEASE.md)。
+
 来源链预检的 provenance 夹具必须隔离 CI 仓库环境，复验时带 `GITHUB_REPOSITORY` 与 `GITHUB_SERVER_URL` 跑工作流同一组 Node 测试；否则本地通过不足以覆盖云端身份优先级。根因及修复见 gotchas.md 坑 347。
 
 **2026-10-17 云端核验快照**：Actions 已由用户重新启用。`81dc50c` 的 [源码构建 38935633493](https://github.com/snoworwind/dsh-mobile-apk/actions/runs/38935633493) 已通过原失败的输入预检、签名工具预检与固定来源检出，记录时正在编译 Harness；尚未取得最终 APK/上传成功结论。后续状态以该运行页面为准。旧禁用与夹具故障分别见坑 346、347。
