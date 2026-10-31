@@ -3429,3 +3429,7 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 609. **自动共享诊断副本只复用令牌脱敏，未覆盖其余凭据形态（2026-10-29）**
 
     现象：诊断包与日志镜像的脱敏口径不同；自动镜像的 `engine.log`、`info.txt` 和 `logcat-recent.txt` 仅过 `EngineAuth.redact`，没有覆盖 PEM、授权头、Cookie、厂商密钥、敏感键值、环境变量和 URL 查询参数。真因：较早的 token 脱敏被误当成完整共享诊断出口的充分保护。修法：三类自动诊断文本和有界日志镜像统一调用 `LogSanitizer.sanitizeOrNull`，失败时丢弃对应输出。复验：新增镜像回归验证 API key、password 和 Authorization 值均不出现在共享副本；由 PR Gate 执行 JVM 测试。未做设备验证（按用户指示暂缓）。
+
+610. **rc.5 bootstrap 依赖元数据更新后 Linux 来源摘要仍锁在旧字节（2026-10-31）**
+
+    现象：`build-linux-assets` 的 `Verify reviewed inputs and native payload shape` 在 `plugins/dsh-linux-bootstrap/package-lock.json` 摘要校验处失败，尚未进入资产构建。真因：为同步 0.2.1-rc.5 peer 更新了 bootstrap `package.json` 和锁文件，但 `linux-source-manifest.json` 的两处清单（`additionalSources[].files` 与顶层 `files`）仍保留旧摘要。修法：从提交原始字节重算并同时更新两个文件的 SHA-256，不能只改其中一处。复验：WSL 从 `git archive` 建立干净 LF 源树，运行 `node scripts/source-build/check-linux-sources.mjs --self-test`，4/4 反证测试通过且 30 个受审文件摘要通过；云端 PR 工作流重新验收待完成。挂载 Windows 工作树的 WSL 直接运行会被宿主 Git 行尾转换影响，例如未设 `-text` 的 `vendor/linux-proot/SOURCE.json`，本地证明应从原始 Git blob 建树。
