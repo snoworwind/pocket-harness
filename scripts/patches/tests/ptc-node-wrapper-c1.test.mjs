@@ -35,7 +35,7 @@ const WRAPPER_REL = 'libexec/dsh-node'
 const PREFIX = '/data/data/com.snoworwind.pocketharness/files/usr'
 
 const build = readFileSync(BUILD, 'utf8')
-const profile = readFileSync(PROFILE, 'utf8')
+const profile = readFileSync(PROFILE, 'utf8').replace(/\r\n/g, '\n')
 
 /** 取 YAML 顶层 "- id: <id>" 条目正文（到下一个顶层条目前）。 */
 function yamlEntry(text, id) {
