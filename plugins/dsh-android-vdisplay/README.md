@@ -20,4 +20,4 @@ Pixels stay on the native side: a `SurfaceView` supplies the output surface to t
 
 This plugin is mounted by the local source profile. Check `scripts/profile-web.cordis.patch.yml` and `package.json` for source-chain integration; generated `lib/` files are build outputs and are not source authority.
 
-The 0.14.10 candidate has not completed CDP, ADB user-operation, landscape, or ARM64 device acceptance. In particular, real viewer lifecycle, display launch, and input behavior remain part of device verification. See [`release/v0.14.10/notes.md`](../../release/v0.14.10/notes.md), [`docs/AGENTS/known-gaps.md`](../../docs/AGENTS/known-gaps.md), and [`docs/AGENTS/emulator-test-protocol.md`](../../docs/AGENTS/emulator-test-protocol.md).
+The released 0.14.10 has not completed CDP, ADB user-operation, landscape, or ARM64 device acceptance. In particular, real viewer lifecycle, display launch, and input behavior remain part of device verification. See [`release/v0.14.10/notes.md`](../../release/v0.14.10/notes.md), [`docs/AGENTS/known-gaps.md`](../../docs/AGENTS/known-gaps.md), and [`docs/AGENTS/emulator-test-protocol.md`](../../docs/AGENTS/emulator-test-protocol.md).

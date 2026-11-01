@@ -1,6 +1,6 @@
 # Linux 环境修复计划（可对照执行）
 
-> **历史计划，勿逐条照搬执行。2026-10-20 当前方案见 [RECOVERY-PROPOSAL-2026-10-20.md](RECOVERY-PROPOSAL-2026-10-20.md)。** 当前源码已有外置 loader 接口；noexec 唯一归因、PRoot 排除理由及本文旧 CI 阻塞状态不能直接套用到当前 HEAD。本文保留原工作包与自审历史，路线和实施顺序以新方案为准。
+> **历史计划，勿逐条照搬执行。** 2026-10-20 的 [恢复提案](RECOVERY-PROPOSAL-2026-10-20.md)也已被 [PRoot 迁移记录](PROOT-MIGRATION-2026-10-22.md)取代；当前状态与验收边界见[索引](README.md)。noexec 唯一归因、PRoot 排除理由及本文旧 CI 阻塞状态不能直接套用到当前 HEAD。本文保留原工作包与自审历史。
 
 > 依据：[INVESTIGATION-2026-10-19-pocketharness.md](<INVESTIGATION-2026-10-19-pocketharness.md>) 与原报告 [ORIGINAL-REPORT-2026-10-19.md](<ORIGINAL-REPORT-2026-10-19.md>)。
 > 性质：**执行计划**，本轮不写代码。每个工作包都可独立开 PR、独立回滚。

@@ -1,6 +1,6 @@
 # Engine base 复用：实现与历史验证记录（2026-10-19）
 
-本文件记录 `build-base.yml` / `engine-base.mjs` 这套 engine base 复用机制在 PR #51（head `7ca0cae`）上的实现边界、PR #51 合并后的首次云端双构建结果，以及 `base-lock.json` 的阶段收口证据。文中的“当前状态”“未决问题”和复验顺序只描述 2026-10-19/20 的检查点；后续 PR #62、#63、#64 已合入 main，这些旧待办不再代表当前阻塞。当前版本发布与设备验收范围见 [版本历史](changelog-archive.md) 和[最新版本说明](../../release/v0.14.9/notes.md)。
+本文件记录 `build-base.yml` / `engine-base.mjs` 这套 engine base 复用机制在 PR #51（head `7ca0cae`）上的实现边界、PR #51 合并后的首次云端双构建结果，以及 `base-lock.json` 的阶段收口证据。文中的“当前状态”“未决问题”和复验顺序只描述 2026-10-19/20 的检查点；后续 PR #62、#63、#64 已合入 main，这些旧待办不再代表当前阻塞。发布与设备验收范围见 [版本历史](changelog-archive.md) 和 [v0.14.10 发布说明](../../release/v0.14.10/notes.md)。
 
 阶段证据：PR #51 与顺序确定性修复 PR #61 已合并。main commit `7fe0597` 的 run 39357008785 中 resolve、两个独立 build、完整 tree compare 与 cache 保存全部成功；候选 key 为 `engine-v1-941e395d…7a28`。真实候选已在临时 main clone 的 Linux gate 容器中通过 `materialize`，且 materialized runtime dependency 检查通过。该轮记录中的 lock PR 待合入状态后来由 PR #62 及后续修复取代。本文件不代表当前设备验收或发布批准。
 

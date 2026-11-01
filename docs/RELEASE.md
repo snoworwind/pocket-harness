@@ -21,7 +21,7 @@
 | 主版本 | 以 app/build.gradle.kts 的 versionName / versionCode 为准 |
 | release tag | 来源草稿使用独立 hardening-source 标签，见 §5 |
 | 插件版本 | 以各 package.json 为准，独立演进（tgz 文件名带插件版本） |
-| 归档 | 已发布版本移入 release/archive/ |
+| 发布说明 | 保留在 `release/v<版本>/notes.md`；正式资产与来源证明以对应 GitHub Release 为准 |
 
 ## 3. 历史 release/ 目录规范（已退役）
 

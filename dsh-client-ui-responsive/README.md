@@ -40,9 +40,11 @@ Wide windows retain native horizontal tabs and the parallel main/secondary layou
 
 Reordering requires the mobile patch `sidebar-bubble-reorder-B1`, which adds `sidebarRight.reorderIn(session, tab, before)` over the existing placement/focus actions. It retains the active tab and rejects stale Sessions, floating pages and cross-pane targets. Ship the engine adapter and plugin together; runtime hot-push must update both.
 
-Tests: [bubble interaction](tests/sidebar-bubbles.spec.ts), [native browser presentation](tests/native-browser-presentation.spec.ts). The APK mirror supplies the device driver `scripts/verify-sidebar-bubbles.mjs`.
+Tests: [bubble interaction](tests/sidebar-bubbles.spec.ts), [native browser presentation](tests/native-browser-presentation.spec.ts). This repository supplies the device driver `scripts/verify-sidebar-bubbles.mjs`.
 
 ## Install and mount
+
+The following is a standalone profile example. Pocket Harness configures the mount in `scripts/profile-web.cordis.patch.yml` through its source build; manual edits to a packaged profile do not replace that build.
 
 **1. Package** into the web profile's `node_modules` (see dsh-shell-termux for the pattern).
 

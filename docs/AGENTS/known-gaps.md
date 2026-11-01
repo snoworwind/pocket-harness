@@ -1,6 +1,6 @@
 # known-gaps.md — 当前缺口与验收入口
 
-> 本分支宗旨及当前验证边界见 [SECURITY-HARDENING.md](SECURITY-HARDENING.md)。源码有改动不等于新包已验收；来源构建状态以 [变更记录](changelog-archive.md) 最新条目为准。下方带日期的状态只描述对应审查时点；正式发布版本仍为 0.14.9，当前 0.14.10 是未验收开发候选，见[候选说明](../../release/v0.14.10/notes.md)。
+> 本分支宗旨及当前验证边界见 [SECURITY-HARDENING.md](SECURITY-HARDENING.md)。源码有改动不等于新包已验收；来源构建状态以 [变更记录](changelog-archive.md) 最新条目为准。下方带日期的状态只描述对应审查时点；0.14.10 已正式发布，但设备验收尚未完成，见[发布说明](../../release/v0.14.10/notes.md)。
 
 ## 当前入口
 
@@ -86,7 +86,7 @@
 | 许可证 | Shizuku api/provider/aidl/shared 13.1.5 官方 POM 均为 MIT；已补固定许可文本、矩阵、notices 生成及版本/文本反例 | 最终 APK assets/licenses 内含 MIT 全文与 SDK notices；当前源码门禁通过不等于实包已确认 |
 | MiMo 与配置保留 | 旧基线真实 wire on/off 成功；虚拟屏目标达成但旧任务 13 次工具调用超出事先 10 次限制，整例未通过 | 新正式包自主任务预先约定可行预算并按真实事件计数；保留既有配置/会话/凭据 |
 | UI / 范围 / 通知 / 浏览器 / 虚拟屏 | 0.14.10 候选尚未完成 CDP 与 ADB 用户实际体验层验收 | 在 Google 官方 Android 16（API 36）`default/arm64-v8a` AVD 上按真实任务完成三层验证；范围、Shizuku、虚拟屏改动先跑 `verify-screen-scope-matrix.mjs` |
-| ARM64 真机 | 当前 V2425A 设备暂不可用；0.14.10 候选尚未安装到 ARM64 真机 | 如实保持未验收；设备恢复后补充竖屏、横屏和 tap 级截图证据。不能用 MuMu/x86_64 代替 |
+| ARM64 真机 | 当前 V2425A 设备暂不可用；0.14.10 尚未在 ARM64 真机验收 | 如实保持未验收；设备恢复后补充竖屏、横屏和 tap 级截图证据。不能用 MuMu/x86_64 代替 |
 | `check-code-map.mjs` 锚点语义覆盖仍有限 | 已修复「只验行号存在」问题：旧锚点由 `scripts/check-code-map-anchor-baseline.json` 固定源码行内容与引用次数；新增或移动坐标须带 `#expect=<URI 编码片段>`。剩余限制：部分旧坐标仍依赖行快照而非符号解析；刷新基线仍须人工审阅 diff。 | 2026-10-29 实现并验证；详见 [UPSTREAM-ABSORPTION-2026-10-29.md](UPSTREAM-ABSORPTION-2026-10-29.md)。
 
 ## 0.14.7 已知限制（本轮如实登记，非缺陷隐瞒）
@@ -111,7 +111,7 @@
 
 `kelai141/dsh-bionilux` 的内部 bootstrap 需被启用后提供 `linuxBootstrap` 服务、调用 `linuxPluginHost`（含 `isInjected` 在场查询）后再激活；构造/下载/解包由 bootstrap 拥有，运行时 manager 装配由宿主从激活作用域读出并交回（`install` 返回 `{manager, rollback?}`）。runtime 插件源码位于 `vendor/dsh-linux-runtime/`，APK 来源链从本仓源码构建插件 bundle 并嵌入离线资产，不依赖外部 Release 下载。**未覆盖**：离线生产 bundle 尚未在 Android 设备上实际安装/激活，`linuxPluginHost.install` 与 manager 交接仍只有源码/受控 Cordis 回归证据。
 
-端到端设备验收仍未完成：尚未在 Android 上完整验收离线 manifest/资产读取、PRoot 安装、更新、重装、卸载及工具执行。2026-10-19 的 ROM 证据针对 Bionilux 旧路线，不能直接推断 PRoot 当前能否启动；PRoot 的 app 域 ptrace/nativeLibraryDir、guest `/proc` 缺失影响、DNS、guest ELF、多级子进程、apt/dpkg 和 hard-link fallback 都须在 ARM64 设备上验证。当前发布 APK 为 0.14.9，含 runtime/bootstrap 0.6.2；内部插件不默认激活，APK 更新不得自行启用；完整安全边界见 [PRoot 迁移记录](../linux-env-findings/PROOT-MIGRATION-2026-10-22.md)。
+端到端设备验收仍未完成：尚未在 Android 上完整验收离线 manifest/资产读取、PRoot 安装、更新、重装、卸载及工具执行。2026-10-19 的 ROM 证据针对 Bionilux 旧路线，不能直接推断 PRoot 当前能否启动；PRoot 的 app 域 ptrace/nativeLibraryDir、guest `/proc` 缺失影响、DNS、guest ELF、多级子进程、apt/dpkg 和 hard-link fallback 都须在 ARM64 设备上验证。0.14.9 发布 APK 已包含 runtime/bootstrap 0.6.2；内部插件不默认激活，APK 更新不得自行启用；完整安全边界见 [PRoot 迁移记录](../linux-env-findings/PROOT-MIGRATION-2026-10-22.md)。
 
 **2026-10-20 真机证据与首个修复**：Huawei Mate 80 Pro Max（SGT-AL10，Android 16 / API 36，arm64-v8a）上的修复前 APK `862e17cffc7bb4a5395ae960eec3f364c953ce73f476ac754f69bcd2166cadbf` 在 `linux-bootstrap` 的 Cordis `apply()` 阶段因读取未声明的 `ctx.filesDir` 失败；配置已提供 `linuxBootstrapConfig.dataDir`，但 JS 在访问后续 `DSH_FILES_DIR` 回退前就抛错，导致服务未注册、状态路由 503、运行时未安装。PR #77 已移除此属性读取并新增真实 Cordis 激活回归用例；合入 main 的来源双构建和签名校验通过，生成草稿 APK `hardening-source-f37eaafe887c-39424480383-1`，SHA-256 `a2d1d85735b98a7168c0c5ea406a542518e5b9c1b82802a6ed0b2860d39d63dd`，尚未设备复验。此结果没有测试 Bionilux、loader、guest ELF 映射、noexec 或 SELinux；这些仍按 [Linux 恢复方案](../linux-env-findings/RECOVERY-PROPOSAL-2026-10-20.md) 保持未验收。
 

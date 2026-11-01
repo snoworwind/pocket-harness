@@ -18,6 +18,8 @@ it does not mean workspace confinement.
 
 ## Quick start
 
+This example describes a standalone Termux installation. Pocket Harness bundles its own snapshot and configures its app-private paths through the source build; it does not require the separate Termux app.
+
 **Prerequisite**: a Termux installation with `bash` (`pkg install bash`).
 
 **1. Install** — put the package into the profile's node_modules (healed fallback resolves its

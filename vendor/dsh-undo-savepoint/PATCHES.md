@@ -2,7 +2,7 @@
 
 > 上游：[lire1131/dsh-undo-savepoint](https://github.com/lire1131/dsh-undo-savepoint) `0.4.9`
 > 移动端差异包括 `lib/client.js` 的移动端裁剪、`lib/core.mjs` 的 safe 语义对齐，以及 `lib/index.js` 的 U1 路由鉴权补丁（由 `scripts/patches/apply-patches.mjs` 管理，见本文档差异表）。
-> 本副本是快照注入链的固定来源（`scripts/build-apk-013.ps1` 注入源 = `vendor/dsh-undo-savepoint`），
+> 本副本是来源快照构建的固定输入（`vendor/dsh-undo-savepoint`）；旧 `scripts/build-apk-013.ps1` 链不用于本仓 APK，
 > 构建前由统一补丁 runner 与 #222 路由门禁共同校验，非目标版本或缺少安全补丁拒绝打包。
 
 ## 追版历史

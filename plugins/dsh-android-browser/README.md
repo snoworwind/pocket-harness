@@ -25,4 +25,4 @@ The package is mounted by the local source profile. Do not infer whether it is i
 
 Desktop identity emulation can be detected by sites when User-Agent Client Hints or other platform signals are unavailable. Compatibility mode shares cookies by design. Cross-origin iframe control depends on the WebView's debugging/attachment support. These are capability limits, not proof of device acceptance.
 
-The 0.14.10 candidate has not completed CDP, ADB user-operation, landscape, or ARM64 device acceptance. See [`release/v0.14.10/notes.md`](../../release/v0.14.10/notes.md) for the candidate boundary and [`docs/AGENTS/known-gaps.md`](../../docs/AGENTS/known-gaps.md) for open device work.
+The released 0.14.10 has not completed CDP, ADB user-operation, landscape, or ARM64 device acceptance. See [`release/v0.14.10/notes.md`](../../release/v0.14.10/notes.md) for the release boundary and [`docs/AGENTS/known-gaps.md`](../../docs/AGENTS/known-gaps.md) for open device work.
