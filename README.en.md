@@ -24,7 +24,7 @@ adb install -r -t <apk>
 
 Match the APK ABI to your device; x86_64 emulators are not supported. On first launch or after an in-place upgrade, the runtime snapshot takes several minutes to extract. Wait for it to finish and do not force-stop the app during extraction. Virtual displays and privileged shell features require Shizuku to be installed and authorized.
 
-Third-party marketplace plugins have not all been adapted for phones and may be unusable or buggy. Do not rely on them as production dependencies. The current release passed its smoke test, but full three-layer device acceptance is incomplete; see the release notes for details.
+Third-party marketplace plugins have not all been adapted for phones and may be unusable or buggy. Do not rely on them as production dependencies.
 
 ## Build
 
