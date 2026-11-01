@@ -6,7 +6,7 @@
 
 本仓开发分支将官方源码目标从 `0.2.1-rc.2` 提升到 [`dsh-v0.2.1-rc.3`](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.1-rc.3)，固定提交 `1f81c047fc48fa190a683e469daa699857e9afe8`。合同、来源构建检查、部署版本门、插件 peer/锁文件及 WebView 槽位/组件清单已同步；新增三个 More 菜单槽位由官方 `entry-customization` Web 插件消费。
 
-**当前正式发布**：Pocket Harness 0.14.9 已由 main 的官方 rc.3 源码构建产出 ARM64 APK 并发布；来源 run、资产摘要与 AVD 烟测见 [0.2.1-rc.3 升级记录](ENGINE-UPGRADE-2026-10-27.md)。完整设备三层验收仍未完成：未跑模型多步任务、横屏或 ARM64 真机，WebView 套件为 38/39，唯一失败的 Settings 选择器已由人工 ADB/CDP 核实对应控制页正常。该发布限制不代表完整验收通过。
+**正式发布状态**：Pocket Harness 0.14.10 已由 main 的官方 rc.5 源码构建产出 ARM64 APK 并发布，设备三层验收尚未完成；证据和限制见 [0.14.10 发布说明](../../release/v0.14.10/notes.md)。此前 0.14.9 的来源 run 与 AVD 烟测见 [0.2.1-rc.3 升级记录](ENGINE-UPGRADE-2026-10-27.md)，不能代替新版本的设备验收。
 
 ## 检查规则
 
@@ -132,7 +132,7 @@
 
 ### 已有实现与无需重复吸收项
 
-- 本仓当前正式发布采用 DSH `0.2.1-rc.3`；此前的堆上限自然值修复、刷新窗口启动续跑、Shizuku 兼容与重建、导航栏透明、主题、剪贴板回退、宽表格/终端卡片、管理中心、会话侧栏拖入和窄屏气泡导航持续保留。版本证据见 [changelog-archive.md](changelog-archive.md)、[ENGINE-UPGRADE-2026-10-27.md](ENGINE-UPGRADE-2026-10-27.md) 与本账本前表；完整设备验收缺口按当前正式发布记录。
+- 本仓 v0.14.10 正式发布采用 DSH `0.2.1-rc.5`；此前的堆上限自然值修复、刷新窗口启动续跑、Shizuku 兼容与重建、导航栏透明、主题、剪贴板回退、宽表格/终端卡片、管理中心、会话侧栏拖入和窄屏气泡导航持续保留。版本证据见 [changelog-archive.md](changelog-archive.md)、[ENGINE-UPGRADE-2026-10-31.md](ENGINE-UPGRADE-2026-10-31.md) 与本账本前表；设备验收缺口见[发布说明](../../release/v0.14.10/notes.md)。
 - XZ 快照尾部校验和损坏反证已经纳入本仓门禁；只研究可证明的耗时优化，不重复移植判据。
 - 模型能力插件的整体退役不吸收：上游当前有效插件清单不含该插件，本仓仍有独立目录、来源与探测链；删除必须有本地产品决定和迁移方案，不能为了源码对齐而做。
 - 启动即时反馈已在本仓 EngineStartFlow 实现，无需重复吸收；虚拟屏比例也已实现，#403 只剩原生 SurfaceView 与 HTML 弹层协调。

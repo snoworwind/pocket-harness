@@ -12,6 +12,8 @@
 
 ## 快速开始
 
+以下示例适用于独立 Termux 安装。Pocket Harness 内嵌快照并由来源构建配置应用私有路径，无需另装 Termux 应用。
+
 **前置**：Termux 已安装且包含 `bash`（`pkg install bash`）。
 
 **1. 安装**（放入 profile 的 node_modules，healed fallback 会解析其依赖到运行中的 dsh 实例）：

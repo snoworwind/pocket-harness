@@ -18,6 +18,8 @@
 
 ## 快速开始
 
+以下为独立 profile 示例。Pocket Harness 通过来源构建中的 `scripts/profile-web.cordis.patch.yml` 挂载本插件。
+
 **1. 安装**（放入 profile 的 node_modules）。
 
 **2. 挂载**（profile 的 `cordis.patch.yml`）：
@@ -108,6 +110,8 @@
 - **垫片要按真实现的结构补**：全局 `Iterator` 必须是构造器且 `.prototype === %IteratorPrototype%`（pdfjs 等打包代码会用 `Iterator.prototype.x` 直接打补丁），迭代器包装器必须继承同一原型，否则链式助手断链（见坑 61）。
 
 ## 测试
+
+在 `dsh-host-web-compat` 目录安装依赖后执行；`npm test` 可运行完整的包级套件：
 
 ```sh
 node scripts/smoke-injections.mjs   # 装配 + 逐段解析 + 页面标记断言（无需安装依赖）

@@ -1,7 +1,7 @@
 
 # EXECUTION-MAP.md — 执行地图（查点表 / 运行顺序 / 耦合 / 流程图）
 
-K11 离线 Linux 资产：`build-linux-assets.yml` → `check-linux-sources.mjs`（完整源码集合与摘要）→ `build-linux-assets.sh`（受限目录、固定输入、ARM64 编译与 QEMU 正控）→ `package-linux-assets.py`（插件/Node 归档及本地清单）→ 私有 Actions artifact。该资产链无 APK/Release 写权限；导入源码目前不在 profile 注入集，运行时接线须另行携带设备风险档证据。
+K11 离线 Linux 资产：`build-linux-assets.yml` → `check-linux-sources.mjs`（完整源码集合与摘要）→ `build-linux-assets.sh`（受限目录、固定输入、ARM64 编译与 QEMU 正控）→ `package-linux-assets.py`（插件/Node 归档及本地清单）→ 私有 Actions artifact。该资产链无 APK/Release 写权限；来源构建与运行时接线及尚缺的设备证据见 [known-gaps.md](known-gaps.md)。
 
 独立检出补充（K11 构建链）：本地编排器先从原仓冻结 `DSH_SOURCE_REPOSITORY`，所有隔离阶段使用相同身份，无须为隔离目录添加远端。`scripts/source-build/local-source-workspace.test.mjs` 覆盖遗漏身份的失败与显式冻结的成功；`scripts/maintenance-inputs.mjs` 在旧 push base 不可达时扫描当前树，`scripts/tests/maintenance-inputs.test.mjs` 覆盖缺失/有效 base 和无关变更。
 
@@ -13,7 +13,7 @@ K11 离线 Linux 资产：`build-linux-assets.yml` → `check-linux-sources.mjs`
 > 2. 手里是**文件或函数** → 查 §2 主表的「关键文件」列，或 §6 分块详解里的小节；
 > 3. 想**先通读一遍** → §1 全局运行顺序（阶段 0-4 + 时序图）→ §2 主表 → §4 耦合矩阵。
 >
-> **当前源码登记**：Pocket Harness 0.14.9 已正式发布，官方引擎固定为 `1f81c047` / 0.2.1-rc.3；来源构建与部分 AVD 烟测通过，完整设备三层验收仍未完成。发布证据与缺口见 [ENGINE-UPGRADE-2026-10-27.md](ENGINE-UPGRADE-2026-10-27.md)。旧版本轮次仅作历史溯源。
+> **当前源码登记**：官方引擎固定为 `b830ec95` / 0.2.1-rc.5；Pocket Harness 0.14.10 已发布，设备三层验收仍未完成。发布证据与缺口见 [ENGINE-UPGRADE-2026-10-31.md](ENGINE-UPGRADE-2026-10-31.md) 和[发布说明](../../release/v0.14.10/notes.md)。旧版本轮次仅作历史溯源。
 > 锚点格式 `path:line`，路径一律**相对 apk 仓根**；新增或移动锚点用 ``path:line#expect=<URI 编码片段>`` 固定源码语义。旧锚点源码行与出现次数由 `scripts/check-code-map-anchor-baseline.json` 锁定；刷新须审阅基线 diff，命令与拒绝条件见 `docs/AGENTS/build-and-env.md`。插件与三个子仓（`plugins/*`、`dsh-client-ui-responsive`、`dsh-host-web-compat`、`dsh-shell-termux`）在本分支以树内副本为权威，跨树镜像约束已退役（AGENTS.md §4.6），行号以本仓副本为准。
 >
 > **锚点会漂**：改了代码就跑 `node scripts/check-code-map.mjs --self-test` 和 `node scripts/check-code-map.mjs`——它守「覆盖完整、源码内容锚定、耦合证据行号、编号一致」（详见 §7）。
@@ -42,7 +42,7 @@ K11 离线 Linux 资产：`build-linux-assets.yml` → `check-linux-sources.mjs`
 
 ## 1. 全局运行顺序（阶段 0-4）
 
-> 0.14.3现行顺序以§6 K01/K02/K03/K06/K08当前源码锚点为准；§3历史审查原始条目与§8旧漂移保留溯源，旧行号/未修不得直接用作本轮状态。当前fixture未运行、版本0.14.3尚未构建；停止点为正常CI/review合并#308、完整同步及双ABI tester APK，外部待测不作占位merge blocker，也不称三层通过。
+> 现行顺序以 §6 K01/K02/K03/K06/K08 的源码锚点为准；§3 历史审查原始条目与 §8 旧漂移保留溯源，旧行号和未修状态不得直接用作当前状态。
 
 ```mermaid
 flowchart TD
@@ -1697,7 +1697,7 @@ flowchart TD
 
 - **Auto Review 新会话默认与执行边界**：`scripts/profile-web.cordis.patch.yml` 完整配置 permission presets 并设置 `defaultPreset: auto`，同时装载固定版 `dsh-experimental-auto-review`；engine scope 补丁由 `scripts/patches/data/permission-auto-review-default.mjs` 修改权限服务、reviewer 与设置客户端。冷启动恢复时，若持久化 Auto 会话缺少 sandbox/approval 事实，权限服务按 Auto 固定规格补齐；reviewer 注册前，按持久化或有效 Auto 身份命中的 `tools/pre-execute` 先行拒绝，注册后会重钉全部现存会话。新会话创建时 Auto 是默认档。注册 reviewer 后每个原生工具、顶层 PTC `run_code` 源码及原有 PTC 内层调用都进入模型分类。high 在 reviewer listener 内直接返回 deny、记录原始 `exec`，不调用后续审批链；同一插件注册 `ctx.tools.guard`，waterfall 后仍对记录中的 exec 返回拒绝。medium deny 才继续进入逐次审批；低风险按 reviewer allow 继续。reviewer 异常 fail closed；插件卸载回退 `workspace-write`，Android shell 在 spawn 前拒绝受限档位。用户切换当前会话权限档位会退出 Auto Review；设置中的默认值仅用于新会话。三个固定 npm 包的 source fixture、运行时语义和 runner 反证在 `scripts/patches/tests/permission-auto-review-default.test.mjs`；本机测试不替代设备验收。
 - **Workspace Write 档位说明**：后置 engine 补丁 `scripts/patches/data/workspace-write-boundary-warning.mjs` 在当前会话选择器、新会话默认设置与 `/permission` 命令三条入口拦截档位变更；确认说明 Android 没有覆盖所有工具的路径级文件系统沙箱，Termux Shell 在 bash 启动前失败关闭，其他工具按各自实现并受 app UID 边界约束。选中后 settings 描述持续提示。它依赖 AR1 注册同一 client target；本代夹具与 runner 反证见 `scripts/patches/tests/workspace-write-boundary-warning.test.mjs`。
-- **当前来源链**：官方 0.2.1-rc.3 → native addon → 官方 host-libraries → Client compiler → 根 Client bundle → Web → 固定源码导出 → 临时部署闭包 → pnpm deploy → 恢复源码 → 快照/补丁/注入/双构建/隔离签名。Android client 构建注入 official profile、版本、提交短哈希与标题，并检查品牌槽位和 HTML title。PTC A1 的 planPatch 同时验证 index/process/persistent-process，patchRuntimeIndex 与 patchPersistentLaunch 分别处理两条 launch；固定 spawn 数、enforcing argv 与 companion 门均不得绕过。v0.14.9 来源构建与 AVD 烟测证据及未完成设备验收见 [升级记录](ENGINE-UPGRADE-2026-10-27.md)。
+- **当前来源链**：官方 0.2.1-rc.5 → native addon → 官方 host-libraries → Client compiler → 根 Client bundle → Web → 固定源码导出 → 临时部署闭包 → pnpm deploy → 恢复源码 → 快照/补丁/注入/双构建/隔离签名。Android client 构建注入 official profile、版本、提交短哈希与标题，并检查品牌槽位和 HTML title。PTC A1 的 planPatch 同时验证 index/process/persistent-process，patchRuntimeIndex 与 patchPersistentLaunch 分别处理两条 launch；固定 spawn 数、enforcing argv 与 companion 门均不得绕过。v0.14.10 来源构建与未完成的设备验收见 [升级记录](ENGINE-UPGRADE-2026-10-31.md)。
 - 以下旧来源链锚点仅作历史回查；当前固定源码与允许入口见 [构建环境](build-and-env.md)，本轮实际验证见升级记录。
 
 

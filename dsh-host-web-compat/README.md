@@ -21,6 +21,8 @@ The plugin injects idempotent polyfills at the HTML level — no browser-side ch
 
 ## Quick start
 
+This is a standalone profile example. Pocket Harness mounts the plugin through `scripts/profile-web.cordis.patch.yml` in its source build.
+
 **1. Install** — package into the profile's node_modules.
 
 **2. Mount** — in the profile's `cordis.patch.yml`:
@@ -115,6 +117,8 @@ Snippets live in the `POLYFILLS` array; the assembly rule is `POLYFILL_SCRIPT_BO
 - **Shim the real structure, not just the name**: the global `Iterator` must be a constructor whose `.prototype` IS `%IteratorPrototype%` (bundled code such as pdfjs patches `Iterator.prototype.x` directly), and iterator wrappers must inherit that same prototype or chained helpers break.
 
 ## Tests
+
+Run from the `dsh-host-web-compat` directory after installing its dependencies; `npm test` runs the complete package suite:
 
 ```sh
 node scripts/smoke-injections.mjs   # assembly + per-script parse + page-marker assertions, no install needed

@@ -34,9 +34,7 @@ workflow_dispatch --> node tools/build.mjs --> dist/ --> upload-pages-artifact -
 
 ### 线路（镜像）与版本解绑
 
-靶是 `releases/latest/download/MANIFEST.txt`（约 1.4 KB 的稳定小文件），**不是当前版本的 APK**。
-理由：把靶绑到当前版本资产上，一旦资产改名或该版本发布不完整，检查会整体失效、用户被钉死在默认线路上。
-`probeUrl()` 与 `assetUrl()` 因此是两个独立函数。
+无 APK 目标时的回退靶是 `releases/latest/download/MANIFEST.txt`；`probeUrl()` 与版本资产的 `assetUrl()` 分开。来源链发布使用 `SHA256SUMS.txt`，因此不能假定最新发布一定包含该回退靶；已知 APK 时直接探测该资产。
 
 探测实现以 `src/assets/app.js` 的 `fetchStatus` / `probeMirror` 为准：使用 `fetch(mode:'cors', credentials:'omit')`，不把镜像响应作为脚本执行。
 
@@ -92,15 +90,8 @@ workflow_dispatch --> node tools/build.mjs --> dist/ --> upload-pages-artifact -
 |---|---|---|
 | `certain` | `userAgentData` 的 architecture+bitness 等明确信号 | 直接给对应安装包 |
 | `likely` | 只有 32 位字符串线索（如 `Linux armv8l`） | 按主流机型给 arm64，并提示可"换架构" |
-| `unknown` | 毫无线索或桌面浏览器 | 列出当前可用的 ARM64 资产供手动选择 |
+| `unknown` | 无可识别线索，或 Windows / macOS / ChromeOS 桌面浏览器 | 列出当前可用的 ARM64 资产供手动选择 |
 | `unsupported` | 明确 32 位（`architecture=x86,bitness=32`）或异构架构 | 报"暂无支持版本" |
-
-线路选择器在**任何**状态下都可用（含"架构未知""该版本无匹配资产"），并会**停用不可达的线路**：
-死线按钮 `disabled` 并显示"（不可用）"，当前线路若被判死则自动换到最快可用线路。
-点"下载"时若该线路本会话内尚未确认健康，会先做一次小文件判活再跳转——
-把用户送到 403 错误页是最伤的失败形态（包 150 MB，失败一次代价很高）。
-探测在环境不支持时（无 `document.head`）判为"未探测"而非"探测失败"，**不标死线**，
-否则会把四条线路全部误标为不可用。
 
 线路选择器在**任何**状态下都可用（含"架构未知""该版本无匹配资产"），并会**停用不可达的线路**：
 死线按钮 `disabled` 并显示"（不可用）"，当前线路若被判死则自动换到最快可用线路。
@@ -125,14 +116,11 @@ workflow_dispatch --> node tools/build.mjs --> dist/ --> upload-pages-artifact -
 为什么 `armv8l` 兜底为 arm64 而不是判不支持：arm64 手机上的浏览器常把它报成 32 位用户态字符串，
 若判不支持，**主流机型**会看到"暂无支持版本"——对 C 端分发页是不可接受的假阴性。
 
-一个必须知道的事实：两个 APK **都没有 `lib/<abi>/` 原生库**，架构差异全在 `assets/snapshot.tar.xz` 里，
-所以装错架构**不会**被系统拒绝，而是在运行期以"引擎起不来"的形态炸掉。因此自动识别是主防线，
-但必须同时给出手动出口（"换架构"），两者缺一不可。
+历史双 ABI 产物的架构依赖快照，装错后可能到运行期才暴露；当前来源链只构建 ARM64。识别结果仍须允许用户按目标设备选择，不应把浏览器架构当成安装设备的可靠证明。
 
 ## 命名门禁（本目录最有价值的一条判据）
 
-`tests/release-url.test.mjs` **直接读构建链源码**（`scripts/build-apk-013.ps1` 的 `--artifact-name`），与站点的资产名形态逐字比对；另有一条政策判据：本分支不出 Release，`.github/workflows/release.yml` 若被加回即判红（含受控负控）。
-`scripts/build-apk-013.ps1` 的 `--artifact-name`），与站点的资产名形态逐字比对：**发布链改名即判红**。
+`tests/release-url.test.mjs` 保留旧 `scripts/build-apk-013.ps1` 的资产名兼容检查，也检查来源链资产与 `SHA256SUMS.txt`。测试禁止旧 `.github/workflows/release.yml` 回流；这不禁止现行来源链创建 Release 草稿，见 [发布政策](../docs/RELEASE.md)。
 
 真因：arm64 资产名在线发布史上翻转过（`v0.14.2-fx-2` 及更早是 `-arm64-v8a.apk`，`v0.14.2-fx-3` 起是
 `-arm64.apk`；`x86_64` 两条链同名故不可见）。App 侧因此有过真实缺陷（`docs/AGENTS/gotchas.md` 坑 172）。
@@ -152,7 +140,7 @@ node webpages/tools/build.mjs --refresh           # 同时刷新 data/releases.j
 ## 验证范围（如实说明）
 
 本目录是**网页**，不适用壳侧 `docs/AGENTS/emulator-test-protocol.md` 的三层验收（CDP/ADB 层无从谈起）。
-替代判据与已完成证据：
+以下是历史轮次的替代判据与证据，不代表当前部署已经重新验证：
 
 - **代码层**：命名门禁 25 项全绿（含受控负控，证明门禁仍会判红）；
 - **渲染层**：CDP 设备仿真覆盖竖屏 / 横屏 / 桌面（请选择架构）/ 夸克类无架构线索 / 32 位不支持 等形态，

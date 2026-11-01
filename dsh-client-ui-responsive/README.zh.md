@@ -31,11 +31,13 @@ ui-sidebar-right 都挂在它上面——继续 fork 就得每个版本复刻一
 
 宽窗口保留上游横向标签和主副面板并排能力。跨越断点只撤换导航节点，不移动或卸载原标签内容。列表高度受面板、安全区和可视视口限制；原生 BrowserHost 在气泡展开及收起动画期间仅隐藏显示层，结束后恢复同一页面。
 
-排序依赖移动端补丁链 `sidebar-bubble-reorder-B1` 提供的 `sidebarRight.reorderIn(session, tab, before)`。它复用原 `placeTab`/`focusTab` 动作，保留活动标签，拒绝失效会话、浮动页和跨分栏目标。补丁随协调仓及 APK 镜像一起交付；开发热推须同时更新它和本插件。
+排序依赖移动端补丁链 `sidebar-bubble-reorder-B1` 提供的 `sidebarRight.reorderIn(session, tab, before)`。它复用原 `placeTab`/`focusTab` 动作，保留活动标签，拒绝失效会话、浮动页和跨分栏目标。补丁和插件源码由本仓来源链一起构建；开发热推须同时更新它和本插件。
 
-验证入口：[气泡交互测试](tests/sidebar-bubbles.spec.ts)、[原生浏览器显示层测试](tests/native-browser-presentation.spec.ts)；设备端使用 APK 仓的 `scripts/verify-sidebar-bubbles.mjs`。
+验证入口：[气泡交互测试](tests/sidebar-bubbles.spec.ts)、[原生浏览器显示层测试](tests/native-browser-presentation.spec.ts)；设备端使用本仓的 `scripts/verify-sidebar-bubbles.mjs`。
 
 ## 安装与挂载
+
+以下为独立 profile 的挂载示例。Pocket Harness 的挂载由本仓来源构建配置，见 `scripts/profile-web.cordis.patch.yml`；不要手工修改已打包的 profile 来代替来源构建。
 
 **1. 打包**进 web profile 的 `node_modules`（模式见 dsh-shell-termux）。
 

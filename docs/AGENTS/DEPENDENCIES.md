@@ -67,7 +67,7 @@ ShizukuSupport/ShizukuProbe仍反射探活，授权只能由用户在Shizuku中�
 
 ## 4. 引擎、npm与许可的第二依赖面
 
-当前源码适配目标与固定工具链见 [本轮引擎升级记录](ENGINE-UPGRADE-2026-10-19.md)；overlay 以官方 0.2.1-rc.2 源码 manifest 为准，Cordis 不回退旧源码。快照 npm/Termux 闭包由本仓自包含来源链管理，最终 APK 内版本和许可证仍须核实。
+当前源码适配目标与固定工具链见 [rc.5 引擎升级记录](ENGINE-UPGRADE-2026-10-31.md)；overlay 以固定的官方 0.2.1-rc.5 源码 manifest 为准，Cordis 不回退旧源码。快照 npm/Termux 闭包由本仓自包含来源链管理，最终 APK 内版本和许可证仍须核实。
 
 raw npm overlay 不自动保留官方 pnpm patch。六 provider streaming 补丁仍按固定 SHA 与精确上下文施加；Android PTC A1 现覆盖一次/持久两条宿主 spawn 和两个子进程入口，全部 companion 与 pnpm 副本同步，见 [运行时补丁台账](RUNTIME-PATCHES.md)。
 
@@ -75,7 +75,7 @@ raw npm overlay 不自动保留官方 pnpm patch。六 provider streaming 补丁
 
 ## 5. 升级回归与证据
 
-版本变更需同步来源pin、lock根声明、同源补丁/资产、双仓副本及许可来源。运行时资产从目标版本原始产物完整重建，不叠旧资产；逐字节一致与全部补丁marker/精确verifier都要成立。webKit升级重点验证profile首次赋值、worker/cookie/storage隔离、不支持provider失败、UA-CH与Activity重建holder；Shizuku重点验证旧AIDL服务、工作资料UID、chunk撤consent与耐久UNKNOWN。快照/SAF/Files/通知/控制台/引擎流式任务按[模拟器验收规范](emulator-test-protocol.md)执行。
+版本变更需同步来源 pin、lock 根声明、本仓副本的源码与清单、同源补丁/资产及许可来源；跨仓镜像约束已退役。运行时资产从目标版本原始产物完整重建，不叠旧资产；逐字节一致与全部补丁 marker/精确 verifier 都要成立。webKit 升级重点验证 profile 首次赋值、worker/cookie/storage 隔离、不支持 provider 失败、UA-CH 与 Activity 重建 holder；Shizuku 重点验证旧 AIDL 服务、工作资料 UID、chunk 撤 consent 与耐久 UNKNOWN。快照/SAF/Files/通知/控制台/引擎流式任务按[模拟器验收规范](emulator-test-protocol.md)执行。
 
 当前候选的自检、构建与三层验收状态见对应版本的阶段交接记录；本文件只登记依赖与升级联动，不独立宣称发布批准。旧 0.14.3 测试需求记录已退出当前树，不能代替当前候选验收。
 

@@ -4,7 +4,7 @@
 
 ## 1. 模型执行与应用维护分开
 
-模型 root 执行须满足实际 root 通道、用户开启 AI root 及当前 versionCode 的知情同意。RootGrant.isGranted 是有效授权，不只读原始开关；root Shizuku 与显式授权 su 是替代通道，uid2000 不是 root。升级使旧 consent 失效，重新同意不恢复旧开关；关闭和撤销始终允许。su 只对明确的派发前通道不可用回退一次；拒绝、命令非零 exit、超时、Binder 派发后结果不明不重跑。
+模型 root 执行须满足实际 root 通道、用户开启 AI root 及当前免责声明内容版本的知情同意；开启还要求系统凭据确认。授权与同意只保存在壳进程内，进程重启后须重新确认，不从旧偏好恢复。RootGrant.isGranted 是有效授权，不只读原始开关；root Shizuku 与显式授权 su 是替代通道，uid2000 不是 root。关闭和撤销始终允许。su 只对明确的派发前通道不可用回退一次；拒绝、命令非零 exit、超时、Binder 派发后结果不明不重跑。
 
 应用维护只修固定本应用 dataDir，目标为 ApplicationInfo 的完整 Android UID。su 从已安装签名 APK 的 sourceDir 加载 RootRepairMain；固定五参数 fullUid、dataDir、relativeSubpath、cap、timeoutMs，逐项检查并独立 shell 引用。无可写快照 dex/JAR、任意 uid/gid、任意命令、递归 restorecon 入口。Shizuku v4 追加 configuration 回读确认完整 UID/可信 anchor；旧或未确认服务不派发。
 
@@ -14,7 +14,7 @@
 
 租约仅由原始 owner caller 在得到确定完成回执后 finish；普通异常、exit/drain 超时、readError、cleanupIncomplete、Binder 完成未知及清租约 commit 失败均转 UNKNOWN。杀 su 客户端、父进程退出、关闭本地管道或本地 reader 结束，都不能证明特权后代停止。UNKNOWN 阻止新受控 RPC/命令、维护和启动前读取快照事务，不自动重试副作用。
 
-同一 boot 内应用重启/recreate/进程重建仍从耐久记录恢复 UNKNOWN，不能靠 app restart、重置 Shizuku 或手工清除解除。仅 saved/current epoch 均非空、同属 boot-id 或同属 boot-count、且值不同，才证明设备真正重启并允许清除旧租约；来源方案切换、epoch 缺失不算新 boot。没有产品手工清除出口。
+同一 boot 内应用重启/recreate/进程重建仍从耐久记录恢复 UNKNOWN，不能靠 app restart 或重置 Shizuku 证明旧工作已终止。仅 saved/current epoch 均非空、同属 boot-id 或同属 boot-count、且值不同，才证明设备真正重启并允许自动清除旧租约；来源方案切换、epoch 缺失不算新 boot。引导页另提供用户确认后的手工清除出口，但清除不证明旧特权工作已经终止，具体条件见下文。
 
 su helper 必须有完整 JSON 信封（布尔 ok、非负整数 checked/healed/failures/unverifiedMutations、remaining 为 -1/0、布尔 truncated/deadlineExceeded）及已确认 exit0/2，且 transport 完整、未截断。已确认的失败/部分修复信封可以 finish 租约，但仍返回 repair-incomplete/ok=false；“工作已结算”不等于“修复成功”。信封缺失/畸形不 finish。完整成功还须 exit0、failures=unverifiedMutations=remaining=0、无 cap/deadline 截断。
 
