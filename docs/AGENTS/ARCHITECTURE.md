@@ -58,7 +58,8 @@
 
 | 文件 | 职责一句话 | 被引用 |
 |---|---|---|
-| EngineManager.kt | 快照部署/指纹刷新（事务化）/引擎 spawn（linker64 回退）/shellEnv/运行时补丁部署 | EngineService、EngineStartFlow、ConsoleSession、MainActivity、UndoGate |
+| EngineManager.kt | 快照部署/指纹刷新（事务化）/引擎 spawn（linker64 回退）/shellEnv/运行时补丁部署；Python pip user-site 重定向与快照刷新前旧包迁移 | EngineService、EngineStartFlow、ConsoleSession、MainActivity、UndoGate |
+| PythonPackages.kt | Python user-site 目录探测、pip 环境变量准备、usr/home/previous 中旧用户包的幂等迁移 | EngineManager |
 | EngineService.kt | ServiceEpoch拥有startup/watchdog/undo caller与WakeLockOwner；等待后重复epoch检查；pending最多六次2/4/8/16/30/30秒重查，耗尽不自旋 | BootReceiver、EngineStartFlow、MainActivity、WatchdogV2 |
 | WatchdogV2.kt | 深度探活/熔断指数退避/PARTIAL_WAKE_LOCK + task-done 标记按字节偏移消费（ST-12） | EngineService、BootReceiver、EngineStartFlow、UndoGate、GuideChrome（注释） |
 | UndoGate.kt | 看门狗/启动失败恢复：按当前 transaction-authorized Hard `{id,name}` manifest 判归属；非 Hard 故障只追加 disabled override 保留原配置；整份恢复要求同一 Soft digest 在两次实际引擎 spawn 上通过 authenticated Cordis/preset/session/modelCatalog health | EngineService、EngineStartFlow |

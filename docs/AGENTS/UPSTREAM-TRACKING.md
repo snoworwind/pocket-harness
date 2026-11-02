@@ -198,3 +198,7 @@
 ### 2026-10-29：固定范围增量审查完成
 
 上游审查固定停在 `345c142c8270d8bc2a1406e6438e20995cd0e79`，本轮只覆盖 `b665ce40..345c142c`，compare 清单为 35 个提交、300 个文件、+3373/-145；不查询或推断该提交之后的上游状态。候选、排除项、源码证据与设备边界见[审查结果](UPSTREAM-ABSORPTION-2026-10-29.md)。screen-scope 修复已由 PR #179 合并；其余门禁反证、截图缓存失败关闭与 code-map 锚点漂移保护由 PR #180 以 merge commit `4d98340ec249e7f84073c2b2ee26c69a165020e0` 合入 main。设备验证按当时用户要求跳过，不能视为发版验收。
+
+### 2026-11-02：选择性吸收 pip 用户包持久化
+
+复核起点保持 `4a41e6ac9bf2b0f786e3c336cfc344068a8fd1e7`，当前上游 HEAD 为 `4587c07e4408c6dee71913e1bc13dc80a8e1f05f`。本轮选择性核对并移植 #1225 / [`3b98b4917911bdd5d54064bedfc5230cb37ae5d6`](https://github.com/kelai141/dsh-mobile-apk/commit/3b98b4917911bdd5d54064bedfc5230cb37ae5d6)：本仓 `usr` 同样随快照整体交换，pip 默认 user packages 会丢失；新增独立迁移器、共享 shell 环境注入和启动/刷新四个迁移时点，15 条专项 JVM 回归通过，WSL 全量 Kotlin 套件 1416/1416、0 failures。当前没有 runtime 快照包，设备刷新与真人流程三层未验。此记录不代表 409 commits 范围已完整审阅，比较游标不推进；其他候选须逐项核对。

@@ -319,3 +319,19 @@ Repair Assistant 在本仓没有对应产品功能；壳侧不因此直接注册
 按用户要求，没有操作正在执行其他任务的 Android 16 AVD，也没有做设备三层验证；PR #135–#139 的 L2/L3 行为和 PR #141/#142 控制台 L3 行为均仍未完成设备验收。所有 PR 描述已显式标注“未做设备验证”。这些改动尚不能随发版候选宣称通过；进入发布候选前仍须按 `AGENTS.md` §2.1 完成对应三层验收。PR #143 仅改测试等待方式，不涉及应用运行时。
 
 上游检查游标推进到 `4a41e6ac9bf2b0f786e3c336cfc344068a8fd1e7`，只表示 `06f1a0b..4a41e6a` 新增范围已审阅。完整候选、排除原因及逐 PR 证据亦记录于 [上游跟踪账本](UPSTREAM-TRACKING.md)。
+
+## 17. 2026-11-02 保留 pip 用户 Python 包
+
+### 17.1 上游差异与本仓风险
+
+上游 #1225 / `3b98b4917911bdd5d54064bedfc5230cb37ae5d6` 解决 `pip install` 默认写进 `usr/lib/python3.X/site-packages` 后被整树快照交换删除的问题。本仓 `SnapshotTransaction` 同样以目录交换更新 `usr`，且 `shellEnv()` 被引擎、控制台和工具子进程共用；本仓源码没有 `PIP_USER` / `PYTHONUSERBASE` 保护。
+
+### 17.2 本仓移植
+
+新增 `PythonPackages`：从 `usr/lib` 探测唯一 Python 次版本；user-site 目录成功创建后才将 `PIP_USER=1` 与 `PYTHONUSERBASE=<files>/python-packages` 加进共享 `shellEnv()`；按 usr → 旧 home user-site → `.snapshot-previous/usr` 次序逐项 rename，保留工厂条目、不覆盖已存在目标、单项失败不阻断其余迁移。迁移挂在 snapshot swap 前、swap 后 `finish()` 前、中断恢复回收前和引擎启动 prelude。执行地图与模块地图已登记。
+
+### 17.3 验证边界
+
+- `PythonPackagesTest` 专项 15/15（Windows Gradle JVM，0 failures / 0 errors / 0 skipped）；完整 Kotlin 套件在仓库登记的 WSL Linux SDK 下 1416/1416、0 failures、0 skips。Windows 直接运行曾因既存 symlink 用例缺少权限失败，但 WSL 结果通过。测试计数基线同步至 1416，`check-kotlin-test-count.mjs` 通过。
+- `check-kotlin-comments.mjs`、`check-code-map.mjs` 与 `git diff --check` 通过；执行地图中的旧坐标已按源码当前位置修正，新文件覆盖已登记。WSL 全量测试使用 docs/AGENTS/build-and-env.md 登记的原生 Linux SDK。完整设备刷新、pip 安装/导入、CDP 与 ADB 用户流程未执行；这是快照事务相关 L2 改动，仍未完成三层设备验收。
+- 比较范围 `4a41e6a..4587c07` 仍未逐项审完，比较游标保持 `4a41e6ac9bf2b0f786e3c336cfc344068a8fd1e7`。

@@ -3453,3 +3453,7 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 615. **Auto Review 会话被中断写入后恢复成非审查档（2026-10-31）**
 
     现象：持久化会话已有 `permission/preset=auto`，但进程在写 `sandbox/mode` 或 `approval/policy` 事实前退出；恢复路径按全局 shell/approval 默认补齐缺失字段后，`permissionPresets.current(session)` 会变为 `workspace-write`，reviewer 不再审查该会话。真因：新会话首次 pin Auto 时按 preset 规格写入三个独立事实，但部分恢复分支原先把缺失旋钮当作普通档位、继承全局默认。修法：只要持久化身份是 Auto，缺失旋钮就按固定 Auto spec 补齐；reviewer 注册前 fail-closed guard 同时检查持久化与有效身份，注册时再对现存会话执行准入与 pin。复验：rc.5 权限服务运行时回归 5/5；补丁清单 32 文件、76 项通过，另 2 项为已登记 Windows symlink 平台限制；补丁夹具与 26/26 引擎补丁锚点通过，执行地图覆盖检查通过。无 ADB/Android SDK，设备三层验收未做。
+
+618. **快照刷新会丢失通过 pip 安装的用户 Python 包（2026-11-02）**
+
+    现象：`pip install` 默认把第三方包写进 `files/usr/lib/python3.X/site-packages`，下次快照刷新整体替换 `usr` 后包消失；若只设置 `PYTHONUSERBASE` 但目标目录不存在，Python 还会把 user-site 排除出 `sys.path`。真因：工厂运行树 `usr` 会随 APK 快照整树交换，而 pip 默认落点位于该可替换树内；改变 user base 后旧 `~/.local` user-site 也会从 import 搜索路径消失。修法：探测唯一 Python 次版本，预建位于 `files/python-packages` 的 user-site 后再给所有 shellEnv 子进程注入 `PIP_USER=1` 与 `PYTHONUSERBASE`；在 swap 前、swap 后 finish 前、中断恢复回收前及引擎启动 prelude 逐项幂等迁移旧包，跳过工厂文件且不覆盖同名目标。复验：PythonPackagesTest 15/15；完整 Kotlin 套件使用仓库登记的 WSL Linux SDK 1416/1416、0 failures、0 skips；`check-kotlin-test-count.mjs` 通过。Windows 单独运行曾被 symlink 权限阻断，但不影响 Linux 全套结果。执行地图覆盖及锚点检查通过。设备刷新、CDP 与 ADB 用户流程未做，完整三层通过前不得作为发版验收。
