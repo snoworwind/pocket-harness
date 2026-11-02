@@ -342,6 +342,8 @@ class EngineManager(private val context: Context, private val pickToken: String?
         filesDir,
         SnapshotTransaction.Marker(SnapshotTransaction.Phase.STAGED, fingerprint, startedAt),
       )
+      // Move packages out of usr before the factory tree is replaced.
+      migratePythonPackages("before-swap")
       val swapNotes = SnapshotTransaction.swap(
         filesDir = filesDir,
         stagedRoot = stage,
@@ -353,6 +355,8 @@ class EngineManager(private val context: Context, private val pickToken: String?
         onEntry = { onStage("正在更新 " + it) },
         spaceCheck = { required -> insufficientSpaceReason(filesDir, required) },
       )
+      // Recover packages from the old usr tree before finish() removes .snapshot-previous.
+      migratePythonPackages("after-swap-rescue")
       // #214：profiles 合并期间的工厂语义纠正逐条留档（升级现场可追溯，不只依赖 UI 文案）。
       for (note in swapNotes) LogCollector.log(TAG, "profile patch reconciled during swap: " + note)
       // Commit point: the fingerprint is durable only after the swap completed.
@@ -551,6 +555,8 @@ class EngineManager(private val context: Context, private val pickToken: String?
     val filesDir = context.filesDir
     try {
       val marker = SnapshotTransaction.readMarker(filesDir)
+      // Rescue a previous usr tree before either the normal or failure cleanup can reclaim it.
+      migratePythonPackages("startup-recovery")
       if (marker == null) {
         // No marker: only a stale stage directory can survive (a rollback that was
         // interrupted before it deleted the stage).
@@ -1459,6 +1465,8 @@ class EngineManager(private val context: Context, private val pickToken: String?
       // （快照刷新中 / 引擎已在跑）。故 provisionPublicRepo 另由 MainActivity 的 onCreate/onResume
       // 触发，那里才是「授权之后能自愈」的入口（0.14.1 用户反馈）。
       provisionPublicRepo(PublicRepoProvision.TRIGGER_ENGINE_START)
+      // Runs before the engine reads Python user-site state and before spawn.
+      migratePythonPackages("engine-start")
       applyRuntimePatches()
       // --no-open: the engine must never try to open a desktop browser on Android
       // (the WebView IS the UI). Without it, rc.2's spawn xdg-open on a missing
@@ -2379,7 +2387,24 @@ class EngineManager(private val context: Context, private val pickToken: String?
       // 实测口径：--max-old-space-size=N ⇒ heap_size_limit = N + 96MB；引擎最小可用堆约 70MB。
       // 读不到设备内存时退回下限，保证「任何设备都够启动」而不是编造一个值。
       "NODE_OPTIONS" to heapOptionFrom(engineHeapMb(deviceTotalRamMb())),
-    ) + certEnv
+    ) + certEnv + PythonPackages.environment(context.filesDir, usrDir)
+  }
+
+  /** Move user-installed packages away from usr, which is replaced as a whole on refresh. */
+  internal fun migratePythonPackages(trigger: String) {
+    val result = try {
+      PythonPackages.migrate(context.filesDir, usrDir, homeDir)
+    } catch (t: Throwable) {
+      Log.w(TAG, "python package migration failed (" + trigger + ")", t)
+      LogCollector.log(TAG, "python package migration failed (" + trigger + "): " + t.javaClass.simpleName)
+      return
+    }
+    if (result.touched) {
+      val summary = "python package migration (" + trigger + "): moved=" + result.moved.size +
+        " conflicts=" + result.conflicts.size + " failures=" + result.failures.size
+      Log.i(TAG, summary)
+      LogCollector.log(TAG, summary)
+    }
   }
 
   companion object {

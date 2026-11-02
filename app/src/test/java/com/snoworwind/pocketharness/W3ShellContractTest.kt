@@ -390,4 +390,35 @@ class W3ShellContractTest {
     assertFalse("ST-24：无消费方的 SAF 目录留档表必须删除", code.contains("dsh-saf-dirs"))
     assertTrue("系统持久化授权本身必须保留（真源）", code.contains("takePersistableUriPermission"))
   }
+
+  @Test
+  fun pythonUserPackagesAreConfiguredAndMigratedBeforeSnapshotCleanup() {
+    val manager = codeOnly(source("EngineManager.kt"))
+    val shellEnv = memberBody(manager, "fun shellEnv(): Map<String, String>")
+    assertTrue(
+      "pip 的 user-site 环境必须进入所有 shellEnv 子进程",
+      shellEnv.contains("PythonPackages.environment(context.filesDir, usrDir)"),
+    )
+
+    val refresh = memberBody(manager, "private fun refreshSnapshotInternal(")
+    val beforeSwap = refresh.indexOf("migratePythonPackages(\"before-swap\")")
+    val swap = refresh.indexOf("SnapshotTransaction.swap(")
+    val rescue = refresh.indexOf("migratePythonPackages(\"after-swap-rescue\")")
+    val finish = refresh.indexOf("SnapshotTransaction.finish(filesDir)")
+    assertTrue("旧 usr 用户包必须在 swap 前迁移", beforeSwap in 0 until swap)
+    assertTrue("previous 用户包必须在 finish 清理前救援", rescue in swap until finish)
+
+    val recovery = memberBody(manager, "fun recoverInterruptedRefresh()")
+    assertTrue(
+      "启动恢复必须在 previous 残渣回收前救援旧包",
+      recovery.indexOf("migratePythonPackages(\"startup-recovery\")") in 0 until
+        recovery.indexOf("SnapshotTransaction.reclaimResidue(filesDir)"),
+    )
+    val start = memberBody(manager, "fun startEngine(port: Int = 3080, force: Boolean = false): Boolean")
+    assertTrue(
+      "引擎启动前必须再幂等迁移，以覆盖正常启动入口",
+      start.indexOf("migratePythonPackages(\"engine-start\")") in 0 until
+        start.indexOf("startWithArgs(args, shellEnv())"),
+    )
+  }
 }
