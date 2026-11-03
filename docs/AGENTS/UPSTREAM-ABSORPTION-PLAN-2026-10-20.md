@@ -447,10 +447,10 @@ GitHub API 确认 `kelai141/dsh-mobile-apk/main` 当前为 `c2053739985801dcecfa
 ### 26.2 候选处置
 
 - **#1395，不移植**：上游改动落在 `check-degrade-source-of-truth.mjs` 和 `check-vendor-provenance.mjs`，本仓没有这两个门禁或对应 PROVENANCE 自述。相邻的 `check-inject-completeness.mjs` 检查的是源包与注入归档成员闭合，并按配置检查 `web/headless`；它不是上游“注入降级副本来源”判据，不能当成同一个缺口，也不应为复制修复而新增上游专用门禁。
-- **#1396，暂不移植，留作单独审计点**：本仓没有上游通用 `scripts/lib/strip-comments.mjs`。本仓 `check-api-route-auth.mjs` 有自己的 `stripSourceComments()` 词法扫描器，当前能跳过字符串和注释、但不识别正则字面量；这与上游复用的通用 JS 注释剥离器不是同一个实现。正则字面量中的 `//` 或引号可能影响扫描结果，值得独立评估；不能在未覆盖本扫描器输入语法与反证边界前直接移植上游启发式。该门禁属于 L1，后续若改动须按本仓规程提供 self-test 与受控负控。
+- **#1396，未直接移植；本地对应扫描器列为待复现缺口**：本仓没有上游通用 `scripts/lib/strip-comments.mjs`，但 `check-api-route-auth.mjs` 有自己的 `stripSourceComments()` 词法扫描器，不识别正则字面量。静态追踪发现正则中的引号可能使后续注释留在输出；鉴权 marker 通过 `includes` 查找，因此存在把注释 guard 计作调用的潜在假绿。尚未构造并运行针对性反例，不能把该风险写成已证实绕过。上游实现使用不同的共享 lexer，不能整段移植；本地修复需单独覆盖输入语法、self-test 与受控负控，缺口登记见 [known-gaps.md](known-gaps.md#当前入口)。
 - **#1397，不移植**：上游只为 `check-patch-test-manifest.mjs` 新增的 `existsSync` 使用补 import；本仓同名脚本目前没有 `existsSync` 引用，也没有上游新增的 registry `test` 路径解析逻辑。孤立补 import 不会修复本仓行为。
 - **#1331 已具备**：收起虚拟屏面板时跳过状态/bounds 桥轮询、自动落位门控及单次样式读取已在本仓；细节见 §20，不重复吸收。
 
 ### 26.3 后续边界
 
-此次筛选只关闭上述三个最新门禁候选及一个已具备项，不把 438 提交写成已审完。`check-api-route-auth` 的正则字面量扫描边界留待独立审计；其他尚未逐项核对的上游变更继续保留在未审范围。本节为审查记录，没有改变门禁行为。
+此次筛选只关闭上述三个最新门禁候选及一个已具备项，不把 438 提交写成已审完。`check-api-route-auth` 的正则字面量扫描边界已升级为“潜在假绿、待复现”缺口；其他尚未逐项核对的上游变更继续保留在未审范围。本节为审查记录，没有改变门禁行为。
