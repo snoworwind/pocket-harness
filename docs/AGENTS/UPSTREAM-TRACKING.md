@@ -2,16 +2,23 @@
 
 本仓独立维护；`kelai141/dsh-mobile-apk` 是参考来源，不是构建依赖或镜像权威。按问题选择性移植，每个逻辑改动独立 PR，保留出处，重新审查本仓安全约束并按风险分档验证。上游发布和测试不代替本仓验收。
 
+## 2026-11-03 kelai141 上游增量吸收
+
+- [#1327 启动时异步清扫过期来件](https://github.com/kelai141/dsh-mobile-apk/pull/1327)，上游提交 c80bea5：本仓原在 MainActivity.onCreate() 同步遍历临时工作区；已改为应用上下文上的 daemon worker，沿用 FileIncoming.sweepExpired 的锁与活动投递保护。
+- 新增 ForegroundPageRecoveryWiringTest 启动接线反例；Kotlin 测试计数基线同步。用户要求先做代码层吸收，本轮未构建 APK、未做 CDP/ADB 或设备验收；该壳侧行为改动仍需按风险补验。
+- 同轮候选判断：#1315 的延后刷新与事务标记等待本仓已有等价保护；#1328 控制审计轮转仍需独立设计有界读取；#1325 的后台可见性门控已在本仓单独吸收。三者都未混入 #1327。
+
+### 2026-11-03 kelai141 UI 动效增量
+
+- [#1324 动效开关动态订阅](https://github.com/kelai141/dsh-mobile-apk/pull/1324)，提交 `9fe627a`：本仓已有 `DsUi.animationsEnabled` 与部分启动时门控，但用户在动画运行中关闭系统动画后常驻动效不会停止。只吸收共享设置观察器及四处生命周期接线；不吸收同提交每帧 Matrix 分配优化。实现见[吸收计划 §27](UPSTREAM-ABSORPTION-PLAN-2026-10-20.md#27-2026-11-03-常驻动效响应系统设置-上游-1324)。
+- [#1328 审计日志有界写](https://github.com/kelai141/dsh-mobile-apk/pull/1328)，提交 `49421f6`：不直接移植。壳与插件同时写 `files/audit/audit.ndjson`，各自轮转没有共享互斥；上游 `readLines()` 还会全量读历史大文件、原地改写会扩大并发丢记录窗口。需先设计跨写者协调与原子轮转协议，再单独评估。
+- PR #211 的旧基线 Kotlin/静态检查均通过；当前刷新分支待 CI，未做设备验收。
+
 ## 2026-10-27 DeepSeek Harness 引擎追版
 
 本仓开发分支将官方源码目标从 `0.2.1-rc.2` 提升到 [`dsh-v0.2.1-rc.3`](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.1-rc.3)，固定提交 `1f81c047fc48fa190a683e469daa699857e9afe8`。合同、来源构建检查、部署版本门、插件 peer/锁文件及 WebView 槽位/组件清单已同步；新增三个 More 菜单槽位由官方 `entry-customization` Web 插件消费。
 
 **正式发布状态**：Pocket Harness 0.14.10 已由 main 的官方 rc.5 源码构建产出 ARM64 APK 并发布，设备三层验收尚未完成；证据和限制见 [0.14.10 发布说明](../../release/v0.14.10/notes.md)。此前 0.14.9 的来源 run 与 AVD 烟测见 [0.2.1-rc.3 升级记录](ENGINE-UPGRADE-2026-10-27.md)，不能代替新版本的设备验收。
-
-### 2026-11-03 kelai141 UI 动效增量
-
-- [#1324 动效开关动态订阅](https://github.com/kelai141/dsh-mobile-apk/pull/1324)，提交 `9fe627a`：本仓已有 `DsUi.animationsEnabled` 与部分启动时门控，但用户在动画运行中关闭系统动画后，四处常驻无限动画不会及时停止。只吸收共享设置观察器及四处生命周期接线；未吸收同提交每帧 Matrix 分配优化。Kotlin 测试与执行地图门禁结果见[吸收计划](UPSTREAM-ABSORPTION-PLAN-2026-10-20.md) §19。本轮按用户要求未做设备验证，L3 行为仍未验收。
-- [#1328 审计日志有界写](https://github.com/kelai141/dsh-mobile-apk/pull/1328)，提交 `49421f6`：不直接移植。壳与插件同时写 `files/audit/audit.ndjson`，各自轮转没有共享互斥；上游 `readLines()` 还会将历史大文件全量读入内存、原地改写会扩大并发丢记录窗口。需要先定义跨写者协调或原子轮转协议，再单独评估。
 
 ## 检查规则
 
@@ -207,3 +214,38 @@
 ### 2026-11-02：选择性吸收 pip 用户包持久化
 
 复核起点保持 `4a41e6ac9bf2b0f786e3c336cfc344068a8fd1e7`，当前上游 HEAD 为 `4587c07e4408c6dee71913e1bc13dc80a8e1f05f`。本轮选择性核对并移植 #1225 / [`3b98b4917911bdd5d54064bedfc5230cb37ae5d6`](https://github.com/kelai141/dsh-mobile-apk/commit/3b98b4917911bdd5d54064bedfc5230cb37ae5d6)：本仓 `usr` 同样随快照整体交换，pip 默认 user packages 会丢失；新增独立迁移器、共享 shell 环境注入和启动/刷新四个迁移时点，15 条专项 JVM 回归通过，WSL 全量 Kotlin 套件 1416/1416、0 failures。当前没有 runtime 快照包，设备刷新与真人流程三层未验。此记录不代表 409 commits 范围已完整审阅，比较游标不推进；其他候选须逐项核对。
+
+### 2026-11-03：选择性吸收冷启动阶段诊断
+
+上游 PR #1322 / 合并提交 `67717b4472690d9c6e6c81aec802b6c545e2bcfe` 针对本仓现有启动分段日志的覆盖缺口：增加默认关闭的 `BootPhaseTrace`，记录 Activity `onCreate`、WebView 构造、快照解压和 loader-settle，探针缺席明确记录为 unknown；本仓保留自己的启动日志、开发者偏好与快照调用路径。8 项专项回归、WSL 全量 Kotlin 测试、测试计数、代码地图、Kotlin 注释与 diff 检查通过，详细实施和限制见 [计划 §18](UPSTREAM-ABSORPTION-PLAN-2026-10-20.md#18-2026-11-03-启动阶段诊断-1322)。按用户要求未做 APK、模拟器或 ADB 验收，L3 仍未完成设备三层验收。上游当前比较范围 `4a41e6a..b6478c1` 共 18 个提交未逐项审完，检查游标继续保持 `4a41e6ac9bf2b0f786e3c336cfc344068a8fd1e7`；此次只吸收 #1322，不把该范围标为已审完。
+### 2026-11-03：选择性吸收后台轮询可见性门控
+
+本轮从上游增量候选中吸收 #1325 对应本地实际存在的三处周期工作：vdisplay 状态/Bounds 兜底、活动虚拟屏自动落位、undo-savepoint 顶栏统计。页面隐藏时取消 timeout，恢复可见时即时刷新并续约；即时事件和显式操作刷新保持不变。执行地图与实施计划已记录。按用户要求只做代码层吸收，设备验证未做，L3 验收开放。上游范围仍未逐项审完，比较游标保持 `4a41e6ac9bf2b0f786e3c336cfc344068a8fd1e7`；处置细节见[实施计划 §19](UPSTREAM-ABSORPTION-PLAN-2026-10-20.md#19-2026-11-03-后台轮询可见性门控-上游-1325)。
+
+### 2026-11-03：选择性吸收收起面板轮询门控
+
+接续上条 #1325，吸收 #1331 中适配本仓的部分：右栏收起/舞台离屏时仍做轻量 DOM 复查，但跳过虚拟屏状态与 bounds 跨桥；自动落位在收起且无待补落位时跳过状态探测；同一 bounds 发布只调用一次 `getComputedStyle()`。未照搬源码复制式的定时器测试。文档同步见[实施计划 §20](UPSTREAM-ABSORPTION-PLAN-2026-10-20.md#20-2026-11-03-收起面板时跳过虚拟屏跨桥轮询-上游-1331)。按用户要求只做代码层吸收，设备验证未做；L3 验收开放。上游检查游标保持不变。
+
+### 2026-11-03：SSE keepalive parser 候选审查
+
+检查上游 #1333 后不移植：修复目标是其 vendored `dsh-plugin-subscriptions` parser，但本仓没有该包、对应源码/测试或注入路径。本仓已有 `/plugins/events` SSE 属于 `client-hmr`，不是同一个 parser。依据和检索范围记于[实施计划 §21](UPSTREAM-ABSORPTION-PLAN-2026-10-20.md#21-2026-11-03-sse-keepalive-parser-候选不适用-上游-1333)。该结论不表示本仓订阅 SSE 已验证；上游比较游标仍不前移。
+
+### 2026-11-03：吸收虚拟屏自动落位重武装修复
+
+从当前上游增量中选择性吸收 #1350 / issue #1339：`seenActive` 无法区分被重建的新屏，且 #1325/#1331 的收起面板轮询门会挡住唯一能设置 `pending` 的路径；切回展开后旧布尔可能阻止新屏落位。现改为 `displayId` 锚定的 `placedFor`/`pendingFor`，保留同屏用户手动关页签的意图。#1326 composer sheet 与 #1329 重复 `trackDrag()` 在本仓没有对应代码，未移植。详情见[实施计划 §22](UPSTREAM-ABSORPTION-PLAN-2026-10-20.md#22-2026-11-03-虚拟屏自动落位重武装-上游-1350-issue-1339)。按用户要求只做代码层吸收，未做设备验收，L3 仍开放；上游比较游标不推进。
+
+### 2026-11-03：选择性吸收有界原子控制审计滚动
+
+上游 #1349 / issue #1337 对应本仓 `ControlAudit.appendTo()` 的无界追加缺口。保留 2 MiB 单文件上限、最多 500 条尾部记录；追加与滚动在进程内串行化，并用同目录原子替换发布滚动文件。单条超限或原子移动失败时跳过该次审计写入，保留旧文件，不采用非原子覆盖 fallback，且不阻断授权。此项为 L2 持久化改动；本轮未做设备验收，也未手工跑测试，PR CI 待复核。实施边界见[计划 §23](UPSTREAM-ABSORPTION-PLAN-2026-10-20.md#23-2026-11-03-有界原子控制审计滚动-上游-1349-issue-1337)。比较游标保持 `4a41e6ac9bf2b0f786e3c336cfc344068a8fd1e7`，本轮只审阅 26 个提交中的相关候选，不表示全量审完。
+
+### 2026-11-03：选择性吸收 Linux runtime 宿主生命周期修复
+
+上游 #1343 / issue #1206 与本仓 `createLinuxPluginHost()` 精确对应：失效 Cordis scope 曾被当成活动缓存复用，且 dispose 失败会阻止缓存清理。现统一以 `FiberState.ACTIVE` 判定活动（兼容无 state 的适配器），并在 dispose 的 finally 清除 scope/manager/directory、原错误仍上抛以便后续安装恢复。#1348 对应的启动探针已在本仓存在、settle 解析器已按文本顺序扫描；#1351/#1352 补丁文件在本仓不存在，均未移植。实施说明见[计划 §24](UPSTREAM-ABSORPTION-PLAN-2026-10-20.md#24-2026-11-03-linux-runtime-宿主缓存失效恢复-上游-1343-issue-1206)。本轮未手工跑测试或设备验收，等待 PR CI；比较游标保持不变。
+
+### 2026-11-03：启动来件 TTL 扫描移出主线程
+
+复用既有 PR #210 的 #1327 实现，不重复复制：`MainActivity.onCreate()` 用应用上下文启动 daemon worker 执行 TTL 清扫；来件投递前清扫、锁与活动投递保护保持不变。同步最新 `main` 后解决执行地图、实施计划、坑位与 Kotlin 测试基线冲突，并增加接线测试计数。刷新 PR #219 的 Kotlin 编译/单测门禁、静态源码门禁及其他 required CI 全部通过，以 merge commit `026e80c6d3ed91f03ef9514599c15c2b66817904` 合入 main。按用户要求暂缓设备验收，启动体验仍未完成设备三层验证。详情见[计划 §25](UPSTREAM-ABSORPTION-PLAN-2026-10-20.md#25-2026-11-03-启动来件-ttl-扫描后台化-上游-1327)。
+
+### 2026-11-03：上游最新门禁候选复核（#1395–#1397）
+
+GitHub API 核实上游 `main` 为 [`c2053739985801dcecfa621eb40c08d3ba6c79cc`](https://github.com/kelai141/dsh-mobile-apk/commit/c2053739985801dcecfa621eb40c08d3ba6c79cc)；相对既有游标 `4a41e6a` compare 显示 438 个新增提交。本轮只审了最新 #1395–#1397 的实际 diff：#1395 的降级来源/PROVENANCE 门禁在本仓没有对应模块；#1396 的通用注释剥离器不存在，但后续源码追踪发现本仓 route-auth 扫描器存在**潜在假绿、待反例复现**的正则字面量边界，已登记到 [known-gaps 当前入口](known-gaps.md#当前入口)；#1397 的新增 `existsSync` 调用点在本仓同名脚本不存在。#1331 虚拟屏面板不可见门控已由本仓先前吸收（计划 §20）。其余提交未逐项检查，**比较游标不推进**，不将 438 提交记为完整审阅。详细理由见[计划 §26](UPSTREAM-ABSORPTION-PLAN-2026-10-20.md#26-2026-11-03-上游门禁候选复核-1395-1397)。

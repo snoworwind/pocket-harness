@@ -30,6 +30,18 @@ object LogCollector {
   private const val MAX_FILE_BYTES = 5L * 1024 * 1024
   private const val MAX_ENGINE_CHUNK = 256 * 1024
 
+  private val LOADER_SETTLE_RES = Regex("(?:name=loader-settle(?:-ms)?\\b[^\\n]*?ms=|settleMs=)(-?\\d+)")
+
+  /** Extract the last measured loader-settle phase; missing or invalid probe data stays unknown. */
+  internal fun loaderSettleMs(text: String): Long? {
+    var last: Long? = null
+    for (match in LOADER_SETTLE_RES.findAll(text)) {
+      val value = match.groupValues[1].toLongOrNull() ?: continue
+      if (value >= 0L) last = value
+    }
+    return last
+  }
+
   private var executor: ScheduledExecutorService? = null
   private var appContext: Context? = null
 
@@ -300,8 +312,19 @@ object LogCollector {
         val deadline = System.currentTimeMillis() + PROBE_WINDOW_MS
         var sawProbe = false
         var graceAfterProbe = 0
+        val seen = if (BootPhaseTrace.enabled(ctx)) StringBuilder() else null
         while (System.currentTimeMillis() < deadline) {
           val text = readEngineLogFrom(ctx, probeThreshold = probeOffset, advanced = { probeOffset = it })
+          if (text.isNotEmpty() && seen != null) {
+            if (text.length >= MAX_ENGINE_CHUNK) {
+              seen.setLength(0)
+              seen.append(text, text.length - MAX_ENGINE_CHUNK, text.length)
+            } else {
+              val excess = seen.length + text.length - MAX_ENGINE_CHUNK
+              if (excess > 0) seen.delete(0, excess)
+              seen.append(text)
+            }
+          }
           if (text.isNotEmpty()) {
             val source = composeProbeSource(text)
             if (source != SOURCE_NONE) segComposeSource = source
@@ -331,6 +354,18 @@ object LogCollector {
         if (!sawProbe) {
           val note = if (segComposeSource == SOURCE_NONE) "probe-absent" else "probe-no-total"
           emitBootSegments(ctx, note + " source=" + segComposeSource)
+        }
+        if (seen != null) {
+          try {
+            val settle = loaderSettleMs(seen.toString())
+            BootPhaseTrace.mark(
+              ctx,
+              BootPhaseTrace.LOADER_SETTLE,
+              if (settle != null) "ms=" + settle else "absent=probe-not-installed",
+            )
+          } catch (_: Throwable) {
+            // Optional diagnostics must never affect engine startup.
+          }
         }
       } catch (t: Throwable) {
         Log.w(TAG, "probe tail failed: " + (t.message ?: t.javaClass.simpleName))

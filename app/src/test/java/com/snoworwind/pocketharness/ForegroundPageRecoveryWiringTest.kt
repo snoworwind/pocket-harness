@@ -227,4 +227,14 @@ class ForegroundPageRecoveryWiringTest {
     assertTrue(ordered(startup, "startupRecoverThenProbe(", "if (engineAlreadyRunning && startupAvailability == EngineProbe.EngineAvailability.OUR_HTTP)"))
     assertFalse(source("MainActivity.kt").contains("autoHealOwnership("))
   }
+
+  @Test fun incomingTtlSweepRunsOffTheActivityStartupThread() {
+    val creation = between(source("MainActivity.kt"), "override fun onCreate(", "private var pendingNotifySession")
+    assertTrue(creation.contains("Thread({"))
+    assertTrue(creation.contains("FileIncoming.sweepExpired(applicationContext)"))
+    assertTrue(creation.contains("\"dsh-incoming-ttl-sweep\""))
+    assertTrue(creation.contains("isDaemon = true"))
+    assertTrue(creation.contains("}.start()"))
+    assertFalse(creation.contains("FileIncoming.sweepExpired(this)"))
+  }
 }

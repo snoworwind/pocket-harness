@@ -3458,6 +3458,26 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 
     现象：`pip install` 默认把第三方包写进 `files/usr/lib/python3.X/site-packages`，下次快照刷新整体替换 `usr` 后包消失；若只设置 `PYTHONUSERBASE` 但目标目录不存在，Python 还会把 user-site 排除出 `sys.path`。真因：工厂运行树 `usr` 会随 APK 快照整树交换，而 pip 默认落点位于该可替换树内；改变 user base 后旧 `~/.local` user-site 也会从 import 搜索路径消失。修法：探测唯一 Python 次版本，预建位于 `files/python-packages` 的 user-site 后再给所有 shellEnv 子进程注入 `PIP_USER=1` 与 `PYTHONUSERBASE`；在 swap 前、swap 后 finish 前、中断恢复回收前及引擎启动 prelude 逐项幂等迁移旧包，跳过工厂文件且不覆盖同名目标。复验：PythonPackagesTest 15/15；完整 Kotlin 套件使用仓库登记的 WSL Linux SDK 1416/1416、0 failures、0 skips；`check-kotlin-test-count.mjs` 通过。Windows 单独运行曾被 symlink 权限阻断，但不影响 Linux 全套结果。执行地图覆盖及锚点检查通过。设备刷新、CDP 与 ADB 用户流程未做，完整三层通过前不得作为发版验收。
 
-622. **常驻动效只在启动时读一次系统开关会继续耗帧（2026-11-03）**
+624. **启动诊断没有区分壳侧构造与引擎初始化耗时（2026-11-03）**
 
-    现象：光环、待答呼吸、状态扫光或引导状态点正在动画时，用户关闭系统动画，界面仍持续刷新。真因：`animationsEnabled` 是取样函数；没有监听系统设置变化的 owner 不会再检查它。修法：通过 `DsUi.registerMotionListener` 监听三个缩放键，订阅者在 Activity、Service 或 View owner 结束时注销，并在开关翻转时重新落实静态/动画状态。复验：MotionGateContractTest、完整 Kotlin 套件、测试计数与执行地图门禁通过；按用户要求未做设备验收，设备侧结论仍开放。
+    现象：`boot-segments.log` 可记录引擎启动、监听、首个 HTTP 与 compose，但无法判断启动页的 `onCreate`、WebView provider 构造或快照解压各占多久；`loader-settle` 未装探针时也没有可区分的记录。真因：既有判据只覆盖引擎阶段，且壳侧没有单独的可选 phase trace。修法：dev 日志开关默认关闭；开启时写独立、有界的 `boot-phase-trace.log`，四阶段最多四行、64 KiB 轮转一代，loader-settle 缺失明确写 absent；追加写由锁串行化。复验：BootPhaseTraceTest 与完整 Kotlin 套件、测试计数和代码地图门禁通过。按用户要求未构建 APK、未做 CDP/ADB 或设备验收；启动与诊断行为仍未完成三层验收。
+
+625. **虚拟屏重建后自动落位被旧布尔状态永久挡住（2026-11-03）**
+
+    现象：虚拟屏仍为 active，但重建后右侧面板没有重新出现；若重建发生在侧栏收起期间，展开后仍看不到新屏。真因：`seenActive` 是跨屏共用布尔，销毁/重建未改变它；同时 #1325/#1331 门控在 `pending=false` 且侧栏收起时跳过 `reveal()`，而唯一会设置 pending 的分支就在 `reveal()` 内，状态因此无法重新武装。修法：用实际 `displayId` 分别锚定已落位 `placedFor` 和待落位 `pendingFor`；屏失活清空状态，收起时的新屏只登记 pending，展开后补落位，同一屏用户主动关闭页签仍不被周期抢回。复验：代码地图门禁、PR CI 待回归；本轮未做 APK/CDP/ADB，L3 设备验收开放。
+
+626. **控制审计文件无界增长且滚动失败可能损坏旧记录（2026-11-03）**
+
+    现象：壳侧 `files/audit/audit.ndjson` 随长期特权调用只追加、不设大小边界；超限直接截断重写会造成审计空窗，失败时还可能丢失原文件。真因：`ControlAudit.appendTo()` 原先只有 `appendText()`，没有滚动策略；简单复制覆盖并非原子发布。修法：单文件限制 2 MiB，滚动时最多保留 500 条且遵守新记录的字节预算；进程内串行化写入，临时文件在同目录以原子移动替换。单条超限或原子移动失败时跳过该条，不破坏旧文件；审计故障仍不阻断授权。复验：`check-code-map.mjs` 与 `git diff --check` 通过；PR CI 待复核。按用户要求未做设备验收，L2 持久化行为仍未完成三层验收。
+
+627. **Linux runtime 宿主复用了失活 scope，dispose 失败后无法重试（2026-11-03）**
+
+    现象：runtime 插件已非活动态或一次卸载/回滚的 dispose 抛错后，重复安装仍返回旧 manager，后续恢复机会被缓存挡住；`isInjected` 还可能将残留 scope 报告为 active。真因：缓存判据只检查 scope 非空，未读取可用的 Cordis fiber state；`release()` 先 await dispose，状态清理不在 finally 中。修法：活动判据要求 scope 存在且（若有 state）等于 `FiberState.ACTIVE`；缓存复用与状态查询共用该判据。dispose 外层 finally 无条件清空 scope、manager、activeDirectory，同时继续向调用方传播清理异常，让串行安装可以重试。复验：本轮未手工跑插件测试；PR CI 待复核。未做设备验收，Linux 安装/卸载路径尚未设备验收。
+
+628. **启动时的来件 TTL 扫描不能占用 Activity 主线程（2026-11-03）**
+
+    现象：应用冷启动时同步遍历临时工作区，目录或存储响应较慢会延迟 Activity 首帧。真因：`FileIncoming.sweepExpired()` 需要扫描目录、读取会话/待发索引并逐文件检查 TTL，原调用点位于 `MainActivity.onCreate()`。修法：用应用上下文交给命名 daemon worker；清扫函数内部的 `pendingLock`、活动复制/投递保护和 TTL 判据不变，投递前清扫顺序仍先于 reservation。接线回归禁止恢复同步主线程调用。复验：原 PR #210 的 PR Gate 通过；同步最新 main 后重新验证待 CI。按用户要求未做 APK/CDP/ADB，启动行为仍未完成设备三层验收。
+
+629. **常驻动效不会自动响应系统动效设置变化（2026-11-03）**
+
+    现象：光环、待答呼吸、状态扫光或引导状态点正在动画时，用户关闭系统动画，界面仍持续刷新。真因：`animationsEnabled` 只在调用时读取三个全局缩放值；既有常驻动画没有订阅系统设置变化，引导页状态点还未统一经过该门。修法：由 `DsUi.registerMotionListener` 统一监听三个缩放键，订阅者按 Activity、Service、View attach 的 owner 生命周期注册和注销，开关变化时重新落实动画或静态终态。复验：PR #211 在旧基线的 Kotlin/静态 CI 通过；同步最新 main 后须重新通过 CI。按用户要求未做 APK/CDP/ADB，L3 设备三层验收未完成。

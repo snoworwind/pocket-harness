@@ -336,16 +336,135 @@ Repair Assistant 在本仓没有对应产品功能；壳侧不因此直接注册
 - `check-kotlin-comments.mjs`、`check-code-map.mjs` 与 `git diff --check` 通过；执行地图中的旧坐标已按源码当前位置修正，新文件覆盖已登记。WSL 全量测试使用 docs/AGENTS/build-and-env.md 登记的原生 Linux SDK。完整设备刷新、pip 安装/导入、CDP 与 ADB 用户流程未执行；这是快照事务相关 L2 改动，仍未完成三层设备验收。
 - 比较范围 `4a41e6a..4587c07` 仍未逐项审完，比较游标保持 `4a41e6ac9bf2b0f786e3c336cfc344068a8fd1e7`。
 
-## 19. 2026-11-03 常驻动效实时响应系统设置
+## 18. 2026-11-03 启动阶段诊断（#1322）
 
-### 19.1 上游与本仓差异
+### 18.1 选择理由与本仓边界
 
-上游 [#1324](https://github.com/kelai141/dsh-mobile-apk/pull/1324) 为四处常驻无限动画增加系统动效开关观察器。本仓已经有 `DsUi.animationsEnabled`，光环与面板部分动画也在启动时读取它；缺口是运行中系统设置变化没有订阅，且引导页状态点没有门控，状态扫光的判定还重复读取设置。
+上游 PR #1322（合并提交 `67717b4472690d9c6e6c81aec802b6c545e2bcfe`）补充冷启动阶段耗时。当前 Pocket Harness 的 `boot-segments.log` 已能覆盖引擎启动、监听、HTTP 与 compose，但缺少壳侧 `onCreate`、WebView provider 构造、快照解压耗时；loader-settle 探针未安装时也无法区分“缺探针”和真实 0ms。该诊断能定位本仓冷启动延迟，且不增加模型工具面，选择性吸收。
 
-### 19.2 本仓吸收
+### 18.2 实现
 
-在 `DsUi` 增加纯判定 helper 与主线程 `ContentObserver` 订阅，监听三个动画缩放键；GuidePageRenderer、OverlayHalo、OverlayPanel 在 owner 生命周期注册/注销，ShimmerTextView 随 attach/detach 管理订阅并在重挂时重算状态。保留本仓共享门与静态终态行为，不搬上游无关的每帧 Matrix 优化。
+新增 `BootPhaseTrace`，由开发者日志偏好控制且默认关闭；记录 `onCreate`、`webView` 构造、快照解压与 loader-settle 四阶段。写入独立的 `files/boot-phase-trace.log`，单进程每阶段只记一次、最多四行，文件超过 64 KiB 时保留一代轮转副本。probe-tail 只在诊断启用时分配有界缓冲，最多保留 256 KiB；未发现有效探针记录为 `absent=probe-not-installed`，不伪造 0ms。执行地图与模块地图已登记。
+
+### 18.3 代码层验证与未完成边界
+
+- `BootPhaseTraceTest` 8 项通过；WSL `:app:testDebugUnitTest` 完整通过；测试计数基线更新至 1424（1416 基线 + 8），`check-kotlin-test-count.mjs` 通过。
+- `check-code-map.mjs --self-test` 与正式检查通过，正式盘点为 19 个查点、315 条覆盖、1045 个锚点、159 条耦合边、16 张流程图；更新锚点基线时同步删除了不再对应现存源码位置的旧计数，执行地图中受源码插入影响的明确锚点已修正。`check-kotlin-comments.mjs` 与 `git diff --check` 通过。
+- 按用户要求未构建 APK、未启动模拟器、未操作 ADB；本次是 L3 启动诊断代码，设备三层尚未执行，不能作为发版验收。
+- 上游比较游标仍为 `4a41e6ac9bf2b0f786e3c336cfc344068a8fd1e7`；`4a41e6a..b6478c1` 的 18 个提交尚未逐项审完，本次只记录已选择并吸收的 #1322，不表示整个增量已审阅。
+## 19. 2026-11-03 后台轮询可见性门控（上游 #1325）
+
+### 19.1 本地缺口与采纳边界
+
+本仓虚拟屏面板每秒刷新状态并重发 bounds，活动屏自动落位 effect 每 800ms 检查一次，undo-savepoint 顶栏统计每 30 秒刷新一次；三处均在 `document.hidden` 时照常运行。前两条本来就有可见性/即时事件与周期兜底的分工，统计也在显式快照成功后立即刷新，所以只吸收“页面隐藏暂停、恢复可见即刷新”的生命周期策略，不更改周期、工具、桥协议和统计语义。
+
+### 19.2 实现
+
+三处固定 `setInterval` 改为单次 timeout 续约：隐藏时清除排队的 timeout；可见时立即执行一次并只在可见状态下安排下一次；effect 清理同时移除 `visibilitychange` 监听与待执行 timeout。虚拟屏 Bounds 的 `watchStageVisibility` 和 undo-savepoint 显式快照后的立即刷新继续作为独立即时路径。页面隐藏期间的状态变化由恢复可见时的即时拉取补齐。
 
 ### 19.3 验证边界
 
-新增 MotionGateContractTest 5 项；仓库登记 WSL Linux SDK 完整 Kotlin 套件 1421/1421，0 failures、0 skips，`check-kotlin-test-count.mjs` 通过。执行地图门禁最初报告 37 条已有源码锚点内容漂移，按脚本受控刷新基线后 `check-code-map.mjs` 通过；Kotlin 注释门禁与 `git diff --check` 通过。按用户要求未构建 APK、未做 CDP/ADB 或设备验收；这是 UI/壳侧 L3 行为，仍需三层验收。本轮不推进未完整审阅的上游比较游标。
+这是 Web UI 生命周期行为，按本仓分类属于 L3。本轮按用户要求只做代码层吸收，未做 APK、CDP、模拟器或 ADB 验收；因此不把这项改动标为已验收。`check-code-map.mjs` 与 `git diff --check` 通过，undo-savepoint JS `node --check` 通过；vdisplay 插件构建未能启动，当前工作树没有安装 TypeScript（`tsc` 命令不可用），应由 PR CI 编译复核。代码差异与文档记录在独立 PR 中，PR 描述明确标注“未做设备验证”；进入发布候选前须完成 §2.1 三层验收。比较范围 `4a41e6a..b6478c1` 仍未逐项审完，检查游标保持 `4a41e6ac9bf2b0f786e3c336cfc344068a8fd1e7`。
+
+## 20. 2026-11-03 收起面板时跳过虚拟屏跨桥轮询（上游 #1331）
+
+### 20.1 本地证据与采纳范围
+
+#1325 已停掉整页后台轮询，但本仓右侧栏收起时插件 DOM 保活，`document.hidden` 仍为 false；每秒 `pullPanelState()` 与 `publishBounds()` 继续跨桥，而面板不可见。自动落位 effect 在收起期间也每 800ms 查询一次状态。`publishBounds()` 对同一舞台连续调用两次 `getComputedStyle()`，重复触发同步样式计算。本仓具备上游修复的全部对应路径，因此选择性吸收这三处局部优化：面板/舞台不可见时不发状态与 bounds 桥；自动落位只在右栏展开或存在 pending 补落位时检查；每次 bounds 发布只读取一次 computed style。
+
+不照搬上游新增的三份测试：其中部分用例以源码字符串复制定时器作为行为验证，不能直接执行 React effect；本仓本轮保留插件构建与现有 CI 回归作为代码复核。页面前台但面板收起时仍保留 1s/800ms 的 DOM 复查节奏，确保展开后无需 `visibilitychange` 也能恢复，不把轮询降频。
+
+### 20.2 实现与验证边界
+
+新增纯 DOM `panelOnScreen()`：检查页面可见性、右栏展开控件、舞台连接、计算样式和矩形；样式读取异常按可见处理，避免旧内核下误停状态同步。VdPanel 只有面板重新在屏时才调用 `pull()`；自动落位在收起且没有 pending 时跳过 `reveal()`。本项属于 Web UI L3，按用户要求只做代码层吸收，未做 APK、CDP、模拟器或 ADB 验收；待 PR CI 复核构建，进入发版候选前补三层设备验收。比较范围和游标均不变，其他上游提交仍未逐项审完。
+
+## 21. 2026-11-03 SSE keepalive parser 候选不适用（上游 #1333）
+
+上游 #1333 修复其 vendored `dsh-plugin-subscriptions` SSE parser 对无 `data:` 的 keepalive 帧误派发，以及按整块网络读取而不是未完成帧计算大小上限的问题，并补充 parser 回归。逐项检索本仓 `vendor/`、`plugins/`、来源注入清单和 vendor provenance 后，没有该包、parser、`MAX_PENDING_CHARS` 或 `subs-sse-limits` 测试，也没有它的注入路径；因此本仓不存在可修复的同一实现，不复制上游包或新增依赖。检索到的 `/plugins/events` SSE 是 `client-hmr` 通道，和订阅包 parser 不同，不能据此套用 #1333。比较游标保持不变；本项只登记排除依据，不构成代码吸收或行为等价声明。
+
+## 22. 2026-11-03 虚拟屏自动落位重武装（上游 #1350 / issue #1339）
+
+### 22.1 本地缺陷与采纳范围
+
+本仓自动落位仍以单个 `seenActive` 布尔代表所有虚拟屏，并以 `pending` 布尔表示收起期间待补落位；但 #1325/#1331 的轮询门只在侧栏展开或 `pending` 为真时调用 `reveal()`。若已落位屏随后销毁/重建，新屏在侧栏收起时出现，门会跳过唯一能设置 `pending` 的 `reveal()`；展开后旧 `seenActive=true` 又让新屏早退，用户的有效虚拟屏因此没有页签。只吸收状态真源改为具体 `displayId` 的修复，不改工具、桥协议、用户收起意图或轮询频率。
+
+### 22.2 实现
+
+用 `placedFor` 记录已落位的屏 ID、用 `pendingFor` 记录收起期间等待落位的屏 ID。非 active 状态清空两者；舞台已挂载时把当前屏标为已落位并清待补；同一屏已落位而页签被用户关闭时保留用户选择；新屏在收起时仅置 `pendingFor`，展开后自动落位；展开时成功落位再更新 `placedFor`。800ms 轮询与 `visibilitychange` 只在展开或 `pendingFor` 存在时读取状态，且待补状态在门外可见，避免门挡住产生待补状态的唯一路径。
+
+### 22.3 验证边界
+
+这是虚拟屏用户可见行为，属于 L3。本轮只做代码层吸收，未构建 APK、未做 CDP/模拟器/ADB 设备验收；具体恢复行为仍需按 §2.1 补三层证据后才能视为验收完成。上游检查点仍不推进：本次只深审 26 个提交中与已采纳 vdisplay 轮询直接相邻的候选，其他提交仍需逐项核对；#1326 的 composer sheet 在本仓不存在，#1329 的重复 `trackDrag()` 在本仓也不存在。
+
+## 23. 2026-11-03 有界原子控制审计滚动（上游 #1349 / issue #1337）
+
+### 23.1 本地缺口与采纳范围
+
+上游 #1349 为原生 `ControlAudit` 增加 2 MiB 上限，超限时保留最近 500 行再追加；本仓 `ControlAudit.appendTo()` 原先直接 `appendText()`，审计文件可随特权调用无限增长。选择性吸收上限与尾部保留语义，不改 JSON 行格式、结果三态、调用点及“审计失败不阻断授权”的既有策略。
+
+### 23.2 本仓适配
+
+记录先按 UTF-8 编码；单条超过 2 MiB 时整条跳过，避免截断破坏 NDJSON。滚动只保留最多 500 条且受下一条记录预留后的字节预算约束；同进程的滚动/追加由 `@Synchronized` 串行化。临时文件与目标同目录，通过 `ATOMIC_MOVE + REPLACE_EXISTING` 替换；原子移动失败则清理临时文件并跳过本次追加，不使用会覆盖旧文件的非原子 fallback。捕获写入/目录异常，维持审计故障不阻断授权。
+
+### 23.3 验证边界
+
+本轮未做设备验收；未运行手工测试套件，待 PR CI 对 Kotlin 编译与仓库门禁复核。当前仅更新代码地图和文档一致性检查；单文件滚动、并发与 Android 文件系统上的原子移动行为仍需 CI/后续设备证据核实。该改动属于壳侧审计持久化 L2，按用户要求先做代码吸收，未完成的三层设备验收不能视为已通过。上游当前 HEAD 为 `aa6076306a66caaf88366ac0d1f5c4f5c8e1de96`；本轮只深审 26 个提交中与目标缺口相关的候选，不推进比较游标，其余候选继续逐项审阅。
+
+## 24. 2026-11-03 Linux runtime 宿主缓存失效恢复（上游 #1343 / issue #1206）
+
+### 24.1 本地缺口与采纳范围
+
+本仓 `createLinuxPluginHost()` 与上游具有同一实现。缓存命中只看 `scope` 存在、目录相同且 manager 非空；scope 若已转为非 ACTIVE，仍会返回旧 manager。`isInjected()` 也把存在 scope 直接报告成 active。另 `release()` 先 await `dispose()`，只有成功才清空 `scope`/manager/directory；dispose 抛错后下次安装会再次复用这组失效引用，无法恢复。选择性吸收“活动态作缓存真源”和“释放失败也清缓存”两项修复，不改变注入目录判定、安装授权或路由协议。
+
+### 24.2 本仓适配
+
+新增 `isActive()`：scope 必须存在，且若适配器提供 `state`，其值必须为 `FiberState.ACTIVE`；未暴露 state 的现有适配器仍按存在性兼容。安装缓存复用、指定查询与空查询回退的 `isInjected.active` 统一使用此判据。`release()` 将 dispose 包入 `try/finally`，总是清除 scope/manager/activeDirectory；dispose 原异常继续上抛，安装串行队列可在失败后由下一次请求重新激活。
+
+### 24.3 候选排除与验证边界
+
+同批 #1348 的启动探针调用点在本仓均存在；`loaderSettleMs` 使用一个按文本顺序扫描的组合正则，已自然取最后出现值；本仓没有对应的动效总开关回调，因此不移植该 PR 的其余修复。#1351 的 `reasoning-envelope-1304.mjs` 与 #1352 的 `image-history-batch-offload-I1.mjs` 均不在本仓补丁树，未复制补丁或新增注入输入。此项只做代码层吸收；未手工运行插件测试、未构建 APK 或做设备验收，PR CI 待验证。上游比较游标不推进，处置只覆盖逐项核对的候选。
+
+## 25. 2026-11-03 启动来件 TTL 扫描后台化（上游 #1327）
+
+### 25.1 本地缺口与采纳范围
+
+本仓 `MainActivity.onCreate()` 原先同步调用 `FileIncoming.sweepExpired(this)`。清扫需要列举临时工作区、读取待发与 `.sessions` 引用并逐文件检查 TTL；成本随来件目录和会话索引增长，可能拖慢首帧。上游 #1327 的目标直接对应本仓调用点，选择把启动清扫移出主线程，保留清扫算法、锁与数据保护语义。
+
+### 25.2 本仓实现
+
+以命名 daemon worker 调用 `FileIncoming.sweepExpired(applicationContext)`，避免线程持有 Activity。清扫仍使用 `pendingLock`、活动复制/投递保护和 7 天 TTL；来件投递链自身仍在进入 reservation 前清扫，未改变重复调用的防护顺序。启动清扫失败仍不影响应用启动。对应接线回归与 Kotlin 测试计数基线一并更新。
+
+### 25.3 验证边界
+
+这是主界面启动行为，设备三层验收按用户要求暂缓，PR #219 明确标记“未做设备验证”。#219 在同步最新 main 后重新通过全部 required CI（含 Kotlin 编译/单测门禁与静态源码门禁），并以 merge commit `026e80c6d3ed91f03ef9514599c15c2b66817904` 合入 main；本机未手工运行测试套件。上游比较游标不因单项吸收而推进。
+
+## 26. 2026-11-03 上游门禁候选复核（#1395–#1397）
+
+### 26.1 比较范围与审查边界
+
+GitHub API 确认 `kelai141/dsh-mobile-apk/main` 当前为 `c2053739985801dcecfa621eb40c08d3ba6c79cc`。从既有游标 `4a41e6ac9bf2b0f786e3c336cfc344068a8fd1e7` 到该提交的 compare 报告 438 个新增提交；本次只针对最新三个门禁修复 PR #1395–#1397 检查实际 diff，并复核 #1331 的对应虚拟屏路径。**没有**逐项审阅整个 438 提交范围，游标继续保持 `4a41e6a`。
+
+### 26.2 候选处置
+
+- **#1395，不移植**：上游改动落在 `check-degrade-source-of-truth.mjs` 和 `check-vendor-provenance.mjs`，本仓没有这两个门禁或对应 PROVENANCE 自述。相邻的 `check-inject-completeness.mjs` 检查的是源包与注入归档成员闭合，并按配置检查 `web/headless`；它不是上游“注入降级副本来源”判据，不能当成同一个缺口，也不应为复制修复而新增上游专用门禁。
+- **#1396，未直接移植；本地对应扫描器列为待复现缺口**：本仓没有上游通用 `scripts/lib/strip-comments.mjs`，但 `check-api-route-auth.mjs` 有自己的 `stripSourceComments()` 词法扫描器，不识别正则字面量。静态追踪发现正则中的引号可能使后续注释留在输出；鉴权 marker 通过 `includes` 查找，因此存在把注释 guard 计作调用的潜在假绿。尚未构造并运行针对性反例，不能把该风险写成已证实绕过。上游实现使用不同的共享 lexer，不能整段移植；本地修复需单独覆盖输入语法、self-test 与受控负控，缺口登记见 [known-gaps.md](known-gaps.md#当前入口)。
+- **#1397，不移植**：上游只为 `check-patch-test-manifest.mjs` 新增的 `existsSync` 使用补 import；本仓同名脚本目前没有 `existsSync` 引用，也没有上游新增的 registry `test` 路径解析逻辑。孤立补 import 不会修复本仓行为。
+- **#1331 已具备**：收起虚拟屏面板时跳过状态/bounds 桥轮询、自动落位门控及单次样式读取已在本仓；细节见 §20，不重复吸收。
+
+### 26.3 后续边界
+
+此次筛选只关闭上述三个最新门禁候选及一个已具备项，不把 438 提交写成已审完。`check-api-route-auth` 的正则字面量扫描边界已升级为“潜在假绿、待复现”缺口；其他尚未逐项核对的上游变更继续保留在未审范围。本节为审查记录，没有改变门禁行为。
+
+## 27. 2026-11-03 常驻动效响应系统设置（上游 #1324）
+
+### 27.1 本地缺口与吸收边界
+
+本仓已有 `DsUi.animationsEnabled()`，光环和面板部分动效启动时会读系统缩放；但正在运行时关闭 Android 动效设置后没有变化，引导页状态点也没有统一门控，`ShimmerTextView` 还重复读取三个设置键。上游 #1324 对应的是设置变更通知及 owner 生命周期，不吸收其每帧 Matrix 分配优化。
+
+### 27.2 本仓实现
+
+`DsUi` 提供纯判定 helper 和主线程 `ContentObserver`，监听 animator/transition/window 三个缩放键。GuidePageRenderer 随 Activity 生命周期，OverlayHalo/OverlayPanel 随 OverlayService 生命周期，ShimmerTextView 随 View attach/detach 生命周期注册与注销；设置变化时重算并落实静态或动态状态。
+
+### 27.3 验证边界
+
+PR #211 原分支的 MotionGateContractTest 5 项、WSL 全量 Kotlin 1421/1421、测试计数、代码地图与 Kotlin 注释门禁均通过。该分支已合并最新 main 的 merge commit，当前 PR CI 需重新确认。按用户要求未构建 APK、未做 CDP/ADB；这是 L3 UI/壳侧行为，设备三层验收仍未完成。上游游标不推进。

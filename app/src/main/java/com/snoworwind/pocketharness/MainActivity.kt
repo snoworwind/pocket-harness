@@ -442,6 +442,7 @@ class MainActivity : ComponentActivity() {
 
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
+    BootPhaseTrace.markBootBase(this)
     userClosedEngine = (savedInstanceState?.getBoolean("dsh.engine-user-closed", false) ?: false) ||
       EngineService.userShutdown || EngineService.isUserShutdownPersisted(this)
     if (userClosedEngine) EngineService.userShutdown = true
@@ -451,8 +452,12 @@ class MainActivity : ComponentActivity() {
     // 崩溃标记：进程级未捕获异常写入 filesDir/.crashed（下次启动测试界面
     // 提示），随后交回默认 handler——只记录，不吞异常、不阻止崩溃。
     installCrashMarker()
-    // 启动即 TTL 清扫临时工作区（issue #60 F5.1：7 天过期文件自动回收）
-    try { FileIncoming.sweepExpired(this) } catch (_: Throwable) {}
+    // 启动即 TTL 清扫临时工作区（issue #60 F5.1：7 天过期文件自动回收）；目录扫描不阻塞首帧。
+    Thread({
+      try { FileIncoming.sweepExpired(applicationContext) } catch (_: Throwable) {}
+    }, "dsh-incoming-ttl-sweep").apply {
+      isDaemon = true
+    }.start()
     // S1-11：**冷启动不再弹通知权限**。旧实现在 onCreate 里直接 launch：应用刚打开、用户还
   // 不知道这是干什么的，系统弹窗先来了——没有前置说明，拒绝了也没有任何后果提示，而
   // 后果其实很重（引擎提问/授权请求没有超时，通知被丢 = 任务永久挂起）。
@@ -487,8 +492,14 @@ class MainActivity : ComponentActivity() {
     // 系统层面表现为「点开即崩」。改为如实落 boot-diag + 一句话告知 + finish 干净退出；
     // 早退后各 lateinit 面由 ::isInitialized 闸门挡住，onDestroy 不碰未建对象。
     // （赋值保持 `webView = WebView(this)` 字面形态——ForegroundPageRecoveryWiringTest 线序钉。）
+    val webViewConstructStartMs = android.os.SystemClock.elapsedRealtime()
     try {
       webView = WebView(this)
+      BootPhaseTrace.mark(
+        this,
+        BootPhaseTrace.WEBVIEW_CONSTRUCT,
+        "ms=" + (android.os.SystemClock.elapsedRealtime() - webViewConstructStartMs),
+      )
     } catch (t: Throwable) {
       LogCollector.writeBootDiag(
         this,
@@ -520,6 +531,7 @@ class MainActivity : ComponentActivity() {
       if (userClosedEngine) "引擎已停止" else "正在启动引擎…",
     )
     setContentView(root)
+    BootPhaseTrace.mark(this, BootPhaseTrace.ON_CREATE)
     // 0.14.1 用户反馈：公共导出目录（Documents/dshdata）的供给必须在**不依赖引擎状态**的地方触发。
     // 旧实现只从 startEngine()/shellEnv() 进入，而 startEngine() 在「引擎已可连或进程还活着」时
     // 早退、onResume 的探活发现引擎活着也不再走启动流程 → 授权之后没有任何东西会再跑一次建目录，
