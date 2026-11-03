@@ -186,7 +186,9 @@ function VdPanel(props: { sessionId?: unknown }): ReactElement {
       // 可见，**盖在聊天界面上**。权威收起信号 = 上游展开控件在场（ExpandButton 只在收起时渲染；
       // data-rightbar-collapsed 是恒为 true 的常量，不可用——见坑 119/120）。
       const collapsed = document.querySelector('[data-sidebar-right-expand]') !== null
-      const hidden = getComputedStyle(stage).display === 'none' || getComputedStyle(stage).visibility === 'hidden'
+      // getComputedStyle 会触发同步样式计算；同一发布周期只取一次。
+      const stageStyle = getComputedStyle(stage)
+      const hidden = stageStyle.display === 'none' || stageStyle.visibility === 'hidden'
       const overlay = hasBlockingStageOverlay(document, window)
       nativeBridge()?.vdisplayBounds?.(JSON.stringify({
         left: rect.left, top: rect.top, width: rect.width, height: rect.height,
@@ -254,9 +256,11 @@ function VdPanel(props: { sessionId?: unknown }): ReactElement {
       if (alive && !document.hidden && timer === undefined) {
         timer = window.setTimeout(() => {
           timer = undefined
-          if (!alive || document.hidden) return
-          pull()
-          schedulePoll()
+          if (!alive) return
+          // 侧栏收起时页面仍然可见；继续低成本 DOM 检查以便恢复时重新对齐，
+          // 但跳过状态桥与 bounds 桥调用，因为舞台当前不在屏幕上。
+          if (panelOnScreen()) pull()
+          if (!document.hidden) schedulePoll()
         }, 1000)
       }
     }
@@ -265,10 +269,10 @@ function VdPanel(props: { sessionId?: unknown }): ReactElement {
         clearPoll()
         return
       }
-      pull()
+      if (panelOnScreen()) pull()
       schedulePoll()
     }
-    pull()
+    if (panelOnScreen()) pull()
     // 页面退到后台时停掉兜底轮询；恢复可见立即对齐并续约。可见期间仍以 1s 轮询
     // 兜底原生层重建/事件通道漏网，上面的 watchStageVisibility 负责即时可见性。
     document.addEventListener('visibilitychange', onVisibilityChange)
@@ -423,7 +427,7 @@ export function apply(ctx: ClientContext): void {
         timer = window.setTimeout(() => {
           timer = undefined
           if (document.hidden) return
-          reveal()
+          if (!collapsedNow() || pending) reveal()
           schedulePoll()
         }, 800)
       }
@@ -433,7 +437,7 @@ export function apply(ctx: ClientContext): void {
         clearPoll()
         return
       }
-      reveal()
+      if (!collapsedNow() || pending) reveal()
       schedulePoll()
     }
     reveal()
@@ -500,4 +504,24 @@ export function apply(ctx: ClientContext): void {
     }
     return () => { watch?.dispose() }
   }, 'dsh-android-vdisplay: terminal keybar')
+}
+
+/**
+ * 面板舞台是否处于可见屏幕区域；仅读 DOM，不触发桥调用。
+ * 侧栏收起时 DOM 会保活且 document 仍可见，因此单查 document.hidden 不足以抑制无效轮询。
+ */
+function panelOnScreen(): boolean {
+  if (typeof document === 'undefined' || document.visibilityState === 'hidden') return false
+  if (document.querySelector('[data-sidebar-right-expand]') !== null) return false
+  const stage = document.querySelector('[data-testid=vdisplay-stage]')
+  if (stage === null || !stage.isConnected) return false
+  try {
+    const style = getComputedStyle(stage)
+    if (style.display === 'none' || style.visibility === 'hidden') return false
+    const rect = stage.getBoundingClientRect()
+    return rect.width > 1 && rect.height > 1
+  } catch {
+    // 老内核或分离节点无法读样式时按可见处理，避免静默停止状态同步。
+    return true
+  }
 }

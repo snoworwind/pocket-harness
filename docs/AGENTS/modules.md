@@ -90,6 +90,7 @@
 | `plugins/dsh-linux-bootstrap/client/index.js`（`settings.section` 归属） | Linux 环境设置入口挂载点 | bootstrap client bundle 只注入浏览器 `slots`，注册 `linux-environment` 面板，经既有鉴权 HTTP 路由访问引擎 `linuxBootstrap`；服务缺席在面板报错，不阻断整个 Web UI。 |
 | `plugins/dsh-model-capability/src/models-dev.ts`（**0.14.2 P2 新增**） | **来源梯 S3**：models.dev 跨厂商百科，补引擎随包目录（S4）查不到的**长尾模型** | 字段路径**本仓实测**（2026-09-26 真实抓取，非抄自他人实现）：provider map `{ <providerId>: { id, name, models: { <modelId>: <entry> } } }`；`entry.limit.context`→contextWindow（8181/8181 在场）、`entry.limit.output`→maxTokens、`entry.modalities.input[]`→input、`entry.reasoning_options[]`→thinkingLevels（4796/8181 在场）。**`values` 数组只存在于 `effort` 变体**（实测四种条目形态：仅 type / type+values / type+min+max / type+min），裸 `type:'toggle'` 或 `budget_tokens` 不点名任何档位。**只保留上列字段、其余全丢**；落盘前先量尺寸，超 `MODELS_DEV_MAX_BYTES`（8 MiB）拒写。`MODELS_DEV_URL = https://models.dev/api.json`（单请求、无 body、无凭据）、`MODELS_DEV_TTL_MS = 7 天`。**S3 与 S4 逐字段仲裁：分歧字段记为冲突且不写入**（`mergeModelsDev`） |
 | `plugins/dsh-android-vdisplay/src/index.ts`（本仓权威副本） | 虚拟屏工具面，包含 `android_vdisplay_input` 的严格回执 schema | `callVdOp` 成功回执包含 `state`，输入工具 schema 必须显式声明；壳侧 `vdInput` 正常回执还含 `verb` / `screenId` / `displayId`。web 与 headless profile 共用来源构建生成的 `lib/index.js`；维护时同步源码、`package.json` 与测试，按锁文件重建 `lib/`，不要手工同步或提交生成目录。 |
+| `plugins/dsh-android-vdisplay/src/client/index.ts`（本仓权威副本） | 虚拟屏侧栏面板、Surface bounds 发布、活动屏自动落位 | 可见性轮询在页面后台暂停；面板仍挂载但收起/离屏时只做 DOM 复查、不打状态与 bounds 桥；`panelOnScreen()` 是复用的无桥可见性判据。来源构建按插件锁文件从 `src/` 重建 client bundle。 |
 
 **来源梯全貌**（`capability-probe.ts` 文件头明载，0.14.2 P2 起为六级）：
 
