@@ -3457,3 +3457,7 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 618. **快照刷新会丢失通过 pip 安装的用户 Python 包（2026-11-02）**
 
     现象：`pip install` 默认把第三方包写进 `files/usr/lib/python3.X/site-packages`，下次快照刷新整体替换 `usr` 后包消失；若只设置 `PYTHONUSERBASE` 但目标目录不存在，Python 还会把 user-site 排除出 `sys.path`。真因：工厂运行树 `usr` 会随 APK 快照整树交换，而 pip 默认落点位于该可替换树内；改变 user base 后旧 `~/.local` user-site 也会从 import 搜索路径消失。修法：探测唯一 Python 次版本，预建位于 `files/python-packages` 的 user-site 后再给所有 shellEnv 子进程注入 `PIP_USER=1` 与 `PYTHONUSERBASE`；在 swap 前、swap 后 finish 前、中断恢复回收前及引擎启动 prelude 逐项幂等迁移旧包，跳过工厂文件且不覆盖同名目标。复验：PythonPackagesTest 15/15；完整 Kotlin 套件使用仓库登记的 WSL Linux SDK 1416/1416、0 failures、0 skips；`check-kotlin-test-count.mjs` 通过。Windows 单独运行曾被 symlink 权限阻断，但不影响 Linux 全套结果。执行地图覆盖及锚点检查通过。设备刷新、CDP 与 ADB 用户流程未做，完整三层通过前不得作为发版验收。
+
+621. **启动时的来件 TTL 扫描不能占用 Activity 主线程（2026-11-03）**
+
+    现象：应用冷启动时同步遍历临时工作区，目录或存储响应较慢会延迟 Activity 首帧。真因：FileIncoming.sweepExpired 涉及文件系统扫描，原调用点位于 MainActivity.onCreate()。修法：以应用上下文交给命名 daemon worker 执行，并保留清扫函数内部的锁、活动复制/投递保护和 TTL 判据；接线测试同时反证同步调用。复验：WSL Linux SDK 完整 Kotlin 套件 1417/1417、0 failures、0 skips；测试计数与执行地图自检/正式检查通过。用户要求本轮暂缓设备验收，设备侧结论仍开放。

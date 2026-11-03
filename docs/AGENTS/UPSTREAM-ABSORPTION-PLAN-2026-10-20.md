@@ -335,3 +335,17 @@ Repair Assistant 在本仓没有对应产品功能；壳侧不因此直接注册
 - `PythonPackagesTest` 专项 15/15（Windows Gradle JVM，0 failures / 0 errors / 0 skipped）；完整 Kotlin 套件在仓库登记的 WSL Linux SDK 下 1416/1416、0 failures、0 skips。Windows 直接运行曾因既存 symlink 用例缺少权限失败，但 WSL 结果通过。测试计数基线同步至 1416，`check-kotlin-test-count.mjs` 通过。
 - `check-kotlin-comments.mjs`、`check-code-map.mjs` 与 `git diff --check` 通过；执行地图中的旧坐标已按源码当前位置修正，新文件覆盖已登记。WSL 全量测试使用 docs/AGENTS/build-and-env.md 登记的原生 Linux SDK。完整设备刷新、pip 安装/导入、CDP 与 ADB 用户流程未执行；这是快照事务相关 L2 改动，仍未完成三层设备验收。
 - 比较范围 `4a41e6a..4587c07` 仍未逐项审完，比较游标保持 `4a41e6ac9bf2b0f786e3c336cfc344068a8fd1e7`。
+
+## 18. 2026-11-03 异步清扫过期来件
+
+### 18.1 上游与本仓差异
+
+上游 [#1327](https://github.com/kelai141/dsh-mobile-apk/pull/1327) 将启动清扫移出 Activity 主线程。本仓 MainActivity.onCreate() 原先直接调用 FileIncoming.sweepExpired(this)；它会遍历临时工作区，可能把磁盘延迟带进首帧启动路径。
+
+### 18.2 本仓吸收
+
+改为命名 daemon worker，并传入 applicationContext，避免持有 Activity。清扫仍使用 FileIncoming.sweepExpired，保留其 pendingLock、活动复制/投递保护与 TTL 语义；未复制上游其他行为。新增 ForegroundPageRecoveryWiringTest.incomingTtlSweepRunsOffTheActivityStartupThread，约束线程名称、daemon、应用上下文及禁止同步调用。
+
+### 18.3 验证边界
+
+仓库登记的 WSL Linux SDK 完整 Kotlin 套件 1417/1417、0 failures、0 skips；新增接线测试通过，测试计数、Kotlin 注释、执行地图自检/正式检查与 git diff --check 通过。Windows 全量套件曾因既存 symlink 目标操作失败，已按登记环境在 WSL 复核通过。本轮按用户要求未构建 APK、未做 CDP/ADB 或设备验收；该壳侧启动行为仍待三层验收。上游审阅游标不因单项吸收而推进。
