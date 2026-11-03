@@ -3480,4 +3480,4 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 
 629. **常驻动效不会自动响应系统动效设置变化（2026-11-03）**
 
-    现象：光环、待答呼吸、状态扫光或引导状态点正在动画时，用户关闭系统动画，界面仍持续刷新。真因：`animationsEnabled` 只在调用时读取三个全局缩放值；既有常驻动画没有订阅系统设置变化，引导页状态点还未统一经过该门。修法：由 `DsUi.registerMotionListener` 统一监听三个缩放键，订阅者按 Activity、Service、View attach 的 owner 生命周期注册和注销，开关变化时重新落实动画或静态终态。复验：PR #211 在旧基线的 Kotlin/静态 CI 通过；同步最新 main 后须重新通过 CI。按用户要求未做 APK/CDP/ADB，L3 设备三层验收未完成。
+    现象：光环、待答呼吸、状态扫光或引导状态点正在动画时，用户关闭系统动画，界面仍持续刷新。真因：`animationsEnabled` 只在调用时读取三个全局缩放值；既有常驻动画没有订阅系统设置变化，引导页状态点还未统一经过该门。修法：由 `DsUi.registerMotionListener` 统一监听三个缩放键，订阅者按 Activity、Service、View attach 的 owner 生命周期注册和注销，开关变化时重新落实动画或静态终态。复验：PR #211 刷新至最新 main 后 Kotlin 编译与单测、静态/来源回归门禁、冲突与密钥扫描、变更范围、维护文档及 sentinel 检查均通过，并以 merge commit `af9c9a3818c4387358e72561b8a1de360ad1cb8c` 合入。按用户要求未做 APK/CDP/ADB，L3 设备三层验收未完成。
