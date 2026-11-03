@@ -210,3 +210,7 @@
 ### 2026-11-03：选择性吸收收起面板轮询门控
 
 接续上条 #1325，吸收 #1331 中适配本仓的部分：右栏收起/舞台离屏时仍做轻量 DOM 复查，但跳过虚拟屏状态与 bounds 跨桥；自动落位在收起且无待补落位时跳过状态探测；同一 bounds 发布只调用一次 `getComputedStyle()`。未照搬源码复制式的定时器测试。文档同步见[实施计划 §20](UPSTREAM-ABSORPTION-PLAN-2026-10-20.md#20-2026-11-03-收起面板时跳过虚拟屏跨桥轮询-上游-1331)。按用户要求只做代码层吸收，设备验证未做；L3 验收开放。上游检查游标保持不变。
+
+### 2026-11-03：SSE keepalive parser 候选审查
+
+检查上游 #1333 后不移植：修复目标是其 vendored `dsh-plugin-subscriptions` parser，但本仓没有该包、对应源码/测试或注入路径。本仓已有 `/plugins/events` SSE 属于 `client-hmr`，不是同一个 parser。依据和检索范围记于[实施计划 §21](UPSTREAM-ABSORPTION-PLAN-2026-10-20.md#21-2026-11-03-sse-keepalive-parser-候选不适用-上游-1333)。该结论不表示本仓订阅 SSE 已验证；上游比较游标仍不前移。

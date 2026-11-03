@@ -361,3 +361,7 @@ Repair Assistant 在本仓没有对应产品功能；壳侧不因此直接注册
 ### 20.2 实现与验证边界
 
 新增纯 DOM `panelOnScreen()`：检查页面可见性、右栏展开控件、舞台连接、计算样式和矩形；样式读取异常按可见处理，避免旧内核下误停状态同步。VdPanel 只有面板重新在屏时才调用 `pull()`；自动落位在收起且没有 pending 时跳过 `reveal()`。本项属于 Web UI L3，按用户要求只做代码层吸收，未做 APK、CDP、模拟器或 ADB 验收；待 PR CI 复核构建，进入发版候选前补三层设备验收。比较范围和游标均不变，其他上游提交仍未逐项审完。
+
+## 21. 2026-11-03 SSE keepalive parser 候选不适用（上游 #1333）
+
+上游 #1333 修复其 vendored `dsh-plugin-subscriptions` SSE parser 对无 `data:` 的 keepalive 帧误派发，以及按整块网络读取而不是未完成帧计算大小上限的问题，并补充 parser 回归。逐项检索本仓 `vendor/`、`plugins/`、来源注入清单和 vendor provenance 后，没有该包、parser、`MAX_PENDING_CHARS` 或 `subs-sse-limits` 测试，也没有它的注入路径；因此本仓不存在可修复的同一实现，不复制上游包或新增依赖。检索到的 `/plugins/events` SSE 是 `client-hmr` 通道，和订阅包 parser 不同，不能据此套用 #1333。比较游标保持不变；本项只登记排除依据，不构成代码吸收或行为等价声明。
