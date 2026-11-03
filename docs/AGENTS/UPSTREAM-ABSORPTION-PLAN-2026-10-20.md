@@ -467,4 +467,4 @@ GitHub API 确认 `kelai141/dsh-mobile-apk/main` 当前为 `c2053739985801dcecfa
 
 ### 27.3 验证边界
 
-PR #211 原分支的 MotionGateContractTest 5 项、WSL 全量 Kotlin 1421/1421、测试计数、代码地图与 Kotlin 注释门禁均通过。该分支已合并最新 main 的 merge commit，当前 PR CI 需重新确认。按用户要求未构建 APK、未做 CDP/ADB；这是 L3 UI/壳侧行为，设备三层验收仍未完成。上游游标不推进。
+PR #211 刷新至最新 main 后，Kotlin 编译与单测、静态/来源回归门禁、冲突与密钥扫描、变更范围、维护文档及 sentinel 检查均通过；以 merge commit `af9c9a3818c4387358e72561b8a1de360ad1cb8c` 合入。按用户要求未构建 APK、未做 CDP/ADB；这是 L3 UI/壳侧行为，设备三层验收仍未完成。上游游标不推进。

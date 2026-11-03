@@ -12,7 +12,7 @@
 
 - [#1324 动效开关动态订阅](https://github.com/kelai141/dsh-mobile-apk/pull/1324)，提交 `9fe627a`：本仓已有 `DsUi.animationsEnabled` 与部分启动时门控，但用户在动画运行中关闭系统动画后常驻动效不会停止。只吸收共享设置观察器及四处生命周期接线；不吸收同提交每帧 Matrix 分配优化。实现见[吸收计划 §27](UPSTREAM-ABSORPTION-PLAN-2026-10-20.md#27-2026-11-03-常驻动效响应系统设置-上游-1324)。
 - [#1328 审计日志有界写](https://github.com/kelai141/dsh-mobile-apk/pull/1328)，提交 `49421f6`：不直接移植。壳与插件同时写 `files/audit/audit.ndjson`，各自轮转没有共享互斥；上游 `readLines()` 还会全量读历史大文件、原地改写会扩大并发丢记录窗口。需先设计跨写者协调与原子轮转协议，再单独评估。
-- PR #211 的旧基线 Kotlin/静态检查均通过；当前刷新分支待 CI，未做设备验收。
+- PR #211 刷新至最新 main 后 Kotlin 编译与单测、静态/来源回归门禁、冲突与密钥扫描、变更范围、维护文档及 sentinel 检查均通过，并以 merge commit `af9c9a3818c4387358e72561b8a1de360ad1cb8c` 合入；按用户要求未做设备验收。
 
 ## 2026-10-27 DeepSeek Harness 引擎追版
 
