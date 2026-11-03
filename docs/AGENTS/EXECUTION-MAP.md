@@ -1440,6 +1440,7 @@ flowchart TD
   3. 已确认（同一事实两种读数）：`status.ts:135` 的 `ops` 恒为静态 `VD_OPS`（7 条），`snapshotFromRaw` 全程忽略壳侧回执里的 `ops`；面板路径 `mapStatusPayload:299` 读的却是壳侧值，而壳侧 `VdisplayController.ops():124` 只列 5 条（缺 `vdLaunchApp`/`vdInput`）。于是 `android_vdisplay_status` 报 7 条可用、面板报 5 条。F-13（`ops()` 由 `SUPPORTED_OPS` 派生、==7 条）本轮未做，H-14（消费 `caps.ops`）同源。
   4. 已确认（回执丢字段，同 issue #232 族）：`plugins/dsh-android-vdisplay/src/index.ts:140` 的 render 只输出 `guidance`，失败时模型看不到 `code`（工具说明却让模型「看 code/guidance」），active 时看不到 `screens` 里的 alias（`screenId` 需要 `virtual-N`）；`execute` 里算好的 `text`（`:157`）从不被渲染。判据同 `tools.ts:73-87` 记的「能力声明与可用通道不一致」。
   5. 已确认（客户端声明与壳侧不符且不在门禁面内）：`plugins/dsh-android-vdisplay/src/client/index.ts:83` 声明 `vdisplayDestroy(target?: string)`、`:284` 按别名调用，壳侧 `AndroidBridge.kt:325` 是无参方法、`MainActivity.kt:784` 不传 target → 别名被 JS 桥静默丢弃，「关闭全部」的兜底路径（`:281-287`）实际按壳侧默认顺序（选中→本会话→任意）销毁一块。该声明不在 `scripts/bridge-symmetry-baseline.json` 的 surfaces（只覆盖 androidBridge/backGateBridge），门禁看不见；注入层同名声明是无参形态（`dsh-client-ui-responsive/src/client/android-bridge.ts:82`）。同处 `:40` 的 `VD_POLL_MS=10_000` 与真实 1s 轮询（`:252`）不符，是死常量。
+  6. 已吸收上游 #1325 的可见性门控：`VdPanel` 1s 状态/Bounds 兜底轮询、活动虚拟屏自动落位的 800ms 探测，以及 undo-savepoint 顶栏统计 30s 刷新均改为单次 timeout 续约。`document.hidden` 时清除待执行 timeout，恢复可见时立即刷新/探测并续约；舞台 `watchStageVisibility` 事件通路和显式操作后的 `refreshStat()` 即时刷新仍保留。页面隐藏期间的短暂变化依赖可见性恢复后的即时刷新与当前事件通路，不宣称隐藏期间保持周期对齐。
 
 ```mermaid
 flowchart TD

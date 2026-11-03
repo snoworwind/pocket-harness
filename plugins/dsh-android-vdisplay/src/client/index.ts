@@ -243,11 +243,41 @@ function VdPanel(props: { sessionId?: unknown }): ReactElement {
       void pullPanelState().then((s) => { if (alive) setSnap(s) })
       if (alive) publishBounds()
     }
+    let timer: number | undefined
+    const clearPoll = () => {
+      if (timer !== undefined) {
+        window.clearTimeout(timer)
+        timer = undefined
+      }
+    }
+    const schedulePoll = () => {
+      if (alive && !document.hidden && timer === undefined) {
+        timer = window.setTimeout(() => {
+          timer = undefined
+          if (!alive || document.hidden) return
+          pull()
+          schedulePoll()
+        }, 1000)
+      }
+    }
+    const onVisibilityChange = () => {
+      if (document.hidden) {
+        clearPoll()
+        return
+      }
+      pull()
+      schedulePoll()
+    }
     pull()
-    // 1s 轮询保留为**兜底对齐**（原生层重建、事件通道漏网时用）；即时性由上面的
-    // watchStageVisibility 事件通道负责，不再依赖这一拍。
-    const timer = setInterval(pull, 1000)
-    return () => { alive = false; clearInterval(timer) }
+    // 页面退到后台时停掉兜底轮询；恢复可见立即对齐并续约。可见期间仍以 1s 轮询
+    // 兜底原生层重建/事件通道漏网，上面的 watchStageVisibility 负责即时可见性。
+    document.addEventListener('visibilitychange', onVisibilityChange)
+    schedulePoll()
+    return () => {
+      alive = false
+      clearPoll()
+      document.removeEventListener('visibilitychange', onVisibilityChange)
+    }
   }, [tick, publishBounds])
 
   const selectTarget = (alias: string) => {
@@ -381,9 +411,38 @@ export function apply(ctx: ClientContext): void {
         seenActive = false
       }
     }
+    let timer: number | undefined
+    const clearPoll = () => {
+      if (timer !== undefined) {
+        window.clearTimeout(timer)
+        timer = undefined
+      }
+    }
+    const schedulePoll = () => {
+      if (!document.hidden && timer === undefined) {
+        timer = window.setTimeout(() => {
+          timer = undefined
+          if (document.hidden) return
+          reveal()
+          schedulePoll()
+        }, 800)
+      }
+    }
+    const onVisibilityChange = () => {
+      if (document.hidden) {
+        clearPoll()
+        return
+      }
+      reveal()
+      schedulePoll()
+    }
     reveal()
-    const timer = window.setInterval(reveal, 800)
-    return () => { window.clearInterval(timer) }
+    document.addEventListener('visibilitychange', onVisibilityChange)
+    schedulePoll()
+    return () => {
+      clearPoll()
+      document.removeEventListener('visibilitychange', onVisibilityChange)
+    }
   }, 'dsh-android-vdisplay: automatically reveal active viewer')
 
   ctx.effect(() => {
