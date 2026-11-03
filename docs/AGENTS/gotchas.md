@@ -3461,3 +3461,7 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 624. **启动诊断没有区分壳侧构造与引擎初始化耗时（2026-11-03）**
 
     现象：`boot-segments.log` 可记录引擎启动、监听、首个 HTTP 与 compose，但无法判断启动页的 `onCreate`、WebView provider 构造或快照解压各占多久；`loader-settle` 未装探针时也没有可区分的记录。真因：既有判据只覆盖引擎阶段，且壳侧没有单独的可选 phase trace。修法：dev 日志开关默认关闭；开启时写独立、有界的 `boot-phase-trace.log`，四阶段最多四行、64 KiB 轮转一代，loader-settle 缺失明确写 absent；追加写由锁串行化。复验：BootPhaseTraceTest 与完整 Kotlin 套件、测试计数和代码地图门禁通过。按用户要求未构建 APK、未做 CDP/ADB 或设备验收；启动与诊断行为仍未完成三层验收。
+
+625. **虚拟屏重建后自动落位被旧布尔状态永久挡住（2026-11-03）**
+
+    现象：虚拟屏仍为 active，但重建后右侧面板没有重新出现；若重建发生在侧栏收起期间，展开后仍看不到新屏。真因：`seenActive` 是跨屏共用布尔，销毁/重建未改变它；同时 #1325/#1331 门控在 `pending=false` 且侧栏收起时跳过 `reveal()`，而唯一会设置 pending 的分支就在 `reveal()` 内，状态因此无法重新武装。修法：用实际 `displayId` 分别锚定已落位 `placedFor` 和待落位 `pendingFor`；屏失活清空状态，收起时的新屏只登记 pending，展开后补落位，同一屏用户主动关闭页签仍不被周期抢回。复验：代码地图门禁、PR CI 待回归；本轮未做 APK/CDP/ADB，L3 设备验收开放。
