@@ -335,3 +335,17 @@ Repair Assistant 在本仓没有对应产品功能；壳侧不因此直接注册
 - `PythonPackagesTest` 专项 15/15（Windows Gradle JVM，0 failures / 0 errors / 0 skipped）；完整 Kotlin 套件在仓库登记的 WSL Linux SDK 下 1416/1416、0 failures、0 skips。Windows 直接运行曾因既存 symlink 用例缺少权限失败，但 WSL 结果通过。测试计数基线同步至 1416，`check-kotlin-test-count.mjs` 通过。
 - `check-kotlin-comments.mjs`、`check-code-map.mjs` 与 `git diff --check` 通过；执行地图中的旧坐标已按源码当前位置修正，新文件覆盖已登记。WSL 全量测试使用 docs/AGENTS/build-and-env.md 登记的原生 Linux SDK。完整设备刷新、pip 安装/导入、CDP 与 ADB 用户流程未执行；这是快照事务相关 L2 改动，仍未完成三层设备验收。
 - 比较范围 `4a41e6a..4587c07` 仍未逐项审完，比较游标保持 `4a41e6ac9bf2b0f786e3c336cfc344068a8fd1e7`。
+
+## 19. 2026-11-03 后台轮询可见性门控（上游 #1325）
+
+### 19.1 本地缺口与采纳边界
+
+本仓虚拟屏面板每秒刷新状态并重发 bounds，活动屏自动落位 effect 每 800ms 检查一次，undo-savepoint 顶栏统计每 30 秒刷新一次；三处均在 `document.hidden` 时照常运行。前两条本来就有可见性/即时事件与周期兜底的分工，统计也在显式快照成功后立即刷新，所以只吸收“页面隐藏暂停、恢复可见即刷新”的生命周期策略，不更改周期、工具、桥协议和统计语义。
+
+### 19.2 实现
+
+三处固定 `setInterval` 改为单次 timeout 续约：隐藏时清除排队的 timeout；可见时立即执行一次并只在可见状态下安排下一次；effect 清理同时移除 `visibilitychange` 监听与待执行 timeout。虚拟屏 Bounds 的 `watchStageVisibility` 和 undo-savepoint 显式快照后的立即刷新继续作为独立即时路径。页面隐藏期间的状态变化由恢复可见时的即时拉取补齐。
+
+### 19.3 验证边界
+
+这是 Web UI 生命周期行为，按本仓分类属于 L3。本轮按用户要求只做代码层吸收，未做 APK、CDP、模拟器或 ADB 验收；因此不把这项改动标为已验收。`check-code-map.mjs` 与 `git diff --check` 通过，undo-savepoint JS `node --check` 通过；vdisplay 插件构建未能启动，当前工作树没有安装 TypeScript（`tsc` 命令不可用），应由 PR CI 编译复核。代码差异与文档记录在独立 PR 中，PR 描述明确标注“未做设备验证”；进入发布候选前须完成 §2.1 三层验收。比较范围 `4a41e6a..b6478c1` 仍未逐项审完，检查游标保持 `4a41e6ac9bf2b0f786e3c336cfc344068a8fd1e7`。
