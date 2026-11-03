@@ -442,6 +442,7 @@ class MainActivity : ComponentActivity() {
 
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
+    BootPhaseTrace.markBootBase(this)
     userClosedEngine = (savedInstanceState?.getBoolean("dsh.engine-user-closed", false) ?: false) ||
       EngineService.userShutdown || EngineService.isUserShutdownPersisted(this)
     if (userClosedEngine) EngineService.userShutdown = true
@@ -487,8 +488,14 @@ class MainActivity : ComponentActivity() {
     // 系统层面表现为「点开即崩」。改为如实落 boot-diag + 一句话告知 + finish 干净退出；
     // 早退后各 lateinit 面由 ::isInitialized 闸门挡住，onDestroy 不碰未建对象。
     // （赋值保持 `webView = WebView(this)` 字面形态——ForegroundPageRecoveryWiringTest 线序钉。）
+    val webViewConstructStartMs = android.os.SystemClock.elapsedRealtime()
     try {
       webView = WebView(this)
+      BootPhaseTrace.mark(
+        this,
+        BootPhaseTrace.WEBVIEW_CONSTRUCT,
+        "ms=" + (android.os.SystemClock.elapsedRealtime() - webViewConstructStartMs),
+      )
     } catch (t: Throwable) {
       LogCollector.writeBootDiag(
         this,
@@ -520,6 +527,7 @@ class MainActivity : ComponentActivity() {
       if (userClosedEngine) "引擎已停止" else "正在启动引擎…",
     )
     setContentView(root)
+    BootPhaseTrace.mark(this, BootPhaseTrace.ON_CREATE)
     // 0.14.1 用户反馈：公共导出目录（Documents/dshdata）的供给必须在**不依赖引擎状态**的地方触发。
     // 旧实现只从 startEngine()/shellEnv() 进入，而 startEngine() 在「引擎已可连或进程还活着」时
     // 早退、onResume 的探活发现引擎活着也不再走启动流程 → 授权之后没有任何东西会再跑一次建目录，

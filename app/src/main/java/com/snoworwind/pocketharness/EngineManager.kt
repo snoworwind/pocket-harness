@@ -888,9 +888,16 @@ class EngineManager(private val context: Context, private val pickToken: String?
       0L
     }
     return try {
+      val extractStartMs = android.os.SystemClock.elapsedRealtime()
       context.assets.open(BUNDLED_SNAPSHOT_ASSET).use { input ->
         SnapshotExtractor.extract(input, assetLength, stage, onProgress, runtimeRoot = context.filesDir)
       }
+      BootPhaseTrace.mark(
+        context,
+        BootPhaseTrace.SNAPSHOT_EXTRACT,
+        "ms=" + (android.os.SystemClock.elapsedRealtime() - extractStartMs) +
+          " compressedBytes=" + assetLength,
+      )
       true
     } catch (t: Throwable) {
       Log.e(TAG, "snapshot extract failed", t)

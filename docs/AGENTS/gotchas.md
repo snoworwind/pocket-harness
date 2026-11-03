@@ -3457,3 +3457,7 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 618. **快照刷新会丢失通过 pip 安装的用户 Python 包（2026-11-02）**
 
     现象：`pip install` 默认把第三方包写进 `files/usr/lib/python3.X/site-packages`，下次快照刷新整体替换 `usr` 后包消失；若只设置 `PYTHONUSERBASE` 但目标目录不存在，Python 还会把 user-site 排除出 `sys.path`。真因：工厂运行树 `usr` 会随 APK 快照整树交换，而 pip 默认落点位于该可替换树内；改变 user base 后旧 `~/.local` user-site 也会从 import 搜索路径消失。修法：探测唯一 Python 次版本，预建位于 `files/python-packages` 的 user-site 后再给所有 shellEnv 子进程注入 `PIP_USER=1` 与 `PYTHONUSERBASE`；在 swap 前、swap 后 finish 前、中断恢复回收前及引擎启动 prelude 逐项幂等迁移旧包，跳过工厂文件且不覆盖同名目标。复验：PythonPackagesTest 15/15；完整 Kotlin 套件使用仓库登记的 WSL Linux SDK 1416/1416、0 failures、0 skips；`check-kotlin-test-count.mjs` 通过。Windows 单独运行曾被 symlink 权限阻断，但不影响 Linux 全套结果。执行地图覆盖及锚点检查通过。设备刷新、CDP 与 ADB 用户流程未做，完整三层通过前不得作为发版验收。
+
+624. **启动诊断没有区分壳侧构造与引擎初始化耗时（2026-11-03）**
+
+    现象：`boot-segments.log` 可记录引擎启动、监听、首个 HTTP 与 compose，但无法判断启动页的 `onCreate`、WebView provider 构造或快照解压各占多久；`loader-settle` 未装探针时也没有可区分的记录。真因：既有判据只覆盖引擎阶段，且壳侧没有单独的可选 phase trace。修法：dev 日志开关默认关闭；开启时写独立、有界的 `boot-phase-trace.log`，四阶段最多四行、64 KiB 轮转一代，loader-settle 缺失明确写 absent；追加写由锁串行化。复验：BootPhaseTraceTest 与完整 Kotlin 套件、测试计数和代码地图门禁通过。按用户要求未构建 APK、未做 CDP/ADB 或设备验收；启动与诊断行为仍未完成三层验收。

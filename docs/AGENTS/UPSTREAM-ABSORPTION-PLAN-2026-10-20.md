@@ -335,3 +335,20 @@ Repair Assistant 在本仓没有对应产品功能；壳侧不因此直接注册
 - `PythonPackagesTest` 专项 15/15（Windows Gradle JVM，0 failures / 0 errors / 0 skipped）；完整 Kotlin 套件在仓库登记的 WSL Linux SDK 下 1416/1416、0 failures、0 skips。Windows 直接运行曾因既存 symlink 用例缺少权限失败，但 WSL 结果通过。测试计数基线同步至 1416，`check-kotlin-test-count.mjs` 通过。
 - `check-kotlin-comments.mjs`、`check-code-map.mjs` 与 `git diff --check` 通过；执行地图中的旧坐标已按源码当前位置修正，新文件覆盖已登记。WSL 全量测试使用 docs/AGENTS/build-and-env.md 登记的原生 Linux SDK。完整设备刷新、pip 安装/导入、CDP 与 ADB 用户流程未执行；这是快照事务相关 L2 改动，仍未完成三层设备验收。
 - 比较范围 `4a41e6a..4587c07` 仍未逐项审完，比较游标保持 `4a41e6ac9bf2b0f786e3c336cfc344068a8fd1e7`。
+
+## 18. 2026-11-03 启动阶段诊断（#1322）
+
+### 18.1 选择理由与本仓边界
+
+上游 PR #1322（合并提交 `67717b4472690d9c6e6c81aec802b6c545e2bcfe`）补充冷启动阶段耗时。当前 Pocket Harness 的 `boot-segments.log` 已能覆盖引擎启动、监听、HTTP 与 compose，但缺少壳侧 `onCreate`、WebView provider 构造、快照解压耗时；loader-settle 探针未安装时也无法区分“缺探针”和真实 0ms。该诊断能定位本仓冷启动延迟，且不增加模型工具面，选择性吸收。
+
+### 18.2 实现
+
+新增 `BootPhaseTrace`，由开发者日志偏好控制且默认关闭；记录 `onCreate`、`webView` 构造、快照解压与 loader-settle 四阶段。写入独立的 `files/boot-phase-trace.log`，单进程每阶段只记一次、最多四行，文件超过 64 KiB 时保留一代轮转副本。probe-tail 只在诊断启用时分配有界缓冲，最多保留 256 KiB；未发现有效探针记录为 `absent=probe-not-installed`，不伪造 0ms。执行地图与模块地图已登记。
+
+### 18.3 代码层验证与未完成边界
+
+- `BootPhaseTraceTest` 8 项通过；WSL `:app:testDebugUnitTest` 完整通过；测试计数基线更新至 1424（1416 基线 + 8），`check-kotlin-test-count.mjs` 通过。
+- `check-code-map.mjs --self-test` 与正式检查通过，正式盘点为 19 个查点、315 条覆盖、1045 个锚点、159 条耦合边、16 张流程图；更新锚点基线时同步删除了不再对应现存源码位置的旧计数，执行地图中受源码插入影响的明确锚点已修正。`check-kotlin-comments.mjs` 与 `git diff --check` 通过。
+- 按用户要求未构建 APK、未启动模拟器、未操作 ADB；本次是 L3 启动诊断代码，设备三层尚未执行，不能作为发版验收。
+- 上游比较游标仍为 `4a41e6ac9bf2b0f786e3c336cfc344068a8fd1e7`；`4a41e6a..b6478c1` 的 18 个提交尚未逐项审完，本次只记录已选择并吸收的 #1322，不表示整个增量已审阅。
