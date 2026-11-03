@@ -78,7 +78,7 @@ flowchart TD
 
 ### 阶段 1：每次冷启动（秒级到三十秒）
 
-- MainActivity构造协作类、恢复用户关闭意图并装trusted bridge；首次内容帧同步显示原生引导页并使用 `ds_bg`，避免隐藏的 WebView/引导页之间露出窗口底色。
+- MainActivity构造协作类、恢复用户关闭意图并装trusted bridge；dev 日志开关打开时 `BootPhaseTrace` 记录 onCreate/WebView 构造/快照解压分段，`LogCollector` 探针尾窗补记 loader-settle（缺探针明确 absent）；首次内容帧同步显示原生引导页并使用 `ds_bg`，避免隐藏的 WebView/引导页之间露出窗口底色。
 - `EngineStartFlow` 经ownership prelude确认引擎 HTTP 可响应后才允许首次 WebView 导航；引导页保留到 `onPageCommitVisible` 再交接，已归属但尚无 HTTP 应答的进程走有界等待，见§6 K01/K02。
 - 看门狗在服务侧起 tick：`app/src/main/java/com/snoworwind/pocketharness/WatchdogV2.kt:109`（`planTick`，深度探活/退避/熔断）；
 - 失败退路：引擎有限retry/UndoGate；ownership pending独立finite6预算，未知不能读事务/spawn；页面只quiet前台恢复，见§6 K01/K02/K06。
@@ -469,7 +469,7 @@ K01 journal 发布：`SnapshotTransaction.writeMarker` 拒绝目标或临时路�
 | K03 | 交互面 MainActivity | DownloadSaver 由 WebView 下载/外链回调拉起，回执经 window.__dshExportResult 回灌页面 | app/src/main/java/com/snoworwind/pocketharness/MainActivity.kt:89 |
 | K03 | EngineAuth | DownloadSaver 下载引擎同源 URL 时附加鉴权并做一次 401 自愈重试 | app/src/main/java/com/snoworwind/pocketharness/DownloadSaver.kt:101 |
 | K03 | 开发选项与诊断 | boot-fail.log、update-status.txt 与 diagnostics 镜像目录是本块失败终态的落盘点 | app/src/main/java/com/snoworwind/pocketharness/EngineManager.kt:193 |
-| K03 | 公共导出目录供给 | Documents/dshdata 的创建与**结果记账**（`status|trigger|epochMs|detail` 落在私有目录）；触发点经 onCreate/onResume 与「引擎是否在跑」解耦，且除 OK 外每轮都重试——旧实现只从 startEngine()/shellEnv() 进入，引擎活着早退就永远不再供给（0.14.1 用户反馈：Documents 下一直没有 dshdata）。存储 chip 的判据取该结果，只有 OK 才显示「已就绪」；授权路线按 SDK 分流（API<30 无 All Files Access，改请求运行时 READ/WRITE） | app/src/main/java/com/snoworwind/pocketharness/PublicRepoProvision.kt:1、MainActivity.kt:354、EngineManager.kt:1467#expect=provisionPublicRepo%28PublicRepoProvision.TRIGGER_ENGINE_START%29 |
+| K03 | 公共导出目录供给 | Documents/dshdata 的创建与**结果记账**（`status|trigger|epochMs|detail` 落在私有目录）；触发点经 onCreate/onResume 与「引擎是否在跑」解耦，且除 OK 外每轮都重试——旧实现只从 startEngine()/shellEnv() 进入，引擎活着早退就永远不再供给（0.14.1 用户反馈：Documents 下一直没有 dshdata）。存储 chip 的判据取该结果，只有 OK 才显示「已就绪」；授权路线按 SDK 分流（API<30 无 All Files Access，改请求运行时 READ/WRITE） | app/src/main/java/com/snoworwind/pocketharness/PublicRepoProvision.kt:1、MainActivity.kt:354、EngineManager.kt:1474#expect=provisionPublicRepo%28PublicRepoProvision.TRIGGER_ENGINE_START%29 |
 | K04 | 引导与启动 | MainActivity/EngineService 是桥与控制承载的唯一安装与起停点（EngineAuth.initContext 必须先于装桥） | app/src/main/java/com/snoworwind/pocketharness/MainActivity.kt:160 |
 | K04 | 交互面 | 主 WebView 仅 addJavascriptInterface MainFrameBridge；可信顶层同步 facade 经 invoke 认证后分派 AndroidBridge/BackGateBridge，页面类型面保持原 ABI | app/src/main/java/com/snoworwind/pocketharness/MainFrameBridge.kt:36 |
 | K04 | 无障碍控制面 | ControlCarrier.handle 的兜底分支把语义/输入类 op 交给 DeviceControlService，a11y 缺席时返回结构化拒绝 | app/src/main/java/com/snoworwind/pocketharness/ControlCarrier.kt:110 |
@@ -684,7 +684,7 @@ K01 journal 发布：`SnapshotTransaction.writeMarker` 拒绝目标或临时路�
 | 白屏/停在 Loading plugins，且服务出的 HTML 里能看到垫片文本 | S01 | 装配后不可解析（坑 61）：跑 `node dsh-host-web-compat/scripts/smoke-injections.mjs`（逐段解析 + 页面标记）；看 `files/boot-diag.log`（`adb shell "run-as com.snoworwind.pocketharness cat files/boot-diag.log"`）里的 `dsh-boot-diag` 行与 `pageSideRuntime=`；logcat 过滤 `[dsh-boot-stall]` / `[dsh-boot-ready]`；grep `POLYFILL_SCRIPT_BODY`、`assertInjectionsParse`。 |
 | 抽屉打不开、设置页只显示窄条、轨迹详情被遮 | S01 | 锚点没发布或没人消费（坑 59）：CDP 求值 `document.documentElement.hasAttribute('data-dsh-mobile-form')`、`document.querySelectorAll('[data-dsh-frame]').length`、`document.querySelector('[data-dsh-mobile-topbar]')`;再 grep 这五个锚点确认消费方样式在场。 |
 | 点工具行文件链接弹「无法打开该文件」或点击无反应 | S01 | 会话身份/端点：CDP 读 `document.documentElement.getAttribute('data-dsh-session-id')`；页面 console 的 `[dsh-open-path]` 警告与底部提示条；端点返回体里的 `error` 取值 `session-unknown` / `not-found-in-session` / `not-found`（`dsh-host-web-compat/lib/index.js:895-940`）。 |
-| 目录选择器连弹多次或选完无反应 | S01 | poll 一次性投递与 token：`adb logcat` 看 SAF 与 `dsh-log`；grep `takePoll`（同一 requestId 只投一次）、`x-dsh-pick-token`；返回 `403 forbidden` 即 `DSH_PICK_TOKEN` 与页面 `getPickToken()` 不一致（`EngineManager.kt:2366#expect=%22DSH_PICK_TOKEN%22%20to%20%28pickToken%20%3F%3A%20%22%22%29`）。 |
+| 目录选择器连弹多次或选完无反应 | S01 | poll 一次性投递与 token：`adb logcat` 看 SAF 与 `dsh-log`；grep `takePoll`（同一 requestId 只投一次）、`x-dsh-pick-token`；返回 `403 forbidden` 即 `DSH_PICK_TOKEN` 与页面 `getPickToken()` 不一致（`EngineManager.kt:2373#expect=%22DSH_PICK_TOKEN%22%20to%20%28pickToken%20%3F%3A%20%22%22%29`）。 |
 | 返回键直接退出应用或层数不降 | S01 | `adb logcat -d | grep dsh-back`（`BackGate.TAG`）；CDP 读 `window.__dshBackDepth` / `__dshBackKinds`；层判据 grep `RIGHT_FULLSCREEN_SELECTOR`（`data-sidebar-right-open` 是权威 open 信号）、`data-sidebar-right-expand`。 |
 | 打包刚起步就红在「补丁自洽不一致」：跑 `node scripts/check-patch-mirror.mjs`（现行只判 registry↔IMPLS id 双向闭合，见 `:56-72`）；跨树镜像比对已于 2026-10-15 按用户决定移除，不会再因对端漂移判红。 | B01 | （待补） |
 | 设备装上后引擎起不来、日志 `Cannot find module` / `ERR_MODULE_NOT_FOUND`：注入丢件，跑 `node scripts/check-inject-completeness.mjs .deploy-tmp\build-\13-「abi」\snap-final2.tar.xz`，并在构建日志 grep `[fill]` `[prune]` `[add]`（inject-all.py:336-358）。 | B01 | （待补） |
@@ -861,7 +861,7 @@ flowchart TD
   - 引擎侧（K04）：`ControlProtocolV2.SUPPORTED_OPS`（`ControlProtocolV2.kt:46`）/`PV`/`Row`/`F_*` 与 `ControlPoller.envelope` 的 `caps`（`:56-72`）；`scripts/check-control-ops.mjs` 按行首引号解析 `handle` 分支名，所以 browser*/vd*/sh* 分支必须逐条留在 `handle` 里（:634-664）——**但它们运行时不可达**（`ControlCarrier` 已先分流），读代码时不要以为这些 op 在无障碍侧执行。
   - K06：`vd*`（:652-657）与 `sh*`（:661-664）在 handle 里只有一行转发（`VdisplayOps.handle` / `ShellOps.handle`），执行与授权全在 K06；`ControlCarrier.SHIZUKU_CACHE_MS`（`ControlCarrier.kt:47`）只回 `caps.shizuku`。
   - 偏好键：`dsh-adb.xml`（`PREFS` :42）的 `a11yEnabled`/`controlToken`/`controlHeartbeat`（:246-258，token 18 字节 base64url，:235）；屏幕范围**不再是偏好键**：`ScreenScopePrefs` 只保存在进程内存（`ScreenScope.kt:52` 起），K05 只读，写面在设置页，插件经控制应答 `caps.screenScope`/`vdInfo.data.scope` 读回（A02）。
-  - 路径：截图落 `filesDir/home/tmp/dsh-tmp`（:770），与引擎 `TMPDIR`（`EngineManager.kt:1448#expect=if%20%28%21killExistingEngine%28%29%29%20%7B`）/`DSH_FILES_DIR`（:1439）同源；`pruneShots` 只认同目录下 `shot-` 前缀（:1175）；`AdbKeyboardService.nonceFile` = `filesDir/adb-keyboard-nonce`（`AdbKeyboardService.kt:122`，引擎 `adbKeyboardAuthArg` 读同一文件，`index.ts:42`）。
+  - 路径：截图落 `filesDir/home/tmp/dsh-tmp`（:770），与引擎 `TMPDIR`（`EngineManager.kt:1455#expect=if%20%28%21killExistingEngine%28%29%29%20%7B`）/`DSH_FILES_DIR`（:1439）同源；`pruneShots` 只认同目录下 `shot-` 前缀（:1175）；`AdbKeyboardService.nonceFile` = `filesDir/adb-keyboard-nonce`（`AdbKeyboardService.kt:122`，引擎 `adbKeyboardAuthArg` 读同一文件，`index.ts:42`）。
   - 常量与纯函数：`MAX_NODES=4000` / `MAX_DEPTH=40` / `TREE_BUDGET_MS=3000` / `TOKEN_BYTES=18`（:48-52）、`WindowPick.order`（:409，回归 `WindowPickTest.kt`）、`GlobalActionCatalog.TABLE`（`GlobalActionCatalog.kt:23`，回归 `GlobalActionCatalogTest.kt`）、`WEB_SNAPSHOT_JS`/`WEB_ACTION_JS`（:60/:131）依赖 `MainActivity.webViewRef`（:852）。
   - 心跳口径：引擎 `a11yFacts()` 区分 `heartbeat`、明确关闭 `disabled`、启用标记下心跳缺失/过期/未来 `stale` 与未声明/不可读 `unknown`；只有非未来且 20 秒内的独立无障碍心跳开放路由。诊断保留有符号心跳年龄；控制队列可在服务缺席时运行，不作为无障碍在线证据。
 - **关键坐标**：
@@ -1511,7 +1511,7 @@ vendored bootstrap 与注入集的关系（0.15.0）：`plugins/dsh-linux-bootst
   - settings 面：读必须 `.find((d) => d.ns === 'llm-pi-ai')`（坑 48，`plugins/dsh-model-capability/src/settings-config.ts:50`、`plugins/dsh-model-capability/src/index.ts:417/429`）；写是 `settings.mutate('llm-pi-ai', [{ op: 'set', path: ['providers', route, 'models'] }], descriptor.revision)` + `SETTINGS_CONFLICT` 单次重试（`plugins/dsh-model-capability/src/settings-writer.ts:239`）。
   - 目录快照 `plugins/dsh-model-capability/lib/catalog-snapshot.json`（由 `scripts/build-snapshot-013.mjs:456` 按本次 ABI 引擎树生成，原先由 check-patch-mirror 的镜像面豁免该文件；镜像层已于 2026-10-15 移除，该豁免概念随之失效）→ `lookupCatalog`。
   - 装配集：`scripts/profile-web.cordis.patch.yml` 三条 `insert`（android-linux-env / android-file-open / model-capability）+ `scripts/plugin-dirs.json`。
-  - 运行时缓存读写的路径面：`$DSH_HOME`（壳侧注入点 `EngineManager.kt:2328#expect=%22DSH_HOME%22%20to%20ensurePrivateDshData%28%29.absolutePath`）、`$DSH_FILES_DIR`（`EngineManager.kt:2342#expect=%22DSH_FILES_DIR%22%20to%20context.filesDir.absolutePath`）、当前代 `engine.log`（壳侧 `EngineAuth.tokenFromLog` 的唯一输入）。
+  - 运行时缓存读写的路径面：`$DSH_HOME`（壳侧注入点 `EngineManager.kt:2335#expect=%22DSH_HOME%22%20to%20ensurePrivateDshData%28%29.absolutePath`）、`$DSH_FILES_DIR`（`EngineManager.kt:2349#expect=%22DSH_FILES_DIR%22%20to%20context.filesDir.absolutePath`）、当前代 `engine.log`（壳侧 `EngineAuth.tokenFromLog` 的唯一输入）。
 - **关键坐标**：
   - `plugins/dsh-android-file-open/src/index.ts:238` — `enqueueSession`：路径断言 + 队列落盘 + 自有临时项记账（POST 的验收判定）
   - `plugins/dsh-android-file-open/src/index.ts:431` — `safeResolveInside`：两侧 realpath 后的工作区包含判定（H3 + 前缀混用修复）；content 须校验并读取同一 FD（坑 369）；clean 仅允许顶层普通叶文件，不跟随链接、不递归，排除队列元数据（坑 370）。
@@ -1650,7 +1650,7 @@ Touch reorder: `sidebar-reorder.ts` flushes each synthetic React drag phase. On 
   - 白屏/停在 Loading plugins，且服务出的 HTML 里能看到垫片文本 → 装配后不可解析（坑 61）：跑 `node dsh-host-web-compat/scripts/smoke-injections.mjs`（逐段解析 + 页面标记）；看 `files/boot-diag.log`（`adb shell "run-as com.snoworwind.pocketharness cat files/boot-diag.log"`）里的 `dsh-boot-diag` 行与 `pageSideRuntime=`；logcat 过滤 `[dsh-boot-stall]` / `[dsh-boot-ready]`；grep `POLYFILL_SCRIPT_BODY`、`assertInjectionsParse`。
   - 抽屉打不开、设置页只显示窄条、轨迹详情被遮 → 锚点没发布或没人消费（坑 59）：CDP 求值 `document.documentElement.hasAttribute('data-dsh-mobile-form')`、`document.querySelectorAll('[data-dsh-frame]').length`、`document.querySelector('[data-dsh-mobile-topbar]')`;再 grep 这五个锚点确认消费方样式在场。
   - 点工具行文件链接弹「无法打开该文件」或点击无反应 → 会话身份/端点：CDP 读 `document.documentElement.getAttribute('data-dsh-session-id')`；页面 console 的 `[dsh-open-path]` 警告与底部提示条；端点返回体里的 `error` 取值 `session-unknown` / `not-found-in-session` / `not-found`（`dsh-host-web-compat/lib/index.js:895-940`）。
-  - 目录选择器连弹多次或选完无反应 → poll 一次性投递与 token：`adb logcat` 看 SAF 与 `dsh-log`；grep `takePoll`（同一 requestId 只投一次）、`x-dsh-pick-token`；返回 `403 forbidden` 即 `DSH_PICK_TOKEN` 与页面 `getPickToken()` 不一致（`EngineManager.kt:2366#expect=%22DSH_PICK_TOKEN%22%20to%20%28pickToken%20%3F%3A%20%22%22%29`）。
+  - 目录选择器连弹多次或选完无反应 → poll 一次性投递与 token：`adb logcat` 看 SAF 与 `dsh-log`；grep `takePoll`（同一 requestId 只投一次）、`x-dsh-pick-token`；返回 `403 forbidden` 即 `DSH_PICK_TOKEN` 与页面 `getPickToken()` 不一致（`EngineManager.kt:2373#expect=%22DSH_PICK_TOKEN%22%20to%20%28pickToken%20%3F%3A%20%22%22%29`）。
   - 返回键直接退出应用或层数不降 → `adb logcat -d | grep dsh-back`（`BackGate.TAG`）；CDP 读 `window.__dshBackDepth` / `__dshBackKinds`；层判据 grep `RIGHT_FULLSCREEN_SELECTOR`（`data-sidebar-right-open` 是权威 open 信号）、`data-sidebar-right-expand`。附件来源菜单开着时应看到 `attachment-menu` 层（`back-stack.ts:95`），`__dshBack()` 关菜单而非退应用。
 - **可疑点**：
   - `dsh-host-web-compat/scripts/smoke-injections.mjs:50` + `dsh-host-web-compat/lib/index.js:783,791`（已确认，静态可推）：脚本断言 `transforms.length === 1`，而 `apply()` 现在注册两次 `tapIndex`（polyfill 块 + 静态占位块）→ 该断言必红、`npm test` 与子仓 PR gate 的「注入冒烟」整条红。这是坑 61 防线③（门禁）与源码脱同步；apk 仓自己的 `.github/workflows` 不跑这个脚本，所以本仓 CI 不会暴露。修法：断言改 `>= 1` 或按哨兵分别断言。
@@ -2188,6 +2188,7 @@ scripts/patches/data/client-index-loader-barrier.mjs
 scripts/patches/upstream/pi-ai-1.1.0.patch
 glob:dsh-client-ui-responsive/src/client/mobile/upstream-browser/**
 app/src/main/java/com/snoworwind/pocketharness/MainActivity.kt
+app/src/main/java/com/snoworwind/pocketharness/BootPhaseTrace.kt
 app/src/main/java/com/snoworwind/pocketharness/UserCopy.kt
 app/src/main/java/com/snoworwind/pocketharness/EngineStartFlow.kt
 app/src/main/java/com/snoworwind/pocketharness/GuideChrome.kt

@@ -202,3 +202,7 @@
 ### 2026-11-02：选择性吸收 pip 用户包持久化
 
 复核起点保持 `4a41e6ac9bf2b0f786e3c336cfc344068a8fd1e7`，当前上游 HEAD 为 `4587c07e4408c6dee71913e1bc13dc80a8e1f05f`。本轮选择性核对并移植 #1225 / [`3b98b4917911bdd5d54064bedfc5230cb37ae5d6`](https://github.com/kelai141/dsh-mobile-apk/commit/3b98b4917911bdd5d54064bedfc5230cb37ae5d6)：本仓 `usr` 同样随快照整体交换，pip 默认 user packages 会丢失；新增独立迁移器、共享 shell 环境注入和启动/刷新四个迁移时点，15 条专项 JVM 回归通过，WSL 全量 Kotlin 套件 1416/1416、0 failures。当前没有 runtime 快照包，设备刷新与真人流程三层未验。此记录不代表 409 commits 范围已完整审阅，比较游标不推进；其他候选须逐项核对。
+
+### 2026-11-03：选择性吸收冷启动阶段诊断
+
+上游 PR #1322 / 合并提交 `67717b4472690d9c6e6c81aec802b6c545e2bcfe` 针对本仓现有启动分段日志的覆盖缺口：增加默认关闭的 `BootPhaseTrace`，记录 Activity `onCreate`、WebView 构造、快照解压和 loader-settle，探针缺席明确记录为 unknown；本仓保留自己的启动日志、开发者偏好与快照调用路径。8 项专项回归、WSL 全量 Kotlin 测试、测试计数、代码地图、Kotlin 注释与 diff 检查通过，详细实施和限制见 [计划 §18](UPSTREAM-ABSORPTION-PLAN-2026-10-20.md#18-2026-11-03-启动阶段诊断-1322)。按用户要求未做 APK、模拟器或 ADB 验收，L3 仍未完成设备三层验收。上游当前比较范围 `4a41e6a..b6478c1` 共 18 个提交未逐项审完，检查游标继续保持 `4a41e6ac9bf2b0f786e3c336cfc344068a8fd1e7`；此次只吸收 #1322，不把该范围标为已审完。
