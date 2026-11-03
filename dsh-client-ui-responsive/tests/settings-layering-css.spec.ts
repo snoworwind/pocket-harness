@@ -14,6 +14,22 @@ import { MOBILE_SETTINGS_CSS } from '../src/client/mobile-settings.css.ts'
 const LAYER_VALUES = ['home', 'detail']
 
 describe('竖屏设置分层样式', () => {
+  it('顶部栏占据正常布局空间，首页分类列表保持可滚动', () => {
+    const header = MOBILE_SETTINGS_CSS
+      .split('html[data-dsh-mobile-form] [data-dsh-settings-dialog] > [data-dsh-settings-bar] {')[1]
+      ?.split('}')[0] ?? ''
+    expect(header, '顶部栏规则必须存在').not.toBe('')
+    expect(header).toContain('position: relative')
+    expect(header, '顶部栏不得浮在分类列表上方').not.toContain('position: absolute')
+
+    const homeNav = MOBILE_SETTINGS_CSS
+      .split("data-dsh-settings-level='home'] > nav {")[1]
+      ?.split('}')[0] ?? ''
+    expect(homeNav).toContain('overflow-y: auto')
+    expect(homeNav).toContain('padding: 12px 12px 16px')
+    expect(homeNav).not.toContain('padding-top: 56px')
+  })
+
   it('两条层级规则都在场，且都限定在手机形态标记下', () => {
     for (const level of LAYER_VALUES) {
       const marker = "data-dsh-settings-level='" + level + "']"

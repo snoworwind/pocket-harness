@@ -8,7 +8,7 @@
  * `navIcon(row.id)` 与本行 label。因此分层只能由本容器实现，且**列表本身仍由上游按注册顺序渲染**——
  * 本模块不建列表、不排序、不隐藏任何注册项，只做三件事（全部可逆）：
  *   1. 在面板上写 `data-dsh-settings-level`，由 `mobile-settings.css.ts` 决定「看列表」还是「看内容」；
- *   2. 追加一个返回控件（首页 = 关设置，二级页 = 回首页）与二级页标题；
+ *   2. 追加一个占据正常布局空间的顶部栏（首页 = 关设置，二级页 = 回首页）与二级页标题；
  *   3. 给我方自有分区的一级行补一行短说明（D4）。图标与 label 一律沿用上游既有渲染（上游
  *      `navIcon` 已对未知 id 降级通用齿轮）；未知/第三方 id 不加说明、不改文案（D5 降级）。
  *
@@ -436,7 +436,7 @@ export class MobileSettingsNav {
     spacer.setAttribute('aria-hidden', 'true')
     bar.appendChild(spacer)
 
-    // 面板的第一个子节点：首页时它绝对定位成返回浮标，二级页时它是一行真正的标题栏。
+    // 面板的第一个子节点：始终是占据正常布局空间的标题栏，避免覆盖下面的分类列表。
     panel.insertBefore(bar, panel.firstChild)
     return bar
   }

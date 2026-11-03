@@ -36,13 +36,10 @@ export const MOBILE_SETTINGS_CSS: string = `
   }
 
   /* ── 分层导航：顶部条（返回 + 标题）─────────────────────────────────
-   * 首页时绝对定位成返回浮标（标题即设置外壳自己的标题），二级页时是内容列之上
-   * 一行真正的标题栏。文案一律取自 DOM 既有的上游文本，本表不含任何字面量。 */
+   * 首页与二级页都让顶部条占据正常布局空间，避免浮层压住分类列表首行；二级页额外显示分隔线。
+   * 文案一律取自 DOM 既有的上游文本，本表不含任何字面量。 */
   html[data-dsh-mobile-form] [data-dsh-settings-dialog] > [data-dsh-settings-bar] {
-    position: absolute;
-    top: var(--dsh-mobile-top-inset, 0px);
-    left: 0;
-    right: 0;
+    position: relative;
     z-index: 2;
     display: flex;
     align-items: center;
@@ -51,13 +48,11 @@ export const MOBILE_SETTINGS_CSS: string = `
     box-sizing: border-box;
     min-height: 52px;
     padding: 0 8px;
-    /* 压住下方滚动经过的列表行（首页时列表从标题条底下滚过）。 */
+    /* 顶部栏在布局流中独占高度，列表只在自己的滚动区内滚动。 */
     background: var(--dsw-alias-bg-layer-2);
   }
 
   html[data-dsh-mobile-form] [data-dsh-settings-dialog][data-dsh-settings-level='detail'] > [data-dsh-settings-bar] {
-    position: relative;
-    top: auto;
     border-bottom: 1px solid var(--dsw-alias-border-l1);
   }
 
@@ -114,8 +109,8 @@ export const MOBILE_SETTINGS_CSS: string = `
     width: 100%;
     height: auto;
     gap: 0;
-    /* 顶部让出标题条的高度（标题条是绝对定位，两者的原点都是面板的 padding box）。 */
-    padding: 56px 12px 16px;
+    /* 标题条已在正常布局流中，不再靠固定占位值防遮挡；这里仅保留列表边距。 */
+    padding: 12px 12px 16px;
     overflow-y: auto;
     border: none;
   }
