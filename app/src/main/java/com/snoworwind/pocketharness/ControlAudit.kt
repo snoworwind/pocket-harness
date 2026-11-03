@@ -3,6 +3,10 @@ package com.snoworwind.pocketharness
 import android.content.Context
 import org.json.JSONObject
 import java.io.File
+import java.io.FileOutputStream
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption.ATOMIC_MOVE
+import java.nio.file.StandardCopyOption.REPLACE_EXISTING
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -45,6 +49,12 @@ object ControlAudit {
   /** 审计记录的工具名（与插件侧 `tool` 字段同面）。 */
   const val TOOL = "shell-native"
 
+  /** 与插件侧 audit.ndjson 同口径的单文件上限。 */
+  internal const val MAX_AUDIT_BYTES = 2 * 1024 * 1024
+
+  /** 超限时最多保留的旧记录数。 */
+  internal const val KEEP_TAIL_LINES = 500
+
   private val TS = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).apply {
     timeZone = TimeZone.getTimeZone("UTC")
   }
@@ -71,10 +81,47 @@ object ControlAudit {
       .put("result", result)
   }
 
-  /** 纯函数：把一条记录追加到 `<auditDir>/audit.ndjson`（只依赖 [File]，供 JVM 单测直驱）。 */
+  /** 追加一条有界审计记录；滚动与追加在进程内串行化。 */
+  @Synchronized
   fun appendTo(auditDir: File, record: JSONObject) {
-    auditDir.mkdirs()
-    File(auditDir, "audit.ndjson").appendText(record.toString() + "\n")
+    val bytes = (record.toString() + "\n").toByteArray(Charsets.UTF_8)
+    // JSON 记录不可安全截断；单条超过上限时按既有审计失败策略跳过。
+    if (bytes.size > MAX_AUDIT_BYTES) return
+    try {
+      auditDir.mkdirs()
+      val file = File(auditDir, "audit.ndjson")
+      if (file.length() + bytes.size > MAX_AUDIT_BYTES && !roll(file, bytes.size)) return
+      FileOutputStream(file, true).use { it.write(bytes) }
+    } catch (_: Throwable) {
+      /* 审计写入失败不影响授权路径；旧文件保持可读。 */
+    }
+  }
+
+  /** 保留尾部记录并在同目录原子替换，避免原地 truncate 产生空文件窗口。 */
+  private fun roll(file: File, nextRecordBytes: Int): Boolean {
+    val tmp = File(file.parentFile ?: return false, file.name + ".roll.tmp")
+    try {
+      if (!file.isFile) return true
+      val budget = MAX_AUDIT_BYTES - nextRecordBytes
+      val tail = file.readLines(Charsets.UTF_8).takeLast(KEEP_TAIL_LINES)
+      val kept = java.util.ArrayDeque<ByteArray>()
+      var keptBytes = 0
+      for (line in tail.asReversed()) {
+        val lineBytes = (line + "\n").toByteArray(Charsets.UTF_8)
+        if (keptBytes + lineBytes.size > budget) break
+        kept.addFirst(lineBytes)
+        keptBytes += lineBytes.size
+      }
+      FileOutputStream(tmp, false).use { out ->
+        for (lineBytes in kept) out.write(lineBytes)
+      }
+      // 同目录移动避免跨卷；不退回覆盖写，以免原子替换失败时再次截断原文件。
+      Files.move(tmp.toPath(), file.toPath(), ATOMIC_MOVE, REPLACE_EXISTING)
+      return true
+    } catch (_: Throwable) {
+      tmp.delete()
+      return false
+    }
   }
 
   /**

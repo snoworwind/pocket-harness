@@ -422,8 +422,37 @@ window.__ModuleLoader__.load({
 			}, []);
 			(0, react.useEffect)(() => {
 				refreshStat();
-				const id = setInterval(refreshStat, 30000);
-				return () => clearInterval(id);
+				let id;
+				const clearPoll = () => {
+					if (id !== undefined) {
+						clearTimeout(id);
+						id = undefined;
+					}
+				};
+				const schedulePoll = () => {
+					if (!document.hidden && id === undefined) {
+						id = setTimeout(() => {
+							id = undefined;
+							if (document.hidden) return;
+							refreshStat();
+							schedulePoll();
+						}, 30000);
+					}
+				};
+				const onVisibilityChange = () => {
+					if (document.hidden) {
+						clearPoll();
+						return;
+					}
+					refreshStat();
+					schedulePoll();
+				};
+				document.addEventListener('visibilitychange', onVisibilityChange);
+				schedulePoll();
+				return () => {
+					clearPoll();
+					document.removeEventListener('visibilitychange', onVisibilityChange);
+				};
 			}, [refreshStat]);
 			return (0, react_jsx_runtime.jsx)("div", {
 				className: styles.actions,

@@ -186,7 +186,9 @@ function VdPanel(props: { sessionId?: unknown }): ReactElement {
       // 可见，**盖在聊天界面上**。权威收起信号 = 上游展开控件在场（ExpandButton 只在收起时渲染；
       // data-rightbar-collapsed 是恒为 true 的常量，不可用——见坑 119/120）。
       const collapsed = document.querySelector('[data-sidebar-right-expand]') !== null
-      const hidden = getComputedStyle(stage).display === 'none' || getComputedStyle(stage).visibility === 'hidden'
+      // getComputedStyle 会触发同步样式计算；同一发布周期只取一次。
+      const stageStyle = getComputedStyle(stage)
+      const hidden = stageStyle.display === 'none' || stageStyle.visibility === 'hidden'
       const overlay = hasBlockingStageOverlay(document, window)
       nativeBridge()?.vdisplayBounds?.(JSON.stringify({
         left: rect.left, top: rect.top, width: rect.width, height: rect.height,
@@ -243,11 +245,43 @@ function VdPanel(props: { sessionId?: unknown }): ReactElement {
       void pullPanelState().then((s) => { if (alive) setSnap(s) })
       if (alive) publishBounds()
     }
-    pull()
-    // 1s 轮询保留为**兜底对齐**（原生层重建、事件通道漏网时用）；即时性由上面的
-    // watchStageVisibility 事件通道负责，不再依赖这一拍。
-    const timer = setInterval(pull, 1000)
-    return () => { alive = false; clearInterval(timer) }
+    let timer: number | undefined
+    const clearPoll = () => {
+      if (timer !== undefined) {
+        window.clearTimeout(timer)
+        timer = undefined
+      }
+    }
+    const schedulePoll = () => {
+      if (alive && !document.hidden && timer === undefined) {
+        timer = window.setTimeout(() => {
+          timer = undefined
+          if (!alive) return
+          // 侧栏收起时页面仍然可见；继续低成本 DOM 检查以便恢复时重新对齐，
+          // 但跳过状态桥与 bounds 桥调用，因为舞台当前不在屏幕上。
+          if (panelOnScreen()) pull()
+          if (!document.hidden) schedulePoll()
+        }, 1000)
+      }
+    }
+    const onVisibilityChange = () => {
+      if (document.hidden) {
+        clearPoll()
+        return
+      }
+      if (panelOnScreen()) pull()
+      schedulePoll()
+    }
+    if (panelOnScreen()) pull()
+    // 页面退到后台时停掉兜底轮询；恢复可见立即对齐并续约。可见期间仍以 1s 轮询
+    // 兜底原生层重建/事件通道漏网，上面的 watchStageVisibility 负责即时可见性。
+    document.addEventListener('visibilitychange', onVisibilityChange)
+    schedulePoll()
+    return () => {
+      alive = false
+      clearPoll()
+      document.removeEventListener('visibilitychange', onVisibilityChange)
+    }
   }, [tick, publishBounds])
 
   const selectTarget = (alias: string) => {
@@ -354,36 +388,76 @@ export function apply(ctx: ClientContext): void {
     // 同浏览器侧：**边沿触发 + 收起时延迟落位**，不是每秒无条件抢焦点。
     // 旧实现每 800ms 无条件 openTab，用户收起侧栏后会被下一拍拽开、点 × 收起也会被切回来
     // （设备实测：浏览器侧与虚拟屏侧是同一个结构缺陷，两侧一起改）。
-    /** 上一次已处理过的舞台标记（'' = 还没出现过）。 */
-    let seenActive = false
-    /** 收起期间出现过、等待用户展开后补落位。 */
-    let pending = false
+    // 自动落位状态按 displayId 记录，不能用单个 seenActive 布尔。
+    // 屏重建会产生新的 displayId；收起期间待落位也必须能被 800ms 门控读取。
+    let placedFor: number | undefined
+    let pendingFor: number | undefined
     // 同浏览器侧：权威收起信号 = 上游展开控件是否在场（`data-rightbar-collapsed` 是常量，不可用）。
     const collapsedNow = (): boolean => document.querySelector('[data-sidebar-right-expand]') !== null
     const reveal = () => {
-      const active = decodeNative('vdisplayStatus')?.state === 'active'
-      if (!active) { seenActive = false; return }
-      if (document.querySelector('[data-testid=vdisplay-stage]') !== null) return
+      const status = decodeNative('vdisplayStatus')
+      if (status === undefined || status.state !== 'active') {
+        placedFor = undefined
+        pendingFor = undefined
+        return
+      }
+      const displayId = status.displayId
+      if (document.querySelector('[data-testid=vdisplay-stage]') !== null) {
+        placedFor = displayId
+        pendingFor = undefined
+        return
+      }
+      if (placedFor === displayId) {
+        // 同一块屏的页签由用户关闭后，尊重用户选择，不周期性抢回。
+        pendingFor = undefined
+        return
+      }
+      if (collapsedNow()) {
+        // 屏在收起期间启动或重建时先记待落位，不标成已落位。
+        pendingFor = displayId
+        return
+      }
       try {
-        if (seenActive) {
-          // 无新事件：仅当「收起期间攒下待落位」且用户已展开时，补一次。
-          if (pending && !collapsedNow()) {
-            pending = false
-            sidebar.openTab(VD_TAB_KIND, { revealIfOpened: true })
-          }
-          return
-        }
-        seenActive = true
-        if (collapsedNow()) { pending = true; return }
         sidebar.openTab(VD_TAB_KIND, { revealIfOpened: true })
+        placedFor = displayId
+        pendingFor = undefined
       } catch {
-        /* 侧栏未挂载：下一拍重试（seenActive 未置位，保持可重试） */
-        seenActive = false
+        /* 侧栏未挂载：下一拍重试，不能提前标记本屏已落位。 */
+        placedFor = undefined
       }
     }
+    let timer: number | undefined
+    const clearPoll = () => {
+      if (timer !== undefined) {
+        window.clearTimeout(timer)
+        timer = undefined
+      }
+    }
+    const schedulePoll = () => {
+      if (!document.hidden && timer === undefined) {
+        timer = window.setTimeout(() => {
+          timer = undefined
+          if (document.hidden) return
+          if (!collapsedNow() || pendingFor !== undefined) reveal()
+          schedulePoll()
+        }, 800)
+      }
+    }
+    const onVisibilityChange = () => {
+      if (document.hidden) {
+        clearPoll()
+        return
+      }
+      if (!collapsedNow() || pendingFor !== undefined) reveal()
+      schedulePoll()
+    }
     reveal()
-    const timer = window.setInterval(reveal, 800)
-    return () => { window.clearInterval(timer) }
+    document.addEventListener('visibilitychange', onVisibilityChange)
+    schedulePoll()
+    return () => {
+      clearPoll()
+      document.removeEventListener('visibilitychange', onVisibilityChange)
+    }
   }, 'dsh-android-vdisplay: automatically reveal active viewer')
 
   ctx.effect(() => {
@@ -441,4 +515,24 @@ export function apply(ctx: ClientContext): void {
     }
     return () => { watch?.dispose() }
   }, 'dsh-android-vdisplay: terminal keybar')
+}
+
+/**
+ * 面板舞台是否处于可见屏幕区域；仅读 DOM，不触发桥调用。
+ * 侧栏收起时 DOM 会保活且 document 仍可见，因此单查 document.hidden 不足以抑制无效轮询。
+ */
+function panelOnScreen(): boolean {
+  if (typeof document === 'undefined' || document.visibilityState === 'hidden') return false
+  if (document.querySelector('[data-sidebar-right-expand]') !== null) return false
+  const stage = document.querySelector('[data-testid=vdisplay-stage]')
+  if (stage === null || !stage.isConnected) return false
+  try {
+    const style = getComputedStyle(stage)
+    if (style.display === 'none' || style.visibility === 'hidden') return false
+    const rect = stage.getBoundingClientRect()
+    return rect.width > 1 && rect.height > 1
+  } catch {
+    // 老内核或分离节点无法读样式时按可见处理，避免静默停止状态同步。
+    return true
+  }
 }
