@@ -409,3 +409,17 @@ Repair Assistant 在本仓没有对应产品功能；壳侧不因此直接注册
 ### 23.3 验证边界
 
 本轮未做设备验收；未运行手工测试套件，待 PR CI 对 Kotlin 编译与仓库门禁复核。当前仅更新代码地图和文档一致性检查；单文件滚动、并发与 Android 文件系统上的原子移动行为仍需 CI/后续设备证据核实。该改动属于壳侧审计持久化 L2，按用户要求先做代码吸收，未完成的三层设备验收不能视为已通过。上游当前 HEAD 为 `aa6076306a66caaf88366ac0d1f5c4f5c8e1de96`；本轮只深审 26 个提交中与目标缺口相关的候选，不推进比较游标，其余候选继续逐项审阅。
+
+## 24. 2026-11-03 Linux runtime 宿主缓存失效恢复（上游 #1343 / issue #1206）
+
+### 24.1 本地缺口与采纳范围
+
+本仓 `createLinuxPluginHost()` 与上游具有同一实现。缓存命中只看 `scope` 存在、目录相同且 manager 非空；scope 若已转为非 ACTIVE，仍会返回旧 manager。`isInjected()` 也把存在 scope 直接报告成 active。另 `release()` 先 await `dispose()`，只有成功才清空 `scope`/manager/directory；dispose 抛错后下次安装会再次复用这组失效引用，无法恢复。选择性吸收“活动态作缓存真源”和“释放失败也清缓存”两项修复，不改变注入目录判定、安装授权或路由协议。
+
+### 24.2 本仓适配
+
+新增 `isActive()`：scope 必须存在，且若适配器提供 `state`，其值必须为 `FiberState.ACTIVE`；未暴露 state 的现有适配器仍按存在性兼容。安装缓存复用、指定查询与空查询回退的 `isInjected.active` 统一使用此判据。`release()` 将 dispose 包入 `try/finally`，总是清除 scope/manager/activeDirectory；dispose 原异常继续上抛，安装串行队列可在失败后由下一次请求重新激活。
+
+### 24.3 候选排除与验证边界
+
+同批 #1348 的启动探针调用点在本仓均存在；`loaderSettleMs` 使用一个按文本顺序扫描的组合正则，已自然取最后出现值；本仓没有对应的动效总开关回调，因此不移植该 PR 的其余修复。#1351 的 `reasoning-envelope-1304.mjs` 与 #1352 的 `image-history-batch-offload-I1.mjs` 均不在本仓补丁树，未复制补丁或新增注入输入。此项只做代码层吸收；未手工运行插件测试、未构建 APK 或做设备验收，PR CI 待验证。上游比较游标不推进，处置只覆盖逐项核对的候选。
