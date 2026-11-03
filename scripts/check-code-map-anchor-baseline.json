@@ -1253,7 +1253,7 @@
       "val TABLE: List<Entry> = listOf("
     ],
     "GuidePageRenderer.kt:363": [
-      "),"
+      "onShareLog = { shareGuideLog() },"
     ],
     "LogCollector.kt:395": [
       "}"
@@ -1406,10 +1406,10 @@
       "private const val PREFS = \"dsh-overlay\""
     ],
     "OverlayHalo.kt:113": [
-      "}"
+      "return"
     ],
     "OverlayHalo.kt:143": [
-      "val hv = svc.haloView ?: return@post"
+      "svc.main.post {"
     ],
     "OverlayLiveFeed.kt:160": [
       "val label = when {"
@@ -1424,16 +1424,16 @@
       "fun startWatcher() {"
     ],
     "OverlayPanel.kt:1060": [
-      "}"
+      "} else svc.flashStatus(\"应答失败\")"
     ],
     "OverlayPanel.kt:112": [
       "\"item\" -> {"
     ],
     "OverlayPanel.kt:1174": [
-      "pickerLoadError = if (code == 200) \"\" else \"会话列表读取失败（HTTP $code）\""
+      "}"
     ],
     "OverlayPanel.kt:1177": [
-      "var recentId = \"\""
+      "}"
     ],
     "OverlayPanel.kt:177": [
       "}"
@@ -1469,22 +1469,22 @@
       "internal val pendingApprovals = LinkedHashMap<String, PendingApproval>()"
     ],
     "OverlayPanel.kt:818": [
-      "})"
+      "text = desc"
     ],
     "OverlayPanel.kt:824": [
-      "gravity = Gravity.CENTER_VERTICAL"
+      "setMargins(0, 0, 0, (4 * dp).toInt())"
     ],
     "OverlayPanel.kt:835": [
-      "gravity = Gravity.CENTER"
+      "contentDescription = \"展开剩余 $optsHidden 个选项\""
     ],
     "OverlayPanel.kt:87": [
       "*"
     ],
     "OverlayPanel.kt:904": [
-      "alpha = if (qPage < n - 1) 1f else 0.4f"
+      "setTextColor(if (qPage > 0) textColor else subColor)"
     ],
     "OverlayPanel.kt:947": [
-      "val payload = JSONObject()"
+      "// 单问多选无自动提交路径 → 给「提交」；单选点选项即答、自定义走键盘 DONE 即答"
     ],
     "OverlayReport.kt:164": [
       "/**"
@@ -1514,73 +1514,73 @@
       ""
     ],
     "OverlayService.kt:216": [
-      "scaleType = ImageView.ScaleType.MATRIX"
+      "// 白球：白底圆 + 黑鲸鱼（ic_launcher_foreground.png，bbox 裁剪 x[102..328] y[130..300] 居中，撑 76%）"
     ],
     "OverlayService.kt:232": [
-      "val dy = (dstH - srcH * scale) / 2f - 130f * scale"
+      "val dstW = (26 * dp).toFloat(); val dstH = (20 * dp).toFloat()"
     ],
     "OverlayService.kt:252": [
-      ""
+      "x = (resources.displayMetrics.widthPixels - ballSize - (12 * dp).toInt()).coerceAtLeast(0)"
     ],
     "OverlayService.kt:299": [
-      "* 横屏开的 400dp 面板转到竖屏则直接超出可用宽（`displayMetrics.widthPixels - 球 - 边距`）。"
+      "*"
     ],
     "OverlayService.kt:382": [
-      "panel.statusText?.let { ShimmerTextView::class.java.cast(it).setShimmering(false) }"
+      "val unit = panel.unitView ?: return"
     ],
     "OverlayService.kt:427": [
-      "// 唯一的边界约束是上面 clampBallPos 的四向 edgeMarginPx。"
+      "try { wm.updateViewLayout(v.parent as View, p) } catch (_: Exception) {}"
     ],
     "OverlayService.kt:449": [
-      "p.y = p.y.coerceIn(margin, (h - winH - margin).coerceAtLeast(margin))"
+      "val margin = edgeMarginPx"
     ],
     "OverlayService.kt:470": [
-      "if (optimisticBusyAt == 0L) return false"
+      "true"
     ],
     "OverlayService.kt:473": [
-      "sessionBusy = false"
+      "/** 探活 tick 调用：乐观忙态超时未获 live 事件确认则回退。返回 true 表示发生了回退。 */  private fun optimisticBusyExpired(): Boolean {"
     ],
     "OverlayService.kt:499": [
-      "}"
+      "fallback"
     ],
     "OverlayService.kt:502": [
-      "* api-session/status emit（$events 流，args=[agentId, running]）——引擎 agent 运行态"
-    ],
-    "OverlayService.kt:504": [
-      "* 乐观忙态（optimisticBusyAt 清零）；running=false 等价 turn_end 回空闲。"
-    ],
-    "OverlayService.kt:509": [
-      "// 钉住 = 用户在选择器里显式选过；面板关闭时解除钉住，下次展开重新跟随。"
-    ],
-    "OverlayService.kt:512": [
-      "// 块H-A1（详档 §3.2 复位时机）：目标会话已切换 → 清掉归属旧会话的完成位/文案。"
-    ],
-    "OverlayService.kt:547": [
-      "main.postDelayed({"
-    ],
-    "OverlayService.kt:574": [
-      "// tick 覆写成「引擎离线」。故有完成文案时交由分支链负责（详档 §6.3 回归面）。"
-    ],
-    "OverlayService.kt:580": [
-      "panel.statusText?.let { ShimmerTextView::class.java.cast(it).setShimmering(false); it.setTextColor(0xFFE04848.toInt()); it.text = \"引擎离线\" }"
-    ],
-    "OverlayService.kt:621": [
-      "EngineAuth.attach(applicationContext, conn)"
-    ],
-    "OverlayService.kt:683": [
-      "if (activeSessionId.isEmpty()) {"
-    ],
-    "OverlayService.kt:737": [
-      ""
-    ],
-    "OverlayService.kt:765": [
       "}"
     ],
+    "OverlayService.kt:504": [
+      ""
+    ],
+    "OverlayService.kt:509": [
+      "* 会话感知与 live 流一致：无目标会话=全部接受，有目标=仅该会话。"
+    ],
+    "OverlayService.kt:512": [
+      "// 0.13.5：未钉住目标时**自动跟踪正在工作的会话**（用户诉求：悬浮球要跟得上别的对话）。"
+    ],
+    "OverlayService.kt:547": [
+      "// 展开态会永远不显示完成文案：consume 只挂在 showPanel 上）。"
+    ],
+    "OverlayService.kt:574": [
+      "setHalo(deriveHalo())"
+    ],
+    "OverlayService.kt:580": [
+      "// 「等待你的回答…」（question/approval 待处理）时，只要引擎此刻探活失败，"
+    ],
+    "OverlayService.kt:621": [
+      "conn.doOutput = true"
+    ],
+    "OverlayService.kt:683": [
+      "flashStatus(\"发送失败（HTTP $code）\")"
+    ],
+    "OverlayService.kt:737": [
+      "main.postDelayed({ if (expanded) updateBallOnly() }, 2500)"
+    ],
+    "OverlayService.kt:765": [
+      "internal fun jumpToApp() {"
+    ],
     "OverlayService.kt:775": [
-      "/**"
+      "flashStatus(\"跳转失败，请手动切到 DSH\")"
     ],
     "OverlayService.kt:783": [
-      "main.post {"
+      "* 「不给说明」的根因——它想说也没地方说）。Toast 不依赖任何窗口存活，正是这个场景的合适原语。"
     ],
     "OverlayService.kt:85": [
       "internal var activeSessionId = \"\"              // 展开态目标会话（空 = 新会话）"
@@ -2021,13 +2021,13 @@
       "if (expanded) {"
     ],
     "app/src/main/java/com/snoworwind/pocketharness/OverlayService.kt:274": [
-      "}"
+      "softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING"
     ],
     "app/src/main/java/com/snoworwind/pocketharness/OverlayService.kt:299": [
-      "* 横屏开的 400dp 面板转到竖屏则直接超出可用宽（`displayMetrics.widthPixels - 球 - 边距`）。"
+      "*"
     ],
     "app/src/main/java/com/snoworwind/pocketharness/OverlayService.kt:574": [
-      "// tick 覆写成「引擎离线」。故有完成文案时交由分支链负责（详档 §6.3 回归面）。"
+      "setHalo(deriveHalo())"
     ],
     "app/src/main/java/com/snoworwind/pocketharness/PluginMounts.kt:41": [
       ""

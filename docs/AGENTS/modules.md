@@ -13,6 +13,8 @@
 
 `OverlayService.kt` 生命周期补充（2026-10-20）：`onStartCommand` 显式返回 `START_NOT_STICKY`，null Intent 按 `startId` 自停；`onTaskRemoved` 自停，窗口、watcher、mux 与回调仍统一由 `onDestroy` 清理，不写入/清除 OverlayController 的用户偏好。
 
+动效设置订阅（2026-11-03）：`DsUi.registerMotionListener` 集中监听三个系统动画缩放键；`GuidePageRenderer` 随 Activity、`OverlayHalo` / `OverlayPanel` 随 `OverlayService`、`ShimmerTextView` 随 View attach 生命周期注册与注销，设置变化时重算常驻动效状态。
+
 `BootPhaseTrace.kt`（2026-11-03）：开发者日志开关默认关闭时不取时钟、不写文件；开启时在 `MainActivity.onCreate`、WebView 构造、快照解压和现有 probe-tail 收口处记录冷启动阶段时间，单次最多四行，`files/boot-phase-trace.log` 超过 64 KiB 滚动一代。loader-settle 探针缺席记 `absent`，不伪造 0；写入锁保护 probe tail 与主线程并发追加。
 
 `DownloadSaver.kt`：`canOpenExternalBrowser` 在外部应用启动出口校验用户手势及无 userinfo 的 HTTP(S) 地址；`openInExternalBrowser` 复查后才发送 BROWSABLE Intent。会话导出下载要求主 WebView 透传 `request.hasGesture()`，DownloadListener 因无法证明手势而拒绝；策略回归在 `EngineAuthPolicyTest.kt`。边界及兼容影响见 gotchas 坑 372、500。

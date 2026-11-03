@@ -173,6 +173,8 @@ class OverlayService : Service() {
     probeEngine()
     scheduleProbe()
     panel.startMux()
+    halo.startMotionWatch()
+    panel.startMotionWatch()
   }
 
   /** The overlay is recreated only by an explicit controller start, never by system redelivery. */
@@ -189,6 +191,8 @@ class OverlayService : Service() {
 
   override fun onDestroy() {
     if (instance === this) instance = null
+    halo.stopMotionWatch()
+    panel.stopMotionWatch()
     live.stopWatcher()
     panel.destroy()
     // 块H-A2：报告栏是独立顶层窗口，必须在此收口（纪律同 panel.closePicker/unitView）。

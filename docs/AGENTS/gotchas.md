@@ -3477,3 +3477,7 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 628. **启动时的来件 TTL 扫描不能占用 Activity 主线程（2026-11-03）**
 
     现象：应用冷启动时同步遍历临时工作区，目录或存储响应较慢会延迟 Activity 首帧。真因：`FileIncoming.sweepExpired()` 需要扫描目录、读取会话/待发索引并逐文件检查 TTL，原调用点位于 `MainActivity.onCreate()`。修法：用应用上下文交给命名 daemon worker；清扫函数内部的 `pendingLock`、活动复制/投递保护和 TTL 判据不变，投递前清扫顺序仍先于 reservation。接线回归禁止恢复同步主线程调用。复验：原 PR #210 的 PR Gate 通过；同步最新 main 后重新验证待 CI。按用户要求未做 APK/CDP/ADB，启动行为仍未完成设备三层验收。
+
+629. **常驻动效不会自动响应系统动效设置变化（2026-11-03）**
+
+    现象：光环、待答呼吸、状态扫光或引导状态点正在动画时，用户关闭系统动画，界面仍持续刷新。真因：`animationsEnabled` 只在调用时读取三个全局缩放值；既有常驻动画没有订阅系统设置变化，引导页状态点还未统一经过该门。修法：由 `DsUi.registerMotionListener` 统一监听三个缩放键，订阅者按 Activity、Service、View attach 的 owner 生命周期注册和注销，开关变化时重新落实动画或静态终态。复验：PR #211 在旧基线的 Kotlin/静态 CI 通过；同步最新 main 后须重新通过 CI。按用户要求未做 APK/CDP/ADB，L3 设备三层验收未完成。

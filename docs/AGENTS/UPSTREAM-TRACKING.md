@@ -6,7 +6,13 @@
 
 - [#1327 启动时异步清扫过期来件](https://github.com/kelai141/dsh-mobile-apk/pull/1327)，上游提交 c80bea5：本仓原在 MainActivity.onCreate() 同步遍历临时工作区；已改为应用上下文上的 daemon worker，沿用 FileIncoming.sweepExpired 的锁与活动投递保护。
 - 新增 ForegroundPageRecoveryWiringTest 启动接线反例；Kotlin 测试计数基线同步。用户要求先做代码层吸收，本轮未构建 APK、未做 CDP/ADB 或设备验收；该壳侧行为改动仍需按风险补验。
-- 同轮候选判断：#1315 的延后刷新与事务标记等待本仓已有等价保护；#1328 控制审计轮转仍需独立设计有界读取；#1325 只改 vendor 构建产物且本仓无可同步的源文件，本轮不动。三者都未混入本改动。
+- 同轮候选判断：#1315 的延后刷新与事务标记等待本仓已有等价保护；#1328 控制审计轮转仍需独立设计有界读取；#1325 的后台可见性门控已在本仓单独吸收。三者都未混入 #1327。
+
+### 2026-11-03 kelai141 UI 动效增量
+
+- [#1324 动效开关动态订阅](https://github.com/kelai141/dsh-mobile-apk/pull/1324)，提交 `9fe627a`：本仓已有 `DsUi.animationsEnabled` 与部分启动时门控，但用户在动画运行中关闭系统动画后常驻动效不会停止。只吸收共享设置观察器及四处生命周期接线；不吸收同提交每帧 Matrix 分配优化。实现见[吸收计划 §27](UPSTREAM-ABSORPTION-PLAN-2026-10-20.md#27-2026-11-03-常驻动效响应系统设置-上游-1324)。
+- [#1328 审计日志有界写](https://github.com/kelai141/dsh-mobile-apk/pull/1328)，提交 `49421f6`：不直接移植。壳与插件同时写 `files/audit/audit.ndjson`，各自轮转没有共享互斥；上游 `readLines()` 还会全量读历史大文件、原地改写会扩大并发丢记录窗口。需先设计跨写者协调与原子轮转协议，再单独评估。
+- PR #211 的旧基线 Kotlin/静态检查均通过；当前刷新分支待 CI，未做设备验收。
 
 ## 2026-10-27 DeepSeek Harness 引擎追版
 

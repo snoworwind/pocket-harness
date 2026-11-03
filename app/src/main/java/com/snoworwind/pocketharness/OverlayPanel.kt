@@ -634,6 +634,26 @@ class OverlayPanel(private val svc: OverlayService) {
   /** M7：琥珀呼吸——待答（question/approval）期间状态行缓慢明暗（1.0↔0.55，1.2s 一次往返）。
    *  动画实例挂在面板字段上（工程无 res id，故不用 View tag 键）。 */
   private var statusBreathing: android.animation.ObjectAnimator? = null
+  private var motionUnsubscribe: (() -> Unit)? = null
+
+  fun startMotionWatch() {
+    if (motionUnsubscribe != null) return
+    motionUnsubscribe = DsUi.registerMotionListener(svc) {
+      if (!animationsOn()) {
+        statusBreathing?.cancel()
+        statusBreathing = null
+        statusText?.animate()?.cancel()
+        statusText?.alpha = 1f
+      } else if (currentPending() != null) {
+        statusText?.let { setAmberBreathing(it, true) }
+      }
+    }
+  }
+
+  fun stopMotionWatch() {
+    motionUnsubscribe?.invoke()
+    motionUnsubscribe = null
+  }
 
   private fun setAmberBreathing(tv: TextView, on: Boolean) {
     if (on && animationsOn()) {

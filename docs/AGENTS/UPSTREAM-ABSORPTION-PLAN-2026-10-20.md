@@ -454,3 +454,17 @@ GitHub API 确认 `kelai141/dsh-mobile-apk/main` 当前为 `c2053739985801dcecfa
 ### 26.3 后续边界
 
 此次筛选只关闭上述三个最新门禁候选及一个已具备项，不把 438 提交写成已审完。`check-api-route-auth` 的正则字面量扫描边界已升级为“潜在假绿、待复现”缺口；其他尚未逐项核对的上游变更继续保留在未审范围。本节为审查记录，没有改变门禁行为。
+
+## 27. 2026-11-03 常驻动效响应系统设置（上游 #1324）
+
+### 27.1 本地缺口与吸收边界
+
+本仓已有 `DsUi.animationsEnabled()`，光环和面板部分动效启动时会读系统缩放；但正在运行时关闭 Android 动效设置后没有变化，引导页状态点也没有统一门控，`ShimmerTextView` 还重复读取三个设置键。上游 #1324 对应的是设置变更通知及 owner 生命周期，不吸收其每帧 Matrix 分配优化。
+
+### 27.2 本仓实现
+
+`DsUi` 提供纯判定 helper 和主线程 `ContentObserver`，监听 animator/transition/window 三个缩放键。GuidePageRenderer 随 Activity 生命周期，OverlayHalo/OverlayPanel 随 OverlayService 生命周期，ShimmerTextView 随 View attach/detach 生命周期注册与注销；设置变化时重算并落实静态或动态状态。
+
+### 27.3 验证边界
+
+PR #211 原分支的 MotionGateContractTest 5 项、WSL 全量 Kotlin 1421/1421、测试计数、代码地图与 Kotlin 注释门禁均通过。该分支已合并最新 main 的 merge commit，当前 PR CI 需重新确认。按用户要求未构建 APK、未做 CDP/ADB；这是 L3 UI/壳侧行为，设备三层验收仍未完成。上游游标不推进。
