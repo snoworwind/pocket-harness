@@ -217,3 +217,7 @@
 ### 2026-11-03：SSE keepalive parser 候选审查
 
 检查上游 #1333 后不移植：修复目标是其 vendored `dsh-plugin-subscriptions` parser，但本仓没有该包、对应源码/测试或注入路径。本仓已有 `/plugins/events` SSE 属于 `client-hmr`，不是同一个 parser。依据和检索范围记于[实施计划 §21](UPSTREAM-ABSORPTION-PLAN-2026-10-20.md#21-2026-11-03-sse-keepalive-parser-候选不适用-上游-1333)。该结论不表示本仓订阅 SSE 已验证；上游比较游标仍不前移。
+
+### 2026-11-03：吸收虚拟屏自动落位重武装修复
+
+从当前上游增量中选择性吸收 #1350 / issue #1339：`seenActive` 无法区分被重建的新屏，且 #1325/#1331 的收起面板轮询门会挡住唯一能设置 `pending` 的路径；切回展开后旧布尔可能阻止新屏落位。现改为 `displayId` 锚定的 `placedFor`/`pendingFor`，保留同屏用户手动关页签的意图。#1326 composer sheet 与 #1329 重复 `trackDrag()` 在本仓没有对应代码，未移植。详情见[实施计划 §22](UPSTREAM-ABSORPTION-PLAN-2026-10-20.md#22-2026-11-03-虚拟屏自动落位重武装-上游-1350-issue-1339)。按用户要求只做代码层吸收，未做设备验收，L3 仍开放；上游比较游标不推进。

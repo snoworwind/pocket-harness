@@ -381,3 +381,17 @@ Repair Assistant 在本仓没有对应产品功能；壳侧不因此直接注册
 ## 21. 2026-11-03 SSE keepalive parser 候选不适用（上游 #1333）
 
 上游 #1333 修复其 vendored `dsh-plugin-subscriptions` SSE parser 对无 `data:` 的 keepalive 帧误派发，以及按整块网络读取而不是未完成帧计算大小上限的问题，并补充 parser 回归。逐项检索本仓 `vendor/`、`plugins/`、来源注入清单和 vendor provenance 后，没有该包、parser、`MAX_PENDING_CHARS` 或 `subs-sse-limits` 测试，也没有它的注入路径；因此本仓不存在可修复的同一实现，不复制上游包或新增依赖。检索到的 `/plugins/events` SSE 是 `client-hmr` 通道，和订阅包 parser 不同，不能据此套用 #1333。比较游标保持不变；本项只登记排除依据，不构成代码吸收或行为等价声明。
+
+## 22. 2026-11-03 虚拟屏自动落位重武装（上游 #1350 / issue #1339）
+
+### 22.1 本地缺陷与采纳范围
+
+本仓自动落位仍以单个 `seenActive` 布尔代表所有虚拟屏，并以 `pending` 布尔表示收起期间待补落位；但 #1325/#1331 的轮询门只在侧栏展开或 `pending` 为真时调用 `reveal()`。若已落位屏随后销毁/重建，新屏在侧栏收起时出现，门会跳过唯一能设置 `pending` 的 `reveal()`；展开后旧 `seenActive=true` 又让新屏早退，用户的有效虚拟屏因此没有页签。只吸收状态真源改为具体 `displayId` 的修复，不改工具、桥协议、用户收起意图或轮询频率。
+
+### 22.2 实现
+
+用 `placedFor` 记录已落位的屏 ID、用 `pendingFor` 记录收起期间等待落位的屏 ID。非 active 状态清空两者；舞台已挂载时把当前屏标为已落位并清待补；同一屏已落位而页签被用户关闭时保留用户选择；新屏在收起时仅置 `pendingFor`，展开后自动落位；展开时成功落位再更新 `placedFor`。800ms 轮询与 `visibilitychange` 只在展开或 `pendingFor` 存在时读取状态，且待补状态在门外可见，避免门挡住产生待补状态的唯一路径。
+
+### 22.3 验证边界
+
+这是虚拟屏用户可见行为，属于 L3。本轮只做代码层吸收，未构建 APK、未做 CDP/模拟器/ADB 设备验收；具体恢复行为仍需按 §2.1 补三层证据后才能视为验收完成。上游检查点仍不推进：本次只深审 26 个提交中与已采纳 vdisplay 轮询直接相邻的候选，其他提交仍需逐项核对；#1326 的 composer sheet 在本仓不存在，#1329 的重复 `trackDrag()` 在本仓也不存在。

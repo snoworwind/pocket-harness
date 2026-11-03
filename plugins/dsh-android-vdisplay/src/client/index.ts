@@ -388,31 +388,42 @@ export function apply(ctx: ClientContext): void {
     // 同浏览器侧：**边沿触发 + 收起时延迟落位**，不是每秒无条件抢焦点。
     // 旧实现每 800ms 无条件 openTab，用户收起侧栏后会被下一拍拽开、点 × 收起也会被切回来
     // （设备实测：浏览器侧与虚拟屏侧是同一个结构缺陷，两侧一起改）。
-    /** 上一次已处理过的舞台标记（'' = 还没出现过）。 */
-    let seenActive = false
-    /** 收起期间出现过、等待用户展开后补落位。 */
-    let pending = false
+    // 自动落位状态按 displayId 记录，不能用单个 seenActive 布尔。
+    // 屏重建会产生新的 displayId；收起期间待落位也必须能被 800ms 门控读取。
+    let placedFor: number | undefined
+    let pendingFor: number | undefined
     // 同浏览器侧：权威收起信号 = 上游展开控件是否在场（`data-rightbar-collapsed` 是常量，不可用）。
     const collapsedNow = (): boolean => document.querySelector('[data-sidebar-right-expand]') !== null
     const reveal = () => {
-      const active = decodeNative('vdisplayStatus')?.state === 'active'
-      if (!active) { seenActive = false; return }
-      if (document.querySelector('[data-testid=vdisplay-stage]') !== null) return
+      const status = decodeNative('vdisplayStatus')
+      if (status === undefined || status.state !== 'active') {
+        placedFor = undefined
+        pendingFor = undefined
+        return
+      }
+      const displayId = status.displayId
+      if (document.querySelector('[data-testid=vdisplay-stage]') !== null) {
+        placedFor = displayId
+        pendingFor = undefined
+        return
+      }
+      if (placedFor === displayId) {
+        // 同一块屏的页签由用户关闭后，尊重用户选择，不周期性抢回。
+        pendingFor = undefined
+        return
+      }
+      if (collapsedNow()) {
+        // 屏在收起期间启动或重建时先记待落位，不标成已落位。
+        pendingFor = displayId
+        return
+      }
       try {
-        if (seenActive) {
-          // 无新事件：仅当「收起期间攒下待落位」且用户已展开时，补一次。
-          if (pending && !collapsedNow()) {
-            pending = false
-            sidebar.openTab(VD_TAB_KIND, { revealIfOpened: true })
-          }
-          return
-        }
-        seenActive = true
-        if (collapsedNow()) { pending = true; return }
         sidebar.openTab(VD_TAB_KIND, { revealIfOpened: true })
+        placedFor = displayId
+        pendingFor = undefined
       } catch {
-        /* 侧栏未挂载：下一拍重试（seenActive 未置位，保持可重试） */
-        seenActive = false
+        /* 侧栏未挂载：下一拍重试，不能提前标记本屏已落位。 */
+        placedFor = undefined
       }
     }
     let timer: number | undefined
@@ -427,7 +438,7 @@ export function apply(ctx: ClientContext): void {
         timer = window.setTimeout(() => {
           timer = undefined
           if (document.hidden) return
-          if (!collapsedNow() || pending) reveal()
+          if (!collapsedNow() || pendingFor !== undefined) reveal()
           schedulePoll()
         }, 800)
       }
@@ -437,7 +448,7 @@ export function apply(ctx: ClientContext): void {
         clearPoll()
         return
       }
-      if (!collapsedNow() || pending) reveal()
+      if (!collapsedNow() || pendingFor !== undefined) reveal()
       schedulePoll()
     }
     reveal()
