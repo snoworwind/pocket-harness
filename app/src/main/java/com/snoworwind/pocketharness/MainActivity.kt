@@ -452,8 +452,12 @@ class MainActivity : ComponentActivity() {
     // 崩溃标记：进程级未捕获异常写入 filesDir/.crashed（下次启动测试界面
     // 提示），随后交回默认 handler——只记录，不吞异常、不阻止崩溃。
     installCrashMarker()
-    // 启动即 TTL 清扫临时工作区（issue #60 F5.1：7 天过期文件自动回收）
-    try { FileIncoming.sweepExpired(this) } catch (_: Throwable) {}
+    // 启动即 TTL 清扫临时工作区（issue #60 F5.1：7 天过期文件自动回收）；目录扫描不阻塞首帧。
+    Thread({
+      try { FileIncoming.sweepExpired(applicationContext) } catch (_: Throwable) {}
+    }, "dsh-incoming-ttl-sweep").apply {
+      isDaemon = true
+    }.start()
     // S1-11：**冷启动不再弹通知权限**。旧实现在 onCreate 里直接 launch：应用刚打开、用户还
   // 不知道这是干什么的，系统弹窗先来了——没有前置说明，拒绝了也没有任何后果提示，而
   // 后果其实很重（引擎提问/授权请求没有超时，通知被丢 = 任务永久挂起）。

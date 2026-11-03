@@ -3473,3 +3473,7 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 627. **Linux runtime 宿主复用了失活 scope，dispose 失败后无法重试（2026-11-03）**
 
     现象：runtime 插件已非活动态或一次卸载/回滚的 dispose 抛错后，重复安装仍返回旧 manager，后续恢复机会被缓存挡住；`isInjected` 还可能将残留 scope 报告为 active。真因：缓存判据只检查 scope 非空，未读取可用的 Cordis fiber state；`release()` 先 await dispose，状态清理不在 finally 中。修法：活动判据要求 scope 存在且（若有 state）等于 `FiberState.ACTIVE`；缓存复用与状态查询共用该判据。dispose 外层 finally 无条件清空 scope、manager、activeDirectory，同时继续向调用方传播清理异常，让串行安装可以重试。复验：本轮未手工跑插件测试；PR CI 待复核。未做设备验收，Linux 安装/卸载路径尚未设备验收。
+
+628. **启动时的来件 TTL 扫描不能占用 Activity 主线程（2026-11-03）**
+
+    现象：应用冷启动时同步遍历临时工作区，目录或存储响应较慢会延迟 Activity 首帧。真因：`FileIncoming.sweepExpired()` 需要扫描目录、读取会话/待发索引并逐文件检查 TTL，原调用点位于 `MainActivity.onCreate()`。修法：用应用上下文交给命名 daemon worker；清扫函数内部的 `pendingLock`、活动复制/投递保护和 TTL 判据不变，投递前清扫顺序仍先于 reservation。接线回归禁止恢复同步主线程调用。复验：原 PR #210 的 PR Gate 通过；同步最新 main 后重新验证待 CI。按用户要求未做 APK/CDP/ADB，启动行为仍未完成设备三层验收。

@@ -2,6 +2,12 @@
 
 本仓独立维护；`kelai141/dsh-mobile-apk` 是参考来源，不是构建依赖或镜像权威。按问题选择性移植，每个逻辑改动独立 PR，保留出处，重新审查本仓安全约束并按风险分档验证。上游发布和测试不代替本仓验收。
 
+## 2026-11-03 kelai141 上游增量吸收
+
+- [#1327 启动时异步清扫过期来件](https://github.com/kelai141/dsh-mobile-apk/pull/1327)，上游提交 c80bea5：本仓原在 MainActivity.onCreate() 同步遍历临时工作区；已改为应用上下文上的 daemon worker，沿用 FileIncoming.sweepExpired 的锁与活动投递保护。
+- 新增 ForegroundPageRecoveryWiringTest 启动接线反例；Kotlin 测试计数基线同步。用户要求先做代码层吸收，本轮未构建 APK、未做 CDP/ADB 或设备验收；该壳侧行为改动仍需按风险补验。
+- 同轮候选判断：#1315 的延后刷新与事务标记等待本仓已有等价保护；#1328 控制审计轮转仍需独立设计有界读取；#1325 只改 vendor 构建产物且本仓无可同步的源文件，本轮不动。三者都未混入本改动。
+
 ## 2026-10-27 DeepSeek Harness 引擎追版
 
 本仓开发分支将官方源码目标从 `0.2.1-rc.2` 提升到 [`dsh-v0.2.1-rc.3`](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.1-rc.3)，固定提交 `1f81c047fc48fa190a683e469daa699857e9afe8`。合同、来源构建检查、部署版本门、插件 peer/锁文件及 WebView 槽位/组件清单已同步；新增三个 More 菜单槽位由官方 `entry-customization` Web 插件消费。
@@ -229,3 +235,7 @@
 ### 2026-11-03：选择性吸收 Linux runtime 宿主生命周期修复
 
 上游 #1343 / issue #1206 与本仓 `createLinuxPluginHost()` 精确对应：失效 Cordis scope 曾被当成活动缓存复用，且 dispose 失败会阻止缓存清理。现统一以 `FiberState.ACTIVE` 判定活动（兼容无 state 的适配器），并在 dispose 的 finally 清除 scope/manager/directory、原错误仍上抛以便后续安装恢复。#1348 对应的启动探针已在本仓存在、settle 解析器已按文本顺序扫描；#1351/#1352 补丁文件在本仓不存在，均未移植。实施说明见[计划 §24](UPSTREAM-ABSORPTION-PLAN-2026-10-20.md#24-2026-11-03-linux-runtime-宿主缓存失效恢复-上游-1343-issue-1206)。本轮未手工跑测试或设备验收，等待 PR CI；比较游标保持不变。
+
+### 2026-11-03：启动来件 TTL 扫描移出主线程
+
+复用既有 PR #210 的 #1327 实现，不重复复制：`MainActivity.onCreate()` 用应用上下文启动 daemon worker 执行 TTL 清扫；来件投递前清扫、锁与活动投递保护保持不变。同步最新 `main` 后解决了执行地图、实施计划、坑位与 Kotlin 测试基线冲突，增加接线测试计数。原 #210 的六项 PR Gate 曾全绿；当前刷新分支需重新过 CI。用户要求暂缓设备验收，启动体验仍未做设备三层验证。详情见[计划 §25](UPSTREAM-ABSORPTION-PLAN-2026-10-20.md#25-2026-11-03-启动来件-ttl-扫描后台化-上游-1327)。

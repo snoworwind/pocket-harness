@@ -43,7 +43,7 @@
     "FileIncomingCleanupTest": 17,
     "FileIncomingSafetyTest": 12,
     "ForegroundPageRecoveryPolicyTest": 9,
-    "ForegroundPageRecoveryWiringTest": 12,
+    "ForegroundPageRecoveryWiringTest": 13,
     "GlobalActionCatalogTest": 4,
     "GuideAndConsoleBatch6Test": 26,
     "GuidePaletteMonochromeTest": 3,
