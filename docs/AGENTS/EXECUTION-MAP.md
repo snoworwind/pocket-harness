@@ -1479,7 +1479,7 @@ flowchart TD
 
 #### P04 文件打开、Linux 环境与模型能力插件
 
-Linux 客户端启动链：浏览器 Cordis 只等待 slots，面板经鉴权 HTTP 路由调用引擎 linuxBootstrap；服务缺席仅在面板报错。bootstrap 编译产物与实际打包源输入由 `linux-source-manifest.json` 摘要锁定；runtime、Termux PRoot ARM64 包闭包、Debian rootfs 与 glibc Node 经来源链构建，校验签名仓库、索引与 `.deb` 后嵌入 APK Termux 快照的 `usr/share/pocket-harness/linux-assets`。`linux-env` 通过 `linuxBootstrapConfig` 提供 APK 内资产目录、应用版本与原始 manifest 摘要信任锚；缺少资产或校验失败关闭，不联网回退。runtime 在 `$DSH_FILES_DIR/linux-environment/plugins` 内激活，宿主核对 realpath 并等待 Cordis fiber；失败或卸载时 dispose。`linuxPluginHost.isInjected` 只读报告已注入状态，拒绝越界目录/符号链接；显式未命中不回落内存激活目录。
+Linux 客户端启动链：浏览器 Cordis 只等待 slots，面板经鉴权 HTTP 路由调用引擎 linuxBootstrap；服务缺席仅在面板报错。bootstrap 编译产物与实际打包源输入由 `linux-source-manifest.json` 摘要锁定；runtime、Termux PRoot ARM64 包闭包、Debian rootfs 与 glibc Node 经来源链构建，校验签名仓库、索引与 `.deb` 后嵌入 APK Termux 快照的 `usr/share/pocket-harness/linux-assets`。`linux-env` 通过 `linuxBootstrapConfig` 提供 APK 内资产目录、应用版本与原始 manifest 摘要信任锚；缺少资产或校验失败关闭，不联网回退。runtime 在 `$DSH_FILES_DIR/linux-environment/plugins` 内激活，宿主核对 realpath 并等待 Cordis fiber；缓存复用和 `isInjected.active` 只认可仍活动的 scope（适配器未暴露 state 时兼容存在性），dispose 失败仍在 finally 清理宿主缓存并向调用方返回原异常，后续串行安装可重试。`linuxPluginHost.isInjected` 只读报告已注入状态，拒绝越界目录/符号链接；显式未命中不回落内存激活目录。
 
 引擎侧 `linuxAssetIO`（2026-10-17 安全修复）：`downloadAsset` 只交回按摘要推导的宿主归档路径；bootstrap 复制归档并验证摘要与长度，然后 `extractArchive` 用 XZ WASM + 流式 tar 重新解码全新 staging，拒绝穿越、重复路径、链接与特殊条目，限制条目数、单文件、总展开量。复核 unpackedSize、包名与入口后原子交换槽位；不读宿主解包树、不按缓存标记或大小复用代码。源码本地分叉在 `dshVendor.localPatches` 与 vendored 门禁登记，保留原上游 commit/hash。完整边界见 BRIDGE-API.md 的 Linux 节。
 
