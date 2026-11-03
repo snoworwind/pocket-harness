@@ -1,10 +1,15 @@
 package com.snoworwind.pocketharness
 
+import android.content.Context
+import android.database.ContentObserver
 import android.content.res.ColorStateList
 import android.graphics.drawable.ClipDrawable
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.LayerDrawable
 import android.graphics.drawable.RippleDrawable
+import android.os.Handler
+import android.os.Looper
+import android.provider.Settings
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
@@ -19,14 +24,82 @@ internal object DsUi {
    * 或 ValueAnimator 不活动（省电模式等）→ 所有 overlay 动效直接设终态。
    * 复用 ShimmerTextView.kt 的既有判定口径（单一来源原则）。
    */
-  fun animationsEnabled(context: android.content.Context): Boolean {
-    if (!android.animation.ValueAnimator.areAnimatorsEnabled()) return false
-    val resolver = context.contentResolver
-    val scale = { key: String -> android.provider.Settings.Global.getFloat(resolver, key, 1f) }
-    return scale(android.provider.Settings.Global.ANIMATOR_DURATION_SCALE) != 0f &&
-      scale(android.provider.Settings.Global.TRANSITION_ANIMATION_SCALE) != 0f &&
-      scale(android.provider.Settings.Global.WINDOW_ANIMATION_SCALE) != 0f
+  fun animationsEnabled(context: Context): Boolean = animationsEnabledFrom(
+    animatorScale = Settings.Global.getFloat(context.contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f),
+    transitionScale = Settings.Global.getFloat(context.contentResolver, Settings.Global.TRANSITION_ANIMATION_SCALE, 1f),
+    windowScale = Settings.Global.getFloat(context.contentResolver, Settings.Global.WINDOW_ANIMATION_SCALE, 1f),
+    animatorsRunning = android.animation.ValueAnimator.areAnimatorsEnabled(),
+  )
+
+  internal fun animationsEnabledFrom(
+    animatorScale: Float,
+    transitionScale: Float,
+    windowScale: Float,
+    animatorsRunning: Boolean,
+  ): Boolean = animatorsRunning && animatorScale != 0f && transitionScale != 0f && windowScale != 0f
+
+  private val motionListeners = mutableListOf<() -> Unit>()
+  private var motionObserver: ContentObserver? = null
+  private var motionObserverContext: Context? = null
+  private val motionSettingKeys = arrayOf(
+    Settings.Global.ANIMATOR_DURATION_SCALE,
+    Settings.Global.TRANSITION_ANIMATION_SCALE,
+    Settings.Global.WINDOW_ANIMATION_SCALE,
+  )
+
+  /** Observe system motion-setting changes; callers register and unregister on the main thread. */
+  fun registerMotionListener(context: Context, listener: () -> Unit): () -> Unit {
+    check(Looper.myLooper() == Looper.getMainLooper()) { "motion listeners must be registered on main thread" }
+    val app = context.applicationContext ?: context
+    motionListeners += listener
+    if (motionObserver == null) {
+      val observer = object : ContentObserver(Handler(Looper.getMainLooper())) {
+        override fun onChange(selfChange: Boolean) = notifyMotionChanged()
+      }
+      for (key in motionSettingKeys) {
+        runCatching { app.contentResolver.registerContentObserver(Settings.Global.getUriFor(key), false, observer) }
+      }
+      motionObserver = observer
+      motionObserverContext = app
+    }
+    var removed = false
+    return {
+      if (!removed) {
+        removed = true
+        motionListeners.remove(listener)
+        if (motionListeners.isEmpty()) unregisterMotionObserver()
+      }
+    }
   }
+
+  internal fun notifyMotionChanged() {
+    for (listener in motionListeners.toList()) runCatching { listener() }
+  }
+
+  private fun unregisterMotionObserver() {
+    val observer = motionObserver ?: return
+    runCatching { motionObserverContext?.contentResolver?.unregisterContentObserver(observer) }
+    motionObserver = null
+    motionObserverContext = null
+  }
+
+  internal fun registerMotionListenerForTest(listener: () -> Unit): () -> Unit {
+    motionListeners += listener
+    var removed = false
+    return {
+      if (!removed) {
+        removed = true
+        motionListeners.remove(listener)
+      }
+    }
+  }
+
+  internal fun resetMotionListenersForTest() {
+    motionListeners.clear()
+    unregisterMotionObserver()
+  }
+
+  internal fun motionListenerCountForTest(): Int = motionListeners.size
 
   fun roundRect(
     color: Int,

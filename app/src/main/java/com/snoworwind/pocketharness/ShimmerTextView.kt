@@ -30,6 +30,7 @@ class ShimmerTextView @JvmOverloads constructor(
 
   private var animator: ValueAnimator? = null
   private var running = false
+  private var motionUnsubscribe: (() -> Unit)? = null
 
   /** 启动/停止扫光（工作中 true；空闲/离线 false → 静态文本色）。 */
   fun setShimmering(on: Boolean) {
@@ -46,19 +47,7 @@ class ShimmerTextView @JvmOverloads constructor(
     }
   }
 
-  private fun animationsEnabled(): Boolean {
-    val cr = context.contentResolver
-    val scale = android.provider.Settings.Global.getFloat(
-      cr, android.provider.Settings.Global.ANIMATOR_DURATION_SCALE, 1f,
-    )
-    val trans = android.provider.Settings.Global.getFloat(
-      cr, android.provider.Settings.Global.TRANSITION_ANIMATION_SCALE, 1f,
-    )
-    val win = android.provider.Settings.Global.getFloat(
-      cr, android.provider.Settings.Global.WINDOW_ANIMATION_SCALE, 1f,
-    )
-    return scale != 0f && trans != 0f && win != 0f
-  }
+  private fun animationsEnabled(): Boolean = DsUi.animationsEnabled(context)
 
   private fun startShimmer() {
     val w = width.coerceAtLeast(1)
@@ -85,8 +74,28 @@ class ShimmerTextView @JvmOverloads constructor(
     }
   }
 
+  override fun onAttachedToWindow() {
+    super.onAttachedToWindow()
+    motionUnsubscribe?.invoke()
+    motionUnsubscribe = DsUi.registerMotionListener(context) { applyShimmerState() }
+    applyShimmerState()
+  }
+
   override fun onDetachedFromWindow() {
+    motionUnsubscribe?.invoke()
+    motionUnsubscribe = null
     animator?.cancel(); animator = null
     super.onDetachedFromWindow()
+  }
+
+  private fun applyShimmerState() {
+    if (running && animationsEnabled()) {
+      if (animator == null) startShimmer()
+    } else {
+      animator?.cancel(); animator = null
+      paint.shader = null
+      setTextColor(brand500)
+      invalidate()
+    }
   }
 }

@@ -78,7 +78,7 @@ flowchart TD
 
 ### 阶段 1：每次冷启动（秒级到三十秒）
 
-- MainActivity构造协作类、恢复用户关闭意图并装trusted bridge；首次内容帧同步显示原生引导页并使用 `ds_bg`，避免隐藏的 WebView/引导页之间露出窗口底色。
+- MainActivity构造协作类、恢复用户关闭意图并装trusted bridge；GuidePageRenderer 的常驻状态脉冲随 MainActivity 生命周期订阅系统动效设置；首次内容帧同步显示原生引导页并使用 `ds_bg`，避免隐藏的 WebView/引导页之间露出窗口底色。
 - `EngineStartFlow` 经ownership prelude确认引擎 HTTP 可响应后才允许首次 WebView 导航；引导页保留到 `onPageCommitVisible` 再交接，已归属但尚无 HTTP 应答的进程走有界等待，见§6 K01/K02。
 - 看门狗在服务侧起 tick：`app/src/main/java/com/snoworwind/pocketharness/WatchdogV2.kt:109`（`planTick`，深度探活/退避/熔断）；
 - 失败退路：引擎有限retry/UndoGate；ownership pending独立finite6预算，未知不能读事务/spawn；页面只quiet前台恢复，见§6 K01/K02/K06。

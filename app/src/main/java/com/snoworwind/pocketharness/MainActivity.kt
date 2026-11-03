@@ -164,7 +164,7 @@ class MainActivity : ComponentActivity() {
   internal val webViewReady: Boolean get() = ::webView.isInitialized && !pageRecovery.rendererGone
   internal val guideViewReady: Boolean get() = ::guideView.isInitialized
 
-  internal val guideRenderer by lazy { GuidePageRenderer(this) }
+  internal val guideRenderer by lazy { GuidePageRenderer(this).also { it.startMotionWatch() } }
   internal val engineFlow by lazy { EngineStartFlow(this) }
   internal val engineManager by lazy { EngineManager(this, pickToken) }
   private val downloadSaver by lazy { DownloadSaver(this, engineManager.dshDataDir) }

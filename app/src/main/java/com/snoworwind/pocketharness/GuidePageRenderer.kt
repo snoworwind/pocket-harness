@@ -243,6 +243,8 @@ internal class GuidePageRenderer(private val activity: MainActivity) {
   var lastGuidePhase: GuidePhase = GuidePhase.Idle
     private set
   private var statusPulse: ObjectAnimator? = null
+  private var statusPulseWanted = false
+  private var motionUnsubscribe: (() -> Unit)? = null
 
   // —— S1-2：状态副文案的仲裁状态（唯一写入口 pushHint 维护） ——
   private var startupRetryAction = false
@@ -650,7 +652,8 @@ internal class GuidePageRenderer(private val activity: MainActivity) {
     "正在写入内嵌 Termux 环境（首次启动需数分钟，请勿关闭应用）。"
 
   private fun setStatusPulse(on: Boolean) {
-    if (on) {
+    statusPulseWanted = on
+    if (on && DsUi.animationsEnabled(activity)) {
       val anim = statusPulse ?: ObjectAnimator.ofFloat(chrome.statusDot, View.ALPHA, 1f, 0.28f).apply {
         duration = 900
         repeatMode = ValueAnimator.REVERSE
@@ -661,14 +664,27 @@ internal class GuidePageRenderer(private val activity: MainActivity) {
       if (!anim.isStarted) anim.start()
     } else {
       statusPulse?.cancel()
+      statusPulse = null
       chrome.statusDot.alpha = 1f
     }
   }
 
+  fun startMotionWatch() {
+    if (motionUnsubscribe != null) return
+    motionUnsubscribe = DsUi.registerMotionListener(activity) { setStatusPulse(statusPulseWanted) }
+  }
+
+  fun stopMotionWatch() {
+    motionUnsubscribe?.invoke()
+    motionUnsubscribe = null
+  }
+
   /** 取消状态点脉冲动画（onDestroy 兜底，自 MainActivity.onDestroy 迁入）。 */
   fun cancelPulse() {
+    stopMotionWatch()
     statusPulse?.cancel()
     statusPulse = null
+    statusPulseWanted = false
     management.destroy()
   }
 

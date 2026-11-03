@@ -8,6 +8,11 @@
 
 **正式发布状态**：Pocket Harness 0.14.10 已由 main 的官方 rc.5 源码构建产出 ARM64 APK 并发布，设备三层验收尚未完成；证据和限制见 [0.14.10 发布说明](../../release/v0.14.10/notes.md)。此前 0.14.9 的来源 run 与 AVD 烟测见 [0.2.1-rc.3 升级记录](ENGINE-UPGRADE-2026-10-27.md)，不能代替新版本的设备验收。
 
+### 2026-11-03 kelai141 UI 动效增量
+
+- [#1324 动效开关动态订阅](https://github.com/kelai141/dsh-mobile-apk/pull/1324)，提交 `9fe627a`：本仓已有 `DsUi.animationsEnabled` 与部分启动时门控，但用户在动画运行中关闭系统动画后，四处常驻无限动画不会及时停止。只吸收共享设置观察器及四处生命周期接线；未吸收同提交每帧 Matrix 分配优化。Kotlin 测试与执行地图门禁结果见[吸收计划](UPSTREAM-ABSORPTION-PLAN-2026-10-20.md) §19。本轮按用户要求未做设备验证，L3 行为仍未验收。
+- [#1328 审计日志有界写](https://github.com/kelai141/dsh-mobile-apk/pull/1328)，提交 `49421f6`：不直接移植。壳与插件同时写 `files/audit/audit.ndjson`，各自轮转没有共享互斥；上游 `readLines()` 还会将历史大文件全量读入内存、原地改写会扩大并发丢记录窗口。需要先定义跨写者协调或原子轮转协议，再单独评估。
+
 ## 检查规则
 
 - 建议每周及准备发版时检查；本文件不创建定时任务。

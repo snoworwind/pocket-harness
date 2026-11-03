@@ -3457,3 +3457,7 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 618. **快照刷新会丢失通过 pip 安装的用户 Python 包（2026-11-02）**
 
     现象：`pip install` 默认把第三方包写进 `files/usr/lib/python3.X/site-packages`，下次快照刷新整体替换 `usr` 后包消失；若只设置 `PYTHONUSERBASE` 但目标目录不存在，Python 还会把 user-site 排除出 `sys.path`。真因：工厂运行树 `usr` 会随 APK 快照整树交换，而 pip 默认落点位于该可替换树内；改变 user base 后旧 `~/.local` user-site 也会从 import 搜索路径消失。修法：探测唯一 Python 次版本，预建位于 `files/python-packages` 的 user-site 后再给所有 shellEnv 子进程注入 `PIP_USER=1` 与 `PYTHONUSERBASE`；在 swap 前、swap 后 finish 前、中断恢复回收前及引擎启动 prelude 逐项幂等迁移旧包，跳过工厂文件且不覆盖同名目标。复验：PythonPackagesTest 15/15；完整 Kotlin 套件使用仓库登记的 WSL Linux SDK 1416/1416、0 failures、0 skips；`check-kotlin-test-count.mjs` 通过。Windows 单独运行曾被 symlink 权限阻断，但不影响 Linux 全套结果。执行地图覆盖及锚点检查通过。设备刷新、CDP 与 ADB 用户流程未做，完整三层通过前不得作为发版验收。
+
+622. **常驻动效只在启动时读一次系统开关会继续耗帧（2026-11-03）**
+
+    现象：光环、待答呼吸、状态扫光或引导状态点正在动画时，用户关闭系统动画，界面仍持续刷新。真因：`animationsEnabled` 是取样函数；没有监听系统设置变化的 owner 不会再检查它。修法：通过 `DsUi.registerMotionListener` 监听三个缩放键，订阅者在 Activity、Service 或 View owner 结束时注销，并在开关翻转时重新落实静态/动画状态。复验：MotionGateContractTest、完整 Kotlin 套件、测试计数与执行地图门禁通过；按用户要求未做设备验收，设备侧结论仍开放。

@@ -56,6 +56,7 @@ class OverlayHalo(private val svc: OverlayService) {
   /** 当前生效的状态（供换肤时重刷——haloView 的 drawable 不随 uiMode 更新）。 */
   @Volatile
   private var lastHalo: Halo = Halo.IDLE
+  private var motionUnsubscribe: (() -> Unit)? = null
 
   /**
    * 状态 → 本次调用要写进两层的 (color, fade)。**全仓唯一的「状态配色」产生点**：
@@ -165,6 +166,16 @@ class OverlayHalo(private val svc: OverlayService) {
       hv.animation = null
       if (pulse && DsUi.animationsEnabled(svc)) hv.startAnimation(anim) else hv.alpha = 1f
     }
+  }
+
+  fun startMotionWatch() {
+    if (motionUnsubscribe != null) return
+    motionUnsubscribe = DsUi.registerMotionListener(svc) { setHalo(lastHalo) }
+  }
+
+  fun stopMotionWatch() {
+    motionUnsubscribe?.invoke()
+    motionUnsubscribe = null
   }
 
   /**

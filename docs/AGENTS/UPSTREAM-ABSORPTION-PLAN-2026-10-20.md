@@ -335,3 +335,17 @@ Repair Assistant 在本仓没有对应产品功能；壳侧不因此直接注册
 - `PythonPackagesTest` 专项 15/15（Windows Gradle JVM，0 failures / 0 errors / 0 skipped）；完整 Kotlin 套件在仓库登记的 WSL Linux SDK 下 1416/1416、0 failures、0 skips。Windows 直接运行曾因既存 symlink 用例缺少权限失败，但 WSL 结果通过。测试计数基线同步至 1416，`check-kotlin-test-count.mjs` 通过。
 - `check-kotlin-comments.mjs`、`check-code-map.mjs` 与 `git diff --check` 通过；执行地图中的旧坐标已按源码当前位置修正，新文件覆盖已登记。WSL 全量测试使用 docs/AGENTS/build-and-env.md 登记的原生 Linux SDK。完整设备刷新、pip 安装/导入、CDP 与 ADB 用户流程未执行；这是快照事务相关 L2 改动，仍未完成三层设备验收。
 - 比较范围 `4a41e6a..4587c07` 仍未逐项审完，比较游标保持 `4a41e6ac9bf2b0f786e3c336cfc344068a8fd1e7`。
+
+## 19. 2026-11-03 常驻动效实时响应系统设置
+
+### 19.1 上游与本仓差异
+
+上游 [#1324](https://github.com/kelai141/dsh-mobile-apk/pull/1324) 为四处常驻无限动画增加系统动效开关观察器。本仓已经有 `DsUi.animationsEnabled`，光环与面板部分动画也在启动时读取它；缺口是运行中系统设置变化没有订阅，且引导页状态点没有门控，状态扫光的判定还重复读取设置。
+
+### 19.2 本仓吸收
+
+在 `DsUi` 增加纯判定 helper 与主线程 `ContentObserver` 订阅，监听三个动画缩放键；GuidePageRenderer、OverlayHalo、OverlayPanel 在 owner 生命周期注册/注销，ShimmerTextView 随 attach/detach 管理订阅并在重挂时重算状态。保留本仓共享门与静态终态行为，不搬上游无关的每帧 Matrix 优化。
+
+### 19.3 验证边界
+
+新增 MotionGateContractTest 5 项；仓库登记 WSL Linux SDK 完整 Kotlin 套件 1421/1421，0 failures、0 skips，`check-kotlin-test-count.mjs` 通过。执行地图门禁最初报告 37 条已有源码锚点内容漂移，按脚本受控刷新基线后 `check-code-map.mjs` 通过；Kotlin 注释门禁与 `git diff --check` 通过。按用户要求未构建 APK、未做 CDP/ADB 或设备验收；这是 UI/壳侧 L3 行为，仍需三层验收。本轮不推进未完整审阅的上游比较游标。
