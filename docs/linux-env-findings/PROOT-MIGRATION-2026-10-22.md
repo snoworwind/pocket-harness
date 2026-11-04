@@ -1,12 +1,12 @@
 # Linux 环境迁移到 Termux PRoot（2026-10-22）
 
-> 阶段记录：本文的来源构建状态止于 0.14.8 草稿。后续 runtime/bootstrap `0.6.2` 已进入 0.14.9 正式来源 APK；当前 Linux 状态与仍待完成的 ARM64 设备验收见本目录[索引](README.md)。
+> 阶段记录：本文主体记录 Linux 环境迁移与来源构建历史。0.14.11 的 PRoot `.102` 审查锁已进入候选 PR，合入后的来源草稿构建仍待执行；当前结果与设备验收状态见 [构建与环境记录](../AGENTS/build-and-env.md)。
 
 ## 决定与迁移阶段状态
 
 Linux 执行后端由 Bionilux 改为 Termux PRoot。Bionilux 在目标 Android app 域中无法直接执行 Debian glibc loader；改为进程内装载还需要补齐完整的后续 `execve` 链，工程量接近重写 PRoot。本轮不继续维护这条自研 loader 路线。
 
-当前源码版本为 Linux runtime/bootstrap `0.6.2`，PRoot pin 为 `5.1.107.101`（Termux recipe commit `d6a36549b20eadb7723015eb3423e753ea125567`）。APK 资产工厂从 Termux 官方签名仓库取得 ARM64 PRoot 包及依赖，创建 Debian 13 ARM64 rootfs，打包 glibc Node；来源链在资产嵌入前验证仓库签名、签名索引摘要、精确软件包版本与 `.deb` 摘要。APK 内的 PRoot launcher/loader 与依赖逐字节复核。Bionilux launcher、loader、preload 与 Cargo 许可收集器已从活跃源码和资产构建路径删除；bootstrap 包的历史上游来源仍保留为来源记录。
+本文主体所述阶段的当前源码版本为 Linux runtime/bootstrap `0.6.2`，PRoot pin 原为 `5.1.107.101`。2026-11-04 的 Termux stable 前进至 `.102` 及审查候选状态见 [构建与环境记录](../AGENTS/build-and-env.md)；尚未合入，不要将本文历史状态误读为当前 main 锁。APK 资产工厂从 Termux 官方签名仓库取得 ARM64 PRoot 包及依赖，创建 Debian 13 ARM64 rootfs，打包 glibc Node；来源链在资产嵌入前验证仓库签名、签名索引摘要、精确软件包版本与 `.deb` 摘要。APK 内的 PRoot launcher/loader 与依赖逐字节复核。Bionilux launcher、loader、preload 与 Cargo 许可收集器已从活跃源码和资产构建路径删除；bootstrap 包的历史上游来源仍保留为来源记录。
 
 本轮源码迁移与静态检查完成后，2026-10-23 的第一次 `draft_release=true` 来源 run [39922474317](https://github.com/snoworwind/pocket-harness/actions/runs/39922474317) 因 Termux stable 的 PRoot `5.1.107.99` 超前于 `.98` 锁，在两路资产组装时 fail-closed；follow-up 将锁更新为 `.99`。2026-10-26 来源 run [40288221965](https://github.com/snoworwind/pocket-harness/actions/runs/40288221965) 又发现 stable 前进至 `5.1.107.101`，两个 builder 同样在版本断言处 fail-closed。复核官方 recipe、源归档和签名包后，PR #146 将 PRoot 锁同步至 `.101` 并于 2026-10-26 合入，提交 `c04a1726ace75ef86d80077fa6a0abf078bd0879`。合并后的 `draft_release=true` run [40303543476](https://github.com/snoworwind/pocket-harness/actions/runs/40303543476) 成功完成 Termux 包预检、primary/reference ARM64 构建、全量 Kotlin 单测、APK 实物独立比对、隔离签名与草稿资产校验，并创建未公开草稿 [`hardening-source-c04a1726ace7-40303543476-1`](https://github.com/snoworwind/pocket-harness/releases/tag/hardening-source-c04a1726ace7-40303543476-1)。APK `pocket-harness-v0.14.8-source-arm64.apk` SHA-256 为 `be2df3d8888c92d009a8ce1bef6f1e5587e6c092a04df41f5b7eabd8b78136ef`。**按用户要求未做设备验收**；CI 构建不能证明 PRoot 已在目标 ROM 的 app 域启动，也不能代替 guest glibc、apt 和多级 `execve` 的设备验证。
 
@@ -32,7 +32,7 @@ TermFold 派生的 glibc preload 只在内核拒绝普通文件 `link(2)`/`linka
 
 | 部件 | 来源/版本 | 许可证与随包材料 |
 |---|---|---|
-| PRoot ARM64 可执行文件、loader、依赖 | Termux 官方签名仓库；PRoot 5.1.107.101，recipe commit `d6a36549b20eadb7723015eb3423e753ea125567`，依赖版本见 `scripts/source-build/linux-backend-packages.json` | PRoot GPL-2.0；libtalloc LGPL-3.0-or-later；libandroid-shmem BSD-3-Clause；保存各包 copyright 和适用许可证全文 |
+| PRoot ARM64 可执行文件、loader、依赖 | Termux 官方签名仓库；该迁移阶段的 PRoot 5.1.107.101，recipe commit `d6a36549b20eadb7723015eb3423e753ea125567`；后续 `.102` 仅属尚未合入候选，见[构建与环境记录](../AGENTS/build-and-env.md)；依赖版本见 `scripts/source-build/linux-backend-packages.json` | PRoot GPL-2.0；libtalloc LGPL-3.0-or-later；libandroid-shmem BSD-3-Clause；保存各包 copyright 和适用许可证全文 |
 | rootfs | Debian Trixie 固定 snapshot、签名 InRelease 摘要锁定 | 保留 dpkg 包版本/源版本、deb 摘要和版权材料 |
 | glibc Node | Node.js 24.22.0 ARM64 官方归档、SHA-256 锁定 | Node LICENSE 与第三方 notices |
 | 兼容 preload | TermFold commit `a9f678d794a9f9942da923161d6fe996b89b935f` 的 Apache-2.0 源码改编 | 源文件、完整 Apache-2.0 许可证、来源 commit/hash 与适配说明 |
