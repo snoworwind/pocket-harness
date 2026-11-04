@@ -227,11 +227,12 @@ class PrepareProotBackendTest(unittest.TestCase):
         release = self.root / "Release"
         release.write_text(release_text)
         home = self.root / "gpg-home"
-        home.mkdir()
+        home.mkdir(exist_ok=True)
         home.chmod(0o700)
-        subprocess.run(["gpg", "--homedir", str(home), "--batch", "--passphrase", "", "--quick-generate-key",
-                        "Pocket Harness test fixture <test@example.invalid>", "rsa2048", "sign", "1d"],
-                       check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        if not (home / "pubring.kbx").exists():
+            subprocess.run(["gpg", "--homedir", str(home), "--batch", "--passphrase", "", "--quick-generate-key",
+                            "Pocket Harness test fixture <test@example.invalid>", "rsa2048", "sign", "1d"],
+                           check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         inrelease_path = self.webroot / "dists/stable/InRelease"
         inrelease_path.parent.mkdir(parents=True, exist_ok=True)
         subprocess.run(["gpg", "--homedir", str(home), "--batch", "--yes", "--clearsign", "--output",
