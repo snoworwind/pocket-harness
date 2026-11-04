@@ -144,7 +144,7 @@ class PrepareProotBackendTest(unittest.TestCase):
         self.provenance = {"repository": "https://packages.termux.dev/apt/termux-main", "index": {"sha256": "a" * 64}, "packages": []}
         self.package_roots = {}
         self.package_files = {}
-        self.make_package("proot", "5.1.107.101", {
+        self.make_package("proot", "5.1.107.102", {
             "bin/proot": elf64(3, ["libtalloc.so.2", "libandroid-shmem.so"], "/system/bin/linker64"),
             "libexec/proot/loader": elf64(2),
             "share/doc/proot/copyright": b"PRoot GPL notice\n",
@@ -227,11 +227,12 @@ class PrepareProotBackendTest(unittest.TestCase):
         release = self.root / "Release"
         release.write_text(release_text)
         home = self.root / "gpg-home"
-        home.mkdir()
+        home.mkdir(exist_ok=True)
         home.chmod(0o700)
-        subprocess.run(["gpg", "--homedir", str(home), "--batch", "--passphrase", "", "--quick-generate-key",
-                        "Pocket Harness test fixture <test@example.invalid>", "rsa2048", "sign", "1d"],
-                       check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        if not (home / "pubring.kbx").exists():
+            subprocess.run(["gpg", "--homedir", str(home), "--batch", "--passphrase", "", "--quick-generate-key",
+                            "Pocket Harness test fixture <test@example.invalid>", "rsa2048", "sign", "1d"],
+                           check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         inrelease_path = self.webroot / "dists/stable/InRelease"
         inrelease_path.parent.mkdir(parents=True, exist_ok=True)
         subprocess.run(["gpg", "--homedir", str(home), "--batch", "--yes", "--clearsign", "--output",
@@ -264,7 +265,7 @@ class PrepareProotBackendTest(unittest.TestCase):
         proot = (self.root / "backend/bin/proot").read_bytes()
         self.assertIn(b"libtalloc.so\0", proot)
         self.assertNotIn(b"libtalloc.so.2\0", proot)
-        self.assertEqual(result["targetVersion"], "5.1.107.101")
+        self.assertEqual(result["targetVersion"], "5.1.107.102")
         self.assertTrue(result["patchedTallocNeeded"])
         self.assertEqual({item["name"] for item in result["nativeLibraries"]}, {
             "libpocketharness_proot.so", "libpocketharness_proot_loader.so", "libtalloc.so", "libandroid-shmem.so",
@@ -283,7 +284,7 @@ class PrepareProotBackendTest(unittest.TestCase):
     def test_authenticated_index_selects_newest_signed_record_per_package(self):
         records = module.authenticated_package_index(self.webroot, self.provenance, self.bootstrap_usr)
         self.assertEqual(records["buf"]["Version"], "1.75.0")
-        self.assertEqual(records["proot"]["Version"], "5.1.107.101")
+        self.assertEqual(records["proot"]["Version"], "5.1.107.102")
 
     def test_provenance_cannot_select_an_older_signed_candidate(self):
         proot = next(item for item in self.provenance["packages"] if item["package"] == "proot")
@@ -305,6 +306,14 @@ class PrepareProotBackendTest(unittest.TestCase):
                 item["version"] = "2.5.1"
         self.write_provenance()
         with self.assertRaisesRegex(ValueError, "provenance differs from signed index: libtalloc version"):
+            self.assemble()
+
+    def test_unreviewed_proot_version_fails_closed(self):
+        for item in self.provenance["packages"]:
+            if item["package"] == "proot":
+                item["version"] = "5.1.107.103"
+        self.make_signed_repo()
+        with self.assertRaisesRegex(ValueError, "Termux proot version is not reviewed: '5.1.107.103'"):
             self.assemble()
 
     def test_forged_provenance_cannot_replace_the_signed_package_index(self):

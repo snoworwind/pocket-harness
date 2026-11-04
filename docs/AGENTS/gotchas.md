@@ -3485,3 +3485,7 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 630. **竖屏设置首页的绝对定位标题栏会遮住动态分类首项（2026-11-03）**
 
     现象：设置分区增加后，竖屏首页最上方分类行被返回/标题栏盖住一部分。真因：标题栏使用 `position:absolute` 叠在列表上方，列表仅靠固定 `padding-top:56px` 猜测避让高度；该数值不是布局占位，滚动与视口几何变化时首行仍可能落在覆盖层下。修法：标题栏改为正常布局流中的 flex 子项，由列表滚动区单独滚动；列表只保留常规边距，不再依赖固定高度补偿。回归断言锁定标题栏不可绝对定位、首页列表仍可滚动。复验：源码契约正反断言与 `git diff --check` 通过；本机无 Vitest 依赖，未运行包测试；未构建/热推或做 CDP、ADB 设备验收，L3 设备三层验收未完成。
+
+631. **Termux stable 的签名 PRoot 包版本领先于审查锁，来源构建按预期 fail-closed（2026-11-04）**
+
+    现象：来源 run [41784764351](https://github.com/snoworwind/pocket-harness/actions/runs/41784764351) 中 primary 与 reference 均在 `Build source-owned offline ARM64 Linux assets` 因 `Termux proot version is not reviewed: '5.1.107.102'` 失败；Termux 签名包预检通过，但 APK、构建后验证、签名与 Release 步骤均未执行。真因：滚动 stable 仓库已推进到 PRoot `5.1.107.102`，而合并提交 `e080a1cb8e2c53016e31dc1a8f8978a199293614` 仍锁定 `.101`；这是精确版本审查保护按预期 fail-closed，不是签名或 runner 故障。修法：独立复核不可变 recipe commit `b734bc49dc0eedb2c454e1c5d3c48d35d81d4bc9`、`.102` 源归档 SHA-256、Termux 签名快照中的 deb 字节及依赖闭包，再同步版本/来源锁、夹具及 manifest；保留精确版本拒绝，不放宽断言。复核已确认官方 `termux-autobuilds.gpg` 验签成功，PRoot、shmem、talloc 的 `.deb` 均与 provenance SHA-256 一致；libandroid-shmem recipe 变动也同步更新摘要。修复候选现将锁与运行时 fixture 更新至 `.102`，并加入基于重签测试索引的 `.103` 未审阅版负控；本机 PRoot 集成夹具因缺少 dpkg-deb/GnuPG 跳过 8 项，签名仓库输入测试通过 11 项，manifest 30 个来源文件摘要校验通过。PR #225 的首次 Linux 资产回归发现负控测试夹具缺陷：测试先创建并签名 GnuPG home，随后为改成 `.103` 的 PRoot 包重新生成 InRelease 时又对同一路径执行 `mkdir()`，导致 `FileExistsError`，其余 45 项通过。修复为复用现有临时 GnuPG home 与密钥后，PR CI 重跑确认；合入 main 后仍需触发来源草稿构建。未做设备验收。
