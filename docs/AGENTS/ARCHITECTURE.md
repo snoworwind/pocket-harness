@@ -64,7 +64,7 @@
 | WatchdogV2.kt | 深度探活/熔断指数退避/PARTIAL_WAKE_LOCK + task-done 标记按字节偏移消费（ST-12） | EngineService、BootReceiver、EngineStartFlow、UndoGate、GuideChrome（注释） |
 | UndoGate.kt | 看门狗/启动失败恢复：按当前 transaction-authorized Hard `{id,name}` manifest 判归属；非 Hard 故障只追加 disabled override 保留原配置；整份恢复要求同一 Soft digest 在两次实际引擎 spawn 上通过 authenticated Cordis/preset/session/modelCatalog health | EngineService、EngineStartFlow |
 | SnapshotExtractor.kt | xz tar 流式解压（commons-compress）+ security.android.exec xattr 补章 + zip-slip 防护 | EngineManager |
-| SnapshotTransaction.kt | APK 内嵌快照部署使用事务 journal/stage/previous；兼容恢复历史在线事务，已移除在线下载与应用入口 | EngineManager |
+| SnapshotTransaction.kt | APK 内嵌快照部署使用事务 journal/stage/previous；profiles 工厂合并只补齐缺失的 staged 共享 farm 符号链接，不覆盖 live 现存项且不穿越 live 目录链接；兼容恢复历史在线事务，已移除在线下载与应用入口 | EngineManager |
 | SnapshotFs.kt / SnapshotFileMode.kt / SnapshotUserData.kt / SnapshotFingerprintPolicy.kt / ProfilePackageManifest.kt | NOFOLLOW文件原语、权限；迁移marker与活动profile配置保留/传输/旧blank seed隔离；未知 `.dsh` 冲突项默认保留；严格内嵌SHA与durable fingerprint准入；profile manifest merge 与快照刷新共用 | SnapshotTransaction、EngineManager |
 | FactoryProfilePatch.kt | 0.14（#214）：profile `cordis.patch.yml` 工厂语义定点纠正（按 id 以工厂为准，退役 disabled 残行清理，用户独有条目不动） | EngineManager、SnapshotTransaction |
 | EngineProbe.kt | 引擎探活（Proxy.NO_PROXY 直连 #118；401/303 视作 alive）；Soft promotion 的只读健康证据另要求 Cordis inventory、启用的主插件与 preset fibers active、session/list 与 modelCatalog 形状完整 | 壳侧全部探活唯一入口 |

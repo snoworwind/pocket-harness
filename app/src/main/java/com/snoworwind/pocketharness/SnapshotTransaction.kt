@@ -8,6 +8,7 @@ import java.io.FileOutputStream
 import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.LinkOption.NOFOLLOW_LINKS
+import java.nio.file.NoSuchFileException
 import java.nio.file.StandardCopyOption.COPY_ATTRIBUTES
 import java.nio.file.StandardCopyOption.REPLACE_EXISTING
 import java.nio.file.attribute.BasicFileAttributes
@@ -780,7 +781,7 @@ internal object SnapshotTransaction {
       // exports 等字段，live 树因此变成「旧清单 + 新文件」的混合体，插件跨包 import
       // "./route-auth" 直接 ERR_PACKAGE_PATH_NOT_EXPORTED（引擎 exit=1）。
       val userFacingFiles = profileUserFacingFiles(stagedProfiles)
-      mergeTree(stagedProfiles, liveProfiles, notes, userFacingFiles, preserveCopy)
+      mergeTree(stagedProfiles, liveProfiles, notes, userFacingFiles, preserveCopy, links)
       reconcileRemovedProfilePlugins(liveProfiles, notes)
       val suffix = if (notes.isEmpty()) "" else "；工厂语义纠正 " + notes.size + " 处"
       onEntry("home/.dsh/profiles (merged" + suffix + ")")
@@ -1098,16 +1099,28 @@ internal object SnapshotTransaction {
     notes: MutableList<String>,
     userFacingFiles: Set<String>,
     preserveCopy: (File, File) -> Unit,
+    links: LinkPrimitives,
   ) {
     val attrs = Files.readAttributes(
       staged.toPath(), BasicFileAttributes::class.java, NOFOLLOW_LINKS,
     )
     when {
-      attrs.isSymbolicLink -> return
+      links.isLink(staged) -> {
+        // Shared farm entries in the staged snapshot must be seeded when absent,
+        // while an existing live link may be user-installed or from a prior tree.
+        // Preserve the current merge contract: add missing entries, never replace live-only data.
+        if (existsNoFollow(live)) return
+        val linkTarget = links.linkTargetOf(staged)
+        live.parentFile?.let { SnapshotFs.createDirectories(it) }
+        links.createLink(live, linkTarget)
+        notes += "农场链接补齐 " + staged.name
+      }
       attrs.isDirectory -> {
+        // Preserve a live symlink as an existing user entry; never merge through it.
+        if (existsNoFollow(live) && links.isLink(live)) return
         SnapshotFs.createDirectories(live)
         for (child in staged.listFiles() ?: emptyArray()) {
-          mergeTree(child, File(live, child.name), notes, userFacingFiles, preserveCopy)
+          mergeTree(child, File(live, child.name), notes, userFacingFiles, preserveCopy, links)
         }
       }
       attrs.isRegularFile -> when {
@@ -1130,6 +1143,14 @@ internal object SnapshotTransaction {
         }
       }
     }
+  }
+
+  /** Check the path itself, so a dangling live symlink still counts as present. */
+  private fun existsNoFollow(file: File): Boolean = try {
+    Files.readAttributes(file.toPath(), BasicFileAttributes::class.java, NOFOLLOW_LINKS)
+    true
+  } catch (_: NoSuchFileException) {
+    false
   }
 
   /**

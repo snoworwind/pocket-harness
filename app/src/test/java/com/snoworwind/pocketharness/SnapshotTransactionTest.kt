@@ -1934,6 +1934,122 @@ class SnapshotTransactionTest {
     }
   }
 
+  @Test
+  fun mergeDoesNotTraverseLiveDirectorySymlink() {
+    val filesDir = tempDir()
+    try {
+      val live = File(filesDir, "live").apply { mkdirs() }
+      val stage = SnapshotTransaction.stageRoot(filesDir)
+      writeRuntime(live, "old-node", "old-profile")
+      writeRuntime(stage, "new-node", "new-profile")
+      val outside = File(filesDir, "outside").apply { mkdirs() }
+      val liveDir = File(live, "home/.dsh/profiles/node_modules")
+      liveDir.parentFile.mkdirs()
+      val stagedLink = File(stage, "home/.dsh/profiles/node_modules/undici")
+      stagedLink.parentFile.mkdirs()
+      try {
+        Files.createSymbolicLink(liveDir.toPath(), outside.toPath())
+        Files.createSymbolicLink(stagedLink.toPath(), java.nio.file.Paths.get(".pnpm/dep"))
+      } catch (_: java.io.IOException) {
+        org.junit.Assume.assumeTrue("symbolic links unavailable", false)
+      } catch (_: UnsupportedOperationException) {
+        org.junit.Assume.assumeTrue("symbolic links unavailable", false)
+      }
+      SnapshotTransaction.swap(
+        filesDir = filesDir, stagedRoot = stage,
+        usrDir = File(live, "usr"), homeDir = File(live, "home"),
+        preservedNames = preserved, fingerprint = "fp-farm-no-traverse", startedAt = 1L,
+      )
+      assertTrue("live directory link must be preserved", Files.isSymbolicLink(liveDir.toPath()))
+      assertFalse("merge must not write through live link", Files.exists(File(outside, "undici").toPath(), java.nio.file.LinkOption.NOFOLLOW_LINKS))
+      SnapshotTransaction.finish(filesDir)
+    } finally {
+      SnapshotFs.deletePath(filesDir)
+    }
+  }
+
+  @Test
+  fun mergeSeedsFarmLinkMissingFromLiveTree() {
+    val filesDir = tempDir()
+    try {
+      val live = File(filesDir, "live").apply { mkdirs() }
+      val stage = SnapshotTransaction.stageRoot(filesDir)
+      writeRuntime(live, "old-node", "old-profile")
+      writeRuntime(stage, "new-node", "new-profile")
+
+      val stagedLink = File(stage, "home/.dsh/profiles/node_modules/undici").apply {
+        parentFile.mkdirs()
+        writeText("")
+      }
+      val liveLink = File(live, "home/.dsh/profiles/node_modules/undici")
+      val links = RecordingLinks(links = setOf(stagedLink.absolutePath))
+
+      SnapshotTransaction.swap(
+        filesDir = filesDir,
+        stagedRoot = stage,
+        usrDir = File(live, "usr"),
+        homeDir = File(live, "home"),
+        preservedNames = preserved,
+        fingerprint = "fp-farm-seed",
+        startedAt = 1L,
+        links = links,
+      )
+
+      assertTrue("archive link must be created at the missing live path", links.created.containsKey(liveLink.absolutePath))
+      assertEquals(
+        "relative link target must be preserved",
+        java.nio.file.Paths.get(LINK_TARGET_TEXT),
+        java.nio.file.Paths.get(links.created.getValue(liveLink.absolutePath)),
+      )
+      assertTrue("created link entry must exist", liveLink.isFile)
+      SnapshotTransaction.finish(filesDir)
+    } finally {
+      SnapshotFs.deletePath(filesDir)
+    }
+  }
+
+  @Test
+  fun mergePreservesExistingFarmLinkAndLiveOnlyEntries() {
+    val filesDir = tempDir()
+    try {
+      val live = File(filesDir, "live").apply { mkdirs() }
+      val stage = SnapshotTransaction.stageRoot(filesDir)
+      writeRuntime(live, "old-node", "old-profile")
+      writeRuntime(stage, "new-node", "new-profile")
+
+      val stagedLink = File(stage, "home/.dsh/profiles/node_modules/undici").apply {
+        parentFile.mkdirs()
+        writeText("")
+      }
+      val liveLink = File(live, "home/.dsh/profiles/node_modules/undici").apply {
+        parentFile.mkdirs()
+        writeText("")
+      }
+      val userOnly = File(live, "home/.dsh/profiles/node_modules/user-added-plugin").apply {
+        writeText("user-owned")
+      }
+      val links = RecordingLinks(links = setOf(stagedLink.absolutePath, liveLink.absolutePath))
+
+      SnapshotTransaction.swap(
+        filesDir = filesDir,
+        stagedRoot = stage,
+        usrDir = File(live, "usr"),
+        homeDir = File(live, "home"),
+        preservedNames = preserved,
+        fingerprint = "fp-farm-preserve",
+        startedAt = 1L,
+        links = links,
+      )
+
+      assertFalse("existing live link must not be replaced", links.created.containsKey(liveLink.absolutePath))
+      assertTrue("existing live link placeholder remains present", liveLink.isFile)
+      assertEquals("live-only farm entry remains intact", "user-owned", userOnly.readText())
+      SnapshotTransaction.finish(filesDir)
+    } finally {
+      SnapshotFs.deletePath(filesDir)
+    }
+  }
+
   /**
    * 反例（A，可注入）：若把判据换成「一律当普通文件」（= 旧行为），本用例必须判红。
    * 传一个**永不认链接**的替身即等价于旧实现。
