@@ -252,7 +252,8 @@
 
 | 文件 | 职责 | 关键函数 |
 |---|---|---|
-| `DeviceControlService.kt` | 无障碍服务与控制队列 dispatcher：能力声明、语义树、节点动作、截屏和操作分派 | `buildSnapshot()` / `rootProbe()`（虚拟屏多窗口枚举 + `WindowPick.order` 选根）/ `nodeAtPath()` / `handleClick/setText/scroll/global/screenshot()` / browser-vd-shell dispatch / `statusJson()`；real-screen a11y op 在执行点重查 ScreenScope，范围切换会丢弃旧 snapshot/ref。 |
+| `DeviceControlService.kt` | 无障碍服务与控制队列 dispatcher：能力声明、语义树、节点动作、截屏和操作分派 | `handle()` 为每个请求建立节点 lease；`buildSnapshot()` 按代持有行节点，事件/范围切换退役节点，teardown 关闭新请求并等待在途请求结束后排空；`rootProbe()`（虚拟屏多窗口枚举 + `WindowPick.order` 选根）/ `nodeAtPath()` / `handleClick/setText/scroll/global/screenshot()` / browser-vd-shell dispatch / `statusJson()`；real-screen a11y op 在执行点重查 ScreenScope。 |
+| `AccessibilityNodeRecycler.kt` | 无障碍节点 identity 所有权与 API 版本化回收 | 请求临时 lease、快照代际宽限、失效退役、teardown 排空；API 32 及以下回收、API 33+ 不调用弃用 API，回收故障可观测且继续 drain。 |
 | `ControlPoller.kt` | 引擎队列客户端：长轮询取活（空闲 5s / 有活即时）、执行、回填、退避 | `loop()` / `execute()` / `post()` |
 
 相关壳侧改动：`AndroidBridge.a11yStatus()/openA11ySettings()/unlockRestrictedSettings()`；`MainActivity.unlockRestrictedSettingsViaShizuku()` 通过 `ShizukuTransport` 执行 appops；`MainActivity.openAccessibilitySettings()`；`EngineManager.snapshotSettingsBackup()`（换树前 settings 备份，issue #126 P1 兜底）。

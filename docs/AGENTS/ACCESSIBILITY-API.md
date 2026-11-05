@@ -163,6 +163,12 @@ Android 13（API 33）起平台支持无障碍输入法：`AccessibilityServiceI
 | 引擎侧门禁与路由 | 本仓 `plugins/dsh-android-bridge/src/control-policy.ts` / `control-queue.ts`；工具面在 `plugins/dsh-android-manage` |
 | 模型工具截图回落 | `plugins/dsh-android-manage/src/index.ts` 的 `android_screenshot`：先走无障碍，失败后在 `execAdbLine` 可用时尝试特权 shell；壳侧执行由 `ShellOps` / `ShizukuTransport` 承载 |
 
+### AccessibilityNodeInfo 所有权与回收
+
+`DeviceControlService.handle()` 为每个请求打开节点 lease。请求内通过 `rootInActiveWindow`、`AccessibilityWindowInfo.root`、`getChild()` 与 `parent` 获得的节点都由 lease 按对象 identity 去重；临时节点在请求返回后释放。构建快照时，`rowNodes` 中的节点转为快照所有权，快照换代保留一代宽限；无障碍事件、屏幕范围切换会让节点立即失效，旧行句柄/路径 fail-closed，不再按旧树位置重新定位。服务 teardown 先拒绝新请求，并在在途 lease 全部结束后排空。
+
+仅当 `SDK_INT < 33` 调用 `AccessibilityNodeInfo.recycle()`；API 33 起不调用已弃用的回收 API。回收异常只记录异常类型，单个节点失败不会阻断其余回收。重连创建新 recycler，旧请求仍由自己的 lease 完成，不能把旧世代节点写回新服务状态。
+
 ## 7. 实现状态与未接入项（2026-10-31 源码对账）
 
 已接入：服务 + 能力声明、树快照、click/setText/scroll/global、队列长轮询 + 心跳、设备控制门禁、
