@@ -6,6 +6,17 @@
 
 本轮固定上游 `656b73c5130f22b12536a2e9f738c686e417db11`，按提交与路径筛查增量并复核部分候选；比较游标不前移。虚拟屏状态 [PR #226](https://github.com/snoworwind/pocket-harness/pull/226)、快照 farm 链接 [PR #227](https://github.com/snoworwind/pocket-harness/pull/227) 及已合并的轮询、自动落位、审计滚动处置见[吸收计划 §28](UPSTREAM-ABSORPTION-PLAN-2026-10-20.md#28-2026-11-05-上游筛查与分项处置)。按用户要求未做设备验证，进入发版候选前须补验。
 
+### 2026-11-05 后续增量（定向复核）
+
+只读 Git 样本推进到上游 `main` `1c11b02f79e6f7347b15930106012177f7f7c946`；`656b73c..1c11b02` 有 3 个提交。此次定向复核了终端 bundle、回滚实现、无障碍节点回收和相关测试，未逐行审完所有改动文件，因此正式比较游标仍为 `656b73c5130f22b12536a2e9f738c686e417db11`；后续从该点继续核查未覆盖文件。
+
+- [上游 #1551](https://github.com/kelai141/dsh-mobile-apk/pull/1551) 中的 #1344：本仓锁定的官方 rc.5 源树 `b830ec9` 同样将 bash/pwsh 两行指向 `@deepseek-ai/dsh-terminal-bash`，而 pwsh 无 Android 可执行文件。已在独立分支及草稿 [PR #229](https://github.com/snoworwind/pocket-harness/pull/229) 增加 profile 字面禁用，并扩展契约扫描/登记到 `experimental-terminal`；首轮 Kotlin CI 抓出旧 profile 块数断言，已同步更新并通过针对性本地回归。实施与证据见[吸收计划 §29](UPSTREAM-ABSORPTION-PLAN-2026-10-20.md#29-2026-11-05-持久-shell-pwsh-冲突处置)。
+- 同一 PR 的 #1307 Web Speech polyfill：暂不吸收。当前插件源码没有 `speechSynthesis` 使用，本仓 `AndroidBridge` 也没有对应 TTS 接口；增加原生 TTS 能力需另有产品需求和桥面设计。
+- [上游 #1552](https://github.com/kelai141/dsh-mobile-apk/pull/1552) 的 #1521/#1522：节点回收与重定位泄漏/平台判据是值得单独立项的本地差异；需要完整审计快照换代、路径重定位、锁外动作及销毁延迟，未将单个 `adopt()` 补丁误作完整修复。
+- [上游 #1554](https://github.com/kelai141/dsh-mobile-apk/pull/1554) 的 #1528：暂不吸收。Linux runtime 当前按项目既定决策暂缓投入；另需先处理 `pruneStaleBackups` 与活动发布者之间的并发归属，不能直接复制清理逻辑。
+
+外部 Git 只读权限已用于检查提交范围和源代码；沙箱外 ADB 查询正常但设备列表为空，没有设备验收。正式游标与本地实现状态分别记录，不能将本段覆盖范围写成完整上游审计。
+
 ## 2026-11-03 kelai141 上游增量吸收
 
 - [#1327 启动时异步清扫过期来件](https://github.com/kelai141/dsh-mobile-apk/pull/1327)，上游提交 c80bea5：本仓原在 MainActivity.onCreate() 同步遍历临时工作区；已改为应用上下文上的 daemon worker，沿用 FileIncoming.sweepExpired 的锁与活动投递保护。

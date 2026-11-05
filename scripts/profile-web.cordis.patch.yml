@@ -264,3 +264,9 @@
   disabled: true
 - id: product-analytics
   disabled: true
+
+# 持久 Shell 的两个入口在 rc.5 都指向同一个包并默认注册后端名 "shell"；Android 没有 pwsh 可执行文件。
+# 上游 bundle 的 !!js 平台表达式在目标设备上未阻止 pwsh 与 bash 同时启用，后启用者会报后端重名。
+# 在最后应用的 profile 层用字面量关闭 pwsh，保留 bash 入口与 Shell 工具。
+- id: optional-terminal-pwsh
+  disabled: true

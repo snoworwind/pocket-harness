@@ -499,7 +499,7 @@ class FactoryProfilePatchTest {
    * 真实工厂件（本仓镜像 `scripts/profile-web.cordis.patch.yml`）的**逐字节自一致**：
    * 零改动必须零重写。这是 D10 重写「块级 → 条目级」后最容易回归的性质——全文重建一旦漏字节，
    * 每次快照刷新都会无谓重写 patch（并可能把 CRLF/LF 与尾行吃掉）。
-   * 同时锁定工厂件的结构事实（25 个顶层条目；唯一多子条目组 = shell-termux + host-web-compat），
+   * 同时锁定工厂件的结构事实（26 个顶层条目；唯一多子条目组 = shell-termux + host-web-compat），
    * 该事实是 P-1/P-2 触发的唯一靶子；工厂变了这里必须先红。
    * 条目数自 20 增至 22 是 0.14.2-fx-1 的产品改动：新增 `ptc-runtime` 行把 PTC 代码执行的
    * `nodeExecutable` 钉死——linker64 回落会把 process.execPath 污染成 linker64，堆参数被当成程序路径。
@@ -527,9 +527,9 @@ class FactoryProfilePatchTest {
     assertTrue("零改动时不得有改动说明", result.changes.isEmpty())
 
     val blocks = FactoryProfilePatch.topLevelBlocks(text)
-    // 26 = 25 个 `- ` 顶层条目（含 linux-bootstrap）+ 1 个「首个条目前的注释头」块。
+    // 27 = 26 个 `- ` 顶层条目（含 linux-bootstrap 与 Android pwsh 禁用项）+ 1 个「首个条目前的注释头」块。
     // 历史锚点：0.14.2 时代 20 个条目 ⇒ 21 块，正是本断言当时的期望值。
-    assertEquals("顶层条目数（工厂件结构改变时同步本断言）", 26, blocks.size)
+    assertEquals("顶层条目数（工厂件结构改变时同步本断言）", 27, blocks.size)
     val groups = blocks.map { FactoryProfilePatch.blockIds(it) }.filter { it.size > 1 }
     assertEquals("唯一多子条目组 = shell-termux + host-web-compat", 1, groups.size)
     assertEquals(listOf("shell-termux", "host-web-compat"), groups.single())
@@ -560,7 +560,7 @@ class FactoryProfilePatchTest {
 
     assertTrue("D10：缺失的组内兄弟必须被补回", result.text.contains("id: host-web-compat"))
     assertTrue("补回的是同一个组（shell-termux 仍是组首）", result.text.contains("id: shell-termux"))
-    assertEquals("顶层条目数不变（补进组内，不是追加成新块）", 26, FactoryProfilePatch.topLevelBlocks(result.text).size)
+    assertEquals("顶层条目数不变（补进组内，不是追加成新块）", 27, FactoryProfilePatch.topLevelBlocks(result.text).size)
     val group = FactoryProfilePatch.topLevelBlocks(result.text)
       .first { FactoryProfilePatch.blockIds(it).contains("shell-termux") }
     assertEquals(listOf("shell-termux", "host-web-compat"), FactoryProfilePatch.blockIds(group))

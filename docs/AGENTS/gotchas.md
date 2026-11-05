@@ -3497,3 +3497,7 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 633. **快照合并遗漏共享依赖链接并可能穿越现存目录链接（2026-11-05）**
 
     现象：旧设备缺少工厂共享 farm 链接时，刷新不会补齐依赖；live 目录若是符号链接，递归合并还可能写入链接目标。真因：合并直接跳过 staged 链接，目录处理又允许跟随 live 链接。修法：仅在 live 路径按 NOFOLLOW 确实缺失时补建 staged 链接，保留现有项，并在遇到 live 目录链接时跳过该子树。复验：WSL Linux 完整 Kotlin 测试 1433 项通过、无跳过；覆盖补链、保留现有项和不穿越目录链接。设备验收按用户要求暂不进行。
+
+634. **Android 持久 Shell 的 pwsh 入口与 bash 注册同名后端（2026-11-05）**
+
+    现象：上游 Android 设备上启用 experimental terminal 时，pwsh 行可能与 bash 同时激活，后者报 `a PTY backend named "shell" is already registered`。真因：本仓固定 rc.5 的 bundle 清单把两个入口都指向 `@deepseek-ai/dsh-terminal-bash`，只给 pwsh 设置 `shellDialect`；上游提供的 `!!js process.platform` 默认禁用表达式在报告设备上没有阻止 pwsh。修法：profile 最终层用字面量禁用 `optional-terminal-pwsh`，保留 bash；契约登记和扫描器纳入 optional experimental-terminal，并断言只剩 bash 默认启用。复验：固定 rc.5 契约检查通过；`check-contract --self-test --contract <rc.5 契约副本>` 的 22 条负控通过，2 条协调仓文档用例明确 N/A。PR #229 首轮 Kotlin CI 暴露新增 profile 行后结构基线仍为 26 块，现已同步到 27 块并由针对性 `FactoryProfilePatchTest` 本地通过。沙箱外 ADB 查询正常但设备列表为空，本轮未复现设备错误，也未做 APK/CDP/ADB 验收，发版前须按设备三层协议复验。
