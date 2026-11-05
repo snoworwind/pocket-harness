@@ -468,3 +468,15 @@ GitHub API 确认 `kelai141/dsh-mobile-apk/main` 当前为 `c2053739985801dcecfa
 ### 27.3 验证边界
 
 PR #211 刷新至最新 main 后，Kotlin 编译与单测、静态/来源回归门禁、冲突与密钥扫描、变更范围、维护文档及 sentinel 检查均通过；以 merge commit `af9c9a3818c4387358e72561b8a1de360ad1cb8c` 合入。按用户要求未构建 APK、未做 CDP/ADB；这是 L3 UI/壳侧行为，设备三层验收仍未完成。上游游标不推进。
+
+## 28. 2026-11-05 上游筛查与分项处置
+
+本轮将 `b6478c1cd8486c6befbb81dfd4033b9f21c22ff0..656b73c5130f22b12536a2e9f738c686e417db11` 的 83 个提交、220 个变更路径做提交与路径筛查，并对若干候选复核源码；并未逐行审完全部变更，比较游标不因此前移。
+
+- #1504：虚拟屏状态需要与当前登记屏幕核对；本仓适配见 [PR #226](https://github.com/snoworwind/pocket-harness/pull/226)。插件测试 102/102，未做设备验证。
+- #1290：快照刷新补齐缺失的 farm 链接并防止穿越 live 目录链接；见 [PR #227](https://github.com/snoworwind/pocket-harness/pull/227)。WSL Kotlin 全量测试 1433 项、无跳过，未做设备验证。
+- #1331：本仓已有 [PR #214](https://github.com/snoworwind/pocket-harness/pull/214)，自动落位进一步由 [PR #215](https://github.com/snoworwind/pocket-harness/pull/215) 修正；旧工作区轮询代码不覆盖主线。
+- #1349：本仓已在 [PR #217](https://github.com/snoworwind/pocket-harness/pull/217) 设计并实现有界原子控制审计滚动，详见 §23。
+- #1499/#1531 的补丁锚点精确匹配和 #1550 的逐补丁测试映射仍是待独立复核的候选，不将其记为已实现。
+
+设备三层验收按用户要求暂缓；进入发版候选前须按项目协议补验。

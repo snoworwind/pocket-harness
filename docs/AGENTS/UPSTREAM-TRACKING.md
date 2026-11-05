@@ -2,6 +2,10 @@
 
 本仓独立维护；`kelai141/dsh-mobile-apk` 是参考来源，不是构建依赖或镜像权威。按问题选择性移植，每个逻辑改动独立 PR，保留出处，重新审查本仓安全约束并按风险分档验证。上游发布和测试不代替本仓验收。
 
+## 2026-11-05 上游筛查与修复
+
+本轮固定上游 `656b73c5130f22b12536a2e9f738c686e417db11`，按提交与路径筛查增量并复核部分候选；比较游标不前移。虚拟屏状态 [PR #226](https://github.com/snoworwind/pocket-harness/pull/226)、快照 farm 链接 [PR #227](https://github.com/snoworwind/pocket-harness/pull/227) 及已合并的轮询、自动落位、审计滚动处置见[吸收计划 §28](UPSTREAM-ABSORPTION-PLAN-2026-10-20.md#28-2026-11-05-上游筛查与分项处置)。按用户要求未做设备验证，进入发版候选前须补验。
+
 ## 2026-11-03 kelai141 上游增量吸收
 
 - [#1327 启动时异步清扫过期来件](https://github.com/kelai141/dsh-mobile-apk/pull/1327)，上游提交 c80bea5：本仓原在 MainActivity.onCreate() 同步遍历临时工作区；已改为应用上下文上的 daemon worker，沿用 FileIncoming.sweepExpired 的锁与活动投递保护。
