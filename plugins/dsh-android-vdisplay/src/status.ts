@@ -163,6 +163,28 @@ export function snapshotFromRaw(
     return { ok: false, ...base, screens, enabled, state, code: raw.code ?? 'vdisplay-blocked',
       guidance: raw.guidance ?? '能力探测缺项，虚拟屏无法打开（缺什么/为什么/能否补救见设置页错误码）。' }
   }
+  // A reported state is not evidence that its virtual display still exists. The
+  // controller returns the active displayId and the current DisplayManager inventory;
+  // reconcile both before telling the model that virtual-screen operations are ready.
+  if (screens.length === 0) {
+    return { ok: false, ...base, screens, enabled, state, transports: raw.transports ?? [],
+      code: 'vdisplay-no-screens',
+      guidance: '虚拟屏自报「' + state + '」，但当前没有可核对的已注册屏幕；请重读状态，必要时重建虚拟屏。' }
+  }
+  const reportedDisplay = typeof raw.displayId === 'number' ? raw.displayId : undefined
+  const matchingVirtual = reportedDisplay === undefined
+    ? undefined
+    : screens.find((screen) => screen.displayId === reportedDisplay && screen.kind === 'virtual')
+  if (reportedDisplay !== undefined && matchingVirtual === undefined) {
+    return { ok: false, ...base, screens, enabled, state, transports: raw.transports ?? [],
+      code: 'vdisplay-display-missing',
+      guidance: '虚拟屏自报 displayId=' + reportedDisplay + '，但该 ID 不对应当前登记的应用虚拟屏；请重读状态，必要时重建虚拟屏。' }
+  }
+  if (state === 'active' && matchingVirtual === undefined) {
+    return { ok: false, ...base, screens, enabled, state, transports: raw.transports ?? [],
+      code: 'vdisplay-display-missing',
+      guidance: '虚拟屏自报已激活，但没有与之对应的已登记虚拟屏 displayId；按未就绪处理。' }
+  }
   const out: VdSnapshot = { ok: true, ...base, screens, enabled, state, code: raw.code ?? 'vdisplay-ok',
     guidance: raw.guidance ?? (state === 'active' ? '虚拟屏已激活（AI 操作面在虚拟屏，用户前台不受影响）。' : '能力就绪，尚未建屏。'),
     transports: raw.transports ?? [] }
