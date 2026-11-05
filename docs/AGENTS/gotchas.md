@@ -3489,3 +3489,7 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 631. **Termux stable 的签名 PRoot 包版本领先于审查锁，来源构建按预期 fail-closed（2026-11-04）**
 
     现象：来源 run [41784764351](https://github.com/snoworwind/pocket-harness/actions/runs/41784764351) 中 primary 与 reference 均在 `Build source-owned offline ARM64 Linux assets` 因 `Termux proot version is not reviewed: '5.1.107.102'` 失败；Termux 签名包预检通过，但 APK、构建后验证、签名与 Release 步骤均未执行。真因：滚动 stable 仓库已推进到 PRoot `5.1.107.102`，而合并提交 `e080a1cb8e2c53016e31dc1a8f8978a199293614` 仍锁定 `.101`；这是精确版本审查保护按预期 fail-closed，不是签名或 runner 故障。修法：独立复核不可变 recipe commit `b734bc49dc0eedb2c454e1c5d3c48d35d81d4bc9`、`.102` 源归档 SHA-256、Termux 签名快照中的 deb 字节及依赖闭包，再同步版本/来源锁、夹具及 manifest；保留精确版本拒绝，不放宽断言。复核已确认官方 `termux-autobuilds.gpg` 验签成功，PRoot、shmem、talloc 的 `.deb` 均与 provenance SHA-256 一致；libandroid-shmem recipe 变动也同步更新摘要。修复候选现将锁与运行时 fixture 更新至 `.102`，并加入基于重签测试索引的 `.103` 未审阅版负控；本机 PRoot 集成夹具因缺少 dpkg-deb/GnuPG 跳过 8 项，签名仓库输入测试通过 11 项，manifest 30 个来源文件摘要校验通过。PR #225 的首次 Linux 资产回归发现负控测试夹具缺陷：测试先创建并签名 GnuPG home，随后为改成 `.103` 的 PRoot 包重新生成 InRelease 时又对同一路径执行 `mkdir()`，导致 `FileExistsError`，其余 45 项通过。修复为复用现有临时 GnuPG home 与密钥后，PR CI 重跑确认；合入 main 后仍需触发来源草稿构建。未做设备验收。
+
+633. **快照合并遗漏共享依赖链接并可能穿越现存目录链接（2026-11-05）**
+
+    现象：旧设备缺少工厂共享 farm 链接时，刷新不会补齐依赖；live 目录若是符号链接，递归合并还可能写入链接目标。真因：合并直接跳过 staged 链接，目录处理又允许跟随 live 链接。修法：仅在 live 路径按 NOFOLLOW 确实缺失时补建 staged 链接，保留现有项，并在遇到 live 目录链接时跳过该子树。复验：WSL Linux 完整 Kotlin 测试 1433 项通过、无跳过；覆盖补链、保留现有项和不穿越目录链接。设备验收按用户要求暂不进行。
