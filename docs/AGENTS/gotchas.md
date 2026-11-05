@@ -3493,3 +3493,7 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 632. **虚拟屏状态未核对登记屏幕（2026-11-05）**
 
     现象：状态声称 active 或 ready 时，屏幕清单可能为空，或 active 的 displayId 已不在应用虚拟屏清单，工具仍报告可用。真因：状态映射只检查开关和状态字符串，没有交叉核对 DisplayManager 清单。修法：空清单返回 vdisplay-no-screens；有 displayId 时要求匹配应用拥有的 virtual 屏，active 缺少匹配也返回 vdisplay-display-missing。ready 且物理屏存在时保持可用。插件回归覆盖空清单、错误 ID、物理屏和有效屏；设备验收按用户要求暂不进行。
+
+633. **快照合并遗漏共享依赖链接并可能穿越现存目录链接（2026-11-05）**
+
+    现象：旧设备缺少工厂共享 farm 链接时，刷新不会补齐依赖；live 目录若是符号链接，递归合并还可能写入链接目标。真因：合并直接跳过 staged 链接，目录处理又允许跟随 live 链接。修法：仅在 live 路径按 NOFOLLOW 确实缺失时补建 staged 链接，保留现有项，并在遇到 live 目录链接时跳过该子树。复验：WSL Linux 完整 Kotlin 测试 1433 项通过、无跳过；覆盖补链、保留现有项和不穿越目录链接。设备验收按用户要求暂不进行。
