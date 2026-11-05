@@ -3501,3 +3501,7 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 634. **Android 持久 Shell 的 pwsh 入口与 bash 注册同名后端（2026-11-05）**
 
     现象：上游 Android 设备上启用 experimental terminal 时，pwsh 行可能与 bash 同时激活，后者报 `a PTY backend named "shell" is already registered`。真因：本仓固定 rc.5 的 bundle 清单把两个入口都指向 `@deepseek-ai/dsh-terminal-bash`，只给 pwsh 设置 `shellDialect`；上游提供的 `!!js process.platform` 默认禁用表达式在报告设备上没有阻止 pwsh。修法：profile 最终层用字面量禁用 `optional-terminal-pwsh`，保留 bash；契约登记和扫描器纳入 optional experimental-terminal，并断言只剩 bash 默认启用。复验：固定 rc.5 契约检查通过；`check-contract --self-test --contract <rc.5 契约副本>` 的 22 条负控通过，2 条协调仓文档用例明确 N/A。PR #229 首轮 Kotlin CI 暴露新增 profile 行后结构基线仍为 26 块，现已同步到 27 块并由针对性 `FactoryProfilePatchTest` 本地通过。沙箱外 ADB 查询正常但设备列表为空，本轮未复现设备错误，也未做 APK/CDP/ADB 验收，发版前须按设备三层协议复验。
+
+635. **补丁器遇到重复锚点只改首处，marker 随后造成假绿（2026-11-05）**
+
+    现象：上游 bundle 因合并或重复函数包含两份相同锚点时，`String.replace` 只改第一份；首处写入 marker 后，runner 的 `check()` 会把整条补丁判成已应用，另一份旧行为留在最终产物。正则锚点也会有同一问题。真因：补丁器只依赖“锚点至少出现一次”的前置判断，没有校验将要替换的匹配数。修法：字面量锚点统一走 `replaceOnce`；正则锚点走独立计数的 `replaceOnceRe`；只有已存在新形态时允许旧锚点为零次的升级路径才用 `replaceAtMostOnce` 变体，重复仍拒绝。复验：真实 ArkWeb H1 runner 临时目标重复正则锚点后退出 1，目标字节保持不变；WSL 补丁测试 33 文件、82 项全过；`apply-patches vendor --check` 通过。Windows 沙箱下的原子 rename 与 symlink 用例报 EPERM，已在沙箱外 WSL 复验通过。
