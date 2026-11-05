@@ -501,3 +501,23 @@ PR #211 刷新至最新 main 后，Kotlin 编译与单测、静态/来源回归�
 - `node --check scripts/check-contract.mjs`、契约 JSON 解析与 `git diff --check` 通过。默认 `.deploy-tmp/deepseek-harness` 指向 rc.2，直接对它运行会因树身份不符失败；验证改用已有固定 rc.5 源树的临时契约副本，不改该共享缓存。
 - PR #229 首轮 Kotlin CI 发现 `FactoryProfilePatchTest` 仍锁定新增 profile 行前的 26 个块；已同步更新为 27 个块（26 个条目及注释头），针对性 `:app:testDebugUnitTest --tests 'com.snoworwind.pocketharness.FactoryProfilePatchTest'` 本地通过。
 - 沙箱外 ADB 查询正常但设备列表为空，本轮没有来源 APK、CDP 或 ADB 用户层验收；PR 明确注明未做设备验证，进入发布候选前必须按三层协议复验 bash 可用且 pwsh 不再抢占后端。该状态不因上游设备报告或本地静态通过而关闭。
+
+## 30. 2026-11-05 无障碍节点生命周期回收审计（上游 #1361/#1510/#1521/#1522）
+
+### 30.1 本地差异与上游实现
+
+- 本仓 `DeviceControlService.Snapshot` 持有 `nodes` 与 `rowNodes`；`buildSnapshot` 覆盖旧快照，`observeScreenScope` 与 `teardown` 置空快照，均未显式回收节点。行句柄回退的 `nodeAtChildPath`、`nodeByFingerprint`，以及焦点/可滚动搜索和 parent 上溯也会得到未纳入快照所有权的节点。
+- 上游 #1361（#1534，基底提交 `0f45adc`）加入 identity 去重的延迟一代 recycler；#1510 为 teardown 增加 2 秒后 drain；本轮增量 #1521/#1522 再加入 fallback `adopt()`、API<33 守卫、失败日志和可注入 SDK 判据。该差异在本仓仍整体缺失，不能只移植 `adopt()`。
+- 本仓 `ControlPoller.loop → execute → DeviceControlService.handle` 在单一 `dsh-control-poller` 工作线程串行执行；但 AccessibilityService 的 `onUnbind`/`onDestroy` 生命周期回调与该工作线程不同步，`performAction` 明确在服务锁外运行。
+
+### 30.2 吸收设计（设备可用后实施）
+
+- 先盘清每个 `getChild`、`parent`、`rootFor` 返回值的所有者：保留在快照、作为动作目标返回、作为搜索临时节点释放，或路径中间节点用完即释放；预算截断与异常退出也不得丢弃未接管句柄。
+- 引入可独立单测的代际回收器：按对象 identity 去重；仅 `SDK_INT < 33` 调 `recycle()`；SDK 判据与日志出口可注入；fallback 通过 `adopt()` 收入受控生命周期，不得动作前立即回收。
+- 不照搬上游 teardown：上游在 `teardown` 调 `retire(currentSnapshot)` 会先回收 recycler 里上一代对象。若其中有已 `adopt()` 且仍在锁外执行动作的节点，2 秒后的 drain 延迟不到它。应先关闭新的 `handle` 入口，并跟踪在途 handle；当前快照与所有已收编对象保留到在途动作归零后再 drain，避免固定延时猜测动作时长。
+- 行为测试覆盖共享实例去重、一代宽限、fallback adopt、scope 清空、API 32/33 边界、回收异常可观测、teardown 与在途动作竞态、截断遍历临时节点释放；再跑执行地图与全量 Kotlin/静态门禁。
+
+### 30.3 验收边界与当前处置
+
+- 这是 AccessibilityService 设备控制行为，按 `AGENTS.md` §4 属即时三层验收面。代码层还需证明 API<33 与 API≥33 两侧；设备用户层按项目协议使用 Google Android 16 API 36 `default/arm64-v8a` AVD 执行由模型自主编排的真实任务，并取得 CDP/ADB 证据。
+- 当前只安装了 API 36 ARM64 系统映像，没有创建 AVD；ADB 列表为空，用户确认暂时没有设备。本轮不改运行时代码、不创建未验收实现，也不推进正式上游比较游标。设备可用后按本节设计另开一个原子 PR。
