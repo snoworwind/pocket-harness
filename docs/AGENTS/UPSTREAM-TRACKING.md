@@ -17,6 +17,19 @@
 
 外部 Git 只读权限已用于检查提交范围和源代码；沙箱外 ADB 查询正常但设备列表为空，没有设备验收。正式游标与本地实现状态分别记录，不能将本段覆盖范围写成完整上游审计。
 
+### 2026-11-05 后续增量（定向复核至 `3148a026`）
+
+只读 checkout 已更新到上游 `main` `3148a0264ef0c10e1a8097152f7cd5d5025a0a18`；从先前样本 `1c11b02f79e6f7347b15930106012177f7f7c946` 到该点共 9 个提交。此轮逐项对照了补丁锚点、外部组件 provenance、屏幕范围词法、浏览器标签、Shizuku、读超时、无障碍测试与退役插件候选；尚未逐行审完全部变更文件，正式比较游标继续保持 `656b73c5130f22b12536a2e9f738c686e417db11`。
+
+- [#1499](https://github.com/kelai141/dsh-mobile-apk/pull/1499) 与 [#1531](https://github.com/kelai141/dsh-mobile-apk/pull/1538)：本仓补丁器也有字面量/正则重复锚点只改首个匹配的假绿路径；已在本分支移植精确命中工具，加入真实 runner 重复 H1 锚点负控。计划与证据见[吸收计划 §31](UPSTREAM-ABSORPTION-PLAN-2026-10-20.md#31-2026-11-05-构建期补丁锚点唯一性-上游-14991531)。
+- [#1631](https://github.com/kelai141/dsh-mobile-apk/pull/1631)：词内 `#` 不能启动 shell 注释的词法边界，本仓引擎和 Kotlin 镜像已都实现为 `# && !active` 才截断；不重复移植。
+- [#1563](https://github.com/kelai141/dsh-mobile-apk/pull/1563)：上游将整份待打包 external 目录纳入字节 manifest。本仓来源链按不可变项目 commit 构建；marketplace 另固定 npm tarball 与补丁输入，并输出 tarball/补丁/产物 provenance，undo vendor 也以当前 commit 中的源文件为输入。额外逐文件维护表会形成第二套同源锁，当前不复制；若构建开始使用未由项目 commit 或 artifact provenance 约束的 external 输入，再重新评估。
+- [#1550](https://github.com/kelai141/dsh-mobile-apk/pull/1550)：逐补丁标注覆盖测试能增强审计追溯；本仓 `check-patch-test-manifest.mjs` 已串行执行全部补丁测试文件，但 registry 没有 patch→test 数据。暂留独立评估，需逐项基于断言证据建立映射，不能按文件名猜测。
+- [#1553](https://github.com/kelai141/dsh-mobile-apk/pull/1553)：移除退役的 `dsh-model-capability` 对本仓不适用；该插件仍在 `plugin-dirs.json`、来源合同和构建链中活动。
+- [#1597](https://github.com/kelai141/dsh-mobile-apk/pull/1597) 同 URL 复用浏览器标签属于 L3；本轮没有设备，暂不改 BrowserHost 行为。#1537/#1560 的 Shizuku readiness/probe 调整、#1562 的请求读超时策略仍作为独立候选；需分别完成与本仓调用和现有并发/重试语义的源码对照，不能仅按提交标题移植。#1561 的无障碍调用点解析测试随 §30 生命周期实现一起评估。
+
+本次来源范围是定向比较而非全审；#1631、#1553 的本仓静态比对已完成，其余未采纳候选按上表重新进入后续审查，不自动视为已解决。
+
 ## 2026-11-03 kelai141 上游增量吸收
 
 - [#1327 启动时异步清扫过期来件](https://github.com/kelai141/dsh-mobile-apk/pull/1327)，上游提交 c80bea5：本仓原在 MainActivity.onCreate() 同步遍历临时工作区；已改为应用上下文上的 daemon worker，沿用 FileIncoming.sweepExpired 的锁与活动投递保护。

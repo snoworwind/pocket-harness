@@ -20,6 +20,7 @@
 import { readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { replaceAtMostOnce, replaceAtMostOnceRe, replaceOnce, replaceOnceRe } from './lib/replace-once.mjs'
 import { ENV_MARKER as PTC_ENV_MARKER, LAUNCH_MARKER as PTC_LAUNCH_MARKER, assertChildClearing, patchEnvironment, patchRuntimeIndex, planPatch } from './ptc-android-native-A1.mjs'
 import { PI_STREAMING_FILES, planPiStreaming } from './pi-upstream-streaming-020.mjs'
 import { MIMO_PI_FILE, planMimoThinking } from './mimo-thinking-toggle-056.mjs'
@@ -287,7 +288,7 @@ const IMPLS = {
     apply: (s) => {
       const OLD = 'execPath:process.execPath,cliPath:process.argv[1]'
       const NEW = 'execPath:(process.env.TERMUX__PREFIX||"/data/data/com.snoworwind.pocketharness/files/usr")+"/bin/node",cliPath:process.argv[1]'
-      if (s.includes(OLD)) return s.replace(OLD, NEW)
+      if (s.includes(OLD)) return replaceOnce(s, OLD, NEW, 'market-B execPath')
       if (s.includes(NEW)) return s
       throw new Error('execPath 锚点未命中且安全化形态不在场——T() 实现可能已变，请人工核对')
     },
@@ -311,7 +312,7 @@ const IMPLS = {
         // 幂等 + map 强制同步（别名增补等数据更新直接反映到已修补文件）
         const mapRe = /let _=\{.*?\},e=String\(t\.fullName/
         if (!mapRe.test(s)) throw new Error('D map 锚点未命中——请人工核对')
-        return s.replace(mapRe, `let _=${MAP},e=String(t.fullName`)
+        return replaceOnceRe(s, mapRe, `let _=${MAP},e=String(t.fullName`, 'market-D map')
       }
       const D_SRV = `function Wc(t){let _=${MAP},e=String(t.fullName??"").split("#").pop().split("/").pop().toLowerCase(),f=_?.[e]??"unknown",n=${NOTE}[f];return{...t,compat:f,compatNote:n}}`
       // 0.1.7 重新 minify：apply 函数名与搜索端点标识符都变了（qt 绑定仍在，handler 内是 c/（l,200,p(a))）。
@@ -321,12 +322,12 @@ const IMPLS = {
       // 0.1.7 的服务端搜索 handler：上游新增 installCheck:"passed"，我们只在这段前后加 mobile: 过滤与富化。
       const OLD = 'let a=await c({q:s.searchParams.get("q")??void 0,category:s.searchParams.get("category")??void 0,limit:s.searchParams.get("limit")??60,installCheck:"passed"});l(e,200,p(a))'
       const NEW = 'let _q=s.searchParams.get("q")??void 0,_m=String(_q??"").startsWith("mobile:");if(_m)_q=String(_q).slice(7).trim()||void 0;let a=await c({q:_q,category:s.searchParams.get("category")??void 0,limit:s.searchParams.get("limit")??60,installCheck:"passed"});a.results=(a.results??[]).map(x=>Wc(x));if(_m)a.results=a.results.filter(x=>x.compat!=="desktop");l(e,200,p(a))'
-      s = s.replace(INSERT_BEFORE, D_SRV + INSERT_BEFORE)
+      s = replaceOnce(s, INSERT_BEFORE, D_SRV + INSERT_BEFORE, 'market-D server insertion')
       if (!s.includes(OLD)) {
         const i = s.indexOf('searchParams.get("q")')
         throw new Error('D 搜索端点锚点未命中——上游 handler 可能已变：' + (i >= 0 ? s.slice(i, i + 120) : '（找不到 q 参数段）'))
       }
-      s = s.replace(OLD, NEW)
+      s = replaceOnce(s, OLD, NEW, 'market-D server search handler')
       if (!s.includes('function Wc(') || !s.includes('compat!=="desktop"')) throw new Error('D-server 复核失败——不写回')
       return s
     },
@@ -344,7 +345,7 @@ const IMPLS = {
       const AUTH_OLD = 'let dshMobileMarketplaceRouteAuthorized=(n,e)=>{/* dsh-mobile marketplace route auth (U2) */let r=401;try{let s=t.get?.("connection");typeof s?.requestRejection==="function"&&(r=s.requestRejection(n))}catch{}if(r===void 0)return!0;e.writeHead(r===403?403:401);e.end();return!1};'
       const AUTH_NEW = `let dshMobileMarketplaceRouteAuthorized=(n,e)=>{/* dsh-mobile marketplace route auth (U2); dsh-mobile marketplace no-store (U2) */let r=401;try{let s=t.get?.("connection");typeof s?.requestRejection==="function"&&(r=s.requestRejection(n))}catch{}if(r===void 0)return!0;if(r===403){e.writeHead(403,{"cache-control":"no-store"});e.end()}else{e.writeHead(401,{"content-type":"application/json; charset=utf-8","cache-control":"no-store"});e.end('{"ok":false,"error":"unauthorized"}')}return!1};`
       if (s.includes(AUTH_NEW)) return s
-      if (s.includes(AUTH_OLD)) return s.replace(AUTH_OLD, AUTH_NEW)
+      if (s.includes(AUTH_OLD)) return replaceOnce(s, AUTH_OLD, AUTH_NEW, 'market-route-auth helper')
       // 0.1.7 标识符重命名：A()->I()、Q->et、V->rt、b()->N。锚点按新字节写死，
       // 并保留 0.1.5 旧形态作为兜底（两个版本都能重锚，便于回退排障）。
       const SEARCH_OLD = s.includes('let r=I();r&&t.skills.register(r),t.webServer.register({kind:"exact",path:et,handler:async(n,e)=>{')
@@ -358,9 +359,10 @@ const IMPLS = {
       if (!SEARCH_OLD.includes(SEARCH_SEP)) throw new Error('market-route-auth 锚点未命中：search 注册段分隔形态已变')
       const HANDLER_OPEN = ',handler:async(n,e)=>{'
       if (!SEARCH_OLD.includes(HANDLER_OPEN)) throw new Error('market-route-auth 锚点未命中：search handler 开头形态已变')
-      const SEARCH_NEW = SEARCH_OLD
-        .replace(SEARCH_SEP, ';' + AUTH_NEW + 't.webServer.register({kind:"exact",path:')
-        .replace(HANDLER_OPEN, ',handler:async(n,e)=>{if(!dshMobileMarketplaceRouteAuthorized(n,e))return;')
+      const SEARCH_NEW = replaceOnce(
+        replaceOnce(SEARCH_OLD, SEARCH_SEP, ';' + AUTH_NEW + 't.webServer.register({kind:"exact",path:'),
+        HANDLER_OPEN, ',handler:async(n,e)=>{if(!dshMobileMarketplaceRouteAuthorized(n,e))return;',
+      )
       const INSTALL_OLD = s.includes('t.webServer.register({kind:"exact",path:rt,handler:N({install:n=>f(n,T()),onInstalled:h})})')
         ? 't.webServer.register({kind:"exact",path:rt,handler:N({install:n=>f(n,T()),onInstalled:h})})'
         : 't.webServer.register({kind:"exact",path:V,handler:b({install:n=>p(n,T()),onInstalled:f})})'
@@ -369,7 +371,7 @@ const IMPLS = {
         : 't.webServer.register({kind:"exact",path:V,handler:async(n,e)=>{if(!dshMobileMarketplaceRouteAuthorized(n,e))return;return b({install:s=>p(s,T()),onInstalled:f})(n,e)}})'
       if (!s.includes(SEARCH_OLD)) throw new Error('market-route-auth 锚点未命中：search route 起点已变')
       if (!s.includes(INSTALL_OLD)) throw new Error('market-route-auth 锚点未命中：install route 已变')
-      s = s.replace(SEARCH_OLD, SEARCH_NEW).replace(INSTALL_OLD, INSTALL_NEW)
+      s = replaceOnce(replaceOnce(s, SEARCH_OLD, SEARCH_NEW, 'market route search'), INSTALL_OLD, INSTALL_NEW, 'market route install')
       if (!s.includes('dsh-mobile marketplace route auth (U2)')) throw new Error('market-route-auth 复核失败——不写回')
       return s
     },
@@ -386,17 +388,17 @@ const IMPLS = {
       const FILTER_OLD = 'onChange:o=>m(o.target.value)}),l==="loading"'
       const FILTER_NEW = 'onChange:o=>m(o.target.value)}),s.default.createElement("label",{style:{marginLeft:10,display:"inline-flex",alignItems:"center",gap:4,fontSize:13}},s.default.createElement("input",{type:"checkbox",checked:/^mobile:/.test(n),onChange:o=>{let v=(n||"").replace(/^mobile:\\s*/,"");m(o.target.checked?"mobile: "+v:v)}}),"仅移动端可用"),l==="loading"'
       if (!s.includes(HELPERS_ANCHOR)) throw new Error('D 助手锚点未命中——请人工核对')
-      s = s.replace(HELPERS_ANCHOR, HELPERS + HELPERS_ANCHOR)
+      s = replaceOnce(s, HELPERS_ANCHOR, HELPERS + HELPERS_ANCHOR, 'market-D client helpers')
       if (!s.includes(BADGE_OLD)) {
         const i = s.indexOf('dshm-risk"')
         throw new Error('D 徽章锚点未命中——dshm-risk 段已变：' + (i >= 0 ? s.slice(i, i + 120) : '（找不到段）'))
       }
-      s = s.replace(BADGE_OLD, BADGE_NEW)
+      s = replaceOnce(s, BADGE_OLD, BADGE_NEW, 'market-D client badge')
       if (!s.includes(FILTER_OLD)) {
         const j = s.indexOf('dshm-search"')
         throw new Error('D 过滤锚点未命中——搜索框段已变：' + (j >= 0 ? s.slice(j, j + 100) : '（找不到段）'))
       }
-      s = s.replace(FILTER_OLD, FILTER_NEW)
+      s = replaceOnce(s, FILTER_OLD, FILTER_NEW, 'market-D client filter')
       if (!s.includes('dshm-compat') || !s.includes('仅移动端可用')) throw new Error('D-client 复核失败——不写回')
       return s
     },
@@ -499,16 +501,16 @@ const IMPLS = {
       if (s.includes('dsh-mobile dot-only badge')) return s
       const TEXT = 't("badge.count", { n: stat.total }),'
       if (!s.includes(TEXT)) throw new Error('E8 锚点缺失：badge.count 文本节点')
-      s = s.replace(TEXT, '// dsh-mobile dot-only badge: 数量只在 title/aria-label 里，头部只留绿点')
+      s = replaceOnce(s, TEXT, '// dsh-mobile dot-only badge: 数量只在 title/aria-label 里，头部只留绿点', 'undo-E8 badge text')
       const TITLE = 'title: t("badge.title"),'
       const ARIA = '"aria-label": t("badge.title"),'
       if (!s.includes(TITLE) || !s.includes(ARIA)) throw new Error('E8 锚点缺失：badge title/aria-label')
-      s = s.replace(TITLE, 'title: t("badge.title") + " · " + t("badge.count", { n: stat.total }),')
-      s = s.replace(ARIA, '"aria-label": t("badge.title") + ", " + t("badge.count", { n: stat.total }),')
+      s = replaceOnce(s, TITLE, 'title: t("badge.title") + " · " + t("badge.count", { n: stat.total }),', 'undo-E8 title')
+      s = replaceOnce(s, ARIA, '"aria-label": t("badge.title") + ", " + t("badge.count", { n: stat.total }),', 'undo-E8 accessibility label')
       // 同优先级后置规则覆盖上面的胶囊样式：20x20 圆形、绿点居中（不改 E7 的 marker 串）。
       const CSS_END = 'overflow:hidden}";'
       if (!s.includes(CSS_END)) throw new Error('E8 锚点缺失：css2 结尾')
-      s = s.replace(CSS_END, 'overflow:hidden}.u_badge{padding:0;width:20px;height:20px;justify-content:center;gap:0}";')
+      s = replaceOnce(s, CSS_END, 'overflow:hidden}.u_badge{padding:0;width:20px;height:20px;justify-content:center;gap:0}";', 'undo-E8 css tail')
       if (!s.includes('dsh-mobile dot-only badge')) throw new Error('E8 复核失败——不写回')
       return s
     },
@@ -547,7 +549,7 @@ const IMPLS = {
       // 注入片段从独立文件读入（LF），避免在补丁源码里嵌套转义：
       // 直接内联会让 \n/\s 被外层字符串先吃掉（实测踩到两处：字面换行与 \s 变 s）。
       const MINIMAL_NEW = readFileSync(join(HERE, 'data', 'undo-safe-align-snippet.mjs'), 'utf8').replace(/\n$/, '')
-      s = s.replace(MINIMAL_RE, MINIMAL_NEW)
+      s = replaceOnceRe(s, MINIMAL_RE, MINIMAL_NEW, 'undo-safe-align minimal block')
       if (!s.includes('dsh-mobile safe ownership identity v2')) throw new Error('undo-safe-align 复核失败——不写回')
       return s
     },
@@ -637,17 +639,17 @@ const IMPLS = {
         const autoHelperEnd = next.indexOf('\n}', autoHelperStart)
         if (autoHelperEnd > autoHelperStart) next = next.slice(0, autoHelperStart) + defaultDirHelper.trimEnd() + next.slice(autoHelperEnd + 2)
       } else {
-        next = next.replace(/function buildConfig\(overrides = \{\}\) \{/, defaultDirHelper + 'function buildConfig(overrides = {}) {')
+        next = replaceOnceRe(next, /function buildConfig\(overrides = \{\}\) \{/, defaultDirHelper + 'function buildConfig(overrides = {}) {', 'undo-safe-transaction buildConfig')
       }
       const safeModeDefaultLine = `    safeModeDefaultWebStore: profileName === 'web' && overrides.autoDir === undefined && !hasConfiguredAutoDir(),\n`
-      if (!next.includes('safeModeDefaultWebStore: profileName === \'web\'')) next = next.replace(/(    profileName,\r?\n)/, `$1${safeModeDefaultLine}`)
-      else next = next.replace(/    safeModeDefaultWebStore: profileName === 'web' && overrides.autoDir === undefined && !hasConfiguredAutoDir\(\),\r?\n/, safeModeDefaultLine)
-      next = next.replace("import { promises as fs, existsSync, readFileSync } from 'node:fs';",
-        "import { promises as fs, existsSync, readFileSync, constants as fsConstants } from 'node:fs';")
-      next = next.replace(/import \{ join, dirname, basename, resolve, isAbsolute \} from 'node:path';\r?\n/,
-        "import { join, dirname, basename, resolve, relative, sep, isAbsolute } from 'node:path';\n")
-      next = next.replace(/import \{ join, dirname, basename, resolve, relative, sep, isAbsolute \} from 'node:path';\r?\n/,
-        "import { join, dirname, basename, resolve, relative, sep, isAbsolute } from 'node:path';\n")
+      if (!next.includes('safeModeDefaultWebStore: profileName === \'web\'')) next = replaceOnceRe(next, /(    profileName,\r?\n)/, `$1${safeModeDefaultLine}`, 'undo-safe-transaction profileName')
+      else next = replaceOnceRe(next, /    safeModeDefaultWebStore: profileName === 'web' && overrides.autoDir === undefined && !hasConfiguredAutoDir\(\),\r?\n/, safeModeDefaultLine, 'undo-safe-transaction default setting')
+      next = replaceAtMostOnce(next, "import { promises as fs, existsSync, readFileSync } from 'node:fs';",
+        "import { promises as fs, existsSync, readFileSync, constants as fsConstants } from 'node:fs';", 'undo-safe-transaction fs import')
+      next = replaceAtMostOnceRe(next, /import \{ join, dirname, basename, resolve, isAbsolute \} from 'node:path';\r?\n/,
+        "import { join, dirname, basename, resolve, relative, sep, isAbsolute } from 'node:path';\n", 'undo-safe-transaction old path import')
+      next = replaceAtMostOnceRe(next, /import \{ join, dirname, basename, resolve, relative, sep, isAbsolute \} from 'node:path';\r?\n/,
+        "import { join, dirname, basename, resolve, relative, sep, isAbsolute } from 'node:path';\n", 'undo-safe-transaction path import normalization')
       if (!next.includes('dsh-mobile safe mode transaction (S2)')) {
         throw new Error('undo-safe-transaction 复核失败——不写回')
       }
@@ -667,7 +669,7 @@ const IMPLS = {
       const SEND_NEW = "      res.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' }); // dsh-mobile undo no-store (U1)"
       if (!s.includes('dsh-mobile undo no-store (U1)')) {
         if (!s.includes(SEND_OLD)) throw new Error('undo-api-auth 锚点未命中：REST send() 响应头已变')
-        s = s.replace(SEND_OLD, SEND_NEW)
+        s = replaceOnce(s, SEND_OLD, SEND_NEW, 'undo-api-auth response header')
       }
       if (s.includes('dsh-mobile undo route auth (U1)')) return s
       const AUTH_ANCHOR = '    const readJson = (req) => new Promise((resolve) => {'
@@ -717,14 +719,14 @@ const IMPLS = {
         '    };',
       ].join('\n')
       if (!s.includes(AUTH_ANCHOR)) throw new Error('undo-api-auth 锚点未命中：REST readJson() 片段已变')
-      s = s.replace(AUTH_ANCHOR, AUTH + '\n' + AUTH_ANCHOR)
+      s = replaceOnce(s, AUTH_ANCHOR, AUTH + '\n' + AUTH_ANCHOR, 'undo-api-auth helper insertion')
       const HANDLER = '      handler: async (req, res) => {'
       const GUARD = [
         '        const rejection = dshMobileUndoAuthorize(req);',
         '        if (rejection !== undefined) { dshMobileUndoReject(res, rejection); return; }',
       ].join('\n')
       if (!s.includes(HANDLER)) throw new Error('undo-api-auth 锚点未命中：REST handler 起点已变')
-      s = s.replace(HANDLER, HANDLER + '\n' + GUARD)
+      s = replaceOnce(s, HANDLER, HANDLER + '\n' + GUARD, 'undo-api-auth handler guard')
       if (!s.includes('dsh-mobile undo route auth (U1)')) throw new Error('undo-api-auth 复核失败——不写回')
       return s
     },
@@ -812,7 +814,7 @@ const IMPLS = {
       if (!s.includes(OLD_FNS)) {
         throw new Error('narb-android 锚点未命中：三个导出函数体——引擎升级后请人工核对 node-addon-require-builtin/lib/index.js')
       }
-      s = s.replace(OLD, NEW).replace(OLD_FNS, NEW_FNS)
+      s = replaceOnce(replaceOnce(s, OLD, NEW, 'narb-android main body'), OLD_FNS, NEW_FNS, 'narb-android helper functions')
       if (!s.includes('dsh-mobile native-binding fallback (N1)')) throw new Error('narb-android 复核失败——不写回')
       return s
     },
@@ -860,7 +862,7 @@ const IMPLS = {
       if (!s.includes(OLD)) {
         throw new Error('flock-android 锚点未命中：unsupported-platform throw——引擎升级后请人工核对 node-addon-system/lib/flock.js')
       }
-      s = s.replace(OLD, NEW)
+      s = replaceOnce(s, OLD, NEW, 'spj migration link behavior')
       if (!s.includes('dsh-mobile flock fallback (F3)')) throw new Error('flock-android 复核失败——不写回')
       return s
     },
@@ -973,7 +975,7 @@ const IMPLS = {
           throw new Error('ptc-argv 锚点未命中：' + pair[1] + '——引擎升级后请人工核对 dsh-ptc-runtime-node/lib/index.js')
         }
       }
-      s = s.replace(OLD_EXEC, NEW_EXEC).replace(OLD_ARGV, NEW_ARGV).replace(OLD_ENV, NEW_ENV)
+      s = replaceOnce(replaceOnce(replaceOnce(s, OLD_EXEC, NEW_EXEC, 'ptc argv execPath'), OLD_ARGV, NEW_ARGV, 'ptc argv process argv'), OLD_ENV, NEW_ENV, 'ptc argv environment')
       if (!s.includes('dsh-mobile ptc argv heap via NODE_OPTIONS (L1)')) throw new Error('ptc-argv 复核失败——不写回')
       return s
     },
@@ -1018,7 +1020,7 @@ const IMPLS = {
         if (!s.includes(OLD)) {
           throw new Error('attach-durable 锚点未命中：syncDirectory(parent) 循环——引擎升级后请人工核对 ensureDurableDirectory')
         }
-        s = s.replace(OLD, NEW)
+        s = replaceOnce(s, OLD, NEW, 'attachment durable walk')
       }
       // ② link(2) 回退两站（缩进随站点；与 asset 逐字节同源由 check-runtime-assets 守）
       const linkFallback = (from, to, indent) => [
@@ -1030,23 +1032,23 @@ const IMPLS = {
       ].join('\n')
       const SITE_A = '\t\t\tawait link(source, target);'
       const SITE_B = '\t\t\tawait link(staged.path, target);'
-      if (s.includes(SITE_A)) s = s.replace(SITE_A, linkFallback('source', 'target', '\t\t\t'))
+      if (s.includes(SITE_A)) s = replaceOnce(s, SITE_A, linkFallback('source', 'target', '\t\t\t'), 'attachment immutable alias')
       else if (!s.includes('dsh-mobile link->rename fallback')) {
         throw new Error('attach-durable 锚点未命中：publishImmutableAlias 的 link(source, target)')
       }
-      if (s.includes(SITE_B)) s = s.replace(SITE_B, linkFallback('staged.path', 'target', '\t\t\t'))
+      if (s.includes(SITE_B)) s = replaceOnce(s, SITE_B, linkFallback('staged.path', 'target', '\t\t\t'), 'attachment staged publish')
       else if (!s.includes('dsh-mobile link->rename fallback')) {
         throw new Error('attach-durable 锚点未命中：publishStagedObject 的 link(staged.path, target)')
       }
       // ③ unlink ENOENT 容忍
       const SITE_C = '\t\tawait unlink(staged.path);'
       if (s.includes(SITE_C)) {
-        s = s.replace(SITE_C, [
+        s = replaceOnce(s, SITE_C, [
           '\t\tawait unlink(staged.path).catch((error) => {',
           '\t\t\t/* dsh-mobile: a link->rename fallback already consumed the staged file. */',
           '\t\t\tif (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;',
           '\t\t});',
-        ].join('\n'))
+        ].join('\n'), 'attachment staged unlink')
       } else if (!s.includes('already consumed the staged file')) {
         throw new Error('attach-durable 锚点未命中：publishStagedObject 的 unlink(staged.path)')
       }
@@ -1097,7 +1099,7 @@ const IMPLS = {
         const newPredicate = oldPredicate + ' || error.code === \"ENOSYS\"';
         if (!conditionLine.includes(newPredicate)) {
           if (!conditionLine.includes(oldPredicate)) throw new Error('F8 upgrade predicate missing');
-          s = s.slice(0, conditionAt) + conditionLine.replace(oldPredicate, newPredicate) + s.slice(conditionEnd);
+          s = s.slice(0, conditionAt) + replaceOnce(conditionLine, oldPredicate, newPredicate, 'fs-local-digest-guard predicate') + s.slice(conditionEnd);
         }
       }
       if (s.includes('dsh-mobile exclusive create (F8)')
@@ -1125,7 +1127,7 @@ const IMPLS = {
         '\t\t}',
       ].join('\n')
       if (!s.includes(SITE_OLD)) throw new Error('fs-local-link 锚点未命中：createIfAbsent link 失败分支')
-      s = s.replace(SITE_OLD, SITE_NEW)
+      s = replaceOnce(s, SITE_OLD, SITE_NEW, 'fs-local-link exclusive create')
 
       // ② 等价实现：O_EXCL 占位 + rename（保住 no-replace 语义）。
       const GUARD_TAIL = [
@@ -1170,7 +1172,7 @@ const IMPLS = {
       ].join('\n')
       const GUARD_TAIL_NEW = GUARD_TAIL + '\n' + HELPER
       if (!s.includes(GUARD_TAIL)) throw new Error('fs-local-link 锚点未命中：throwGuardedCreateFailure 收尾')
-      s = s.replace(GUARD_TAIL, GUARD_TAIL_NEW)
+      s = replaceOnce(s, GUARD_TAIL, GUARD_TAIL_NEW, 'fs-local-link helper tail')
 
       if (!s.includes('dsh-mobile exclusive create (F8)') || !s.includes('dshMobilePublishExclusive(')) {
         throw new Error('fs-local-link 复核失败——不写回')
@@ -1193,7 +1195,7 @@ const IMPLS = {
       if ((s.match(/dsh-mobile link->rename fallback/g) || []).length === 2) return s
       const IMPORT_OLD = 'import { link, lstat, mkdir, mkdtemp, open, readFile, readdir, realpath, rm, stat, truncate } from "node:fs/promises";'
       const IMPORT_NEW = 'import { link, lstat, mkdir, mkdtemp, open, readFile, readdir, realpath, rename, rm, stat, truncate } from "node:fs/promises";'
-      if (s.includes(IMPORT_OLD)) s = s.replace(IMPORT_OLD, IMPORT_NEW)
+      if (s.includes(IMPORT_OLD)) s = replaceOnce(s, IMPORT_OLD, IMPORT_NEW, 'spj migration rename import')
       else if (!s.includes('realpath, rename, rm')) throw new Error('spj-migration-link 锚点未命中：import rename')
       const FALLBACK = (from, to) => [
         'await link(' + from + ', ' + to + ').catch(async (error) => {',
@@ -1204,7 +1206,7 @@ const IMPLS = {
       ].join('\n')
       const A_OLD = '\t\t\tawait link(tmp, finalPath);'
       if (!s.includes(A_OLD)) throw new Error('spj-migration-link 锚点未命中：materialize link(tmp, finalPath)')
-      s = s.replace(A_OLD, '\t\t\t' + FALLBACK('tmp', 'finalPath').split('\n').join('\n\t\t\t'))
+      s = replaceOnce(s, A_OLD, '\t\t\t' + FALLBACK('tmp', 'finalPath').split('\n').join('\n\t\t\t'), 'spj migration materialize link')
       const B_OLD = [
         '\t\tif (isEEXIST(error)) return false;',
         '\t\t/* v8 ignore next -- the filesystem error is already complete. */',
@@ -1221,7 +1223,7 @@ const IMPLS = {
         '\tawait syncDirectory(dirname(currentPath), internals);',
       ].join('\n')
       if (!s.includes(B_OLD)) throw new Error('spj-migration-link 锚点未命中：publishCurrentExclusive catch 块')
-      s = s.replace(B_OLD, B_NEW)
+      s = replaceOnce(s, B_OLD, B_NEW, 'spj migration exclusive publish')
       if ((s.match(/dsh-mobile link->rename fallback/g) || []).length !== 2) throw new Error('spj-migration-link 复核失败——不写回')
       return s
     },
@@ -1293,7 +1295,7 @@ const IMPLS = {
       const IMPORT_OLD = 'rename, rm, stat, truncate } from "node:fs/promises";'
       const IMPORT_NEW = 'rename, rm, stat, truncate, unlink } from "node:fs/promises";'
       if (s.includes(IMPORT_NEW)) { /* 幂等 */ }
-      else if (s.includes(IMPORT_OLD)) s = s.replace(IMPORT_OLD, IMPORT_NEW)
+      else if (s.includes(IMPORT_OLD)) s = replaceOnce(s, IMPORT_OLD, IMPORT_NEW, 'publish-exclusive import')
       else throw new Error('publish-exclusive 锚点未命中：import unlink（F5 的 rename 导入形态已变）')
 
       // 模块级小函数：O_EXCL 原子占位 + 失败回收（两站共用同一份实现）
@@ -1405,7 +1407,7 @@ const IMPLS = {
         '\t\t\t}',
         '',
       ].join('\n')
-      const out = s.replace(anchor, method + anchor)
+      const out = replaceOnce(s, anchor, method + anchor, 'external draft seam insertion')
       if (!out.includes('dsh-mobile external draft addFiles seam (J1)') || !out.includes('this.input.shell(sessionId)')) {
         throw new Error('external draft seam 复核失败——不写回')
       }
@@ -1425,13 +1427,13 @@ const IMPLS = {
       if (s.includes('dsh-mobile ArkWeb resource authority fallback (H1)')) return s
       const ORIGINAL = /(if \(parsed\.protocol !== `dsh-resource:`\) return void 0;)(\r?\n)([ \t]*)return parsed\.hostname === "" \? void 0 : parsed\.hostname\.toLowerCase\(\);/
       if (!ORIGINAL.test(s)) throw new Error('arkweb-resource-protocol 锚点未命中：protocolOf hostname 返回语句已变')
-      s = s.replace(ORIGINAL, (_whole, protocolCheck, eol, indent) => [
+      s = replaceOnceRe(s, ORIGINAL, (_whole, protocolCheck, eol, indent) => [
         protocolCheck,
         indent + 'if (parsed.hostname !== "") return parsed.hostname.toLowerCase();',
         indent + '// dsh-mobile ArkWeb resource authority fallback (H1): ArkWeb loses the non-special-scheme hostname.',
         indent + 'const authority = /^dsh-resource:\\/\\/([A-Za-z][A-Za-z0-9-]*)(?:[/?#]|$)/i.exec(address);',
         indent + 'return authority === null ? void 0 : authority[1].toLowerCase();',
-      ].join(eol))
+      ].join(eol), 'arkweb resource protocol')
       if (!s.includes('dsh-mobile ArkWeb resource authority fallback (H1)')) throw new Error('arkweb-resource-protocol 复核失败——不写回')
       return s
     },
@@ -1456,7 +1458,7 @@ const IMPLS = {
         'if (value.fileKind === "directory" && (action === "drill" || document.documentElement.hasAttribute("data-dsh-mobile-form"))) return {',
       ].join('\n')
       if (!s.includes(OLD)) throw new Error('reference-drill 锚点未命中：onPick 的 directory/drill 判定')
-      s = s.replace(OLD, NEW)
+      s = replaceOnce(s, OLD, NEW, 'reference drill directory action')
       if (!s.includes('dsh-mobile mobile-folder-drill (F6)')) throw new Error('reference-drill 复核失败——不写回')
       return s
     },
@@ -1642,12 +1644,12 @@ const IMPLS = {
         BOOT_FN_ANCHOR,
       ].join('\n')
       if (!s.includes(BOOT_FN_ANCHOR)) throw new Error('boot-third-party-isolation 锚点未命中：boot() 函数头（引擎升级后请人工核对 dsh-app-boot）')
-      s = s.replace(BOOT_FN_ANCHOR, HELPERS)
+      s = replaceOnce(s, BOOT_FN_ANCHOR, HELPERS, 'third-party boot helper insertion')
       // ② boot() 调用点改为隔离式挂载
       const CALL_OLD = '\t\tawait mountRootInclude(ctx, absoluteConfigPath, patches, bareModuleBaseUrl, binName);'
       const CALL_NEW = '\t\tawait dshMobileMountRootIncludeTolerant(ctx, binName, absoluteConfigPath, patches, bareModuleBaseUrl); /* dsh-mobile third-party boot isolation (G3) */'
       if (!s.includes(CALL_OLD)) throw new Error('boot-third-party-isolation 锚点未命中：boot() 内 mountRootInclude 调用点')
-      s = s.replace(CALL_OLD, CALL_NEW)
+      s = replaceOnce(s, CALL_OLD, CALL_NEW, 'third-party boot mount call')
       if (!s.includes('dsh-mobile third-party boot isolation (G3)')
         || !s.includes('dshMobileMountRootIncludeTolerant')
         || !s.includes('__dshMobileBootSkippedPlugins')
@@ -1693,7 +1695,7 @@ const IMPLS = {
       const IMPORT_OLD = 'import { randomUUID } from "node:crypto";'
       const IMPORT_NEW = 'import { createHash, randomUUID } from "node:crypto";'
       if (!s.includes(IMPORT_OLD)) throw new Error('fs-local-digest-guard 锚点未命中：node:crypto import')
-      s = s.replace(IMPORT_OLD, IMPORT_NEW)
+      s = replaceOnce(s, IMPORT_OLD, IMPORT_NEW, 'fs-local-digest import')
 
       // ② 有界摘要上限 + 摘要函数，插在 LocalFileSystem 类声明之前。
       const CLASS_ANCHOR = 'var LocalFileSystem = class extends FileSystem {'
@@ -1718,7 +1720,7 @@ const IMPLS = {
         '}',
         CLASS_ANCHOR,
       ].join('\n')
-      s = s.replace(CLASS_ANCHOR, HELPERS)
+      s = replaceOnce(s, CLASS_ANCHOR, HELPERS, 'fs-local-digest helper insertion')
 
       // ③ 实例字段：有界摘要表（Map 插入序即 LRU 序）。
       const FIELD_OLD = '\tlocks = /* @__PURE__ */ new Map();'
@@ -1731,7 +1733,7 @@ const IMPLS = {
         '\treadDigests = /* @__PURE__ */ new Map();',
       ].join('\n')
       if (!s.includes(FIELD_OLD)) throw new Error('fs-local-digest-guard 锚点未命中：locks 字段')
-      s = s.replace(FIELD_OLD, FIELD_NEW)
+      s = replaceOnce(s, FIELD_OLD, FIELD_NEW, 'fs-local-digest state field')
 
       // ④ readText 记录摘要：改走 readWholeText 的同款步骤，但把**原始字节**留作摘要口径。
       //    为什么用原始字节而不是解码后的字符串：上游 readForEdit 会做 LF 归一化，而 readWholeText 不会——
@@ -1771,7 +1773,7 @@ const IMPLS = {
         '\t}',
       ].join('\n')
       if (!s.includes(READ_OLD)) throw new Error('fs-local-digest-guard 锚点未命中：readText 实现')
-      s = s.replace(READ_OLD, READ_NEW)
+      s = replaceOnce(s, READ_OLD, READ_NEW, 'fs-local-digest read path')
 
       // ⑤ 共用判据：版本不等时才比摘要（版本相同调用方根本不进这个分支 ⇒ 快路径零额外 IO）。
       const VAW_OLD = [
@@ -1807,7 +1809,7 @@ const IMPLS = {
         '\t}',
       ].join('\n')
       if (!s.includes(VAW_OLD)) throw new Error('fs-local-digest-guard 锚点未命中：versionAfterWrite')
-      s = s.replace(VAW_OLD, VAW_NEW)
+      s = replaceOnce(s, VAW_OLD, VAW_NEW, 'fs-local-digest version guard')
 
       // ⑥ editText：版本不等 → 比摘要 → 相同则放行；不同仍抛 FS_STALE_VERSION。
       const ET_OLD = '\t\t\tif (expected && existing.version !== expected.version) throw new FsError(`cannot edit "${target.displayPath}": file changed since it was read`, "FS_STALE_VERSION");'
@@ -1821,7 +1823,7 @@ const IMPLS = {
         '\t\t\t}',
       ].join('\n')
       if (!s.includes(ET_OLD)) throw new Error('fs-local-digest-guard 锚点未命中：editText stale 判定')
-      s = s.replace(ET_OLD, ET_NEW)
+      s = replaceOnce(s, ET_OLD, ET_NEW, 'fs-local-digest edit path')
 
       // ⑦ writeText 的 replaceIfVersion 同病同治（实测 TOUCH/CHMOD/同字节 rename 三例同样被拒）。
       const WT_OLD = '\t\t\t\tif (existing.version !== expected.version) throw new FsError(`cannot write "${target.displayPath}": file changed since it was read`, "FS_STALE_VERSION");'
@@ -1833,7 +1835,7 @@ const IMPLS = {
         '\t\t\t\t}',
       ].join('\n')
       if (!s.includes(WT_OLD)) throw new Error('fs-local-digest-guard 锚点未命中：writeText replaceIfVersion 判定')
-      s = s.replace(WT_OLD, WT_NEW)
+      s = replaceOnce(s, WT_OLD, WT_NEW, 'fs-local-digest write path')
 
       // ⑧ 写成功后刷新摘要（edit 与 write 都经 writeFileAtomic 落盘）。
       const ET_TAIL_OLD = '\t\t\tawait writeFileAtomic(target.targetKey, content, existing.mode, signal, this.internals);'
@@ -1843,7 +1845,7 @@ const IMPLS = {
         '\t\t\tthis.rememberReadDigest(target.targetKey, dshMobileDigestOf(Buffer.from(content, "utf8")));',
       ].join('\n')
       if (!s.includes(ET_TAIL_OLD)) throw new Error('fs-local-digest-guard 锚点未命中：editText 落盘行')
-      s = s.replace(ET_TAIL_OLD, ET_TAIL_NEW)
+      s = replaceOnce(s, ET_TAIL_OLD, ET_TAIL_NEW, 'fs-local-digest edit tail')
 
       const WT_TAIL_OLD = '\t\t\tawait writeFileAtomic(target.targetKey, content, existing?.mode, signal, this.internals, expected?.kind === "createIfAbsent" ? { displayPath: target.displayPath } : void 0);'
       const WT_TAIL_NEW = [
@@ -1852,7 +1854,7 @@ const IMPLS = {
         '\t\t\tthis.rememberReadDigest(target.targetKey, dshMobileDigestOf(Buffer.from(content, "utf8")));',
       ].join('\n')
       if (!s.includes(WT_TAIL_OLD)) throw new Error('fs-local-digest-guard 锚点未命中：writeText 落盘行')
-      s = s.replace(WT_TAIL_OLD, WT_TAIL_NEW)
+      s = replaceOnce(s, WT_TAIL_OLD, WT_TAIL_NEW, 'fs-local-digest write tail')
 
       if (!s.includes('dsh-mobile digest CAS fallback (B)')
         || (s.match(/this\.dshMobileContentUnchanged\(/g) || []).length !== 2
@@ -1977,7 +1979,7 @@ const IMPLS = {
       for (const { old, neu } of REPL) {
         if (s.includes(neu)) continue
         if (!s.includes(old)) throw new Error('pi-toolcall 锚点未命中：' + old.slice(0, 90).replace(/\n/g, '\\n') + '…——引擎升级后请人工核对 convertMessages / ensureToolCallBlock')
-        s = s.replace(old, neu)
+        s = replaceOnce(s, old, neu, 'pi-toolcall message transform')
         changed++
       }
       if (!s.includes('dsh-mobile tool_call guard (G2)') || !s.includes('dsh-mobile continuation guard (G2)')) {
@@ -2034,7 +2036,7 @@ const IMPLS = {
         '\t\tthis.flush((err) => failures.push(err));',
       ].join('\n')
       if (!s.includes(CONSTRUCTOR_ANCHOR)) throw new Error('combo-probe C3 锚点未命中：空图初始化（请核对 dsh-client-modules 构造器）')
-      s = s.replace(CONSTRUCTOR_ANCHOR, CONSTRUCTOR_REPLACEMENT)
+      s = replaceOnce(s, CONSTRUCTOR_ANCHOR, CONSTRUCTOR_REPLACEMENT, 'image preview constructor')
       // ① import：锚点选 node:crypto 行——combo 家族里 A3/A5/C3 撤销后，这行只剩探针自己会碰。
       const IMPORT_ANCHOR = 'import { createHash } from "node:crypto";'
       const IMPORTS = [
@@ -2045,7 +2047,7 @@ const IMPLS = {
       ].join('\n')
       if (!s.includes('import { isMainThread } from "node:worker_threads";')) {
         if (!s.includes(IMPORT_ANCHOR)) throw new Error('combo-probe 锚点未命中：node:crypto import 行（引擎升级后请人工核对 dsh-client-modules）')
-        s = s.replace(IMPORT_ANCHOR, IMPORTS)
+        s = replaceOnce(s, IMPORT_ANCHOR, IMPORTS, 'image preview imports')
       }
       // ② 探针块：装在类定义之后、export 之前（wrap prototype.compose —— 打印点即 compose() 返回处）。
       const EXPORT_ANCHOR = 'export { ClientModuleRegistry, ClientModuleRegistry as default, bootInjections, orderByModuleGraph, stripClientSuffix };'
@@ -2279,7 +2281,7 @@ const IMPLS = {
         s = s.slice(0, blockAt) + BLOCK
       } else {
         if (!s.includes(EXPORT_ANCHOR)) throw new Error('combo-probe 锚点未命中：模块 export 行（引擎升级后请人工核对 dsh-client-modules）')
-        s = s.replace(EXPORT_ANCHOR, BLOCK)
+        s = replaceOnce(s, EXPORT_ANCHOR, BLOCK, 'combo probe export insertion')
       }
       if (!s.includes('dsh-mobile combo probe (P1)')
         || !s.includes('dshMobileComboProbeEmit')
@@ -2345,7 +2347,7 @@ const IMPLS = {
         'process.on("exit", dshMobileFlushCompileCacheQuietly);',
       ].join('\n')
       if (!s.includes(IMPORT_OLD)) throw new Error('compile-cache-flush 锚点未命中：bin.js 头部 import（引擎升级后请人工核对根包）')
-      s = s.replace(IMPORT_OLD, IMPORT_OLD + '\n' + BLOCK)
+      s = replaceOnce(s, IMPORT_OLD, IMPORT_OLD + '\n' + BLOCK, 'compile-cache import insertion')
       if (!s.includes('dsh-mobile compile cache flush (N2)') || !s.includes('dshMobileFlushCompileCacheQuietly')) {
         throw new Error('compile-cache-flush 复核失败——不写回')
       }
@@ -2385,7 +2387,7 @@ const IMPLS = {
       if (!s.includes(OLD)) {
         throw new Error('terminal-inspector-android 锚点未命中：createProcessInspector——引擎升级后请人工核对 subprocess-local 构建产物')
       }
-      s = s.replace(OLD, NEW)
+      s = replaceOnce(s, OLD, NEW, 'terminal inspector android dispatch')
       if (!s.includes('dsh-mobile android is linux (D1)')) throw new Error('terminal-inspector-android 复核失败——不写回')
       return s
     },
@@ -2422,7 +2424,7 @@ const IMPLS = {
       if (!s.includes(OLD)) {
         throw new Error('file-upload 锚点未命中：registerAgentResolver 的 already-registered 守卫——引擎升级后请人工核对 dsh-client-file-upload 构建产物')
       }
-      s = s.replace(OLD, NEW)
+      s = replaceOnce(s, OLD, NEW, 'file-upload resolver replacement')
       if (!s.includes('dsh-mobile file-upload resolver replace (R1)') || s.includes('Agent resolver is already registered')) {
         throw new Error('file-upload 复核失败——不写回')
       }

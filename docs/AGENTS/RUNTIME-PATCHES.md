@@ -138,6 +138,8 @@
 
 ### 7.1 构建期引擎补丁历史与实现说明（活动状态见 §6.1）
 
+2026-11-05 补丁锚点收紧：`scripts/patches/apply-patches.mjs` 的源码变换统一经 `scripts/patches/lib/replace-once.mjs`；普通锚点必须恰好命中一次，正则独立计数，可选旧形态升级只容忍零次。真实 runner 重复 H1 正则锚点的负控与字面量/正则 API 回归见 `scripts/patches/tests/replace-once.test.mjs`。此变更只影响构建期补丁器，不修改 `assets/patched`，§2 的资产字节登记不变。
+
 2026-10-17 第二轮：`market-install-approval-R2` 通过 `scripts/patches/data/market-install-approval.mjs` 改写市场模型安装钩子；任何安装均需确认，目录/身份/网络错误拒绝，不再依赖远端 riskFlags。registry、IMPLS 与 vendor 同源；回归 `scripts/source-build/security-r2.test.mjs`。`vendor/dshmarketplace-plugin/lib/index.js` 本轮实测 11,589 字节；未新增或改动 `assets/patched`，§2 历史资产字节数不变。来源快照新门禁还独立重放补丁后比对源码包实际载荷，见修复账本坑 385。
 
 2026-10-17 安全偏差：vendor undo 导入直接使用内存字节，变更点和回归在 `vendor/dsh-undo-savepoint/PATCHES.md`；Linux bootstrap 的 GitHub 发现流式限额/超时已记录于 `check-vendored-linux-bootstrap.mjs` 的 LOCAL_PATCHES，保留上游原始摘要。这两项不修改 `scripts/patches/**` 或 `assets/patched`，§2 资产字节数无变化；根因见 gotchas 坑 373、374。

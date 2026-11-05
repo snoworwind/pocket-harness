@@ -378,7 +378,7 @@ Linux 发现补充（P04，坑 373）：bootstrap `index.js` 串行发现 → `g
 - [S01] `dsh-client-ui-responsive/src/client/enter-guard.ts:63`（未证实）：767 形态门在本块有多个副本——`enter-guard` 读 `window.innerWidth`，`keyboard-boundary.ts:48`、`reference-menu.ts:45`、`mobile-form.css.ts:25`、`MobileChrome.module.css:18` 各自写 `(max-width: 767px)`。视口与 `matchMedia` 在同一帧不一致（旋转/缩放/滚动条）时，Enter 守卫与已发布标记会给出不同答案；`coord:docs/STATE-STALENESS-AUDIT-2026-09-12.md:196` 已把这条列为已知多副本。
 - [S01] `dsh-client-ui-responsive/src/client/mobile/form-marker.ts:45`（未证实，潜伏项）：`syncModal` 只观察 `childList` 不观察 `attributes`，`data-dsh-modal-open` / `data-dsh-settings-dialog` 依赖「对话框条件挂载」这一上游实现细节。上游若改成属性切换同一节点，modal 标记会滞留或缺失 → 抽屉被顶到设置弹层之上/之下；`coord:docs/STATE-STALENESS-AUDIT-2026-09-12.md:681` 记为潜伏项。
 - [B01] 1. `scripts/build-apk-013.ps1:166` 无条件重设 `$apkDir = Join-Path $Root "dsh-mobile-apk"`，把 `:22-23` 的「apk 仓自包含布局」检测作废（已确认，代码可判）：从 apk 仓根直跑时该目录不存在，第 3 步写 assets 与 `Push-Location` 会失败；与脚本自身注释（`:20-21` 声称两种布局共用同一份脚本）矛盾。当前文档口径是「在协调仓根执行」（apk AGENTS.md:30），故影响为潜在；协调仓 `coord:docs/review/state-audit/build-runtime.md:385` 已记录同一条。
-- [B01] 2. `scripts/build-apk-013.ps1:206-212` 注释称 vendor 补丁「默认 ensure 语义（缺席即施加）」，实际调用不带 `--apply`/`--scope`，`apply-patches.mjs:1568,1572` 推导为 `mode=check`（已确认）：只校验不施加，补丁必须先打在入库的 `vendor/*/lib/` 里；缺一条即 `Deny-Abi` 拒打包（失败关闭，但排查时按注释预期会找不到「自动施加」这一步）。0.13.7-CERTIFICATION.md:11 亦记 `mode=check`，即注释是旧语义残留。
+- [B01] 2. `scripts/build-apk-013.ps1:206-212` 注释称 vendor 补丁「默认 ensure 语义（缺席即施加）」，实际调用不带 `--apply`/`--scope`，`scripts/patches/apply-patches.mjs:2450#expect=const%20mode`、`scripts/patches/apply-patches.mjs:2454#expect=const%20scope` 推导为 `mode=check`（已确认）：只校验不施加，补丁必须先打在入库的 `vendor/*/lib/` 里；缺一条即 `Deny-Abi` 拒打包（失败关闭，但排查时按注释预期会找不到「自动施加」这一步）。0.13.7-CERTIFICATION.md:11 亦记 `mode=check`，即注释是旧语义残留。
 - [B01] 3. `scripts/make-snapshot.sh:8` 的 `SNAP_PKG_ROOT` 默认 `/data/user/0/com.snoworwind.pocketharness`（不含 `/files`），`:158` 的 sed 会把 heredoc 兜底 patch 的 `/data/data/com.termux/files/usr` 改写成 `.../com.snoworwind.pocketharness/usr/bin/bash`（已确认，触发条件 = 设备上找不到外部权威 patch，走 `:156` 警告分支）→ 设备侧 assertBash 失败、注入包全不装配。该脚本是备选发布入口的输入端（`build-release.ps1:89-114` 要求设备侧产出 `snapshot/snapshot-*.tar.xz`），且这条入口的快照无软链净化、无归档自检（协调仓 `coord:docs/COMPAT-REVIEW-0.14.0-2026-09-19.md:1337` 记 I-4）。
 - [B01] 4. `scripts/build-apk-013.ps1:141-144` 注释称「本次构建前必须重跑 Kotlin 单测由发布链步骤保证」，但 `build-release.ps1` 全文没有 `testDebugUnitTest`（已确认）：发布链经 `check-release-gates.mjs --run --require` 调用 `check-kotlin-test-count.mjs`（`:104` 条目、通用 argvFor 不带 `--allow-missing`），干净机器上无结果即 `exit 1`。本地链用 `--allow-missing`（ps1:145）所以不红——症状是「本地全绿、发布链在干净机器上红」（协调仓 `coord:docs/COMPAT-REVIEW-0.14.0-2026-09-19.md:1334` 记 I-1，P1）。
 5. 【历史项已退役（2026-10-15）】旧 MIRROR_TOP 覆盖缺口只针对已移除的跨树逐字节镜像；现行本仓门禁只校验 registry↔IMPLS 自洽，不能把旧清单当作当前缺陷。入口见 `scripts/check-patch-mirror.mjs:53#expect=const%20regPath`。
@@ -576,11 +576,11 @@ K01 journal 发布：`SnapshotTransaction.writeMarker` 拒绝目标或临时路�
 | S01 | 构建链 | 三个子仓由 profile-web.cordis.patch.yml 的 insert 行装载，快照构建只 pack 不 build | scripts/profile-web.cordis.patch.yml:7 |
 | B01 | 门禁块 | 27 项门禁集在 check-release-gates.mjs 唯一声明，本地链逐条内联、发布链走聚合入口 --run --require | scripts/check-release-gates.mjs:28-104,136-140 |
 | B01 | 壳侧快照解压 | 归档软链与权限判据必须对齐设备侧 SnapshotExtractor 的沙箱边界，构建期净化是为了不让设备静默丢弃条目 | scripts/build-snapshot-013.mjs:933-966,1029 |
-| B01 | 插件源码与 vendor 固化面 | 注入内容取自 plugin-dirs.json 指向的插件目录与 vendor 固化副本，补丁由 apply-patches.mjs 施加 | scripts/plugin-dirs.json:1,scripts/patches/apply-patches.mjs:1583-1589 |
+| B01 | 插件源码与 vendor 固化面 | 注入内容取自 plugin-dirs.json 指向的插件目录与 vendor 固化副本，补丁由 apply-patches.mjs 施加 | scripts/plugin-dirs.json:1,scripts/patches/apply-patches.mjs:2465#expect=const%20order |
 | B01 | 树内副本即权威 | 2026-10-15 起不再做跨树逐字节比对；补丁面由本仓 registry↔IMPLS 自洽判据守 | `scripts/check-patch-mirror.mjs:53#expect=const%20regPath` |
 | B01 | 发布链 build-release.ps1 | 复用同一门禁集与指纹对账，输入走设备侧 make-snapshot.sh 产出的 snapshot/snapshot-*.tar.xz | scripts/build-release.ps1:56-61,89-114,147 |
 | B01 | CI 与云端构建链 | 云端 build-apk.mjs 与本地链门禁集差集必须为 0。0.14.5：原先并列的 apk 仓独立快照 workflow `build-snapshot.yml`（走 inject-snapshot.py 三包注入、无引擎 overlay/补丁/语法降级）已删除，快照构建入口收敛为单一链 | scripts/check-release-gates.mjs:191-212 |
-| B01 | 来源审计 ARM64 构建 | 官方 `1f81c047` / 0.2.1-rc.3 源码构建 CLI/Web/第一方包；Android 构建阶段设置 official client profile/title 并核验 bundle；Cordis 按目标源码、不回退旧版本；bootstrap/InRelease/deb 认证、native 来源审计与 overlay pin 恢复。PTC 与 MiMo 多文件 exact verifier 及全部 pnpm 同包副本同步；最终 snapshot 检查复用同一判据。依赖闭包门禁还递归检查已启用 telemetry 消费者的第三方精确版本，并与 `engine-overlay.json` 的 nested SDK pins 对账。v0.14.9 来源链已正式运行，完整设备三层验收仍未完成，见升级记录。 | .github/workflows/build-apk-source.yml:134,scripts/patches/registry.json:211,scripts/patches/apply-patches.mjs:122,scripts/source-build/reconcile-engine-patch-copies.mjs:80,scripts/source-build/check-dsh-source-snapshot.mjs:25 |
+| B01 | 来源审计 ARM64 构建 | 官方 `1f81c047` / 0.2.1-rc.3 源码构建 CLI/Web/第一方包；Android 构建阶段设置 official client profile/title 并核验 bundle；Cordis 按目标源码、不回退旧版本；bootstrap/InRelease/deb 认证、native 来源审计与 overlay pin 恢复。PTC 与 MiMo 多文件 exact verifier 及全部 pnpm 同包副本同步；最终 snapshot 检查复用同一判据。依赖闭包门禁还递归检查已启用 telemetry 消费者的第三方精确版本，并与 `engine-overlay.json` 的 nested SDK pins 对账。v0.14.9 来源链已正式运行，完整设备三层验收仍未完成，见升级记录。 | .github/workflows/build-apk-source.yml:134,scripts/patches/registry.json:211,scripts/patches/apply-patches.mjs:241#expect=planMimoThinking,scripts/source-build/reconcile-engine-patch-copies.mjs:80,scripts/source-build/check-dsh-source-snapshot.mjs:25 |
 | B01 | 来源草稿资产边界 | 写权限任务先拒绝额外/缺失/链接/非普通资产，要求哈希清单与实际上传集合一一对应，再核验字节，最后调用 gh 创建草稿；真实 shell 负控见坑 371 | .github/workflows/release-source-draft.yml:83,scripts/source-build/test_prepare_source_release.py:74 |
 | B02 | B01 | 门禁集由两条编排器逐项调用；聚合入口断言本地链与云端链门禁集差集为 0，并锁发布链必须走 --run | scripts/check-release-gates.mjs:135 |
 | B02 | B03 | 冷启动预算的真数据只能来自设备产物，--require-real 由设备验收承担，构建机与 CI 只计 SKIP | scripts/check-boot-budget.mjs:671 |
@@ -1595,7 +1595,7 @@ Touch reorder: `sidebar-reorder.ts` flushes each synthetic React drag phase. On 
   3. 返回键：Activity `OnBackPressedCallback`（主线程）读 `BackGateState` 的 `@Volatile` 缓存（JavaBridge 线程写）→ `evaluateJavascript(window.__dshBack())`（页面主线程关层）→ 层锚点消失（MutationObserver 异步批）→ `dshBackBridge.setAvailable`（JavaBridge 线程，同步跳）。
   另有定时器：picker poll 500ms、incoming-draft 4s（加最多 100×100ms 等 session scope）、BrowserAutoPlace 1s、browser-tab 300ms/200ms、`useShellState` 轮询（虚拟屏 2s、无障碍 3s）。
 - **耦合**（发布者 → 消费者，全部点名符号）：
-  - `html[data-dsh-mobile-form]` ← `form-marker.ts:88`；消费者：`mobile-form.css.ts:26,48,55`、`mobile-settings.css.ts:15`、`composer-menu.css.ts:25-41`、`trajectory-details.css.ts:16`、`reference-menu.ts:133`、`back-stack.ts:347`，以及引擎树补丁 `reference-drill-F6` 的 `document.documentElement.hasAttribute("data-dsh-mobile-form")`（`scripts/patches/apply-patches.mjs:865`）与设备侧 `scripts/verify-webview-015.mjs:11`。
+  - `html[data-dsh-mobile-form]` ← `form-marker.ts:88`；消费者：`mobile-form.css.ts:26,48,55`、`mobile-settings.css.ts:15`、`composer-menu.css.ts:25-41`、`trajectory-details.css.ts:16`、`reference-menu.ts:133`、`back-stack.ts:347`，以及引擎树补丁 `reference-drill-F6` 的 `document.documentElement.hasAttribute("data-dsh-mobile-form")`（`scripts/patches/apply-patches.mjs:1461#expect=reference%20drill`）与设备侧 `scripts/verify-webview-015.mjs:11`。
   - `[data-dsh-frame]` ← `form-marker.ts:96`（由 `[data-rightbar-col]` 反查）；消费者：`mobile-form.css.ts`、`keyboard-boundary.ts:67`、`MobileChrome.tsx:35`、`back-stack.ts:445`、`host-web-compat` 看门狗 `rendered()`（`dsh-host-web-compat/lib/index.js:136`）。
   - `html[data-dsh-modal-open]` / `[data-dsh-settings-dialog]` ← `form-marker.ts:83` / `:81`；消费者：`mobile-form.css.ts:55`（modal 在场时抽屉不位移）、`mobile-settings.css.ts:15`、`settings-document.ts:65`。
   - `[data-dsh-mobile-topbar]` ← `MobileChrome.tsx:85`；消费者：`composer-popup-guard.ts:140`（取 topbarBottom 算高度钳制）。`data-dsh-mobile-mask`（`MobileChrome.tsx:82`）两仓全量 grep 无消费者，仅发布。
@@ -1719,7 +1719,8 @@ flowchart TD
 - **耦合**：
   - `scripts/plugin-dirs.json` 的 `dirs`/`externals` 是注入集唯一出处：ps1:174-178 读它、`check-inject-completeness.mjs:37-38` 也读它；增删包只改这一处。
   - `profile-web.cordis.patch.yml` 的 `name:` 行集合 ↔ 注入包 package.json 的 name：`check-patch-mounts.mjs:28-40` 双向差集（挂载 ⊇ 注入，且反向差集只允许 `@deepseek-ai/*` 在挂载侧）。
-  - registry.json 的 `scope` 分区：`engine` 归快照段（build-snapshot-013.mjs:294,297），`vendor` 归打包段（build-apk-013.ps1:211）；`marker` 由 build-snapshot-013.mjs:300-311 逐条复查，`requires` 由 apply-patches.mjs:1596-1608 提前诊断。
+  - registry.json 的 `scope` 分区：`engine` 归快照段（build-snapshot-013.mjs:294,297），`vendor` 归打包段（build-apk-013.ps1:211）；`marker` 由 build-snapshot-013.mjs:300-311 逐条复查，`requires` 由 apply-patches.mjs:2484#expect=requirementFailure 提前诊断。
+  - 补丁变换只用 `replaceOnce` / `replaceOnceRe` 校验锚点唯一；只有可选旧形态迁移可用 `replaceAtMostOnce` 变体。`scripts/patches/tests/replace-once.test.mjs` 对真实 ArkWeb 正则锚点造重复负控，runner 必须失败且保持目标文件不变。
   - 环境变量面：`DSH_INJECT_PRESET`（ps1:17 写入 → inject-all.py:174 决定重压缩 preset，`-Fast`=1、发布档默认 9）、`SOURCE_DATE_EPOCH`（build-snapshot-013.mjs:982 与 inject-all.py:304 共用的固定 mtime，保可复现）、`DSH_SNAPSHOT_STAGE`/`DSH_NO_WSL_REEXEC`/`DSH_PROFILE_PATCH_RELOAD`（:88/:31/:149）、`XZ_THREADS`/`DSH_CPU_THREADS`（scripts/lib/shell.mjs:31）。
   - 装配 profile 常量 `PROFILES=(web,headless)` 与负控 `headless-bad`（inject-all.py:32,35）必须与 `check-inject-completeness.mjs:28` 默认 `--profiles web,headless` 一致；权威 patch 只覆盖前两者、负控显式跳过（inject-all.py:273-281）。
   - 路径契约：构建器写 `.deploy-tmp/snapshot-013/「abi」/snapshot.tar.xz`（:970）＝ 打包链读同一路径（ps1:186），由 `check-snapshot-builder-output.mjs:139-146` 锁同源；打包段再把它写进 `app/src/main/assets/{snapshot.tar.xz,snapshot.sha256}`（ps1:379-381），壳侧按此指纹判「快照是否变化」。
@@ -1732,13 +1733,13 @@ flowchart TD
   - `scripts/build-apk-engine.mjs:33` / `:86`（共用 assemble 与签名验证入口）；调用测试锁住本地、云端、发布三路汇合：`scripts/build-apk-engine.test.mjs:121`
   - `scripts/patches/data/registry-scan-c4.mjs:11`（同步 flush 的 Loader 临时索引与 manifest 复用；详细设备计时/预算见 RUNTIME-PATCHES §7.6，自动补给的异步 checkpoint 见 model-capability README）
   - `scripts/patches/data/client-index-loader-barrier.mjs:3`（G2：首页HTML在快照插件图前等待同一host Loader收敛；静态资源不参与等待）
-  - `scripts/patches/data/undo-safe-transaction-snippet.mjs:1`（Safe Mode 事务代码模板；由 `apply-patches.mjs:519` 注入 vendor 快照代码）
+  - `scripts/patches/data/undo-safe-transaction-snippet.mjs:1`（Safe Mode 事务代码模板；由 `apply-patches.mjs:627#expect=const%20transaction` 注入 vendor 快照代码）
   - `scripts/build-apk-013.ps1:427`（被拒非空即 exit 1 的收口）
   - `scripts/build-snapshot-013.mjs:31`（Windows 宿主重入 WSL 的判据）
   - `scripts/build-snapshot-013.mjs:297`（引擎树补丁 --apply --scope engine）
   - `scripts/build-snapshot-013.mjs:985`（归档 tar | xz，快照产物的唯一产出点）
   - `scripts/inject-all.py:321`（补缺循环：包内新增文件补 push，坑 63 的主链修复点）
-  - `scripts/patches/apply-patches.mjs:1568`（mode 推导：无 --apply 即 check）与 `:1572`（--scope 默认 vendor）
+  - `scripts/patches/apply-patches.mjs:2450#expect=const%20mode`（mode 推导：无 --apply 即 check）与 `scripts/patches/apply-patches.mjs:2454#expect=const%20scope`（--scope 默认 vendor）
 - **不变量**：
   - 注入集与 patch 挂载集双向一致，注入成员集合与源包逐项一致且 lib 内相对 import 可解析（`check-patch-mounts.mjs`、`check-inject-completeness.mjs:98-115`）——违反的症状是设备侧 `ERR_MODULE_NOT_FOUND`、引擎启动即死。
   - 新包目录与补缺文件父目录由 `inject-all.py` 的 `ensure_parent_dirs` 共用 `seen_dirs` 记账，包含输入中已有空包目录的情况；不得先裸写目录再补父目录，否则双构建读取器拒绝重复成员。覆盖：`scripts/source-build/test_inject_all.py` 新包与仅目录包两种夹具（坑 439）。
@@ -1755,7 +1756,7 @@ flowchart TD
   - 引擎补丁「marker 全绿但行为不对」：看快照构建日志里四项行为回归（boot-pending-G1 / pi-toolcall-G2 / arkweb-resource-protocol-H1 / external-draft-conversation-seam-J1，build-snapshot-013.mjs:315-349）与 `apply-patches.mjs --list`。
 - **可疑点**：
   1. `scripts/build-apk-013.ps1:166` 无条件重设 `$apkDir = Join-Path $Root "dsh-mobile-apk"`，把 `:22-23` 的「apk 仓自包含布局」检测**作废**（已确认，代码可判）：从 apk 仓根直跑时该目录不存在，第 3 步写 assets 与 `Push-Location` 会失败；与脚本自身注释（`:20-21` 声称两种布局共用同一份脚本）矛盾。当前文档口径是「在协调仓根执行」（apk AGENTS.md:30），故影响为潜在；协调仓 `coord:docs/review/state-audit/build-runtime.md:385` 已记录同一条。
-  2. `scripts/build-apk-013.ps1:206-212` 注释称 vendor 补丁「默认 ensure 语义（缺席即施加）」，实际调用不带 `--apply`/`--scope`，`apply-patches.mjs:1568,1572` 推导为 `mode=check`（已确认）：只校验不施加，补丁必须先打在入库的 `vendor/*/lib/` 里；缺一条即 `Deny-Abi` 拒打包（失败关闭，但排查时按注释预期会找不到「自动施加」这一步）。0.13.7-CERTIFICATION.md:11 亦记 `mode=check`，即注释是旧语义残留。
+  2. `scripts/build-apk-013.ps1:206-212` 注释称 vendor 补丁「默认 ensure 语义（缺席即施加）」，实际调用不带 `--apply`/`--scope`，`scripts/patches/apply-patches.mjs:2450#expect=const%20mode`、`scripts/patches/apply-patches.mjs:2454#expect=const%20scope` 推导为 `mode=check`（已确认）：只校验不施加，补丁必须先打在入库的 `vendor/*/lib/` 里；缺一条即 `Deny-Abi` 拒打包（失败关闭，但排查时按注释预期会找不到「自动施加」这一步）。0.13.7-CERTIFICATION.md:11 亦记 `mode=check`，即注释是旧语义残留。
   3. `scripts/make-snapshot.sh:8` 的 `SNAP_PKG_ROOT` 默认 `/data/user/0/com.snoworwind.pocketharness`（不含 `/files`），`:158` 的 sed 会把 heredoc 兜底 patch 的 `/data/data/com.termux/files/usr` 改写成 `.../com.snoworwind.pocketharness/usr/bin/bash`（已确认，触发条件 = 设备上找不到外部权威 patch，走 `:156` 警告分支）→ 设备侧 assertBash 失败、注入包全不装配。该脚本是备选发布入口的输入端（`build-release.ps1:89-114` 要求设备侧产出 `snapshot/snapshot-*.tar.xz`），且这条入口的快照无软链净化、无归档自检（协调仓 `coord:docs/COMPAT-REVIEW-0.14.0-2026-09-19.md:1337` 记 I-4）。
   4. `scripts/build-apk-013.ps1:141-144` 注释称「本次构建前必须重跑 Kotlin 单测由发布链步骤保证」，但 `build-release.ps1` 全文没有 `testDebugUnitTest`（已确认）：发布链经 `check-release-gates.mjs --run --require` 调用 `check-kotlin-test-count.mjs`（`:104` 条目、通用 argvFor 不带 `--allow-missing`），干净机器上无结果即 `exit 1`。本地链用 `--allow-missing`（ps1:145）所以不红——症状是「本地全绿、发布链在干净机器上红」（协调仓 `coord:docs/COMPAT-REVIEW-0.14.0-2026-09-19.md:1334` 记 I-1，P1）。
   5. 【历史项已退役（2026-10-15）】旧 MIRROR_TOP 覆盖缺口只针对已移除的跨树逐字节镜像；现行本仓门禁只校验 registry↔IMPLS 自洽，不能把旧清单当作当前缺陷。入口见 `scripts/check-patch-mirror.mjs:53#expect=const%20regPath`。
@@ -2374,6 +2375,7 @@ scripts/inject-external-plugins.py
 scripts/relocate-snapshot.py
 scripts/update-snapshot-patch.py
 scripts/patches/apply-patches.mjs
+scripts/patches/lib/replace-once.mjs
 scripts/patches/registry.json
 scripts/patches/resolve-engine-patch-target.mjs
 scripts/patches/README.md

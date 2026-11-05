@@ -521,3 +521,22 @@ PR #211 刷新至最新 main 后，Kotlin 编译与单测、静态/来源回归�
 
 - 这是 AccessibilityService 设备控制行为，按 `AGENTS.md` §4 属即时三层验收面。代码层还需证明 API<33 与 API≥33 两侧；设备用户层按项目协议使用 Google Android 16 API 36 `default/arm64-v8a` AVD 执行由模型自主编排的真实任务，并取得 CDP/ADB 证据。
 - 当前只安装了 API 36 ARM64 系统映像，没有创建 AVD；ADB 列表为空，用户确认暂时没有设备。本轮不改运行时代码、不创建未验收实现，也不推进正式上游比较游标。设备可用后按本节设计另开一个原子 PR。
+
+## 31. 2026-11-05 构建期补丁锚点唯一性（上游 #1499/#1531）
+
+### 31.1 本地缺陷与采纳边界
+
+- 上游 #1499（`3c6c7ee`，issue #1384）指出 `String.replace(literal, …)` 只替换第一处且不验证命中数；bundle 中锚点重复时，marker 先到位，runner 随后会跳过补丁，剩余副本仍保留旧行为。#1531（`1d3a0e3`）证明正则锚点同样有这个缺口，不能拿字面量 `split()` 去数正则 `source`。
+- 本仓 `apply-patches.mjs` 有大量直接源码替换与正则替换。保留旧的单次替换语义会让“重复后半补丁”继续静默通过，因此统一对补丁目标应用精确命中合同；本地字符串格式归一化、生成代码片段中的 JavaScript `.replace` 不属于源码锚点施加，不迁移。
+
+### 31.2 实施
+
+- 新增 `scripts/patches/lib/replace-once.mjs`：字面量提供 `replaceOnce` 与 `replaceAtMostOnce`；正则提供独立全局计数的 `replaceOnceRe` 与 `replaceAtMostOnceRe`。计数使用克隆对象，不改调用者 `lastIndex`；拒绝 sticky 正则，零宽匹配显式推进；升级型路径仅容忍零次，出现两次仍拒绝。
+- `apply-patches.mjs` 中所有对目标源码的字面量锚点变换已改走精确函数；regex 变换改用 regex 计数函数。安全模式可选旧 import/path 行按 at-most-once 迁移，普通变换仍要求一次命中。
+- 新增 `scripts/patches/tests/replace-once.test.mjs`：断言两类 helper 的零/一/多次判据、正则分组和 `lastIndex`；静态检查 runner 没有裸源码 `replace`；对真实 ArkWeb H1 目标造两份正则锚点，验证 runner 退出 1 且文件完全不变。
+
+### 31.3 验证与边界
+
+- 定向测试 4/4 通过；沙箱外 WSL `node scripts/check-patch-test-manifest.mjs` 运行 33 个文件、82/82 通过；`node scripts/patches/apply-patches.mjs vendor --check` 全部已登记补丁通过。
+- `check-code-map.mjs --self-test` 与正式检查通过，正式盘点为 19 个查点、316 条覆盖、1042 个锚点、159 条耦合边、16 张流程图。Windows 沙箱内全套测试遇到 `rename` / `symlink` EPERM；同一完整套件已在沙箱外 WSL Linux 成功，不把 Windows 沙箱结果记作源代码回归通过。
+- 本项只改变构建期补丁器，不改运行时产物、协议或壳侧行为，按 L1 构建脚本处理；设备三层验收不适用。PR Gate/CI 结果待本次分支评审，正式上游比较游标仍保持 `656b73c5130f22b12536a2e9f738c686e417db11`。
