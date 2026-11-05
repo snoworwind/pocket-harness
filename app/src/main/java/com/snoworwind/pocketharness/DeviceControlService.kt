@@ -288,12 +288,42 @@ class DeviceControlService : AccessibilityService() {
 
   private val lock = Any()
   private var snapshot: Snapshot? = null
+  @Volatile
+  private var nodeRecycler = newNodeRecycler()
+
+  private class NodeLeaseContext(
+    val recycler: AccessibilityNodeRecycler<AccessibilityNodeInfo>,
+    val lease: AccessibilityNodeRecycler<AccessibilityNodeInfo>.Lease,
+    val serviceEpoch: Int,
+  )
+
+  private val nodeLeaseForThread = ThreadLocal<NodeLeaseContext?>()
   // 0.13.8 E4：秒级时间戳播种（Long，单调不回绕）
   private val generation = java.util.concurrent.atomic.AtomicLong(System.currentTimeMillis() / 1000)
   /** issue #127 一次性迁移标记：旧截图目录 files/control-shots 只清一次。 */
   private val legacyShotDirCleaned = java.util.concurrent.atomic.AtomicBoolean(false)
   @Volatile
   private var invalidated = true
+
+  private fun newNodeRecycler() = AccessibilityNodeRecycler<AccessibilityNodeInfo>(
+    recycleEnabled = AccessibilityNodeRecycler.shouldRecycleAtApi(Build.VERSION.SDK_INT),
+    recycle = { node -> node.recycle() },
+    onRecycleFailure = { failure ->
+      LogCollector.log(TAG, "AccessibilityNodeInfo.recycle failed: ${failure.javaClass.simpleName}")
+    },
+  )
+
+  private fun ownNode(node: AccessibilityNodeInfo?): AccessibilityNodeInfo? {
+    if (node == null) return null
+    val context = checkNotNull(nodeLeaseForThread.get()) { "AccessibilityNodeInfo acquired outside a request lease" }
+    context.lease.own(node)
+    return node
+  }
+
+  private fun retainSnapshotNode(node: AccessibilityNodeInfo) {
+    val context = checkNotNull(nodeLeaseForThread.get()) { "snapshot node retained outside a request lease" }
+    context.lease.retain(node)
+  }
 
   @Volatile
   private var lastInvalidateAt = 0L
@@ -354,7 +384,7 @@ class DeviceControlService : AccessibilityService() {
       // 真实屏走 rootInActiveWindow，没有「窗口 id」这一层；清掉钉住的虚拟屏窗口，
       // 避免真实屏的路径解析误用虚拟屏的 pinned id（跨屏切换时必须失效。
       snapshotWindowId = -1
-      val root = rootInActiveWindow
+      val root = ownNode(rootInActiveWindow)
       return root to JSONObject().put("displayId", displayId).put("windowCount", if (root != null) 1 else 0)
         .put("activeWindow", root != null)
     }
@@ -369,27 +399,30 @@ class DeviceControlService : AccessibilityService() {
       ?: return null to JSONObject().put("displayId", displayId).put("reason", "no-window-on-display")
     // 窗口选择策略抽成**纯函数** `WindowPick.order(...)`：可 JVM 单测（坑 136 的回归就在这里），
     // 也把「钉住建树窗口」这条不变量从 Android API 细节里剥离出来。
-    val facts = windows.map { w ->
+    // Read each root once. AccessibilityWindowInfo.root returns a new owned handle; probing it
+    // and then fetching it again used to orphan the first copy for every window.
+    val roots = windows.map { window ->
+      val root = try { ownNode(window.root) } catch (_: Throwable) { null }
+      window to root
+    }
+    val facts = roots.map { (w, root) ->
       WindowPick.Fact(
         id = try { w.id } catch (_: Throwable) { -1 },
         active = w.isActive,
         focused = w.isFocused,
-        hasRoot = try { w.root != null } catch (_: Throwable) { false },
+        hasRoot = root != null,
       )
     }
     val chosen = WindowPick.order(facts, snapshotWindowId)
     snapshotWindowId = chosen.id
-    val picked = windows.firstOrNull { try { it.id == chosen.id } catch (_: Throwable) { false } }
-    val pickedRoot = picked?.let { try { it.root } catch (_: Throwable) { null } }
+    val pickedRoot = roots.firstOrNull { (window, _) ->
+      try { window.id == chosen.id } catch (_: Throwable) { false }
+    }?.second
     if (pickedRoot != null) {
       return pickedRoot to probeInfo(displayId, windows.size, chosen.active || chosen.focused)
     }
     snapshotWindowId = -1
-    var firstRoot: AccessibilityNodeInfo? = null
-    for (window in windows) {
-      val root = try { window.root } catch (_: Throwable) { null }
-      if (root != null) { firstRoot = root; break }
-    }
+    val firstRoot = roots.firstOrNull { it.second != null }?.second
     if (firstRoot != null) return firstRoot to probeInfo(displayId, windows.size, false)
     return null to probeInfo(displayId, windows.size, false).put("reason", "window-root-unavailable")
   }
@@ -432,7 +465,7 @@ class DeviceControlService : AccessibilityService() {
     }
   }
 
-  /** 0.13.8 E4：服务代次（onServiceConnected 递增；诊断用——重连后缓存全部作废的观测点）。 */
+  /** 生命周期代次；连接与 teardown 都递增，旧 handle 不得把状态写进新服务世代。 */
   @Volatile
   var serviceEpoch: Int = 0
     private set
@@ -442,6 +475,14 @@ class DeviceControlService : AccessibilityService() {
 
   override fun onServiceConnected() {
     super.onServiceConnected()
+    synchronized(lock) {
+      serviceEpoch++
+      nodeRecycler.close()
+      nodeRecycler = newNodeRecycler()
+      snapshot = null
+      snapshotWindowId = -1
+      invalidated = true
+    }
     instance = this
     setEnabledFlag(this, true)
     token(this)
@@ -461,8 +502,12 @@ class DeviceControlService : AccessibilityService() {
     ) {
       val now = System.currentTimeMillis()
       if (now - lastInvalidateAt >= 200) {
-        lastInvalidateAt = now
-        invalidated = true
+        synchronized(lock) {
+          lastInvalidateAt = now
+          invalidated = true
+          discardSnapshotNodesLocked()
+          nodeRecycler.retirePersistent()
+        }
       }
     }
   }
@@ -484,7 +529,13 @@ class DeviceControlService : AccessibilityService() {
   private fun teardown() {
     if (ControlCarrier.a11y === this) ControlCarrier.a11y = null
     instance = null
-    synchronized(lock) { snapshot = null }
+    synchronized(lock) {
+      serviceEpoch++
+      snapshot = null
+      snapshotWindowId = -1
+      invalidated = true
+      nodeRecycler.close()
+    }
     observedScreenScope = null
     setEnabledFlag(this, false)
     LogCollector.log(TAG, "accessibility service disconnected; a11y handler unregistered")
@@ -498,7 +549,7 @@ class DeviceControlService : AccessibilityService() {
       if (!force && !invalidated && current != null) return current
       // 重建即重钉：旧 pin 属于旧树，留着会让新树误用旧窗口的坐标系。
       snapshotWindowId = -1
-      val root = rootFor(activeDisplayId) ?: return null
+      val root = ownNode(rootFor(activeDisplayId)) ?: return null
       val nodes = LinkedHashMap<String, AccessibilityNodeInfo>()
       val bounds = HashMap<String, Rect>()
       val rows = ArrayList<ControlProtocolV2.Row>(512)
@@ -510,24 +561,25 @@ class DeviceControlService : AccessibilityService() {
       var truncated = false
       val deadline = android.os.SystemClock.uptimeMillis() + TREE_BUDGET_MS
       fun walk(node: AccessibilityNodeInfo?, path: String, childPath: IntArray, depth: Int) {
-        if (node == null || depth > MAX_DEPTH || count >= MAX_NODES) return
+        val owned = ownNode(node) ?: return
+        if (depth > MAX_DEPTH || count >= MAX_NODES) return
         if (!truncated && android.os.SystemClock.uptimeMillis() > deadline) {
           truncated = true
           return
         }
         if (truncated) return
         val rect = Rect()
-        node.getBoundsInScreen(rect)
+        owned.getBoundsInScreen(rect)
         var flag = 0
-        if (node.isClickable) flag = flag or ControlProtocolV2.F_CLICKABLE
-        if (node.isScrollable) flag = flag or ControlProtocolV2.F_SCROLLABLE
-        if (node.isEditable) flag = flag or ControlProtocolV2.F_EDITABLE
-        if (node.isChecked) flag = flag or ControlProtocolV2.F_CHECKED
-        if (node.isVisibleToUser) flag = flag or ControlProtocolV2.F_VISIBLE
-        if (node.isFocused) flag = flag or ControlProtocolV2.F_FOCUSED
-        if (node.isSelected) flag = flag or ControlProtocolV2.F_SELECTED
-        if (node.isEnabled) flag = flag or ControlProtocolV2.F_ENABLED
-        rowNodes.add(node)
+        if (owned.isClickable) flag = flag or ControlProtocolV2.F_CLICKABLE
+        if (owned.isScrollable) flag = flag or ControlProtocolV2.F_SCROLLABLE
+        if (owned.isEditable) flag = flag or ControlProtocolV2.F_EDITABLE
+        if (owned.isChecked) flag = flag or ControlProtocolV2.F_CHECKED
+        if (owned.isVisibleToUser) flag = flag or ControlProtocolV2.F_VISIBLE
+        if (owned.isFocused) flag = flag or ControlProtocolV2.F_FOCUSED
+        if (owned.isSelected) flag = flag or ControlProtocolV2.F_SELECTED
+        if (owned.isEnabled) flag = flag or ControlProtocolV2.F_ENABLED
+        rowNodes.add(owned)
         rows.add(
           ControlProtocolV2.Row(
             path = path,
@@ -535,21 +587,21 @@ class DeviceControlService : AccessibilityService() {
             depth = depth,
             x = rect.left, y = rect.top, w = rect.width(), h = rect.height(),
             flag = flag,
-            cls = node.className?.toString() ?: "",
-            pkg = node.packageName?.toString() ?: "",
-            rid = node.viewIdResourceName ?: "",
-            windowId = node.windowId.toString(),
-            text = node.text?.toString() ?: "",
-            desc = node.contentDescription?.toString() ?: "",
+            cls = owned.className?.toString() ?: "",
+            pkg = owned.packageName?.toString() ?: "",
+            rid = owned.viewIdResourceName ?: "",
+            windowId = owned.windowId.toString(),
+            text = owned.text?.toString() ?: "",
+            desc = owned.contentDescription?.toString() ?: "",
           ),
         )
         if (rect.width() > 0 && rect.height() > 0) {
-          nodes[path] = node
+          nodes[path] = owned
           bounds[path] = rect
           count++
         }
-        for (i in 0 until node.childCount) {
-          walk(node.getChild(i), if (path.isEmpty()) i.toString() else "$path.$i", childPath + i, depth + 1)
+        for (i in 0 until owned.childCount) {
+          walk(ownNode(owned.getChild(i)), if (path.isEmpty()) i.toString() else "$path.$i", childPath + i, depth + 1)
         }
       }
       walk(root, "", IntArray(0), 0)
@@ -558,6 +610,10 @@ class DeviceControlService : AccessibilityService() {
         generation.incrementAndGet(), rotation(), metrics.first, metrics.second,
         nodes, bounds, rows, rowNodes, truncated,
       )
+      val context = checkNotNull(nodeLeaseForThread.get()) { "snapshot built outside a request lease" }
+      if (context.serviceEpoch != serviceEpoch) return null
+      context.recycler.advanceGeneration()
+      rowNodes.filterNotNull().forEach(::retainSnapshotNode)
       snapshot = fresh
       invalidated = false
       return fresh
@@ -608,12 +664,12 @@ class DeviceControlService : AccessibilityService() {
   /** 按路径重新定位节点（不复用快照里的节点对象——页面可能已重建）。 */
   private fun nodeAtPath(path: String): AccessibilityNodeInfo? {
     if (path.isEmpty()) return null
-    var node: AccessibilityNodeInfo? = rootFor(activeDisplayId) ?: return null
+    var node: AccessibilityNodeInfo? = ownNode(rootFor(activeDisplayId)) ?: return null
     for (segment in path.split('.')) {
       val index = segment.toIntOrNull() ?: return null
       val current = node ?: return null
       if (index < 0 || index >= current.childCount) return null
-      node = current.getChild(index)
+      node = ownNode(current.getChild(index))
     }
     return node
   }
@@ -622,6 +678,23 @@ class DeviceControlService : AccessibilityService() {
 
   /** 执行一个队列请求；返回 null 表示成功（数据由调用方组装）。 */
   fun handle(op: String, args: JSONObject): JSONObject {
+    val context = synchronized(lock) {
+      val recycler = nodeRecycler
+      val lease = recycler.openLease() ?: return@synchronized null
+      NodeLeaseContext(recycler, lease, serviceEpoch)
+    } ?: return error("无障碍服务正在断开")
+    val previousLease = nodeLeaseForThread.get()
+    nodeLeaseForThread.set(context)
+    return try {
+      if (context.serviceEpoch != serviceEpoch) return error("无障碍服务正在重连")
+      handleWithNodeLease(op, args)
+    } finally {
+      if (previousLease == null) nodeLeaseForThread.remove() else nodeLeaseForThread.set(previousLease)
+      context.lease.close()
+    }
+  }
+
+  private fun handleWithNodeLease(op: String, args: JSONObject): JSONObject {
     // 0.14.1 块G F4（注释更正）：本服务**已承载虚拟屏**——`realScreenScopeError` 会经
     // `VdisplayController.displayIdForAlias` 解析 `virtual-N` 的动态 displayId 并把
     // `activeScreenId/activeDisplayId` 固定到该屏（见下方 realScreenScopeError 与
@@ -711,10 +784,33 @@ class DeviceControlService : AccessibilityService() {
 
   /** A scope transition is a screen barrier: old real-screen refs cannot regain validity later. */
   private fun observeScreenScope(scope: ScreenScope) {
-    if (observedScreenScope == scope) return
-    observedScreenScope = scope
-    synchronized(lock) { snapshot = null }
-    invalidated = true
+    synchronized(lock) {
+      val context = nodeLeaseForThread.get()
+      if (context != null && context.serviceEpoch != serviceEpoch) return
+      if (observedScreenScope == scope) return
+      observedScreenScope = scope
+      snapshot = null
+      snapshotWindowId = -1
+      invalidated = true
+      (context?.recycler ?: nodeRecycler).retirePersistent()
+    }
+  }
+
+  /** Keep the last generation number for state polling but drop every stale node handle. */
+  private fun discardSnapshotNodesLocked() {
+    val current = snapshot ?: return
+    snapshotWindowId = -1
+    snapshot = Snapshot(
+      current.gen,
+      current.rotation,
+      current.width,
+      current.height,
+      LinkedHashMap(),
+      current.bounds,
+      current.rows,
+      emptyList(),
+      current.truncated,
+    )
   }
 
   /**
@@ -987,6 +1083,18 @@ class DeviceControlService : AccessibilityService() {
     object None : Target()
   }
 
+  private fun currentSnapshotForTargets(): Snapshot? = synchronized(lock) {
+    snapshot?.takeIf { !invalidated }
+  }
+
+  private fun hasInvalidatedSnapshot(): Boolean = synchronized(lock) {
+    snapshot != null && invalidated
+  }
+
+  private fun snapshotStillCurrent(expected: Snapshot): Boolean = synchronized(lock) {
+    !invalidated && snapshot?.gen == expected.gen
+  }
+
   /**
    * 动作目标节点（§S5.1 DD-10）：`row`（V2 行句柄）优先，`path`（V1 原始路径）兼容。
    * 行句柄走 childPath 逐级 getChild 重定位——零字符串解析；两种寻址都失败时回填可诊断的失败原因。
@@ -994,7 +1102,9 @@ class DeviceControlService : AccessibilityService() {
   private fun resolveTarget(args: JSONObject): Target {
     if (args.has("row")) {
       val handle = args.optInt("row", -1)
-      val rows = synchronized(lock) { snapshot?.rows } ?: return Target.Miss(error("没有快照——请重新 android_ui_dump"))
+      val current = currentSnapshotForTargets()
+        ?: return Target.Miss(error("控件清单已失效——请重新 android_ui_dump；不会按旧行句柄重新定位"))
+      val rows = current.rows
       if (handle < 0 || handle >= rows.size) {
         return Target.Miss(error("行句柄 $handle 超出快照范围（共 ${rows.size} 行）——请重新 android_ui_dump"))
       }
@@ -1009,14 +1119,24 @@ class DeviceControlService : AccessibilityService() {
       //   （视图已被回收/重建），但该节点对象对 `performAction` 往往仍然有效——
       //   用 refresh() 判死活会把「能用」误判成「已失效」，退回重走又必然失败（见上）。
       //   正确做法：直接把它交给动作，由动作的真实结果决定成败；失败了再走兜底重定位。
-      val stored = synchronized(lock) { snapshot?.rowNodes?.getOrNull(handle) }
+      val stored = current.rowNodes.getOrNull(handle)
       val node = stored ?: nodeAtChildPath(row.childPath) ?: nodeByFingerprint(row)
         ?: return Target.Miss(error("行 $handle 已不存在（页面已变化）——请重新 android_ui_dump"))
+      if (!snapshotStillCurrent(current)) {
+        return Target.Miss(error("控件清单在解析期间已失效——请重新 android_ui_dump；不会按旧行句柄继续操作"))
+      }
       return Target.Hit(node, "row:$handle")
     }
     val path = args.optString("path", "")
     if (path.isEmpty()) return Target.None
+    val current = currentSnapshotForTargets()
+    if (current == null && hasInvalidatedSnapshot()) {
+      return Target.Miss(error("控件清单已失效——请重新 android_ui_dump；不会按旧路径重新定位"))
+    }
     val node = nodeAtPath(path) ?: return Target.Miss(error("路径 $path 已不存在（页面已变化）——请重新 android_ui_dump"))
+    if (current != null && !snapshotStillCurrent(current)) {
+      return Target.Miss(error("控件清单在解析期间已失效——请重新 android_ui_dump；不会按旧路径继续操作"))
+    }
     return Target.Hit(node, path)
   }
 
@@ -1030,11 +1150,11 @@ class DeviceControlService : AccessibilityService() {
    * 仍找不到才返回 null（此时确实变了，报 stale 是对的）。
    */
   private fun nodeAtChildPath(childPath: IntArray): AccessibilityNodeInfo? {
-    if (childPath.isEmpty()) return rootFor(activeDisplayId)
-    var node: AccessibilityNodeInfo = rootFor(activeDisplayId) ?: return null
+    if (childPath.isEmpty()) return ownNode(rootFor(activeDisplayId))
+    var node: AccessibilityNodeInfo = ownNode(rootFor(activeDisplayId)) ?: return null
     for (level in childPath.indices) {
       val index = childPath[level]
-      val direct = if (index >= 0 && index < node.childCount) node.getChild(index) else null
+      val direct = if (index >= 0 && index < node.childCount) ownNode(node.getChild(index)) else null
       node = direct ?: return null
       if (level == childPath.size - 1) return node
     }
@@ -1052,7 +1172,7 @@ class DeviceControlService : AccessibilityService() {
    * 找不到返回 null（此时页面确实变了，报 stale 是正确的）。
    */
   private fun nodeByFingerprint(row: ControlProtocolV2.Row): AccessibilityNodeInfo? {
-    val root = rootFor(activeDisplayId) ?: return null
+    val root = ownNode(rootFor(activeDisplayId)) ?: return null
     val cx = row.x + row.w / 2
     val cy = row.y + row.h / 2
     var best: AccessibilityNodeInfo? = null
@@ -1066,7 +1186,7 @@ class DeviceControlService : AccessibilityService() {
         kotlin.math.abs((rect.left + rect.width() / 2) - cx) <= 2 &&
         kotlin.math.abs((rect.top + rect.height() / 2) - cy) <= 2
       if (same) { best = node; return }
-      for (i in 0 until node.childCount) visit(node.getChild(i), depth + 1)
+      for (i in 0 until node.childCount) visit(ownNode(node.getChild(i)), depth + 1)
     }
     visit(root, 0)
     return best
@@ -1081,7 +1201,7 @@ class DeviceControlService : AccessibilityService() {
         // 自身不可点 → 沿父链找可点祖先（与引擎侧回退策略一致的第二道保险）
         var hops = 0
         while (!node.isClickable && hops < 12) {
-          node = node.parent ?: break
+          node = ownNode(node.parent) ?: break
           hops++
         }
         if (node.isClickable) {
@@ -1144,7 +1264,7 @@ class DeviceControlService : AccessibilityService() {
         var hops = 0
         while (hops < 12) {
           if (node.isLongClickable) break
-          node = node.parent ?: break
+          node = ownNode(node.parent) ?: break
           hops++
         }
         if (node.isLongClickable) {
@@ -1222,7 +1342,7 @@ class DeviceControlService : AccessibilityService() {
     }
     if (!node.isEditable) {
       // 允许在容器上尝试一次（部分实现把 editable 标在子节点）
-      val child = (0 until node.childCount).mapNotNull { node.getChild(it) }.firstOrNull { it.isEditable }
+      val child = (0 until node.childCount).mapNotNull { ownNode(node.getChild(it)) }.firstOrNull { it.isEditable }
       if (child == null) return error("目标不是可编辑节点")
       return commitText(child, text, clear)
     }
@@ -1241,11 +1361,11 @@ class DeviceControlService : AccessibilityService() {
   }
 
   private fun findFocusedEditable(): AccessibilityNodeInfo? {
-    val root = rootFor(activeDisplayId) ?: return null
+    val root = ownNode(rootFor(activeDisplayId)) ?: return null
     fun walk(node: AccessibilityNodeInfo?, depth: Int): AccessibilityNodeInfo? {
       if (node == null || depth > MAX_DEPTH) return null
       if (node.isFocused && node.isEditable) return node
-      for (i in 0 until node.childCount) walk(node.getChild(i), depth + 1)?.let { return it }
+      for (i in 0 until node.childCount) walk(ownNode(node.getChild(i)), depth + 1)?.let { return it }
       return null
     }
     return walk(root, 0)
@@ -1261,7 +1381,7 @@ class DeviceControlService : AccessibilityService() {
         var node = t.node
         var hops = 0
         while (!node.isScrollable && hops < 12) {
-          node = node.parent ?: break
+          node = ownNode(node.parent) ?: break
           hops++
         }
         node
@@ -1323,11 +1443,11 @@ class DeviceControlService : AccessibilityService() {
   }
 
   private fun findFirstScrollable(): AccessibilityNodeInfo? {
-    val root = rootFor(activeDisplayId) ?: return null
+    val root = ownNode(rootFor(activeDisplayId)) ?: return null
     fun walk(node: AccessibilityNodeInfo?, depth: Int): AccessibilityNodeInfo? {
       if (node == null || depth > MAX_DEPTH) return null
       if (node.isScrollable) return node
-      for (i in 0 until node.childCount) walk(node.getChild(i), depth + 1)?.let { return it }
+      for (i in 0 until node.childCount) walk(ownNode(node.getChild(i)), depth + 1)?.let { return it }
       return null
     }
     return walk(root, 0)

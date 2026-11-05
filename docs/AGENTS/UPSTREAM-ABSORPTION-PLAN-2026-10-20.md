@@ -506,21 +506,21 @@ PR #211 刷新至最新 main 后，Kotlin 编译与单测、静态/来源回归�
 
 ### 30.1 本地差异与上游实现
 
-- 本仓 `DeviceControlService.Snapshot` 持有 `nodes` 与 `rowNodes`；`buildSnapshot` 覆盖旧快照，`observeScreenScope` 与 `teardown` 置空快照，均未显式回收节点。行句柄回退的 `nodeAtChildPath`、`nodeByFingerprint`，以及焦点/可滚动搜索和 parent 上溯也会得到未纳入快照所有权的节点。
+- 本仓 `DeviceControlService.Snapshot` 持有 `nodes` 与 `rowNodes`；`buildSnapshot` 覆盖旧快照，`observeScreenScope` 与 `teardown` 置空快照，均未显式回收节点。行句柄回退的 `nodeAtChildPath`、`nodeByFingerprint`，以及焦点/可滚动搜索和 parent 上溯也会得到未纳入快照所有权的节点。虚拟屏 `rootProbe` 还会为每个窗口取根节点；原实现为探测 `hasRoot` 和最终选根分别读取 `window.root`。
 - 上游 #1361（#1534，基底提交 `0f45adc`）加入 identity 去重的延迟一代 recycler；#1510 为 teardown 增加 2 秒后 drain；本轮增量 #1521/#1522 再加入 fallback `adopt()`、API<33 守卫、失败日志和可注入 SDK 判据。该差异在本仓仍整体缺失，不能只移植 `adopt()`。
 - 本仓 `ControlPoller.loop → execute → DeviceControlService.handle` 在单一 `dsh-control-poller` 工作线程串行执行；但 AccessibilityService 的 `onUnbind`/`onDestroy` 生命周期回调与该工作线程不同步，`performAction` 明确在服务锁外运行。
 
-### 30.2 吸收设计（开发 PR 可先实施，设备验收在 Release 前）
+### 30.2 实施
 
-- 先盘清每个 `getChild`、`parent`、`rootFor` 返回值的所有者：保留在快照、作为动作目标返回、作为搜索临时节点释放，或路径中间节点用完即释放；预算截断与异常退出也不得丢弃未接管句柄。
-- 引入可独立单测的代际回收器：按对象 identity 去重；仅 `SDK_INT < 33` 调 `recycle()`；SDK 判据与日志出口可注入；fallback 通过 `adopt()` 收入受控生命周期，不得动作前立即回收。
-- 不照搬上游 teardown：上游在 `teardown` 调 `retire(currentSnapshot)` 会先回收 recycler 里上一代对象。若其中有已 `adopt()` 且仍在锁外执行动作的节点，2 秒后的 drain 延迟不到它。应先关闭新的 `handle` 入口，并跟踪在途 handle；当前快照与所有已收编对象保留到在途动作归零后再 drain，避免固定延时猜测动作时长。
-- 行为测试覆盖共享实例去重、一代宽限、fallback adopt、scope 清空、API 32/33 边界、回收异常可观测、teardown 与在途动作竞态、截断遍历临时节点释放；再跑执行地图与全量 Kotlin/静态门禁。
+- 新增纯 JVM `AccessibilityNodeRecycler`，按对象 identity 管理请求临时节点与快照节点。`DeviceControlService` 的每个 `handle()` 持有 request lease；所有 `rootInActiveWindow`、`AccessibilityWindowInfo.root`、`getChild()` 与 `parent` 节点都进入 lease，节点建树遍历即使在预算截断或异常返回时也由 finally 统一收口。虚拟屏窗口根每窗只取一次。
+- 快照行节点从临时所有权转为代际持有；快照替换留一代宽限，事件和范围变化立即退役，回收在所有在途 lease 归零后执行。目标解析在取节点前和返回前复查 snapshot 是否仍有效，失效时拒绝旧 row/path，避免没有旧节点句柄后按旧 childPath 落到另一控件。API 32 及以下调用 `recycle()`，API 33+ 不调用；单个 recycle 异常记录类型并继续 drain。
+- teardown 关闭当前 recycler 的新请求入口，在途请求持有旧代节点直到完成再排空；服务重连创建新 recycler，并用 service epoch 阻止旧请求把快照发布到新生命周期。未采用上游固定延时 teardown。
+- JVM 回归覆盖共享句柄 identity 去重、多 lease 所有权、一代宽限、失效后等待在途请求、teardown 与新请求拒绝、API 32/33/36 分界、失效期间拒绝旧目标以及 recycle 故障不阻断后续 drain。执行地图、静态检查与全量 Kotlin 单测作为本 PR 证据；设备层遵循 §30.3 的 Release 边界。
 
 ### 30.3 验收边界与当前处置
 
 - 这是 AccessibilityService 设备控制行为。根据 2026-11-05 更新后的 AGENTS.md §4，开发 PR 不要求即时 CDP/ADB 验收；代码层仍须覆盖 API<33 与 API≥33、节点所有权、在途动作排空及 teardown 竞态，并通过相关静态门禁。正式 Release 默认用最终 ARM64 APK 完成 §2.1 三层；若显式豁免，须在 Release 记录未执行设备层、原因与剩余风险，并保持未验收状态。
-- 当前只安装了 API 36 ARM64 系统映像，没有创建 AVD；ADB 列表为空，用户确认暂时没有设备。因此本轮审计未修改运行时代码；按新政策，后续可先以独立代码 PR 实施并验证。正式 Release 前若设备仍不可用，可按 §4 明确记录设备层豁免，但不得把它写成验收通过。正式上游比较游标仍保持 656b73c5130f22b12536a2e9f738c686e417db11。
+- 当前分支已实现代码候选。最终源码全量 Kotlin 测试 1441 项，1 项在 Windows 因缺少创建 symlink 权限失败（`SnapshotTransactionTest.markerRejectsSymlinksWithoutTouchingTheirTargets`），3 项跳过；上次只在该主机出现的截图缓存失败未重现。回收器定向集 8 项通过；执行地图、控制 op、Kotlin 注释门禁通过。Linux CI 尚待确认 symlink 用例。当前没有 ADB 设备，本轮未做 APK/CDP/ADB；这不阻塞开发 PR。正式 Release 默认补最终 ARM64 APK 三层验证；若显式豁免设备层，需在 Release 记录遗漏层、原因和剩余风险，不能标通过。正式上游比较游标仍保持 656b73c5130f22b12536a2e9f738c686e417db11。
 
 ## 31. 2026-11-05 构建期补丁锚点唯一性（上游 #1499/#1531）
 
