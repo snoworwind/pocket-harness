@@ -1,18 +1,18 @@
-# emulator-test-protocol.md — 模拟器验收规范（代码层 + CDP 层 + ADB 用户实际体验层，三层必跑）
+# emulator-test-protocol.md — 正式 Release 前设备验收规范
 
-> **现行模拟器范围（2026-10-29 用户决定）**：模拟器验收统一使用 Android Studio 的 Google 官方 Android Emulator，运行 Android 16（API 36）Pixel AVD，默认采用 `default/arm64-v8a` 系统映像（SDK 包 `system-images;android-36;default;arm64-v8a`）以匹配本仓 ARM64 产品 APK。MuMu/x86_64 记录仅供历史追溯，不作为当前验收证据。发版候选仍须补充 ARM64 真机验收；缺设备时设备层不得记 PASS。
+> **现行设备验收范围**：正式公开发布 GitHub Release 前默认须完成设备验收。若明确声明不做或部分不做，须在 Release 记录中写明 APK/commit、未执行的 CDP/ADB 层、原因与剩余风险，可省略相应设备层但不得记为 PASS；代码、CI、来源构建和签名仍须通过。设备验收使用 Android Studio Google 官方 Android Emulator 的 Android 16（API 36）Pixel AVD，默认 default/arm64-v8a 映像，并补充 ARM64 真机；开发 PR 设备验证可选，不因缺设备阻塞。
 
 > 本文件是 `AGENTS.md` §2.1「模拟器测试规范」的**详档**：AGENTS.md 只放强制条款，命令与判据在这里。
-> 一句话：**任一层红都说明这个系统有问题**——代码层红是代码有问题，CDP 层绿而人做不到是交互逻辑错，
-> ADB 用户层红而 CDP 全绿是内部没打通。只跑 CDP 不算验收。
+> 正式发布前，代码、CDP 与 ADB 三层证据互补；任一层红说明系统有问题。开发 PR 按 AGENTS.md §4 提供风险相符的代码和静态证据，不要求模拟器/CDP/ADB 验收。
+> CDP 与 ADB 用户层互补，正式发布时任一未执行层均须在豁免记录中标为未验收。
 
 ---
 
 ## 0. 三层验收（任一层红即系统有问题）
 
-第二轮补充：`EngineTransportInstrumentedTest` 同时建立 40 条未认证 TCP 连接，再用正确 relay 头访问私有后端，断言未认证连接不能占满流槽位。敏感桥与通知动作必须在设备验证系统凭据成功、取消、无凭据、超时、锁屏、进程重启及旧 PendingIntent；模型自主任务不得获知用户锁屏秘密，也不得由操作者把操作序列逐条喂给模型。详见 [修复账本](SECURITY-REMEDIATION-2026-10-17-R2.md)。
+发布验收的安全覆盖：EngineTransportInstrumentedTest 同时建立 40 条未认证 TCP 连接，再用正确 relay 头访问私有后端，断言未认证连接不能占满流槽位。敏感桥与通知动作在发布设备验收中验证系统凭据成功、取消、无凭据、超时、锁屏、进程重启及旧 PendingIntent；模型自主任务不得获知用户锁屏秘密，也不得由操作者把操作序列逐条喂给模型。详见 SECURITY-REMEDIATION-2026-10-17-R2.md。
 
-坑 352 的设备负控须使用来源链新包。在任何 Activity/EngineService 启动前的 fresh app process 运行 `EngineTransportInstrumentedTest`：伪造 TCP 监听者先占 3080，初始化与 attach 应拒绝且监听者无连接；关闭伪造监听者后，同 UID 私有 Unix socket 的合成 Cookie 请求应正常转发，后端退出后 relay 自身不能制造存活。后端读取完整请求后延迟 200ms 再响应，确保上传方向已经空闲等待，反证 Android SocketAdaptor 的 blockingLock 响应饥饿；响应须在 3 秒内完成。编译 androidTest 不能代替执行。随后再以真实模型自主任务验主 WebView、通知应答、控制队列、mux 与引擎重启，按既有 CDP/ADB 双方向留证；该低层负控不代替真人任务。
+正式发布前执行坑 352 的设备负控：在任何 Activity/EngineService 启动前的 fresh app process 运行 EngineTransportInstrumentedTest：伪造 TCP 监听者先占 3080，初始化与 attach 应拒绝且监听者无连接；关闭伪造监听者后，同 UID 私有 Unix socket 的合成 Cookie 请求应正常转发，后端退出后 relay 自身不能制造存活。后端读取完整请求后延迟 200ms 再响应，确保上传方向已经空闲等待，反证 Android SocketAdaptor 的 blockingLock 响应饥饿；响应须在 3 秒内完成。随后以真实模型自主任务验主 WebView、通知应答、控制队列、mux 与引擎重启，按既有 CDP/ADB 双方向留证；该低层负控不代替真人任务。
 
 | 层 | 手段 | 红了说明什么 |
 |---|---|---|
@@ -38,22 +38,22 @@
 
 Apply the risk classification in `AGENTS.md` section 4 before selecting evidence:
 
-| Class | Scope | Required evidence |
-|---|---|---|
-| L0 | Documentation and comments without behavior changes | Relevant CI and documentation checks |
-| L1 | Internal script/build logic without changing a security-sensitive decision | Targeted tests or self-tests plus a controlled negative case |
-| L2 | Snapshot transactions, signatures, bridge contracts, or a gate's acceptance/rejection criteria | Immediate code, CDP, and ADB validation of the affected behavior |
-| L3 | UI/UX and Android shell behavior | Immediate emulator validation at all three layers |
+| Class | Scope | Development PR evidence | Official Release evidence |
+|---|---|---|---|
+| L0 | Documentation and comments without behavior changes | Relevant CI and documentation checks | Included in the release-wide three-layer run if shipped |
+| L1 | Internal script/build logic without changing a security-sensitive decision | Targeted tests or self-tests plus a controlled negative case | Final-source APK and release-wide three-layer run if shipped |
+| L2 | Snapshot transactions, signatures, bridge contracts, or a gate acceptance/rejection criterion | Relevant code tests and positive/controlled-negative checks of the actual gate or path | Final-source APK and three-layer validation of the affected behavior |
+| L3 | UI/UX and Android shell behavior | Relevant unit, component, or integration regression evidence | Final-source APK and all three layers, including real user task evidence |
 
-The script exemption below applies only to L1 changes. A change to a gate's acceptance criteria is L2 even if its implementation is a script. Mixed changes use the highest applicable class. For L2 build-time gates, execute positive and negative checks against the actual gate and validate the affected runtime path on a device; a successful device boot alone does not prove rejection of corrupt input. Standalone web pages use browser validation of their own behavior rather than APK installation.
+The L1 exemption applies only to L1 changes. A change to a gate acceptance criterion is L2 even if implemented in a script. Mixed changes use the highest applicable class. L2 build-time gates must prove both acceptance and rejection against the actual gate in PR code evidence; runtime-path device evidence belongs to the official Release check. Standalone web pages use browser validation of their behavior rather than APK installation.
 
-All release candidates still require the final-source, packaged-APK validation described in `AGENTS.md` section 2.2. Development hot-push or earlier integration evidence cannot substitute for that final run. PRs without device validation must state that explicitly.
+By default, final-source packaged-APK device validation is required before publishing a public GitHub Release, as described in AGENTS.md sections 2.1 and 2.2. An explicit Release record may waive all or part of CDP/ADB device validation if it identifies the APK and commit, omitted layer or layers, reason, and residual risk. Waived layers remain unverified and must never be reported as PASS. This waiver does not waive code tests, CI, source-build, signing, or other release controls. Development PRs, ordinary merges, internal hot-push, and unpublished versions do not require emulator, CDP, or ADB validation. Early device results may help debugging but cannot substitute for the final-source release run.
 
 Coordination-only tools and delivery plans are external prerequisites, not files shipped in this APK repository. In particular, `scripts/clean-deploy-tmp.mjs` referenced by `AGENTS.md` section 4 belongs to the coordination checkout. Its reviewable repository/commit must accompany a cleanup handoff before it can be treated as delivered here. This protocol does not certify or provide that deletion implementation.
 
 **Code evidence follows the affected inputs**: use relevant Kotlin tests, static gates, and regression/negative cases for runtime changes. L0 documentation does not require unrelated Kotlin tests; L1 requires targeted script evidence as specified above.
 
-**另加 A/B 两轨**（A 轨 CDP 断言 + B 轨 adb 用户级操作）——凡改动会让用户**看见或摸到**不同：
+**正式 Release 发布前默认另加 A/B 两轨；若豁免设备验收，应在 Release 记录中标明未执行的轨道。**
 
 - 页面/注入层（`dsh-client-ui-responsive`、`dsh-host-web-compat`）：任何 DOM 标记、几何、样式、polyfill、入口按钮增删；
 - 壳侧 UI：引导页、控制台、悬浮球/光环/面板、通知与通知内应答、返回网关；
@@ -61,11 +61,11 @@ Coordination-only tools and delivery plans are external prerequisites, not files
 - 交互路径：点击/长按/滑动/文本输入/按键、键盘与 IME、权限弹窗与授权引导；
 - 桥面：任何页面可调用的桥方法增删改（页面侧可见行为变化）。
 
-**不强制 B 轨**（按上表 L0/L1 分类，仍需对应证据）：纯文档、构建脚本内部逻辑、不改变验收判据的门禁脚本维护、Kotlin 内部重构（不改可见行为，且单测覆盖）。L2 判据和安全敏感面不适用此豁免。
+**开发 PR 不要求 B 轨设备操作**：L0/L1 按风险表提交相应证据；L2/L3 的设备与用户体验检查集中在正式 Release 前执行。用户可见变更的 A/B 两轨在发布验收时都必须通过。
 
 判据只有一句：**改完之后，一个真人用这块屏幕能不能完成同一件事**。CDP 断言回答不了这个问题。
 
-## 2. 两轨各自能证明什么（缺一不可）
+## 2. 正式 Release 验收中两轨各自能证明什么
 
 | 轨 | 手段 | 能证明 | 证明不了 |
 |---|---|---|---|

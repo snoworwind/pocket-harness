@@ -510,7 +510,7 @@ PR #211 刷新至最新 main 后，Kotlin 编译与单测、静态/来源回归�
 - 上游 #1361（#1534，基底提交 `0f45adc`）加入 identity 去重的延迟一代 recycler；#1510 为 teardown 增加 2 秒后 drain；本轮增量 #1521/#1522 再加入 fallback `adopt()`、API<33 守卫、失败日志和可注入 SDK 判据。该差异在本仓仍整体缺失，不能只移植 `adopt()`。
 - 本仓 `ControlPoller.loop → execute → DeviceControlService.handle` 在单一 `dsh-control-poller` 工作线程串行执行；但 AccessibilityService 的 `onUnbind`/`onDestroy` 生命周期回调与该工作线程不同步，`performAction` 明确在服务锁外运行。
 
-### 30.2 吸收设计（设备可用后实施）
+### 30.2 吸收设计（开发 PR 可先实施，设备验收在 Release 前）
 
 - 先盘清每个 `getChild`、`parent`、`rootFor` 返回值的所有者：保留在快照、作为动作目标返回、作为搜索临时节点释放，或路径中间节点用完即释放；预算截断与异常退出也不得丢弃未接管句柄。
 - 引入可独立单测的代际回收器：按对象 identity 去重；仅 `SDK_INT < 33` 调 `recycle()`；SDK 判据与日志出口可注入；fallback 通过 `adopt()` 收入受控生命周期，不得动作前立即回收。
@@ -519,8 +519,8 @@ PR #211 刷新至最新 main 后，Kotlin 编译与单测、静态/来源回归�
 
 ### 30.3 验收边界与当前处置
 
-- 这是 AccessibilityService 设备控制行为，按 `AGENTS.md` §4 属即时三层验收面。代码层还需证明 API<33 与 API≥33 两侧；设备用户层按项目协议使用 Google Android 16 API 36 `default/arm64-v8a` AVD 执行由模型自主编排的真实任务，并取得 CDP/ADB 证据。
-- 当前只安装了 API 36 ARM64 系统映像，没有创建 AVD；ADB 列表为空，用户确认暂时没有设备。本轮不改运行时代码、不创建未验收实现，也不推进正式上游比较游标。设备可用后按本节设计另开一个原子 PR。
+- 这是 AccessibilityService 设备控制行为。根据 2026-11-05 更新后的 AGENTS.md §4，开发 PR 不要求即时 CDP/ADB 验收；代码层仍须覆盖 API<33 与 API≥33、节点所有权、在途动作排空及 teardown 竞态，并通过相关静态门禁。正式 Release 默认用最终 ARM64 APK 完成 §2.1 三层；若显式豁免，须在 Release 记录未执行设备层、原因与剩余风险，并保持未验收状态。
+- 当前只安装了 API 36 ARM64 系统映像，没有创建 AVD；ADB 列表为空，用户确认暂时没有设备。因此本轮审计未修改运行时代码；按新政策，后续可先以独立代码 PR 实施并验证。正式 Release 前若设备仍不可用，可按 §4 明确记录设备层豁免，但不得把它写成验收通过。正式上游比较游标仍保持 656b73c5130f22b12536a2e9f738c686e417db11。
 
 ## 31. 2026-11-05 构建期补丁锚点唯一性（上游 #1499/#1531）
 
