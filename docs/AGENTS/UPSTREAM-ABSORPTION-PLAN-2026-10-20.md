@@ -499,5 +499,5 @@ PR #211 刷新至最新 main 后，Kotlin 编译与单测、静态/来源回归�
 
 - 使用固定 rc.5 树执行契约正式检查，通过；自检 22 个判红用例通过，另外 2 个因自包含布局没有协调仓专属 `docs/UPSTREAM-CONTRACT.md` 而明确 N/A。自检反例覆盖删除 pwsh 登记与取消 profile 禁用两种假绿。
 - `node --check scripts/check-contract.mjs`、契约 JSON 解析与 `git diff --check` 通过。默认 `.deploy-tmp/deepseek-harness` 指向 rc.2，直接对它运行会因树身份不符失败；验证改用已有固定 rc.5 源树的临时契约副本，不改该共享缓存。
-- PR #229 首轮 Kotlin CI 发现 `FactoryProfilePatchTest` 仍锁定新增 profile 行前的 26 个块；已同步更新为 27 个块（26 个条目及注释头），针对性 `:app:testDebugUnitTest --tests 'com.snoworwind.pocketharness.FactoryProfilePatchTest'` 本地通过，完整 PR CI 等待修复提交复跑。
-- ADB server 启动失败，本轮没有来源 APK、CDP 或 ADB 设备验收；PR 需显式注明未做设备验证，进入发布候选前必须按三层协议复验 bash 可用且 pwsh 不再抢占后端。该状态不因上游设备报告或本地静态通过而关闭。
+- PR #229 首轮 Kotlin CI 发现 `FactoryProfilePatchTest` 仍锁定新增 profile 行前的 26 个块；已同步更新为 27 个块（26 个条目及注释头），针对性 `:app:testDebugUnitTest --tests 'com.snoworwind.pocketharness.FactoryProfilePatchTest'` 本地通过。
+- 沙箱外 ADB 查询正常但设备列表为空，本轮没有来源 APK、CDP 或 ADB 用户层验收；PR 明确注明未做设备验证，进入发布候选前必须按三层协议复验 bash 可用且 pwsh 不再抢占后端。该状态不因上游设备报告或本地静态通过而关闭。
