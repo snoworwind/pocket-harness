@@ -21,7 +21,7 @@
 
 只读 checkout 已更新到上游 `main` `3148a0264ef0c10e1a8097152f7cd5d5025a0a18`；从先前样本 `1c11b02f79e6f7347b15930106012177f7f7c946` 到该点共 9 个提交。此轮逐项对照了补丁锚点、外部组件 provenance、屏幕范围词法、浏览器标签、Shizuku、读超时、无障碍测试与退役插件候选；尚未逐行审完全部变更文件，正式比较游标继续保持 `656b73c5130f22b12536a2e9f738c686e417db11`。
 
-- [#1499](https://github.com/kelai141/dsh-mobile-apk/pull/1499) 与 [#1531](https://github.com/kelai141/dsh-mobile-apk/pull/1538)：本仓补丁器也有字面量/正则重复锚点只改首个匹配的假绿路径；已在本分支移植精确命中工具，加入真实 runner 重复 H1 锚点负控。计划与证据见[吸收计划 §31](UPSTREAM-ABSORPTION-PLAN-2026-10-20.md#31-2026-11-05-构建期补丁锚点唯一性-上游-14991531)。
+- [#1499](https://github.com/kelai141/dsh-mobile-apk/pull/1499) 与 [#1531](https://github.com/kelai141/dsh-mobile-apk/pull/1538)：本仓补丁器也有字面量/正则重复锚点只改首个匹配的假绿路径；已在本分支移植精确命中工具，加入真实 runner 重复 H1 锚点负控；[PR #231](https://github.com/snoworwind/pocket-harness/pull/231) 的必检 CI 全绿并于 2026-11-05 以 merge commit 460a17073206318180f0baa769fde709a5896218 合入。计划与证据见[吸收计划 §31](UPSTREAM-ABSORPTION-PLAN-2026-10-20.md#31-2026-11-05-构建期补丁锚点唯一性-上游-14991531)。
 - [#1631](https://github.com/kelai141/dsh-mobile-apk/pull/1631)：词内 `#` 不能启动 shell 注释的词法边界，本仓引擎和 Kotlin 镜像已都实现为 `# && !active` 才截断；不重复移植。
 - [#1563](https://github.com/kelai141/dsh-mobile-apk/pull/1563)：上游将整份待打包 external 目录纳入字节 manifest。本仓来源链按不可变项目 commit 构建；marketplace 另固定 npm tarball 与补丁输入，并输出 tarball/补丁/产物 provenance，undo vendor 也以当前 commit 中的源文件为输入。额外逐文件维护表会形成第二套同源锁，当前不复制；若构建开始使用未由项目 commit 或 artifact provenance 约束的 external 输入，再重新评估。
 - [#1550](https://github.com/kelai141/dsh-mobile-apk/pull/1550)：逐补丁标注覆盖测试能增强审计追溯；本仓 `check-patch-test-manifest.mjs` 已串行执行全部补丁测试文件，但 registry 没有 patch→test 数据。暂留独立评估，需逐项基于断言证据建立映射，不能按文件名猜测。

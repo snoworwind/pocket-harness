@@ -539,4 +539,4 @@ PR #211 刷新至最新 main 后，Kotlin 编译与单测、静态/来源回归�
 
 - 定向测试 4/4 通过；沙箱外 WSL `node scripts/check-patch-test-manifest.mjs` 运行 33 个文件、82/82 通过；`node scripts/patches/apply-patches.mjs vendor --check` 全部已登记补丁通过。
 - `check-code-map.mjs --self-test` 与正式检查通过，正式盘点为 19 个查点、316 条覆盖、1042 个锚点、159 条耦合边、16 张流程图。Windows 沙箱内全套测试遇到 `rename` / `symlink` EPERM；同一完整套件已在沙箱外 WSL Linux 成功，不把 Windows 沙箱结果记作源代码回归通过。
-- 本项只改变构建期补丁器，不改运行时产物、协议或壳侧行为，按 L1 构建脚本处理；设备三层验收不适用。PR Gate/CI 结果待本次分支评审，正式上游比较游标仍保持 `656b73c5130f22b12536a2e9f738c686e417db11`。
+- 本项只改变构建期补丁器，不改运行时产物、协议或壳侧行为，按 L1 构建脚本处理；设备三层验收不适用。PR #231 的全部必检 CI 通过并于 2026-11-05 以 merge commit 460a17073206318180f0baa769fde709a5896218 合入；PR 中明确标注未做设备验证；正式上游比较游标仍保持 `656b73c5130f22b12536a2e9f738c686e417db11`。
