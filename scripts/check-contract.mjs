@@ -1,11 +1,11 @@
 // check-contract.mjs — adapter-layer contract point check (core M1.4 adapter chain check).
 // Consumes scripts/contract.json; any broken point → non-zero exit + report.
 // 用法：node scripts/check-contract.mjs [--require]
-//         [--self-test]                        反证夹具：13 例「故意造反例必判红」自证（只读临时副本，不动仓库文件）
+//         [--self-test]                        反证夹具：逐项验证判据可判红（只读临时副本，不动仓库文件）
 //         [--runtime <ver>]                    只用于反证：把目标运行时装成下一版，验 §7 会不会判红
 //         [--capture-slots --accept-slot-diff <理由>] / [--capture-rows --accept-row-diff <理由>]
 //                                              换树后重新登记 §4c / §8 的上游面集合（改范围必须给理由，不给即红）
-//         [--contract <file>] [--profile <file>] 仅 --self-test 用的输入改道缝
+//         [--contract <file>] [--profile <file>] [--doc <file>] 仅 --self-test 用的输入改道缝
 // review C6（2026-09-14）：本门禁此前未接任何链（存在但从不执行 = 假防线）；现接进聚合入口与两条构建链。
 // 上游 `dsh/` 只读 checkout 与基线 `node_modules` 都是**本机产物**（gitignore，CI/自包含树不在场）：
 // 对应小节以 SKIP 计数并打印汇总；`--require`（发布链）下任何 SKIP 即失败——发布环境必须齐全。
@@ -729,16 +729,25 @@ function parseCordisRows(text, label) {
   return rows
 }
 
-/** 上游 bundle（base + web-app）出现的全部行 id；任一 bundle 不在场即返回 null（由调用方 SKIP）。 */
+/** 上游必需 bundle 中任一不在场即返回 null；experimental terminal 是可选层，缺席不取消基础行检查。 */
+const UPSTREAM_BUNDLES = [
+  { id: 'base', file: ['packages', 'bundle', 'base', 'cordis.patch.yml'], required: true },
+  { id: 'web-app', file: ['packages', 'bundle', 'web-app', 'cordis.patch.yml'], required: true },
+  { id: 'experimental-terminal', file: ['packages', 'experimental', 'terminal-bundle', 'cordis.patch.yml'], required: false },
+]
+
 function scanUpstreamRows() {
   const out = new Map()
-  for (const bundle of ['base', 'web-app']) {
-    const p = join(root, contract.upstreamRepo, 'packages', 'bundle', bundle, 'cordis.patch.yml')
-    if (!existsSync(p)) return null
+  for (const bundle of UPSTREAM_BUNDLES) {
+    const p = join(root, contract.upstreamRepo, ...bundle.file)
+    if (!existsSync(p)) {
+      if (bundle.required) return null
+      continue
+    }
     let rows
-    try { rows = parseCordisRows(readFileSync(p, 'utf8'), '上游 ' + bundle + ' bundle') }
+    try { rows = parseCordisRows(readFileSync(p, 'utf8'), '上游 ' + bundle.id + ' bundle') }
     catch (e) { fail(String(e.message ?? e)); continue }
-    for (const r of rows) if (!out.has(r.id)) out.set(r.id, { key: r.id, name: r.name ?? '', upstreamDisabled: r.disabled, bundle })
+    for (const r of rows) if (!out.has(r.id)) out.set(r.id, { key: r.id, name: r.name ?? '', upstreamDisabled: r.disabled, bundle: bundle.id })
   }
   return out
 }
@@ -763,11 +772,11 @@ console.log('== 8. 上游行面不变量（G-4：我们禁用的行必须还在�
        * —— 0.14.1 的 client-hmr 与 rc.1 的 hmr/dsh-hmr 换名就是这个形态。 */
       const ourDisabled = ourRows.filter(r => !r.inInsert && r.disabled)
       const ghost = ourDisabled.filter(r => !upRows.has(r.id))
-      if (ourDisabled.length === 0) fail('profile patch 解析出 0 条 disabled 顶层行——与现网形态不符（0.14.2-fx-2 起实测为 6 条：agent-default-model 改走同 id config 覆盖后由 7 减为 6），判红不放行')
+      if (ourDisabled.length === 0) fail('profile patch 解析出 0 条 disabled 顶层行——与现网形态不符，判红不放行')
       else if (ghost.length > 0) {
         fail('profile patch 禁用了上游不存在的行（禁用即空指向，上游那条真行照常挂载）: '
           + ghost.map(r => r.id).join(', ') + ' —— 上游改名/删除时必然出现；请核对新行 id 后改 profile，别删了这条 YAML 当没事发生')
-      } else ok('profile patch 的 ' + ourDisabled.length + ' 条 disabled 目标全部在上游存在（base+web-app 共 ' + upRows.size + ' 个行 id）')
+      } else ok('profile patch 的 ' + ourDisabled.length + ' 条 disabled 目标全部在上游存在（已检查 ' + upRows.size + ' 个行 id）')
       const alreadyUp = ourDisabled.filter(r => upRows.has(r.id) && upRows.get(r.id).upstreamDisabled)
       if (alreadyUp.length > 0) {
         console.log('  NOTE  其中 ' + alreadyUp.length + ' 条上游自己就带 disabled: true（我们的禁用是二次声明，无害但冗余）: '
@@ -796,7 +805,7 @@ console.log('== 8. 上游行面不变量（G-4：我们禁用的行必须还在�
             fail('--capture-rows 会改判据范围（新增 ' + c.added.length + ' / 消失 ' + c.removed.length + ' / 漂移 ' + c.drifted.length + '），必须带 --accept-row-diff "<这一版判了什么>"')
           } else {
             contract.upstreamRows = {
-              $comment: 'G-4 判据的登记集：上游 base + web-app 两个 bundle 的全部行 id（含我们未挂载的）。新增行必须逐条判「挂载 / 明确不挂」后重新登记——0.14.2 追版时 `mcp-resources` 这类新行走的就是这里。',
+              $comment: 'G-4 判据的登记集：上游 base + web-app 与可选 experimental-terminal bundle 的全部行 id（含我们未挂载的）。新增行必须逐条判「挂载 / 明确不挂」后重新登记。',
               capturedFrom: treeStamp, capturedReason: rowReason || '首次登记', total: fresh.length, entries: fresh,
             }
             writeFileSync(CONTRACT_PATH, JSON.stringify(contract, null, 2) + '\n')
@@ -804,7 +813,7 @@ console.log('== 8. 上游行面不变量（G-4：我们禁用的行必须还在�
           }
         } else {
           contract.upstreamRows = {
-            $comment: 'G-4 判据的登记集：上游 base + web-app 两个 bundle 的全部行 id（含我们未挂载的）。新增行必须逐条判「挂载 / 明确不挂」后重新登记。',
+            $comment: 'G-4 判据的登记集：上游 base + web-app 与可选 experimental-terminal bundle 的全部行 id（含我们未挂载的）。新增行必须逐条判「挂载 / 明确不挂」后重新登记。',
             capturedFrom: treeStamp, capturedReason: rowReason || '首次登记', total: fresh.length, entries: fresh,
           }
           writeFileSync(CONTRACT_PATH, JSON.stringify(contract, null, 2) + '\n')
@@ -826,6 +835,35 @@ console.log('== 8. 上游行面不变量（G-4：我们禁用的行必须还在�
             ok('上游行全集 == 登记（' + recorded.total + ' 条，树 ' + treeStamp + '）')
           }
         }
+      }
+    }
+  }
+}
+
+console.log('== 8.1 Android 持久 Shell 只启用 bash（rc.5 的 bash/pwsh 共用后端名） ==')
+{
+  const terminalRows = (contract.upstreamRows?.entries ?? []).filter(e => e.bundle === 'experimental-terminal')
+  const bash = terminalRows.find(e => e.key === 'optional-terminal-bash')
+  const pwsh = terminalRows.find(e => e.key === 'optional-terminal-pwsh')
+  if (!bash || !pwsh
+      || bash.name !== '@deepseek-ai/dsh-terminal-bash' || pwsh.name !== bash.name) {
+    fail('contract.json 必须登记 rc.5 experimental-terminal 的 bash/pwsh 行，并确认都指向同一 dsh-terminal-bash 包')
+  } else if (!existsSync(PROFILE_PATCH_PATH)) {
+    skip('profile patch 不在场 —— 持久 Shell 冲突兜底未执行')
+  } else {
+    let ourRows
+    try { ourRows = parseCordisRows(readFileSync(PROFILE_PATCH_PATH, 'utf8'), '本机 profile-web.cordis.patch.yml') }
+    catch (e) { fail(String(e.message ?? e)) }
+    if (ourRows !== undefined) {
+      const topLevel = ourRows.filter(r => !r.inInsert)
+      const disabled = new Set(topLevel.filter(r => r.disabled).map(r => r.id))
+      if (!disabled.has(pwsh.key)) {
+        fail('Android profile 必须用字面量 disabled: true 关闭 optional-terminal-pwsh；它与 bash 注册相同的 "shell" 后端名')
+      } else {
+        const enabled = [bash, pwsh].filter(r => !r.upstreamDisabled && !disabled.has(r.key))
+        if (enabled.length !== 1 || enabled[0].key !== bash.key) {
+          fail('Android profile 必须只保留 optional-terminal-bash 一个默认启用入口；当前为 ' + enabled.map(r => r.key).join(', '))
+        } else ok('profile 明确关闭 optional-terminal-pwsh，默认只启用 optional-terminal-bash')
       }
     }
   }
@@ -870,10 +908,11 @@ console.log('CONTRACT PASS（SKIP=' + skipped + '）')
  */
 function runContractSelfTest() {
   const gateFile = fileURLToPath(import.meta.url)
-  const pristineContract = JSON.parse(readFileSync(join(root, 'scripts', 'contract.json'), 'utf8'))
-  const pristineProfile = readFileSync(join(root, 'scripts', 'profile-web.cordis.patch.yml'), 'utf8')
-  const pristineDoc = existsSync(join(root, 'docs', 'UPSTREAM-CONTRACT.md'))
-    ? readFileSync(join(root, 'docs', 'UPSTREAM-CONTRACT.md'), 'utf8') : null
+  // Respect the documented input seams on the parent invocation too. Otherwise `--self-test --contract <rc5>`
+  // silently seeds every child from the workspace's default contract (which may point at a stale checkout).
+  const pristineContract = structuredClone(contract)
+  const pristineProfile = readFileSync(PROFILE_PATCH_PATH, 'utf8')
+  const pristineDoc = existsSync(DOC_PATH) ? readFileSync(DOC_PATH, 'utf8') : null
   const scratch = mkdtempSync(join(tmpdir(), 'contract-selftest-'))
   const dropSlot = (c) => { c.clientSlots.upstreamUniverse.entries = c.clientSlots.upstreamUniverse.entries.filter(e => e.slot !== 'shell.overlay') }
   const fakeSlot = (c) => { c.clientSlots.upstreamUniverse.entries.push({ slot: 'zzz.selftest.not.upstream', kind: 'list', scope: 'root', file: 'nowhere' }) }
@@ -890,6 +929,8 @@ function runContractSelfTest() {
     { label: '§8 行面判红：禁用了一条上游不存在的行（改名/删除形态）', profile: t => t.replace('- id: client-hmr', '- id: client-hmr-upstream-renamed'), expect: /禁用了上游不存在的行/ },
     { label: '§8 行面判红：上游行登记集多一条', mutate: c => { c.upstreamRows.entries.push({ key: 'zzz-selftest-row', name: '@dsh-android/nope', upstreamDisabled: false, bundle: 'base' }) }, expect: /上游删除了已登记的行/ },
     { label: '§8 行面判红：上游行登记集漏一条', mutate: c => { c.upstreamRows.entries = c.upstreamRows.entries.filter(e => e.key !== 'timer') }, expect: /上游新增未判定的行/ },
+    { label: '§8.1 判红：rc.5 experimental-terminal 行登记缺 optional-terminal-pwsh', kind: null, mutate: c => { c.upstreamRows.entries = c.upstreamRows.entries.filter(e => e.key !== 'optional-terminal-pwsh') }, expect: /必须登记 rc\.5 experimental-terminal 的 bash\/pwsh 行/ },
+    { label: '§8.1 判红：去掉 pwsh profile 禁用项会重新启用同名后端', kind: null, profile: t => t.replace(/(- id: optional-terminal-pwsh\r?\n\s+disabled: )true/, '$1false'), expect: /Android profile 必须用字面量 disabled: true 关闭 optional-terminal-pwsh/ },
     { label: '§7 幽灵插行判红：profile 挂了一个仓库里不存在的包', profile: t => t.replace("'@dsh-android/dsh-host-web-compat'", "'@dsh-android/dsh-nope'"), expect: /profile patch 挂了仓库里不存在的包/ },
     { label: '§7 fail-open 判红：抹掉无 peer 行的显式判定', mutate: c => { c.runtimeCompat.noPeerRows = [] }, expect: /没有任何 @deepseek-ai\/dsh\* peer/ },
     /* 反证要钉在「未来的运行时」上没有意义（抬版后它就变成现状）；这里装一个任何 peer

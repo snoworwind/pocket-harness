@@ -480,3 +480,23 @@ PR #211 刷新至最新 main 后，Kotlin 编译与单测、静态/来源回归�
 - #1499/#1531 的补丁锚点精确匹配和 #1550 的逐补丁测试映射仍是待独立复核的候选，不将其记为已实现。
 
 设备三层验收按用户要求暂缓；进入发版候选前须按项目协议补验。
+
+## 29. 2026-11-05 持久 Shell pwsh 冲突处置（上游 #1344）
+
+### 29.1 证据与范围
+
+- 新增上游提交 `89c9f3a`（#1551）同时带来 Web Speech polyfill 与持久 Shell 修复。固定本仓使用的官方 Harness rc.5 源码 `b830ec950faba0a46dda564be3e2d854afed94f1` 中，`packages/experimental/terminal-bundle/cordis.patch.yml` 仍登记 `optional-terminal-bash` 与 `optional-terminal-pwsh`，都指向 `@deepseek-ai/dsh-terminal-bash`；pwsh 只多了 `shellDialect: pwsh`，未覆盖后端名。上游报告 Android 上平台表达式没有阻止第二入口，插件启用时报 `a PTY backend named "shell" is already registered`。
+- rc.5 的 `profile-web.cordis.patch.yml` 原先没有针对这条 optional row 的显式关闭项。Android 快照不含 PowerShell 可执行文件；保留 pwsh 入口既可能抢占 bash 后端名，也不能产生可用的 PowerShell 能力。
+- Web Speech 部分不纳入：本仓当前插件无 Web Speech 消费点，`AndroidBridge` 无 TTS 方法。Linux #1528 不纳入：Linux runtime 投入决策仍为暂缓，且清理陈旧备份须先解决活动发布者归属。#1521/#1522 的无障碍节点回收列为独立审计项，不与本次 profile 变更混合。
+
+### 29.2 实施
+
+- `scripts/profile-web.cordis.patch.yml` 在最后应用的 profile 层以字面量 `disabled: true` 关闭 `optional-terminal-pwsh`，保留 bash 与持久 Shell 工具。
+- `scripts/contract.json` 将 rc.5 experimental-terminal 的 5 条行加入 192 行登记集。`scripts/check-contract.mjs` 的 G-4 行扫描继续要求 base/web-app，在 experimental-terminal 在场时也纳入；新增 §8.1 固定检查两条同包入口已登记且 profile 最终只启用 bash。
+- `check-contract --self-test` 现从父进程显式传入的 contract/profile/doc 输入构造反证，避免测试声称切到固定源树却仍偷偷使用工作区默认契约。
+
+### 29.3 验证与边界
+
+- 使用固定 rc.5 树执行契约正式检查，通过；自检 22 个判红用例通过，另外 2 个因自包含布局没有协调仓专属 `docs/UPSTREAM-CONTRACT.md` 而明确 N/A。自检反例覆盖删除 pwsh 登记与取消 profile 禁用两种假绿。
+- `node --check scripts/check-contract.mjs`、契约 JSON 解析与 `git diff --check` 通过。默认 `.deploy-tmp/deepseek-harness` 指向 rc.2，直接对它运行会因树身份不符失败；验证改用已有固定 rc.5 源树的临时契约副本，不改该共享缓存。
+- ADB server 启动失败，本轮没有来源 APK、CDP 或 ADB 设备验收；PR 需显式注明未做设备验证，进入发布候选前必须按三层协议复验 bash 可用且 pwsh 不再抢占后端。该状态不因上游设备报告或本地静态通过而关闭。

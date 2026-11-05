@@ -36,7 +36,7 @@
 
 工作流外部 action 使用完整 commit SHA；更新时核对官方仓库 tag 对应提交，再跑 `node scripts/source-build/check-workflow-action-pins.mjs --self-test` 和来源套件。PR/来源预检实际执行固定引用扫描，禁止退回可变标签或分支；这不固定 action 自身下载的所有依赖。安全回归命令及本轮证据见 [SECURITY-AUDIT-2026-10-17.md](SECURITY-AUDIT-2026-10-17.md)。
 
-契约门禁同时登记上游与本地 UI 槽位：`clientSlots.slots` 包含实际消费的槽名，`declarations` 默认从 `upstreamRepo` 读声明，本地声明显式填写 `repo`，不加入 `upstreamUniverse`。新增本地槽仍须校验 kind/scope 与文件在场，不能通过跳过声明检查放行。CI 39011926728 的阻断与修复见 gotchas 坑 368；自检命令为 `node scripts/check-contract.mjs --self-test`，必须配套固定版本上游树与插件 lib。
+契约门禁同时登记上游与本地 UI 槽位：`clientSlots.slots` 包含实际消费的槽名，`declarations` 默认从 `upstreamRepo` 读声明，本地声明显式填写 `repo`，不加入 `upstreamUniverse`。G-4 行面还扫描必需的 base/web-app 与在场的 experimental-terminal bundle；rc.5 profile 必须明确关闭与 bash 冲突的 `optional-terminal-pwsh`。新增本地槽仍须校验 kind/scope 与文件在场，不能通过跳过声明检查放行。CI 39011926728 的阻断与修复见 gotchas 坑 368；自检命令为 `node scripts/check-contract.mjs --self-test`，可通过 `--contract` 指向固定版本上游树的契约副本，必须配套固定版本源码树与插件 lib。
 
 引擎私有通信专项：Linux/WSL 执行 `node --test scripts/tests/engine-private-transport.test.mjs`，真实 Unix socket 正反证已接入 PR Gate 与来源构建预检；Windows 的核心 Unix 用例明确 skip，不能据其绿代替 Linux 证据。设备负控 `EngineTransportInstrumentedTest` 须来源链新包且 fresh process，详见 emulator-test-protocol.md；本次源码及本机证据见 gotchas 坑 352；Android SocketAdaptor 阻塞锁导致启动探活超时的后续修复及未验边界见坑 395。
 
