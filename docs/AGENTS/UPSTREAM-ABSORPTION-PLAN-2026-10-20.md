@@ -520,7 +520,7 @@ PR #211 刷新至最新 main 后，Kotlin 编译与单测、静态/来源回归�
 ### 30.3 验收边界与当前处置
 
 - 这是 AccessibilityService 设备控制行为。根据 2026-11-05 更新后的 AGENTS.md §4，开发 PR 不要求即时 CDP/ADB 验收；代码层仍须覆盖 API<33 与 API≥33、节点所有权、在途动作排空及 teardown 竞态，并通过相关静态门禁。正式 Release 默认用最终 ARM64 APK 完成 §2.1 三层；若显式豁免，须在 Release 记录未执行设备层、原因与剩余风险，并保持未验收状态。
-- 当前分支已实现代码候选。最终源码全量 Kotlin 测试 1441 项，1 项在 Windows 因缺少创建 symlink 权限失败（`SnapshotTransactionTest.markerRejectsSymlinksWithoutTouchingTheirTargets`），3 项跳过；上次只在该主机出现的截图缓存失败未重现。回收器定向集 8 项通过；执行地图、控制 op、Kotlin 注释门禁通过。Linux CI 尚待确认 symlink 用例。当前没有 ADB 设备，本轮未做 APK/CDP/ADB；这不阻塞开发 PR。正式 Release 默认补最终 ARM64 APK 三层验证；若显式豁免设备层，需在 Release 记录遗漏层、原因和剩余风险，不能标通过。正式上游比较游标仍保持 656b73c5130f22b12536a2e9f738c686e417db11。
+- 实现已由 [PR #234](https://github.com/snoworwind/pocket-harness/pull/234) 合入，merge commit `28d3c3b2c367906471beec293629b5e00c671072`；[CI run 42056888204](https://github.com/snoworwind/pocket-harness/actions/runs/42056888204) 的 Kotlin 编译/单测、测试数量门禁、静态门禁与源码回归均通过。Windows 本地全量 Kotlin 1441 项中，1 项因主机无创建 symlink 权限失败（`SnapshotTransactionTest.markerRejectsSymlinksWithoutTouchingTheirTargets`），3 项跳过；Linux CI 通过该用例。回收器定向集 8 项通过，执行地图、控制 op、Kotlin 注释与维护文档检查通过。当前没有 ADB 设备，本轮未做 APK/CDP/ADB；这不阻塞开发 PR。正式 Release 默认补最终 ARM64 APK 三层验证；若显式豁免设备层，需在 Release 记录遗漏层、原因和剩余风险，不能标通过。正式上游比较游标仍保持 656b73c5130f22b12536a2e9f738c686e417db11。
 
 ## 31. 2026-11-05 构建期补丁锚点唯一性（上游 #1499/#1531）
 
