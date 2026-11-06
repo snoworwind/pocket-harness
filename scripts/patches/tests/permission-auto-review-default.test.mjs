@@ -41,7 +41,11 @@ const z = schemaFactory;
 const z$1 = schemaFactory;
 const CommandDefinitionId = value => value;
 const Remote = () => method => method;
-class TypertRemoteService { constructor(ctx) { this.ctx = ctx; } }
+class Service {
+  static init = Symbol.for('dsh-test-service-init');
+  constructor(ctx) { this.ctx = ctx; }
+}
+class TypertRemoteService extends Service { constructor(ctx) { super(ctx); } }
 const SANDBOX_MODES = ['read-only', 'workspace-write', 'danger-full-access'];
 const APPROVAL_POLICIES = ['ask', 'never'];
 const setSandboxMode = (session, mode) => session.append('sandbox/mode', { mode });
@@ -64,11 +68,12 @@ function permissionRuntimeHarness(sessions) {
     shell: { sandboxMode: 'workspace-write' },
     approval: { config: { policy: 'ask' }, setPolicy() {} },
     sessionProjections: {
-      register() {},
+      async register() { return { stateOf(session) { return session.state; } }; },
       stateOf(session) { return session.state },
     },
     on(event, handler) { handlers.set(event, handler); return () => {} },
     sessions: { list: () => sessions },
+    agents: { list: () => sessions.map(session => ({ session })) },
     effect(operation) { return operation() },
     events: { dispatch: () => [] },
     logger: { warn() {} },
@@ -119,6 +124,7 @@ test('persisted Auto sessions restore before reviewer registration and stay fail
       },
       defaultPreset: { get: () => 'auto' },
     })
+    await service[Symbol.for('dsh-test-service-init')]()
 
     assert.deepEqual(persisted.state, {
       preset: 'auto', sandbox: 'danger-full-access', approval: 'ask', seeded: true,
@@ -136,7 +142,7 @@ test('persisted Auto sessions restore before reviewer registration and stay fail
     assert.equal(downstreamCalls, 0)
 
     const fresh = makeSession()
-    handlers.get('session/created')(fresh)
+    handlers.get('agent/created')({ agent: { session: fresh } })
     assert.equal(fresh.state.preset, 'auto')
     assert.equal(fresh.state.sandbox, 'danger-full-access')
     assert.equal(fresh.state.approval, 'ask')
@@ -295,7 +301,9 @@ class BlockAssembler {
     const outerPtc = createHarness({ risk: 'low', decision: 'allow' }, 'run_code')
     await outerPtc.handler(outerPtc.exec, async () => ({ kind: 'allow' }))
     assert.equal(outerPtc.requests.filter(value => typeof value === 'object').length, 1, 'the outer run_code source is reviewed')
-    assert.match(outerPtc.requests.find(value => typeof value === 'object').messages[0].content[0].text, /"name": "run_code"/)
+    const outerMessages = outerPtc.requests.find(value => typeof value === 'object').messages
+      .flatMap(message => message.content ?? []).map(content => content.text ?? '').join('\n')
+    assert.match(outerMessages, /"name": "run_code"/)
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }

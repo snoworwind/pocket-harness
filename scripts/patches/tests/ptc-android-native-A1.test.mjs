@@ -2,13 +2,13 @@
 import assert from 'node:assert/strict'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join, posix } from 'node:path'
+import { dirname, isAbsolute, join, posix } from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { runInNewContext } from 'node:vm'
 import test from 'node:test'
 import {
-  ANDROID_ENV_NAMES, ENV_MARKER, LAUNCH_HELPER_JS, PERSISTENT_MARKER, assertChildClearing, assertPolicyGate,
+  ANDROID_ENV_NAMES, ENV_MARKER, LAUNCH_HELPER_JS, assertChildClearing, assertPolicyGate,
   patchEnvironment, patchRuntimeIndex, planPatch,
 } from '../ptc-android-native-A1.mjs'
 import { versionedFixture } from './lib/fixture.mjs'
@@ -32,84 +32,94 @@ const native = {
   TMPDIR: '/data/data/com.snoworwind.pocketharness/files/home/tmp',
   OPENSSL_CONF: prefix + '/etc/tls/openssl.cnf', SSL_CERT_FILE: prefix + '/etc/tls/cert.pem',
 }
+
 function environmentSet(platform) {
   const declaration = environment.match(/const STARTUP_ENVIRONMENT_NAMES = new Set\([\s\S]*?\);/)
   assert.ok(declaration, 'published runtime startup environment declaration exists')
   return runInNewContext(declaration[0] + '\nSTARTUP_ENVIRONMENT_NAMES;', { process: { platform } })
 }
+
 function choose(executable, options = {}) {
   return Array.from(runInNewContext(LAUNCH_HELPER_JS + '\ndshMobilePtcLaunchPrefix(executable);', {
     executable, isAbsolute: posix.isAbsolute,
     process: { platform: options.platform ?? 'android', execPath: options.execPath ?? '/system/bin/linker64', env: options.env ?? native },
   }))
 }
-// 0.2.1 上游 index 里有两条 spawn 路径（一次执行 + 持久 PTC）。A1 只替换「一次执行」的 launch 段；
-// 该段的 signal 是形参 signal，持久路径写的是 this.controller.signal。按这条精确锚点取段，避免整段误取。
-const PER_CALL_LAUNCH = /^[\t ]*const executable = await this\.ctx\.subprocess\.resolveExecutable\(this\.config\.launch\.executable, void 0, signal\);[\s\S]*?^[\t ]*const launched = handle;$/m
-function perCallLaunch() {
-  const matches = [...index.matchAll(new RegExp(PER_CALL_LAUNCH.source, PER_CALL_LAUNCH.flags + 'g'))]
-  assert.equal(matches.length, 1, 'per-call launch segment: expected exactly one anchor, got ' + matches.length)
+
+// rc1 uses one worker launch for per-call and retained-state execution. The bootstrap argument
+// selects process.js or persistent-process.js; there is no second independent spawn path.
+const WORKER_LAUNCH = /^[\t ]*const executable = await this\.ctx\.subprocess\.resolveExecutable\(this\.config\.launch\.executable, void 0, this\.controller\.signal\);[\s\S]*?^[\t ]*this\.handle = handle;$/m
+function workerLaunch() {
+  const matches = [...index.matchAll(new RegExp(WORKER_LAUNCH.source, WORKER_LAUNCH.flags + 'g'))]
+  assert.equal(matches.length, 1, 'rc1 worker launch: expected exactly one anchor, got ' + matches.length)
   return matches[0][0]
 }
-/** 只执行补丁后的「一次执行」launch 段，用假的 subprocess/sandbox 服务观察行为。 */
+
+/** Execute the published launch statements with observable subprocess and sandbox services. */
 async function launch(mode, options = {}) {
-  const segment = perCallLaunch()
+  const segment = workerLaunch()
   assert.ok(segment.includes('this.ctx.subprocess.spawn'))
-  assert.ok(segment.includes('dshMobilePtcLaunchPrefix(executable)'), 'launch must go through the A1 linker prefix helper')
+  assert.ok(segment.includes('dshMobilePtcLaunchPrefix(executable)'), 'launch must pass through the Android linker-prefix helper')
   const launchConfig = options.launch ?? { kind: 'node-script', executable: options.executable ?? wrapper }
   const calls = { spawn: [], confine: [], resolved: [], bootstrap: [] }
   const policy = { mode, workspaceRoot: '/workspace' }
   const context = {
+    closed: false,
+    controller: { signal: {} },
+    retainsState: options.retainsState ?? false,
+    policy,
+    config: { launch: launchConfig, maxOldGenerationSizeMb: 512, maxMessageBytes: 1234, graceMs: 3000 },
     ctx: {
       fs: {},
       subprocess: {
-        async resolveExecutable(executable) { calls.resolved.push(executable); return executable },
+        async resolveExecutable(executable) {
+          calls.resolved.push(executable)
+          if (options.cancelOnResolve) context.closed = true
+          return executable
+        },
         spawn(spec) { calls.spawn.push(spec); return { fake: true } },
       },
       sandbox: {
         async confine(argv, suppliedPolicy) {
           calls.confine.push({ argv: Array.from(argv), policy: suppliedPolicy })
           if (options.unavailable) throw options.unavailable
-          return { argv: ['enforcing-runner', '--', ...argv], enforcement: 'full' }
+          return { argv: ['enforcing-runner', '--', ...argv], enforcement: 'full', runnerFailureRules: [] }
         },
       },
     },
-    config: {
-      launch: launchConfig,
-      maxOldGenerationSizeMb: 512,
-      maxMessageBytes: 1234,
-      graceMs: 3000,
-    },
-    // 上游 0.2.1 的 bootstrapArgs(fs, launch, maxMessageBytes)：第三段参数已经是 resolved launch。
-    bootstrapArgs(fs, launch, maxMessageBytes) {
-      calls.bootstrap.push({ fs, launch, maxMessageBytes })
-      return launch.kind === 'embedded' ? [String(maxMessageBytes)] : ['/runtime/process.js', String(maxMessageBytes)]
-    },
   }
-  const js = '(async function () {\n' + segment + '\nreturn { handle, sandbox };\n})'
-  const fn = runInNewContext(LAUNCH_HELPER_JS + '\n' + js, {
-    isAbsolute: posix.isAbsolute,
-    process: { platform: 'android', execPath: '/system/bin/linker64', env: { PATH: prefix + '/bin:/system/bin', ...native, DEEPSEEK_API_KEY: 'fixture-secret', DSH_PICK_TOKEN: 'fixture-token', NODE_OPTIONS: '--inspect=0' } },
-    STARTUP_ENVIRONMENT_NAMES: environmentSet('android'),
-    bootstrapArgs: context.bootstrapArgs,
-    policy, signal: undefined, settled: false, result: {}, confined: undefined, handle: undefined,
-    spec: { cwd: '/workspace' }, sandbox: { mode, denied: false },
-  })
-  try { return { calls, result: await fn.call(context) } }
-  catch (error) { return { calls, error } }
+  const bootstrapArgs = (_fs, launchConfig, bytes, retainsState) => {
+    calls.bootstrap.push({ launch: launchConfig, bytes, retainsState })
+    return [retainsState ? '/runtime/persistent-process.js' : '/runtime/process.js', String(bytes)]
+  }
+  const program = '(async function () {\n' + segment + '\nreturn { handle: this.handle, confined: this.confined };\n}).call(context)'
+  try {
+    return {
+      calls,
+      result: await runInNewContext(LAUNCH_HELPER_JS + '\n' + program, {
+        context, isAbsolute: posix.isAbsolute,
+        process: { platform: 'android', execPath: '/system/bin/linker64', env: { PATH: prefix + '/bin:/system/bin', ...native, DEEPSEEK_API_KEY: 'fixture-secret', DSH_PICK_TOKEN: 'fixture-token', NODE_OPTIONS: '--inspect=0' } },
+        STARTUP_ENVIRONMENT_NAMES: environmentSet('android'), bootstrapArgs, cwd: '/workspace',
+      }),
+    }
+  } catch (error) {
+    return { calls, error }
+  }
 }
 
-test('published runtime library patch is idempotent and preflights the unchanged child', () => {
+test('published runtime library patch is idempotent and preflights the unchanged children', () => {
   assert.equal(patchRuntimeIndex(index), index)
   assert.equal(patchEnvironment(environment), environment)
   assertChildClearing(child)
+  assertChildClearing(patchEnvironment(read('lib/persistent-process.js')))
   const plan = planPatch(fixture)
   assert.deepEqual(plan.filter(file => file.before !== file.after).map(file => file.name), ['lib/index.js', 'lib/process.js', 'lib/persistent-process.js'])
   assert.equal(read('lib/index.js'), rawIndex)
   assert.throws(() => planPatch(fixture, false, name => name === 'package.json'
-    ? JSON.stringify({ name: '@deepseek-ai/unexpected-runtime', version: '0.2.1-rc.3' })
+    ? JSON.stringify({ name: '@deepseek-ai/unexpected-runtime', version: '0.2.2-rc.1' })
     : read(name)), /requires package @deepseek-ai\/dsh-ptc-runtime-node/)
 })
+
 test('Android retains exactly the native settings; other platforms retain the original six names', () => {
   const android = environmentSet('android')
   for (const key of ANDROID_ENV_NAMES) assert.equal(android.has(key), true, key)
@@ -118,7 +128,8 @@ test('Android retains exactly the native settings; other platforms retain the or
   }
   for (const key of ['HOME', 'DEEPSEEK_API_KEY', 'DSH_PICK_TOKEN', 'NODE_OPTIONS', 'TERMUX_UNKNOWN_SECRET']) assert.equal(android.has(key), false, key)
 })
-test('both real linker64 locations, direct node, and shipped C1 wrapper preserve linker-before-node ordering', () => {
+
+test('trusted Android linker and shipped C1 wrapper preserve linker-before-Node ordering', () => {
   for (const linker of ['/system/bin/linker64', '/apex/com.android.runtime/bin/linker64']) {
     assert.deepEqual(choose(linker), [linker, node])
     assert.deepEqual(choose(node, { execPath: linker }), [linker, node])
@@ -127,196 +138,119 @@ test('both real linker64 locations, direct node, and shipped C1 wrapper preserve
   assert.deepEqual(choose('/custom/node-wrapper'), ['/custom/node-wrapper'])
   assert.deepEqual(choose(node, { execPath: node }), ['/system/bin/linker64', node])
 })
-test('unknown linkers and invalid/missing prefixes fail loudly without guessing a target', () => {
+
+test('unknown linkers and invalid or missing prefixes fail loudly without guessing a target', () => {
   for (const executable of ['/tmp/linker64', '/system/bin/linker', '/tmp/ld.so.1', 'node']) assert.throws(() => choose(executable))
   for (const env of [{}, { TERMUX__PREFIX: 'relative' }, { TERMUX__PREFIX: '/snapshot/../usr' }, { TERMUX__PREFIX: '/snapshot\0/usr' }]) assert.throws(() => choose(node, { env }))
   assert.throws(() => choose('/system/bin/linker64', { platform: 'linux' }))
   assert.deepEqual(choose('/usr/bin/node', { platform: 'linux' }), ['/usr/bin/node'])
 })
-test('resolved full-access policy alone permits native spawn and does not inherit loader/inspector secrets', async () => {
+
+test('resolved full-access policy alone permits native worker launch and secrets do not reach it', async () => {
   for (const executable of [node, wrapper]) {
     const run = await launch('danger-full-access', { executable })
     assert.equal(run.error, undefined)
     assert.equal(run.calls.confine.length, 0)
     assert.equal(run.calls.spawn.length, 1)
-    // 0.2.1：wrapper 与直连 node 都解析成「linker64 + node」两段，再逐段解析可执行文件。
     assert.deepEqual(run.calls.resolved, [executable, node])
     const spec = run.calls.spawn[0]
     assert.deepEqual(Array.from(spec.argv), ['/system/bin/linker64', node, '/runtime/process.js', '1234'])
     assert.equal(spec.env.NODE_OPTIONS, '--max-old-space-size=512')
-    assert.equal(Object.hasOwn(spec.env, 'DSH_PTC_RUNTIME_NODE'), false, 'node-script launch must not claim the embedded marker')
+    assert.equal(Object.hasOwn(spec.env, 'DSH_PTC_RUNTIME_NODE'), false)
     for (const key of ANDROID_ENV_NAMES) assert.equal(Object.hasOwn(spec.env, key), false, key + ' must not be tombstoned')
     assert.equal(spec.env.DEEPSEEK_API_KEY, undefined)
     assert.equal(spec.env.DSH_PICK_TOKEN, undefined)
     assert.equal(spec.stdio.control, 'pipe')
     assert.equal(spec.cwd, '/workspace')
-    // 上游 0.2.1 的 bootstrapArgs 第三段参数是 resolved launch，不再是旧版 this.config。
     assert.equal(run.calls.bootstrap.length, 1)
     assert.deepEqual(run.calls.bootstrap[0].launch, { kind: 'node-script', executable })
-    assert.equal(run.calls.bootstrap[0].maxMessageBytes, 1234)
+    assert.equal(run.calls.bootstrap[0].bytes, 1234)
+    assert.equal(run.calls.bootstrap[0].retainsState, false)
   }
 })
-test('embedded launch keeps its shipped marker while the heap flag moves into the child environment', async () => {
+
+test('embedded and retained-state PTC modes select their bootstrap companions on the shared launch', async () => {
   const embedded = '/opt/dsh/embedded-node'
-  const run = await launch('danger-full-access', { launch: { kind: 'embedded', executable: embedded } })
-  assert.equal(run.error, undefined)
-  assert.deepEqual(run.calls.resolved, [embedded])
-  const spec = run.calls.spawn[0]
-  assert.deepEqual(Array.from(spec.argv), [embedded, '1234'])
-  assert.equal(spec.env.NODE_OPTIONS, '--max-old-space-size=512')
-  assert.equal(spec.env.DSH_PTC_RUNTIME_NODE, '1')
-  // 0.2.1 的 packaged 判据改为 launch.kind === "embedded"（旧判据 'pkg' in process 已不存在）。
-  assert.deepEqual(run.calls.bootstrap[0].launch, { kind: 'embedded', executable: embedded })
+  const embeddedRun = await launch('danger-full-access', { launch: { kind: 'embedded', executable: embedded } })
+  assert.equal(embeddedRun.error, undefined)
+  assert.deepEqual(embeddedRun.calls.resolved, [embedded])
+  assert.deepEqual(Array.from(embeddedRun.calls.spawn[0].argv), [embedded, '/runtime/process.js', '1234'])
+  assert.equal(embeddedRun.calls.spawn[0].env.NODE_OPTIONS, '--max-old-space-size=512')
+  assert.equal(embeddedRun.calls.spawn[0].env.DSH_PTC_RUNTIME_NODE, '1')
+
+  const retained = await launch('danger-full-access', { retainsState: true })
+  assert.equal(retained.error, undefined)
+  assert.equal(retained.calls.spawn.length, 1, 'rc1 uses one worker launch for both execution modes')
+  assert.deepEqual(Array.from(retained.calls.spawn[0].argv), ['/system/bin/linker64', node, '/runtime/persistent-process.js', '1234'])
+  assert.equal(retained.calls.bootstrap[0].retainsState, true)
 })
-test('restricted policies never spawn when the sandbox is unavailable; no unconfined retry', async () => {
+
+test('restricted policies never spawn when sandboxing is unavailable and preserve enforcing argv', async () => {
   for (const mode of ['read-only', 'workspace-write']) {
     const unavailable = new Error('SANDBOX_UNAVAILABLE fixture')
-    const run = await launch(mode, { unavailable })
-    assert.equal(run.error, unavailable)
-    assert.equal(run.calls.confine.length, 1)
-    assert.equal(run.calls.confine[0].policy.mode, mode)
-    assert.deepEqual(run.calls.confine[0].argv, ['/system/bin/linker64', node, '/runtime/process.js', '1234'])
-    assert.equal(run.calls.spawn.length, 0)
+    const blocked = await launch(mode, { unavailable })
+    assert.equal(blocked.error, unavailable)
+    assert.equal(blocked.calls.confine.length, 1)
+    assert.equal(blocked.calls.confine[0].policy.mode, mode)
+    assert.deepEqual(blocked.calls.confine[0].argv, ['/system/bin/linker64', node, '/runtime/process.js', '1234'])
+    assert.equal(blocked.calls.spawn.length, 0)
+
+    const allowed = await launch(mode)
+    assert.equal(allowed.error, undefined)
+    assert.deepEqual(Array.from(allowed.calls.spawn[0].argv), ['enforcing-runner', '--', '/system/bin/linker64', node, '/runtime/process.js', '1234'])
+    assert.equal(allowed.result.confined.enforcement, 'full')
   }
-  assertPolicyGate(index)
+  assertPolicyGate(index, 1)
+  assert.equal([...index.matchAll(/this\.ctx\.sandbox\.confine\(argv,/g)].length, 1)
 })
-test('an enforcing provider keeps its complete argv and honest enforcement metadata', async () => {
-  const run = await launch('workspace-write')
+
+test('cancellation after executable resolution does not spawn', async () => {
+  const run = await launch('danger-full-access', { cancelOnResolve: true })
   assert.equal(run.error, undefined)
-  assert.deepEqual(Array.from(run.calls.spawn[0].argv), ['enforcing-runner', '--', '/system/bin/linker64', node, '/runtime/process.js', '1234'])
-  assert.equal(run.result.sandbox.enforcement, 'full')
-  assert.equal(run.result.sandbox.mode, 'workspace-write')
+  assert.equal(run.calls.spawn.length, 0)
 })
-test('published child retains only native OS values while the model-facing process.env stays empty', () => {
+
+test('published child clears secrets and exposes an empty model environment', () => {
   const osEnv = { ...native, PATH: prefix + '/bin', DEEPSEEK_API_KEY: 'fixture-secret', DSH_PICK_TOKEN: 'fixture-token', NODE_OPTIONS: '--max-old-space-size=512' }
   const processState = { env: osEnv }
-  // 0.2.1 把清环境体收进 environment.ts 的 clearProgramEnvironment(state)，产物面仍内联在 process.js。
   const clearing = /^function clearProgramEnvironment\(state\) \{\n[\s\S]*?\n\}/m.exec(child)?.[0]
   assert.ok(clearing, 'published child contains its startup environment clearing boundary')
-  assert.match(child, /clearProgramEnvironment\(processState\);/, 'startup clears the child program environment before evaluating code')
-  runInNewContext(clearing + '\nclearProgramEnvironment(processState);', { processState, STARTUP_ENVIRONMENT_NAMES: environmentSet('android') })
-  assert.deepEqual(Object.keys(processState.env), [])
-  assert.equal(Object.getPrototypeOf(processState.env), null)
-  for (const key of ANDROID_ENV_NAMES) assert.equal(osEnv[key], native[key])
-  for (const key of ['DEEPSEEK_API_KEY', 'DSH_PICK_TOKEN', 'NODE_OPTIONS']) assert.equal(Object.hasOwn(osEnv, key), false)
-})
-test('both reviewed spawn paths keep the resolved-policy confinement gate in the same shape', () => {
-  const gate = /confined = policy\.mode === "danger-full-access" \? void 0 : await this\.ctx\.sandbox\.confine\(argv,/g
-  // 0.2.1 有两条 spawn 路径（一次执行 + 持久 PTC）；两处都必须保留「只有 resolved full-access 才跳过 confine」。
-  assert.equal([...index.matchAll(gate)].length, 2, 'both reviewed spawn paths keep the confinement gate')
-  assert.equal([...index.matchAll(/this\.ctx\.sandbox\.confine\(/g)].length, 2, 'every sandbox.confine call site is a reviewed spawn path')
-  assertPolicyGate(index)
-})
-
-/** Run the actual persistent launch statements with observable subprocess services. */
-async function persistentLaunch(mode, unavailable = false, cancelOnResolve = false) {
-  const start = index.lastIndexOf('\n', index.indexOf('// ' + PERSISTENT_MARKER)) + 1
-  const end = index.indexOf('this.handle = handle;', start)
-  assert.ok(start > 0 && end > start)
-  const segment = index.slice(start, end)
-  const calls = { resolved: [], spawn: [], confine: [], bootstrap: [] }
-  const context = {
-    closed: false, controller: { signal: {} }, policy: { mode, workspaceRoot: '/workspace' },
-    config: { launch: { kind: 'node-script', executable: wrapper }, maxOldGenerationSizeMb: 512, maxMessageBytes: 1234, graceMs: 3000 },
-    ctx: {
-      fs: {},
-      subprocess: {
-        async resolveExecutable(value) { calls.resolved.push(value); if (cancelOnResolve) context.closed = true; return value },
-        spawn(value) { calls.spawn.push(value); return value },
-      },
-      sandbox: { async confine(argv, policy) {
-        calls.confine.push({ argv: Array.from(argv), policy })
-        if (unavailable) throw new Error('sandbox-unavailable')
-        return { argv: ['enforcing-runner', '--', ...argv] }
-      } },
-    },
-  }
-  let error
-  try {
-    await runInNewContext('(async function(){' + segment + '\n}).call(context)', {
-      context, process: { platform: 'android', execPath: '/system/bin/linker64', env: { ...native, DEEPSEEK_API_KEY: 'fixture-secret' } },
-      dshMobilePtcLaunchPrefix: executable => choose(executable),
-      STARTUP_ENVIRONMENT_NAMES: environmentSet('android'),
-      bootstrapArgs(_fs, launch, bytes, persistent) { calls.bootstrap.push({ launch, bytes, persistent }); return ['/runtime/persistent-process.js', String(bytes)] },
-      cwd: '/workspace',
-    })
-  } catch (caught) { error = caught }
-  return { calls, error }
-}
-
-test('persistent worker uses trusted linker prefix and owned heap options before its independent spawn', async () => {
-  const run = await persistentLaunch('danger-full-access')
-  assert.equal(run.error, undefined)
-  assert.deepEqual(run.calls.resolved, [wrapper, node])
-  assert.equal(run.calls.confine.length, 0)
-  assert.equal(run.calls.spawn.length, 1)
-  const spec = run.calls.spawn[0]
-  assert.deepEqual(Array.from(spec.argv), ['/system/bin/linker64', node, '/runtime/persistent-process.js', '1234'])
-  assert.equal(spec.env.NODE_OPTIONS, '--max-old-space-size=512')
-  for (const key of ANDROID_ENV_NAMES) assert.equal(Object.hasOwn(spec.env, key), false)
-  assert.equal(spec.env.DEEPSEEK_API_KEY, undefined)
-  assert.equal(run.calls.bootstrap[0].persistent, true)
-})
-
-test('persistent restricted launch fails closed and preserves enforcing argv; cancellation never spawns', async () => {
-  for (const mode of ['read-only', 'workspace-write']) {
-    const blocked = await persistentLaunch(mode, true)
-    assert.match(blocked.error.message, /sandbox-unavailable/)
-    assert.equal(blocked.calls.spawn.length, 0)
-    assert.equal(blocked.calls.confine.length, 1)
-    const allowed = await persistentLaunch(mode)
-    assert.equal(allowed.error, undefined)
-    assert.deepEqual(Array.from(allowed.calls.spawn[0].argv), ['enforcing-runner', '--', '/system/bin/linker64', node, '/runtime/persistent-process.js', '1234'])
-  }
-  assert.equal((await persistentLaunch('danger-full-access', false, true)).calls.spawn.length, 0)
-})
-
-test('persistent child clears secrets and exposes an empty model environment; missing companion is rejected', () => {
-  const persistent = patchEnvironment(read('lib/persistent-process.js'))
-  assertChildClearing(persistent)
-  const clearing = /^function clearProgramEnvironment\(state\) \{\n[\s\S]*?\n\}/m.exec(persistent)?.[0]
-  assert.ok(clearing)
-  assert.match(persistent, /clearProgramEnvironment\(processState\);/)
-  const osEnv = { ...native, DEEPSEEK_API_KEY: 'fixture-secret', NODE_OPTIONS: '--inspect' }
-  const processState = { env: osEnv }
+  assert.match(child, /clearProgramEnvironment\(processState\);/)
   runInNewContext(clearing + '\nclearProgramEnvironment(processState);', { processState, STARTUP_ENVIRONMENT_NAMES: environmentSet('android') })
   assert.deepEqual(Object.keys(processState.env), [])
   assert.equal(Object.getPrototypeOf(processState.env), null)
   assert.equal(Object.hasOwn(osEnv, 'DEEPSEEK_API_KEY'), false)
   for (const key of ANDROID_ENV_NAMES) assert.equal(osEnv[key], native[key])
-  assert.throws(() => planPatch(fixture, false, file => { if (file === 'lib/persistent-process.js') throw new Error('missing persistent companion'); return read(file) }), /missing persistent companion/)
-  assert.throws(() => assertPolicyGate(index.replace('argv: this.confined?.argv ?? argv', 'argv: argv')), /every spawn must consume/)
-  assert.throws(() => assertPolicyGate(index + '\nconfined = policy.mode === "danger-full-access" ? void 0 : await this.ctx.sandbox.confine(argv, {});\n'), /unreviewed sandbox spawn count/)
 })
+
 test('anchor, marker, heap placement, and sandbox-policy drift are rejected', () => {
   assert.throws(() => patchEnvironment(rawIndex.replace('"TMP"', '"TMPDIR"')))
   assert.throws(() => patchEnvironment(environment.replace('"LD_PRELOAD"', '"EVIL_PRELOAD"')))
-  assert.throws(() => patchRuntimeIndex(rawIndex.replaceAll('policy.mode === "danger-full-access"', 'policy.mode === "workspace-write"')), /resolved-policy confinement gate/)
-  // 自校准计数（assertPolicyGate）：单点弱化（另一处仍命中）与新增未审阅 spawn 路径都必须判红。
-  assert.throws(() => assertPolicyGate(rawIndex.replace('policy.mode === "danger-full-access"', 'policy.mode === "workspace-write"')), /every sandbox spawn path/)
-  assert.throws(() => assertPolicyGate(index + '\nconst unrevisedSpawn = () => this.ctx.sandbox.confine(argv, {});\n'), /every sandbox spawn path/)
+  assert.throws(() => patchRuntimeIndex(rawIndex.replace('policy.mode === "danger-full-access"', 'policy.mode === "workspace-write"')), /resolved-policy confinement gate/)
+  assert.throws(() => assertPolicyGate(index.replace('policy.mode === "danger-full-access"', 'policy.mode === "workspace-write"'), 1), /every sandbox spawn path|expected reviewed anchors/)
+  assert.throws(() => assertPolicyGate(index + '\nconst unrevisedSpawn = () => this.ctx.sandbox.confine(argv, {});\n', 1), /every sandbox spawn path/)
   assert.throws(() => patchRuntimeIndex(rawIndex.replace('const packaged = this.config.launch.kind === "embedded";', 'const packaged = "pkg" in process && this.config.launch.bootstrapPath === void 0;')), /launch block differs from reviewed upstream/)
-  assert.throws(() => patchRuntimeIndex(rawIndex.replace('bootstrapArgs(this.ctx.fs, this.config.launch, this.config.maxMessageBytes)', 'bootstrapArgs(this.ctx.fs, this.config, this.config.maxMessageBytes)')), /launch block differs from reviewed upstream/)
+  assert.throws(() => patchRuntimeIndex(rawIndex.replace('bootstrapArgs(this.ctx.fs, this.config.launch, this.config.maxMessageBytes, this.retainsState)', 'bootstrapArgs(this.ctx.fs, this.config, this.config.maxMessageBytes, this.retainsState)')), /launch block differs from reviewed upstream/)
   assert.throws(() => patchRuntimeIndex(index.replace('...launchPrefix,', '...launchPrefix, heapFlag,')))
   assert.throws(() => assertChildClearing(child.replace('state.env = Object.create(null)', 'state.env = {}')))
 })
-test('old published artifact is rejected by strict anchor preflight; both compiled void 0/undefined spellings are accepted', () => {
+
+test('older published artifacts are rejected and void 0 or undefined compile forms normalize equally', () => {
   const oldFixture = new URL('./fixtures/dsh-ptc-runtime-node-0.2.0-rc.2/', import.meta.url)
-  // 旧夹具只读参考：0.2.0 产物还写着 nodeExecutable，严格锚点预检必须判红，不能拿旧产物冒充新引擎。
   const oldIndex = readFileSync(new URL('lib/index.js', oldFixture), 'utf8')
   assert.equal(JSON.parse(readFileSync(new URL('package.json', oldFixture), 'utf8')).version, '0.2.0-rc.2')
   assert.match(oldIndex, /this\.config\.nodeExecutable/)
   assert.throws(() => planPatch(fileURLToPath(oldFixture)))
-  // 编译产物里同一条 launch 段有 void 0 与 undefined 两种写法；A1 必须归一成同一份补丁产物。
   const reworded = rawIndex.replace(
-    'resolveExecutable(this.config.launch.executable, void 0, signal);',
-    'resolveExecutable(this.config.launch.executable, undefined, signal);')
-  assert.notEqual(reworded, rawIndex, '替换必须真的发生，否则下面的判据是空转')
+    'resolveExecutable(this.config.launch.executable, void 0, this.controller.signal);',
+    'resolveExecutable(this.config.launch.executable, undefined, this.controller.signal);')
+  assert.notEqual(reworded, rawIndex, 'replacement must change the fixture before normalization is checked')
   const rebuilt = patchRuntimeIndex(patchEnvironment(reworded))
   assert.equal(rebuilt, index)
-  assertPolicyGate(rebuilt)
+  assertPolicyGate(rebuilt, 1)
 })
-test('apply-patches writes the persistent companion, not just index and process', () => {
+
+test('apply-patches writes all PTC companion files after the prerequisite L1 patch', () => {
   const NODE = process.argv0 && posix.isAbsolute(process.argv0) ? process.argv0 : process.execPath
   const scratch = mkdtempSync(join(tmpdir(), 'ptc-apply-'))
   try {

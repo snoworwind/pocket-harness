@@ -46,38 +46,35 @@ test('home HTML waits for host Loader and its previously registered client graph
       loader,
       get(name) { return name === 'loader' ? this.loader : undefined; },
       webServer: {
-        registerFallback(fn) { handler = fn; },
+        registerFallback({ resource }) { handler = resource; },
         renderIndex(html) { renders++; return html + graph.join(','); },
       },
       connection: { authorizeIndex() { return true; } },
       effect(fn) { fn(); },
     };
     apply(ctx, { distIndex: index });
-    const response = () => ({ writeHead(status, headers) { this.status = status; this.headers = headers; }, end(body) { this.body = body; } });
-    const first = response(); const concurrent = response();
-    const firstDone = handler({ method: 'GET', url: '/' }, first);
-    const concurrentDone = handler({ method: 'GET', url: '/index.html' }, concurrent);
+    const firstDone = handler(new Request('http://localhost/'));
+    const concurrentDone = handler(new Request('http://localhost/index.html'));
     await Promise.resolve();
     assert.equal(renders, 0, 'first concurrent home requests stay behind the loader barrier');
     release();
     pendingTasks.splice(0);
-    await Promise.all([firstDone, concurrentDone, flushDone]);
-    assert.match(first.body, /initial,late-api-remotes$/);
-    assert.match(concurrent.body, /initial,late-api-remotes$/);
+    const [first, concurrent] = await Promise.all([firstDone, concurrentDone, flushDone]).then(([a, b]) => [a, b]);
+    assert.match(await first.text(), /initial,late-api-remotes$/);
+    assert.match(await concurrent.text(), /initial,late-api-remotes$/);
     assert.equal(renders, 2);
 
-    const assetResponse = response();
     let assetLoaderCalls = 0;
     ctx.loader.await = () => { assetLoaderCalls++; return new Promise(() => {}); };
-    await handler({ method: 'GET', url: '/asset.js' }, assetResponse);
-    assert.equal(assetResponse.body.toString(), 'asset');
+    const assetResponse = await handler(new Request('http://localhost/asset.js'));
+    assert.equal(await assetResponse.text(), 'asset');
     assert.equal(assetLoaderCalls, 0, 'non-home resources do not wait for Loader');
 
     ctx.loader.await = () => Promise.reject(new Error('host loader failed'));
-    await assert.rejects(handler({ method: 'GET', url: '/' }, response()), /host loader failed/);
+    await assert.rejects(handler(new Request('http://localhost/')), /host loader failed/);
     ctx.loader.await = () => Promise.resolve();
     ctx.webServer.renderIndex = () => { throw new Error('client graph composition failed'); };
-    await assert.rejects(handler({ method: 'GET', url: '/' }, response()), /client graph composition failed/);
+    await assert.rejects(handler(new Request('http://localhost/')), /client graph composition failed/);
   } finally {
     rmSync(scratch, { recursive: true, force: true });
   }

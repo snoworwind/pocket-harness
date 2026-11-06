@@ -73,8 +73,8 @@ export function patchPermissionPresetsAutoDefault(source) {
     '\t\t\tconst restoreSpec = preset === AUTO_PRESET ? this.resolve(AUTO_PRESET) : void 0;\n\t\t\tif (sandbox === null) setSandboxMode(session, restoreSpec?.sandbox ?? this.ctx.shell.sandboxMode);\n\t\t\tif (approval === null) setApprovalPolicy(session, restoreSpec?.approval ?? this.ctx.approval.config.policy ?? "ask");',
     'persisted Auto permission facts')
   out = replaceOnce(out,
-    '\t\t\tctx.on("session/created", (session) => {\n\t\t\t\tthis.pinInitialPermission(session);\n\t\t\t});',
-    '\t\t\tctx.on("session/created", (session) => {\n\t\t\t\tthis.pinInitialPermission(session);\n\t\t\t});\n\t\t\tctx.on("tools/pre-execute", (exec, next) => {\n\t\t\t\tconst agent = exec.agent;\n\t\t\t\tif (agent !== void 0 && (this.permissionState(agent.session).preset === AUTO_PRESET || this.current(agent.session) === AUTO_PRESET) && this.autoAdmit === void 0) return { kind: "deny", reason: "Auto review integration is unavailable; tool execution was blocked." };\n\t\t\t\treturn next();\n\t\t\t}, { prepend: true });',
+    '\t\t\tctx.on("agent/created", ({ agent }) => {\n\t\t\t\tthis.pinInitialPermission(agent.session);\n\t\t\t}, { prepend: true });',
+    '\t\t\tctx.on("agent/created", ({ agent }) => {\n\t\t\t\tthis.pinInitialPermission(agent.session);\n\t\t\t}, { prepend: true });\n\t\t\tctx.on("tools/pre-execute", (exec, next) => {\n\t\t\t\tconst agent = exec.agent;\n\t\t\t\tif (agent !== void 0 && (this.permissionState(agent.session).preset === AUTO_PRESET || this.current(agent.session) === AUTO_PRESET) && this.autoAdmit === void 0) return { kind: "deny", reason: "Auto review integration is unavailable; tool execution was blocked." };\n\t\t\t\treturn next();\n\t\t\t}, { prepend: true });',
     'permission Auto fail-closed guard')
   if (!out.includes('for (const session of this.ctx.sessions.list()) this.pinInitialPermission(session);')
     || !out.includes('this.names.map((name) => this.optionOf(name))')
@@ -117,8 +117,8 @@ export function patchAutoReviewDefaultBehavior(source) {
     '\t\t\t\tconst { decision } = review;\n\t\t\t\tif (decision.risk === "high") {\n\t\t\t\t\t// ' + AUTO_REVIEW_HIGH_DENY_MARKER + ': the hard-deny class cannot be approved by a user.\n\t\t\t\t\thardDenied.set(exec, decision.reason ?? "high-risk action");\n\t\t\t\t\treturn denied(exec, decision.reason);\n\t\t\t\t}\n\t\t\t\tif (decision.decision === "deny" && ctx.approval.overrideOf(agent.session) === "never") return denied(exec, decision.reason);',
     'Auto review high-risk hard denial')
   out = replaceOnce(out,
-    '\tconst active = /* @__PURE__ */ new Set();\n\tconst lifecycle = new AbortController();',
-    '\tconst active = /* @__PURE__ */ new Set();\n\tconst hardDenied = new WeakMap();\n\tconst lifecycle = new AbortController();',
+    '\tconst shownBySession = /* @__PURE__ */ new WeakMap();',
+    '\tconst shownBySession = /* @__PURE__ */ new WeakMap();\n\tconst hardDenied = new WeakMap();',
     'Auto review hard-denial state')
   out = replaceOnce(out,
     '\tctx.effect(function* () {\n\t\tyield ctx.on("tools/pre-execute", async (exec, next) => {',

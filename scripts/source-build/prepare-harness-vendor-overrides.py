@@ -13,8 +13,8 @@ import subprocess
 import sys
 import tarfile
 
-HARNESS_COMMIT = "b830ec950faba0a46dda564be3e2d854afed94f1"
-HARNESS_VERSION = "0.2.1-rc.5"
+HARNESS_COMMIT = "66491b05e3f05ad35bcdd4f6cd7ed26041d9e3db"
+HARNESS_VERSION = "0.2.2-rc.1"
 SOURCE_OVERRIDES = [
     {"package": package, "path": path, "commit": HARNESS_COMMIT}
     for package, path in [
@@ -150,7 +150,7 @@ def main() -> None:
     overlay = json.loads(overlay_path.read_text(encoding="utf-8"))
     root_manifest = json.loads((repo / "package.json").read_text(encoding="utf-8"))
     if root_manifest.get("version") != HARNESS_VERSION or overlay.get("engineVersion") != HARNESS_VERSION:
-        raise ValueError("vendor source audit requires the official 0.2.1-rc.5 source and overlay")
+        raise ValueError("vendor source audit requires the official 0.2.2-rc.1 source and overlay")
     report_path.parent.mkdir(parents=True, exist_ok=True)
     stage_root = report_path.parent / "vendor-overrides-stage"
     shutil.rmtree(stage_root, ignore_errors=True)

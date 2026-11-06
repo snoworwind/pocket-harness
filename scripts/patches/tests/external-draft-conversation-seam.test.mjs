@@ -17,7 +17,7 @@ function fixtureRoot() {
   mkdirSync(dirname(file), { recursive: true })
   writeFileSync(file, [
     'var ConversationController = class {',
-    '\t\t\tcreateDrafts(sessionId, files) { return files; }',
+    '\t\t\tcreateDrafts(sessionId, files, uploadImages) { return files; }',
     '\t\t\t/**',
     '\t\t\t* Restart one failed file upload.',
     '\t\t\t*/',

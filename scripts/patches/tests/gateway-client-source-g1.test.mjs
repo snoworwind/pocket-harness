@@ -56,7 +56,7 @@ test('enabled gateway browser exports do not race host fiber; controllers remain
       const factories = new Map(), modules = new Map()
       const window = { __ModuleLoader__: { load({ id, factory }) { factories.set(id, factory) } } }
       for (const batch of graph.batches) {
-        const response = await registry.fetchBundle({ method: 'GET', url: 'http://local/' + batch.url })
+        const response = await registry.fetchBundle({ method: 'GET', url: 'http://local/' + batch.url, headers: new Headers() })
         runInNewContext(await response.text(), { window })
       }
       const require = spec => {
