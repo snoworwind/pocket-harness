@@ -14,15 +14,15 @@
 
 ## 2. 文件逐项登记
 
-本节三份覆盖资产曾于 2026-10-27 从固定的官方 `0.2.1-rc.3` 来源构建包，经完整 26 条引擎补丁链重出；与当时隔离探针树目标文件逐字节相同。最终 main 来源链已构建并发布 v0.14.9 ARM64 APK（run `40473155658`）；该逐字节证据覆盖隔离探针树，未单独记录 APK 内三项资产的逐项抽取对账，也不证明后续 rc.5 产物同源。仓内当前文件 SHA-256：`attachment-local-index.js` `7ffe07dc8bed38a858f85c7f6df1fa41214cc16c634afbd989e07bf60cb31dbd`；`fs-local-index.js` `4b1daab4763d47c0936886e23767f485a5aee54cc66ecbcf0588f047de6f5408`；`session-persistence-jsonl-index.js` `b9ac5744c96a35c881ccc0d1b70850b012245dc54f07f2e543ad3632784a0981`。rc.3 升级边界见 [升级记录](ENGINE-UPGRADE-2026-10-27.md)，rc.5 来源与设备验收范围见 [升级记录](ENGINE-UPGRADE-2026-10-31.md)。
+v0.14.12 将引擎升至 `0.2.2-rc.1` 后，三份覆盖资产从对应 rc.1 出厂态 fixture 按 registry 顺序重出：`attach-durable-F2`、`spj-migration-link-F5`、`publish-exclusive-F7`、`fs-local-link-F8`、`fs-local-digest-guard-B`。初次来源草稿 run `42197329317` 在资产字节对账时发现旧 attachment 资产；修复后的逐项快照核验由后续来源草稿 run 记录。当前文件 SHA-256：`attachment-local-index.js` `e70a2976dbc6384e8f316dad4f104456a36339e54374b6ed90ec8e4dc14aebba`；`session-persistence-jsonl-index.js` `c72afc48ca208ddbf5a2441e9fab567e277804e7182dda9fdcfe4c70b64608a8`；`fs-local-index.js` `a8e90eb0d310e3cb86c6401a263252fd9876ed28205a1c0cc719ef913ba34d73`。引擎升级边界见 [升级记录](ENGINE-UPGRADE-2026-11-06.md)。
 
 目标根为快照内 usr/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai；下表尺寸为当前树实测，注册入口为 applyRuntimePatches。
 
 | asset 文件（字节） | 目标快照路径（注册行） | 状态 | 作用 / 来源线索 |
 |---|---|---|---|
-| attachment-local-index.js（**47,937**） | dsh-attachment-local/lib/index.js（applyRuntimePatches） | RC3 探针树逐字节一致；终快照待对账 | RC3 来源构建产物 + attach-durable-F2；祖先 fsync、link→rename 回退与 ENOENT 容忍。 |
-| session-persistence-jsonl-index.js（**149,673**） | dsh-session-persistence-jsonl/lib/index.js（applyRuntimePatches） | RC3 探针树逐字节一致；终快照待对账 | RC3 来源构建产物 + F5/F7，保留 O_EXCL 独占占位及失败回收；历史双占位缺陷见 §7.4。 |
-| fs-local-index.js（**47,826**） | dsh-fs-local/lib/index.js（applyRuntimePatches） | RC3 探针树逐字节一致；终快照待对账 | RC3 来源构建产物 + F8/B，独占创建的 Android link 回退与摘要守卫。 |
+| attachment-local-index.js（**48,106**） | dsh-attachment-local/lib/index.js（applyRuntimePatches） | rc.1 fixture + F2 重出；run `42197329317` 的目标快照字节与生成值一致 | 祖先 fsync、link→rename 回退与 ENOENT 容忍。 |
+| session-persistence-jsonl-index.js（**149,809**） | dsh-session-persistence-jsonl/lib/index.js（applyRuntimePatches） | rc.1 fixture + F5/F7 重出；最终快照逐字节对账待修复后来源 run | 保留 O_EXCL 独占占位及失败回收；历史双占位缺陷见 §7.4。 |
+| fs-local-index.js（**54,945**） | dsh-fs-local/lib/index.js（applyRuntimePatches） | rc.1 fixture + F8/B 重出；最终快照逐字节对账待修复后来源 run | 独占创建的 Android link 回退与摘要守卫。 |
 
 已退役资产（不在 `assets/patched/`，`applyAssetPatch` 注册行同步移除，勿再引用）：`primitives-index.js`、`fs-local-index.js`（0.13.3 批退役，d377abc——link(2) 回退族改由构建期补丁承担；**0.14.1 已重新入册，见 §2 的 fs-local-index.js 行与 §7.1 的 `fs-local-link-F8`**——退役时该回退并未真正落到构建期补丁，`createIfAbsent` 站点成了覆盖空洞）；`web-frontend-index.html`（0.13.7fx-1 退役，§8）；`llm-deepseek-index.js`（rc.2 起遗留死资产，随重出批删除）。
 
@@ -383,6 +383,17 @@ Android Back关闭后仍在MainActivity，MiMo选择保留。未改100ms预算�
 新APK完成验收。临时CPU/wrapper诊断原件需恢复并核验hash；最终发布必须重新生成快照/全链APK
 并完成集成三层验收。首次constructor TOTAL的样本为0、deferred返回前尚未采到其同步阻塞，因此
 不能把phase wall time直接当C4 p99；更早debounce TOTAL的统计窗口不同，也不能拿来作性能归因。
+
+### 7.7 v0.14.12 引擎 rc.1 运行时资产重出（2026-11-06）
+
+来源草稿 run `42197329317` 在最终资产门禁发现 `attachment-local-index.js` 仍是 rc.3 的 47,937 B，
+而 `0.2.2-rc.1` 快照目标为 48,106 B。旧资产会在启动时整份覆盖快照文件，使构建期和运行期补丁路径发生回退。
+修复时从 `scripts/patches/tests/fixtures/*-0.2.2-rc.1/lib/index.js` 取三份出厂态源码，
+依 registry 顺序分别施加该文件的全部登记补丁：attachment `attach-durable-F2`；session persistence
+`spj-migration-link-F5,publish-exclusive-F7`；fs-local `fs-local-link-F8,fs-local-digest-guard-B`。
+`apply-patches.mjs --apply --scope engine` 均报告 `ALL OK`。attachment 生成文件的 48,106 B 与 SHA-256
+`e70a2976dbc6384e8f316dad4f104456a36339e54374b6ed90ec8e4dc14aebba` 已与失败 run 打印的 rc.1 快照目标完全相同；
+另两项须由修复后的来源链完成最终快照逐字节核验。行为测试、PR Gate 和来源构建结果随后补记。
 
 ## 8. 0.13.7fx-1：web-frontend-index.html 退役（2026-09-11）
 
