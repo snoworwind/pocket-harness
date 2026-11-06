@@ -482,13 +482,22 @@ export class BackStackSignal {
 
   /** Every modal surface, in document order (settings panel, Modal, lightbox). */
   private detectDialogs(): BackLayerDetection[] {
-    return [...document.querySelectorAll<HTMLElement>(DIALOG_SELECTOR)].map((dialog, index) => ({
-      // Index-keyed: the modal layer is a singleton in practice (one dialog is
-      // on top), and open order is what the stack needs, not long-lived identity.
-      id: `dialog:${String(index)}`,
-      kind: 'dialog' as const,
-      close: () => closeDialog(dialog),
-    }))
+    // The upstream mobile drawer exposes its own aria-modal root. The drawer
+    // already has a dedicated layer above, so counting that root again makes
+    // one Back press a no-op. Exclude only that root; a distinct dialog nested
+    // inside the drawer remains an independent, higher layer.
+    const drawerDialog = document.querySelector<HTMLElement>(
+      `${FRAME_SELECTOR}[data-sidebar-drawer] ${DIALOG_SELECTOR}`,
+    )
+    return [...document.querySelectorAll<HTMLElement>(DIALOG_SELECTOR)]
+      .filter(dialog => dialog !== drawerDialog)
+      .map((dialog, index) => ({
+        // Index-keyed: the modal layer is a singleton in practice (one dialog is
+        // on top), and open order is what the stack needs, not long-lived identity.
+        id: `dialog:${String(index)}`,
+        kind: 'dialog' as const,
+        close: () => closeDialog(dialog),
+      }))
   }
 
   /** The trajectory inspector side panel. */

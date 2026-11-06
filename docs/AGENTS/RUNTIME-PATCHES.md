@@ -393,7 +393,7 @@ Android Back关闭后仍在MainActivity，MiMo选择保留。未改100ms预算�
 `spj-migration-link-F5,publish-exclusive-F7`；fs-local `fs-local-link-F8,fs-local-digest-guard-B`。
 `apply-patches.mjs --apply --scope engine` 均报告 `ALL OK`。attachment 生成文件的 48,106 B 与 SHA-256
 `e70a2976dbc6384e8f316dad4f104456a36339e54374b6ed90ec8e4dc14aebba` 已与失败 run 打印的 rc.1 快照目标完全相同；
-另两项须由修复后的来源链完成最终快照逐字节核验。行为测试、PR Gate 和来源构建结果随后补记。
+三项最终状态均由 main 来源草稿 run [42206049909](https://github.com/snoworwind/pocket-harness/actions/runs/42206049909) 的 primary/reference 完成逐字节核验，`CHECK-RUNTIME-ASSETS` 组合 3、SKIP=0；双构建、签名和草稿创建通过。该草稿对应的设备 CDP 后续发现 drawer 返回层与定位问题，详见 [gotcha #641](gotchas.md)；该 APK 已过时，不作为最终发布候选。
 
 ## 8. 0.13.7fx-1：web-frontend-index.html 退役（2026-09-11）
 

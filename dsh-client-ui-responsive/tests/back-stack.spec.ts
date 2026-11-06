@@ -140,6 +140,37 @@ describe('drawer layer', () => {
 })
 
 describe('dialog layer', () => {
+  it('does not double-count the drawer modal, while keeping a body-level settings dialog independent', async () => {
+    const frame = buildFrame()
+    frame.setAttribute('data-sidebar-drawer', 'true')
+    const drawerDialog = document.createElement('div')
+    drawerDialog.setAttribute('role', 'dialog')
+    drawerDialog.setAttribute('aria-modal', 'true')
+    drawerDialog.append(document.createElement('nav'))
+    frame.append(drawerDialog)
+    setPhoneForm(true)
+    toggleSidebar.mockImplementation(() => frame.setAttribute('data-sidebar-collapsed', ''))
+    signal.attach()
+    await flush()
+    expect(window.__dshBackKinds).toEqual(['drawer'])
+
+    const settings = buildDialog({ closeButton: true, label: 'settings' })
+    const overlay = settings.parentElement as HTMLElement
+    overlay.querySelector('[aria-hidden="true"]')?.addEventListener('click', () => { overlay.remove() })
+    await flush()
+    expect(window.__dshBackKinds).toEqual(['drawer', 'dialog'])
+
+    expect(window.__dshBack?.()).toBe(true)
+    await flush()
+    expect(window.__dshBackKinds).toEqual(['drawer'])
+    expect(toggleSidebar).not.toHaveBeenCalled()
+
+    expect(window.__dshBack?.()).toBe(true)
+    await flush()
+    expect(window.__dshBackKinds).toEqual([])
+    expect(toggleSidebar).toHaveBeenCalledTimes(1)
+  })
+
   it('closes the topmost layer first, then the drawer below it', async () => {
     buildFrame()
     setPhoneForm(true)

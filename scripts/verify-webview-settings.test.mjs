@@ -7,6 +7,8 @@ import vm from 'node:vm';
 const require = createRequire(new URL('../dsh-client-ui-responsive/package.json', import.meta.url));
 const { JSDOM } = require('jsdom');
 const source = readFileSync(new URL('./verify-webview-015.mjs', import.meta.url), 'utf8');
+const cornerDeclaration = source.split('\n').find(line => line.startsWith('const CORNER_PROBE ='));
+const cornerProbe = vm.runInNewContext(cornerDeclaration + '; CORNER_PROBE');
 const declaration = source.split('\n').find(line => line.startsWith('const RESET_BUTTON_PROBE ='));
 // RESET_BUTTON_PROBE 通过 ${OPEN_SETTINGS_SRC} 内联真实导航代码；测试把两条实际 const 声明
 // 按源码顺序交给 vm 求值，避免在测试里复制一份探针实现。
@@ -171,6 +173,27 @@ test('attachment probe still rejects missing and hidden controls', async () => {
     assert.equal(await dom.window.eval(fileProbe), false);
     dom.window.document.querySelector('button').remove();
     assert.equal(await dom.window.eval(fileProbe), 'absent');
+  } finally { dom.window.close(); }
+});
+
+test('corner probe uses rendered visibility instead of node presence', () => {
+  const dom = new JSDOM(
+    '<div data-conversation-header-corner><button style="visibility:hidden;opacity:.4"></button></div>'
+      + '<div data-sidebar-right-panel data-sidebar-right-open></div>',
+    { runScripts: 'outside-only' },
+  );
+  try {
+    const { window: w } = dom;
+    const expanded = w.eval(cornerProbe);
+    assert.equal(expanded.button, true, 'the upstream node can remain mounted');
+    assert.equal(expanded.buttonVisible, false, 'hidden control is not treated as available');
+    assert.equal(expanded.open, true);
+
+    w.document.querySelector('button').style.visibility = 'visible';
+    w.document.querySelector('[data-sidebar-right-panel]').removeAttribute('data-sidebar-right-open');
+    const collapsed = w.eval(cornerProbe);
+    assert.equal(collapsed.buttonVisible, true);
+    assert.equal(collapsed.open, false);
   } finally { dom.window.close(); }
 });
 
