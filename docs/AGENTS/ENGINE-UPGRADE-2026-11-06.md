@@ -12,7 +12,7 @@ Pocket Harness v0.14.12 将运行时从 0.2.1-rc.5 升级到官方预发布 `dsh
 - 工具执行器拆分为 native 与 PTC 插件，并改变工具可用性和 prompt assembly 接口。本仓保留 native 执行器，PTC 执行器继续关闭；Android 所有插件 peer/devDependency 同步到 0.2.2-rc.1、Cordis 4.1.0 与 Schemastery 3.19.0。
 - 上游 base/web-app 行面从 192 项变为 197 项：新增 7 项，删除旧 subagent list 与 model-label 行。新 PTC 执行器仍标为禁用；新增上游 UI 插槽 6 项均未发现本仓 Android renderer 消费。旧模型标签包已从 overlay 移除。
 - 上游将 fs-observation-policy 在 base 配置中设为禁用。Android profile 明确覆盖为启用，以保留每个会话的观察状态、写入 no-clobber、编辑/删除前读取以及版本校验语义；本仓已有 Android 原子写入适配仍需来源链门禁覆盖。
-- 上游 Web Fetch 取消默认公有地址校验，允许访问私网目标。Android 没有按工具隔离的网络出口控制，因此 profile 禁用通用 fetch provider，并关闭 tool-web 的 fetch 工具；web_search 不受影响。若未来恢复 web_fetch，须先实现并验证私网/回环地址拒绝、DNS 重绑定防护及重定向约束。
+- 上游 Web Fetch 取消默认公有地址校验，允许访问私网目标。按项目要求，本次保留通用 fetch provider 与 `tool-web.fetch`，继承 rc.1 的默认可用行为。Android 没有按工具隔离的网络出口控制，因此用户启用 `web_fetch` 时它可能访问私网地址；本版本没有新增网络出口过滤。
 - PTC 控制通道改为 birpc、SSH helper 协议升到 v3、调用方取消的 `run_code` 状态改为 `ABORTED`。当前 Android profile 不挂 PTC 执行器，仍由来源构建兼容检查确认运行时代码未误挂此路径。
 
 ## 来源链与文件清单
