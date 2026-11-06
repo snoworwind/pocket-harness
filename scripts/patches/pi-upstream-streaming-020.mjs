@@ -13,6 +13,59 @@ export const PI_STREAMING_FILES = Object.freeze([
 const PATCH = join(dirname(fileURLToPath(import.meta.url)), 'upstream', 'pi-ai-1.3.0.patch')
 
 /**
+ * pi-toolcall-G2 is intentionally applied after the official patch and rewrites
+ * part of convertMessages' surrounding hunk. Accept only that named composed
+ * state, with every official added block still unique and every removed line
+ * absent. Any other drift remains fail-closed.
+ */
+function hasExactPiToolcallComposition(file, source, body) {
+  if (file !== 'dist/api/openai-completions.js'
+    || !source.includes('dsh-mobile tool_call guard (G2)')
+    || !source.includes('dsh-mobile continuation guard (G2)')) return false
+
+  const additions = []
+  let block = []
+  const flush = () => {
+    if (block.length) additions.push(block.join('\n') + '\n')
+    block = []
+  }
+  for (const line of body) {
+    if (line[0] === '+') block.push(line.slice(1))
+    else flush()
+  }
+  flush()
+
+  const countBlock = (expected) => {
+    const expectedLines = expected.trimEnd().split('\n')
+    const sourceLines = source.split('\n')
+    let matches = 0
+    for (let start = 0; start <= sourceLines.length - expectedLines.length; start += 1) {
+      let indentShift
+      let matchesHere = true
+      for (let offset = 0; offset < expectedLines.length; offset += 1) {
+        const expectedLine = expectedLines[offset]
+        const sourceLine = sourceLines[start + offset]
+        const expectedIndent = /^ */.exec(expectedLine)[0].length
+        const sourceIndent = /^ */.exec(sourceLine)[0].length
+        if (sourceLine.slice(sourceIndent) !== expectedLine.slice(expectedIndent)
+          || sourceIndent < expectedIndent
+          || (indentShift !== undefined && sourceIndent - expectedIndent !== indentShift)) {
+          matchesHere = false
+          break
+        }
+        indentShift ??= sourceIndent - expectedIndent
+      }
+      if (matchesHere) matches += 1
+    }
+    return matches
+  }
+  const count = (needle) => source.split(needle).length - 1
+  return additions.length > 0
+    && additions.every((addition) => countBlock(addition) === 1)
+    && body.filter((line) => line[0] === '-').every((line) => count(line.slice(1)) === 0)
+}
+
+/**
  * Prepare all six file replacements before any write; exact upstream context, no fuzzy patching.
  * @param packageRoot - extracted pi-ai package root (disposable build stage).
  * @param read - stage reader, including the unified runner's cached prior patches.
@@ -49,6 +102,7 @@ export function planPiStreaming(packageRoot, read = file => readFileSync(join(pa
       const matches = patched.split(before).length - 1
       const patchedMatches = patched.split(after).length - 1
       if (matches === 1 && patchedMatches === 0) patched = patched.replace(before, after)
+      else if (matches === 0 && patchedMatches === 0 && hasExactPiToolcallComposition(header[1], patched, body)) continue
       else if (matches !== 0 || patchedMatches !== 1) throw new Error('official pi-ai streaming context drift: ' + header[1])
     }
     return { file: header[1], before: original, after: patched }
