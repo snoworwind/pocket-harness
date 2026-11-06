@@ -564,7 +564,7 @@ K01 journal 发布：`SnapshotTransaction.writeMarker` 拒绝目标或临时路�
 | P04 | 授权档位 androidPrivilege | 工具面 adbTier 与 bridge 服务同源（同一次判定），linux-env 自算的 deployedAdbTier 只作服务缺席兜底 | plugins/dsh-android-bridge/src/index.ts:569 |
 | P04 | 设置服务 settings | 读走 describe 后按 ns 查找（坑 48），写只有一处 set providers.route.models + revision + SETTINGS_CONFLICT 重试 | plugins/dsh-model-capability/src/settings-writer.ts:239 |
 | P04 | 会话与工作区服务 | 空白会话经 sessionController.create 铸 durable id，临时工作区经 workspaceRegistry.create/delete 自愈（复用 canonical 条目、删非 canonical 残留） | plugins/dsh-android-file-open/src/index.ts:302 |
-| P04 | 构建与快照装配 | 三个插件靠 profile-web.cordis.patch.yml 的 insert 才被挂载；model-capability 依赖构建期生成的 lib/catalog-snapshot.json，缺失即整段 engine-catalog 阶段禁用 | scripts/profile-web.cordis.patch.yml:118#expect=-%20id:%20android-linux-env |
+| P04 | 构建与快照装配 | 三个插件靠 profile-web.cordis.patch.yml 的 insert 才被挂载；model-capability 依赖构建期生成的 lib/catalog-snapshot.json，缺失即整段 engine-catalog 阶段禁用 | scripts/profile-web.cordis.patch.yml:112#expect=-%20id:%20android-linux-env |
 | P04 | 引擎鉴权与日志面 | 运行时缓存清理与当前代 engine.log 共享 files 域：删当前代即断 EngineAuth.tokenFromLog 的令牌链，因此只删历史代 | plugins/dsh-android-linux-env/src/runtime-cache.ts:40 |
 | S01 | K04 | 页面经 window.androidBridge 与 dshBackBridge 调壳侧桥面，页面类型面在 android-bridge.ts 与 back-stack.ts，壳侧实现在 AndroidBridge.kt 与 BackGate.kt | dsh-client-ui-responsive/src/client/android-bridge.ts:17 |
 | S01 | K04 | 壳侧 pushWebInsets 写 --dsh-android-system-* 与 --dsh-android-ime-bottom，注入层样式与键盘边界消费 | app/src/main/java/com/snoworwind/pocketharness/MainActivity.kt:1669#expect=pushWebInsets |
@@ -575,7 +575,7 @@ K01 journal 发布：`SnapshotTransaction.writeMarker` 拒绝目标或临时路�
 | S01 | 引擎侧 linux-env 插件 | 开发者选项的运行时缓存面板读写 /api/android/runtime-cache/scan 与 execute | dsh-client-ui-responsive/src/client/dev-section/runtime-cache.tsx:91 |
 | S01 | 引擎侧 linux-env 插件 | shell-termux 导出的 PROBE_BINARIES / REQUIRED_TOOLCHAIN / TOOLCHAIN_REPRESENTATIVE 被工具链状态的面板复用 | dsh-shell-termux/src/index.ts:39 |
 | S01 | 门禁脚本 | 注入类缺陷三条防线之二由 smoke-injections.mjs 与 boot-watchdog.test.mjs 常驻，脚本与源码脱同步即整条红 | dsh-host-web-compat/scripts/boot-watchdog.test.mjs:231 |
-| S01 | 构建链 | 三个子仓由 profile-web.cordis.patch.yml 的 insert 行装载，快照构建只 pack 不 build | scripts/profile-web.cordis.patch.yml:69#expect=-%20insert: |
+| S01 | 构建链 | 三个子仓由 profile-web.cordis.patch.yml 的 insert 行装载，快照构建只 pack 不 build | scripts/profile-web.cordis.patch.yml:38#expect=-%20insert: |
 | B01 | 门禁块 | 27 项门禁集在 check-release-gates.mjs 唯一声明，本地链逐条内联、发布链走聚合入口 --run --require | scripts/check-release-gates.mjs:28-104,136-140 |
 | B01 | 壳侧快照解压 | 归档软链与权限判据必须对齐设备侧 SnapshotExtractor 的沙箱边界，构建期净化是为了不让设备静默丢弃条目 | scripts/build-snapshot-013.mjs:933-966,1029 |
 | B01 | 插件源码与 vendor 固化面 | 注入内容取自 plugin-dirs.json 指向的插件目录与 vendor 固化副本，补丁由 apply-patches.mjs 施加 | scripts/plugin-dirs.json:1,scripts/patches/apply-patches.mjs:2478#expect=const%20order |

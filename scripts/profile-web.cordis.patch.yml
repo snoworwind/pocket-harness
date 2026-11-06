@@ -2,13 +2,7 @@
 - id: fs-observation-policy
   disabled: false
 
-# rc.1 generic Web Fetch now accepts private-network targets. Android has no network namespace or
-# per-tool egress filter, so keep web_search while withholding generic URL fetch until it is guarded.
-- id: web-fetch-http
-  disabled: true
-- id: tool-web
-  config:
-    fetch: false
+# Keep rc.1 Web Fetch available: leave web-fetch-http and tool-web.fetch at upstream defaults.
 
 # gateway/client 由继承的 base/typert-gateway 唯一行提供，不在此重复 insert。
 # 0.14.7 的 host-fiber 时序适配随 client-registry-scan-C4 注入；controllers 全部保留。

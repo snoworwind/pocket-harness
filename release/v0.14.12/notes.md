@@ -1,6 +1,6 @@
 # Pocket Harness v0.14.12 版本候选说明
 
-Pocket Harness 将 DeepSeek Harness 引擎升级到官方 `0.2.2-rc.1`，固定源码提交 `66491b05e3f05ad35bcdd4f6cd7ed26041d9e3db`。本版本保留原生工具执行；PTC 执行器仍关闭。Android 显式恢复文件观察策略。由于上游通用 Web Fetch 在此版本允许访问私网地址，而本应用没有按工具隔离的网络出口策略，本候选暂时关闭 `web_fetch`；`web_search` 保持可用。
+Pocket Harness 将 DeepSeek Harness 引擎升级到官方 `0.2.2-rc.1`，固定源码提交 `66491b05e3f05ad35bcdd4f6cd7ed26041d9e3db`。本版本保留原生工具执行；PTC 执行器仍关闭。Android 显式恢复文件观察策略，`web_fetch` 保持可用。上游 rc.1 不再默认拒绝私网目标；Android 没有按工具隔离的网络出口过滤，因此启用该工具后可能访问私网地址。
 
 ## 安装与升级
 
