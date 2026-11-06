@@ -117,6 +117,11 @@ def seed_profiles(source_root: pathlib.Path, stage_root: pathlib.Path) -> None:
     home.mkdir(parents=True, exist_ok=True)
     helper = pathlib.Path(__file__).with_name("seed-dsh-profiles.mjs").resolve()
     subprocess.run(
+        ["pnpm", "exec", "tsx", str(helper), "--self-test", str(source_root.resolve())],
+        cwd=source_root,
+        check=True,
+    )
+    subprocess.run(
         ["pnpm", "exec", "tsx", str(helper), str(source_root.resolve()), str(home.resolve())],
         cwd=source_root,
         check=True,

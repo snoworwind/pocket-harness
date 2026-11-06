@@ -1,8 +1,10 @@
 # build-and-env.md — 构建与验证命令 + 环境流程
 
-## 0.2.1 引擎来源链
+## 0.2.2-rc.1 引擎来源链
 
-目标与版本证据见 [rc.5 升级记录](ENGINE-UPGRADE-2026-10-31.md)，早期工具链和环境错误见 [rc.2 升级记录](ENGINE-UPGRADE-2026-10-19.md)。源码阶段用官方 native → Host libraries → Client compiler → Client workspace bundle → Web 顺序；根 workspace bundle 已覆盖 package-local 配置，不能再追加旧 recursive bundle（新版 pnpm 拒绝实际循环依赖）。Android 直接调用这些阶段、绕过上游 `scripts/build.ts --profile official`，因此 `build-engine.sh` 会向所有阶段注入同一组官方客户端环境（提交短哈希、Harness 版本、`DSH_CLIENT_BUILD_PROFILE=official`、`DSH_CLIENT_TITLE=DeepSeek Harness`），并检查 Client 标题、官方品牌槽位和 Web HTML 标题确实进入产物。固定 Corepack 0.36.0；本地 Node 24 必须带匹配开发头文件。APK 仍仅由 main 的隔离来源链产出。
+目标与版本证据见 [rc.1 升级记录](ENGINE-UPGRADE-2026-11-06.md)，此前版本见 [rc.5 升级记录](ENGINE-UPGRADE-2026-10-31.md) 和 [rc.2 升级记录](ENGINE-UPGRADE-2026-10-19.md)。源码阶段用官方 native → Host libraries → Client compiler → Client workspace bundle → Web 顺序；根 workspace bundle 已覆盖 package-local 配置，不能再追加旧 recursive bundle（新版 pnpm 拒绝实际循环依赖）。Android 直接调用这些阶段、绕过上游 `scripts/build.ts --profile official`，因此 `build-engine.sh` 会向所有阶段注入同一组官方客户端环境（提交短哈希、Harness 版本、`DSH_CLIENT_BUILD_PROFILE=official`、`DSH_CLIENT_TITLE=DeepSeek Harness`），并检查 Client 标题、官方品牌槽位和 Web HTML 标题确实进入产物。固定 Corepack 0.36.0；本地 Node 24 必须带匹配开发头文件。APK 仍仅由 main 的隔离来源链产出。
+
+rc.1 的 profile seeder 从 `packages/boot/app-boot/src/profile.ts` 读取 `initProfile`，从 `packages/util/official-bundles/src/bundles.ts` 读取 `PROFILE_TEMPLATES`。模板只由 app-boot 内部导入，不再从 `profile.ts` 导出；误从那里读取会在 bootstrap 组装阶段得到 `undefined` 并使 primary/reference 同时失败。bootstrap 组装先调用 seeder 的 `--self-test` 验证 web/headless 清单与辅助文件，再写入实际 profile；`cloud-workflow.test.mjs` 和 `test_prepare_termux_bootstrap.py` 锁定来源与调用顺序。
 
 ## 双构建比对拒绝重复成员（2026-10-19）
 

@@ -10,7 +10,7 @@ const check = text => assert.equal(text.split('\n').filter(line => line.trim() &
 test('cloud entry routes both modes exclusively through same-commit source workflows', () => check(entry))
 
 const engine = () => readFileSync(new URL('./build-engine.sh', import.meta.url), 'utf8').replaceAll('\r\n', '\n').split('\n').map(line => '          ' + line).join('\n')
-function checkEngine021Build(source) {
+function checkEngineBuild(source) {
   assert.match(source, /packageManager!=="pnpm@11\.28\.5"/)
   assert.match(source, /npm install -g corepack@0\.36\.0 --ignore-scripts/)
   checkOfficialClientBuildEnvironment(source)
@@ -56,7 +56,7 @@ function checkOfficialClientBuildEnvironment(source) {
   assert.match(source, /node -p 'require\("\.\/package\.json"\)\.version'/)
 }
 
-test('0.2.1 source build follows official artifact stages without rewriting upstream manifests', () => checkEngine021Build(engine()))
+test('0.2.2-rc.1 source build follows official artifact stages without rewriting upstream manifests', () => checkEngineBuild(engine()))
 test('negative controls reject missing source compiler, stale package manager, bad official client metadata and obsolete recursive builder', () => {
   const source = engine()
   for (const [index, bad] of [source.replace('exec tsx scripts/compile-referenced-projects.ts client', 'exec true'),
@@ -70,8 +70,25 @@ test('negative controls reject missing source compiler, stale package manager, b
     source.replace("if (!brand.includes('sidebar.brand.mark') || !brand.includes('sidebar.brand.name')) {", 'if (false) {'),
     source.replace("if (!page.includes('<title>DeepSeek Harness</title>')) throw new Error('Web document did not embed the official Harness title')", '// document title assertion omitted'),
     source.replace('          corepack pnpm run build:web', '          corepack pnpm --recursive --if-present run bundle\n          corepack pnpm run build:web')].entries()) {
-    assert.throws(() => checkEngine021Build(bad), assert.AssertionError, `negative control ${index} was not rejected`)
+    assert.throws(() => checkEngineBuild(bad), assert.AssertionError, `negative control ${index} was not rejected`)
   }
+})
+
+const profileSeeder = readFileSync(new URL('./seed-dsh-profiles.mjs', import.meta.url), 'utf8').replaceAll('\r\n', '\n')
+function checkProfileSeeder(source) {
+  assert.match(source, /const profileSource = pathToFileURL\(join\(sourceRoot, 'packages\/boot\/app-boot\/src\/profile\.ts'\)\)\.href/)
+  assert.match(source, /const bundleSource = pathToFileURL\(join\(sourceRoot, 'packages\/util\/official-bundles\/src\/bundles\.ts'\)\)\.href/)
+  assert.match(source, /const \[\{ initProfile \}, \{ PROFILE_TEMPLATES \}\]/)
+  assert.match(source, /process\.argv\[2\] === '--self-test'/)
+  assert.match(source, /profile seeder self-test passed/)
+  assert.match(source, /return \{ name, bundles: template\.bundles \}/)
+  assert.match(source, /initProfile\(join\(dshHome, 'profiles', name\), bundles\)/)
+  assert.doesNotMatch(source, /const \{ initProfile, PROFILE_TEMPLATES \} = await import\(profileSource\)/)
+}
+test('profile seeding uses rc.1 official-bundles templates and app-boot initializer', () => checkProfileSeeder(profileSeeder))
+test('negative control: profile seeding rejects reading the no-longer-exported template from app-boot', () => {
+  const stale = profileSeeder.replace('packages/util/official-bundles/src/bundles.ts', 'packages/boot/app-boot/src/profile.ts')
+  assert.throws(() => checkProfileSeeder(stale), assert.AssertionError)
 })
 
 test('source workflow rejects tags, PR refs and feature branches before checkout or secrets', { skip: process.platform !== 'linux' }, () => {
