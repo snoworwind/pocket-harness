@@ -4,7 +4,7 @@
 
 Pocket Harness v0.14.12 将运行时从 0.2.1-rc.5 升级到官方预发布 `dsh-v0.2.2-rc.1`。来源固定为 commit `66491b05e3f05ad35bcdd4f6cd7ed26041d9e3db`，Git tree `3aeac580e803b0ce82f867b1374ed494a59662c2`。上游 `pnpm-lock.yaml` SHA-256：`aa1293f2e8d3ee82cb3cfcb0e65ba8a0ef73ab80fad4c35d7ed2f7c67b95a625`；package manager 仍为 pnpm 11.28.5。上游将 Node 要求提高到 `>=24.9.0`，来源链使用 Node 24.21.0。
 
-上游参考：[0.2.2-rc.1 发布说明](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.2-rc.1)。本记录只描述固定源码与 Android 适配，不表示 APK 已构建或设备验收已完成。
+上游参考：[0.2.2-rc.1 发布说明](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.2-rc.1)。本记录涵盖固定源码、Android 适配、来源构建和设备验收；本版本已作为 ARM64 正式版发布，设备范围限制见下文。
 
 ## 上游变化及 Android 适配
 
@@ -21,9 +21,12 @@ Pocket Harness v0.14.12 将运行时从 0.2.1-rc.5 升级到官方预发布 `dsh
 
 依赖与工具链台账见 [DEPENDENCIES.md](DEPENDENCIES.md)，用户可见说明见[候选发布说明](../../release/v0.14.12/notes.md)。
 
-## 交付状态
+## 交付与验收
 
-- 目标应用版本：0.14.12 / versionCode 56。
-- 引擎升级 PR #236 已合并；运行时覆盖资产修复 PR #241 已合并至 `32a0be53d1b756cd7ac67651e69df383a24e5970`。main 来源 run [42206049909](https://github.com/snoworwind/pocket-harness/actions/runs/42206049909) 双构建、签名和草稿创建通过，APK SHA-256 及设备发现见[候选说明](../../release/v0.14.12/notes.md)。
-- 10 个 Android 插件 npm `package-lock.json` 已按更新后的 peer/devDependency 重生成；CI 将核验锁文件解析、依赖安装与来源构建闭包。
-- 首轮 Android 16 API 36 ARM64 host-GPU AVD 已安装并启动候选 APK；CDP 检查发现 drawer modal 重复计层、设置标记误认 drawer 和 CSS specificity 三项问题（其中展开键一项为探针误判）。修复 PR 与新的来源草稿、CDP/ADB 复验尚待完成；ARM64 真机不可用。公开正式 Release 前按 [设备验收规范](emulator-test-protocol.md) 完成适用验收或记录明确豁免。
+- 正式应用版本：0.14.12 / versionCode 56；仅发布 ARM64 APK。
+- 引擎升级 PR #236、来源资产 PR #241、设备回归修复 PR #242 与横屏探针修复 PR #243 均已合入 `main`。PR #243 的 merge commit 为 `a8c341006e452b1c4024749f865f3e28694ffae8`，PR Gate run [42242027113](https://github.com/snoworwind/pocket-harness/actions/runs/42242027113) 全绿。该 PR 只修改验收探针与文档，不改变 APK 运行时代码。
+- 最终 Android APK 来自 main 来源草稿 run [42227774209](https://github.com/snoworwind/pocket-harness/actions/runs/42227774209)，构建目标提交 `99b396c8fae05328dc29542abcf7e59b455c32a8`。ARM64 primary/reference 双构建、APK 字节交叉核验、签名与草稿创建全部通过。正式 Release tag 为 [`hardening-source-99b396c8fae0-42227774209-1`](https://github.com/snoworwind/pocket-harness/releases/tag/hardening-source-99b396c8fae0-42227774209-1)，APK SHA-256：`f5dca2c8019feab61e37ccefa53dbd8499283ce607a8620bd78f574ae49fed49`。
+- 10 个 Android 插件 npm `package-lock.json` 已按更新后的 peer/devDependency 重生成；来源工作流已通过锁文件解析、依赖安装与来源构建闭包检查。
+- Android Studio Google 官方 Android 16/API 36 `default/arm64-v8a` host-GPU AVD 已安装并启动该来源 APK；快照刷新完成标志已核实。最终 APK portrait 与 landscape 的 `verify-webview-015` live CDP 均 39/39 通过。ADB 用户操作覆盖 portrait 抽屉打开/系统 Back 关闭、设置页返回，以及 landscape 设置返回和新会话入口；屏幕截图与 CDP 日志保存在 `.deploy-tmp/v0.14.12-release-42227774209/`。探针修复自测 24/24、含受控负控；同 PR Gate 的 Kotlin 编译/单测和静态门禁/源码回归全绿。
+- **设备验收范围受限**：ARM64 真机 V2425A 不可用，未做真机竖屏/横屏验收；模拟器没有模型凭据，未发送真实 AI 请求。新会话入口实际显示添加 API key/登录提示。已完成的 AVD/CDP/ADB 检查通过，但不能据此声称真机或模型请求链已验收；发布按项目设备协议记录上述豁免和剩余风险。
+- `web_fetch` 保持可用。Android profile 的 `web-fetch-http` 与 `tool-web.fetch` 继承上游默认行为；引擎 0.2.2-rc.1 不再默认拒绝私网目标，Android 没有按工具隔离的网络出口过滤，因此该工具可能访问私网地址。
