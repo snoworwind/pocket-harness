@@ -54,6 +54,7 @@ jobs:
           node --test scripts/source-build/check-linux-sources.test.mjs
           node scripts/check-vendored-linux-bootstrap.mjs --self-test
           node scripts/source-build/check-linux-native-libraries.mjs --self-test
+          python3 scripts/source-build/linux-debian-snapshot-wget.py --self-test
           python3 scripts/source-build/verify-linux-native-apk.py --self-test
       - name: Compile the ARM64 guest compatibility library
         run: |
@@ -78,7 +79,7 @@ jobs:
           npm test --prefix plugins/dsh-android-linux-env
       - name: PRoot backend, rootfs and compatibility regressions
         run: |
-          python3 -m unittest scripts.source-build.test_prepare_proot_backend scripts.source-build.test_prepare_rootfs_proot scripts.source-build.test_ensure_no_rootfs_mounts scripts.source-build.test_proot_compat scripts.source-build.test_prepare_termux_bootstrap scripts.source-build.test_prepare_termux_signed_repo scripts.source-build.test_package_linux_assets -v
+          python3 -m unittest scripts.source-build.test_prepare_proot_backend scripts.source-build.test_prepare_rootfs_proot scripts.source-build.test_ensure_no_rootfs_mounts scripts.source-build.test_proot_compat scripts.source-build.test_prepare_termux_bootstrap scripts.source-build.test_prepare_termux_signed_repo scripts.source-build.test_package_linux_assets scripts.source-build.test_linux_debian_snapshot_wget -v
       - name: Third-party notice generator regressions
         run: |
           node --test scripts/check-third-party.test.mjs

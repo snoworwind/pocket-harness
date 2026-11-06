@@ -5,6 +5,7 @@ ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)
 cd "$ROOT"
 node scripts/check-vendored-linux-bootstrap.mjs
 node scripts/source-build/check-linux-sources.mjs
+python3 scripts/source-build/linux-debian-snapshot-wget.py --self-test
 SOURCE_PROOF_INPUTS=(
   vendor/linux-proot vendor/dsh-linux-runtime
   plugins/dsh-linux-bootstrap/README.md plugins/dsh-linux-bootstrap/build-client.mjs
@@ -16,7 +17,8 @@ SOURCE_PROOF_INPUTS=(
   scripts/snapshot-config/preinstall.json scripts/lib/shell.mjs
   scripts/source-build/prepare-termux-bootstrap.py scripts/source-build/prepare-termux-signed-repo.py
   scripts/source-build/termux_signed_packages.py
-  scripts/source-build/prepare-proot-backend.py scripts/source-build/ensure-no-rootfs-mounts.py
+  scripts/source-build/prepare-proot-backend.py scripts/source-build/ensure-no-rootfs-mounts.py \
+  scripts/source-build/linux-debian-snapshot-wget.py scripts/source-build/test_linux_debian_snapshot_wget.py
   scripts/source-build/linux-assets-workflow.test.mjs
   scripts/source-build/package-linux-assets.py scripts/source-build/check-linux-sources.mjs
   scripts/source-build/check-linux-sources.test.mjs scripts/source-build/check-linux-native-libraries.mjs
@@ -86,7 +88,17 @@ if [[ -e "$ROOTFS" || -L "$ROOTFS" ]]; then
   python3 scripts/source-build/ensure-no-rootfs-mounts.py "$ROOTFS"
 fi
 sudo rm -rf -- "$ROOTFS"
-sudo debootstrap --arch=arm64 --foreign --variant=minbase --components=main \
+DEBOOTSTRAP_BIN="$WORK/debootstrap-bin"
+[[ "$(realpath -m "$DEBOOTSTRAP_BIN")" == "$DEBOOTSTRAP_BIN" ]] || { echo 'Debootstrap wget shim directory escapes the build root' >&2; exit 1; }
+if [[ -e "$DEBOOTSTRAP_BIN" || -L "$DEBOOTSTRAP_BIN" ]]; then
+  [[ -d "$DEBOOTSTRAP_BIN" && ! -L "$DEBOOTSTRAP_BIN" ]] || { echo 'Debootstrap wget shim directory is not a real directory' >&2; exit 1; }
+  rm -rf -- "$DEBOOTSTRAP_BIN"
+fi
+mkdir -p "$DEBOOTSTRAP_BIN"
+install -m755 scripts/source-build/linux-debian-snapshot-wget.py "$DEBOOTSTRAP_BIN/wget"
+REAL_WGET=$(command -v wget)
+[[ "$REAL_WGET" == /* && -x "$REAL_WGET" ]] || { echo 'Cannot resolve the real wget executable' >&2; exit 1; }
+sudo env "PATH=$DEBOOTSTRAP_BIN:$PATH" "DEBOOTSTRAP_REAL_WGET=$REAL_WGET" debootstrap --arch=arm64 --foreign --variant=minbase --components=main \
   --keyring="$DEBIAN_KEYRING" \
   --include=apt,bash,ca-certificates,debian-archive-keyring,libstdc++6 trixie "$ROOTFS" "$DEBIAN_SNAPSHOT"
 sudo install -m755 /usr/bin/qemu-aarch64-static "$ROOTFS/usr/bin/qemu-aarch64-static"
