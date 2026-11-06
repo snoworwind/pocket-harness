@@ -14,12 +14,14 @@ const declaration = source.split('\n').find(line => line.startsWith('const RESET
 // 按源码顺序交给 vm 求值，避免在测试里复制一份探针实现。
 const openerDeclaration = source.split('\n').find(line => line.startsWith('const OPEN_SETTINGS_SRC ='));
 const probe = vm.runInNewContext('const MOBILE_FORM_MAX_WIDTH = 767; ' + openerDeclaration + '; ' + declaration + '; RESET_BUTTON_PROBE');
+const backstackDeclaration = source.split('\n').find(line => line.startsWith('const BACKSTACK_LAYER_PROBE ='));
+const backstackProbe = vm.runInNewContext('const MOBILE_FORM_MAX_WIDTH = 767; ' + openerDeclaration + '; ' + backstackDeclaration + '; BACKSTACK_LAYER_PROBE');
 const fileDeclaration = source.split('\n').find(line => line.startsWith('const FILE_BUTTON_PROBE ='));
 const fileProbe = vm.runInNewContext(fileDeclaration + '; FILE_BUTTON_PROBE');
 const retiredDeclaration = source.split('\n').find(line => line.startsWith('const RETIRED_OPEN_ENTRY_PROBE ='));
 const retiredProbe = vm.runInNewContext(retiredDeclaration + '; RETIRED_OPEN_ENTRY_PROBE');
 
-async function exercise({ entry = 'more', control = true, reset = true, disabled = false, locale = 'zh', decoy = false } = {}) {
+async function exercise({ entry = 'more', control = true, reset = true, disabled = false, locale = 'zh', decoy = false, probeExpression = probe } = {}) {
   const dom = new JSDOM('<body></body>', { runScripts: 'outside-only' });
   const { window: w } = dom;
   const labels = locale === 'en'
@@ -41,6 +43,9 @@ async function exercise({ entry = 'more', control = true, reset = true, disabled
   let settingsOpened = 0;
   const openSettings = () => {
     settingsOpened++;
+    w.__dshBackKinds = ['dialog'];
+    w.__dshBackDepth = 1;
+    w.dshBackBridge = { getBackAvailable: () => true };
     const dialog = w.document.createElement('div');
     dialog.setAttribute('role', 'dialog');
     if (control) dialog.append(button(labels.control, () => {
@@ -88,7 +93,7 @@ async function exercise({ entry = 'more', control = true, reset = true, disabled
     account.setAttribute('aria-label', labels.account);
     w.document.body.append(account);
   }
-  try { return { result: await w.eval(probe), settingsOpened }; }
+  try { return { result: await w.eval(probeExpression), settingsOpened }; }
   finally { w.close(); }
 }
 
@@ -99,6 +104,20 @@ test('desktop account menu reaches the actual settings and phone control section
   assert.equal(result.present, true);
   assert.equal(result.disabled, false);
   assert.deepEqual(Array.from(result.steps), ['open:account-menu', 'settings', 'tab']);
+});
+test('landscape back-stack probe opens Settings through the account menu', async () => {
+  const { result, settingsOpened } = await exercise({ probeExpression: backstackProbe });
+  assert.equal(settingsOpened, 1);
+  assert.equal(result.mobile, false);
+  assert.equal(result.depth, 1);
+  assert.deepEqual(Array.from(result.kinds), ['dialog']);
+  assert.equal(result.cached, true);
+});
+test('negative control: landscape back-stack probe rejects an account menu without Settings', async () => {
+  assert.match((await exercise({ entry: 'account-no-settings', probeExpression: backstackProbe })).result, /^no-settings-entry:/);
+});
+test('negative control: landscape back-stack probe rejects sidebar 更多 without an account menu', async () => {
+  assert.match((await exercise({ entry: 'nav-only', probeExpression: backstackProbe })).result, /^no-settings-entry:/);
 });
 test('existing direct settings entry remains supported', async () => {
   const { result } = await exercise({ entry: 'direct' });

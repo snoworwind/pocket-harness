@@ -3529,3 +3529,7 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 641. **rc.1 Android drawer 自身 modal 被重复计入返回栈，设置标记误落抽屉（2026-11-06）**
 
     现象：Android 16 API 36 ARM64 host-GPU AVD 上，系统返回被消费但 drawer 未关闭；设置面板打开时 `data-dsh-settings-dialog` 与设置顶部栏落在抽屉自身的 modal 上。CDP 还报左栏 `position:absolute`，并把已隐藏但仍挂在 DOM 的右栏展开键误判为可见。真因：rc.1 的 drawer 自身新增 `role=dialog[aria-modal=true]` 且带直接 `nav`，设置标记仅按直接 nav 识别；返回栈同时登记 drawer 与其 modal。上游 CSS 规则的 specificity 为三段，覆盖本地两段 `position:fixed`。展开时按钮仍在 DOM，但 `visibility:hidden`。修法：设置面板候选排除带 `data-sidebar-drawer` 的 frame 内 dialog；返回栈仅排除 drawer 自己的 modal，仍保留独立 body-level 设置 dialog；提升手机抽屉 CSS specificity；CDP 探针按 computed display/visibility/opacity 判可见。复验：对应插件定向测试 53/53、`verify-webview-settings.test.mjs` 21/21 通过；修复后的 PR Gate、来源草稿、CDP 与 ADB 复测待完成，旧草稿不得直接发布。
+
+642. **宽屏返回栈探针仍假设有侧栏直达设置按钮（2026-11-06）**
+
+    现象：Android 16 横屏 AVD 上 `verify-webview-015.mjs --wide` 的返回层两项报 `no-settings-entry` / `before=0`，但同轮「重置链接」探针已通过账号菜单打开设置并点到手机控制页。真因：返回层探针保留了旧桌面布局的直达「设置」按钮查询，没有复用同一脚本已支持账号菜单与直达入口的 `OPEN_SETTINGS_SRC`；宽屏实际只从账号菜单进入，因此失败发生在测试建层之前。修法：返回层探针复用 `OPEN_SETTINGS_SRC`，并加 account-menu 正向及缺设置项/只有导航「更多」两条负控。复验：本地 `--self-test` 24/24；portrait live CDP 39/39；改后 landscape live CDP 39/39；ADB portrait 抽屉开/关和 landscape 设置关闭、新会话触控已留在 `.deploy-tmp/v0.14.12-release-42227774209/`。PR Gate 等待运行；宽屏原始两项为探针假阴性，不是产品失败。
