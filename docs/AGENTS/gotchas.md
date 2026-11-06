@@ -3517,3 +3517,7 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 638. **固定 Debian Snapshot 部分包对象返回 503，debootstrap 离线 rootfs 构建无法完成（2026-11-06）**
 
     现象：草稿来源 run [42184719129](https://github.com/snoworwind/pocket-harness/actions/runs/42184719129) 的 primary/reference 都通过固定 InRelease 与 Packages 校验，却在下载多个 Debian `.deb` 时因 Snapshot 返回错误失败，APK 与草稿 Release 步骤未执行。真因：已固定且验签的 Snapshot 元数据仍可用，但 Snapshot/Cloudflare 的部分历史 package blob 对象返回 HTTP 503；这不是版本锁漂移，放宽 InRelease/SHA 或换用滚动索引会失去来源约束。修法：只在固定 Snapshot 的 `/pool/.../*.deb` 下载失败后，尝试 `deb.debian.org` 的同路径对象；debootstrap 默认按已签名 Packages 的 SHA-256 和 size 校验，错误版本/内容仍 fail-closed；InRelease、Packages 等元数据禁止回退。helper self-test 和单测覆盖成功回退、参数保持、元数据负控与双源失败。复验：debootstrap `1.0.141` 主程序默认 `SHA_SIZE=256`、`DEBOOTSTRAP_CHECKSUM_FIELD=SHA256`；PR Gate 与新的来源草稿 run 待复验。
+
+639. **依赖补丁改写官方 hunk 上下文后被精确 verifier 误报为引擎漂移（2026-11-06）**
+
+    现象：来源草稿 run [42190401816](https://github.com/snoworwind/pocket-harness/actions/runs/42190401816) 的 reference 在快照构建末尾、`apply-patches --check --scope engine` 报 `official pi-ai streaming context drift: dist/api/openai-completions.js`；原始 rc.1 fixture 上的官方补丁施加成功，primary 的 apply 阶段也通过。真因：`pi-toolcall-G2` 按 `requires` 排在官方 `pi-upstream-streaming-020` 之后，重写了 `convertMessages` hunk 周边的 tool-call 序列化代码和缩进；官方 verifier 仍要求整个 unified hunk 的 after-context 字节完全相同，因此把有效组合状态判成漂移。修法：仅对带有 G2 与 continuation 两个 marker 的已登记组合启用专用核验，逐个确认官方新增块唯一存在、删除行缺席，且块内只容许统一缩进偏移；其它文件或组合仍须完整精确匹配。新增组合正控与删除 Gemini replay 行的负控，由 PR Gate 补丁测试清单执行。复验：组合回归本地 2/2 通过；PR #240 与新的来源草稿 run 待复验。

@@ -46,6 +46,8 @@ node scripts/patches/apply-patches.mjs vendor --list
 
 `--apply` 报「锚点未命中」= 上游 minified 代码形态已变：从报错附带的上下文片段人工核对新形态 → 更新 IMPLS 锚点与 registry marker → `--apply` 重放。禁止为了过门禁放松 check 语义。
 
+带 `requires` 的下游补丁若改写了上游补丁 hunk 的局部上下文，精确 verifier 只可登记该组合的专用判据；该判据须逐一确认上游新增块唯一存在、删除行仍缺席，并用受控负控证明缺失会判红。不得把它扩展成通用模糊匹配。rc.1 的 `pi-upstream-streaming-020` 与 `pi-toolcall-G2` 组合回归见 `tests/pi-upstream-streaming-020-composition.test.mjs`。
+
 ## 历史
 
 - 2026-09-05 Phase 2a：统合 `patch-marketplace.mjs`（A-D）与 `patch-undo-mobile.mjs`（E1-E7）为本模块，旧脚本删除；当时采用双仓副本。跨树镜像要求于 2026-10-15 退役，现行边界见本文开头和 `docs/AGENTS/SECURITY-HARDENING.md`。
