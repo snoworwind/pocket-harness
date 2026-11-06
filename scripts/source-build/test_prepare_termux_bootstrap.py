@@ -4,6 +4,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 import unittest
+from unittest.mock import call, patch
 
 MODULE_PATH = Path(__file__).with_name("prepare-termux-bootstrap.py")
 SPEC = importlib.util.spec_from_file_location("prepare_termux_bootstrap", MODULE_PATH)
@@ -62,6 +63,30 @@ class PinnedHarnessSourceCommitTests(unittest.TestCase):
         self.receipt.symlink_to(target)
         with self.assertRaisesRegex(ValueError, "not a regular file"):
             pinned_harness_source_commit(self.source)
+
+
+class SeedProfileCommandTests(unittest.TestCase):
+    def test_self_test_runs_before_production_profile_seed(self):
+        with tempfile.TemporaryDirectory(prefix="seed-profile-command-") as temporary:
+            source = Path(temporary) / "deepseek-harness"
+            stage = Path(temporary) / "stage"
+            source.mkdir()
+            helper = Path(__file__).with_name("seed-dsh-profiles.mjs").resolve()
+            with patch.object(MODULE.subprocess, "run") as run:
+                MODULE.seed_profiles(source, stage)
+            home = stage / "home" / ".dsh"
+            self.assertEqual(run.call_args_list, [
+                call(
+                    ["pnpm", "exec", "tsx", str(helper), "--self-test", str(source.resolve())],
+                    cwd=source,
+                    check=True,
+                ),
+                call(
+                    ["pnpm", "exec", "tsx", str(helper), str(source.resolve()), str(home.resolve())],
+                    cwd=source,
+                    check=True,
+                ),
+            ])
 
 
 if __name__ == "__main__":
