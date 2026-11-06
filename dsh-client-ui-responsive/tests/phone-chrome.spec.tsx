@@ -147,6 +147,19 @@ describe('P4 连带：弹出面板钳制必须改锚到真实顶部 chrome', () 
 })
 
 describe('P4：抽屉开关必须有真实样式（自测抓到的缺陷类）', () => {
+  it('手机抽屉 fixed 规则的优先级高于 upstream 的 frame 绝对定位规则', () => {
+    const stripped = MOBILE_FORM_CSS.replace(/\/\*[\s\S]*?\*\//g, '')
+    const selector = "html[data-dsh-mobile-form] [data-dsh-frame][data-sidebar-drawer] > [class*='sidebarCol']"
+    const rule = new RegExp(selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*\\{[^}]*\\}')
+    const match = rule.exec(stripped)
+    expect(match, 'specific mobile drawer override must be present').toBeTruthy()
+    expect(match![0]).toContain('position: fixed')
+    // Four class/attribute selectors outrank upstream's measured three-part rule.
+    expect((selector.match(/\[/g) ?? []).length).toBeGreaterThan(3)
+    const broken = stripped.replace(selector, "[data-dsh-frame] > [class*='sidebarCol']")
+    expect(broken).not.toContain(selector)
+  })
+
   it('CSS 必须同时保留 .toggle 与 .mask；删掉 band 时不得连带删掉 toggle', () => {
     // 缺陷形态（实现期实测踩到）：删 .bar 那段时把共用选择器里的 .toggle 规则一起删了，
     // 于是按钮 classAttr=null、落到浏览器默认样式（实测渲成一块灰色方框）。

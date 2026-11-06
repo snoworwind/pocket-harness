@@ -10,11 +10,11 @@
  * - `data-dsh-frame` tags the upstream frame root. The frame carries no stable
  *   hook of its own; its right column does (`data-rightbar-col`), so the tag is
  *   written from there and re-applied whenever the frame remounts.
- * - `data-dsh-modal-open` on `<html>` when any body-level modal is up, and
+ * - `data-dsh-modal-open` on `<html>` while a tracked aria-modal surface is up, and
  *   `data-dsh-settings-dialog` on the settings panel itself. The settings
- *   overlay renders inside the sidebar subtree, so a translated (off-canvas)
- *   ancestor would carry it off-screen; the settings panel has no attribute of
- *   its own to key a stylesheet on, only its nav/content structure, so this
+ *   overlay renders at the document root, outside the sidebar subtree, so a
+ *   translated (off-canvas) ancestor does not carry it off-screen. The settings
+ *   panel has no attribute of its own to key a stylesheet on, only its nav/content structure, so this
  *   marker is written onto the panel element it finds.
  * - `data-dsh-settings-open` on `<html>` while that settings panel is present.
  *   The narrow-form sheet must pin the drawer (transform: none) for the
@@ -32,6 +32,9 @@ const MOBILE_FORM_QUERY = `(max-width: ${MOBILE_FORM_MAX_WIDTH}px)`
 
 /** Frame tag consumed by this plugin's narrow-form stylesheet. */
 const FRAME_TAG = 'data-dsh-frame'
+
+/** The layout frame marks its own mobile drawer modal with this attribute. */
+const DRAWER_FRAME_SELECTOR = `[${FRAME_TAG}][data-sidebar-drawer]`
 
 /** Settings-panel tag consumed by the mobile settings stylesheet. */
 const SETTINGS_TAG = 'data-dsh-settings-dialog'
@@ -86,7 +89,13 @@ export class MobileFormMarker {
   private syncModal(): void {
     const dialogs = [...document.querySelectorAll<HTMLElement>("[role='dialog'][aria-modal='true']")]
       .filter(dialog => dialog.closest('[data-shell-overlay]') === null)
-    const settings = dialogs.find(dialog => dialog.querySelector(':scope > nav') !== null) ?? null
+    // The expanded sidebar is itself an aria-modal dialog and has a direct nav.
+    // It is a drawer layer, not the settings panel: settings is rendered in a
+    // body-level overlay outside the frame. Without this boundary the drawer
+    // receives the settings marker and settings-nav mutates the wrong surface.
+    const settings = dialogs.find(dialog =>
+      dialog.closest(DRAWER_FRAME_SELECTOR) === null
+      && dialog.querySelector(':scope > nav') !== null) ?? null
     if (settings !== this.modal) {
       this.modal?.removeAttribute(SETTINGS_TAG)
       this.modal = settings

@@ -56,6 +56,30 @@ describe('MobileFormMarker settings dialog fact', () => {
     expect(dialog.hasAttribute('data-dsh-settings-dialog')).toBe(true)
   })
 
+  it('does not mistake the drawer modal nav for the settings panel', async () => {
+    const frame = document.createElement('div')
+    frame.setAttribute('data-dsh-frame', '')
+    frame.setAttribute('data-sidebar-drawer', 'true')
+    const drawer = document.createElement('div')
+    drawer.setAttribute('role', 'dialog')
+    drawer.setAttribute('aria-modal', 'true')
+    drawer.append(document.createElement('nav'))
+    frame.append(drawer)
+    document.body.append(frame)
+
+    attach()
+    await settle()
+    expect(document.documentElement.hasAttribute('data-dsh-modal-open')).toBe(true)
+    expect(document.documentElement.hasAttribute('data-dsh-settings-open')).toBe(false)
+    expect(drawer.hasAttribute('data-dsh-settings-dialog')).toBe(false)
+
+    const settings = mountDialog(true)
+    await settle()
+    expect(document.documentElement.hasAttribute('data-dsh-settings-open')).toBe(true)
+    expect(drawer.hasAttribute('data-dsh-settings-dialog')).toBe(false)
+    expect(settings.hasAttribute('data-dsh-settings-dialog')).toBe(true)
+  })
+
   it('retracts both facts when the settings panel closes', async () => {
     attach()
     const dialog = mountDialog(true)

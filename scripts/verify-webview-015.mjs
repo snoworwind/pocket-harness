@@ -35,12 +35,12 @@ const MOBILE_FORM_MAX_WIDTH = 767
 const formExpr = (body) => '(() => { const mobile = window.innerWidth <= ' + MOBILE_FORM_MAX_WIDTH + '; ' + body + ' })()'
 
 /**
- * 角标座位与展开键的页内读数：面板是否挂载、是否展开、corner 里有没有按钮。
+ * 角标座位与展开键的页内读数：面板是否挂载、是否展开、corner 展开键是否可见。
  *
  * 上游 ui-sidebar-right/src/client/shell/ExpandButton.tsx:33-34 在 surface.layout.expanded
  * 为真时 return null，所以「按钮在不在」本身没有固定真值，不能当无条件断言。
  */
-const CORNER_PROBE = "(() => { const c = document.querySelector('[data-conversation-header-corner]'); const p = document.querySelector('[data-sidebar-right-panel]'); return { corner: !!c, panel: !!p, open: !!(p && p.hasAttribute('data-sidebar-right-open')), button: !!(c && c.querySelector('button')) } })()"
+const CORNER_PROBE = "(() => { const c = document.querySelector('[data-conversation-header-corner]'); const p = document.querySelector('[data-sidebar-right-panel]'); const b = c && c.querySelector('button'); const style = b ? getComputedStyle(b) : null; const buttonVisible = !!b && style.display !== 'none' && style.visibility !== 'hidden' && Number(style.opacity) > 0; return { corner: !!c, panel: !!p, open: !!(p && p.hasAttribute('data-sidebar-right-open')), button: !!b, buttonVisible } })()"
 
 /**
  * 「重置链接」按钮的页内探针（0.14.2 P1）。
@@ -97,12 +97,13 @@ const checks = [
     (v) => !!v && v.present === true && v.display !== 'none' && v.display !== 'absent'],
   // 旧断言「corner 内 button 存在」之所以漂：上游 ExpandButton.tsx:33-34 在面板展开（含
   // surface 未建时的 false）之外 return null —— 有按钮即面板未展开，面板展开了按钮本就该消失。
-  // 判互斥关系才有固定真值，且两方向都能非空证伪。面板未挂载时按钮同样缺席
+  // 当前面板展开态会把按钮保留在 DOM、但设为 visibility:hidden；判存在会误报。现按可见状态
+  // 判互斥关系，两方向都能非空证伪。面板未挂载时按钮同样缺席
   // （上游 RightbarSeat 在 surface 未建时返回 null 的读数由 CORNER_PROBE 的 panel 字段记下），
   // 前置 pinPanelStates() 会把本轮实测到的形态与观测序列写进它自己的结果行。
   ['右栏展开键存在性与面板展开态互斥（展开键存在 === 面板未展开）',
     CORNER_PROBE,
-    (v) => !!v && v.corner === true && v.button === !v.open],
+    (v) => !!v && v.corner === true && v.buttonVisible === !v.open],
   // 0.14.2 P5 已按用户反馈退役 Session-header 文件夹入口；
   // dsh-client-ui-responsive/src/client/index.ts:352-356 记录删除注册的原因，组件仍供 open-with tab 使用。
   // 此断言兼容当前中英文 accessible name，任一入口复活都必须判红。
@@ -222,7 +223,7 @@ async function pinPanelStates() {
   }
   const before = await observe()
   const mounted = !!before && before.panel === true
-  if (mounted && before.button === true) {
+  if (mounted && before.buttonVisible === true) {
     await click('[data-conversation-header-corner] button')
     const after = await observe()
     flips.push(!!after && after.open === true)
@@ -233,7 +234,7 @@ async function pinPanelStates() {
     const after = await observe()
     flips.push(!!after && after.open === false)
   }
-  const agreed = observations.every(o => !!o && o.button === !o.open)
+  const agreed = observations.every(o => !!o && o.buttonVisible === !o.open)
   const flipped = flips.length >= 1 && flips.every(Boolean)
   const sequence = observations.map(o => (o && o.open) ? 'expanded' : 'collapsed').join('->')
   const clicks = flips.length === 0 ? 'none' : flips.map(f => f ? 'flipped' : 'no-op').join(',')

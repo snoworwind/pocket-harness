@@ -68,14 +68,20 @@ export const MOBILE_FORM_CSS: string = `
     padding-bottom: max(env(safe-area-inset-bottom, 0px), var(--dsh-android-system-bottom, 0px));
   }
 
+  /* The upstream drawer rule is scoped to the same frame marker and has three
+     class/attribute selectors. Raise this mobile override above it so the
+     sidebar remains viewport-fixed instead of becoming frame-absolute. */
+  html[data-dsh-mobile-form] [data-dsh-frame][data-sidebar-drawer] > [class*='sidebarCol'] {
+    position: fixed;
+  }
+
   [data-dsh-frame]:not([data-sidebar-collapsed]) > [class*='sidebarCol'] {
     transform: none;
   }
 
-  /* The settings overlay renders inside the sidebar subtree: a translated
-     (off-canvas) ancestor would carry it off-screen (a transformed ancestor
-     becomes the containing block of its fixed-position descendants). The
-     drawer therefore stays on screen while the settings panel is up.
+  /* Settings opens in a body-level portal outside the sidebar subtree. Keep
+     the originating drawer on screen behind that overlay while settings is up;
+     the settings panel itself is tagged from its own nav/content structure.
 
      Only the settings panel may pin it. Keying this on the coarse
      data-dsh-modal-open attribute flattened the drawer for every body-level

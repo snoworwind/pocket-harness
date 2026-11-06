@@ -24,6 +24,6 @@ Pocket Harness v0.14.12 将运行时从 0.2.1-rc.5 升级到官方预发布 `dsh
 ## 交付状态
 
 - 目标应用版本：0.14.12 / versionCode 56。
-- PR、合并提交、PR Gate 与 main 来源草稿 CI：待完成后记录。
+- 引擎升级 PR #236 已合并；运行时覆盖资产修复 PR #241 已合并至 `32a0be53d1b756cd7ac67651e69df383a24e5970`。main 来源 run [42206049909](https://github.com/snoworwind/pocket-harness/actions/runs/42206049909) 双构建、签名和草稿创建通过，APK SHA-256 及设备发现见[候选说明](../../release/v0.14.12/notes.md)。
 - 10 个 Android 插件 npm `package-lock.json` 已按更新后的 peer/devDependency 重生成；CI 将核验锁文件解析、依赖安装与来源构建闭包。
-- ARM64 模拟器 CDP/ADB 与真机验收：尚未执行；开发 PR 不以设备验收阻塞，公开正式 Release 前按 [设备验收规范](emulator-test-protocol.md) 执行。
+- 首轮 Android 16 API 36 ARM64 host-GPU AVD 已安装并启动候选 APK；CDP 检查发现 drawer modal 重复计层、设置标记误认 drawer 和 CSS specificity 三项问题（其中展开键一项为探针误判）。修复 PR 与新的来源草稿、CDP/ADB 复验尚待完成；ARM64 真机不可用。公开正式 Release 前按 [设备验收规范](emulator-test-protocol.md) 完成适用验收或记录明确豁免。
