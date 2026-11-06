@@ -15,7 +15,7 @@
 ## 2. Gradle依赖
 
 <!-- generated:gradle-declarations:start -->
-当前源码声明：versionName `0.14.11` / versionCode `55`；suffix 来自 Gradle 属性。此处不证明 APK 产物或验收状态。
+当前源码声明：versionName `0.14.12` / versionCode `56`；suffix 来自 Gradle 属性。此处不证明 APK 产物或验收状态。
 
 | 配置 | 声明 |
 |---|---|
@@ -67,7 +67,7 @@ ShizukuSupport/ShizukuProbe仍反射探活，授权只能由用户在Shizuku中�
 
 ## 4. 引擎、npm与许可的第二依赖面
 
-当前源码适配目标与固定工具链见 [rc.5 引擎升级记录](ENGINE-UPGRADE-2026-10-31.md)；overlay 以固定的官方 0.2.1-rc.5 源码 manifest 为准，Cordis 不回退旧源码。快照 npm/Termux 闭包由本仓自包含来源链管理，最终 APK 内版本和许可证仍须核实。
+当前源码适配目标与固定工具链见 [rc.1 引擎升级记录](ENGINE-UPGRADE-2026-11-06.md)；overlay 以固定的官方 0.2.2-rc.1 源码 manifest 为准，Cordis 不回退旧源码。快照 npm/Termux 闭包由本仓自包含来源链管理，最终 APK 内版本和许可证仍须核实。
 
 raw npm overlay 不自动保留官方 pnpm patch。六 provider streaming 补丁仍按固定 SHA 与精确上下文施加；Android PTC A1 现覆盖一次/持久两条宿主 spawn 和两个子进程入口，全部 companion 与 pnpm 副本同步，见 [运行时补丁台账](RUNTIME-PATCHES.md)。
 

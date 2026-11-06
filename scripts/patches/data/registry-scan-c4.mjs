@@ -10,11 +10,12 @@ function replaceOnce(source, before, after, label) {
 
 export function planClientRegistryScan(source) {
   if (source.includes(CLIENT_SCAN_MARKER)) return planGatewayClientSource(source)
-  source = replaceOnce(source, 'processOne(entryName, onError) {',
-    'processOne(entryName, onError, entries = this.ctx.loader.entries()) {', 'client processOne')
-  source = replaceOnce(source, 'for (const entry of this.ctx.loader.entries()) {\n\t\t\tif (entry.options.name !== entryName',
-    'for (const entry of entries) {\n\t\t\tif (entry.options.name !== entryName', 'client row loop')
-  source = replaceOnce(source, '\tflush(onError) {\n\t\tlet changed = false;', `\tflush(onError) {
+  if (source.includes('processOne(entryName, onError) {')) {
+    source = replaceOnce(source, 'processOne(entryName, onError) {',
+      'processOne(entryName, onError, entries = this.ctx.loader.entries()) {', 'client processOne')
+    source = replaceOnce(source, 'for (const entry of this.ctx.loader.entries()) {\n\t\t\tif (entry.options.name !== entryName',
+      'for (const entry of entries) {\n\t\t\tif (entry.options.name !== entryName', 'client row loop')
+    source = replaceOnce(source, '\tflush(onError) {\n\t\tlet changed = false;', `\tflush(onError) {
 		/* dsh-mobile registry scan C4: one Loader walk per unchanged flush batch. */
 		let entriesByName;
 		const batchEntries = () => {
@@ -40,6 +41,37 @@ export function planClientRegistryScan(source) {
     'const manifest = JSON.parse(readFileSync(candidate, "utf8"));\n\t\t\t\tconst name = manifest.name;', 'client manifest locate')
   source = replaceOnce(source, 'path: candidate,\n\t\t\t\t\tpackageName: name',
     'path: candidate,\n\t\t\t\t\tmanifest,\n\t\t\t\t\tpackageName: name', 'client located manifest')
+  } else if (source.includes('processOne(entryName, entries, onError) {')) {
+    source = replaceOnce(source, 'const entriesByName = /* @__PURE__ */ new Map();',
+      `/* ${CLIENT_SCAN_MARKER}: reuse the Loader snapshot across this synchronous flush. */
+\t\tlet entriesByName = /* @__PURE__ */ new Map();`, 'client current flush marker')
+    source = replaceOnce(source, '\t\tlet changed = false;\n\t\tfor (const entryName of [...this.dirty])',
+      `\t\tconst batchEntries = () => {
+\t\t\tif (entriesByName !== void 0) return entriesByName;
+\t\t\tentriesByName = /* @__PURE__ */ new Map();
+\t\t\tfor (const entry of this.ctx.loader.entries()) {
+\t\t\t\tconst name = entry.options.name;
+\t\t\t\tconst entries = entriesByName.get(name);
+\t\t\t\tif (entries) entries.push(entry);
+\t\t\t\telse entriesByName.set(name, [entry]);
+\t\t\t}
+\t\t\treturn entriesByName;
+\t\t};
+\t\tconst reportError = (error) => { entriesByName = void 0; onError(error); };
+\t\tlet changed = false;
+\t\tfor (const entryName of [...this.dirty])`, 'client current flush cache')
+    source = replaceOnce(source, 'if (this.processOne(entryName, entriesByName.get(entryName) ?? [], onError)) changed = true;',
+      'if (this.processOne(entryName, batchEntries().get(entryName) ?? [], reportError)) changed = true;', 'client current flush dispatch')
+    source = replaceOnce(source, '\t\t\t\tonError(error instanceof Error ? error : new Error(String(error)));\n\t\t\t}\n\t\t}\n\t\tif (!changed)',
+      '\t\t\t\treportError(error instanceof Error ? error : new Error(String(error)));\n\t\t\t}\n\t\t}\n\t\tif (!changed)', 'client current flush error')
+    source = replaceOnce(source, 'const pkg = JSON.parse(readFileSync(pkgPath, "utf8"));',
+      'const pkg = located.manifest ?? JSON.parse(readFileSync(pkgPath, "utf8"));', 'client manifest reuse')
+    source = replaceOnce(source,
+      'const name = JSON.parse(readFileSync(candidate, "utf8")).name;\n\t\t\t\tif (typeof name === "string" && (expectedPackageName === void 0 || name === expectedPackageName)) return {\n\t\t\t\t\tpath: candidate,\n\t\t\t\t\tpackageName: name\n\t\t\t\t};',
+      'const manifest = JSON.parse(readFileSync(candidate, "utf8"));\n\t\t\t\tconst name = manifest.name;\n\t\t\t\tif (typeof name === "string" && (expectedPackageName === void 0 || name === expectedPackageName)) return {\n\t\t\t\t\tpath: candidate,\n\t\t\t\t\tmanifest,\n\t\t\t\t\tpackageName: name\n\t\t\t\t};', 'client located manifest')
+  } else {
+    throw new Error('client registry scan: unrecognized processOne/flush shape')
+  }
   return planGatewayClientSource(source)
 }
 
@@ -71,6 +103,12 @@ export function planTypertRegistryScan(source) {
 export const GATEWAY_CLIENT_MARKER = 'dsh-mobile gateway client source G1'
 export function planGatewayClientSource(source) {
   if (source.includes(GATEWAY_CLIENT_MARKER)) return source
+  if (source.includes('if (entry.fiber === void 0 || entry.disabled) continue;')) {
+    return replaceOnce(source, 'if (entry.fiber === void 0 || entry.disabled) continue;',
+      `/* ${GATEWAY_CLIENT_MARKER}: enabled gateway rows supply their browser source before host fibers activate. */
+			if (entry.disabled || (entry.fiber === void 0 && !["@deepseek-ai/dsh-api-gateway", "@deepseek-ai/dsh-typert-registry", "@deepseek-ai/dsh-client-connection"].includes(entryName))) continue;`,
+      'gateway enabled-row client source')
+  }
   return replaceOnce(source,
     'if (entry.options.name !== entryName || entry.fiber === void 0 || entry.disabled) continue;',
     `/* dsh-mobile gateway client source G1: browser dependency survives host activation timing. */

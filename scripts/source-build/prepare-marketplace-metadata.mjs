@@ -15,7 +15,7 @@ const contract = JSON.parse(readFileSync(resolve('scripts/contract.json'), 'utf8
 const deltas = (contract.runtimeCompat?.metadataDeltas ?? []).filter(delta => delta.pkg === 'dshmarketplace-plugin')
 if (deltas.length !== 1) throw new Error('exactly one marketplace metadata delta is required')
 const delta = deltas[0]
-if (contract.baseline !== '0.2.1-rc.5' || contract.upstream?.commit !== 'b830ec950faba0a46dda564be3e2d854afed94f1'
+if (contract.baseline !== '0.2.2-rc.1' || contract.upstream?.commit !== '66491b05e3f05ad35bcdd4f6cd7ed26041d9e3db'
   || delta.targetSourceCommit !== contract.upstream.commit || !String(delta.reason ?? '').trim()
   || delta.packageVersion !== '0.1.7'
   || delta.publishedTarball !== 'https://registry.npmjs.org/dshmarketplace-plugin/-/dshmarketplace-plugin-0.1.7.tgz'

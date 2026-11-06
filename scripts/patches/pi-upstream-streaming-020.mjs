@@ -1,16 +1,16 @@
-/** Retain the exact official 0.2.1-rc.2 pi-ai streaming patch after raw npm overlay extraction. */
+/** Retain the exact official rc.1 pi-ai streaming patch after raw npm overlay extraction. */
 import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-export const OFFICIAL_PI_PATCH_SHA256 = '66eaf960054f10441b93ac3857114e96c1901f6d183713e2f21437b007111644'
+export const OFFICIAL_PI_PATCH_SHA256 = '4e1c90fd00aea42989664504668633033c1962e53c07860901edb4f72d843765'
 export const PI_STREAMING_FILES = Object.freeze([
   'dist/api/anthropic-messages.js', 'dist/api/bedrock-converse-stream.js',
   'dist/api/mistral-conversations.js', 'dist/api/openai-completions.js',
   'dist/api/openai-responses-shared.js', 'dist/api/pi-messages.js',
 ])
-const PATCH = join(dirname(fileURLToPath(import.meta.url)), 'upstream', 'pi-ai-1.1.0.patch')
+const PATCH = join(dirname(fileURLToPath(import.meta.url)), 'upstream', 'pi-ai-1.3.0.patch')
 
 /**
  * Prepare all six file replacements before any write; exact upstream context, no fuzzy patching.
@@ -20,8 +20,8 @@ const PATCH = join(dirname(fileURLToPath(import.meta.url)), 'upstream', 'pi-ai-1
  */
 export function planPiStreaming(packageRoot, read = file => readFileSync(join(packageRoot, file), 'utf8')) {
   const manifest = JSON.parse(read('package.json'))
-  if (manifest.name !== '@earendil-works/pi-ai' || manifest.version !== '1.1.0') {
-    throw new Error('pi-upstream-streaming-020 requires @earendil-works/pi-ai@1.1.0')
+  if (manifest.name !== '@earendil-works/pi-ai' || manifest.version !== '1.3.0') {
+    throw new Error('pi-upstream-streaming-020 requires @earendil-works/pi-ai@1.3.0')
   }
   const bytes = readFileSync(PATCH)
   if (createHash('sha256').update(bytes).digest('hex') !== OFFICIAL_PI_PATCH_SHA256) {
@@ -34,19 +34,24 @@ export function planPiStreaming(packageRoot, read = file => readFileSync(join(pa
     if (!header || header[1] !== header[2] || !PI_STREAMING_FILES.includes(header[1])) {
       throw new Error('unexpected official pi-ai patch target')
     }
-    const hunks = lines.flatMap((line, i) => line.startsWith('@@ ') ? [i] : [])
-    if (hunks.length !== 1) throw new Error('unexpected official pi-ai patch hunk count')
-    const body = lines.slice(hunks[0] + 1)
-    if (body[body.length - 1] === '') body.pop()
-    if (body.some(line => !/^[ +\-]/.test(line))) throw new Error('invalid official pi-ai patch context')
-    const before = body.filter(line => line[0] !== '+').map(line => line.slice(1)).join('\n') + '\n'
-    const after = body.filter(line => line[0] !== '-').map(line => line.slice(1)).join('\n') + '\n'
     const original = read(header[1])
-    const matches = original.split(before).length - 1
-    const patchedMatches = original.split(after).length - 1
-    if (matches === 1 && patchedMatches === 0) return { file: header[1], before: original, after: original.replace(before, after) }
-    if (matches === 0 && patchedMatches === 1) return { file: header[1], before: original, after: original }
-    throw new Error('official pi-ai streaming context drift: ' + header[1])
+    const hunkStarts = lines.flatMap((line, i) => line.startsWith('@@ ') ? [i] : [])
+    if (hunkStarts.length === 0) throw new Error('official pi-ai patch has no hunks')
+    let patched = original
+    for (let hunkIndex = 0; hunkIndex < hunkStarts.length; hunkIndex += 1) {
+      const start = hunkStarts[hunkIndex]
+      const end = hunkStarts[hunkIndex + 1] ?? lines.length
+      const body = lines.slice(start + 1, end).filter(line => line !== '\\ No newline at end of file')
+      if (body[body.length - 1] === '') body.pop()
+      if (body.some(line => !/^[ +\-]/.test(line))) throw new Error('invalid official pi-ai patch context')
+      const before = body.filter(line => line[0] !== '+').map(line => line.slice(1)).join('\n') + '\n'
+      const after = body.filter(line => line[0] !== '-').map(line => line.slice(1)).join('\n') + '\n'
+      const matches = patched.split(before).length - 1
+      const patchedMatches = patched.split(after).length - 1
+      if (matches === 1 && patchedMatches === 0) patched = patched.replace(before, after)
+      else if (matches !== 0 || patchedMatches !== 1) throw new Error('official pi-ai streaming context drift: ' + header[1])
+    }
+    return { file: header[1], before: original, after: patched }
   })
   if (JSON.stringify(plans.map(plan => plan.file)) !== JSON.stringify(PI_STREAMING_FILES)) {
     throw new Error('official pi-ai streaming patch target set/order mismatch')

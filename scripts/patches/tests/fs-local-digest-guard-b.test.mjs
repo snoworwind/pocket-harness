@@ -88,7 +88,7 @@ try {
   check('摘要表有界（上限常量在场）', patched.includes('DSH_MOBILE_DIGEST_LIMIT'))
   check('两个 stale 站点都改为「先比摘要」', (patched.match(/this\.dshMobileContentUnchanged\(/g) || []).length === 2)
   check('editText 站点接线', patched.includes('if (expected && existing.version !== expected.version\n\t\t\t\t&& !(await this.dshMobileContentUnchanged(target.targetKey, target.targetKey))) {'))
-  check('writeText 站点接线（replaceIfVersion 同病同治）', patched.includes('if (existing.version !== expected.version\n\t\t\t\t\t&& !(await this.dshMobileContentUnchanged(target.targetKey, target.targetKey))) {'))
+  check('writeText 站点接线（replaceIfVersion 同病同治）', /if \(existing\.version !== expected\.version\s*&& !\(await this\.dshMobileContentUnchanged\(target\.targetKey, target\.targetKey\)\)\) \{/.test(patched))
   check('readText 记录摘要', patched.includes('this.rememberReadDigest(target.targetKey, dshMobileDigestOf(raw));'))
   check('写成功后刷新摘要（edit 与 write 各一处）', (patched.match(/this\.rememberReadDigest\(target\.targetKey, dshMobileDigestOf\(Buffer\.from\(content, "utf8"\)\)\);/g) || []).length === 2)
   check('摘要对原始字节计算（避开 CRLF 口径差）', patched.includes('dshMobileDigestOf(raw)') && patched.includes('dshMobileDigestOf(current) === remembered'))

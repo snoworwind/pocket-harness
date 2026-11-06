@@ -912,63 +912,63 @@ const IMPLS = {
     apply: (s) => {
       if (s.includes('dsh-mobile ptc argv heap via NODE_OPTIONS (L1)')) return s
       const OLD_EXEC = [
-        "\t\t\tconst executable = await this.ctx.subprocess.resolveExecutable(this.config.launch.executable, void 0, signal);",
-        "\t\t\tif (settled) return await result.promise;",
+        "\t\tconst executable = await this.ctx.subprocess.resolveExecutable(this.config.launch.executable, void 0, this.controller.signal);",
+        "\t\tif (this.closed) return;",
       ].join('\n')
       const NEW_EXEC = [
-        "\t\t\tconst executable = await this.ctx.subprocess.resolveExecutable(this.config.launch.executable, void 0, signal);",
-        "\t\t\t// dsh-mobile ptc argv heap via NODE_OPTIONS (L1): fail loud on an unusable executable.",
-        "\t\t\t// Android falls back to the system linker when direct exec of an app-data ELF is denied, and",
-        "\t\t\t// process.execPath is then polluted with that linker path; a linker never loads Node, so the",
-        "\t\t\t// child would die with an absolute-path error before any of our code runs. Guard both shapes",
-        "\t\t\t// here instead of guessing a replacement path.",
-        "\t\t\tif (typeof executable !== 'string' || !isAbsolute(executable)) {",
-        "\t\t\t  throw new Error('ptc-runtime-node: resolved node executable is not an absolute path (' + String(executable) + '); set ptc-runtime.launch.executable to an absolute node binary or wrapper path');",
-        "\t\t\t}",
-        "\t\t\tconst __dshMobileExecBase = executable.slice(executable.lastIndexOf('/') + 1);",
-        "\t\t\tif (/^(?:ld\\.so(?:\\.[0-9]+)*|linker(?:64)?)$/.test(__dshMobileExecBase)) {",
-        "\t\t\t  throw new Error('ptc-runtime-node: resolved node executable is the system dynamic linker (' + executable + '); set ptc-runtime.launch.executable to an absolute node binary or wrapper path, not a linker');",
-        "\t\t\t}",
-        "\t\t\tif (settled) return await result.promise;",
+        "\t\tconst executable = await this.ctx.subprocess.resolveExecutable(this.config.launch.executable, void 0, this.controller.signal);",
+        "\t\t// dsh-mobile ptc argv heap via NODE_OPTIONS (L1): fail loud on an unusable executable.",
+        "\t\t// Android falls back to the system linker when direct exec of an app-data ELF is denied, and",
+        "\t\t// process.execPath is then polluted with that linker path; a linker never loads Node, so the",
+        "\t\t// child would die with an absolute-path error before any of our code runs. Guard both shapes",
+        "\t\t// here instead of guessing a replacement path.",
+        "\t\tif (typeof executable !== 'string' || !isAbsolute(executable)) {",
+        "\t\t  throw new Error('ptc-runtime-node: resolved node executable is not an absolute path (' + String(executable) + '); set ptc-runtime.launch.executable to an absolute node binary or wrapper path');",
+        "\t\t}",
+        "\t\tconst __dshMobileExecBase = executable.slice(executable.lastIndexOf('/') + 1);",
+        "\t\tif (/^(?:ld\\.so(?:\\.[0-9]+)*|linker(?:64)?)$/.test(__dshMobileExecBase)) {",
+        "\t\t  throw new Error('ptc-runtime-node: resolved node executable is the system dynamic linker (' + executable + '); set ptc-runtime.launch.executable to an absolute node binary or wrapper path, not a linker');",
+        "\t\t}",
+        "\t\tif (this.closed) return;",
       ].join('\n')
       const OLD_ARGV = [
-"\t\t\tconst argv = [",
-"\t\t\t\texecutable,",
-"\t\t\t\t...packaged ? [] : [heapFlag],",
-"\t\t\t\t...bootstrapArgs(this.ctx.fs, this.config.launch, this.config.maxMessageBytes)",
-"\t\t\t];",
+"\t\tconst argv = [",
+"\t\t\texecutable,",
+"\t\t\t...packaged ? [] : [heapFlag],",
+"\t\t\t...bootstrapArgs(this.ctx.fs, this.config.launch, this.config.maxMessageBytes, this.retainsState)",
+"\t\t];",
       ].join('\n')
       const NEW_ARGV = [
-"\t\t\t// dsh-mobile ptc argv heap via NODE_OPTIONS (L1): the heap flag must never sit at argv[1].",
-"\t\t\t// The system linker (used when direct exec of an app-data ELF is denied) treats the first",
-"\t\t\t// non-option argument as the program path, so a leading --max-old-space-size would be read",
-"\t\t\t// as that path and the child would die before Node loads. It travels via env instead.",
-"\t\t\tconst argv = [",
-"\t\t\t\texecutable,",
-"\t\t\t\t...bootstrapArgs(this.ctx.fs, this.config.launch, this.config.maxMessageBytes)",
-"\t\t\t];",
+"\t\t// dsh-mobile ptc argv heap via NODE_OPTIONS (L1): the heap flag must never sit at argv[1].",
+"\t\t// The system linker (used when direct exec of an app-data ELF is denied) treats the first",
+"\t\t// non-option argument as the program path, so a leading --max-old-space-size would be read",
+"\t\t// as that path and the child would die before Node loads. It travels via env instead.",
+"\t\tconst argv = [",
+"\t\t\texecutable,",
+"\t\t\t...bootstrapArgs(this.ctx.fs, this.config.launch, this.config.maxMessageBytes, this.retainsState)",
+"\t\t];",
       ].join('\n')
       const OLD_ENV = [
-"\t\t\tif (packaged) {",
-"\t\t\t\tenv.DSH_PTC_RUNTIME_NODE = \"1\";",
-"\t\t\t\tenv.NODE_OPTIONS = heapFlag;",
-"\t\t\t}",
+"\t\tif (packaged) {",
+"\t\t\tenv.DSH_PTC_RUNTIME_NODE = \"1\";",
+"\t\t\tenv.NODE_OPTIONS = heapFlag;",
+"\t\t}",
       ].join('\n')
       const NEW_ENV = [
-"\t\t\t// dsh-mobile ptc argv heap via NODE_OPTIONS (L1): set for every spawn, not only packaged runs,",
-"\t\t\t// because this is now the ONLY carrier of the heap flag.",
-"\t\t\t// Safe here: the child bootstrap (same package lib/process.js) deletes every env key outside",
-"\t\t\t// STARTUP_ENVIRONMENT_NAMES and replaces process.env with a null-prototype object",
-"\t\t\t// (process.js:1063-1064; entry at :1134 passes the real global process), so NODE_OPTIONS",
-"\t\t\t// never reaches a grandchild process.",
-"\t\t\t// This replaces a tombstone rather than opening a new inheritance path: the code above sets",
-"\t\t\t// every non-startup key to undefined and targetEnvironment() drops undefined entries, so an",
-"\t\t\t// engine-level NODE_OPTIONS -- which the child never saw before either -- is now overwritten",
-"\t\t\t// by this value instead of removed.",
-"\t\t\tenv.NODE_OPTIONS = heapFlag;",
-"\t\t\tif (packaged) {",
-"\t\t\t\tenv.DSH_PTC_RUNTIME_NODE = \"1\";",
-"\t\t\t}",
+"\t\t// dsh-mobile ptc argv heap via NODE_OPTIONS (L1): set for every spawn, not only packaged runs,",
+"\t\t// because this is now the ONLY carrier of the heap flag.",
+"\t\t// Safe here: the child bootstrap (same package lib/process.js) deletes every env key outside",
+"\t\t// STARTUP_ENVIRONMENT_NAMES and replaces process.env with a null-prototype object",
+"\t\t// (process.js:1063-1064; entry at :1134 passes the real global process), so NODE_OPTIONS",
+"\t\t// never reaches a grandchild process.",
+"\t\t// This replaces a tombstone rather than opening a new inheritance path: the code above sets",
+"\t\t// every non-startup key to undefined and targetEnvironment() drops undefined entries, so an",
+"\t\t// engine-level NODE_OPTIONS -- which the child never saw before either -- is now overwritten",
+"\t\t// by this value instead of removed.",
+"\t\tenv.NODE_OPTIONS = heapFlag;",
+"\t\tif (packaged) {",
+"\t\t\tenv.DSH_PTC_RUNTIME_NODE = \"1\";",
+"\t\t}",
       ].join('\n')
       for (const pair of [[OLD_EXEC, 'executable 解析行'], [OLD_ARGV, 'argv 构造块'], [OLD_ENV, 'env 赋值块']]) {
         if (!s.includes(pair[0])) {
@@ -1108,21 +1108,21 @@ const IMPLS = {
 
       // ① 站点：createIfAbsent 的 link 失败分支（原文失败即抛，无回退）。
       const SITE_OLD = [
-        '\t\tif (createIfAbsent !== void 0) try {',
+        '\t\tif (options.createIfAbsent) try {',
         '\t\t\tawait linkFile(tempPath, absolutePath);',
         '\t\t} catch (error) {',
-        '\t\t\tawait throwGuardedCreateFailure(error, absolutePath, createIfAbsent.displayPath, inspectPublicationTarget);',
+        '\t\t\tawait throwGuardedCreateFailure(error, absolutePath, displayPath, inspectPublicationTarget);',
         '\t\t}',
       ].join('\n')
       const SITE_NEW = [
-        '\t\tif (createIfAbsent !== void 0) try {',
+        '\t\tif (options.createIfAbsent) try {',
         '\t\t\tawait linkFile(tempPath, absolutePath);',
         '\t\t} catch (error) {',
         '\t\t\t/* dsh-mobile link->rename fallback (F8): Android private EACCES and shared-storage/FUSE ENOSYS. */',
         '\t\t\tif (!(error instanceof Error && "code" in error && (error.code === "EACCES" || error.code === "EPERM" || error.code === "ENOTSUP" || error.code === "ENOSYS"))) {',
-        '\t\t\t\tawait throwGuardedCreateFailure(error, absolutePath, createIfAbsent.displayPath, inspectPublicationTarget);',
+        '\t\t\t\tawait throwGuardedCreateFailure(error, absolutePath, displayPath, inspectPublicationTarget);',
         '\t\t\t} else {',
-        '\t\t\t\tawait dshMobilePublishExclusive(tempPath, absolutePath, createIfAbsent.displayPath, inspectPublicationTarget, internals);',
+        '\t\t\t\tawait dshMobilePublishExclusive(tempPath, absolutePath, displayPath, inspectPublicationTarget, internals);',
         '\t\t\t}',
         '\t\t}',
       ].join('\n')
@@ -1392,8 +1392,8 @@ const IMPLS = {
     check: (s) => s.includes('dsh-mobile external draft addFiles seam (J1)'),
     apply: (s) => {
       if (s.includes('dsh-mobile external draft addFiles seam (J1)')) return s
-      const anchor = '\t\t\t/**\n\t\t\t* Restart one failed file upload.'
-      if (!s.includes(anchor)) throw new Error('external draft seam 锚点未命中：ui-conversation createDrafts 后续注释已变')
+      const anchor = '\t\t\tcreateDrafts(sessionId, files, uploadImages) {'
+      if (!s.includes(anchor)) throw new Error('external draft seam 锚点未命中：ui-conversation createDrafts 方法已变')
       const method = [
         '\t\t\t/** dsh-mobile external draft addFiles seam (J1): reuse the normal composer attachment path. */',
         '\t\t\taddFiles(sessionId, files) {',
@@ -1826,19 +1826,19 @@ const IMPLS = {
       s = replaceOnce(s, ET_OLD, ET_NEW, 'fs-local-digest edit path')
 
       // ⑦ writeText 的 replaceIfVersion 同病同治（实测 TOUCH/CHMOD/同字节 rename 三例同样被拒）。
-      const WT_OLD = '\t\t\t\tif (existing.version !== expected.version) throw new FsError(`cannot write "${target.displayPath}": file changed since it was read`, "FS_STALE_VERSION");'
+      const WT_OLD = '\t\t\tif (existing.version !== expected.version) throw new FsError(`cannot write "${target.displayPath}": file changed since it was read`, "FS_STALE_VERSION");'
       const WT_NEW = [
-        '\t\t\t\tif (existing.version !== expected.version',
-        '\t\t\t\t\t&& !(await this.dshMobileContentUnchanged(target.targetKey, target.targetKey))) {',
-        '\t\t\t\t\t/* dsh-mobile digest CAS fallback (B): same metadata-noise case as editText. */',
-        '\t\t\t\t\tthrow new FsError(`cannot write "${target.displayPath}": file changed since it was read`, "FS_STALE_VERSION");',
-        '\t\t\t\t}',
+        '\t\t\tif (existing.version !== expected.version',
+        '\t\t\t\t&& !(await this.dshMobileContentUnchanged(target.targetKey, target.targetKey))) {',
+        '\t\t\t\t/* dsh-mobile digest CAS fallback (B): same metadata-noise case as editText. */',
+        '\t\t\t\tthrow new FsError(`cannot write "${target.displayPath}": file changed since it was read`, "FS_STALE_VERSION");',
+        '\t\t\t}',
       ].join('\n')
       if (!s.includes(WT_OLD)) throw new Error('fs-local-digest-guard 锚点未命中：writeText replaceIfVersion 判定')
       s = replaceOnce(s, WT_OLD, WT_NEW, 'fs-local-digest write path')
 
       // ⑧ 写成功后刷新摘要（edit 与 write 都经 writeFileAtomic 落盘）。
-      const ET_TAIL_OLD = '\t\t\tawait writeFileAtomic(target.targetKey, content, existing.mode, signal, this.internals);'
+      const ET_TAIL_OLD = '\t\t\tawait writeFileAtomic(target.targetKey, content, existing.mode, signal, this.internals, { displayPath: target.displayPath });'
       const ET_TAIL_NEW = [
         ET_TAIL_OLD,
         '\t\t\t/* dsh-mobile digest CAS fallback (B): the target now holds the bytes just written. */',
@@ -1847,7 +1847,12 @@ const IMPLS = {
       if (!s.includes(ET_TAIL_OLD)) throw new Error('fs-local-digest-guard 锚点未命中：editText 落盘行')
       s = replaceOnce(s, ET_TAIL_OLD, ET_TAIL_NEW, 'fs-local-digest edit tail')
 
-      const WT_TAIL_OLD = '\t\t\tawait writeFileAtomic(target.targetKey, content, existing?.mode, signal, this.internals, expected?.kind === "createIfAbsent" ? { displayPath: target.displayPath } : void 0);'
+      const WT_TAIL_OLD = [
+        '\t\t\tawait writeFileAtomic(target.targetKey, content, existing?.mode, signal, this.internals, {',
+        '\t\t\t\tdisplayPath: target.displayPath,',
+        '\t\t\t\tcreateIfAbsent: expected?.kind === "createIfAbsent"',
+        '\t\t\t});',
+      ].join('\n')
       const WT_TAIL_NEW = [
         WT_TAIL_OLD,
         '\t\t\t/* dsh-mobile digest CAS fallback (B): remember the bytes now on disk. */',
@@ -1896,6 +1901,9 @@ const IMPLS = {
         '                            },',
         '                        };',
         '                    }',
+        '                    const geminiThoughtSignature = tc.thoughtSignature && !parseLegacyEncryptedReasoningDetail(tc.thoughtSignature)',
+        '                        ? tc.thoughtSignature',
+        '                        : undefined;',
         '                    return {',
         '                        id: tc.id,',
         '                        type: "function",',
@@ -1903,6 +1911,7 @@ const IMPLS = {
         '                            name: tc.name,',
         '                            arguments: JSON.stringify(tc.arguments),',
         '                        },',
+        '                        ...(geminiThoughtSignature && { extra_content: { google: { thought_signature: geminiThoughtSignature } } }),',
         '                    };',
         '                });',
         '            }',
@@ -1932,6 +1941,9 @@ const IMPLS = {
         '                                },',
         '                            };',
         '                        }',
+                        '                        const geminiThoughtSignature = tc.thoughtSignature && !parseLegacyEncryptedReasoningDetail(tc.thoughtSignature)',
+                        '                            ? tc.thoughtSignature',
+                        '                            : undefined;',
         '                        const serializedArguments = JSON.stringify(tc.arguments ?? {});',
         '                        return {',
         '                            id: tc.id,',
@@ -1940,6 +1952,7 @@ const IMPLS = {
         '                                name: tc.name,',
         '                                arguments: typeof serializedArguments === "string" && serializedArguments.length > 0 ? serializedArguments : "{}",',
         '                            },',
+                        '                            ...(geminiThoughtSignature && { extra_content: { google: { thought_signature: geminiThoughtSignature } } }),',
         '                        };',
         '                    });',
         '                }',
@@ -2411,15 +2424,15 @@ const IMPLS = {
     apply: (s) => {
       if (s.includes('dsh-mobile file-upload resolver replace (R1)')) return s
       const OLD = [
-        '\t\t\tif (this.agentResolver !== void 0) throw new Error("file-upload: Agent resolver is already registered");',
-        '\t\t\tthis.agentResolver = resolve;',
+        '\t\t\tif (this.agentResolution.resolver !== void 0) throw new Error("file-upload: Agent resolver is already registered");',
+        '\t\t\tthis.agentResolution.resolver = resolve;',
       ].join('\n')
       const NEW = [
         '\t\t\t/* dsh-mobile file-upload resolver replace (R1): cordis runs the new plugin body before',
         "\t\t\t * disposing the previous fiber's effects, so a restart re-registers while the old resolver",
         '\t\t\t * is still installed. Replace in the single slot instead of refusing; the identity-guarded',
         "\t\t\t * disposer below keeps the previous fiber's disposer from clearing this registration. */",
-        '\t\t\tthis.agentResolver = resolve;',
+        '\t\t\tthis.agentResolution.resolver = resolve;',
       ].join('\n')
       if (!s.includes(OLD)) {
         throw new Error('file-upload 锚点未命中：registerAgentResolver 的 already-registered 守卫——引擎升级后请人工核对 dsh-client-file-upload 构建产物')

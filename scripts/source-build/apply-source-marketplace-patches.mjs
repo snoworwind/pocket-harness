@@ -33,7 +33,7 @@ const hereLine = 'const HERE = dirname(fileURLToPath(import.meta.url))'
 //    （ptc-android-native-A1 / pi-upstream-streaming-020 / resolve-engine-patch-target），
 //    不改写则生成副本在 import 期就 ERR_MODULE_NOT_FOUND（实锤 2026-10-02：本地预检与
 //    工作流 505 行同点判红，来源审计链自 0.1.7-rc.2 之后没人跑过，故未被发现）。
-//    同伴模块各自用 import.meta.url 推导仓库根与 upstream/ 数据目录（pi-ai-1.1.0.patch），
+//    同伴模块各自用 import.meta.url 推导仓库根与 upstream/ 数据目录（pi-ai-1.3.0.patch），
 //    所以**不能**把它们复制到生成目录旁边——只能把说明符指回它们的真实位置。
 //
 // 0.1.7 之前这里还有第三处改写：market-A 的市场补丁在源码构建产物上要接受另一种

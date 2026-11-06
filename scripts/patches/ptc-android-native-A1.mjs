@@ -79,26 +79,26 @@ export function patchEnvironment(text, source = false) {
   return replaceMatch(text, match, expected)
 }
 /** Reject policy drift: only the existing resolved full-access mode skips confinement. */
-export function assertPolicyGate(text, expectedPaths = 2) {
-  // 0.14.8（0.2.1-rc.2）：index 里现在有两条 spawn 路径（一次执行 + 持久 PTC），两处都必须
-  // 仍是「只有 resolved full-access 才跳过 confine」。判据改为自校准计数：已审阅判据的出现次数
-  // 必须等于 this.ctx.sandbox.confine(argv, 的出现次数（两者都 > 0）——单点弱化或上游新增
-  // 未审阅 spawn 路径都会判红，要求人工复核，而不是被「至少一处」悄悄放行。
+export function assertPolicyGate(text, expectedPaths = 1) {
+  // 0.14.12（0.2.2-rc.1）： per-call 与 retained-state 共享一个 worker launch，只有一处 sandbox
+  // spawn 判据。自校准计数要求每个 spawn 都有「只有 resolved full-access 才跳过 confine」门控；
+  // 单点弱化或上游新增未审阅 spawn 路径都会判红，要求人工复核。
   const gates = [...text.matchAll(/confined = policy\.mode === (['"])danger-full-access\1 \? (?:undefined|void 0) : await this\.ctx\.sandbox\.confine\(argv,/g)]
   const spawnPaths = [...text.matchAll(/this\.ctx\.sandbox\.confine\(argv,/g)]
   if (gates.length === 0 || spawnPaths.length === 0) fail('resolved-policy confinement gate: expected reviewed anchors, got gates=' + gates.length + ', spawn paths=' + spawnPaths.length)
   if (gates.length !== spawnPaths.length) fail('resolved-policy confinement gate: every sandbox spawn path must share the reviewed gate (gates=' + gates.length + ', spawn paths=' + spawnPaths.length + ')')
   if (spawnPaths.length !== expectedPaths) fail('unreviewed sandbox spawn count: expected ' + expectedPaths + ', got ' + spawnPaths.length)
   const perCallFailure = /error instanceof SandboxUnavailableError \? (['"])sandbox-unavailable\1/.test(text)
-  const persistentFailure = /error instanceof SandboxUnavailableError \|\| \(this\.confined !== undefined && isRunnerSpawnFailure\(error, this\.confined\.argv\[0\], spec\.cwd\)\) \? (['"])sandbox-unavailable\1/.test(text)
-  if (!perCallFailure && !persistentFailure) fail('sandbox-unavailable classification absent')
+  const persistentFailure = /this\.fail\(error instanceof SandboxUnavailableError \|\| this\.confined !== (?:undefined|void 0) && isRunnerSpawnFailure\(error, this\.confined\.argv\[0\], spec\.cwd\) \? (['"])sandbox-unavailable\1 : (['"])worker-exit\2/.test(text)
+  const runnerExitFailure = /classifyRunnerFailure\(outcome\.exitCode, this\.stderr, this\.confined\.runnerFailureRules\) !== void 0 \? (['"])sandbox-unavailable\1 : (['"])worker-exit\2/.test(text)
+  if (!perCallFailure && !persistentFailure && !runnerExitFailure) fail('sandbox-unavailable classification absent')
   const enforcing = [...text.matchAll(/argv:\s*(?:this\.)?confined\?\.argv \?\? argv/g)]
   if (enforcing.length !== spawnPaths.length) fail('every spawn must consume its enforcing argv')
 }
 /** The OS allowlist must not expose host environment values to model-authored JS. */
 export function assertChildClearing(text, source = false) {
-  // 0.14.8（0.2.1-rc.2）：上游把清环境体拆到 environment.ts 的 clearProgramEnvironment(state)，
-  // 源码面只剩一次调用；产物面（tsdown 内联）仍是 state.env 的 deleteProperty + 空原型替换。
+  // rc1 上游把清环境体拆到 environment.ts 的 clearProgramEnvironment(state)，源码面只剩一次
+  // 调用；产物面（tsdown 内联）仍是 state.env 的 deleteProperty + 空原型替换。
   if (source) {
     if (!/clearProgramEnvironment\(processState\)/.test(text)) fail('reviewed child environment clearing is absent')
     return
@@ -114,17 +114,17 @@ function launchBlock(indent, source) {
   const absent = source ? 'undefined' : 'void 0'
   const tick = String.fromCharCode(96)
   return [
-    'const executable = await this.ctx.subprocess.resolveExecutable(this.config.launch.executable, ' + absent + ', signal);',
-    'if (settled) return await result.promise;',
+    'const executable = await this.ctx.subprocess.resolveExecutable(this.config.launch.executable, ' + absent + ', this.controller.signal);',
+    'if (this.closed) return;',
     'const launchPrefix = dshMobilePtcLaunchPrefix(executable);',
     'if (launchPrefix.length === 2) {',
-    '  launchPrefix[1] = await this.ctx.subprocess.resolveExecutable(launchPrefix[1], ' + absent + ', signal);',
-    '  if (settled) return await result.promise;',
+    '  launchPrefix[1] = await this.ctx.subprocess.resolveExecutable(launchPrefix[1], ' + absent + ', this.controller.signal);',
+    '  if (this.closed) return;',
     '}',
     "const packaged = this.config.launch.kind === " + (source ? "'embedded'" : '"embedded"') + ';',
     'const heapFlag = ' + tick + '--max-old-space-size=$' + '{this.config.maxOldGenerationSizeMb}' + tick + ';',
     '// Heap options belong to Node, never between linker64 and its absolute program path.',
-    'const argv = [...launchPrefix, ...bootstrapArgs(this.ctx.fs, this.config.launch, this.config.maxMessageBytes)];',
+    'const argv = [...launchPrefix, ...bootstrapArgs(this.ctx.fs, this.config.launch, this.config.maxMessageBytes, this.retainsState)];',
   ].map(line => indent + line).join('\n')
 }
 function persistentBlock(indent, source) {
@@ -142,14 +142,18 @@ function persistentBlock(indent, source) {
     'const argv = [...launchPrefix, ...bootstrapArgs(this.ctx.fs, this.config.launch, this.config.maxMessageBytes, true)];',
   ].map(line => indent + line).join('\n')
 }
-/** Adapt the independently spawned persistent worker with the same native boundary. */
+/** Adapt a separate persistent worker when an upstream build still exposes that launch path. */
 export function patchPersistentLaunch(text, source = false) {
-  assertPolicyGate(text, source ? 1 : 2)
+  assertPolicyGate(text, 1)
   if (text.includes(PERSISTENT_MARKER)) {
     const block = oneMatch(text, /^([\t ]*)\/\/ dsh-mobile PTC Android persistent launch \(A1\)[\s\S]*?\n\1const argv = \[\.\.\.launchPrefix,[^\n]*\];/m, 'persistent launch block')
     if (block[0] !== persistentBlock(block[1], source)) fail('modified persistent launch block')
     if (!/env\.NODE_OPTIONS = heapFlag;\n[\t ]*const handle = this\.ctx\.subprocess\.spawn\(\{\s*argv: this\.confined\?\.argv \?\? argv/.test(text)) fail('persistent heap/environment boundary changed')
     return text
+  }
+  if (!source && text.includes(LAUNCH_MARKER)) {
+    const spawnPaths = [...text.matchAll(/this\.ctx\.sandbox\.confine\(argv,/g)]
+    if (spawnPaths.length === 1) return text
   }
   const launch = oneMatch(text, /^([\t ]*)const executable = await this\.ctx\.subprocess\.resolveExecutable\(this\.config\.launch\.executable, (?:undefined|void 0), this\.controller\.signal\);?\n\1if \(this\.closed\) return;?\n\1const argv = \[\s*executable,\s*`--max-old-space-size=\$\{this\.config\.maxOldGenerationSizeMb\}`,\s*\.\.\.bootstrapArgs\(this\.ctx\.fs, this\.config\.launch, this\.config\.maxMessageBytes, true\)\s*\];?/m, 'upstream persistent launch')
   text = replaceMatch(text, launch, persistentBlock(launch[1], source))
@@ -163,20 +167,20 @@ export function patchPersistentLaunch(text, source = false) {
 }
 /** Replace the reviewed launch block, including the old L1 guard if it was applied first. */
 export function patchRuntimeIndex(text, source = false) {
-  assertPolicyGate(text, source ? 1 : 2)
+  assertPolicyGate(text, 1)
   if (text.includes(LAUNCH_MARKER)) {
     if (!text.includes(helper(source)) || text.split(LAUNCH_MARKER).length !== 2) fail('incomplete or modified launch helper')
-    const launch = oneMatch(text, /^([\t ]*)const executable = await this\.ctx\.subprocess\.resolveExecutable\(this\.config\.launch\.executable, (?:undefined|void 0), signal\);[\s\S]*?\n\1const argv = \[\.\.\.launchPrefix,[^\n]*\];/m, 'patched launch block')
+    const launch = oneMatch(text, /^([\t ]*)const executable = await this\.ctx\.subprocess\.resolveExecutable\(this\.config\.launch\.executable, (?:undefined|void 0), this\.controller\.signal\);[\s\S]*?\n\1const argv = \[\.\.\.launchPrefix,[^\n]*\];/m, 'patched launch block')
     if (launch[0] !== launchBlock(launch[1], source)) fail('modified native launch block')
     if (!/env\.NODE_OPTIONS = heapFlag;/.test(text)) fail('owned heap flag absent')
     if (/if \(packaged\) \{[^}]*env\.NODE_OPTIONS = heapFlag/.test(text)) fail('heap flag is still packaged-only')
     return source ? text : patchPersistentLaunch(text)
   }
-  const launch = oneMatch(text, /^([\t ]*)const executable = await this\.ctx\.subprocess\.resolveExecutable\(this\.config\.launch\.executable, (?:undefined|void 0), signal\);?[\s\S]*?\n\1const argv = \[[\s\S]*?\];?\n/m, 'upstream Node launch block')
-  if (!/if \(settled\) return await result\.promise/.test(launch[0])
+  const launch = oneMatch(text, /^([\t ]*)const executable = await this\.ctx\.subprocess\.resolveExecutable\(this\.config\.launch\.executable, (?:undefined|void 0), this\.controller\.signal\);?[\s\S]*?\n\1const argv = \[[\s\S]*?\];?\n/m, 'upstream Node launch block')
+  if (!/if \(this\.closed\) return/.test(launch[0])
     || !/const packaged = this\.config\.launch\.kind === (['"])embedded\1/.test(launch[0])
     || !/const heapFlag = \u0060--max-old-space-size=\$\{this\.config\.maxOldGenerationSizeMb\}\u0060/.test(launch[0])
-    || !/bootstrapArgs\(this\.ctx\.fs, this\.config\.launch, this\.config\.maxMessageBytes\)/.test(launch[0])) fail('launch block differs from reviewed upstream')
+    || !/bootstrapArgs\(this\.ctx\.fs, this\.config\.launch, this\.config\.maxMessageBytes, this\.retainsState\)/.test(launch[0])) fail('launch block differs from reviewed upstream')
   const noComments = launch[0].replace(/^[\t ]*\/\/[^\n]*\n/gm, '')
   if (/\b(?:spawn|confine|catch|policy|env)\b/.test(noComments)) fail('unexpected statements in launch block')
   const oldLinkerGuard = launch[0].includes('resolved node executable is the system dynamic linker')
@@ -187,7 +191,7 @@ export function patchRuntimeIndex(text, source = false) {
   else if (!/env\.NODE_OPTIONS = heapFlag;/.test(text)) fail('owned heap flag anchor absent')
   const insertion = oneMatch(text, /^const STRIP_PREFIX\s*=/m, 'module helper insertion')
   text = text.slice(0, insertion.index) + helper(source) + '\n' + text.slice(insertion.index)
-  assertPolicyGate(text, source ? 1 : 2)
+  assertPolicyGate(text, 1)
   return patchRuntimeIndex(text, source)
 }
 function isWithin(root, target) {
