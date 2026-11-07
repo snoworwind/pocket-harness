@@ -57,7 +57,7 @@ describe('P4：顶部额头回收', () => {
   it('②b 插件只在抽屉收起时显示自有入口，抽屉里的上游开关负责关闭', () => {
     expect(toggleSource).toContain('data-dsh-sidebar-toggle')
     expect(toggleSource).toContain('if (open) return null')
-    expect(MOBILE_FORM_CSS).toContain("[data-dsh-frame][data-sidebar-collapsed] > [class*='sidebarCol'] button[class*='toggle']")
+    expect(MOBILE_FORM_CSS).toContain("html[data-dsh-mobile-form] [data-dsh-frame][data-sidebar-collapsed] > [class*='sidebarCol'] button[data-sidebar-toggle]")
   })
 
   it('④ centerCol 的 padding-top 只剩 top inset（回收 44px）', () => {
@@ -153,26 +153,39 @@ describe('P4：手机开关只保留一个', () => {
   })
 })
 describe('P4 硬判据：收起态只有 header opener，展开态只有 rail closer', () => {
-  it('收起态隐藏 rail 上游 toggle，只呈现一个 header opener；展开后交还给 rail', async () => {
-    document.body.innerHTML = '<div data-dsh-frame data-sidebar-collapsed><aside class="sidebarCol_test"><button class="iconButton toggle" aria-label="打开侧边栏"></button></aside><header><div data-conversation-header-leading></div></header></div>'
+  it('收起态只隐藏带上游标记的 rail opener；展开后交还给 rail', async () => {
+    document.documentElement.setAttribute('data-dsh-mobile-form', '')
+    document.body.innerHTML = '<div data-dsh-frame data-sidebar-collapsed><aside class="sidebarCol_test"><button data-sidebar-toggle class="iconButton toggle" aria-label="打开侧边栏"></button><button class="other-toggle" aria-label="其他操作"></button></aside><header><div data-conversation-header-leading></div></header></div>'
     const leading = document.querySelector<HTMLElement>('[data-conversation-header-leading]')!
     const frame = document.querySelector<HTMLElement>('[data-dsh-frame]')!
-    const native = document.querySelector<HTMLButtonElement>('.sidebarCol_test button.toggle')!
+    const native = document.querySelector<HTMLButtonElement>('.sidebarCol_test button[data-sidebar-toggle]')!
+    const unrelated = document.querySelector<HTMLButtonElement>('.sidebarCol_test button.other-toggle')!
+    const selector = "html[data-dsh-mobile-form] [data-dsh-frame][data-sidebar-collapsed] > [class*='sidebarCol'] button[data-sidebar-toggle]"
+    const hideRule = MOBILE_FORM_CSS.match(/html\[data-dsh-mobile-form\]\s+\[data-dsh-frame\]\[data-sidebar-collapsed\]\s*>\s*\[class\*='sidebarCol'\]\s+button\[data-sidebar-toggle\]\s*\{\s*display:\s*none\s*!important;\s*\}/)?.[0]
+    expect(hideRule).toBeTruthy()
+    const style = document.createElement('style')
+    style.textContent = hideRule!
+    document.head.appendChild(style)
     const { createRoot } = require('react-dom/client')
     const { act } = require('react')
     ;(globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true
     const root = createRoot(leading)
     act(() => { root.render(<SidebarToggle toggleSidebar={() => {}} /> as never) })
     expect(leading.querySelectorAll('[data-dsh-sidebar-toggle]')).toHaveLength(1)
-    expect(document.querySelector("[data-dsh-frame][data-sidebar-collapsed] > [class*='sidebarCol'] button[class*='toggle']")).toBe(native)
-    expect(MOBILE_FORM_CSS).toContain('display: none !important')
+    expect(document.querySelector(selector)).toBe(native)
+    expect(getComputedStyle(native).display).toBe('none')
+    expect(getComputedStyle(unrelated).display).not.toBe('none')
     await act(async () => {
       frame.removeAttribute('data-sidebar-collapsed')
       await new Promise(resolve => setTimeout(resolve, 0))
     })
     expect(leading.querySelector('[data-dsh-sidebar-toggle]')).toBeNull()
     expect(native.getAttribute('aria-label')).toBe('打开侧边栏')
+    expect(getComputedStyle(native).display).not.toBe('none')
     act(() => { root.unmount() })
+    style.remove()
+    document.documentElement.removeAttribute('data-dsh-mobile-form')
+    document.body.innerHTML = ''
   })
 
   it('待展开浏览器标签状态出现在 header opener 上并清除', async () => {

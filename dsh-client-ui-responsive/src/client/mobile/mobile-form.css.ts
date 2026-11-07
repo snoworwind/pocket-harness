@@ -75,11 +75,12 @@ export const MOBILE_FORM_CSS: string = `
     position: fixed;
   }
 
-  /* The upstream SidebarRoot still renders its collapsed rail toggle inside
-     the sidebar column. Hide that copy in the closed state; SidebarToggle in
-     the conversation header is the one opener. Keep the rail toggle when the
-     drawer is open, where it is the one close control. */
-  html[data-dsh-mobile-form] [data-dsh-frame][data-sidebar-collapsed] > [class*='sidebarCol'] button[class*='toggle'] {
+  /* The upstream SidebarRoot marks its rail toggle with data-sidebar-toggle.
+     Hide only that known opener in the closed state; other sidebar controls
+     whose generated classes happen to contain “toggle” remain untouched.
+     SidebarToggle in the conversation header is the one opener. Keep the rail
+     toggle when the drawer is open, where it is the one close control. */
+  html[data-dsh-mobile-form] [data-dsh-frame][data-sidebar-collapsed] > [class*='sidebarCol'] button[data-sidebar-toggle] {
     display: none !important;
   }
 
