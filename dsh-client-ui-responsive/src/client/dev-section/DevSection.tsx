@@ -286,8 +286,8 @@ export function DevSection({ renderSlot }: DevSectionProps) {
 
   return (
     <div data-plugin="dev-section" onKeyDown={onKeyDown}>
-      {/* 分区名已由设置中心的二级页标题条承担（竖屏 settings-nav；横屏上游 nav 行），
-          这里不再重复一遍「开发者选项」，只留这一页真正独有的一句说明。 */}
+      {/* 分区名已由 DSH 自带的设置分类导航表达；这里不重复显示标题，
+          只保留这一页独有的一句说明。 */}
       <p className="dsh-dev-note">控制台是运行时内嵌命令行；日志默认关闭。</p>
 
       {/* 0.14.0：屏幕/Shizuku/虚拟屏/浮窗/无障碍/强制销毁已迁到独立「手机控制」设置页。 */}

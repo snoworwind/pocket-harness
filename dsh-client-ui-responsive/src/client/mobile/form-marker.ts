@@ -92,7 +92,7 @@ export class MobileFormMarker {
     // The expanded sidebar is itself an aria-modal dialog and has a direct nav.
     // It is a drawer layer, not the settings panel: settings is rendered in a
     // body-level overlay outside the frame. Without this boundary the drawer
-    // receives the settings marker and settings-nav mutates the wrong surface.
+    // receives the settings marker and mobile layout rules affect the wrong surface.
     const settings = dialogs.find(dialog =>
       dialog.closest(DRAWER_FRAME_SELECTOR) === null
       && dialog.querySelector(':scope > nav') !== null) ?? null

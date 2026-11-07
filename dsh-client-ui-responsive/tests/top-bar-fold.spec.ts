@@ -3,7 +3,7 @@
 //
 // 真机实测（MuMu PGBM10，600px 视口，header 高 76，tabs 行 y=50.17..75.33）结构：
 //   header[data-window-drag]
-//     > div[data-conversation-header-leading]        ← [data-dsh-sidebar-toggle]
+//     > div[data-conversation-header-leading]        ← 手机左栏入口座位
 //     > div[data-slot=conversation.session.header]
 //         > div.titleRow                              ← container-type: inline-size
 //             > div.headerActions
@@ -31,9 +31,6 @@ function buildHeader(plugins: number, withTabs = true): void {
   header.setAttribute('data-window-drag', '')
   const leading = document.createElement('div')
   leading.setAttribute('data-conversation-header-leading', '')
-  const toggle = document.createElement('button')
-  toggle.setAttribute('data-dsh-sidebar-toggle', '')
-  leading.appendChild(toggle)
   header.appendChild(leading)
 
   const sessionSeat = document.createElement('div')
@@ -124,8 +121,6 @@ describe('D 项：竖屏顶栏插件 UI 折叠', () => {
     const arrow = state().arrow!
     expect(arrow).not.toBeNull()
     expect(tabs.lastElementChild).toBe(arrow)
-    // 标题、两个侧边栏按钮（左 toggle / 右展开）与三点菜单都不是我们动的
-    expect(document.querySelector('[data-dsh-sidebar-toggle]')).not.toBeNull()
     expect(document.querySelector('.titleRow nav')?.textContent).toContain('月度现金流核算与报告')
   })
 
