@@ -10,8 +10,8 @@
  * - a phone form (<768px) in CSS: the left sidebar becomes an off-canvas drawer,
  *   the centre column spans the frame, and the right Sidebar keeps upstream's own
  *   fullscreen slide-over (its threshold is the same 768px);
- * - one drawer toggle in upstream's own header row (`conversation.header.leading`),
- *   so no control is added to the sidebar rail or the composer row;
+ * - one phone drawer opener in `conversation.header.leading`; the upstream
+ *   sidebar rail opener stays inside the drawer and closes it;
  * - the drawer mask (`shell.overlay`), which covers the frame while it is open;
  * - the native "open with" wiring: a Session-header action for the workspace
  *   directory and an `extension`-band tab type for files no preview can show;
@@ -30,7 +30,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
 import { ExportResultDialog } from './ExportResultDialog.tsx'
 import { MOBILE_SETTINGS_CSS } from './mobile-settings.css.ts'
-import { MobileSettingsNav } from './mobile/settings-nav.ts'
+import { MobileSettingsStructure } from './mobile/settings-structure.ts'
 import { COMPOSER_MENU_CSS } from './composer-menu.css.ts'
 import { ATTACHMENT_PICKER_MENU_CSS } from './attachment-picker-menu.css.ts'
 import { AttachmentPickerMenuEnhancer } from './mobile/attachment-picker-menu.ts'
@@ -150,21 +150,14 @@ export function apply(ctx: ClientContext): void {
     return () => { marker.detach() }
   }, 'ui-responsive: mobile form marker')
 
-  // Mobile settings-panel adaptation: the upstream settings modal is a
-  // fixed 800px two-column panel; below the mobile breakpoint it is
-  // re-shaped to a single column (nav strip scrolls horizontally). The
-  // upstream CSS Modules class names are hashed and unreachable from here,
-  // so the stylesheet targets the dialog's ARIA attributes instead.
+  // Mobile settings-panel sizing: tag the pinned rc.1 cells without changing
+  // DSH's two-column web UI or its built-in navigation behavior.
   ctx.effect(() => injectStyle('mobile-settings', MOBILE_SETTINGS_CSS), 'ui-responsive: mobile settings styles')
-
-  // 0.14.7-B 竖屏设置分层：设置首页（分类列表）→ 二级页（可操作设置）。列表本身仍由上游按注册
-  // 顺序渲染（不硬编码、不排序、不隐藏注册项）；本容器只写层级属性 + 返回控件 + 我方自有分区的
-  // 一行短说明。横屏（无 mobile-form 标记）不写任何东西，布局与行为不变。
   ctx.effect(() => {
-    const nav = new MobileSettingsNav()
-    nav.attach()
-    return () => { nav.detach() }
-  }, 'ui-responsive: mobile settings layering')
+    const structure = new MobileSettingsStructure()
+    structure.attach()
+    return () => { structure.detach() }
+  }, 'ui-responsive: mobile settings structure markers')
 
   // Composer control-row narrow fix: the 176px model pill overlaps the
   // permission pill below the 400px breakpoint; cap it on phones.
@@ -328,14 +321,8 @@ export function apply(ctx: ClientContext): void {
     }),
   }, MobileChrome))
 
-  // The drawer toggle, moved into upstream's own header row (0.14.2 P4).
-  //
-  // It used to live in a self-drawn 44px band ([data-dsh-mobile-topbar]) above the
-  // header; the user reported that band as wasted vertical space ("这个顶部的额头太大了
-  // （标题上方留空）挤占屏幕空间"). Upstream already owns a reserved, empty seat for
-  // exactly this control — conversation.header.leading, a global-navigation seat
-  // rendered beside the Session title (ui-conversation skeleton/ConversationHeader)
-  // — so the toggle moves there and the band is gone.
+  // The upstream rail button moves offscreen with the closed drawer. This header
+  // control is the phone's sole opener while collapsed; the rail button closes it.
   ctx.slots.inject('conversation.header.leading', () => ctx.slots.register({
     name: 'conversation.header.leading',
     inject: (): SidebarToggleInjected => ({

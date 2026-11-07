@@ -75,6 +75,14 @@ export const MOBILE_FORM_CSS: string = `
     position: fixed;
   }
 
+  /* The upstream SidebarRoot still renders its collapsed rail toggle inside
+     the sidebar column. Hide that copy in the closed state; SidebarToggle in
+     the conversation header is the one opener. Keep the rail toggle when the
+     drawer is open, where it is the one close control. */
+  html[data-dsh-mobile-form] [data-dsh-frame][data-sidebar-collapsed] > [class*='sidebarCol'] button[class*='toggle'] {
+    display: none !important;
+  }
+
   [data-dsh-frame]:not([data-sidebar-collapsed]) > [class*='sidebarCol'] {
     transform: none;
   }

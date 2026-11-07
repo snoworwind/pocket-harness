@@ -3533,3 +3533,11 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 642. **宽屏返回栈探针仍假设有侧栏直达设置按钮（2026-11-06）**
 
     现象：Android 16 横屏 AVD 上 `verify-webview-015.mjs --wide` 的返回层两项报 `no-settings-entry` / `before=0`，但同轮「重置链接」探针已通过账号菜单打开设置并点到手机控制页。真因：返回层探针保留了旧桌面布局的直达「设置」按钮查询，没有复用同一脚本已支持账号菜单与直达入口的 `OPEN_SETTINGS_SRC`；宽屏实际只从账号菜单进入，因此失败发生在测试建层之前。修法：返回层探针复用 `OPEN_SETTINGS_SRC`，并加 account-menu 正向及缺设置项/只有导航「更多」两条负控。复验：本地 `--self-test` 24/24；portrait live CDP 39/39；改后 landscape live CDP 39/39；ADB portrait 抽屉开/关和 landscape 设置关闭、新会话触控已留在 `.deploy-tmp/v0.14.12-release-42227774209/`。PR #243 已于 2026-11-06 以 merge commit 合入，PR Gate 全绿；宽屏原始两项为探针假阴性，不是产品失败。
+
+643. **Android 竖屏设置原先空白，首轮修复又误改成两级手机页（2026-11-07）**
+
+    现象：竖屏设置详情一度只显示配置操作和返回标题，后续虽然能看到内容，却变成与横屏 DSH Web 界面不同的自定义两级页。真因：初始手机 CSS 没有基于已核实的 rc.1 SettingsRoot 双列结构设置视口尺寸与两处滚动约束；首轮补救又隐藏 nav/content 之一并注入手机返回栏，违反「竖屏与横屏使用同一套 DSH 设置界面」的要求。修法：删除层级切换、返回栏、分类说明/箭头和替换图标；结构观察器只在验证 `nav(title,list) + content(header,options)` 后写 CSS 属性，不拦分类点击、不增删可见节点。竖屏面板占满视口，保留并排 nav/content，窄化分类栏，并让分类列表和 options 各自在本列滚动。复验：结构/样式回归验证上游节点与按钮不变、两列同时显示；插件全量单测、typecheck/build、代码地图门禁通过；Android 16 API 36 x86 WebView 夹具使用固定 rc.1 树与本方实际 CSS 核对双列布局。该临时页面不包含 Pocket Harness 引擎，不能算完整应用装机验收。
+
+644. **手机收起侧栏时上游 rail 开关与页眉开关同时可见（2026-11-07）**
+
+    现象：手机主界面左上有两个都能展开左栏的按钮。真因：Pocket Harness 在会话页眉增加开栏按钮时，窄屏侧栏仍保留上游 SidebarRoot 的 rail 开关；此前实现只根据抽屉状态切换自定义按钮，没有在收起态隐藏仍可见的 rail 副本。修法：手机窄屏且 frame 收起时隐藏侧栏列内上游 `button[class*='toggle']`；页眉按钮仅在收起态显示，抽屉展开后由抽屉内上游开关负责关闭。复验：phone-chrome/top-bar 定向测试与代码地图门禁通过；Android 16 API 36 x86 AVD WebView 验证收起态、展开态、再次收起均报告仅 1 个可见开栏入口；此临时页验证本方 CSS 选择器，不代表完整应用装机验收。

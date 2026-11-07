@@ -1,258 +1,89 @@
 /**
- * Mobile settings-panel adaptation (issue #1; 2026-09-03 rework, 2026-09-10 de-fork;
- * 2026-10-11 layering for 0.14.7-B).
- *
- * Upstream SettingsRoot draws a fixed overlay with an 800px two-column panel
- * (nav + options). On the phone form it must reflow to a single column and fill
- * the viewport (user requirement: 设置页全屏显示). 0.14.7-B additionally splits it
- * into two levels: 设置首页（分类列表）→ 二级页（可操作设置）. The level is published as
- * `data-dsh-settings-level` on the panel by mobile/settings-nav.ts; this sheet only reads it.
- *
- * The panel renders inside the sidebar subtree, whose CSS-Module class names are
- * hashed and unreachable from here — and its own markup carries no stable
- * attribute. The mobile marker therefore tags the panel
- * (`data-dsh-settings-dialog`, written from its nav/content structure) and this
- * sheet keys on that tag plus the phone-form flag: pure attribute selectors,
- * effective on old kernels too (no `:has()`).
- *
- * Contents are always mounted: switching levels only toggles `display`, so a
- * half-edited section keeps its values, its scroll position and its open rows.
+ * Fit the pinned rc.1 SettingsRoot to a phone while keeping its built-in web UI:
+ * the upstream category navigation stays beside the upstream content column.
  */
-
 export const MOBILE_SETTINGS_CSS: string = `
   html[data-dsh-mobile-form] [data-dsh-settings-dialog] {
     position: relative;
+    display: flex;
+    flex-direction: row;
+    align-items: stretch;
     box-sizing: border-box;
     width: 100vw;
     max-width: none;
-    /* The panel is centred by its fixed overlay, so shrinking the height would
-       move its header back under the status bar. Keep the full height and inset
-       the content instead: border-box keeps the total box at 100vh. */
     height: 100vh;
     max-height: none;
-    padding-top: var(--dsh-mobile-top-inset, 0px);
+    min-width: 0;
+    min-height: 0;
+    padding: var(--dsh-mobile-top-inset, 0px) 0 max(env(safe-area-inset-bottom, 0px), var(--dsh-android-system-bottom, 0px));
     border-radius: 0;
-    flex-direction: column;
-  }
-
-  /* ── 分层导航：顶部条（返回 + 标题）─────────────────────────────────
-   * 首页与二级页都让顶部条占据正常布局空间，避免浮层压住分类列表首行；二级页额外显示分隔线。
-   * 文案一律取自 DOM 既有的上游文本，本表不含任何字面量。 */
-  html[data-dsh-mobile-form] [data-dsh-settings-dialog] > [data-dsh-settings-bar] {
-    position: relative;
-    z-index: 2;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    flex: none;
-    box-sizing: border-box;
-    min-height: 52px;
-    padding: 0 8px;
-    /* 顶部栏在布局流中独占高度，列表只在自己的滚动区内滚动。 */
-    background: var(--dsw-alias-bg-layer-2);
-  }
-
-  html[data-dsh-mobile-form] [data-dsh-settings-dialog][data-dsh-settings-level='detail'] > [data-dsh-settings-bar] {
-    border-bottom: 1px solid var(--dsw-alias-border-l1);
-  }
-
-  html[data-dsh-mobile-form] [data-dsh-settings-dialog] [data-dsh-settings-bar-title] {
-    flex: 1;
-    min-width: 0;
     overflow: hidden;
-    white-space: nowrap;
-    text-overflow: ellipsis;
-    text-align: center;
-    font-size: 17px;
-    font-weight: 600;
-    line-height: 24px;
-    color: var(--dsw-alias-label-primary);
   }
 
-  /* 右侧占位：让标题在视觉上真正居中（与返回控件等高）。 */
-  html[data-dsh-mobile-form] [data-dsh-settings-dialog] [data-dsh-settings-bar-spacer] {
-    flex: none;
-    width: 40px;
-    height: 40px;
-  }
-
-  html[data-dsh-mobile-form] [data-dsh-settings-dialog] [data-dsh-settings-back] {
-    flex: none;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 40px;
-    height: 40px;
-    padding: 0;
-    border: none;
-    border-radius: 50%;
-    background: transparent;
-    color: var(--dsw-alias-label-primary);
-    cursor: pointer;
-  }
-
-  html[data-dsh-mobile-form] [data-dsh-settings-dialog] [data-dsh-settings-back]:hover {
-    background: var(--dsw-alias-interactive-bg-hover);
-  }
-
-  html[data-dsh-mobile-form] [data-dsh-settings-dialog] [data-dsh-settings-back]:focus-visible {
-    outline: 2px solid var(--dsw-alias-link);
-    outline-offset: 2px;
-  }
-
-  /* ── 首页：整屏是本方分类列表 ────────────────────────────────────── */
-  html[data-dsh-mobile-form] [data-dsh-settings-dialog][data-dsh-settings-level='home'] > nav {
+  /* Keep the original DSH navigation rail; only reduce its width for phones. */
+  html[data-dsh-mobile-form] [data-dsh-settings-dialog] > nav {
     display: flex;
+    flex: 0 0 clamp(120px, 38vw, 188px);
     flex-direction: column;
-    flex: 1;
-    min-height: 0;
-    width: 100%;
-    height: auto;
-    gap: 0;
-    /* 标题条已在正常布局流中，不再靠固定占位值防遮挡；这里仅保留列表边距。 */
-    padding: 12px 12px 16px;
-    overflow-y: auto;
-    border: none;
-  }
-
-  /* 标题行的文案仍由上游渲染（本模块把它抄进标题条），这里只是不重复显示。 */
-  html[data-dsh-mobile-form] [data-dsh-settings-dialog][data-dsh-settings-level='home'] > nav > div:first-child {
-    display: none;
-  }
-
-  html[data-dsh-mobile-form] [data-dsh-settings-dialog][data-dsh-settings-level='home'] > nav > div:nth-child(2) {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    overflow: visible;
-  }
-
-  html[data-dsh-mobile-form] [data-dsh-settings-dialog][data-dsh-settings-level='home'] > div:last-child {
-    display: none;
-  }
-
-  /* ── 一级行：上游图标 + 标题 +（我方自有分区的）一行短说明 + 箭头 ── */
-  html[data-dsh-mobile-form] [data-dsh-settings-dialog][data-dsh-settings-level] > nav button {
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr) auto;
-    grid-template-areas: 'icon label chevron' 'icon desc chevron';
-    gap: 2px 12px;
-    align-items: center;
     box-sizing: border-box;
-    width: 100%;
-    height: auto;
-    min-height: 56px;
-    padding: 12px;
-    border-radius: var(--dsw-radius-md);
-  }
-
-  html[data-dsh-mobile-form] [data-dsh-settings-dialog][data-dsh-settings-level] > nav button > svg {
-    grid-area: icon;
-    align-self: center;
-  }
-
-  /* 自有分区的图标：上游对我方 id 只给通用齿轮，故换成本分区自己的图标（见 settings-nav.ts）。
-     每行只留一个可见图标 —— 上游那个被加标记后不占空间，收回时去掉标记即原样复原。 */
-  html[data-dsh-mobile-form] [data-dsh-settings-dialog][data-dsh-settings-level] > nav button > svg[data-dsh-settings-nav-icon-hidden] {
-    display: none;
-  }
-
-  /* 不设 color：上游 navIcon 也只给 flex: none，颜色继承行本身——这里跟着继承，
-     否则我方三个分类的图标会比上游分类的图标暗一档，同一张列表里两套观感。 */
-  html[data-dsh-mobile-form] [data-dsh-settings-dialog][data-dsh-settings-level] > nav button > svg[data-dsh-settings-nav-icon] {
-    grid-area: icon;
-    align-self: center;
-    flex: none;
-  }
-
-  html[data-dsh-mobile-form] [data-dsh-settings-dialog][data-dsh-settings-level] > nav button > span {
-    grid-area: label;
-    min-width: 0;
-    font-size: 16px;
-    line-height: 22px;
-  }
-
-  html[data-dsh-mobile-form] [data-dsh-settings-dialog][data-dsh-settings-level] > nav button > span[data-dsh-settings-nav-desc] {
-    grid-area: desc;
-    min-width: 0;
-    overflow: hidden;
-    white-space: nowrap;
-    text-overflow: ellipsis;
-    color: var(--dsw-alias-label-secondary);
-    font-size: 13px;
-    line-height: 18px;
-  }
-
-  html[data-dsh-mobile-form] [data-dsh-settings-dialog][data-dsh-settings-level] > nav button > span[data-dsh-settings-nav-chevron] {
-    grid-area: chevron;
-    align-self: center;
-    display: inline-flex;
-    color: var(--dsw-alias-label-tertiary);
-  }
-
-  /* ── 二级页：整屏是所选分区的内容 ────────────────────────────────── */
-  html[data-dsh-mobile-form] [data-dsh-settings-dialog][data-dsh-settings-level='detail'] > nav {
-    display: none;
-  }
-
-  html[data-dsh-mobile-form] [data-dsh-settings-dialog][data-dsh-settings-level='detail'] > div:last-child {
-    flex: 1;
+    width: clamp(120px, 38vw, 188px);
+    min-width: 120px;
     min-height: 0;
+    gap: 12px;
+    padding: 12px 8px 8px;
+    overflow: hidden;
   }
 
-  /* 内容列的表头（上游「打开配置文件」+ 关闭）收窄内边距，标题条已承担分区名。 */
-  html[data-dsh-mobile-form] [data-dsh-settings-dialog][data-dsh-settings-level='detail'] > div:last-child > div:first-child {
-    height: auto;
-    padding: 4px 12px 8px;
-  }
-
-  html[data-dsh-mobile-form] [data-dsh-settings-dialog][data-dsh-settings-level] > div:last-child > div:nth-child(2) {
-    padding: 0 12px 24px;
-  }
-
-  /* ── 无分层模块时的回退：保持旧行为（横向标签行）──────────────────
-   * 分层属性由 settings-nav.ts 写；它缺席（模块未装配 / attach 抛错）时退回 0.14.6
-   * 的单列加横向标签行，面板仍可用——横向标签会被裁切是这条回退路本身的固有代价，
-   * 正常装配下不会走到这里。 */
-  html[data-dsh-mobile-form] [data-dsh-settings-dialog]:not([data-dsh-settings-level]) > nav {
-    width: 100%;
-    height: auto;
-    flex: none;
-    flex-direction: row;
-    align-items: center;
-    gap: 10px;
-    padding: 10px 12px;
-    overflow-x: auto;
-    border-right: none;
-    border-bottom: 1px solid var(--dsw-alias-border-l1);
-  }
-
-  html[data-dsh-mobile-form] [data-dsh-settings-dialog]:not([data-dsh-settings-level]) > nav > div:first-child {
-    flex: none;
-    padding: 0;
-    white-space: nowrap;
-  }
-
-  html[data-dsh-mobile-form] [data-dsh-settings-dialog]:not([data-dsh-settings-level]) > nav > div:nth-child(2) {
-    flex-direction: row;
+  html[data-dsh-mobile-form] [data-dsh-settings-dialog] > nav > [data-dsh-settings-nav-list] {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
     gap: 4px;
+    overflow-x: hidden;
+    overflow-y: auto;
+  }
+
+  /* Preserve the built-in row, selected state, icon and label styling. */
+  html[data-dsh-mobile-form] [data-dsh-settings-dialog] > nav button {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    height: auto;
+    min-height: 40px;
+    padding: 8px;
+    gap: 6px;
+  }
+
+  html[data-dsh-mobile-form] [data-dsh-settings-dialog] > [data-dsh-settings-content] {
+    display: flex;
+    flex: 1 1 0;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  /* Keep DSH's config-file and close actions in its original content header. */
+  html[data-dsh-mobile-form] [data-dsh-settings-dialog] > [data-dsh-settings-content] > [data-dsh-settings-header] {
+    display: flex;
+    flex: none;
+    align-items: center;
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    height: auto;
+    min-height: 54px;
+    padding: 8px;
+  }
+
+  /* The selected section keeps its upstream controls and scrolls inside its column. */
+  html[data-dsh-mobile-form] [data-dsh-settings-dialog] > [data-dsh-settings-content] > [data-dsh-settings-options] {
     flex: 1;
     min-width: 0;
-    overflow-x: auto;
-  }
-
-  html[data-dsh-mobile-form] [data-dsh-settings-dialog]:not([data-dsh-settings-level]) > nav > div:nth-child(2) > button {
-    /* Review 2026-08-18: the original rule was an unclosed empty block since #2 and never
-       applied. Completed by container semantics: the nav button container is
-       flex-direction: row + overflow-x: auto, so buttons need flex: none to avoid being
-       compressed and to scroll horizontally with the container. */
-    flex: none;
-  }
-
-  /* Content column: flex:1 but min-height:auto would hold the options scroll area's
-     full content height and overflow the panel; allow it to shrink so the options
-     area scrolls inside. */
-  html[data-dsh-mobile-form] [data-dsh-settings-dialog] > div:last-child {
     min-height: 0;
+    padding: 0 12px 24px;
+    overflow: auto;
   }
 `

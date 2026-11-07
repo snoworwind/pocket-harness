@@ -1,8 +1,7 @@
 /*
  * Phone chrome. Two occupants share this sheet:
  * - .mask, the drawer backdrop (frame-wide overlay seat);
- * - .toggle, the drawer button seated in upstream's own header row
- *   (conversation.header.leading; see SidebarToggle.tsx).
+ * - .toggle, the drawer button seated in conversation.header.leading.
  * Outside the phone form the mask entry stays mounted but draws nothing (an empty
  * box must not eat taps), while the header toggle keeps upstream's own header sizing.
  */
@@ -19,22 +18,11 @@
   display: none;
 }
 
-/*
- * The drawer toggle, sized for the header's own 30px title row. It must not carry a
- * filled background of its own: it sits beside upstream's title cluster, so it reads
- * as one more header icon (the previous 44px band gave it a box of its own).
- */
-/* Phones only: at desktop width upstream keeps its own sidebar toggle in the rail, so
-   rendering ours there would put two sidebar buttons on screen (measured on 16384:
-   upstream's "收起侧边栏" at x=240 plus ours at x=300). The band this replaced was
-   media-gated too; the gate moves onto the rule itself. Keyed on the injected
-   html[data-dsh-mobile-form] marker, the single source of the 767px form. */
 html[data-dsh-mobile-form] .toggle {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   flex: none;
-  /* S3-19: the pending badge hangs off this button, so it is the positioning box. */
   position: relative;
   width: 28px;
   height: 28px;
@@ -78,6 +66,7 @@ html[data-dsh-mobile-form] .toggle:active {
     transition: none;
   }
 }
+
 html[data-dsh-mobile-form] .badge {
   position: absolute;
   top: 6px;
@@ -89,7 +78,6 @@ html[data-dsh-mobile-form] .badge {
   pointer-events: none;
 }
 
-/* S3-19：侧栏收起时提示「有浏览器标签待展开」——不给文字的话用户完全不知道有东西在等。 */
 html[data-dsh-mobile-form] .pendingHint {
   align-self: center;
   margin-left: 6px;
