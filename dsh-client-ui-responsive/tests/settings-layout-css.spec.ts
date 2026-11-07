@@ -1,4 +1,4 @@
-// @vitest-environment node
+// @vitest-environment jsdom
 // Portrait sizing must retain the built-in DSH two-column settings interface.
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
@@ -16,11 +16,36 @@ describe('mobile DSH settings layout', () => {
     expect(MOBILE_SETTINGS_CSS).not.toContain('data-dsh-settings-bar')
 
     const nav = MOBILE_SETTINGS_CSS.split('> nav {')[1]?.split('}')[0] ?? ''
-    expect(nav).toContain('flex: 0 0 clamp(120px, 38vw, 188px)')
+    expect(nav).toContain('flex: 0 0 clamp(96px, 30vw, 128px)')
+    expect(nav).toContain('min-width: 96px')
     expect(nav).not.toContain('display: none')
     const content = MOBILE_SETTINGS_CSS.split('> [data-dsh-settings-content] {')[1]?.split('}')[0] ?? ''
     expect(content).toContain('flex: 1 1 0')
     expect(content).not.toContain('display: none')
+
+    // jsdom does not perform layout, but its CSSOM still confirms the actual
+    // matching mobile rules and their narrow-screen flex basis.
+    const style = document.createElement('style')
+    style.textContent = MOBILE_SETTINGS_CSS
+    document.head.appendChild(style)
+    document.documentElement.setAttribute('data-dsh-mobile-form', '')
+    document.body.innerHTML = '<section data-dsh-settings-dialog><nav><div>设置</div><div data-dsh-settings-nav-list><button>通用设置</button></div></nav><div data-dsh-settings-content><div data-dsh-settings-header>操作</div><div data-dsh-settings-options>详情</div></div></section>'
+    const panelNode = document.querySelector<HTMLElement>('[data-dsh-settings-dialog]')!
+    const navNode = panelNode.querySelector<HTMLElement>(':scope > nav')!
+    const contentNode = panelNode.querySelector<HTMLElement>(':scope > [data-dsh-settings-content]')!
+    expect(getComputedStyle(panelNode).display).toBe('flex')
+    expect(getComputedStyle(panelNode).flexDirection).toBe('row')
+    expect(getComputedStyle(navNode).flexBasis).toBe('clamp(96px, 30vw, 128px)')
+    expect(getComputedStyle(contentNode).flexGrow).toBe('1')
+
+    // At 320px the minimum 96px rail leaves 224px for content (before its
+    // internal padding), unlike the previous 120px rail which left only 200px.
+    const navWidthAt320 = Math.max(96, Math.min(0.30 * 320, 128))
+    expect(320 - navWidthAt320).toBe(224)
+    expect(320 - 120).toBe(200)
+    document.documentElement.removeAttribute('data-dsh-mobile-form')
+    document.body.innerHTML = ''
+    style.remove()
   })
 
   it('gives the category list and selected settings their own scrollable regions', () => {

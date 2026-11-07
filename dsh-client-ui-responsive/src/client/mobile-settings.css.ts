@@ -20,14 +20,15 @@ export const MOBILE_SETTINGS_CSS: string = `
     overflow: hidden;
   }
 
-  /* Keep the original DSH navigation rail; only reduce its width for phones. */
+  /* Keep the original DSH navigation rail compact on phones so the selected
+     section retains useful width even on narrow portrait screens. */
   html[data-dsh-mobile-form] [data-dsh-settings-dialog] > nav {
     display: flex;
-    flex: 0 0 clamp(120px, 38vw, 188px);
+    flex: 0 0 clamp(96px, 30vw, 128px);
     flex-direction: column;
     box-sizing: border-box;
-    width: clamp(120px, 38vw, 188px);
-    min-width: 120px;
+    width: clamp(96px, 30vw, 128px);
+    min-width: 96px;
     min-height: 0;
     gap: 12px;
     padding: 12px 8px 8px;
