@@ -33,8 +33,8 @@ const MOBILE_FORM_QUERY = `(max-width: ${MOBILE_FORM_MAX_WIDTH}px)`
 /** Frame tag consumed by this plugin's narrow-form stylesheet. */
 const FRAME_TAG = 'data-dsh-frame'
 
-/** The layout frame marks its own mobile drawer modal with this attribute. */
-const DRAWER_FRAME_SELECTOR = `[${FRAME_TAG}][data-sidebar-drawer]`
+/** SettingsRoot is portalled outside the tagged frame; a dialog inside it is the drawer's own surface. */
+const DRAWER_FRAME_SELECTOR = `[${FRAME_TAG}]`
 
 /** Settings-panel tag consumed by the mobile settings stylesheet. */
 const SETTINGS_TAG = 'data-dsh-settings-dialog'

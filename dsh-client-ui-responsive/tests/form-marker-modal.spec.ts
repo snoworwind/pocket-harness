@@ -58,18 +58,20 @@ describe('MobileFormMarker settings dialog fact', () => {
 
   it('does not mistake the drawer modal nav for the settings panel', async () => {
     const frame = document.createElement('div')
-    frame.setAttribute('data-dsh-frame', '')
-    frame.setAttribute('data-sidebar-drawer', 'true')
     const drawer = document.createElement('div')
     drawer.setAttribute('role', 'dialog')
     drawer.setAttribute('aria-modal', 'true')
     drawer.append(document.createElement('nav'))
     frame.append(drawer)
+    const rightbar = document.createElement('div')
+    rightbar.setAttribute('data-rightbar-col', '')
+    frame.append(rightbar)
     document.body.append(frame)
 
     attach()
     await settle()
     expect(document.documentElement.hasAttribute('data-dsh-modal-open')).toBe(true)
+    expect(frame.hasAttribute('data-dsh-frame'), 'frame must be tagged from its right-column anchor').toBe(true)
     expect(document.documentElement.hasAttribute('data-dsh-settings-open')).toBe(false)
     expect(drawer.hasAttribute('data-dsh-settings-dialog')).toBe(false)
 

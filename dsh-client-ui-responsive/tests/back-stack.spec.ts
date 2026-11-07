@@ -142,7 +142,6 @@ describe('drawer layer', () => {
 describe('dialog layer', () => {
   it('does not double-count the drawer modal, while keeping a body-level settings dialog independent', async () => {
     const frame = buildFrame()
-    frame.setAttribute('data-sidebar-drawer', 'true')
     const drawerDialog = document.createElement('div')
     drawerDialog.setAttribute('role', 'dialog')
     drawerDialog.setAttribute('aria-modal', 'true')
