@@ -33,13 +33,15 @@ ui-sidebar 的 SidebarRoot 读 `usePanelInfo`——禁用 `ui-layout` 会让三�
 - **左栏**：`[data-dsh-frame] > [class*='sidebarCol']` 改 `position: fixed` 离屏，
   展开态（frame 上没有 `data-sidebar-collapsed`）滑入；grid 轨道被 `!important`
   压成 `0 / 1fr / 0` 并显式指定 `grid-column`（侧栏脱离文档流后，自动排布会把
-  中栏塞进第一个 0 宽轨道）；rail 随侧栏一起离屏，入口由顶栏开关承担。
+  中栏塞进第一个 0 宽轨道）；rail 随侧栏一起离屏。侧栏收起时显示页眉开关，展开时隐藏页眉开关，
+  由 drawer 内上游开关负责关闭，避免两个相同的开合控件同时出现。
 - **右栏**：不动。上游在该阈值下已经是 `position: fixed; inset: 0` 的全屏滑入
   （`data-sidebar-right-panel="fullscreen"`），我们只补安全区 padding。
 - **横屏**：完全不干预，与桌面端一致。
-- **设置弹窗**：上游 SettingsRoot 的 overlay 渲染在侧栏子树里，祖先被
-  `transform` 后会把它一起拖走——标记层在检测到「不在 shell.overlay 里的
-  modal」时给 `<html>` 打 `data-dsh-modal-open`，手机形态据此把抽屉钉回屏幕。
+- **设置弹窗**：上游 SettingsRoot 将 overlay portal 到 `document.body`，位于 AppFrame 外。
+  `MobileFormMarker` 用本方 `[data-dsh-frame]` 区分 drawer 自身的 aria-modal 与 body-level
+  设置面板，只给设置面板写 `data-dsh-settings-dialog`；设置打开时再给 `<html>` 写
+  `data-dsh-settings-open`，手机形态据此把 drawer 保持展开。
 
 ## 原生「打开方式」
 

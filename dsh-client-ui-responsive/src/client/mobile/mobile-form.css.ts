@@ -68,10 +68,10 @@ export const MOBILE_FORM_CSS: string = `
     padding-bottom: max(env(safe-area-inset-bottom, 0px), var(--dsh-android-system-bottom, 0px));
   }
 
-  /* The upstream drawer rule is scoped to the same frame marker and has three
-     class/attribute selectors. Raise this mobile override above it so the
-     sidebar remains viewport-fixed instead of becoming frame-absolute. */
-  html[data-dsh-mobile-form] [data-dsh-frame][data-sidebar-drawer] > [class*='sidebarCol'] {
+  /* Use the phone and frame markers this plugin actually publishes. The old
+     selector also required data-sidebar-drawer, which the pinned AppFrame does
+     not emit, so its specificity guard never matched in the running app. */
+  html[data-dsh-mobile-form] [data-dsh-frame] > [class*='sidebarCol'] {
     position: fixed;
   }
 

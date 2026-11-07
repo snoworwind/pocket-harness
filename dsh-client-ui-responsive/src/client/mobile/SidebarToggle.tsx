@@ -44,7 +44,10 @@ function frameElement(): HTMLElement | null {
  * @returns true while the frame renders the sidebar opened.
  */
 function useSidebarOpen(): boolean {
-  const [open, setOpen] = useState(false)
+  const [open, setOpen] = useState(() => {
+    const frame = frameElement()
+    return frame !== null && !frame.hasAttribute('data-sidebar-collapsed')
+  })
   useEffect(() => {
     let frame: HTMLElement | null = null
     let frameObserver: MutationObserver | null = null
@@ -100,6 +103,10 @@ function useBrowserPending(): boolean {
 export function SidebarToggle({ toggleSidebar }: SidebarToggleProps) {
   const open = useSidebarOpen()
   const browserPending = useBrowserPending()
+  // The sidebar owns its own close button while expanded. Keep the header
+  // affordance only while the drawer is collapsed, so phone users never see
+  // two controls for the same transition at once.
+  if (open) return null
   return (
     <>
     <button

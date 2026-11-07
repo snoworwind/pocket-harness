@@ -482,13 +482,16 @@ export class BackStackSignal {
 
   /** Every modal surface, in document order (settings panel, Modal, lightbox). */
   private detectDialogs(): BackLayerDetection[] {
-    // The upstream mobile drawer exposes its own aria-modal root. The drawer
-    // already has a dedicated layer above, so counting that root again makes
-    // one Back press a no-op. Exclude only that root; a distinct dialog nested
-    // inside the drawer remains an independent, higher layer.
-    const drawerDialog = document.querySelector<HTMLElement>(
-      `${FRAME_SELECTOR}[data-sidebar-drawer] ${DIALOG_SELECTOR}`,
-    )
+    // The mobile drawer is already a dedicated layer, so counting its own
+    // aria-modal root again makes one Back press a no-op. SettingsRoot is
+    // portalled outside the frame; inside it, only the drawer root has a
+    // direct nav. Other dialogs nested in the drawer remain independent layers.
+    const frame = document.querySelector<HTMLElement>(FRAME_SELECTOR)
+      ?? document.querySelector<HTMLElement>(RIGHT_COL_SELECTOR)?.parentElement
+    const drawerDialog = frame === null || frame === undefined
+      ? null
+      : [...frame.querySelectorAll<HTMLElement>(DIALOG_SELECTOR)]
+        .find(dialog => dialog.querySelector(':scope > nav') !== null) ?? null
     return [...document.querySelectorAll<HTMLElement>(DIALOG_SELECTOR)]
       .filter(dialog => dialog !== drawerDialog)
       .map((dialog, index) => ({

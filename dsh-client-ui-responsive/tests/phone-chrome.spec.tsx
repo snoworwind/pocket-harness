@@ -147,15 +147,15 @@ describe('P4 连带：弹出面板钳制必须改锚到真实顶部 chrome', () 
 })
 
 describe('P4：抽屉开关必须有真实样式（自测抓到的缺陷类）', () => {
-  it('手机抽屉 fixed 规则的优先级高于 upstream 的 frame 绝对定位规则', () => {
+  it('手机抽屉 fixed 规则只依赖插件实际发布的 phone/frame 标记', () => {
     const stripped = MOBILE_FORM_CSS.replace(/\/\*[\s\S]*?\*\//g, '')
-    const selector = "html[data-dsh-mobile-form] [data-dsh-frame][data-sidebar-drawer] > [class*='sidebarCol']"
+    const selector = "html[data-dsh-mobile-form] [data-dsh-frame] > [class*='sidebarCol']"
     const rule = new RegExp(selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*\\{[^}]*\\}')
     const match = rule.exec(stripped)
-    expect(match, 'specific mobile drawer override must be present').toBeTruthy()
+    expect(match, 'mobile override must use the published phone and frame markers').toBeTruthy()
     expect(match![0]).toContain('position: fixed')
-    // Four class/attribute selectors outrank upstream's measured three-part rule.
-    expect((selector.match(/\[/g) ?? []).length).toBeGreaterThan(3)
+    expect((selector.match(/\[/g) ?? []).length).toBe(3)
+    expect(stripped).not.toContain('data-sidebar-drawer')
     const broken = stripped.replace(selector, "[data-dsh-frame] > [class*='sidebarCol']")
     expect(broken).not.toContain(selector)
   })
@@ -264,6 +264,31 @@ describe('P4 硬判据：hero/sessionless 态（新建会话那一屏）必须�
     // 若挪到会话作用域的座位，hero 态（无会话）就会没有汉堡 —— 那正是用户担心的形态。
     expect(clientSource).toContain("ctx.slots.inject('conversation.header.leading'")
     expect(clientSource).toMatch(/'conversation\.header\.leading'[\s\S]{0,200}SidebarToggle/)
+  })
+
+  it('页眉开关随 drawer 状态出现和消失，始终只留一个可见开合按钮', async () => {
+    document.body.innerHTML = '<div data-dsh-frame data-sidebar-collapsed><div data-rightbar-col></div><header><div data-conversation-header-leading></div></header></div>'
+    const frame = document.querySelector<HTMLElement>('[data-dsh-frame]')!
+    const leading = document.querySelector<HTMLElement>('[data-conversation-header-leading]')!
+    const { createRoot } = require('react-dom/client')
+    const { act } = require('react')
+    ;(globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true
+    const root = createRoot(leading)
+    act(() => { root.render(<SidebarToggle toggleSidebar={() => {}} /> as never) })
+    expect(leading.querySelector('[data-dsh-sidebar-toggle]')).toBeTruthy()
+
+    await act(async () => {
+      frame.removeAttribute('data-sidebar-collapsed')
+      await new Promise(resolve => setTimeout(resolve, 0))
+    })
+    expect(leading.querySelector('[data-dsh-sidebar-toggle]')).toBeNull()
+
+    await act(async () => {
+      frame.setAttribute('data-sidebar-collapsed', '')
+      await new Promise(resolve => setTimeout(resolve, 0))
+    })
+    expect(leading.querySelector('[data-dsh-sidebar-toggle]')).toBeTruthy()
+    act(() => { root.unmount() })
   })
 
   it('反证：把挂载挪到一个依赖会话/titleRow 的座位，hero 态判据必须判红', () => {
