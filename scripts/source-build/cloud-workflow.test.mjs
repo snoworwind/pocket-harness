@@ -99,10 +99,18 @@ test('source workflow rejects tags, PR refs and feature branches before checkout
   const block = source.slice(start, end)
   assert.match(block, /SOURCE_REF: \$\{\{ github.ref \}\}/)
   const run = block.split('        run: |\n')[1].split('\n').map(line => line.replace(/^ {10}/, '')).join('\n')
-  for (const ref of ['refs/heads/main', 'refs/heads/codex/candidate', 'refs/tags/main', 'refs/pull/1/merge', '']) {
-    const result = spawnSync('/bin/bash', ['-e', '-c', run], { env: { ...process.env, SOURCE_REF: ref } })
+  for (const ref of ['refs/heads/main', 'refs/heads/codex/candidate', 'refs/heads/codex/x86-source-chain', 'refs/tags/main', 'refs/pull/1/merge', '']) {
+    const result = spawnSync('/bin/bash', ['-e', '-c', run], { env: { ...process.env, SOURCE_REF: ref, DSH_ABI: 'arm64', DSH_LOCAL_X86_QA: '' } })
     assert.equal(result.status, ref === 'refs/heads/main' ? 0 : 1)
   }
+  const x86 = spawnSync('/bin/bash', ['-e', '-c', run], { env: {
+    ...process.env, SOURCE_REF: 'refs/heads/codex/x86-source-chain', DSH_ABI: 'x86_64', DSH_LOCAL_X86_QA: '1',
+  } })
+  assert.equal(x86.status, 0, x86.stderr)
+  const x86WrongBranch = spawnSync('/bin/bash', ['-e', '-c', run], { env: {
+    ...process.env, SOURCE_REF: 'refs/heads/codex/candidate', DSH_ABI: 'x86_64', DSH_LOCAL_X86_QA: '1',
+  } })
+  assert.equal(x86WrongBranch.status, 1)
 })
 
 test('both wrapper modes fail the contract if signing secrets are not passed', () => {

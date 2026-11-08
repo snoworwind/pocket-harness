@@ -86,14 +86,18 @@ for (const item of sourceManifest.packages) {
 
 const tempRoot = mkdtempSync(join(tmpdir(), 'dsh-source-snapshot-'))
 try {
+  const ptyBuild = JSON.parse(readFileSync(join(sourceBuildRoot, 'node-pty-android-build.json'), 'utf8'))
+  const abi = ptyBuild.abi
+  if (!['arm64', 'x86_64'].includes(abi)) throw new Error(`unsupported node-pty Android ABI in source report: ${abi}`)
+  const extractionPaths = [packagePrefix]
+  if (abi === 'arm64') extractionPaths.push('home/.dsh/profiles/web/node_modules/@napi-rs/canvas-android-arm64')
   const decoder = spawn('xz', ['-d', `-T${XZ_THREADS}`, '-c', snapshot], { stdio: ['ignore', 'pipe', 'inherit'] })
   const extractor = spawn('tar', [
     '-xf', '-',
     '-C', tempRoot,
     '--no-same-owner',
     '--no-same-permissions',
-    packagePrefix,
-    'home/.dsh/profiles/web/node_modules/@napi-rs/canvas-android-arm64',
+    ...extractionPaths,
   ], { stdio: ['pipe', 'inherit', 'inherit'] })
   decoder.stdout.pipe(extractor.stdin)
   extractor.stdin.on('error', () => {}) // tar can close early after an extraction failure.
@@ -195,22 +199,25 @@ try {
 
   console.log(`source payload byte check passed: ${packageChecks.length} source packages and pnpm physical payloads`)
   const dependencyCheck = checkDshRuntimeDependencies(engineRoot)
-  const nativeCheck = checkAndroidNativeRuntimePackages(engineRoot)
-  const ptyBuild = JSON.parse(readFileSync(join(sourceBuildRoot, 'node-pty-android-build.json'), 'utf8'))
+  const nativeCheck = checkAndroidNativeRuntimePackages(engineRoot, undefined, abi)
   if (nativeCheck.nodePty.androidBinding.sha256 !== ptyBuild.output.sha256) {
     throw new Error('snapshot node-pty Android binary differs from the local source build')
   }
-  const canvasRoot = join(tempRoot, 'home/.dsh/profiles/web/node_modules/@napi-rs/canvas-android-arm64')
-  const canvasManifest = JSON.parse(readFileSync(join(canvasRoot, 'package.json'), 'utf8'))
-  if (canvasManifest.name !== '@napi-rs/canvas-android-arm64' || canvasManifest.version !== '1.0.8') {
-    throw new Error(`unexpected Android Canvas package ${canvasManifest.name}@${canvasManifest.version}`)
-  }
-  const canvasFile = join(canvasRoot, 'skia.android-arm64.node')
-  const canvasBytes = readFileSync(canvasFile)
-  if (canvasBytes.length < 20 || canvasBytes[0] !== 0x7f || canvasBytes[1] !== 0x45
-    || canvasBytes[2] !== 0x4c || canvasBytes[3] !== 0x46 || canvasBytes[4] !== 2
-    || canvasBytes[5] !== 1 || canvasBytes.readUInt16LE(18) !== 183) {
-    throw new Error('Canvas Android module is not an AArch64 ELF file')
+  let canvasReport
+  if (abi === 'arm64') {
+    const canvasRoot = join(tempRoot, 'home/.dsh/profiles/web/node_modules/@napi-rs/canvas-android-arm64')
+    const canvasManifest = JSON.parse(readFileSync(join(canvasRoot, 'package.json'), 'utf8'))
+    if (canvasManifest.name !== '@napi-rs/canvas-android-arm64' || canvasManifest.version !== '1.0.8') {
+      throw new Error(`unexpected Android Canvas package ${canvasManifest.name}@${canvasManifest.version}`)
+    }
+    const canvasFile = join(canvasRoot, 'skia.android-arm64.node')
+    const canvasBytes = readFileSync(canvasFile)
+    if (canvasBytes.length < 20 || canvasBytes[0] !== 0x7f || canvasBytes[1] !== 0x45
+      || canvasBytes[2] !== 0x4c || canvasBytes[3] !== 0x46 || canvasBytes[4] !== 2
+      || canvasBytes[5] !== 1 || canvasBytes.readUInt16LE(18) !== 183) {
+      throw new Error('Canvas Android module is not an AArch64 ELF file')
+    }
+    canvasReport = { version: canvasManifest.version, size: canvasBytes.length, sha256: sha256(canvasBytes) }
   }
   const launcher = readFileSync('app/src/main/java/com/snoworwind/pocketharness/EngineManager.kt', 'utf8')
   if (!launcher.includes('"--expose-internals"')) {
@@ -281,7 +288,7 @@ try {
     packages: packageChecks,
     dependencyCheck,
     nativeCheck,
-    canvasAndroidArm64: { version: canvasManifest.version, size: canvasBytes.length, sha256: sha256(canvasBytes) },
+    canvasAndroidArm64: canvasReport,
     patchChecks,
     presetCarriers: carrierChecks,
   }

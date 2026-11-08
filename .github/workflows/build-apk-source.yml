@@ -11,13 +11,18 @@ jobs:
   termux-package-inputs:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
+    env:
+      DSH_ABI: arm64
     steps:
       - name: Require the maintained source branch
         env:
           SOURCE_REF: ${{ github.ref }}
         shell: bash
         run: |
-          test "$SOURCE_REF" = refs/heads/main
+          if [[ "$SOURCE_REF" == refs/heads/main ]]; then exit 0; fi
+          if [[ "${DSH_ABI:-arm64}" == x86_64 && "${DSH_LOCAL_X86_QA:-}" == 1 && "$SOURCE_REF" == refs/heads/codex/x86-* ]]; then exit 0; fi
+          echo "::error::source builds require main; only local x86 QA builds may use codex/x86-* branches"
+          exit 1
 
       - name: Checkout project source without Git LFS runtime archives
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -42,25 +47,14 @@ jobs:
           bootstrap_root=.deploy-tmp/termux-package-bootstrap
           artifact_root=.deploy-tmp/termux-package-artifact
           mkdir -p "$bootstrap_root" "$artifact_root"
-          python3 - <<'PY' > "$bootstrap_root/bootstrap-pins.env"
-          import ast
-          from pathlib import Path
-          tree = ast.parse(Path('scripts/source-build/prepare-termux-bootstrap.py').read_text())
-          values = {}
-          for node in tree.body:
-              if isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
-                  if node.targets[0].id in {'BOOTSTRAP_URL', 'BOOTSTRAP_SHA256'}:
-                      values[node.targets[0].id] = ast.literal_eval(node.value)
-          if set(values) != {'BOOTSTRAP_URL', 'BOOTSTRAP_SHA256'}:
-              raise SystemExit('Termux bootstrap URL/hash pins are incomplete')
-          print('BOOTSTRAP_URL=' + values['BOOTSTRAP_URL'])
-          print('BOOTSTRAP_SHA256=' + values['BOOTSTRAP_SHA256'])
-          PY
-          source "$bootstrap_root/bootstrap-pins.env"
-          curl --fail --location --retry 3 "$BOOTSTRAP_URL" -o "$bootstrap_root/bootstrap-aarch64.zip"
-          printf '%s  %s\n' "$BOOTSTRAP_SHA256" "$bootstrap_root/bootstrap-aarch64.zip" | sha256sum --check --strict
-          python3 scripts/source-build/prepare-termux-bootstrap.py --extract-bootstrap-only \
-            "$bootstrap_root/bootstrap-aarch64.zip" "$bootstrap_root/bootstrap-extracted/usr"
+          bootstrap_pin=$(python3 scripts/source-build/prepare-termux-bootstrap.py --print-pin "$DSH_ABI")
+          bootstrap_url=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["url"])' <<< "$bootstrap_pin")
+          bootstrap_sha256=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["sha256"])' <<< "$bootstrap_pin")
+          bootstrap_archive="$bootstrap_root/bootstrap-$DSH_ABI.zip"
+          curl --fail --location --retry 3 "$bootstrap_url" -o "$bootstrap_archive"
+          printf '%s  %s\n' "$bootstrap_sha256" "$bootstrap_archive" | sha256sum --check --strict
+          python3 scripts/source-build/prepare-termux-bootstrap.py --extract-bootstrap-only --abi "$DSH_ABI" \
+            "$bootstrap_archive" "$bootstrap_root/bootstrap-extracted/usr"
           python3 - <<'PY'
           import json
           from pathlib import Path
@@ -74,7 +68,8 @@ jobs:
           python3 scripts/source-build/prepare-termux-signed-repo.py \
             "$bootstrap_root/bootstrap-extracted/usr" \
             "$artifact_root/termux-webroot" \
-            "$bootstrap_root/preinstall.json"
+            "$bootstrap_root/preinstall.json" \
+            --abi "$DSH_ABI"
 
           # Debian epoch versions put ':' in valid package filenames, but the
           # Actions artifact service rejects that character in archived paths.
@@ -102,13 +97,17 @@ jobs:
     timeout-minutes: 180
     env:
       DSH_APK_DIR: ${{ github.workspace }}
+      DSH_ABI: arm64
     steps:
       - name: Require the maintained source branch
         env:
           SOURCE_REF: ${{ github.ref }}
         shell: bash
         run: |
-          test "$SOURCE_REF" = refs/heads/main
+          if [[ "$SOURCE_REF" == refs/heads/main ]]; then exit 0; fi
+          if [[ "${DSH_ABI:-arm64}" == x86_64 && "${DSH_LOCAL_X86_QA:-}" == 1 && "$SOURCE_REF" == refs/heads/codex/x86-* ]]; then exit 0; fi
+          echo "::error::source builds require main; only local x86 QA builds may use codex/x86-* branches"
+          exit 1
 
       - name: Checkout project source without Git LFS runtime archives
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -304,22 +303,12 @@ jobs:
           set -euo pipefail
           mkdir -p .deploy-tmp/source-build
           # Reuse only an authenticated cache hit; an interrupted curl may leave a partial ZIP.
-          # Read the canonical pin without importing/executing the bootstrap preparer.
-          bootstrap_sha256=$(python3 - <<'PY'
-          import ast
-          from pathlib import Path
-          tree = ast.parse(Path("scripts/source-build/prepare-termux-bootstrap.py").read_text())
-          pins = [ast.literal_eval(node.value) for node in tree.body if isinstance(node, ast.Assign)
-                  and any(isinstance(target, ast.Name) and target.id == "BOOTSTRAP_SHA256" for target in node.targets)]
-          if len(pins) != 1 or len(pins[0]) != 64 or any(c not in "0123456789abcdef" for c in pins[0]):
-              raise ValueError("invalid bootstrap SHA-256 pin")
-          print(pins[0])
-          PY
-          )
-          if ! printf '%s  %s\n' "$bootstrap_sha256" .deploy-tmp/source-build/bootstrap-aarch64.zip | sha256sum --check --status 2>/dev/null; then
-            curl --fail --location --retry 3 \
-              'https://github.com/termux/termux-packages/releases/download/bootstrap-2026.09.20-r1%2Bapt.android-7/bootstrap-aarch64.zip' \
-              --output .deploy-tmp/source-build/bootstrap-aarch64.zip
+          bootstrap_pin=$(python3 scripts/source-build/prepare-termux-bootstrap.py --print-pin "$DSH_ABI")
+          bootstrap_url=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["url"])' <<< "$bootstrap_pin")
+          bootstrap_sha256=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["sha256"])' <<< "$bootstrap_pin")
+          bootstrap_archive=".deploy-tmp/source-build/bootstrap-$DSH_ABI.zip"
+          if ! printf '%s  %s\n' "$bootstrap_sha256" "$bootstrap_archive" | sha256sum --check --status 2>/dev/null; then
+            curl --fail --location --retry 3 "$bootstrap_url" --output "$bootstrap_archive"
           fi
           # 先清空解包目标：本步对**同一目录**重跑不安全——上一轮按 SYMLINKS.txt 建出的符号链接
           # 会让这一轮的 safe_member 解析出界（报 `bootstrap path escaped staging root`）。
@@ -327,7 +316,8 @@ jobs:
           rm -rf .deploy-tmp/source-build/bootstrap-extracted
           python3 scripts/source-build/prepare-termux-bootstrap.py \
             --extract-bootstrap-only \
-            .deploy-tmp/source-build/bootstrap-aarch64.zip \
+            --abi "$DSH_ABI" \
+            "$bootstrap_archive" \
             .deploy-tmp/source-build/bootstrap-extracted/usr
 
       - name: Build project plugins from source
@@ -524,10 +514,12 @@ jobs:
             .deploy-tmp/engine-deploy \
             "$node_headers" \
             .deploy-tmp/source-build/ndk/android-ndk-r30 \
-            .deploy-tmp/source-build/node-pty-android-build.json
+            .deploy-tmp/source-build/node-pty-android-build.json \
+            --abi "$DSH_ABI"
           node scripts/source-build/check-android-native-runtime-packages.mjs \
             .deploy-tmp/engine-deploy \
-            .deploy-tmp/source-build/android-native-runtime-packages.json
+            .deploy-tmp/source-build/android-native-runtime-packages.json \
+            "$DSH_ABI"
           node <<'NODE'
           const fs = require('node:fs')
           const path = '.deploy-tmp/source-build/source-build-policy.json'
@@ -545,14 +537,18 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p .deploy-tmp/arm64-base
+          base_name="$([ "$DSH_ABI" = arm64 ] && echo arm64-base || echo x64-base)"
+          base_root=".deploy-tmp/$base_name"
+          mkdir -p "$base_root"
           python3 scripts/source-build/prepare-termux-bootstrap.py \
-            .deploy-tmp/source-build/bootstrap-aarch64.zip \
+            --abi "$DSH_ABI" \
+            ".deploy-tmp/source-build/bootstrap-$DSH_ABI.zip" \
             .deploy-tmp/deepseek-harness \
             .deploy-tmp/engine-deploy \
-            .deploy-tmp/arm64-base/base-usr.tar.xz
+            "$base_root/base-usr.tar.xz"
 
       - name: Install Linux asset cross-build tools
+        if: env.DSH_ABI == 'arm64'
         shell: bash
         run: |
           set -euo pipefail
@@ -561,6 +557,7 @@ jobs:
           sudo update-binfmts --enable qemu-aarch64
 
       - name: Prepare pinned Debian archive trust keys for Linux assets
+        if: env.DSH_ABI == 'arm64'
         shell: bash
         run: |
           set -euo pipefail
@@ -583,6 +580,7 @@ jobs:
           test -s "$keydir/debian-archive-keyring.gpg"
 
       - name: Build source-owned offline ARM64 Linux assets
+        if: env.DSH_ABI == 'arm64'
         shell: bash
         env:
           DEBIAN_KEYRING: ${{ github.workspace }}/.deploy-tmp/linux-keyring/debian-archive-keyring.gpg
@@ -611,19 +609,22 @@ jobs:
             --directory .deploy-tmp/source-build/termux-webroot \
             > .deploy-tmp/source-build/termux-http.log 2>&1 &
           server_pid=$!
+          termux_arch="$([ "$DSH_ABI" = arm64 ] && echo aarch64 || echo x86_64)"
+          snapshot_root=".deploy-tmp/snapshot-013/$DSH_ABI"
+          snapshot_stage="$snapshot_root/stage/root"
           for attempt in $(seq 1 30); do
-            if curl --silent --fail http://127.0.0.1:8787/dists/stable/main/binary-aarch64/Packages.gz >/dev/null; then break; fi
+            if curl --silent --fail "http://127.0.0.1:8787/dists/stable/main/binary-$termux_arch/Packages.gz" >/dev/null; then break; fi
             sleep 1
           done
-          curl --silent --fail http://127.0.0.1:8787/dists/stable/main/binary-aarch64/Packages.gz >/dev/null
-          if node scripts/build-snapshot-013.mjs arm64; then
+          curl --silent --fail "http://127.0.0.1:8787/dists/stable/main/binary-$termux_arch/Packages.gz" >/dev/null
+          if node scripts/build-snapshot-013.mjs "$DSH_ABI"; then
             :
           else
             node <<'NODE'
           const fs = require('node:fs')
           const path = require('node:path')
           const esbuild = require('./plugins/dsh-android-bridge/node_modules/esbuild')
-          const root = '.deploy-tmp/snapshot-013/arm64/stage/root'
+          const root = `.deploy-tmp/snapshot-013/${process.env.DSH_ABI}/stage/root`
           let failures = 0
           function walk(dir, rel = '') {
             for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -656,32 +657,33 @@ jobs:
           # 同批 pi-toolcall-G2 亦然）。这里把已打补丁那份的字节写全，随后由快照检查器断言
           # 「任何副本都不得缺 marker」，两道一起保证这类差异不再出厂。
           node scripts/source-build/reconcile-engine-patch-copies.mjs \
-            .deploy-tmp/snapshot-013/arm64/stage/root/usr/lib/node_modules/@deepseek-ai/dsh \
+            "$snapshot_stage/usr/lib/node_modules/@deepseek-ai/dsh" \
             .deploy-tmp/source-build/engine-patch-copy-reconciliation.json
           node scripts/source-build/materialize-dsh-pnpm-packages.mjs \
-            .deploy-tmp/snapshot-013/arm64/stage/root/usr/lib/node_modules/@deepseek-ai/dsh \
+            "$snapshot_stage/usr/lib/node_modules/@deepseek-ai/dsh" \
             .deploy-tmp/engine-overlay/source-build-manifest.json \
             .deploy-tmp/source-build/pnpm-package-materialization.json
-          node scripts/source-build/prepare-linux-snapshot-bundle.mjs --self-test \
-            .deploy-tmp/linux-build/assets .deploy-tmp/linux-build/provenance
-          node scripts/source-build/prepare-linux-snapshot-bundle.mjs \
-            .deploy-tmp/linux-build/assets .deploy-tmp/linux-build/provenance \
-            .deploy-tmp/snapshot-013/arm64/stage/root
-          snapshot_archive="$GITHUB_WORKSPACE/.deploy-tmp/snapshot-013/arm64/snapshot.tar.xz"
-          snapshot_repacked="$GITHUB_WORKSPACE/.deploy-tmp/snapshot-013/arm64/snapshot.source-built.tar.xz"
+          if [[ "$DSH_ABI" == arm64 ]]; then
+            node scripts/source-build/prepare-linux-snapshot-bundle.mjs --self-test \
+              .deploy-tmp/linux-build/assets .deploy-tmp/linux-build/provenance
+            node scripts/source-build/prepare-linux-snapshot-bundle.mjs \
+              .deploy-tmp/linux-build/assets .deploy-tmp/linux-build/provenance "$snapshot_stage"
+          fi
+          snapshot_archive="$GITHUB_WORKSPACE/$snapshot_root/snapshot.tar.xz"
+          snapshot_repacked="$GITHUB_WORKSPACE/$snapshot_root/snapshot.source-built.tar.xz"
           (
-            cd .deploy-tmp/snapshot-013/arm64/stage/root
+            cd "$snapshot_stage"
             tar -c --mtime=@1704067200 usr home/.dsh home/.gitconfig 2>/dev/null \
               | xz -T8 -6 > "$snapshot_repacked"
           )
           mv "$snapshot_repacked" "$snapshot_archive"
-          sha256sum "$snapshot_archive" | cut -d' ' -f1 > .deploy-tmp/snapshot-013/arm64/snapshot.sha256
+          sha256sum "$snapshot_archive" | cut -d' ' -f1 > "$snapshot_root/snapshot.sha256"
           node scripts/source-build/check-dsh-runtime-dependencies.mjs \
-            .deploy-tmp/snapshot-013/arm64/stage/root/usr/lib/node_modules/@deepseek-ai/dsh \
+            "$snapshot_stage/usr/lib/node_modules/@deepseek-ai/dsh" \
             .deploy-tmp/source-build/post-snapshot-runtime-dependency-check.json
           node scripts/source-build/check-android-native-runtime-packages.mjs \
-            .deploy-tmp/snapshot-013/arm64/stage/root/usr/lib/node_modules/@deepseek-ai/dsh \
-            .deploy-tmp/source-build/post-snapshot-native-runtime-check.json
+            "$snapshot_stage/usr/lib/node_modules/@deepseek-ai/dsh" \
+            .deploy-tmp/source-build/post-snapshot-native-runtime-check.json "$DSH_ABI"
           # The standard runner has 14 GB of disk. Before the snapshot checker and
           # APK gate extract another copy of the engine, reclaim source-only trees
           # that are no longer inputs. Run 39113529859 reached 83 MB free and both
@@ -705,7 +707,7 @@ jobs:
           chmod +x gradlew
           ./gradlew :app:testDebugUnitTest --no-daemon --console=plain
 
-      - name: Build ARM64 APK
+      - name: Build ABI APK
         shell: bash
         run: |
           set -euo pipefail
@@ -737,7 +739,7 @@ jobs:
             scripts/snapshot-config/engine-overlay.json \
             .deploy-tmp/source-build/source-build-policy.json
           cp scripts/source-build/check-dsh-source-snapshot-gate.mjs scripts/check-engine-overlay.mjs
-          node scripts/build-apk.mjs --abi arm64 --suffix -source
+          node scripts/build-apk.mjs --abi "$DSH_ABI" --suffix -source
           echo "构建步骤退出，记录产物来源；上传前统一验证三签与证书"
           find out -type f -name '*.apk' -print -exec sha256sum {} \; > .deploy-tmp/source-build/apk-sha256.txt
           echo "apk-sha256.txt 行数: $(wc -l < .deploy-tmp/source-build/apk-sha256.txt)"
@@ -748,7 +750,7 @@ jobs:
           find .deploy-tmp/engine-overlay -maxdepth 1 -type f -name '*.tgz' -print0 \
             | sort -z | xargs -0 -r sha256sum \
             > .deploy-tmp/source-build/engine-overlay-sha256.txt
-          find .deploy-tmp/snapshot-013/arm64/.debs -maxdepth 1 -type f -name '*.tgz' -print0 \
+          find ".deploy-tmp/snapshot-013/$DSH_ABI/.debs" -maxdepth 1 -type f -name '*.tgz' -print0 \
             | sort -z | xargs -0 -r sha256sum \
             > .deploy-tmp/source-build/runtime-tarballs-sha256.txt
           for d in plugins/dsh-android-bridge plugins/dsh-android-manage plugins/dsh-android-linux-env plugins/dsh-android-file-open plugins/dsh-model-capability plugins/dsh-android-browser plugins/dsh-android-vdisplay dsh-shell-termux dsh-client-ui-responsive vendor/dshmarketplace-plugin; do

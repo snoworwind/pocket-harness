@@ -1,6 +1,6 @@
 // run-local-source-chain 的阶段选择回归（审计 A09）。
 //
-// 反例的定义：`--from apk` / `--only apk` 必须同时选中 Build ARM64 APK 与构建之后的
+// 反例的定义：`--from apk` / `--only apk` 必须同时选中 Build ABI APK 与构建之后的
 // 最终复验（快照语义归一化 + APK 文件复验）。旧规则把未映射步骤一律归 misc（阶段索引 -1），
 // 于是它们在 `from apk` 过滤时被判为「早于 apk」而漏掉——本文件的负控用生产计划的
 // `stageSource` 元数据还原旧规则，确认那条规则会判红。
@@ -16,7 +16,7 @@ const SCRIPT = join(import.meta.dirname, 'run-local-source-chain.mjs')
 // 与生产脚本同源：用已提交的 workflow 字节，而不是测试进程当前工作树的可能改动。
 const planned = planSteps(committedWorkflow(ROOT, sourceCommit(ROOT)))
 const namesOf = (items) => items.map((item) => item.name)
-const BUILD = 'Build ARM64 APK'
+const BUILD = 'Build ABI APK'
 const FINAL = [
   'Snapshot semantic normalization digest',
   'Reverify final APK files before artifact upload',
@@ -24,7 +24,7 @@ const FINAL = [
 
 test('planSteps：最终复验跟随 apk 阶段，而不是落入 misc', () => {
   const build = planned.find((item) => item.name === BUILD)
-  assert.ok(build, '生产 workflow 里必须存在 Build ARM64 APK')
+  assert.ok(build, '生产 workflow 里必须存在 Build ABI APK')
   assert.equal(build.stage, 'apk')
   for (const name of FINAL) {
     const item = planned.find((entry) => entry.name === name)
@@ -46,7 +46,7 @@ test('planSteps：最终复验跟随 apk 阶段，而不是落入 misc', () => {
   assert.equal(planned.find((item) => item.name.startsWith('单元测试门禁前置'))?.stage, 'apk')
 })
 
-test('--from apk 与 --only apk 的选择都包含 Build ARM64 APK 和最终复验', () => {
+test('--from apk 与 --only apk 的选择都包含 Build ABI APK 和最终复验', () => {
   for (const options of [{ from: 'apk' }, { only: 'apk' }]) {
     const selected = namesOf(selectPlanned(planned, options))
     for (const name of [BUILD, ...FINAL]) {
@@ -64,6 +64,14 @@ test('--from apk 与 --only apk 的选择都包含 Build ARM64 APK 和最终复�
   // --from-step 仍按 --list 序号选择，不受阶段继承影响。
   const last = planned.findIndex((item) => item.name === FINAL[1])
   assert.deepEqual(namesOf(selectPlanned(planned, { fromStep: last })), [FINAL[1]])
+})
+
+test('x86_64 QA dry-run omits the ARM64-only Linux asset build and keeps the ABI APK', () => {
+  const result = spawnSync(process.execPath, [SCRIPT, '--abi', 'x86_64', '--dry-run'], { encoding: 'utf8', timeout: 15000 })
+  assert.equal(result.status, 0, result.stderr || result.stdout)
+  assert.ok(result.stdout.includes('Build ABI APK'))
+  assert.ok(!result.stdout.includes('Linux asset cross-build tools'))
+  assert.ok(!result.stdout.includes('Build source-owned offline ARM64 Linux assets'))
 })
 
 test('负控：旧规则（未映射即 misc）会漏掉最终复验并判红', () => {

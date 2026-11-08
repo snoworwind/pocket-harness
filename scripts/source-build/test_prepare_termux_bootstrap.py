@@ -64,6 +64,16 @@ class PinnedHarnessSourceCommitTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "not a regular file"):
             pinned_harness_source_commit(self.source)
 
+    def test_bootstrap_pins_are_architecture_specific_and_x86_matches_official_asset(self):
+        arm64 = MODULE.bootstrap_pin("arm64")
+        x86_64 = MODULE.bootstrap_pin("x86_64")
+        self.assertEqual(arm64["termuxArchitecture"], "aarch64")
+        self.assertEqual(x86_64["termuxArchitecture"], "x86_64")
+        self.assertEqual(x86_64["sha256"], "2d23d45c1a9e72dda2172895c218334473a2d1560e724f4b88323e56e80736ff")
+        self.assertTrue(x86_64["url"].endswith("/bootstrap-x86_64.zip"))
+        with self.assertRaisesRegex(ValueError, "unsupported Termux bootstrap ABI"):
+            MODULE.bootstrap_pin("x86")
+
 
 class SeedProfileCommandTests(unittest.TestCase):
     def test_self_test_runs_before_production_profile_seed(self):

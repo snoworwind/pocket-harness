@@ -167,7 +167,8 @@ node "$GITHUB_WORKSPACE/scripts/source-build/prepare-pnpm-deploy-runtime-closure
   "$GITHUB_WORKSPACE/.deploy-tmp/deepseek-harness" \
   "$GITHUB_WORKSPACE/scripts/snapshot-config/engine-overlay.json" \
   "$package_backup_dir" \
-  "$GITHUB_WORKSPACE/.deploy-tmp/source-build/pnpm-deploy-runtime-closure.json"
+  "$GITHUB_WORKSPACE/.deploy-tmp/source-build/pnpm-deploy-runtime-closure.json" \
+  "${DSH_ABI:-arm64}"
 corepack pnpm install --lockfile-only --no-frozen-lockfile
 corepack pnpm install --frozen-lockfile --ignore-scripts
 # `pnpm deploy` 要求目标目录为空，否则 ERR_PNPM_DEPLOY_DIR_NOT_EMPTY；CI 每轮全新工作区
@@ -192,6 +193,10 @@ const lock = yaml.load(fs.readFileSync(lockPath, 'utf8'))
 const reportPath = '.deploy-tmp/source-build/pnpm-deploy-runtime-closure.json'
 const report = JSON.parse(fs.readFileSync(reportPath, 'utf8'))
 const digest = (value) => crypto.createHash('sha256').update(value).digest('hex')
+const abi = process.env.DSH_ABI ?? 'arm64'
+const termuxCpu = abi === 'arm64' ? 'arm64' : abi === 'x86_64' ? 'x64' : null
+if (!termuxCpu) throw new Error(`unsupported DSH_ABI ${abi}`)
+const koffiAndroidPackage = `@koromix/koffi-android-${termuxCpu}`
 const exact = (name, version) => {
   const key = Object.keys(lock.packages ?? {}).find((entry) => entry === `${name}@${version}` || entry.startsWith(`${name}@${version}(`))
   if (!key) throw new Error(`temporary runtime lock is missing ${name}@${version}`)
@@ -200,7 +205,7 @@ const exact = (name, version) => {
 report.resolvedLockfileSha256 = digest(fs.readFileSync(lockPath))
 report.androidRuntimeDependencies.resolvedPackages = {
   koffi: exact('koffi', '3.2.1'),
-  koffiAndroidArm64: exact('@koromix/koffi-android-arm64', '3.2.1'),
+  [koffiAndroidPackage]: exact(koffiAndroidPackage, '3.2.1'),
   sharpWasm32: exact('@img/sharp-wasm32', '0.35.3'),
 }
 fs.writeFileSync(reportPath, JSON.stringify(report, null, 2) + '\n')
@@ -209,7 +214,7 @@ const policy = JSON.parse(fs.readFileSync(policyPath, 'utf8'))
 policy.androidRuntimePackages = {
   audit: '.deploy-tmp/source-build/android-native-runtime-packages.json',
   trustedPublisherInputs: [
-    { name: '@koromix/koffi-android-arm64', version: '3.2.1', upstream: 'https://github.com/Koromix/koffi', role: 'Android ARM64 Node-API binding for Koffi' },
+    { name: koffiAndroidPackage, version: '3.2.1', upstream: 'https://github.com/Koromix/koffi', role: `Android ${abi} Node-API binding for Koffi` },
     { name: '@img/sharp-wasm32', version: '0.35.3', upstream: 'https://github.com/lovell/sharp', role: 'WebAssembly fallback for Sharp on Android' },
   ],
   lockfileSha256: report.resolvedLockfileSha256,

@@ -41,8 +41,10 @@ def _compare_versions(left: str, right: str) -> int:
     return 0
 
 
-def select_package_records(stanzas) -> dict[str, dict]:
-    """Choose the newest usable AArch64 record, preferring native arch on version ties."""
+def select_package_records(stanzas, native_arch: str = "aarch64") -> dict[str, dict]:
+    """Choose the newest usable native-ABI record, preferring it over `all` on ties."""
+    if native_arch not in ("aarch64", "x86_64"):
+        raise ValueError(f"unsupported Termux package architecture: {native_arch}")
     selected = {}
     for record in stanzas:
         name = record.get("Package")
@@ -50,7 +52,7 @@ def select_package_records(stanzas) -> dict[str, dict]:
         architecture = record.get("Architecture")
         if not isinstance(name, str) or not name or not isinstance(version, str) or not version:
             raise ValueError("signed Termux package stanza has no package name or version")
-        if architecture not in ("aarch64", "all"):
+        if architecture not in (native_arch, "all"):
             continue
 
         current = selected.get(name)
@@ -62,7 +64,7 @@ def select_package_records(stanzas) -> dict[str, dict]:
             selected[name] = record
         elif comparison == 0:
             current_architecture = current.get("Architecture")
-            if architecture == "aarch64" and current_architecture == "all":
+            if architecture == native_arch and current_architecture == "all":
                 selected[name] = record
             elif architecture == current_architecture:
                 raise ValueError(

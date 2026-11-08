@@ -2,7 +2,11 @@
 
 ## 0.2.2-rc.1 引擎来源链
 
-目标与版本证据见 [rc.1 升级记录](ENGINE-UPGRADE-2026-11-06.md)，此前版本见 [rc.5 升级记录](ENGINE-UPGRADE-2026-10-31.md) 和 [rc.2 升级记录](ENGINE-UPGRADE-2026-10-19.md)。源码阶段用官方 native → Host libraries → Client compiler → Client workspace bundle → Web 顺序；根 workspace bundle 已覆盖 package-local 配置，不能再追加旧 recursive bundle（新版 pnpm 拒绝实际循环依赖）。Android 直接调用这些阶段、绕过上游 `scripts/build.ts --profile official`，因此 `build-engine.sh` 会向所有阶段注入同一组官方客户端环境（提交短哈希、Harness 版本、`DSH_CLIENT_BUILD_PROFILE=official`、`DSH_CLIENT_TITLE=DeepSeek Harness`），并检查 Client 标题、官方品牌槽位和 Web HTML 标题确实进入产物。固定 Corepack 0.36.0；本地 Node 24 必须带匹配开发头文件。APK 仍仅由 main 的隔离来源链产出。
+目标与版本证据见 [rc.1 升级记录](ENGINE-UPGRADE-2026-11-06.md)，此前版本见 [rc.5 升级记录](ENGINE-UPGRADE-2026-10-31.md) 和 [rc.2 升级记录](ENGINE-UPGRADE-2026-10-19.md)。源码阶段用官方 native → Host libraries → Client compiler → Client workspace bundle → Web 顺序；根 workspace bundle 已覆盖 package-local 配置，不能再追加旧 recursive bundle（新版 pnpm 拒绝实际循环依赖）。Android 直接调用这些阶段、绕过上游 `scripts/build.ts --profile official`，因此 `build-engine.sh` 会向所有阶段注入同一组官方客户端环境（提交短哈希、Harness 版本、`DSH_CLIENT_BUILD_PROFILE=official`、`DSH_CLIENT_TITLE=DeepSeek Harness`），并检查 Client 标题、官方品牌槽位和 Web HTML 标题确实进入产物。固定 Corepack 0.36.0；本地 Node 24 必须带匹配开发头文件。正式 APK 仍由 main 的 ARM64 来源链产出。
+
+### 本地 x86_64 开发 QA
+
+`node scripts/source-build/run-local-source-chain.mjs --abi x86_64` 在 Linux/WSL 中从 `codex/x86-*` 分支的已提交 HEAD 建隔离检出；默认 ARM64 仍只接受 `main`。该路线从官方 x86_64 Termux bootstrap 与本轮验签包索引组装底座，按锁定的 Koffi Android x64 包和 NDK 源码构建的 node-pty x64 模块审 ABI；由于当前没有 Android x86_64 Canvas 构建输入和 Linux PRoot 资产，按 x86_64 快照既有的能力边界跳过 Canvas native 与 ARM64 Linux 资产步骤。它适用于 Android 16 x86_64 AVD 功能检查和截图，不是正式发布构建；临时签名产物不能替代 main ARM64 来源链的双构建、正式签名或 §2.1 设备验收。上游 Koffi 3.2.1 从该版本起提供 Android x64 预构建包，详见 [Koffi changelog](https://koffi.dev/changelog)。
 
 rc.1 的 profile seeder 从 `packages/boot/app-boot/src/profile.ts` 读取 `initProfile`，从 `packages/util/official-bundles/src/bundles.ts` 读取 `PROFILE_TEMPLATES`。模板只由 app-boot 内部导入，不再从 `profile.ts` 导出；误从那里读取会在 bootstrap 组装阶段得到 `undefined` 并使 primary/reference 同时失败。bootstrap 组装先调用 seeder 的 `--self-test` 验证 web/headless 清单与辅助文件，再写入实际 profile；`cloud-workflow.test.mjs` 和 `test_prepare_termux_bootstrap.py` 锁定来源与调用顺序。
 
@@ -72,7 +76,7 @@ java -classpath gradle/wrapper/gradle-wrapper.jar org.gradle.wrapper.GradleWrapp
 
 2026-10-15 WSL 来源构建暴露两处执行前提：首次 `--no-checkout` 的上游仓尚无 index，`git checkout -- .` 会报 pathspec；仅在来源链的独立上游检出显式 `checkout --detach` 到 workflow 固定 commit 后才可续跑。pnpm 顶层包为目录链接时，原始归档的逐成员物理路径读取无法读取链接下成员；需执行 workflow 本来就规定的 reconcile/materialize/repack，再重跑原始 perf/profile 门禁及来源快照检查，不能把首次失败当通过。每次恢复都须记录命令与操作块哈希，来源输入和门禁判据不变。MiMo verifier 分派的修复与反例见 [gotchas.md](gotchas.md) 坑 323；本次最终证据以后续 APK 交付报告为准。
 
-`node scripts/source-build/run-local-source-chain.mjs --list` / `--dry-run` 只读 committed HEAD 的 workflow；实际执行在原仓之外的独立浅检出。未提交源码不参与构建。用 `--build-workspace /tmp/dsh-build --from <阶段>` 指定可复核的续跑目录，必须属于同一 source/commit；输出留在该目录，不自动回写 base。隔离检出禁用 LFS smudge，sources 阶段负责重建 base，不能跳过缺失的实际输入。
+`node scripts/source-build/run-local-source-chain.mjs --list` / `--dry-run` 只读 committed HEAD 的 workflow；实际执行在原仓之外的独立浅检出。未提交源码不参与构建。用 `--build-workspace /tmp/dsh-build --from <阶段>` 指定可复核的续跑目录，必须属于同一 source/commit；输出留在该目录，不自动回写 base。隔离检出禁用 LFS smudge，sources 阶段负责重建 base，不能跳过缺失的实际输入。正式/默认目标为 main ARM64；本地 x86_64 开发 QA 用 `--abi x86_64`，仅接受 `codex/x86-*` 已提交分支，细节见本节「本地 x86_64 开发 QA」。
 
 初次检出与续跑均递归检查宿主写树的目录和文件链接，包括 dangling link；只允许树内别名及具体 staging 子树的 Android runtime 前缀。新增宿主写树须同步 `local-source-workspace.mjs` 与负控。现有来源缓存的只读兼容扫描及真实 runner 外部文件负控见 [gotchas.md](gotchas.md) 坑 339；此检查不等于恶意构建进程沙箱。
 
@@ -93,8 +97,9 @@ java -classpath gradle/wrapper/gradle-wrapper.jar org.gradle.wrapper.GradleWrapp
 ```bash
 # 云端源码构建，明确指定维护线：
 gh workflow run build-apk-source.yml --repo snoworwind/pocket-harness --ref main
-# Linux / WSL 本地同链，当前仅 ARM64，构建已提交 HEAD：
+# Linux / WSL 本地同链，默认 main ARM64；Android 16 x86_64 开发 QA：
 node scripts/source-build/run-local-source-chain.mjs
+node scripts/source-build/run-local-source-chain.mjs --abi x86_64
 # 插件冒烟（不生成 APK）：
 node scripts/smoke-bridge.mjs
 ```

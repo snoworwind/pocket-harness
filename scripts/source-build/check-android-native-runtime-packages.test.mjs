@@ -13,6 +13,10 @@ test('recognizes the pinned Linux native payloads found in the deploy tree', () 
       `sherpa-onnx-linux-${arch}@1.13.8/node_modules/sherpa-onnx-linux-${arch}/sherpa-onnx.node`,
     ]) assert.equal(isReviewedNativePath(path), true, path)
   }
+  for (const arch of ['arm64', 'x64']) {
+    const path = `@koromix+koffi-android-${arch}@3.2.1/node_modules/@koromix/koffi-android-${arch}/koffi.node`
+    assert.equal(isReviewedNativePath(path), true, path)
+  }
 })
 
 test('rejects a new version, mismatched architecture and unknown native payload', () => {

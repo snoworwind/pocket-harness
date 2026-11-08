@@ -51,7 +51,7 @@ export const STAGES = [
   // Kotlin 单测门禁是 APK 步的**前置输入**（build-apk.mjs 的 check-kotlin-test-count 会读它产出的
   // 结果目录）。不归 snapshot：`--to snapshot` 不应顺带跑十几分钟单测；归 apk 使 `--only apk`
   // 自带它所需的测试结果。
-  { key: 'apk', label: '门禁 + 注入 + 打包 ARM64 APK', match: /^单元测试门禁前置|^Build ARM64 APK/ },
+  { key: 'apk', label: '门禁 + 注入 + 打包 Android APK', match: /^单元测试门禁前置|^Build ABI APK/ },
 ]
 const SKIP_STEP = /^(Set up job|Checkout project source|Prepare build tools|Run actions\/setup-|Install archive and signature tools|Upload APK and provenance|Post )/
 
@@ -143,7 +143,8 @@ export function planSteps(workflowText) {
         'python3 scripts/source-build/prepare-termux-signed-repo.py \\',
         '  .deploy-tmp/source-build/bootstrap-extracted/usr \\',
         '  .deploy-tmp/source-build/termux-webroot \\',
-        '  scripts/snapshot-config/preinstall.json',
+        '  scripts/snapshot-config/preinstall.json \\',
+        '  --abi "$DSH_ABI"',
       ].join('\n')
     }
     if (!run) continue
@@ -178,6 +179,11 @@ function main() {
   const value = (name, fallback = null) => {
     const i = argv.indexOf(name)
     return i >= 0 ? argv[i + 1] : fallback
+  }
+  const abi = value('--abi', 'arm64')
+  if (!['arm64', 'x86_64'].includes(abi)) {
+    console.error('--abi 仅支持 arm64 或 x86_64')
+    process.exit(2)
   }
 
   const ANDROID_HOME = resolve(process.env.ANDROID_HOME || join(ROOT, '.deploy-tmp', 'android-sdk'))
@@ -215,6 +221,7 @@ function main() {
   if (only && !STAGES.some((s) => s.key === only)) { console.error(`未知阶段: ${only}`); process.exit(2) }
 
   const selected = selectPlanned(planned, { from, to, only, fromStep })
+    .filter((item) => abi === 'arm64' || item.stage !== 'linux-assets')
 
   // ── 本地前置检查（代替被跳过的 uses: 步骤）────────────────────────────────
   const preflight = () => {
@@ -250,7 +257,7 @@ function main() {
     for (const item of selected) console.log(`  将执行 [${item.stage}] ${item.name}`)
     process.exit(0)
   }
-  try { assertMaintainedSource(ROOT) } catch (error) {
+  try { assertMaintainedSource(ROOT, { abi, allowX86Qa: abi === 'x86_64' }) } catch (error) {
     console.error(error.message)
     process.exit(2)
   }
@@ -279,6 +286,7 @@ function main() {
   // 镜像只改取件地址，不改字节——pnpm 按 lockfile 的 integrity 校验每个 tarball。
   const npmMirror = value('--npm-mirror', process.env.DSH_NPM_MIRROR ?? null)
   if (npmMirror) console.log(`npm 镜像：${npmMirror}`)
+  const sourceRef = execFileSync('git', ['-C', ROOT, 'symbolic-ref', '--quiet', 'HEAD'], { encoding: 'utf8' }).trim()
   const baseEnv = {
     ...process.env,
     // Resolve before entering the remote-free checkout; all phases share this identity.
@@ -288,7 +296,9 @@ function main() {
     DSH_APK_DIR: buildRoot,
     GITHUB_WORKSPACE: buildRoot,
     GITHUB_SHA: repoCommit,
-    SOURCE_REF: 'refs/heads/main',
+    SOURCE_REF: sourceRef,
+    DSH_ABI: abi,
+    ...(abi === 'x86_64' ? { DSH_LOCAL_X86_QA: '1' } : {}),
     RUNNER_TEMP: join(buildRoot, '.deploy-tmp', 'runner-temp'),
     GITHUB_ENV: join(buildRoot, '.deploy-tmp', 'local-github-env'),
     PATH: `${nodePathPrefix}${join(homedir(), '.local', 'bin')}:${join(ANDROID_HOME, 'build-tools', '36.0.0')}:${join(ANDROID_HOME, 'platform-tools')}:${process.env.PATH}`,
@@ -348,7 +358,9 @@ function main() {
   }
 
   if (failed) process.exit(1)
-  console.log(`\n本地来源构建阶段完成（${join(buildRoot, 'out', 'v*')}）。这是临时签名的构建副本；仅 CI 双构建验证与正式签名完成后的 artifact 可交付。`)
+  console.log(abi === 'x86_64'
+    ? `\n本地 x86_64 QA 构建完成（${join(buildRoot, 'out', 'v*')}）。这是功能检查产物，不属于正式发布来源。`
+    : `\n本地来源构建阶段完成（${join(buildRoot, 'out', 'v*')}）。这是临时签名的构建副本；仅 CI 双构建验证与正式签名完成后的 artifact 可交付。`)
 }
 
 // 用 realpath 比较入口：macOS 的 /var 是 /private/var 的符号链接，临时目录里的脚本

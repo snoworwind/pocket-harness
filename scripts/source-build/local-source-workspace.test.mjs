@@ -29,13 +29,17 @@ function fixture(fn) {
 }
 
 const linux = { skip: process.platform !== 'linux' }
-test('only an attached main checkout authorizes real source builds and resumes', () => fixture(({ source, git, commit }) => {
+test('main authorizes source builds; only explicit x86 QA authorizes codex/x86 branches', () => fixture(({ source, git, commit }) => {
   git('branch', '-M', 'main')
   assert.doesNotThrow(() => assertMaintainedSource(source))
-  git('checkout', '-qb', 'codex/candidate')
+  assert.doesNotThrow(() => assertMaintainedSource(source, { abi: 'x86_64' }))
+  git('checkout', '-qb', 'codex/x86-source-chain')
   assert.throws(() => assertMaintainedSource(source), /仅允许 main/)
+  assert.throws(() => assertMaintainedSource(source, { abi: 'arm64', allowX86Qa: true }), /x86 QA/)
+  assert.throws(() => assertMaintainedSource(source, { abi: 'x86_64' }), /x86 QA/)
+  assert.doesNotThrow(() => assertMaintainedSource(source, { abi: 'x86_64', allowX86Qa: true }))
   git('checkout', '--detach', commit)
-  assert.throws(() => assertMaintainedSource(source), /仅允许 main/)
+  assert.throws(() => assertMaintainedSource(source, { abi: 'x86_64', allowX86Qa: true }), /x86 QA/)
   git('checkout', 'main')
   assert.doesNotThrow(() => assertMaintainedSource(source))
 }))

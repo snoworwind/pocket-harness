@@ -16,11 +16,31 @@ HARNESS_COMMIT = "66491b05e3f05ad35bcdd4f6cd7ed26041d9e3db"
 HARNESS_VERSION = "0.2.2-rc.1"
 
 BOOTSTRAP_VERSION = "bootstrap-2026.09.20-r1+apt.android-7"
-BOOTSTRAP_SHA256 = "65ba578133ea2f4e5cc07234568815397cf9e1236b5da8c06ce6753cf036cc69"
-BOOTSTRAP_URL = (
+BOOTSTRAP_PINS = {
+    "arm64": {
+        "termuxArchitecture": "aarch64",
+        "sha256": "65ba578133ea2f4e5cc07234568815397cf9e1236b5da8c06ce6753cf036cc69",
+    },
+    "x86_64": {
+        "termuxArchitecture": "x86_64",
+        "sha256": "2d23d45c1a9e72dda2172895c218334473a2d1560e724f4b88323e56e80736ff",
+    },
+}
+BOOTSTRAP_RELEASE_URL = (
     "https://github.com/termux/termux-packages/releases/download/"
-    "bootstrap-2026.09.20-r1%2Bapt.android-7/bootstrap-aarch64.zip"
+    "bootstrap-2026.09.20-r1%2Bapt.android-7"
 )
+
+
+def bootstrap_pin(abi: str) -> dict[str, str]:
+    pin = BOOTSTRAP_PINS.get(abi)
+    if pin is None:
+        raise ValueError(f"unsupported Termux bootstrap ABI: {abi}")
+    return {
+        **pin,
+        "version": BOOTSTRAP_VERSION,
+        "url": f"{BOOTSTRAP_RELEASE_URL}/bootstrap-{pin['termuxArchitecture']}.zip",
+    }
 
 
 def pinned_harness_source_commit(source_root: pathlib.Path) -> str:
@@ -151,25 +171,42 @@ def tree_manifest(root: pathlib.Path) -> list[dict[str, object]]:
 
 
 def main() -> None:
-    if len(sys.argv) == 4 and sys.argv[1] == '--extract-bootstrap-only':
-        zip_path, extracted_usr = map(pathlib.Path, sys.argv[2:])
+    args = sys.argv[1:]
+    if len(args) == 2 and args[0] == '--print-pin':
+        print(json.dumps(bootstrap_pin(args[1]), sort_keys=True))
+        return
+    if args and args[0] == '--extract-bootstrap-only':
+        abi = 'arm64'
+        rest = args[1:]
+        if len(rest) >= 2 and rest[0] == '--abi':
+            abi, rest = rest[1], rest[2:]
+        if len(rest) != 2:
+            raise SystemExit("usage: prepare-termux-bootstrap.py --extract-bootstrap-only [--abi arm64|x86_64] <bootstrap.zip> <extracted-usr>")
+        zip_path, extracted_usr = map(pathlib.Path, rest)
+        pin = bootstrap_pin(abi)
         actual = hashlib.sha256(zip_path.read_bytes()).hexdigest()
-        if actual != BOOTSTRAP_SHA256:
-            raise ValueError(f"official Termux bootstrap SHA-256 mismatch: {actual}")
+        if actual != pin["sha256"]:
+            raise ValueError(f"official Termux {abi} bootstrap SHA-256 mismatch: {actual}")
         extracted_usr.mkdir(parents=True, exist_ok=True)
         materialize_zip(zip_path, extracted_usr)
-        print(f"extracted authenticated Termux bootstrap for repository key verification: {extracted_usr}")
+        print(f"extracted authenticated Termux {abi} bootstrap for repository key verification: {extracted_usr}")
         return
-    if len(sys.argv) != 5:
-        raise SystemExit("usage: prepare-termux-bootstrap.py <bootstrap-aarch64.zip> <source-root> <dsh-deploy-root> <output-base-usr.tar.xz>")
-    zip_path, source_root, dsh_deploy, out_path = map(pathlib.Path, sys.argv[1:])
+    abi = 'arm64'
+    if args and args[0] == '--abi':
+        if len(args) < 2:
+            raise SystemExit("--abi requires arm64 or x86_64")
+        abi, args = args[1], args[2:]
+    if len(args) != 4:
+        raise SystemExit("usage: prepare-termux-bootstrap.py [--abi arm64|x86_64] <bootstrap.zip> <source-root> <dsh-deploy-root> <output-base-usr.tar.xz>")
+    pin = bootstrap_pin(abi)
+    zip_path, source_root, dsh_deploy, out_path = map(pathlib.Path, args)
     source_commit = pinned_harness_source_commit(source_root)
     source_manifest = json.loads((source_root / "package.json").read_text(encoding="utf-8"))
     if source_manifest.get("name") != "@deepseek-ai/dsh-root" or source_manifest.get("version") != HARNESS_VERSION:
         raise ValueError("bootstrap assembly requires the official 0.2.2-rc.1 source")
     actual = hashlib.sha256(zip_path.read_bytes()).hexdigest()
-    if actual != BOOTSTRAP_SHA256:
-        raise ValueError(f"official Termux bootstrap SHA-256 mismatch: {actual}")
+    if actual != pin["sha256"]:
+        raise ValueError(f"official Termux {abi} bootstrap SHA-256 mismatch: {actual}")
     dsh_manifest = json.loads((dsh_deploy / "package.json").read_text(encoding="utf-8"))
     if dsh_manifest.get("name") != "@deepseek-ai/dsh" or dsh_manifest.get("version") != "0.2.2-rc.1":
         raise ValueError("deployed DSH runtime must be @deepseek-ai/dsh@0.2.2-rc.1")
@@ -210,8 +247,10 @@ def main() -> None:
 
     manifest = {
         "termuxBootstrap": {
-            "version": BOOTSTRAP_VERSION,
-            "url": BOOTSTRAP_URL,
+            "abi": abi,
+            "termuxArchitecture": pin["termuxArchitecture"],
+            "version": pin["version"],
+            "url": pin["url"],
             "sha256": actual,
         },
         "profileTemplates": {

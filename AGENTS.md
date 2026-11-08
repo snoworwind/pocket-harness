@@ -33,8 +33,10 @@ DeepSeek Harness 的独立安卓应用 **Pocket Harness**（包名与 Kotlin nam
 ```powershell
 # 在本仓触发云端来源链（当前 ARM64；草稿发布见 docs/RELEASE.md §5）：
 gh workflow run build-apk-source.yml --repo snoworwind/pocket-harness --ref main
-# Linux / WSL 本地来源副本，仅 main 已提交 HEAD、自动隔离；交付须云端双构建验证与正式签名：
+# Linux / WSL 本地隔离来源副本，默认 main ARM64；Android 16 x86_64 开发验收可用 `--abi x86_64`（仅 codex/x86-* 分支）；两者均只构建已提交 HEAD：
 node scripts/source-build/run-local-source-chain.mjs
+# 本地 x86_64 QA（临时签名，不是正式发布产物）：
+node scripts/source-build/run-local-source-chain.mjs --abi x86_64
 # 产物与环境详见 docs/AGENTS/build-and-env.md；禁止旧本地/协调仓链出 APK。
 # 合并前自查（可选，CI 亦会自动跑；步骤直接取自 pr-gate.yml）
 node scripts/ci/local-gate.mjs
@@ -45,6 +47,7 @@ adb -s <serial> install -r -t out\v<版本>\pocket-harness-v<版本>-arm64.apk
 
 **设备**：
 - 模拟器验收统一使用 Android Studio 的 Google 官方 Android Emulator：Android 16（API 36）Pixel AVD，默认使用 `default/arm64-v8a` 系统映像（SDK 包 `system-images;android-36;default;arm64-v8a`）运行本仓 ARM64 产品 APK。设备创建与 ABI 检查见 `docs/AGENTS/emulator-test-protocol.md`；MuMu 仅保留为历史记录，不作为当前验收设备。
+- x86_64 Android 16 AVD 仅供本地开发 QA 使用，可安装显式构建的 x86_64 APK；不能替代正式发布的 ARM64 设备验收。
 - ARM64 设备 V2425A `<arm64-serial>`（1260x2800，SDK 36）用于本应用安装验收；当前暂不可用，发布前必须补充门禁。
 
 **验证脚本**（`scripts/`，必须**逐个单独跑**，每个都重建 WebView target）：

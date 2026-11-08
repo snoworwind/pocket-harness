@@ -77,7 +77,12 @@ function filesUnder(dir, include = () => true) {
   return files.sort((a, b) => a.path.localeCompare(b.path))
 }
 
-export function checkAndroidNativeRuntimePackages(engineArg, reportArg) {
+export function checkAndroidNativeRuntimePackages(engineArg, reportArg, abi = 'arm64') {
+if (!['arm64', 'x86_64'].includes(abi)) throw new Error(`unsupported Android ABI: ${abi}`)
+const androidArch = abi === 'arm64' ? 'arm64' : 'x64'
+const elfMachine = abi === 'arm64' ? 'AArch64' : 'Advanced Micro Devices X86-64'
+const elfCode = abi === 'arm64' ? 183 : 62
+const nativePackage = `@koromix/koffi-android-${androidArch}`
 const engineRoot = realpathSync(resolve(engineArg))
 const scopeRoot = join(engineRoot, 'node_modules', '@deepseek-ai')
 const subprocessRoot = realpathSync(join(scopeRoot, 'dsh-subprocess-local'))
@@ -92,29 +97,29 @@ const koffiCopies = new Map()
 for (const [consumer, consumerRoot] of koffiConsumers) {
   const koffiRoot = packageAt(engineRoot, consumerRoot, 'koffi')
   const { manifest } = readPackage(koffiRoot, 'koffi', '3.2.1')
-  if (manifest.optionalDependencies?.['@koromix/koffi-android-arm64'] !== '3.2.1') {
-    throw new Error('Koffi 3.2.1 does not declare its matching Android ARM64 package')
+  if (manifest.optionalDependencies?.[nativePackage] !== '3.2.1') {
+    throw new Error(`Koffi 3.2.1 does not declare its matching Android ${abi} package`)
   }
-  const platformRoot = resolve(koffiRoot, '..', '@koromix', 'koffi-android-arm64')
-  const platformPackage = readPackage(platformRoot, '@koromix/koffi-android-arm64', '3.2.1')
+  const platformRoot = resolve(koffiRoot, '..', '@koromix', `koffi-android-${androidArch}`)
+  const platformPackage = readPackage(platformRoot, nativePackage, '3.2.1')
   if (!koffiCopies.has(koffiRoot)) {
     const nativeFiles = filesUnder(platformRoot).filter((file) => file.path.endsWith('.node'))
     if (nativeFiles.length !== 1) throw new Error(`expected one Koffi Android native module, found ${nativeFiles.length}`)
     const nativePath = join(platformRoot, nativeFiles[0].path)
     const header = readFileSync(nativePath).subarray(0, 20)
     if (header.length < 20 || header[0] !== 0x7f || header[1] !== 0x45 || header[2] !== 0x4c || header[3] !== 0x46
-      || header[4] !== 2 || header[5] !== 1 || header.readUInt16LE(18) !== 183) {
-      throw new Error('Koffi Android native module is not a little-endian AArch64 ELF file')
+      || header[4] !== 2 || header[5] !== 1 || header.readUInt16LE(18) !== elfCode) {
+      throw new Error(`Koffi Android native module is not a little-endian ${elfMachine} ELF file`)
     }
     koffiCopies.set(koffiRoot, {
       package: { name: 'koffi', version: '3.2.1', manifestSha256: sha256(readFileSync(join(koffiRoot, 'package.json'))) },
       androidBinding: {
-        name: '@koromix/koffi-android-arm64',
+        name: nativePackage,
         version: platformPackage.manifest.version,
         manifestSha256: platformPackage.manifestSha256,
         files: filesUnder(platformRoot),
         nativeModule: nativeFiles[0],
-        elfMachine: 'AArch64',
+        elfMachine,
       },
     })
   }
@@ -137,7 +142,7 @@ if (!sharpLoader.includes('require("@img/sharp-wasm32/sharp.node")')) {
 
 const ptyRoot = packageAt(engineRoot, subprocessRoot, 'node-pty')
 const ptyPackage = readPackage(ptyRoot, 'node-pty', '1.2.0-beta.15')
-const ptyRelative = 'prebuilds/android-arm64/pty.node'
+const ptyRelative = `prebuilds/android-${androidArch}/pty.node`
 const ptyPath = join(ptyRoot, ptyRelative)
 if (!existsSync(ptyPath)) throw new Error(`node-pty is missing ${ptyRelative}`)
 for (const shadow of ['build/Release/pty.node', 'build/Debug/pty.node']) {
@@ -145,12 +150,12 @@ for (const shadow of ['build/Release/pty.node', 'build/Debug/pty.node']) {
 }
 const ptyBytes = readFileSync(ptyPath)
 if (ptyBytes.length < 20 || ptyBytes[0] !== 0x7f || ptyBytes[1] !== 0x45 || ptyBytes[2] !== 0x4c
-  || ptyBytes[3] !== 0x46 || ptyBytes[4] !== 2 || ptyBytes[5] !== 1 || ptyBytes.readUInt16LE(18) !== 183) {
-  throw new Error('node-pty Android module is not a little-endian AArch64 ELF file')
+  || ptyBytes[3] !== 0x46 || ptyBytes[4] !== 2 || ptyBytes[5] !== 1 || ptyBytes.readUInt16LE(18) !== elfCode) {
+  throw new Error(`node-pty Android module is not a little-endian ${elfMachine} ELF file`)
 }
 const ptyLoader = readFileSync(join(ptyRoot, 'lib/utils.js'), 'utf8')
 if (!ptyLoader.includes('process.platform') || !ptyLoader.includes('process.arch') || !ptyLoader.includes('prebuilds/')) {
-  throw new Error('node-pty native loader no longer selects prebuilds/android-arm64')
+  throw new Error(`node-pty native loader no longer selects prebuilds/android-${androidArch}`)
 }
 const nativeInventory = filesUnder(join(engineRoot, 'node_modules', '.pnpm'),
   (path) => path.endsWith('.node') || path.endsWith('.node.wasm'))
@@ -167,11 +172,11 @@ const unreviewed = nativeInventory.filter((file) => !isReviewedNativePath(file.p
 if (unreviewed.length) throw new Error(`unreviewed native module families: ${unreviewed.map((file) => file.path).join(', ')}`)
 
 const report = {
-  target: 'android-arm64',
+  target: `android-${androidArch}`,
   nodePty: {
     package: { name: 'node-pty', version: ptyPackage.manifest.version, manifestSha256: ptyPackage.manifestSha256 },
-    androidBinding: { path: ptyRelative, size: ptyBytes.length, sha256: sha256(ptyBytes), elfMachine: 'AArch64' },
-    loader: 'lib/utils.js selects prebuilds/android-arm64 from process.platform and process.arch',
+    androidBinding: { path: ptyRelative, size: ptyBytes.length, sha256: sha256(ptyBytes), elfMachine },
+    loader: `lib/utils.js selects prebuilds/android-${androidArch} from process.platform and process.arch`,
   },
   koffi: [...koffiCopies.values()],
   sharp: {
@@ -200,11 +205,11 @@ return report
 
 const invokedDirectly = process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href
 if (invokedDirectly) {
-  const [engineArg, reportArg] = process.argv.slice(2)
+  const [engineArg, reportArg, abi = 'arm64'] = process.argv.slice(2)
   if (!engineArg || !reportArg) {
-    console.error('usage: node check-android-native-runtime-packages.mjs <deployed-engine-root> <report.json>')
+    console.error('usage: node check-android-native-runtime-packages.mjs <deployed-engine-root> <report.json> [arm64|x86_64]')
     process.exit(2)
   }
-  const report = checkAndroidNativeRuntimePackages(engineArg, reportArg)
+  const report = checkAndroidNativeRuntimePackages(engineArg, reportArg, abi)
   console.log(`Android native runtime audit passed: node-pty ${report.nodePty.package.version}, Koffi ${report.koffi.map((item) => item.androidBinding.version).join(', ')}, Sharp WASM ${report.sharp.wasmFallback.version}, ${report.nativeInventory.length} reviewed native payloads`)
 }

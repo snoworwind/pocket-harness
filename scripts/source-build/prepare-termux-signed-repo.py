@@ -15,8 +15,7 @@ import urllib.request
 from termux_signed_packages import _version_satisfies, safe_termux_package_filename, select_package_records
 
 REPOSITORY = "https://packages.termux.dev/apt/termux-main"
-SUITE_REL = "main/binary-aarch64/Packages.gz"
-INDEX_REL = "dists/stable/" + SUITE_REL
+TERMUX_ARCHITECTURES = {"arm64": "aarch64", "aarch64": "aarch64", "x86_64": "x86_64"}
 
 
 def fetch(url: str) -> bytes:
@@ -50,7 +49,7 @@ DEPENDENCY_ATOM = re.compile(
 )
 
 
-def _dependency_applies(expression: str, owner: str, records: dict[str, dict]) -> str | None:
+def _dependency_applies(expression: str, owner: str, records: dict[str, dict], native_arch: str = "aarch64") -> str | None:
     match = DEPENDENCY_ATOM.fullmatch(expression.strip())
     if not match:
         raise ValueError(f"cannot parse dependency for {owner}: {expression!r}")
@@ -62,11 +61,15 @@ def _dependency_applies(expression: str, owner: str, records: dict[str, dict]) -
         if not tokens or any(not re.fullmatch(r"!?[a-z0-9][a-z0-9-]*", token) for token in tokens):
             raise ValueError(f"unsupported architecture restriction for {owner}: {expression!r}")
 
+        aliases = {"aarch64": {"aarch64", "arm64"}, "x86_64": {"x86_64", "amd64"}}[native_arch]
+
         def matches_target(token: str) -> bool:
-            # Termux calls the ABI aarch64; Debian dependency restrictions use arm64.
-            # Their Linux wildcards describe the same AArch64 guest.
-            return token in {"aarch64", "arm64", "any", "linux-any", "any-arm64", "any-aarch64",
-                             "linux-arm64", "linux-aarch64"}
+            # Debian calls Termux aarch64 arm64 and Termux x86_64 amd64.
+            if token in aliases or token in {"any", "linux-any"}:
+                return True
+            if token.startswith(("any-", "linux-")):
+                return token.split("-", 1)[1] in aliases
+            return False
 
         positive = [token for token in tokens if not token.startswith("!")]
         excluded = [token[1:] for token in tokens if token.startswith("!")]
@@ -79,11 +82,16 @@ def _dependency_applies(expression: str, owner: str, records: dict[str, dict]) -
     if record is None:
         return None
     architecture = record.get("Architecture")
-    if architecture not in ("aarch64", "all"):
+    termux_arch = TERMUX_ARCHITECTURES[native_arch]
+    if architecture not in (termux_arch, "all"):
         return None
-    if qualifier in ("aarch64", "arm64", "native"):
-        if architecture not in ("aarch64", "all"):
+    all_aliases = {"aarch64", "arm64", "x86_64", "amd64"}
+    aliases = {"aarch64": {"aarch64", "arm64"}, "x86_64": {"x86_64", "amd64"}}[native_arch]
+    if qualifier == "native" or qualifier in aliases:
+        if architecture not in (termux_arch, "all"):
             return None
+    elif qualifier in all_aliases:
+        return None
     elif qualifier == "any":
         if record.get("Multi-Arch") not in ("allowed", "foreign"):
             return None
@@ -94,7 +102,7 @@ def _dependency_applies(expression: str, owner: str, records: dict[str, dict]) -
     return name
 
 
-def dependency_closure(records: dict[str, dict], seeds: list[str], purpose: str) -> set[str]:
+def dependency_closure(records: dict[str, dict], seeds: list[str], purpose: str, native_arch: str = "aarch64") -> set[str]:
     needed = set()
     queue = list(seeds)
     while queue:
@@ -105,7 +113,8 @@ def dependency_closure(records: dict[str, dict], seeds: list[str], purpose: str)
         if not record:
             print(f"skip {purpose} package absent from signed index: {name}")
             continue
-        if record.get("Architecture") not in ("aarch64", "all"):
+        termux_arch = TERMUX_ARCHITECTURES[native_arch]
+        if record.get("Architecture") not in (termux_arch, "all"):
             raise ValueError(f"{purpose} package has an incompatible architecture: {name}={record.get('Architecture')}")
         needed.add(name)
         for field in ("Pre-Depends", "Depends"):
@@ -115,7 +124,7 @@ def dependency_closure(records: dict[str, dict], seeds: list[str], purpose: str)
             for group in expression.split(","):
                 choices = []
                 for alternative in group.split("|"):
-                    choice = _dependency_applies(alternative, name, records)
+                    choice = _dependency_applies(alternative, name, records, native_arch)
                     if choice:
                         choices.append(choice)
                 if not choices:
@@ -166,9 +175,19 @@ def verify_termux_recipe(source: dict, expected_commit: str, content: bytes) -> 
 
 
 def main() -> None:
-    if len(sys.argv) != 4:
-        raise SystemExit("usage: prepare-termux-signed-repo.py <extracted-bootstrap-usr> <webroot> <preinstall.json>")
-    usr, webroot, preinstall_file = map(pathlib.Path, sys.argv[1:])
+    args = sys.argv[1:]
+    native_abi = "arm64"
+    if len(args) >= 2 and args[-2] == "--abi":
+        native_abi = args[-1]
+        args = args[:-2]
+    if native_abi not in TERMUX_ARCHITECTURES:
+        raise SystemExit("unsupported ABI; expected arm64 or x86_64")
+    if len(args) != 3:
+        raise SystemExit("usage: prepare-termux-signed-repo.py <extracted-bootstrap-usr> <webroot> <preinstall.json> [--abi arm64|x86_64]")
+    usr, webroot, preinstall_file = map(pathlib.Path, args)
+    termux_arch = TERMUX_ARCHITECTURES[native_abi]
+    suite_rel = f"main/binary-{termux_arch}/Packages.gz"
+    index_rel = "dists/stable/" + suite_rel
     key_dir = usr / "share" / "termux-keyring"
     keys = sorted(key_dir.glob("*.gpg"))
     if not keys:
@@ -198,13 +217,13 @@ def main() -> None:
         inrelease_hash = hashlib.sha256(inrelease).hexdigest()
     # Release checksums are relative to the suite root; the repository URL
     # and local apt layout additionally include dists/stable/.
-    expected_index_hash, expected_index_size = signed_sha256(release_text, SUITE_REL)
+    expected_index_hash, expected_index_size = signed_sha256(release_text, suite_rel)
 
-    index_gz = fetch(REPOSITORY + "/" + INDEX_REL)
+    index_gz = fetch(REPOSITORY + "/" + index_rel)
     actual_index_hash = hashlib.sha256(index_gz).hexdigest()
     if len(index_gz) != expected_index_size or actual_index_hash != expected_index_hash:
         raise ValueError("Termux Packages.gz does not match the signed Release file")
-    records = select_package_records(parse_stanzas(gzip.decompress(index_gz).decode("utf-8")))
+    records = select_package_records(parse_stanzas(gzip.decompress(index_gz).decode("utf-8")), termux_arch)
     config = json.loads(preinstall_file.read_text(encoding="utf-8"))
     backend_config_path = pathlib.Path(__file__).with_name("linux-backend-packages.json")
     backend_config = json.loads(backend_config_path.read_text(encoding="utf-8"))
@@ -218,18 +237,19 @@ def main() -> None:
         recipe_hash = verify_termux_recipe(source, recipe_commit, fetch(raw_url))
         print(f"verified pinned Termux recipe {name} sha256={recipe_hash}")
     targets = config.get("targets")
-    linux_backend_targets = backend_config.get("targets")
+    linux_backend_targets = backend_config.get("targets") if native_abi == "arm64" else []
     if not isinstance(targets, list) or not isinstance(linux_backend_targets, list):
         raise ValueError("Termux snapshot and Linux backend target lists must be arrays")
     missing_required = [name for name in config.get("requiredTargets", []) if name not in records]
     if missing_required:
         raise ValueError(f"required Termux packages are absent from the signed index: {', '.join(missing_required)}")
-    missing_backend = [name for name in backend_config.get("requiredTargets", []) if name not in records]
+    missing_backend = ([name for name in backend_config.get("requiredTargets", []) if name not in records]
+                       if linux_backend_targets else [])
     if missing_backend:
         raise ValueError(f"required Linux backend packages are absent from the signed index: {', '.join(missing_backend)}")
 
-    snapshot_needed = dependency_closure(records, targets, "snapshot")
-    linux_backend_needed = dependency_closure(records, linux_backend_targets, "Linux backend")
+    snapshot_needed = dependency_closure(records, targets, "snapshot", termux_arch)
+    linux_backend_needed = dependency_closure(records, linux_backend_targets, "Linux backend", termux_arch)
     needed = snapshot_needed | linux_backend_needed
 
     webroot.mkdir(parents=True, exist_ok=True)
@@ -240,7 +260,7 @@ def main() -> None:
     if inrelease_target.is_symlink() or inrelease_target.exists():
         raise ValueError("Termux InRelease destination is not a fresh regular path")
     inrelease_target.write_bytes(inrelease)
-    index_path = webroot / INDEX_REL
+    index_path = webroot / index_rel
     index_path.parent.mkdir(parents=True, exist_ok=True)
     if index_path.is_symlink() or index_path.exists():
         raise ValueError("Termux Packages.gz destination is not a fresh regular path")
@@ -284,7 +304,9 @@ def main() -> None:
         "repository": REPOSITORY,
         "suite": "stable",
         "inRelease": {"path": "dists/stable/InRelease", "sha256": inrelease_hash},
-        "index": {"path": INDEX_REL, "sha256": actual_index_hash, "signedReleaseSha256": inrelease_hash},
+        "abi": native_abi,
+        "termuxArchitecture": termux_arch,
+        "index": {"path": index_rel, "sha256": actual_index_hash, "signedReleaseSha256": inrelease_hash},
         "packageCount": len(package_provenance),
         "packages": package_provenance,
     }
