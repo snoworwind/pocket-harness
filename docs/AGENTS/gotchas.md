@@ -3547,4 +3547,4 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 
 646. **本地来源链未封装 Termux 仓库归档，恢复阶段找不到输入 tar（2026-11-08）**
 
-    现象：本地来源链完成签名 Termux 包下载后，在“安全恢复认证的 Termux 包快照”步骤因 `.deploy-tmp/source-build/termux-package-artifact/termux-package-inputs.tar` 不存在而失败。真因：workflow 的跨作业上传步骤同时把 webroot 与 provenance 封装为 tar；本地执行器用自定义命令替代 artifact 下载时只重跑了包仓生成器，漏掉同等的 tar 封装命令。修法：本地生成器完成后按同一根目录、同一两项内容生成 `.deploy-tmp/termux-package-inputs.tar`，并以来源链计划回归断言保护生产者与消费者契约。复验：`node --test scripts/source-build/run-local-source-chain.test.mjs` 5/5；x86_64 来源链将从 termux 阶段续跑。
+    现象：本地来源链完成签名 Termux 包下载后，在“安全恢复认证的 Termux 包快照”步骤因 `.deploy-tmp/source-build/termux-package-artifact/termux-package-inputs.tar` 不存在而失败。真因：workflow 的跨作业上传步骤把 webroot 与 provenance 封装为根目录 tar，随后下载到 `termux-package-artifact/`；本地执行器用自定义命令替代 artifact 上传/下载时，先是遗漏 tar 封装，补封装后又沿用了上传源路径，未写到下游恢复器消费的工件目录。修法：本地生成器完成后在 `.deploy-tmp/source-build/termux-package-artifact/` 建立归档，内容仅含同一根目录下的 webroot 与 provenance，并以来源链计划回归断言保护目录和消费者路径。复验：`node --test scripts/source-build/run-local-source-chain.test.mjs` 5/5；x86_64 来源链从 termux 阶段续跑。

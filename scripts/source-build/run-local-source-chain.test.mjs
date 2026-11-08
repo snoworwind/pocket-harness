@@ -40,7 +40,9 @@ test('planSteps：最终复验跟随 apk 阶段，而不是落入 misc', () => {
   const termuxSnapshot = planned.find((item) => item.name === "Download this run's authenticated Termux package snapshot")
   assert.ok(termuxSnapshot, 'the CI artifact step must be represented in the local single-builder plan')
   assert.equal(termuxSnapshot.stage, 'termux')
-  assert.ok(termuxSnapshot.run.includes('tar --create --file=.deploy-tmp/termux-package-inputs.tar'),
+  assert.ok(termuxSnapshot.run.includes('mkdir -p .deploy-tmp/source-build/termux-package-artifact'),
+    'local source chain must prepare the artifact directory consumed by the safe restore step')
+  assert.ok(termuxSnapshot.run.includes('tar --create --file=.deploy-tmp/source-build/termux-package-artifact/termux-package-inputs.tar'),
     'local source chain must produce the archive consumed by the safe restore step')
   assert.ok(termuxSnapshot.run.includes('--directory=.deploy-tmp/source-build termux-webroot termux-packages-provenance.json'),
     'local archive must contain only the authenticated webroot and provenance file')
