@@ -2,7 +2,7 @@
 // 在本地（WSL/Linux）跑**与 CI 同一条**来源审计链。
 //
 // 设计要点：命令**不是**在这里重写一遍，而是直接从 `.github/workflows/build-apk-source.yml`
-// 抽出 build-arm64 各步骤的 `run:` 脚本原样执行——本地跑的命令与远程跑的逐字节同一份，
+// 抽出 build-abi 各步骤的 `run:` 脚本原样执行——本地跑的命令与远程跑的逐字节同一份，
 // 只有就地解析、不会各写一套然后漂移。`uses:` 步骤（checkout / setup-*）跳过；
 // CI 专用 Termux 预检 artifact 在单路本地构建中映射回同一个验签准备脚本。
 //
@@ -68,10 +68,14 @@ export function parseWorkflowSteps(workflowText) {
   // 表现为「一个步骤都解析不到」。统一成 LF 再解析。
   // Local execution owns one build replica, never the CI verifier/private signer.
   const normalized = workflowText.replaceAll('\r\n', '\n')
-  const buildStart = normalized.indexOf('\n  build-arm64:')
-  const verifierStart = normalized.indexOf('\n  verify-arm64:', buildStart)
+  // Accept the previous fixed-ARM64 job ids while an already-committed source
+  // workspace is being advanced to the ABI-parameterized workflow.
+  const buildJob = normalized.includes('\n  build-abi:') ? 'build-abi' : 'build-arm64'
+  const verifyJob = normalized.includes('\n  verify-abi:') ? 'verify-abi' : 'verify-arm64'
+  const buildStart = normalized.indexOf(`\n  ${buildJob}:`)
+  const verifierStart = normalized.indexOf(`\n  ${verifyJob}:`, buildStart)
   if (buildStart < 0 || verifierStart < 0) {
-    throw new Error('workflow must contain build-arm64 before verify-arm64')
+    throw new Error(`workflow must contain ${buildJob} before ${verifyJob}`)
   }
   // Local execution models one builder. The CI-only preflight job is replaced at
   // its artifact download step with the same authenticated preparation script.
@@ -140,6 +144,7 @@ export function planSteps(workflowText) {
     if (!run && step.name === "Download this run's authenticated Termux package snapshot") {
       run = [
         'set -euo pipefail',
+        'node scripts/source-build/reset-local-termux-stage.mjs',
         'mkdir -p .deploy-tmp/source-build/termux-package-artifact',
         'python3 scripts/source-build/prepare-termux-signed-repo.py \\',
         '  .deploy-tmp/source-build/bootstrap-extracted/usr \\',

@@ -2,7 +2,19 @@ name: build-apk-source
 
 on:
   workflow_dispatch:
+    inputs:
+      abi:
+        description: Android APK ABI
+        type: choice
+        options: [arm64, x86_64]
+        default: arm64
   workflow_call:
+    inputs:
+      abi:
+        description: Android APK ABI
+        type: string
+        required: false
+        default: arm64
 
 permissions:
   contents: read
@@ -12,16 +24,20 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     env:
-      DSH_ABI: arm64
+      DSH_ABI: ${{ inputs.abi || 'arm64' }}
     steps:
       - name: Require the maintained source branch
         env:
           SOURCE_REF: ${{ github.ref }}
         shell: bash
         run: |
+          if [[ "$DSH_ABI" != arm64 && "$DSH_ABI" != x86_64 ]]; then
+            echo "::error::unsupported ABI: $DSH_ABI"
+            exit 1
+          fi
           if [[ "$SOURCE_REF" == refs/heads/main ]]; then exit 0; fi
           if [[ "${DSH_ABI:-arm64}" == x86_64 && "${DSH_LOCAL_X86_QA:-}" == 1 && "$SOURCE_REF" == refs/heads/codex/x86-* ]]; then exit 0; fi
-          echo "::error::source builds require main; only local x86 QA builds may use codex/x86-* branches"
+          echo "::error::source builds require main"
           exit 1
 
       - name: Checkout project source without Git LFS runtime archives
@@ -80,14 +96,14 @@ jobs:
       - name: Upload the authenticated Termux package snapshot for this workflow run
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: termux-package-inputs-${{ github.run_id }}-${{ github.run_attempt }}
+          name: termux-package-inputs-${{ inputs.abi || 'arm64' }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: .deploy-tmp/termux-package-inputs.tar
           include-hidden-files: true
           if-no-files-found: error
           compression-level: 0
           retention-days: 7
 
-  build-arm64:
+  build-abi:
     needs: termux-package-inputs
     strategy:
       fail-fast: false
@@ -97,16 +113,20 @@ jobs:
     timeout-minutes: 180
     env:
       DSH_APK_DIR: ${{ github.workspace }}
-      DSH_ABI: arm64
+      DSH_ABI: ${{ inputs.abi || 'arm64' }}
     steps:
       - name: Require the maintained source branch
         env:
           SOURCE_REF: ${{ github.ref }}
         shell: bash
         run: |
+          if [[ "$DSH_ABI" != arm64 && "$DSH_ABI" != x86_64 ]]; then
+            echo "::error::unsupported ABI: $DSH_ABI"
+            exit 1
+          fi
           if [[ "$SOURCE_REF" == refs/heads/main ]]; then exit 0; fi
           if [[ "${DSH_ABI:-arm64}" == x86_64 && "${DSH_LOCAL_X86_QA:-}" == 1 && "$SOURCE_REF" == refs/heads/codex/x86-* ]]; then exit 0; fi
-          echo "::error::source builds require main; only local x86 QA builds may use codex/x86-* branches"
+          echo "::error::source builds require main"
           exit 1
 
       - name: Checkout project source without Git LFS runtime archives
@@ -398,10 +418,22 @@ jobs:
           git show "$GITHUB_SHA:scripts/snapshot-config/preinstall.json" > scripts/snapshot-config/preinstall.json
           cp scripts/snapshot-config/preinstall.json .deploy-tmp/source-build/preinstall.original.json
           test -s .deploy-tmp/source-build/engine-overlay.original.json
-          cp .deploy-tmp/source-build/effective-engine-overlay.json \
-            .deploy-tmp/source-build/effective-engine-overlay.restore-input.json
-          cp .deploy-tmp/source-build/source-build-policy.json \
-            .deploy-tmp/source-build/effective-engine-overlay-policy.restore-input.json
+          for path in \
+            .deploy-tmp/source-build/effective-engine-overlay.restore-input.json \
+            .deploy-tmp/source-build/effective-engine-overlay-policy.restore-input.json; do
+            if [[ -L "$path" || ( -e "$path" && ! -f "$path" ) ]]; then
+              echo "::error::restore input must be a regular file: $path"
+              exit 1
+            fi
+          done
+          if [[ ! -e .deploy-tmp/source-build/effective-engine-overlay.restore-input.json ]]; then
+            cp .deploy-tmp/source-build/effective-engine-overlay.json \
+              .deploy-tmp/source-build/effective-engine-overlay.restore-input.json
+          fi
+          if [[ ! -e .deploy-tmp/source-build/effective-engine-overlay-policy.restore-input.json ]]; then
+            cp .deploy-tmp/source-build/source-build-policy.json \
+              .deploy-tmp/source-build/effective-engine-overlay-policy.restore-input.json
+          fi
           node scripts/source-build/restore-effective-engine-overlay.mjs \
             .deploy-tmp/source-build/engine-overlay.original.json \
             .deploy-tmp/source-build/effective-engine-overlay.restore-input.json \
@@ -427,7 +459,7 @@ jobs:
       - name: Download this run's authenticated Termux package snapshot
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
-          name: termux-package-inputs-${{ github.run_id }}-${{ github.run_attempt }}
+          name: termux-package-inputs-${{ inputs.abi || 'arm64' }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: .deploy-tmp/source-build/termux-package-artifact
 
       - name: Safely restore the authenticated Termux package snapshot
@@ -834,13 +866,21 @@ jobs:
           copyFileSync(process.env.POCKET_BUILD_CERTIFICATE_FILE, '.deploy-tmp/source-build/signing-certificate-sha256.txt')
           NODE
 
+      - name: Freeze ABI-specific Termux base provenance
+        shell: bash
+        run: |
+          set -euo pipefail
+          base_name="$([ "$DSH_ABI" = arm64 ] && echo arm64-base || echo x64-base)"
+          cp ".deploy-tmp/$base_name/base-usr.tar.xz.provenance.json" \
+            .deploy-tmp/source-build/termux-base-provenance.json
+
       - name: Upload intermediate APK and provenance
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: pocket-harness-arm64-build-${{ matrix.replica }}-${{ github.sha }}
+          name: pocket-harness-${{ inputs.abi || 'arm64' }}-build-${{ matrix.replica }}-${{ github.sha }}
           path: |
             out/v*/*.apk
-            .deploy-tmp/arm64-base/base-usr.tar.xz.provenance.json
+            .deploy-tmp/source-build/termux-base-provenance.json
             .deploy-tmp/source-build/termux-packages-provenance.json
             .deploy-tmp/engine-overlay/source-build-manifest.json
             .deploy-tmp/source-build/apk-sha256.txt
@@ -890,9 +930,11 @@ jobs:
           include-hidden-files: true
           retention-days: 30
 
-  verify-arm64:
-    needs: build-arm64
+  verify-abi:
+    needs: build-abi
     runs-on: ubuntu-latest
+    env:
+      DSH_ABI: ${{ inputs.abi || 'arm64' }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -903,21 +945,21 @@ jobs:
         with: { python-version: '3.12' }
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
-          name: pocket-harness-arm64-build-primary-${{ github.sha }}
+          name: pocket-harness-${{ inputs.abi || 'arm64' }}-build-primary-${{ github.sha }}
           path: .
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
-          name: pocket-harness-arm64-build-reference-${{ github.sha }}
+          name: pocket-harness-${{ inputs.abi || 'arm64' }}-build-reference-${{ github.sha }}
           path: .deploy-tmp/independent-reference
-      - name: Verify independent ARM64 builds from actual APK bytes
+      - name: Verify independent ABI builds from actual APK bytes
         run: node scripts/source-build/compare-independent-builds.mjs
       - name: Upload verified APK and provenance
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: pocket-harness-arm64-verified-${{ github.sha }}
+          name: pocket-harness-${{ inputs.abi || 'arm64' }}-verified-${{ github.sha }}
           path: |
             out/v*/*.apk
-            .deploy-tmp/arm64-base/base-usr.tar.xz.provenance.json
+            .deploy-tmp/source-build/termux-base-provenance.json
             .deploy-tmp/source-build/termux-packages-provenance.json
             .deploy-tmp/engine-overlay/source-build-manifest.json
             .deploy-tmp/source-build/apk-sha256.txt
@@ -968,10 +1010,12 @@ jobs:
           include-hidden-files: true
           retention-days: 30
 
-  sign-arm64:
-    needs: verify-arm64
+  sign-abi:
+    needs: verify-abi
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    env:
+      DSH_ABI: ${{ inputs.abi || 'arm64' }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -984,9 +1028,9 @@ jobs:
           java-version: '17'
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
-          name: pocket-harness-arm64-verified-${{ github.sha }}
+          name: pocket-harness-${{ inputs.abi || 'arm64' }}-verified-${{ github.sha }}
           path: .
-      - name: Sign final ARM64 source APK in an isolated job
+      - name: Sign final ABI source APK in an isolated job
         env:
           POCKET_SIGNING_KEYSTORE_BASE64: ${{ secrets.POCKET_SIGNING_KEYSTORE_BASE64 }}
           POCKET_SIGNING_KEYSTORE_PASSWORD: ${{ secrets.POCKET_SIGNING_KEYSTORE_PASSWORD }}
@@ -1000,10 +1044,10 @@ jobs:
       - name: Upload APK and provenance
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: pocket-harness-arm64-source-${{ github.sha }}
+          name: pocket-harness-${{ inputs.abi || 'arm64' }}-source-${{ github.sha }}
           path: |
             out/v*/*.apk
-            .deploy-tmp/arm64-base/base-usr.tar.xz.provenance.json
+            .deploy-tmp/source-build/termux-base-provenance.json
             .deploy-tmp/source-build/termux-packages-provenance.json
             .deploy-tmp/engine-overlay/source-build-manifest.json
             .deploy-tmp/source-build/apk-sha256.txt

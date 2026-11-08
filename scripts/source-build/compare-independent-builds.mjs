@@ -41,11 +41,13 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
     execFileSync(process.execPath, ['--test', fileURLToPath(new URL('./compare-independent-builds.test.mjs', import.meta.url))], { stdio: 'inherit' })
     process.exit(0)
   }
-  const primary = finalApks(resolve('.'))[0]
-  const reference = finalApks(resolve(process.env.DSH_REFERENCE_ARTIFACT_DIR || '.deploy-tmp/independent-reference'))[0]
+  const abi = process.env.DSH_ABI || 'arm64'
+  const primary = finalApks(resolve('.'), abi)[0]
+  const reference = finalApks(resolve(process.env.DSH_REFERENCE_ARTIFACT_DIR || '.deploy-tmp/independent-reference'), abi)[0]
   const result = compareApks(primary, reference)
   if (!/^[0-9a-f]{40}$/.test(process.env.GITHUB_SHA ?? '')) throw new Error('independent verification requires the source commit')
   result.sourceCommit = process.env.GITHUB_SHA
+  result.abi = abi
   result.primaryUnsignedApkSha256 = createHash('sha256').update(readFileSync(primary)).digest('hex')
   result.referenceUnsignedApkSha256 = createHash('sha256').update(readFileSync(reference)).digest('hex')
   writeFileSync('.deploy-tmp/source-build/independent-rebuild-verification.json', JSON.stringify(result, null, 2) + '\n')

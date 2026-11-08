@@ -416,8 +416,6 @@
     "scripts/build-release.ps1:56": 2,
     "scripts/check-release-gates.mjs:191": 1,
     "scripts/source-build/check-dsh-source-snapshot.mjs:25": 1,
-    ".github/workflows/release-source-draft.yml:83": 1,
-    "scripts/source-build/test_prepare_source_release.py:74": 1,
     "scripts/check-release-gates.mjs:135": 1,
     "scripts/check-boot-budget.mjs:671": 1,
     "scripts/check-runtime-assets.mjs:126": 1,
@@ -788,9 +786,6 @@
     ],
     ".github/workflows/pr-gate.yml:91": [
       "- name: 敏感信息扫描"
-    ],
-    ".github/workflows/release-source-draft.yml:83": [
-      "root = pathlib.Path('.')"
     ],
     "0.13.7-CERTIFICATION.md:11": [
       "| 统一补丁（vendor） | 通过 | 双 ABI 均 `apply-patches: ALL OK（13/13，mode=check）`（新增 undo-E8；attachment-formats 已退役） |"
@@ -3067,9 +3062,6 @@
     ],
     "scripts/source-build/check-dsh-source-snapshot.mjs:25": [
       "import { checkAndroidNativeRuntimePackages } from './check-android-native-runtime-packages.mjs'"
-    ],
-    "scripts/source-build/test_prepare_source_release.py:74": [
-      "self.put(path, original)"
     ],
     "scripts/t0-check.ps1:14": [
       "if ($dump -match \"shell-termux[sS]{0,200}?disabled:s*true\") { Write-Output \"WARN: shell-termux appears disabled\"; $fail++ }"

@@ -5,7 +5,7 @@ on:
   workflow_dispatch:
     inputs:
       draft_release:
-        description: '源码构建成功后创建 ARM64 预发布草稿（不会公开）'
+        description: '源码构建成功后创建 ARM64 与 x86_64 预发布草稿（不会公开）'
         type: boolean
         default: false
 
