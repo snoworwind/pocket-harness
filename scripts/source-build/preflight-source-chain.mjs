@@ -67,7 +67,7 @@ function stepMarketplaceChain() {
   mkdirSync(CACHE, { recursive: true })
   if (!existsSync(tarball)) {
     if (NO_NETWORK) return fail('发布产物不在缓存且指定了 --no-network', tarball)
-    execFileSync('curl', ['--fail', '--location', '--retry', '3', '--max-time', '300', facts.url, '--output', tarball], { stdio: 'pipe' })
+    execFileSync('curl', ['--fail', '--location', '--retry', '8', '--retry-max-time', '600', '--max-time', '300', facts.url, '--output', tarball], { stdio: 'pipe' })
   }
   const actualSha256 = sha256(readFileSync(tarball))
   if (actualSha256 !== facts.expectedSha256) return fail('发布产物哈希与 workflow 钉的不一致', `${actualSha256} ≠ ${facts.expectedSha256}`)

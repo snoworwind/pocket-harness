@@ -2,26 +2,76 @@
 """Fetch and authenticate the exact Termux packages used by the ARM64 snapshot."""
 from __future__ import annotations
 
+import errno
 import gzip
 import hashlib
+import http.client
 import json
 import pathlib
 import re
+import socket
+import ssl
 import subprocess
 import sys
 import tempfile
+import time
+import urllib.error
 import urllib.request
 
 from termux_signed_packages import _version_satisfies, safe_termux_package_filename, select_package_records
 
 REPOSITORY = "https://packages.termux.dev/apt/termux-main"
+FETCH_ATTEMPTS = 8
+FETCH_RETRYABLE_STATUS = {408, 425, 429, 500, 502, 503, 504}
+FETCH_RETRY_MAX_DELAY_SECONDS = 30
 TERMUX_ARCHITECTURES = {"arm64": "aarch64", "aarch64": "aarch64", "x86_64": "x86_64"}
 
 
+def retryable_network_error(error: BaseException) -> bool:
+    reason = error.reason if isinstance(error, urllib.error.URLError) else error
+    if isinstance(reason, ssl.SSLCertVerificationError):
+        return False
+    if isinstance(reason, (TimeoutError, ConnectionError, http.client.IncompleteRead)):
+        return True
+    if isinstance(reason, socket.gaierror):
+        return reason.errno == socket.EAI_AGAIN
+    if isinstance(reason, OSError):
+        return reason.errno in {
+            errno.ECONNRESET, errno.ECONNREFUSED, errno.EHOSTUNREACH,
+            errno.ENETUNREACH, errno.ETIMEDOUT, errno.EPIPE,
+        }
+    message = str(reason).lower()
+    return any(token in message for token in (
+        "timed out", "temporary failure in name resolution", "connection reset",
+        "connection refused", "network is unreachable", "no route to host", "remote end closed connection",
+    ))
+
+
 def fetch(url: str) -> bytes:
-    request = urllib.request.Request(url, headers={"User-Agent": "dsh-source-build/1"})
-    with urllib.request.urlopen(request, timeout=180) as response:
-        return response.read()
+    for attempt in range(1, FETCH_ATTEMPTS + 1):
+        request = urllib.request.Request(url, headers={"User-Agent": "dsh-source-build/1"})
+        try:
+            with urllib.request.urlopen(request, timeout=180) as response:
+                return response.read()
+        except urllib.error.HTTPError as error:
+            if error.code not in FETCH_RETRYABLE_STATUS or attempt == FETCH_ATTEMPTS:
+                raise
+            reason = f"HTTP {error.code}"
+            error.close()
+        except urllib.error.URLError as error:
+            if not retryable_network_error(error) or attempt == FETCH_ATTEMPTS:
+                raise
+            reason = str(error)
+        except (ssl.SSLCertVerificationError, TimeoutError, socket.timeout, ConnectionError, OSError, http.client.IncompleteRead) as error:
+            if not retryable_network_error(error) or attempt == FETCH_ATTEMPTS:
+                raise
+            reason = str(error)
+
+        delay = min(2 ** (attempt - 1), FETCH_RETRY_MAX_DELAY_SECONDS)
+        print(f"termux-fetch: transient {reason} for {url}; retrying in {delay}s ({attempt}/{FETCH_ATTEMPTS})", file=sys.stderr)
+        time.sleep(delay)
+
+    raise AssertionError("unreachable fetch retry state")
 
 
 def parse_stanzas(text: str):

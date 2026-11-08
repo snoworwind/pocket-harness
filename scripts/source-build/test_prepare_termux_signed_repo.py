@@ -1,10 +1,14 @@
 import importlib.util
 import hashlib
+import io
 import json
 import pathlib
 import shutil
+import ssl
 import sys
 import unittest
+from unittest.mock import patch
+from urllib.error import HTTPError, URLError
 
 
 SCRIPT = pathlib.Path(__file__).with_name("prepare-termux-signed-repo.py")
@@ -12,6 +16,74 @@ sys.path.insert(0, str(SCRIPT.parent))
 spec = importlib.util.spec_from_file_location("prepare_termux_signed_repo", SCRIPT)
 module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
+
+
+class RetryableTermuxFetchTest(unittest.TestCase):
+    @staticmethod
+    def http_error(code):
+        return HTTPError("https://packages.termux.dev/test", code, "temporary test response", {}, io.BytesIO())
+
+    def test_gateway_timeout_retries_and_returns_fetched_bytes(self):
+        with patch.object(module.urllib.request, "urlopen", side_effect=[self.http_error(504), io.BytesIO(b"verified bytes")]) as urlopen, \
+             patch.object(module.time, "sleep") as sleep:
+            self.assertEqual(module.fetch("https://packages.termux.dev/test"), b"verified bytes")
+        self.assertEqual(urlopen.call_count, 2)
+        sleep.assert_called_once_with(1)
+
+    def test_connection_reset_retries_before_the_next_fetch(self):
+        with patch.object(module.urllib.request, "urlopen", side_effect=[URLError(ConnectionResetError("connection reset")), io.BytesIO(b"verified bytes")]) as urlopen, \
+             patch.object(module.time, "sleep") as sleep:
+            self.assertEqual(module.fetch("https://packages.termux.dev/test"), b"verified bytes")
+        self.assertEqual(urlopen.call_count, 2)
+        sleep.assert_called_once_with(1)
+
+    def test_permanent_http_error_fails_without_retry(self):
+        with patch.object(module.urllib.request, "urlopen", side_effect=self.http_error(404)) as urlopen, \
+             patch.object(module.time, "sleep") as sleep:
+            with self.assertRaises(HTTPError):
+                module.fetch("https://packages.termux.dev/missing")
+        urlopen.assert_called_once()
+        sleep.assert_not_called()
+
+    def test_certificate_verification_error_fails_without_retry(self):
+        failures = (
+            URLError(ssl.SSLCertVerificationError("certificate verify failed")),
+            ssl.SSLCertVerificationError("certificate verify failed"),
+        )
+        for failure in failures:
+            with self.subTest(wrapped=isinstance(failure, URLError)):
+                with patch.object(module.urllib.request, "urlopen", side_effect=failure) as urlopen, \
+                     patch.object(module.time, "sleep") as sleep:
+                    with self.assertRaises(type(failure)):
+                        module.fetch("https://packages.termux.dev/untrusted")
+                urlopen.assert_called_once()
+                sleep.assert_not_called()
+
+    def test_non_network_oserror_fails_without_retry(self):
+        failure = PermissionError("permission denied")
+        with patch.object(module.urllib.request, "urlopen", side_effect=failure) as urlopen, \
+             patch.object(module.time, "sleep") as sleep:
+            with self.assertRaises(PermissionError):
+                module.fetch("https://packages.termux.dev/test")
+        urlopen.assert_called_once()
+        sleep.assert_not_called()
+
+    def test_permanent_url_error_fails_without_retry(self):
+        with patch.object(module.urllib.request, "urlopen", side_effect=URLError("unknown url type")) as urlopen, \
+             patch.object(module.time, "sleep") as sleep:
+            with self.assertRaises(URLError):
+                module.fetch("https://packages.termux.dev/test")
+        urlopen.assert_called_once()
+        sleep.assert_not_called()
+
+    def test_gateway_timeouts_stop_at_the_configured_attempt_limit(self):
+        with patch.object(module.urllib.request, "urlopen", side_effect=self.http_error(504)) as urlopen, \
+             patch.object(module.time, "sleep") as sleep:
+            with self.assertRaises(HTTPError):
+                module.fetch("https://packages.termux.dev/unavailable")
+        self.assertEqual(urlopen.call_count, module.FETCH_ATTEMPTS)
+        self.assertEqual(sleep.call_count, module.FETCH_ATTEMPTS - 1)
+        self.assertLessEqual(max(call.args[0] for call in sleep.call_args_list), module.FETCH_RETRY_MAX_DELAY_SECONDS)
 
 
 class SignedTermuxRepoParserTest(unittest.TestCase):

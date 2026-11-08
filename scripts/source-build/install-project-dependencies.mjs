@@ -19,13 +19,14 @@ const sha256 = file => createHash('sha256').update(readFileSync(file)).digest('h
 const inputLockSha256 = sha256(lockPath)
 const manifestSha256 = sha256(manifestPath)
 const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm'
+const npmRetryArgs = ['--fetch-retries=8', '--fetch-retry-factor=2', '--fetch-retry-mintimeout=1000', '--fetch-retry-maxtimeout=30000', '--fetch-timeout=300000']
 // --ignore-scripts resolves metadata without executing lifecycle scripts; npm ci follows only this realized graph.
-execFileSync(npm, ['install', '--package-lock-only', '--ignore-scripts', '--no-audit', '--no-fund'], { cwd: directory, stdio: 'inherit' })
+execFileSync(npm, ['install', '--package-lock-only', '--ignore-scripts', '--no-audit', '--no-fund', ...npmRetryArgs], { cwd: directory, stdio: 'inherit' })
 if (sha256(manifestPath) !== manifestSha256) throw new Error('lock-only resolution unexpectedly modified package.json')
 const errors = checkPackageLockRoot(directory)
 if (errors.length) throw new Error(errors.join('\n'))
 const resolvedLockSha256 = sha256(lockPath)
-execFileSync(npm, ['ci', '--no-audit', '--no-fund'], { cwd: directory, stdio: 'inherit' })
+execFileSync(npm, ['ci', '--no-audit', '--no-fund', ...npmRetryArgs], { cwd: directory, stdio: 'inherit' })
 if (sha256(lockPath) !== resolvedLockSha256 || sha256(manifestPath) !== manifestSha256) {
   throw new Error('npm ci modified its resolved input manifest/lock')
 }

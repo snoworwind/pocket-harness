@@ -36,7 +36,7 @@ node scripts/source-build/record-project-components.mjs inputs \
 # 而从源码树重建会得到不同字节 —— 0.1.5 时代就踩过（源码构建产物与发布产物闭合形态不同，
 # 需要一条源码构建专用的补丁改写兜着）。改用发布产物后该改写随之退役，锚点天然对齐。
 marketplace_tarball=.deploy-tmp/component-sources/dshmarketplace-plugin-0.1.7.tgz
-curl --fail --location --retry 3 --max-time 300 \
+curl --fail --location --retry 8 --retry-max-time 600 --max-time 300 \
   https://registry.npmjs.org/dshmarketplace-plugin/-/dshmarketplace-plugin-0.1.7.tgz \
   --output "$marketplace_tarball"
 printf '%s  %s\n' '881c21ec33a4a91ad65c61676540faab4122440e3f9685f69939533a6dbbc0c1' "$marketplace_tarball" | sha256sum --check -
@@ -64,9 +64,10 @@ cd .deploy-tmp/deepseek-harness
 # All vendor sources now follow the official target; no older commit is staged.
 git checkout -- .
 git clean -fdq
-npm install -g corepack@0.36.0 --ignore-scripts --no-audit --no-fund
+npm_retry_flags=(--fetch-retries=8 --fetch-retry-factor=2 --fetch-retry-mintimeout=1000 --fetch-retry-maxtimeout=30000 --fetch-timeout=300000)
+npm install -g corepack@0.36.0 --ignore-scripts --no-audit --no-fund "${npm_retry_flags[@]}"
 corepack enable
-corepack pnpm install --frozen-lockfile
+corepack pnpm install "${npm_retry_flags[@]}" --frozen-lockfile
 test "$(corepack pnpm --version)" = "11.28.5"
 corepack pnpm --version > "$GITHUB_WORKSPACE/.deploy-tmp/source-build/package-manager-versions.txt"
 printf 'deployment pnpm: ' >> "$GITHUB_WORKSPACE/.deploy-tmp/source-build/package-manager-versions.txt"
@@ -169,15 +170,15 @@ node "$GITHUB_WORKSPACE/scripts/source-build/prepare-pnpm-deploy-runtime-closure
   "$package_backup_dir" \
   "$GITHUB_WORKSPACE/.deploy-tmp/source-build/pnpm-deploy-runtime-closure.json" \
   "${DSH_ABI:-arm64}"
-corepack pnpm install --lockfile-only --no-frozen-lockfile
-corepack pnpm install --frozen-lockfile --ignore-scripts
+corepack pnpm install "${npm_retry_flags[@]}" --lockfile-only --no-frozen-lockfile
+corepack pnpm install "${npm_retry_flags[@]}" --frozen-lockfile --ignore-scripts
 # `pnpm deploy` 要求目标目录为空，否则 ERR_PNPM_DEPLOY_DIR_NOT_EMPTY；CI 每轮全新工作区
 # 故从不暴露，本地复跑必撞。语义上这里要的就是「全新的部署树」，故清掉即忠实。
 # Refuse an empty/misdirected workspace or symlinked staging parent before cleanup.
 test -n "$GITHUB_WORKSPACE"
 test "$(realpath "$GITHUB_WORKSPACE/.deploy-tmp")" = "$(realpath "$GITHUB_WORKSPACE")/.deploy-tmp"
 rm -rf -- "$GITHUB_WORKSPACE/.deploy-tmp/engine-deploy"
-corepack pnpm@12.2.0 --pm-on-fail=ignore --filter @deepseek-ai/dsh deploy --prod "$GITHUB_WORKSPACE/.deploy-tmp/engine-deploy"
+corepack pnpm@12.2.0 --pm-on-fail=ignore "${npm_retry_flags[@]}" --filter @deepseek-ai/dsh deploy --prod "$GITHUB_WORKSPACE/.deploy-tmp/engine-deploy"
 cp pnpm-lock.yaml "$GITHUB_WORKSPACE/.deploy-tmp/source-build/pnpm-deploy-runtime-closure.lock.yaml"
 restore_deploy_inputs
 trap - EXIT

@@ -66,16 +66,16 @@ jobs:
         run: node --test vendor/dsh-linux-runtime/test/*.test.mjs
       - name: Internal Linux plugin build and regression checks
         run: |
-          npm ci --prefix plugins/dsh-linux-bootstrap --no-audit --no-fund
+          npm ci --prefix plugins/dsh-linux-bootstrap --no-audit --no-fund --fetch-retries=8 --fetch-retry-factor=2 --fetch-retry-mintimeout=1000 --fetch-retry-maxtimeout=30000 --fetch-timeout=300000
           npm run build --prefix plugins/dsh-linux-bootstrap
           node --test plugins/dsh-linux-bootstrap/test/*.test.mjs
           # These file: dependencies publish TypeScript declarations through ignored lib/ outputs.
           # Build them from the checked-in source before compiling linux-env on a clean runner.
-          npm ci --prefix dsh-shell-termux --no-audit --no-fund
+          npm ci --prefix dsh-shell-termux --no-audit --no-fund --fetch-retries=8 --fetch-retry-factor=2 --fetch-retry-mintimeout=1000 --fetch-retry-maxtimeout=30000 --fetch-timeout=300000
           npm run build --prefix dsh-shell-termux
-          npm ci --prefix plugins/dsh-android-bridge --no-audit --no-fund
+          npm ci --prefix plugins/dsh-android-bridge --no-audit --no-fund --fetch-retries=8 --fetch-retry-factor=2 --fetch-retry-mintimeout=1000 --fetch-retry-maxtimeout=30000 --fetch-timeout=300000
           npm run build --prefix plugins/dsh-android-bridge
-          npm ci --prefix plugins/dsh-android-linux-env --no-audit --no-fund
+          npm ci --prefix plugins/dsh-android-linux-env --no-audit --no-fund --fetch-retries=8 --fetch-retry-factor=2 --fetch-retry-mintimeout=1000 --fetch-retry-maxtimeout=30000 --fetch-timeout=300000
           npm test --prefix plugins/dsh-android-linux-env
       - name: PRoot backend, rootfs and compatibility regressions
         run: |
@@ -120,7 +120,7 @@ jobs:
           print('BOOTSTRAP_SHA256=' + values['BOOTSTRAP_SHA256'])
           PY
           source .deploy-tmp/linux-termux/bootstrap-pins.env
-          curl --fail --location --retry 3 "$BOOTSTRAP_URL" -o .deploy-tmp/linux-termux/bootstrap-aarch64.zip
+          curl --fail --location --retry 8 --retry-max-time 600 "$BOOTSTRAP_URL" -o .deploy-tmp/linux-termux/bootstrap-aarch64.zip
           printf '%s  %s\n' "$BOOTSTRAP_SHA256" .deploy-tmp/linux-termux/bootstrap-aarch64.zip | sha256sum --check --strict
           python3 scripts/source-build/prepare-termux-bootstrap.py --extract-bootstrap-only \
             .deploy-tmp/linux-termux/bootstrap-aarch64.zip .deploy-tmp/linux-termux/bootstrap-extracted/usr
@@ -144,8 +144,8 @@ jobs:
           archive_fingerprint=$(node -p 'require("./scripts/source-build/linux-inputs.json").debianArchiveKey13Fingerprint')
           release_sha=$(node -p 'require("./scripts/source-build/linux-inputs.json").debianReleaseKey13Sha256')
           release_fingerprint=$(node -p 'require("./scripts/source-build/linux-inputs.json").debianReleaseKey13Fingerprint')
-          curl --fail --location --retry 3 https://ftp-master.debian.org/keys/archive-key-13.asc -o "$keydir/archive-key-13.asc"
-          curl --fail --location --retry 3 https://ftp-master.debian.org/keys/release-13.asc -o "$keydir/release-13.asc"
+          curl --fail --location --retry 8 --retry-max-time 600 https://ftp-master.debian.org/keys/archive-key-13.asc -o "$keydir/archive-key-13.asc"
+          curl --fail --location --retry 8 --retry-max-time 600 https://ftp-master.debian.org/keys/release-13.asc -o "$keydir/release-13.asc"
           printf '%s  %s\n%s  %s\n' "$archive_sha" "$keydir/archive-key-13.asc" "$release_sha" "$keydir/release-13.asc" | sha256sum --check --strict
           gpg --batch --quiet --homedir "$homedir" --import /usr/share/keyrings/debian-archive-keyring.gpg "$keydir/archive-key-13.asc" "$keydir/release-13.asc"
           fingerprints=$(gpg --batch --homedir "$homedir" --with-colons --list-keys | awk -F: '$1 == "fpr" { print $10 }')
