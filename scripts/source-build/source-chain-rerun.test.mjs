@@ -26,7 +26,7 @@ function fixture(fn) {
 function bash(script, root, extra = {}) {
   const r = spawnSync('/bin/bash', ['--noprofile', '--norc', '-c', 'set -euo pipefail\n' + script], {
     cwd: root, encoding: 'utf8', timeout: 10000, maxBuffer: 262144,
-    env: { PATH: join(root, 'bin') + ':/usr/bin:/bin', HOME: root, TMPDIR: root, LC_ALL: 'C', GITHUB_WORKSPACE: root, ...extra },
+    env: { PATH: join(root, 'bin') + ':/usr/bin:/bin', HOME: root, TMPDIR: root, LC_ALL: 'C', GITHUB_WORKSPACE: root, DSH_ABI: 'arm64', ...extra },
   })
   if (r.error) throw r.error
   return r
@@ -83,14 +83,18 @@ for (const [label, script] of [
   }))
 }
 const bootstrap = step('Authenticate official Termux bootstrap and extract signing keys')
-const guard = bootstrap.slice(bootstrap.indexOf('bootstrap_sha256='), bootstrap.indexOf('\n# 先清空'))
+const guard = bootstrap.slice(bootstrap.indexOf('bootstrap_pin='), bootstrap.indexOf('\n# 先清空'))
 const good = Buffer.from('authenticated dummy bootstrap\n')
 const sha = createHash('sha256').update(good).digest('hex')
 function prepare(root) {
   mkdirSync(join(root, 'scripts/source-build'), { recursive: true })
   mkdirSync(join(root, '.deploy-tmp/source-build'), { recursive: true })
   mkdirSync(join(root, 'bin'))
-  writeFileSync(join(root, 'scripts/source-build/prepare-termux-bootstrap.py'), 'BOOTSTRAP_SHA256 = "' + sha + '"\n')
+  writeFileSync(join(root, 'scripts/source-build/prepare-termux-bootstrap.py'), [
+    'import json, sys',
+    'if sys.argv[1] == "--print-pin": print(json.dumps({"url": "https://example.invalid/bootstrap.zip", "sha256": "' + sha + '"}))',
+    '',
+  ].join('\n'))
   writeFileSync(join(root, 'download'), good)
   const curl = [
     '#!/bin/bash', 'set -eu', 'printf "download\\n" >> "$HOME/calls"',
@@ -100,7 +104,7 @@ function prepare(root) {
   ].join('\n')
   writeFileSync(join(root, 'bin/curl'), curl)
   chmodSync(join(root, 'bin/curl'), 0o755)
-  return join(root, '.deploy-tmp/source-build/bootstrap-aarch64.zip')
+  return join(root, '.deploy-tmp/source-build/bootstrap-arm64.zip')
 }
 for (const cached of ['valid', 'absent', 'wrong', 'truncated']) {
   test('bootstrap ' + cached + ': only authenticated hits reuse', linux, () => fixture(root => {

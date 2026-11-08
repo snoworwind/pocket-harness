@@ -163,7 +163,10 @@ function rejectEscapedWriteRoots(workspace) {
     '.deploy-tmp/source-build/node-deb-extracted/data/data/com.termux/files/usr',
     '.deploy-tmp/arm64-base/.bootstrap-stage/termux',
     '.deploy-tmp/arm64-base/.bootstrap-stage/base/usr',
+    '.deploy-tmp/x64-base/.bootstrap-stage/termux',
+    '.deploy-tmp/x64-base/.bootstrap-stage/base/usr',
     '.deploy-tmp/snapshot-013/arm64/stage/root',
+    '.deploy-tmp/snapshot-013/x86_64/stage/root',
   ].map(path => join(workspace, path))
   const visited = new Set()
   const scan = directory => {
@@ -220,11 +223,15 @@ export function sourceCommit(source) {
   return git(source, 'rev-parse', 'HEAD')
 }
 
-/** Real APK execution is limited to the maintained branch, including resumed runs. */
-export function assertMaintainedSource(source) {
+/** Release builds use main; local x86 QA may opt into an isolated codex/x86-* branch. */
+export function assertMaintainedSource(source, { abi = 'arm64', allowX86Qa = false } = {}) {
   let ref
   try { ref = git(source, 'symbolic-ref', '--quiet', 'HEAD') } catch { /* Detached input is rejected. */ }
-  if (ref !== 'refs/heads/main') throw new Error('APK 来源构建仅允许 main 分支；其他分支只能 --list 或 --dry-run。')
+  const isMain = ref === 'refs/heads/main'
+  const isX86QaBranch = abi === 'x86_64' && allowX86Qa && /^refs\/heads\/codex\/x86-[a-z0-9-]+$/.test(ref ?? '')
+  if (!isMain && !isX86QaBranch) {
+    throw new Error('来源构建仅允许 main；本地 x86 QA 还可显式使用 codex/x86-* 分支。')
+  }
 }
 
 export function committedWorkflow(source, commit) {

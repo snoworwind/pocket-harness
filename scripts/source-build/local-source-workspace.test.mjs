@@ -29,13 +29,17 @@ function fixture(fn) {
 }
 
 const linux = { skip: process.platform !== 'linux' }
-test('only an attached main checkout authorizes real source builds and resumes', () => fixture(({ source, git, commit }) => {
+test('main authorizes source builds; only explicit x86 QA authorizes codex/x86 branches', () => fixture(({ source, git, commit }) => {
   git('branch', '-M', 'main')
   assert.doesNotThrow(() => assertMaintainedSource(source))
-  git('checkout', '-qb', 'codex/candidate')
+  assert.doesNotThrow(() => assertMaintainedSource(source, { abi: 'x86_64' }))
+  git('checkout', '-qb', 'codex/x86-source-chain')
   assert.throws(() => assertMaintainedSource(source), /仅允许 main/)
+  assert.throws(() => assertMaintainedSource(source, { abi: 'arm64', allowX86Qa: true }), /x86 QA/)
+  assert.throws(() => assertMaintainedSource(source, { abi: 'x86_64' }), /x86 QA/)
+  assert.doesNotThrow(() => assertMaintainedSource(source, { abi: 'x86_64', allowX86Qa: true }))
   git('checkout', '--detach', commit)
-  assert.throws(() => assertMaintainedSource(source), /仅允许 main/)
+  assert.throws(() => assertMaintainedSource(source, { abi: 'x86_64', allowX86Qa: true }), /x86 QA/)
   git('checkout', 'main')
   assert.doesNotThrow(() => assertMaintainedSource(source))
 }))
@@ -274,7 +278,7 @@ test('actual local runner routes cwd and build environment into isolation and ke
   mkdirSync(scriptDir)
   for (const file of ['run-local-source-chain.mjs', 'local-source-workspace.mjs', 'record-project-components.mjs']) copyFileSync(join(import.meta.dirname, file), join(scriptDir, file))
   writeFileSync(join(source, '.github/workflows/build-apk-source.yml'), [
-    'jobs:', '  build-arm64:', '    steps:',
+    'jobs:', '  build-abi:', '    steps:',
     '      - name: Checkout pinned fixture source', '        shell: bash', '        run: |',
     '          test "$PWD" = "$GITHUB_WORKSPACE"',
     '          test "$DSH_APK_DIR" = "$GITHUB_WORKSPACE"',
@@ -288,7 +292,7 @@ test('actual local runner routes cwd and build environment into isolation and ke
     '          mkdir -p .deploy-tmp/source-build',
     '          printf policy > .deploy-tmp/source-build/source-build-policy.json',
     '          printf isolated > result.txt', '          exit 23', '',
-    '  verify-arm64:', '    steps:',
+    '  verify-abi:', '    steps:',
   ].join('\n'))
   git('add', '.')
   git('commit', '-qm', 'runner fixture')

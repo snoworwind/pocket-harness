@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
 const read = name => readFileSync(new URL('../../.github/workflows/' + name, import.meta.url), 'utf8').replaceAll('\r\n', '\n')
 const entry = read('build-apk.yml')
-const expected = "name: build-apk\non:\n  workflow_dispatch:\n    inputs:\n      draft_release:\n        description: '源码构建成功后创建 ARM64 预发布草稿（不会公开）'\n        type: boolean\n        default: false\npermissions:\n  contents: read\njobs:\n  source-build:\n    if: ${{ !inputs.draft_release }}\n    uses: ./.github/workflows/build-apk-source.yml\n  source-draft:\n    if: ${{ inputs.draft_release }}\n    permissions:\n      contents: write\n    uses: ./.github/workflows/release-source-draft.yml"
+const expected = "name: build-apk\non:\n  workflow_dispatch:\n    inputs:\n      draft_release:\n        description: '源码构建成功后创建 ARM64 与 x86_64 预发布草稿（不会公开）'\n        type: boolean\n        default: false\npermissions:\n  contents: read\njobs:\n  source-build:\n    if: ${{ !inputs.draft_release }}\n    uses: ./.github/workflows/build-apk-source.yml\n  source-draft:\n    if: ${{ inputs.draft_release }}\n    permissions:\n      contents: write\n    uses: ./.github/workflows/release-source-draft.yml"
 const check = text => assert.equal(text.split('\n').filter(line => line.trim() && !line.trimStart().startsWith('#')).join('\n').trim(), expected.replace(/(    uses: [^\n]+)/g, '$1\n    secrets: inherit'))
 test('cloud entry routes both modes exclusively through same-commit source workflows', () => check(entry))
 
@@ -99,10 +99,18 @@ test('source workflow rejects tags, PR refs and feature branches before checkout
   const block = source.slice(start, end)
   assert.match(block, /SOURCE_REF: \$\{\{ github.ref \}\}/)
   const run = block.split('        run: |\n')[1].split('\n').map(line => line.replace(/^ {10}/, '')).join('\n')
-  for (const ref of ['refs/heads/main', 'refs/heads/codex/candidate', 'refs/tags/main', 'refs/pull/1/merge', '']) {
-    const result = spawnSync('/bin/bash', ['-e', '-c', run], { env: { ...process.env, SOURCE_REF: ref } })
+  for (const ref of ['refs/heads/main', 'refs/heads/codex/candidate', 'refs/heads/codex/x86-source-chain', 'refs/tags/main', 'refs/pull/1/merge', '']) {
+    const result = spawnSync('/bin/bash', ['-e', '-c', run], { env: { ...process.env, SOURCE_REF: ref, DSH_ABI: 'arm64', DSH_LOCAL_X86_QA: '' } })
     assert.equal(result.status, ref === 'refs/heads/main' ? 0 : 1)
   }
+  const x86 = spawnSync('/bin/bash', ['-e', '-c', run], { env: {
+    ...process.env, SOURCE_REF: 'refs/heads/codex/x86-source-chain', DSH_ABI: 'x86_64', DSH_LOCAL_X86_QA: '1',
+  } })
+  assert.equal(x86.status, 0, x86.stderr)
+  const x86WrongBranch = spawnSync('/bin/bash', ['-e', '-c', run], { env: {
+    ...process.env, SOURCE_REF: 'refs/heads/codex/candidate', DSH_ABI: 'x86_64', DSH_LOCAL_X86_QA: '1',
+  } })
+  assert.equal(x86WrongBranch.status, 1)
 })
 
 test('both wrapper modes fail the contract if signing secrets are not passed', () => {
@@ -134,21 +142,25 @@ test('source workflow uploads explicitly listed hidden provenance with APK', () 
 })
 
 function checkTermuxPackageSnapshotFlow(source) {
-  const preflight = source.split('  termux-package-inputs:')[1]?.split('\n  build-arm64:')[0]
-  const build = source.split('  build-arm64:')[1]?.split('\n  verify-arm64:')[0]
-  assert.ok(preflight && build, 'source workflow must have separate Termux input and ARM64 build jobs')
+  const preflight = source.split('  termux-package-inputs:')[1]?.split('\n  build-abi:')[0]
+  const build = source.split('  build-abi:')[1]?.split('\n  verify-abi:')[0]
+  assert.ok(preflight && build, 'source workflow must have separate Termux input and ABI build jobs')
+  assert.match(source, /options: \[arm64, x86_64\]/)
+  assert.match(source, /DSH_ABI: \$\{\{ inputs\.abi \|\| 'arm64' \}\}/)
+  assert.equal((source.match(/unsupported ABI: \$DSH_ABI/g) ?? []).length, 2,
+    'both the preflight and builder must fail before work when an unsupported ABI is supplied')
   assert.match(preflight, /python3 scripts\/source-build\/prepare-termux-signed-repo\.py/)
   assert.equal((preflight.match(/prepare-termux-signed-repo\.py/g) ?? []).length, 1,
     'the rolling Termux repository must be resolved exactly once per workflow run')
   assert.match(preflight, /tar --create --file=\.deploy-tmp\/termux-package-inputs\.tar/)
   assert.match(preflight, /--directory="\$artifact_root" termux-webroot termux-packages-provenance\.json/)
-  assert.match(preflight, /name: termux-package-inputs-\$\{\{ github\.run_id \}\}-\$\{\{ github\.run_attempt \}\}/)
+  assert.match(preflight, /name: termux-package-inputs-\$\{\{ inputs\.abi \|\| 'arm64' \}\}-\$\{\{ github\.run_id \}\}-\$\{\{ github\.run_attempt \}\}/)
   assert.match(preflight, /path: \.deploy-tmp\/termux-package-inputs\.tar/)
   assert.match(preflight, /compression-level: 0/)
   assert.match(readFileSync(new URL('./prepare-termux-signed-repo.py', import.meta.url), 'utf8'),
     /webroot\.parent \/ "termux-packages-provenance\.json"/)
   assert.match(build, /needs: termux-package-inputs/)
-  assert.match(build, /name: termux-package-inputs-\$\{\{ github\.run_id \}\}-\$\{\{ github\.run_attempt \}\}/)
+  assert.match(build, /name: termux-package-inputs-\$\{\{ inputs\.abi \|\| 'arm64' \}\}-\$\{\{ github\.run_id \}\}-\$\{\{ github\.run_attempt \}\}/)
   assert.match(build, /path: \.deploy-tmp\/source-build\/termux-package-artifact/)
   assert.match(build, /tarfile\.open\(archive, mode='r:'\)/)
   assert.match(build, /bundle\.extractall\(destination, members=members, filter='data'\)/)
@@ -160,15 +172,27 @@ function checkTermuxPackageSnapshotFlow(source) {
   assert.equal((build.match(/prepare-termux-signed-repo\.py/g) ?? []).length, 0,
     'build replicas must consume the shared snapshot instead of independently resolving stable')
   assert.match(build, /Download this run's authenticated Termux package snapshot/)
+  const assemble = build.indexOf('Assemble clean Termux base with the source-built Android binding')
+  const reclaim = build.indexOf('node scripts/source-build/reclaim-build-disk.mjs --root "$GITHUB_WORKSPACE"')
+  const assembleEnd = build.indexOf('\n      - name:', assemble)
+  const assembleBlock = build.slice(assemble, assembleEnd)
+  assert.ok(assemble > 0 && assembleEnd > assemble && reclaim > assembleEnd,
+    'ABI-specific base provenance must be copied after assembly and before disk reclamation')
+  assert.ok(assembleBlock.includes('cp "$base_root/base-usr.tar.xz.provenance.json"'))
+  assert.ok(assembleBlock.includes('.deploy-tmp/source-build/termux-base-provenance.json'))
+  assert.match(build, /\.deploy-tmp\/source-build\/termux-base-provenance\.json/)
+  assert.equal((source.match(/\.deploy-tmp\/source-build\/termux-base-provenance\.json/g) ?? []).length, 4,
+    'primary, verified, and signed artifacts must upload this ABI-specific provenance')
+  assert.doesNotMatch(build, /\.deploy-tmp\/(?:arm64|x64)-base\/base-usr\.tar\.xz\.provenance\.json/)
 }
-test('both ARM64 replicas consume one authenticated Termux package snapshot per workflow run', () => {
+test('both replicas for either ABI consume one authenticated Termux package snapshot per workflow run', () => {
   checkTermuxPackageSnapshotFlow(read('build-apk-source.yml'))
 })
 test('negative controls reject independent repo fetches, missing dependency, or mismatched artifact names', () => {
   const source = read('build-apk-source.yml')
   for (const bad of [
     source.replace('    needs: termux-package-inputs\n', ''),
-    source.replace('          name: termux-package-inputs-${{ github.run_id }}-${{ github.run_attempt }}\n          path: .deploy-tmp/source-build',
+    source.replace("          name: termux-package-inputs-${{ inputs.abi || 'arm64' }}-${{ github.run_id }}-${{ github.run_attempt }}\n          path: .deploy-tmp/source-build",
       '          name: termux-package-inputs-stale-run\n          path: .deploy-tmp/source-build'),
     source.replace('          path: .deploy-tmp/termux-package-inputs.tar',
       '          path: .deploy-tmp/termux-package-artifact/'),
@@ -189,6 +213,7 @@ function checkCachedEffectiveOverlay(source) {
   assert.ok(positive > 0 && negative > positive, 'source-only overlay restore requires a positive self-test and controlled negative')
   assert.ok(addNodeStep > 0 && install > addNodeStep && install < endAddNodeStep && endAddNodeStep < runtimeStep,
     'authenticated effective overlay must be installed before the snapshot builder reads it')
+  const addNodeBlock = source.slice(addNodeStep, endAddNodeStep)
   const block = source.slice(install, endAddNodeStep)
   for (const path of [
     '.deploy-tmp/source-build/engine-overlay.original.json',
@@ -205,11 +230,14 @@ function checkCachedEffectiveOverlay(source) {
     '.deploy-tmp/source-build/effective-engine-overlay-policy.restore-input.json',
   ]) {
     const escaped = path.replaceAll('.', '\\.')
-    assert.equal((source.match(new RegExp('^            ' + escaped + '$', 'gm')) ?? []).length, 4,
+    assert.equal((source.match(new RegExp('^            ' + escaped + '$', 'gm')) ?? []).length, 3,
       'the immutable restore input must be copied, validated, and uploaded in all three APK artifact stages: ' + path)
   }
+  assert.match(addNodeBlock, /if \[\[ ! -e \.deploy-tmp\/source-build\/effective-engine-overlay\.restore-input\.json \]\]/)
+  assert.match(addNodeBlock, /if \[\[ ! -e \.deploy-tmp\/source-build\/effective-engine-overlay-policy\.restore-input\.json \]\]/)
+  assert.match(addNodeBlock, /restore input must be a regular file/)
 }
-test('trusted cache restores its source-built runtime overlay before snapshot construction', () => {
+test('trusted cache restores its source-built runtime overlay and preserves immutable inputs on rerun', () => {
   checkCachedEffectiveOverlay(read('build-apk-source.yml'))
 })
 function checkCachedProjectComponentInputs(source, base) {
@@ -276,15 +304,15 @@ test('negative control: parent repository Git HEAD cannot replace the pinned Har
 
 test('independent builders and verifier never receive production secrets; only the final signer does', () => {
   const source = read('build-apk-source.yml')
-  const build = source.split('  build-arm64:')[1].split('  verify-arm64:')[0]
-  const verify = source.split('  verify-arm64:')[1].split('  sign-arm64:')[0]
-  const sign = source.split('  sign-arm64:')[1]
+  const build = source.split('  build-abi:')[1].split('  verify-abi:')[0]
+  const verify = source.split('  verify-abi:')[1].split('  sign-abi:')[0]
+  const sign = source.split('  sign-abi:')[1]
   assert.match(build, /replica: \[primary, reference\]/)
   assert.match(build, /keytool -genkeypair/)
   assert.doesNotMatch(build + verify, /secrets\./)
-  assert.match(verify, /needs: build-arm64/)
+  assert.match(verify, /needs: build-abi/)
   assert.match(verify, /compare-independent-builds\.mjs/)
-  assert.match(sign, /needs: verify-arm64/)
+  assert.match(sign, /needs: verify-abi/)
   assert.match(sign, /secrets\.POCKET_SIGNING_KEYSTORE_PASSWORD/)
   assert.match(sign, /sign-source-artifacts\.mjs/)
   assert.doesNotMatch(sign, /npm |gradlew|build-apk\.mjs/)
@@ -329,10 +357,21 @@ test('draft workflow builds read-only and publishes only this run artifacts as a
   const build = workflow.split('  build:')[1].split('  prepare:')[0]
   assert.match(build, /contents: read/)
   assert.match(build, /uses: \.\/\.github\/workflows\/build-apk-source.yml/)
+  assert.match(build, /abi: \[arm64, x86_64\]/)
+  assert.match(build, /abi: \$\{\{ matrix\.abi \}\}/)
+  assert.match(build, /secrets: inherit/)
+  const prepare = workflow.split('  prepare:')[1].split('  draft:')[0]
+  assert.match(prepare, /name: pocket-harness-arm64-source-\$\{\{ github\.sha \}\}/)
+  assert.match(prepare, /path: source-artifacts\/arm64/)
+  assert.match(prepare, /name: pocket-harness-x86_64-source-\$\{\{ github\.sha \}\}/)
+  assert.match(prepare, /path: source-artifacts\/x86_64/)
+  assert.match(prepare, /prepare-source-release\.py source-artifacts release-assets/)
   const draft = workflow.split('  draft:')[1]
   assert.match(draft, /needs: prepare/)
   assert.match(draft, /contents: write/)
   assert.match(draft, /--target "\$SOURCE_SHA" --draft --prerelease/)
+  assert.match(draft, /exactly one source APK for each ABI/)
+  assert.match(draft, /Hardening source dual-ABI/)
   assert.doesNotMatch(draft, /actions\/checkout|build-apk\.mjs|npm |gradle /)
   assert.doesNotMatch(workflow, /run-id:|repository:|workflow_run:|\n  push:/)
 })

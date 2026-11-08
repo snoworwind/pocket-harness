@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Cross-compile the pinned node-pty source for the Termux ARM64 Node runtime.
+// Cross-compile the pinned node-pty source for a supported Termux Android Node runtime.
 // This uses the authenticated Termux Node headers and a pinned Google NDK.
 import { createHash } from 'node:crypto'
 import { spawnSync } from 'node:child_process'
@@ -8,6 +8,20 @@ import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from
 import { dirname, join, resolve } from 'node:path'
 
 const args = process.argv.slice(2)
+let abi = 'arm64'
+if (args.length >= 2 && args.at(-2) === '--abi') {
+  abi = args.at(-1)
+  args.splice(-2)
+}
+const targetByAbi = {
+  arm64: { nodeArch: 'arm64', triple: 'aarch64-linux-android26', elfMachine: 'AArch64', elfCode: 183 },
+  x86_64: { nodeArch: 'x64', triple: 'x86_64-linux-android26', elfMachine: 'Advanced Micro Devices X86-64', elfCode: 62 },
+}
+const target = targetByAbi[abi]
+if (!target) {
+  console.error('unsupported ABI; expected arm64 or x86_64')
+  process.exit(2)
+}
 let ptyRoot, apiRoot, headersRoot, ndkRoot, reportPath
 if (args[0] === '--direct' && args.length === 6) {
   ;[, ptyRoot, apiRoot, headersRoot, ndkRoot, reportPath] = args
@@ -21,8 +35,8 @@ if (args[0] === '--direct' && args.length === 6) {
   ndkRoot = ndk
   reportPath = report
 } else {
-  console.error('usage: build-node-pty-android.mjs <engine-deploy> <node-headers> <NDK-r30> <report.json>')
-  console.error('   or: build-node-pty-android.mjs --direct <node-pty> <node-addon-api> <node-headers> <NDK-r30> <report.json>')
+  console.error('usage: build-node-pty-android.mjs <engine-deploy> <node-headers> <NDK-r30> <report.json> [--abi arm64|x86_64]')
+  console.error('   or: build-node-pty-android.mjs --direct <node-pty> <node-addon-api> <node-headers> <NDK-r30> <report.json> [--abi arm64|x86_64]')
   process.exit(2)
 }
 
@@ -53,7 +67,7 @@ const clang = join(bin, `clang++${ext}`)
 const readelf = join(bin, `llvm-readelf${ext}`)
 if (!existsSync(clang) || !existsSync(readelf)) throw new Error(`Google NDK toolchain is incomplete at ${bin}`)
 const source = join(ptyRoot, 'src', 'unix', 'pty.cc')
-const output = join(ptyRoot, 'prebuilds', 'android-arm64', 'pty.node')
+const output = join(ptyRoot, 'prebuilds', `android-${target.nodeArch}`, 'pty.node')
 for (const candidate of ['build/Release/pty.node', 'build/Debug/pty.node']) {
   if (existsSync(join(ptyRoot, candidate))) {
     throw new Error(`${candidate} would shadow the Android binding in node-pty's loader`)
@@ -71,7 +85,7 @@ mkdirSync(dirname(output), { recursive: true })
 // 用仓库外路径构建的情形（如复现实验）。
 const repoRoot = resolve(import.meta.dirname, '..', '..')
 const compileArgs = [
-  '--target=aarch64-linux-android26', '-fPIC', '-shared', '-std=c++17',
+  `--target=${target.triple}`, '-fPIC', '-shared', '-std=c++17',
   '-O2', '-fvisibility=hidden', '-static-libstdc++',
   `-ffile-prefix-map=${repoRoot}=/dsh-mobile-apk`,
   `-ffile-prefix-map=${ptyRoot}=/node-pty`,
@@ -88,9 +102,9 @@ const elfHeader = run(readelf, ['-h', output])
 const dynamic = run(readelf, ['-d', output])
 const symbols = run(readelf, ['--wide', '-s', output])
 if (!elfHeader.includes('Class:                             ELF64')
-  || !elfHeader.includes('Machine:                           AArch64')
+  || !elfHeader.includes(`Machine:                           ${target.elfMachine}`)
   || !elfHeader.includes('Type:                              DYN')) {
-  throw new Error('compiled pty.node is not an ARM64 shared ELF library')
+  throw new Error(`compiled pty.node is not a ${abi} shared ELF library`)
 }
 const needed = [...dynamic.matchAll(/Shared library: \[([^\]]+)\]/g)].map((match) => match[1]).sort()
 const permitted = new Set(['libc.so', 'libdl.so', 'libm.so'])
@@ -108,8 +122,9 @@ const report = {
   ndkRevision,
   ndkSourcePropertiesSha256: hash(join(ndkRoot, 'source.properties')),
   compilerSha256: hash(clang),
-  target: 'aarch64-linux-android26',
-  command: ['clang++', ...compileArgs.map((item) => item === source ? 'src/unix/pty.cc' : item === output ? 'prebuilds/android-arm64/pty.node' : item.startsWith('-I') ? '-I<authenticated-header-or-package>' : item.startsWith('-ffile-prefix-map=') ? '-ffile-prefix-map=<build-root-to-fixed-virtual-path>' : item)],
+  abi,
+  target: target.triple,
+  command: ['clang++', ...compileArgs.map((item) => item === source ? 'src/unix/pty.cc' : item === output ? `prebuilds/android-${target.nodeArch}/pty.node` : item.startsWith('-I') ? '-I<authenticated-header-or-package>' : item.startsWith('-ffile-prefix-map=') ? '-ffile-prefix-map=<build-root-to-fixed-virtual-path>' : item)],
   inputs: {
     ptyCcSha256: hash(source),
     bindingGypSha256: hash(join(ptyRoot, 'binding.gyp')),
@@ -117,7 +132,7 @@ const report = {
     nodeApiHeaderSha256: hash(join(headersRoot, 'node_api.h')),
     nodeVersionHeaderSha256: hash(join(headersRoot, 'node_version.h')),
   },
-  output: { path: 'prebuilds/android-arm64/pty.node', sha256: hash(output), size: readFileSync(output).length, needed },
+  output: { path: `prebuilds/android-${target.nodeArch}/pty.node`, sha256: hash(output), size: readFileSync(output).length, needed, elfMachine: target.elfMachine },
 }
 writeFileSync(resolve(reportPath), JSON.stringify(report, null, 2) + '\n')
-console.log(`compiled node-pty Android ARM64 binding: ${report.output.sha256} (${report.output.size} bytes)`)
+console.log(`compiled node-pty Android ${abi} binding: ${report.output.sha256} (${report.output.size} bytes)`)

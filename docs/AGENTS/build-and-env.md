@@ -2,7 +2,11 @@
 
 ## 0.2.2-rc.1 引擎来源链
 
-目标与版本证据见 [rc.1 升级记录](ENGINE-UPGRADE-2026-11-06.md)，此前版本见 [rc.5 升级记录](ENGINE-UPGRADE-2026-10-31.md) 和 [rc.2 升级记录](ENGINE-UPGRADE-2026-10-19.md)。源码阶段用官方 native → Host libraries → Client compiler → Client workspace bundle → Web 顺序；根 workspace bundle 已覆盖 package-local 配置，不能再追加旧 recursive bundle（新版 pnpm 拒绝实际循环依赖）。Android 直接调用这些阶段、绕过上游 `scripts/build.ts --profile official`，因此 `build-engine.sh` 会向所有阶段注入同一组官方客户端环境（提交短哈希、Harness 版本、`DSH_CLIENT_BUILD_PROFILE=official`、`DSH_CLIENT_TITLE=DeepSeek Harness`），并检查 Client 标题、官方品牌槽位和 Web HTML 标题确实进入产物。固定 Corepack 0.36.0；本地 Node 24 必须带匹配开发头文件。APK 仍仅由 main 的隔离来源链产出。
+目标与版本证据见 [rc.1 升级记录](ENGINE-UPGRADE-2026-11-06.md)，此前版本见 [rc.5 升级记录](ENGINE-UPGRADE-2026-10-31.md) 和 [rc.2 升级记录](ENGINE-UPGRADE-2026-10-19.md)。源码阶段用官方 native → Host libraries → Client compiler → Client workspace bundle → Web 顺序；根 workspace bundle 已覆盖 package-local 配置，不能再追加旧 recursive bundle（新版 pnpm 拒绝实际循环依赖）。Android 直接调用这些阶段、绕过上游 `scripts/build.ts --profile official`，因此 `build-engine.sh` 会向所有阶段注入同一组官方客户端环境（提交短哈希、Harness 版本、`DSH_CLIENT_BUILD_PROFILE=official`、`DSH_CLIENT_TITLE=DeepSeek Harness`），并检查 Client 标题、官方品牌槽位和 Web HTML 标题确实进入产物。固定 Corepack 0.36.0；本地 Node 24 必须带匹配开发头文件。正式来源草稿对 main 的 ARM64 与 x86_64 分别执行独立双构建和签名；x86_64 尚不含离线 PRoot Linux 资产与 Android Canvas native。
+
+### 本地 x86_64 开发 QA
+
+`node scripts/source-build/run-local-source-chain.mjs --abi x86_64` 在 Linux/WSL 中从 `codex/x86-*` 分支的已提交 HEAD 建隔离检出；本地 x86 QA 仍用临时签名，不能充当正式发布构建。云端 `build-apk-source.yml` 可在 main 上以 `-f abi=x86_64` 运行同一 x86 来源链；草稿工作流会对 ARM64 和 x86_64 分别双构建、比对和正式签名。该路线从官方 x86_64 Termux bootstrap 与本轮验签包索引组装底座，按锁定的 Koffi Android x64 包和 NDK 源码构建的 node-pty x64 模块审 ABI；由于当前没有 Android x86_64 Canvas 构建输入和 Linux PRoot 资产，跳过 Canvas native 与离线 Linux 资产步骤。x86_64 APK 适用于对应 ABI 设备；Android 16 x86_64 AVD 可用于功能检查和截图，但不能替代 ARM64 设备验收。上游 Koffi 3.2.1 从该版本起提供 Android x64 预构建包，详见 [Koffi changelog](https://koffi.dev/changelog)。
 
 rc.1 的 profile seeder 从 `packages/boot/app-boot/src/profile.ts` 读取 `initProfile`，从 `packages/util/official-bundles/src/bundles.ts` 读取 `PROFILE_TEMPLATES`。模板只由 app-boot 内部导入，不再从 `profile.ts` 导出；误从那里读取会在 bootstrap 组装阶段得到 `undefined` 并使 primary/reference 同时失败。bootstrap 组装先调用 seeder 的 `--self-test` 验证 web/headless 清单与辅助文件，再写入实际 profile；`cloud-workflow.test.mjs` 和 `test_prepare_termux_bootstrap.py` 锁定来源与调用顺序。
 
@@ -72,7 +76,7 @@ java -classpath gradle/wrapper/gradle-wrapper.jar org.gradle.wrapper.GradleWrapp
 
 2026-10-15 WSL 来源构建暴露两处执行前提：首次 `--no-checkout` 的上游仓尚无 index，`git checkout -- .` 会报 pathspec；仅在来源链的独立上游检出显式 `checkout --detach` 到 workflow 固定 commit 后才可续跑。pnpm 顶层包为目录链接时，原始归档的逐成员物理路径读取无法读取链接下成员；需执行 workflow 本来就规定的 reconcile/materialize/repack，再重跑原始 perf/profile 门禁及来源快照检查，不能把首次失败当通过。每次恢复都须记录命令与操作块哈希，来源输入和门禁判据不变。MiMo verifier 分派的修复与反例见 [gotchas.md](gotchas.md) 坑 323；本次最终证据以后续 APK 交付报告为准。
 
-`node scripts/source-build/run-local-source-chain.mjs --list` / `--dry-run` 只读 committed HEAD 的 workflow；实际执行在原仓之外的独立浅检出。未提交源码不参与构建。用 `--build-workspace /tmp/dsh-build --from <阶段>` 指定可复核的续跑目录，必须属于同一 source/commit；输出留在该目录，不自动回写 base。隔离检出禁用 LFS smudge，sources 阶段负责重建 base，不能跳过缺失的实际输入。
+`node scripts/source-build/run-local-source-chain.mjs --list` / `--dry-run` 只读 committed HEAD 的 workflow；实际执行在原仓之外的独立浅检出。未提交源码不参与构建。用 `--build-workspace /tmp/dsh-build --from <阶段>` 指定可复核的续跑目录，必须属于同一 source/commit；输出留在该目录，不自动回写 base。隔离检出禁用 LFS smudge，sources 阶段负责重建 base，不能跳过缺失的实际输入。正式/默认目标为 main ARM64；本地 x86_64 开发 QA 用 `--abi x86_64`，仅接受 `codex/x86-*` 已提交分支，细节见本节「本地 x86_64 开发 QA」。
 
 初次检出与续跑均递归检查宿主写树的目录和文件链接，包括 dangling link；只允许树内别名及具体 staging 子树的 Android runtime 前缀。新增宿主写树须同步 `local-source-workspace.mjs` 与负控。现有来源缓存的只读兼容扫描及真实 runner 外部文件负控见 [gotchas.md](gotchas.md) 坑 339；此检查不等于恶意构建进程沙箱。
 
@@ -80,7 +84,7 @@ java -classpath gradle/wrapper/gradle-wrapper.jar org.gradle.wrapper.GradleWrapp
 
 组件来源证明在输入、输出阶段均从固定 Git 提交独立重建清单；可写报告不能作为最终输入哈希的信任根。新增源码、报告篡改、合法锁文件变化与实际 CLI 负控的复核命令和边界见 [gotchas.md](gotchas.md) 坑 336。宿主 npm 配置若在组件目录生成未登记缓存，须移至构建目录的专用缓存区并留移动证据，不加入源码白名单。
 
-开发期按 AGENTS §2.2 选择测试，文档生成块用 `node scripts/check-maintenance-docs.mjs --write` 更新，再不带参数检查；该维护提示不替代功能门禁。当前产品只发布 ARM64；最终完整验收与发布资格仍由 ARM64 来源链、设备三层及覆盖升级证据决定。
+开发期按 AGENTS §2.2 选择测试，文档生成块用 `node scripts/check-maintenance-docs.mjs --write` 更新，再不带参数检查；该维护提示不替代功能门禁。来源草稿同时提供 ARM64 与 x86_64 APK；公开前须完成 ARM64 正式验收，且对发布的 x86_64 产物完成 Android 16 x86_64 AVD ABI 门禁与 UI 截图，覆盖升级证据按对应设备记录。
 
 来源链产物的复核面固定在交付目录：APK 一份，加 `verify-source-apk.sh`、`SHA256SUMS.txt`、内嵌快照的归一化摘要，以及 workflow 上传清单同款的 `evidence/`。`bc6637f` 的 arm64 产物按此复核通过：APK 内 `assets/snapshot.tar.xz` 与打包门禁实际校验的那份快照逐字节相同（同一 SHA-256），解包重跑 `normalize-snapshot.mjs` 得到的语义摘要与链条记录一致，内嵌引擎为固定的 0.2.0-rc.2；「未取 LFS」的判据是隔离检出里 `base/*.tar.xz` 仍为 133 字节指针、APK 内无基座归档载荷，运行时由已验签的 Termux 仓库包组装。复核三签时必须显式 `--min-sdk-version 18`（默认按清单 minSdk 26 会把在场的 v1 报成 false，见 [gotchas.md](gotchas.md) 坑 325）；宿主 npm 缓存路径会在 WSL 内落成 `D:/` 目录，不参与注入（坑 326）。字节级可复现不成立，判据是语义归一化摘要；该产物未做设备验收。
 
@@ -93,8 +97,9 @@ java -classpath gradle/wrapper/gradle-wrapper.jar org.gradle.wrapper.GradleWrapp
 ```bash
 # 云端源码构建，明确指定维护线：
 gh workflow run build-apk-source.yml --repo snoworwind/pocket-harness --ref main
-# Linux / WSL 本地同链，当前仅 ARM64，构建已提交 HEAD：
+# Linux / WSL 本地同链，默认 main ARM64；Android 16 x86_64 开发 QA：
 node scripts/source-build/run-local-source-chain.mjs
+node scripts/source-build/run-local-source-chain.mjs --abi x86_64
 # 插件冒烟（不生成 APK）：
 node scripts/smoke-bridge.mjs
 ```
@@ -123,7 +128,7 @@ node scripts/smoke-bridge.mjs
 
 **Release 快照契约（该链已退役，2026-10-15）**：原 `.github/workflows/release.yml` 始终先构建本次运行的 arm64/x86_64 快照，release job 依赖 snapshot job 成功，再下载同一 run 的快照与 lock provenance（曾移除无快照来源的 `skip_snapshot_rebuild` 调试输入；失败后可用重跑失败 job 复用同一 run 的 artifact；不得用另一 commit 的快照填充发布输入）。**该 workflow 已按用户决定整体删除**：旧公开发布链不再使用，新来源草稿入口见 RELEASE.md §5，只允许来源链构建，见 [RELEASE.md](../RELEASE.md) §5、[AGENTS.md](../../AGENTS.md) §4 铁律 9 与 [known-gaps.md](known-gaps.md)。此段只作历史契约留档——若将来要恢复发布能力，必须在来源链上重建，**不得复活这条本地/协调仓链**。
 
-**CI 插件复用**：`pr-gate.yml` 按 `scripts/plugin-dirs.json` 准备依赖和构建产物；来源链按同一清单构建带 build script 的包。`build-apk.yml` 默认调用来源构建；选择 `draft_release` 时经草稿工作流调用同一来源链，不存在旧 LFS 构建分流或 ABI 矩阵。
+**CI 插件复用**：`pr-gate.yml` 按 `scripts/plugin-dirs.json` 准备依赖和构建产物；来源链按同一清单构建带 build script 的包。`build-apk.yml` 默认调用来源构建；选择 `draft_release` 时经草稿工作流对 ARM64 与 x86_64 建 ABI matrix 并调用同一来源链，不存在旧 LFS 构建分流。
 
 **历史 Release 模型目录跨 job 交接（该链已退役）**：快照 job 的生成 `lib/catalog-snapshot.json` 未跟随归档 artifact 上传，后续干净 checkout 不能依赖它。Release job 从实际输入 arm64 快照提取 pi-ai package metadata 与 `dist/providers/data`，运行 `gen-model-catalog.mjs` 后再注入。目录的 `engineRootHint` 使用快照内相对路径，避免将 runner 的本地绝对路径写进发布内容；本地正式构建仍由快照生成器生成同源目录。
 
@@ -280,13 +285,15 @@ Harness 与 vendor 源码均跟随当前官方目标；`prepare-harness-vendor-o
 
 ## GitHub Actions 来源构建入口（2026-10-17）
 
-本仓的 `build-apk` 与 `build-apk-source` 都运行同一条 ARM64 来源链，不再提供旧 LFS 底座构建选项。手动运行时必须选 `main`；历史 `security/hardening` 只作为迁移来源记录。CLI：
+本仓的 `build-apk` 与 `build-apk-source` 都运行同一条按 ABI 参数化的源码来源链，不再提供旧 LFS 底座构建选项。默认 ABI 为 ARM64；可通过 `abi=x86_64` 单独运行 x86_64 来源构建。手动运行时必须选 `main`；历史 `security/hardening` 只作为迁移来源记录。CLI：
 
 ```bash
 gh workflow run build-apk-source.yml --repo snoworwind/pocket-harness --ref main
+# 单独构建 x86_64：
+gh workflow run build-apk-source.yml --repo snoworwind/pocket-harness --ref main -f abi=x86_64
 ```
 
-成功后从该次 Actions 的 Artifacts 下载 `pocket-harness-arm64-source-<commit>`，内含 APK、SHA-256 和列举的来源证明文件；上传显式包含隐藏目录内的证据，且不上传整个临时目录。签名 Termux 包闭包在内部 job 间以 tar 文件传递，避免合法 Debian epoch 文件名中的冒号触发 Actions Artifact 路径限制。当前仅 ARM64、版本后缀固定 `-source`，不支持 x86_64 或双 ABI，草稿发布见 [RELEASE.md §5](../RELEASE.md)。云端任务上限 180 分钟，沿用来源链全部测试与产物门禁。入口回归为 `node --test scripts/source-build/cloud-workflow.test.mjs`，含旧链与条件分流的受控负控。该 L1 入口改动未做设备验证，云端成功也不等于设备验收通过。
+成功后从该次 Actions 的 Artifacts 下载 `pocket-harness-<abi>-source-<commit>`，内含该 ABI APK、SHA-256 和列举的来源证明文件；ABI 可选 `arm64` / `x86_64`。上传显式包含隐藏目录内的证据，且不上传整个临时目录。签名 Termux 包闭包在内部 job 间以 tar 文件传递，避免合法 Debian epoch 文件名中的冒号触发 Actions Artifact 路径限制。两种 APK 的版本名固定带 `-source`，草稿发布并行构建两个 ABI 并打包双份 APK，见 [RELEASE.md §5](../RELEASE.md)。x86_64 仍缺 Canvas native 与离线 PRoot Linux 资产。云端任务上限 180 分钟，沿用来源链全部测试与产物门禁。入口回归为 `node --test scripts/source-build/cloud-workflow.test.mjs`，含双 ABI、续跑输入保护和草稿资产负控。该 L1 入口改动未做设备验证，云端成功也不等于设备验收通过。
 
 
 来源链预检的 provenance 夹具必须隔离 CI 仓库环境，复验时带 `GITHUB_REPOSITORY` 与 `GITHUB_SERVER_URL` 跑工作流同一组 Node 测试；否则本地通过不足以覆盖云端身份优先级。根因及修复见 gotchas.md 坑 347。
@@ -306,7 +313,7 @@ Linux bootstrap 本地安全分叉（2026-10-18）：`check-vendored-linux-boots
 
 ## 签名前独立双构建
 
-当前云端来源链：两个 build-arm64 replica 从同一提交、全新 runner 各自构建，只有临时签名证书；verify-arm64 不执行产物，只比较实际 APK 条目、hard manifest 与 v3 快照语义；sign-arm64 等验证通过后才读取正式 PKCS12 Secret，使用固定生产证书 pin 验证三签并更新 APK 摘要；最终来源 artifact 才允许进入草稿准备。本地 run-local-source-chain 仅跑 build replica，GITHUB_ENV 的四个白名单构建变量在步骤间传递，临时签名 APK 明确禁止交付。自测入口 compare-independent-builds.mjs --self-test 与 sign-source-artifacts.mjs --self-test。共用上游或 runner 环境失陷仍是信任边界；真实双构建结果必须单独取得。
+当前云端来源链按输入 ABI 执行：两个 build-abi replica 从同一提交、全新 runner 各自构建，只有临时签名证书；verify-abi 不执行产物，只比较实际 APK 条目、hard manifest 与 v3 快照语义，并把 ABI 写入证明；sign-abi 校验证明 ABI 与实际 APK 一致后才读取正式 PKCS12 Secret，使用固定生产证书 pin 验证三签并更新 APK 摘要。草稿工作流分别调用该链构建 ARM64 与 x86_64，再核对二者版本、来源和摘要后上传。本地 run-local-source-chain 仅跑一个 ABI 的 build replica，GITHUB_ENV 的四个白名单构建变量在步骤间传递，临时签名 APK 明确禁止交付。有效 overlay 恢复输入会保留原始字节，Termux 本地续跑会清理固定 staging 输出后重建。自测入口 compare-independent-builds.mjs --self-test 与 sign-source-artifacts.mjs --self-test。共用上游或 runner 环境失陷仍是信任边界；真实双构建结果必须单独取得。
 
 bootstrap 的 package-lock.json 与 package.json 一样属于逐字节来源输入，.gitattributes 禁止 autocrlf；check-linux-sources --self-test 用实际 Git checkout 和删除属性负控证明这一点，不能按本机 CRLF 字节重封批准摘要。
 

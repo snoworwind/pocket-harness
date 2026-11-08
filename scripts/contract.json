@@ -174,10 +174,8 @@
       "sidebar.right.pane.tab",
       "settings.section",
       "settings.general.item",
-      "conversation.header.leading",
       "sidebar.right.pane.tab.title",
-      "sidebar.right.tab.menu.item",
-      "android.dock.conversation"
+      "sidebar.right.tab.menu.item"
     ],
     "rowId": "ui-layout",
     "enabledRow": "ui-layout",
@@ -212,13 +210,6 @@
         "why": "通用设置项座位。零调用的 setSuppressForeground/setEnabled 接线（0.14.1 块 J FIX-4）与既有开发者选项都依赖它保持 list。"
       },
       {
-        "slot": "conversation.header.leading",
-        "file": "packages/client/ui-conversation/src/client/contract/slots.ts",
-        "kind": "single",
-        "scope": "root",
-        "why": "手机版式抽屉开关（SidebarToggle）的唯一落点（0.14.2 P4）。该座位与会话无关（scope=root）且被 ConversationHeader 无条件渲染，hero/新建会话态也必须存在 —— 否则左抽屉在那一屏永久打不开（用户 2026-09-26 当场提出的风险，已实测收口：hero 态 header 高 40、汉堡仍在 leading 座位内且可点开抽屉）。上游若把它改成 session 作用域或收掉该座位，注入层会静默落空，本登记即为该事故的判据。"
-      },
-      {
         "slot": "sidebar.right.pane.tab.title",
         "file": "packages/client/ui-sidebar-right/src/client/contract/slots.ts",
         "kind": "keyed",
@@ -231,14 +222,6 @@
         "kind": "list",
         "scope": "session",
         "why": "右栏标签动作菜单座位，承载 Android 原生浏览器控件入口（android-browser.native-controls）。上游实测为 kind=list + scope=session —— 若上游改成 keyed 或收掉，原生控件入口会与既有菜单项互相覆盖或整条消失，本登记即为该事故的判据。"
-      },
-      {
-        "slot": "android.dock.conversation",
-        "repo": "dsh-client-ui-responsive",
-        "file": "src/client/mobile/conversation-dock.tsx",
-        "kind": "single",
-        "scope": "session",
-        "why": "本地会话侧开内容槽，由 conversation-dock 的 SlotMap 与父槽 children 声明，不属于上游槽位全集；SessionProvider 内渲染，必须保留 single/session。"
       }
     ],
     "upstreamUniverse": {

@@ -1,22 +1,14 @@
 {
   "formatVersion": 1,
   "legacyReferenceCounts": {
-    "SnapshotTransaction.kt:626": 1,
-    "SnapshotTransaction.kt:546": 1,
-    "SnapshotTransaction.kt:196": 1,
-    "SnapshotTransaction.kt:313": 1,
-    "SnapshotTransaction.kt:242": 1,
     "SnapshotFs.kt:177": 1,
     "SnapshotFs.kt:83": 1,
     "app/src/main/java/com/snoworwind/pocketharness/WatchdogV2.kt:109": 1,
     "app/src/main/java/com/snoworwind/pocketharness/ControlPoller.kt:65": 1,
     "ControlPoller.kt:96": 3,
     "ControlPoller.kt:158": 1,
-    "app/src/main/java/com/snoworwind/pocketharness/DeviceControlService.kt:444": 1,
     "app/src/main/java/com/snoworwind/pocketharness/OverlayService.kt:155": 1,
     "WatchdogV2.kt:109": 1,
-    "SnapshotTransaction.kt:190": 1,
-    "EngineManager.kt:238": 1,
     "app/src/main/java/com/snoworwind/pocketharness/AndroidBridge.kt:423": 2,
     "app/src/test/java/com/snoworwind/pocketharness/BrowserHostNavigationPolicyTest.kt:129": 1,
     "app/src/main/java/com/snoworwind/pocketharness/BrowserHost.kt:187": 1,
@@ -33,7 +25,6 @@
     "app/src/main/java/com/snoworwind/pocketharness/VdisplayController.kt:322": 2,
     "app/src/main/java/com/snoworwind/pocketharness/VdisplayController.kt:495": 1,
     "app/src/main/java/com/snoworwind/pocketharness/VdisplayHost.kt:207": 3,
-    "app/src/main/java/com/snoworwind/pocketharness/DeviceControlService.kt:678": 2,
     "app/src/main/java/com/snoworwind/pocketharness/LogCollector.kt:465": 1,
     "EngineStartFlow.kt:335": 1,
     "app/src/main/java/com/snoworwind/pocketharness/UndoGate.kt:240": 1,
@@ -51,15 +42,14 @@
     "app/src/main/java/com/snoworwind/pocketharness/MainActivity.kt:193": 1,
     "app/src/main/java/com/snoworwind/pocketharness/OverlayService.kt:299": 1,
     "app/src/main/java/com/snoworwind/pocketharness/OverlayService.kt:274": 1,
-    "dsh-host-web-compat/scripts/smoke-injections.mjs:50": 5,
-    "dsh-host-web-compat/lib/index.js:783": 6,
+    "dsh-host-web-compat/scripts/smoke-injections.mjs:50": 3,
+    "dsh-host-web-compat/lib/index.js:783": 3,
     "scripts/build-apk-013.ps1:166": 3,
     "plugins/dsh-android-vdisplay/test/tools-callable.test.mjs:122": 3,
     "scripts/build-apk-013.ps1:141": 3,
     "GuidePageRenderer.kt:363": 1,
     "EngineStartFlow.kt:96": 1,
     "MainActivity.kt:422": 1,
-    "DeviceControlService.kt:852": 1,
     "MainActivity.kt:78": 1,
     "dsh-host-web-compat/lib/index.js:794": 1,
     "EngineStartFlow.kt:427": 1,
@@ -72,9 +62,6 @@
     "WatchdogV2.kt:146": 1,
     "WatchdogV2.kt:96": 1,
     "EngineService.kt:140": 1,
-    "SnapshotTransaction.kt:688": 1,
-    "SnapshotTransaction.kt:798": 1,
-    "app/src/main/java/com/snoworwind/pocketharness/SnapshotTransaction.kt:283": 1,
     "EngineStartFlow.kt:497": 1,
     "AndroidBridge.kt:423": 2,
     "app/build.gradle.kts:126": 2,
@@ -85,7 +72,6 @@
     "ControlProtocolV2.kt:21": 2,
     "BackGate.kt:16": 2,
     "MuxClient.kt:45": 2,
-    "DeviceControlService.kt:678": 2,
     "plugins/dsh-android-bridge/src/screen-scope.ts:70": 2,
     "index.ts:991": 3,
     "index.ts:394": 2,
@@ -285,22 +271,9 @@
     "plugins/dsh-model-capability/src/settings-writer.ts:134": 1,
     "plugins/dsh-model-capability/src/index.ts:181": 2,
     "plugins/dsh-android-linux-env/src/runtime-cache.ts:59": 2,
-    "back-stack.ts:94": 1,
-    "BackGate.kt:56": 1,
-    "attachment-picker-menu.ts:184": 1,
-    "back-stack.ts:521": 1,
-    "back-stack.ts:103": 1,
-    "dsh-client-ui-responsive/tests/attachment-picker-menu.spec.ts:80": 2,
-    "back-stack.spec.ts:259": 1,
-    "dsh-client-ui-responsive/src/client/mobile/native-browser-presentation.ts:44": 2,
-    "dsh-client-ui-responsive/src/client/enter-guard.ts:63": 3,
-    "keyboard-boundary.ts:48": 2,
-    "reference-menu.ts:45": 2,
-    "mobile-form.css.ts:25": 2,
-    "dsh-client-ui-responsive/src/client/mobile/form-marker.ts:45": 2,
+    "dsh-client-ui-responsive/src/client/mobile/native-browser-presentation.ts:44": 1,
     "AGENTS.md:30": 3,
     "scripts/build-apk-013.ps1:206": 2,
-    "apply-patches.mjs:1568": 2,
     "0.13.7-CERTIFICATION.md:11": 2,
     "scripts/make-snapshot.sh:8": 2,
     "build-release.ps1:89": 2,
@@ -378,16 +351,12 @@
     "scripts/check-bridge-symmetry.mjs:1": 1,
     "app/build.gradle.kts:127": 1,
     "app/src/main/java/com/snoworwind/pocketharness/ControlPoller.kt:158": 2,
-    "app/src/main/java/com/snoworwind/pocketharness/DeviceControlService.kt:652": 2,
     "app/src/main/java/com/snoworwind/pocketharness/AdbKeyboardEdit.kt:37": 1,
     "plugins/dsh-android-manage/src/ime-broadcast.ts:1": 1,
-    "app/src/main/java/com/snoworwind/pocketharness/DeviceControlService.kt:770": 1,
-    "app/src/main/java/com/snoworwind/pocketharness/DeviceControlService.kt:852": 1,
     "plugins/dsh-android-bridge/src/index.ts:1034": 4,
     "plugins/dsh-android-bridge/src/screen-scope.ts:405": 2,
     "app/src/main/java/com/snoworwind/pocketharness/ControlCarrier.kt:107": 1,
     "plugins/dsh-android-bridge/src/screen-scope.ts:392": 1,
-    "app/src/main/java/com/snoworwind/pocketharness/DeviceControlService.kt:661": 1,
     "app/src/main/java/com/snoworwind/pocketharness/ShellOps.kt:197": 1,
     "app/src/main/java/com/snoworwind/pocketharness/FileIncoming.kt:40": 1,
     "FileIncoming.kt:368": 1,
@@ -395,13 +364,10 @@
     "app/src/main/java/com/snoworwind/pocketharness/EngineStartFlow.kt:550": 1,
     "app/src/main/java/com/snoworwind/pocketharness/VdisplayController.kt:324": 1,
     "app/src/main/java/com/snoworwind/pocketharness/VdisplayController.kt:608": 1,
-    "app/src/main/java/com/snoworwind/pocketharness/DeviceControlService.kt:718": 1,
     "app/src/main/java/com/snoworwind/pocketharness/MainActivity.kt:206": 1,
     "dsh-client-ui-responsive/src/client/dev-section/phone-control.tsx:180": 2,
     "plugins/dsh-android-vdisplay/src/status.ts:14": 3,
-    "dsh-client-ui-responsive/src/client/mobile/native-browser-presentation.ts:61": 4,
     "plugins/dsh-android-browser/src/contract.ts:42": 1,
-    "app/src/main/java/com/snoworwind/pocketharness/DeviceControlService.kt:634": 2,
     "app/src/test/java/com/snoworwind/pocketharness/BrowserHostCleartextConsistencyTest.kt:12": 1,
     "app/src/main/java/com/snoworwind/pocketharness/OverlayReport.kt:180": 1,
     "app/src/main/java/com/snoworwind/pocketharness/NotifyCenter.kt:161": 1,
@@ -436,40 +402,30 @@
     "plugins/dsh-android-bridge/src/index.ts:569": 2,
     "plugins/dsh-model-capability/src/settings-writer.ts:239": 3,
     "plugins/dsh-android-file-open/src/index.ts:302": 1,
-    "scripts/profile-web.cordis.patch.yml:81": 1,
     "plugins/dsh-android-linux-env/src/runtime-cache.ts:40": 1,
     "dsh-client-ui-responsive/src/client/android-bridge.ts:17": 1,
     "app/src/main/java/com/snoworwind/pocketharness/BackGate.kt:38": 1,
-    "dsh-host-web-compat/lib/index.js:302": 2,
-    "plugins/dsh-android-file-open/src/index.ts:527": 2,
+    "dsh-host-web-compat/lib/index.js:302": 1,
+    "plugins/dsh-android-file-open/src/index.ts:527": 1,
     "dsh-client-ui-responsive/src/client/dev-section/runtime-cache.tsx:91": 1,
     "dsh-shell-termux/src/index.ts:39": 1,
-    "dsh-host-web-compat/scripts/boot-watchdog.test.mjs:231": 2,
-    "scripts/profile-web.cordis.patch.yml:7": 1,
+    "dsh-host-web-compat/scripts/boot-watchdog.test.mjs:231": 1,
     "scripts/check-release-gates.mjs:28": 3,
     "scripts/build-snapshot-013.mjs:933": 1,
     "scripts/plugin-dirs.json:1": 1,
-    "scripts/patches/apply-patches.mjs:1583": 1,
     "scripts/build-release.ps1:56": 2,
     "scripts/check-release-gates.mjs:191": 1,
-    ".github/workflows/build-apk-source.yml:134": 1,
-    "scripts/patches/registry.json:211": 1,
-    "scripts/patches/apply-patches.mjs:122": 1,
-    "scripts/source-build/reconcile-engine-patch-copies.mjs:80": 1,
     "scripts/source-build/check-dsh-source-snapshot.mjs:25": 1,
-    ".github/workflows/release-source-draft.yml:83": 1,
-    "scripts/source-build/test_prepare_source_release.py:74": 1,
     "scripts/check-release-gates.mjs:135": 1,
     "scripts/check-boot-budget.mjs:671": 1,
     "scripts/check-runtime-assets.mjs:126": 1,
     "scripts/check-boot-budget.mjs:609": 1,
     "scripts/check-inject-completeness.mjs:100": 1,
     "scripts/check-browser-syntax-floor.mjs:536": 1,
-    "scripts/verify-webview-015.mjs:43": 1,
     "scripts/verify-state-sync.mjs:107": 1,
     "scripts/verify-browser-host.mjs:98": 1,
     "scripts/verify-vdisplay-viewer.mjs:161": 1,
-    "scripts/verify-webview-015.mjs:11": 2,
+    "scripts/verify-webview-015.mjs:11": 1,
     "scripts/verify-client-plugin-fail-recovery.mjs:11": 1,
     "docs/AGENTS/emulator-test-protocol.md:96": 1,
     "EngineStartFlow.kt:724": 1,
@@ -478,7 +434,7 @@
     "tools.ts:136": 2,
     "tools.ts:225": 2,
     "facts.ts:104": 1,
-    "dsh-host-web-compat/lib/index.js:895": 2,
+    "dsh-host-web-compat/lib/index.js:895": 1,
     "inject-all.py:336": 2,
     "build-snapshot-013.mjs:366": 2,
     "build-apk-013.ps1:229": 2,
@@ -493,7 +449,6 @@
     "docs/AGENTS/emulator-test-protocol.md:57": 2,
     "BackGate.kt:132": 1,
     "ConsoleActivity.kt:105": 1,
-    "DeviceControlService.kt:452": 1,
     "EngineProbe.kt:51": 1,
     "DownloadSaver.kt:101": 1,
     "NotifyBridge.kt:328": 1,
@@ -512,9 +467,7 @@
     "app/src/main/java/com/snoworwind/pocketharness/ControlPoller.kt:125": 1,
     "app/src/main/java/com/snoworwind/pocketharness/ControlCarrier.kt:86": 1,
     "app/src/main/java/com/snoworwind/pocketharness/ControlProtocolV2.kt:215": 1,
-    "DeviceControlService.kt:964": 1,
     "ControlCarrier.kt:86": 1,
-    "DeviceControlService.kt:607": 1,
     "AdbKeyboardReceiver.kt:23": 1,
     "ControlCarrier.kt:110": 1,
     "VdisplayController.kt:133": 1,
@@ -527,11 +480,6 @@
     "AdbKeyboardService.kt:122": 1,
     "index.ts:42": 1,
     "GlobalActionCatalog.kt:23": 1,
-    "app/src/main/java/com/snoworwind/pocketharness/DeviceControlService.kt:607": 1,
-    "app/src/main/java/com/snoworwind/pocketharness/DeviceControlService.kt:701": 2,
-    "app/src/main/java/com/snoworwind/pocketharness/DeviceControlService.kt:745": 1,
-    "app/src/main/java/com/snoworwind/pocketharness/DeviceControlService.kt:496": 1,
-    "app/src/main/java/com/snoworwind/pocketharness/DeviceControlService.kt:409": 1,
     "app/src/main/java/com/snoworwind/pocketharness/GlobalActionCatalog.kt:47": 1,
     "app/src/main/java/com/snoworwind/pocketharness/AdbKeyboardReceiver.kt:25": 1,
     "VdisplayController.kt:306": 1,
@@ -649,7 +597,6 @@
     "index.ts:428": 2,
     "index.ts:453": 1,
     "app/src/main/java/com/snoworwind/pocketharness/ShellOps.kt:249": 1,
-    "plugins/dsh-android-vdisplay/src/status.ts:190": 1,
     "plugins/dsh-android-browser/src/facts.ts:66": 1,
     "tools.ts:262": 1,
     "app/src/main/java/com/snoworwind/pocketharness/ControlCarrier.kt:70": 1,
@@ -696,7 +643,6 @@
     "BrowserHost.kt:304": 1,
     "VdisplayController.kt:233": 1,
     "plugins/dsh-android-vdisplay/src/client/index.ts:93": 1,
-    "dsh-client-ui-responsive/src/client/index.ts:192": 1,
     "facts.ts:50": 1,
     "index.ts:69": 1,
     "index.ts:31": 1,
@@ -704,7 +650,6 @@
     "plugins/dsh-android-browser/src/tools.ts:242": 1,
     "plugins/dsh-android-browser/src/facts.ts:99": 1,
     "plugins/dsh-android-browser/src/tier.ts:57": 1,
-    "plugins/dsh-android-vdisplay/src/status.ts:131": 1,
     "BrowserHost.kt:128": 1,
     "tools.ts:119": 1,
     "BrowserHost.kt:1087": 1,
@@ -736,119 +681,6 @@
     "plugins/dsh-android-linux-env/src/runtime-cache.ts:492": 1,
     "plugins/dsh-model-capability/src/index.ts:134": 1,
     "FileIncoming.kt:342": 1,
-    "dsh-host-web-compat/lib/index.js:770": 2,
-    "index.ts:125": 1,
-    "dsh-client-ui-responsive/src/client/index.ts:352": 1,
-    "form-marker.ts:88": 1,
-    "mobile-form.css.ts:26": 1,
-    "mobile-settings.css.ts:15": 2,
-    "composer-menu.css.ts:25": 2,
-    "trajectory-details.css.ts:16": 1,
-    "reference-menu.ts:133": 1,
-    "back-stack.ts:347": 1,
-    "scripts/patches/apply-patches.mjs:865": 1,
-    "form-marker.ts:96": 1,
-    "keyboard-boundary.ts:67": 1,
-    "MobileChrome.tsx:35": 1,
-    "back-stack.ts:445": 1,
-    "dsh-host-web-compat/lib/index.js:136": 1,
-    "form-marker.ts:83": 1,
-    "mobile-form.css.ts:55": 1,
-    "settings-document.ts:65": 1,
-    "MobileChrome.tsx:85": 1,
-    "composer-popup-guard.ts:140": 1,
-    "MobileChrome.tsx:82": 1,
-    "composer-popup-guard.ts:165": 1,
-    "reference-menu.ts:211": 1,
-    "attachment-picker-menu.ts:215": 1,
-    "back-stack.ts:95": 2,
-    "back-stack.ts:426": 2,
-    "session-marker.ts:67": 1,
-    "browser-auto-place.ts:85": 1,
-    "dsh-host-web-compat/lib/index.js:480": 1,
-    "index.ts:444": 1,
-    "incoming-draft.ts:86": 1,
-    "dsh-client-ui-responsive/tests/incoming-draft.spec.ts:166": 1,
-    "trajectory-panels-observer.ts:43": 1,
-    "session-log-dialog-observer.ts:56": 1,
-    "trajectory-details.css.ts:44": 1,
-    "session-log-dialog.css.ts:40": 1,
-    "index.ts:142": 1,
-    "snapshot-panels-observer.ts:47": 1,
-    "snapshot-panels.css.ts:15": 1,
-    "mobile-form.css.ts:21": 1,
-    "composer-insets.css.ts:13": 1,
-    "keyboard-boundary.ts:94": 1,
-    "index.ts:281": 1,
-    "back-stack.ts:286": 1,
-    "browser-auto-place.ts:239": 1,
-    "index.ts:517": 1,
-    "dsh-host-web-compat/lib/index.js:802": 2,
-    "plugins/dsh-android-linux-env/src/index.ts:388": 1,
-    "dsh-host-web-compat/lib/index.js:389": 1,
-    "theme-bridge.ts:81": 1,
-    "dsh-host-web-compat/lib/index.js:430": 1,
-    "dsh-host-web-compat/lib/index.js:400": 1,
-    "dsh-host-web-compat/lib/index.js:411": 1,
-    "open-path.ts:33": 1,
-    "settings-document.ts:78": 1,
-    "dsh-host-web-compat/lib/index.js:416": 1,
-    "settings-document.ts:34": 1,
-    "GeneralSettings.tsx:43": 1,
-    "DevSection.tsx:60": 1,
-    "DevSection.tsx:31": 1,
-    "DevSection.tsx:72": 1,
-    "DevSection.tsx:220": 1,
-    "DevSection.tsx:152": 1,
-    "phone-control.tsx:170": 1,
-    "phone-control.tsx:180": 1,
-    "phone-control.tsx:196": 1,
-    "phone-control.tsx:206": 1,
-    "phone-control.tsx:240": 1,
-    "phone-control.tsx:363": 1,
-    "notify-settings.tsx:66": 1,
-    "phone-control.tsx:220": 1,
-    "incoming-draft.ts:150": 1,
-    "browser-auto-place.ts:45": 1,
-    "index.ts:380": 1,
-    "native-browser-presentation.ts:61": 1,
-    "native-browser-adapter.ts:203": 1,
-    "native-browser-adapter.ts:202": 1,
-    "back-stack.ts:551": 1,
-    "BackGate.kt:126": 1,
-    "BackGate.kt:38": 1,
-    "index.ts:432": 1,
-    "DownloadSaver.kt:61": 1,
-    "theme-bridge.ts:68": 1,
-    "dsh-host-web-compat/lib/index.js:381": 1,
-    "dsh-host-web-compat/lib/index.js:398": 1,
-    "ConfigTransfer.kt:117": 1,
-    "dsh-host-web-compat/lib/index.js:409": 1,
-    "LogCollector.kt:740": 1,
-    "EngineStartFlow.kt:206": 1,
-    "dsh-host-web-compat/lib/index.js:137": 1,
-    "dsh-host-web-compat/lib/index.js:360": 1,
-    "dsh-host-web-compat/lib/index.js:295": 1,
-    "LogCollector.kt:755": 1,
-    "LogCollector.kt:780": 1,
-    "EngineStartFlow.kt:317": 1,
-    "EngineStartFlow.kt:350": 1,
-    "UndoGate.kt:165": 1,
-    "PluginMounts.kt:259": 1,
-    "PluginMounts.kt:470": 1,
-    "scripts/verify-client-plugin-fail-recovery.mjs:1": 1,
-    "dsh-host-web-compat/lib/index.js:552": 1,
-    "dsh-client-ui-responsive/src/client/mobile/form-marker.ts:88": 1,
-    "dsh-client-ui-responsive/src/client/mobile/back-stack.ts:334": 1,
-    "dsh-host-web-compat/lib/index.js:328": 1,
-    "dsh-host-web-compat/lib/index.js:286": 1,
-    "dsh-host-web-compat/lib/index.js:307": 1,
-    "dsh-shell-termux/src/index.ts:184": 1,
-    "back-stack.ts:35": 1,
-    "use-shell-state.ts:26": 1,
-    "dsh-client-ui-responsive/src/client/mobile/attachment-picker-menu.ts:184": 1,
-    "dsh-client-ui-responsive/tests/back-stack.spec.ts:259": 1,
-    "docs/AGENTS/gotchas.md:103": 2,
     "check-release-gates.mjs:136": 1,
     "build-snapshot-013.mjs:31": 1,
     "build-apk-013.ps1:37": 1,
@@ -860,7 +692,6 @@
     "build-snapshot-013.mjs:294": 1,
     "build-apk-013.ps1:211": 1,
     "build-snapshot-013.mjs:300": 1,
-    "apply-patches.mjs:1596": 1,
     "inject-all.py:174": 1,
     "build-snapshot-013.mjs:982": 1,
     "inject-all.py:304": 1,
@@ -876,13 +707,11 @@
     "scripts/patches/data/registry-scan-c4.mjs:11": 1,
     "scripts/patches/data/client-index-loader-barrier.mjs:3": 1,
     "scripts/patches/data/undo-safe-transaction-snippet.mjs:1": 1,
-    "apply-patches.mjs:519": 1,
     "scripts/build-apk-013.ps1:427": 2,
     "scripts/build-snapshot-013.mjs:31": 1,
     "scripts/build-snapshot-013.mjs:297": 1,
     "scripts/build-snapshot-013.mjs:985": 1,
     "scripts/inject-all.py:321": 1,
-    "scripts/patches/apply-patches.mjs:1568": 1,
     "check-inject-completeness.mjs:98": 1,
     "build-snapshot-013.mjs:1029": 1,
     "check-snapshot-asset.ps1:26": 1,
@@ -906,7 +735,6 @@
     "verify-webview-015.mjs:6": 1,
     "verify-browser-host.mjs:4": 1,
     "verify-browser-panel.mjs:12": 1,
-    "verify-webview-015.mjs:97": 1,
     "BrowserHost.kt:1371": 1,
     "verify-state-sync.mjs:27": 1,
     "verify-engine-log-copy.mjs:30": 1,
@@ -931,12 +759,10 @@
     "docs/AGENTS/gotchas.md:44": 1,
     "docs/AGENTS/gotchas.md:178": 1,
     "plugins/dsh-android-bridge/src/lossless-json.ts:1": 1,
-    "plugins/dsh-android-bridge/test/privilege-status.test.mjs:1": 1
+    "plugins/dsh-android-bridge/test/privilege-status.test.mjs:1": 1,
+    "docs/AGENTS/gotchas.md:103": 1
   },
   "sourceLines": {
-    ".github/workflows/build-apk-source.yml:134": [
-      "set -euo pipefail"
-    ],
     ".github/workflows/pr-gate.yml:11": [
       "# release/build workflows are dispatched explicitly rather than by push."
     ],
@@ -960,9 +786,6 @@
     ],
     ".github/workflows/pr-gate.yml:91": [
       "- name: 敏感信息扫描"
-    ],
-    ".github/workflows/release-source-draft.yml:83": [
-      "root = pathlib.Path('.')"
     ],
     "0.13.7-CERTIFICATION.md:11": [
       "| 统一补丁（vendor） | 通过 | 双 ABI 均 `apply-patches: ALL OK（13/13，mode=check）`（新增 undo-E8；attachment-formats 已退役） |"
@@ -991,20 +814,11 @@
     "AndroidBridge.kt:423": [
       "fun getVdisplayScale(): Double = onGetVdisplayScale()"
     ],
-    "BackGate.kt:126": [
-      "* 页面 → 壳的返回层栈上行接口（window.dshBackBridge）。"
-    ],
     "BackGate.kt:132": [
       "class BackGateBridge(private val state: BackGateState) {"
     ],
     "BackGate.kt:16": [
       "* - 层穷尽后才允许 finish；「观测不到/关不掉的层」一律消费，不得误退应用。"
-    ],
-    "BackGate.kt:38": [
-      "const val DISPATCH_SCRIPT: String = \"window.__dshBack && window.__dshBack()\""
-    ],
-    "BackGate.kt:56": [
-      "}"
     ],
     "BrowserHost.kt:1035": [
       "if (tab.loadState == \"loading\") tab.loadState = \"loaded\""
@@ -1057,9 +871,6 @@
     "BrowserHostNavigationPolicyTest.kt:129": [
       "\"https://127.0.0.1:8443/\" to \"https://127.0.0.1:8443/\","
     ],
-    "ConfigTransfer.kt:117": [
-      "\"window.__dshBridge?.onDirectoryPicked?.(\" + jsString(callback) + \", \" + jsString(path) + \")\", null,"
-    ],
     "ConsoleActivity.kt:105": [
       "id = View.generateViewId()"
     ],
@@ -1108,47 +919,11 @@
     "ControlProtocolV2.kt:96": [
       "fun encode("
     ],
-    "DevSection.tsx:152": [
-      "void refreshIncoming()"
-    ],
-    "DevSection.tsx:220": [
-      "const toggleLog = useCallback((enabled: boolean) => {"
-    ],
-    "DevSection.tsx:31": [
-      "return window.androidBridge?.getOverlayEnabled?.() ?? false"
-    ],
-    "DevSection.tsx:60": [
-      "},"
-    ],
-    "DevSection.tsx:72": [
-      "try {"
-    ],
-    "DeviceControlService.kt:452": [
-      "ControlCarrier.ensureStarted(this)"
-    ],
-    "DeviceControlService.kt:607": [
-      ""
-    ],
-    "DeviceControlService.kt:678": [
-      "\"shExec\" -> ShellOps.handle(this, op, args)"
-    ],
-    "DeviceControlService.kt:852": [
-      "}"
-    ],
-    "DeviceControlService.kt:964": [
-      "/** 校验 gen（页面已变化时失败关闭）并返回目标节点。0.13.8 E4：-1 自愈重建 + Long gen。 */"
-    ],
     "DownloadSaver.kt:101": [
       "exportDownloading.set(false)"
     ],
-    "DownloadSaver.kt:61": [
-      ""
-    ],
     "EngineAuth.kt:46": [
       "private const val PREFS = \"dsh_engine_auth\""
-    ],
-    "EngineManager.kt:238": [
-      "val startedAt = System.currentTimeMillis()"
     ],
     "EngineManager.kt:99": [
       "SnapshotFingerprintPolicy.read(raw).also { result ->"
@@ -1186,12 +961,6 @@
     "EngineService.kt:70": [
       "}"
     ],
-    "EngineStartFlow.kt:206": [
-      "private val bootStallHandler = android.os.Handler(android.os.Looper.getMainLooper())"
-    ],
-    "EngineStartFlow.kt:317": [
-      "internal val clientPluginFailureReason: String get() = clientPluginFailureReasonText"
-    ],
     "EngineStartFlow.kt:330": [
       "fun onClientPluginTreeFailed(rawLine: String) {"
     ],
@@ -1203,9 +972,6 @@
     ],
     "EngineStartFlow.kt:349": [
       "Thread {"
-    ],
-    "EngineStartFlow.kt:350": [
-      "try {"
     ],
     "EngineStartFlow.kt:427": [
       "// 设备实测 #4（DEVICE-FINDING-4）：**reload 必须等引擎真的能应答**。"
@@ -1246,9 +1012,6 @@
     "FileIncoming.kt:417": [
       "}"
     ],
-    "GeneralSettings.tsx:43": [
-      "try {"
-    ],
     "GlobalActionCatalog.kt:23": [
       "val TABLE: List<Entry> = listOf("
     ],
@@ -1260,15 +1023,6 @@
     ],
     "LogCollector.kt:528": [
       "}"
-    ],
-    "LogCollector.kt:740": [
-      "* `EngineManager.startWithArgs` 用 `redirectErrorStream(true)` 合并两者，再"
-    ],
-    "LogCollector.kt:755": [
-      "* → 永不 listen。这一行比整份 logcat 有效得多（用户反馈称「logcat 0 命中」，而真因在 engine.log）。"
-    ],
-    "LogCollector.kt:780": [
-      "base.useLines { seq ->"
     ],
     "LogCollector.kt:785": [
       "}"
@@ -1290,15 +1044,6 @@
     ],
     "MainActivity.kt:78": [
       ".setPositiveButton(\"允许\") { _, _ ->"
-    ],
-    "MobileChrome.tsx:35": [
-      "?? null"
-    ],
-    "MobileChrome.tsx:82": [
-      "/>"
-    ],
-    "MobileChrome.tsx:85": [
-      "}"
     ],
     "MuxClient.kt:45": [
       "private const val MAX_FRAME = 8 * 1024 * 1024"
@@ -1585,12 +1330,6 @@
     "OverlayService.kt:85": [
       "internal var activeSessionId = \"\"              // 展开态目标会话（空 = 新会话）"
     ],
-    "PluginMounts.kt:259": [
-      "id = if (item.groupValues[2] == \"id\") item.groupValues[3].trim().trim('\\'', '\"') else null"
-    ],
-    "PluginMounts.kt:470": [
-      "} else if (trimmed.startsWith(\"- id:\")) {"
-    ],
     "ScreenScope.kt:31": [
       "}"
     ],
@@ -1638,33 +1377,6 @@
     ],
     "SnapshotFs.kt:83": [
       "fun deletePathStrict("
-    ],
-    "SnapshotTransaction.kt:190": [
-      "ownsTmp = false"
-    ],
-    "SnapshotTransaction.kt:196": [
-      "residue = listOf(target),"
-    ],
-    "SnapshotTransaction.kt:242": [
-      "fun clearMarker(filesDir: File) {"
-    ],
-    "SnapshotTransaction.kt:313": [
-      "//"
-    ],
-    "SnapshotTransaction.kt:546": [
-      "if (spaceCheck != null && purpose == Purpose.FACTORY) {"
-    ],
-    "SnapshotTransaction.kt:626": [
-      "/**"
-    ],
-    "SnapshotTransaction.kt:688": [
-      "var index = 0"
-    ],
-    "SnapshotTransaction.kt:798": [
-      "//   ② 由于 ① 抛出的新异常取代了 `throw t`，**原始异常（真因）被完全掩盖**：日志里只剩"
-    ],
-    "UndoGate.kt:165": [
-      "* 调用方已经把「只花一次预算」花在自己身上（clientPluginTreeRecoverySpent），这里只回答"
     ],
     "UndoGate.kt:278": [
       "* 落一条闸门观测（best-effort，绝不抛）。**不经 DevLogPrefs 闸门**——它必须在默认配置下可见。"
@@ -1821,45 +1533,6 @@
     ],
     "app/src/main/java/com/snoworwind/pocketharness/ControlProtocolV2.kt:215": [
       ".put(\"o\", broadcast(out))"
-    ],
-    "app/src/main/java/com/snoworwind/pocketharness/DeviceControlService.kt:409": [
-      "/** 单个窗口的判别事实（从 AccessibilityWindowInfo 摘出，避免直接依赖 Android 类型）。 */"
-    ],
-    "app/src/main/java/com/snoworwind/pocketharness/DeviceControlService.kt:444": [
-      "super.onServiceConnected()"
-    ],
-    "app/src/main/java/com/snoworwind/pocketharness/DeviceControlService.kt:496": [
-      "synchronized(lock) {"
-    ],
-    "app/src/main/java/com/snoworwind/pocketharness/DeviceControlService.kt:607": [
-      ""
-    ],
-    "app/src/main/java/com/snoworwind/pocketharness/DeviceControlService.kt:634": [
-      "}"
-    ],
-    "app/src/main/java/com/snoworwind/pocketharness/DeviceControlService.kt:652": [
-      "\"browserShow\" -> BrowserHostHolder.control(op, args)"
-    ],
-    "app/src/main/java/com/snoworwind/pocketharness/DeviceControlService.kt:661": [
-      "\"browserViewport\" -> BrowserHostHolder.control(op, args)"
-    ],
-    "app/src/main/java/com/snoworwind/pocketharness/DeviceControlService.kt:678": [
-      "\"shExec\" -> ShellOps.handle(this, op, args)"
-    ],
-    "app/src/main/java/com/snoworwind/pocketharness/DeviceControlService.kt:701": [
-      "*   - `state`（[handleState]）：只回内存快照代次与失效标记，签名不收 args，不读无障碍根/截屏/displayId；"
-    ],
-    "app/src/main/java/com/snoworwind/pocketharness/DeviceControlService.kt:718": [
-      "}"
-    ],
-    "app/src/main/java/com/snoworwind/pocketharness/DeviceControlService.kt:745": [
-      "}"
-    ],
-    "app/src/main/java/com/snoworwind/pocketharness/DeviceControlService.kt:770": [
-      "/**"
-    ],
-    "app/src/main/java/com/snoworwind/pocketharness/DeviceControlService.kt:852": [
-      "}"
     ],
     "app/src/main/java/com/snoworwind/pocketharness/DownloadSaver.kt:101": [
       "exportDownloading.set(false)"
@@ -2040,9 +1713,6 @@
     ],
     "app/src/main/java/com/snoworwind/pocketharness/ShellOps.kt:249": [
       "// 放行——而那条恰恰是「看不懂就不放行」的 fail-closed 面。SF token 反查的开销由"
-    ],
-    "app/src/main/java/com/snoworwind/pocketharness/SnapshotTransaction.kt:283": [
-      "* **marker 已丢而残渣还在**——此后没有任何一步会回收它们，用户实测 920 MB 长期占地。"
     ],
     "app/src/main/java/com/snoworwind/pocketharness/UndoGate.kt:136": [
       "GateDecision.ARM -> {"
@@ -2434,63 +2104,6 @@
     "app/src/test/java/com/snoworwind/pocketharness/WindowPickTest.kt:40": [
       "@Test"
     ],
-    "apply-patches.mjs:1568": [
-      "'* caller may disable and is filtered out.',"
-    ],
-    "apply-patches.mjs:1596": [
-      "'\\t\\t}',"
-    ],
-    "apply-patches.mjs:519": [
-      "// cordis.patch.yml **整份覆写**成只含一条 insert 的最小文件（core.mjs 的 `const minimal = ...`），"
-    ],
-    "attachment-picker-menu.ts:184": [
-      "return node.matches(SLOT_SELECTOR) || node.querySelector(SLOT_SELECTOR) !== null"
-    ],
-    "attachment-picker-menu.ts:215": [
-      "if (!entry.anchor.isConnected || !entry.trigger.isConnected) this.mounted.splice(index, 1)"
-    ],
-    "back-stack.spec.ts:259": [
-      "const mode = document.createElement('button')"
-    ],
-    "back-stack.ts:103": [
-      "* \"open\". It was not a layer, and the shell's back callback treats \"no layer\" as FINISH_ACTIVITY"
-    ],
-    "back-stack.ts:286": [
-      "dispatchMouse(parent, 'mousedown')"
-    ],
-    "back-stack.ts:347": [
-      "childList: true,"
-    ],
-    "back-stack.ts:35": [
-      "* Failure direction: the stack only ever pops through reconciliation (a layer's"
-    ],
-    "back-stack.ts:426": [
-      "private detect(): BackLayerDetection[] {"
-    ],
-    "back-stack.ts:445": [
-      "if (modelMenu !== null) found.push(modelMenu)"
-    ],
-    "back-stack.ts:521": [
-      "if (menu === null) return null"
-    ],
-    "back-stack.ts:551": [
-      "return { id: 'attachment-menu', kind: 'attachment-menu', close: () => closeMenu(menu) }"
-    ],
-    "back-stack.ts:94": [
-      "const RIGHT_FULLSCREEN_SELECTOR ="
-    ],
-    "back-stack.ts:95": [
-      "'[data-sidebar-right-panel=\"fullscreen\"][data-sidebar-right-open]:not([aria-hidden=\"true\"])'"
-    ],
-    "browser-auto-place.ts:239": [
-      "if (!changed && !this.pending.has(owner)) return"
-    ],
-    "browser-auto-place.ts:45": [
-      "export interface BrowserHostStatusLike {"
-    ],
-    "browser-auto-place.ts:85": [
-      "export interface BrowserAutoPlaceScheduler {"
-    ],
     "browser-tab.tsx:54": [
       "return width >= 240 && width <= 3840 && height >= 240 && height <= 3840 ? { width, height } : undefined"
     ],
@@ -2562,18 +2175,6 @@
     ],
     "check-snapshot-builder-output.mjs:139": [
       "try { slim = JSON.parse(readFileSync(SLIM, 'utf8')) } catch (e) {"
-    ],
-    "composer-insets.css.ts:13": [
-      "padding-bottom: max("
-    ],
-    "composer-menu.css.ts:25": [
-      "html[data-dsh-mobile-form] [data-composer-card] [data-dsh-popup] {"
-    ],
-    "composer-popup-guard.ts:140": [
-      "export function composerPopupMaxHeight("
-    ],
-    "composer-popup-guard.ts:165": [
-      "}"
     ],
     "contract.ts:138": [
       "{ name: BROWSER_TOOLS.open, params: '{url:string, viewport?:string, identity?:string}', returns: '{ok,url,title,loadState}', permission: 'approval' },"
@@ -2662,27 +2263,6 @@
     "dsh-client-ui-responsive/src/client/dev-section/runtime-cache.tsx:91": [
       "}"
     ],
-    "dsh-client-ui-responsive/src/client/enter-guard.ts:63": [
-      "if (window.innerWidth > MOBILE_FORM_MAX_WIDTH) return"
-    ],
-    "dsh-client-ui-responsive/src/client/index.ts:192": [
-      "// bridge: each row changes accept in its own user gesture, clicks the existing input, then restores it."
-    ],
-    "dsh-client-ui-responsive/src/client/index.ts:352": [
-      "// 让它被整棵文档继承（该属性可继承），只抹这一条，不动上游的 :active 与 :focus-visible 反馈。"
-    ],
-    "dsh-client-ui-responsive/src/client/mobile/attachment-picker-menu.ts:184": [
-      "return node.matches(SLOT_SELECTOR) || node.querySelector(SLOT_SELECTOR) !== null"
-    ],
-    "dsh-client-ui-responsive/src/client/mobile/back-stack.ts:334": [
-      "}"
-    ],
-    "dsh-client-ui-responsive/src/client/mobile/form-marker.ts:45": [
-      "private observer: MutationObserver | null = null"
-    ],
-    "dsh-client-ui-responsive/src/client/mobile/form-marker.ts:88": [
-      ".filter(dialog => dialog.closest('[data-shell-overlay]') === null)"
-    ],
     "dsh-client-ui-responsive/src/client/mobile/incoming-draft.ts:175": [
       "const cwd = window.androidBridge?.incomingWorkspacePath?.() ?? ''"
     ],
@@ -2692,83 +2272,14 @@
     "dsh-client-ui-responsive/src/client/mobile/native-browser-presentation.ts:44": [
       "const style = window.getComputedStyle(element)"
     ],
-    "dsh-client-ui-responsive/src/client/mobile/native-browser-presentation.ts:61": [
-      "return bounds.width > 0 && bounds.height > 0 && style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0'"
-    ],
-    "dsh-client-ui-responsive/tests/attachment-picker-menu.spec.ts:80": [
-      "plus.addEventListener('click', upstream)"
-    ],
-    "dsh-client-ui-responsive/tests/back-stack.spec.ts:259": [
-      "const mode = document.createElement('button')"
-    ],
-    "dsh-client-ui-responsive/tests/incoming-draft.spec.ts:166": [
-      "expect(document.documentElement.getAttribute('data-dsh-incoming-draft-poll')).toBe('exhausted')"
-    ],
-    "dsh-host-web-compat/lib/index.js:136": [
-      "// 原文案判据**保留为次要信号**（boot 页仍在场同样算 pending），不再是唯一门控。"
-    ],
-    "dsh-host-web-compat/lib/index.js:137": [
-      "var RENDER_TEXT_FLOOR=120;"
-    ],
-    "dsh-host-web-compat/lib/index.js:286": [
-      "if(!bootFailed())return;"
-    ],
-    "dsh-host-web-compat/lib/index.js:295": [
-      "// 客户端插件装配失败时上游渲染的**就是** boot 页（只是多了 [class*=failedItem] 失败投影），"
-    ],
     "dsh-host-web-compat/lib/index.js:302": [
       "return !!page;"
-    ],
-    "dsh-host-web-compat/lib/index.js:307": [
-      "function bootFailed(){"
-    ],
-    "dsh-host-web-compat/lib/index.js:328": [
-      "var items=page.querySelectorAll('[class*=failedItem]');"
-    ],
-    "dsh-host-web-compat/lib/index.js:360": [
-      "var root=document.getElementById('root');"
-    ],
-    "dsh-host-web-compat/lib/index.js:381": [
-      "+' failedIds='+(ids.length?ids.join(','):'-')"
-    ],
-    "dsh-host-web-compat/lib/index.js:389": [
-      "// 契约（Lead 定稿，字段名以此为准）：壳侧落盘 files/boot-diag.log，单条 grep 标记 dsh-boot-diag；"
-    ],
-    "dsh-host-web-compat/lib/index.js:398": [
-      "// pageSideRuntime 携带**真实**的页面侧运行时字段（§6.2 处方四字段）。"
-    ],
-    "dsh-host-web-compat/lib/index.js:400": [
-      "// 本次「看起来正常」误导的根源；「真值是空数组」与「取不到」必须能区分。"
-    ],
-    "dsh-host-web-compat/lib/index.js:409": [
-      "+' rendered='+report.rendered"
-    ],
-    "dsh-host-web-compat/lib/index.js:411": [
-      "var payload={"
-    ],
-    "dsh-host-web-compat/lib/index.js:416": [
-      "line: BOOT_STALL_PREFIX+' dsh-boot-diag source=page-stall'"
-    ],
-    "dsh-host-web-compat/lib/index.js:430": [
-      "// 0.14.1 批 3（P3-2 / P3-3 / P3-6，同时收掉 S3-23）：旧实现把**整份英文 JSON** 铺满全屏，"
-    ],
-    "dsh-host-web-compat/lib/index.js:480": [
-      "}"
-    ],
-    "dsh-host-web-compat/lib/index.js:552": [
-      "}catch(e){}"
-    ],
-    "dsh-host-web-compat/lib/index.js:770": [
-      "// One script element carries every snippet, so the assembly MUST be separated by real statement"
     ],
     "dsh-host-web-compat/lib/index.js:783": [
       "*"
     ],
     "dsh-host-web-compat/lib/index.js:794": [
       "*"
-    ],
-    "dsh-host-web-compat/lib/index.js:802": [
-      "*   原生 `writeText`（桌面/未来 WebView 修复后仍优先）→ 壳侧桥 `androidBridge.copyText`"
     ],
     "dsh-host-web-compat/lib/index.js:895": [
       "* `visibility:hidden`，注入即可见，于是它实际被当成了「启动画面」：一次**健康但稍慢**的启动也会"
@@ -2778,9 +2289,6 @@
     ],
     "dsh-host-web-compat/scripts/smoke-injections.mjs:50": [
       "// 接线契约是**两条** transform：① polyfill+主题桥+picker（共用 pick-token 幂等判据）；"
-    ],
-    "dsh-shell-termux/src/index.ts:184": [
-      "/** Stamp Termux's environment and diagnostic permission mode. These values do not constrain bash. */"
     ],
     "dsh-shell-termux/src/index.ts:39": [
       "if (policy === undefined || policy === null) return fallback"
@@ -2794,29 +2302,17 @@
     "facts.ts:50": [
       "const raw = env.DSH_BROWSER_FACTS"
     ],
-    "form-marker.ts:83": [
-      "* Dialogs inside the frame's own overlay layer (this plugin's export-result"
-    ],
-    "form-marker.ts:88": [
-      ".filter(dialog => dialog.closest('[data-shell-overlay]') === null)"
-    ],
-    "form-marker.ts:96": [
-      "document.documentElement.toggleAttribute(SETTINGS_OPEN_TAG, settings !== null)"
-    ],
-    "incoming-draft.ts:150": [
-      ""
-    ],
-    "incoming-draft.ts:86": [
-      "/** Fetch eligible queue metadata and hydrate each blank-session attachment once. */"
-    ],
     "index.js:2198": [
       "* @returns compact facts and child-local failures; complete child event arrays are released after extraction.",
       "* Collect each related child's own descriptor through existing historical codecs.",
       "const incidental = new Set([",
       "function signature(pattern) {",
+      "if (!a.ok)",
       "let total = 0;",
+      "manifest = JSON.parse(readFileSync(manifestPath, \"utf8\"));",
       "return true;",
-      "}"
+      "}",
+      "},"
     ],
     "index.ts:1038": [
       "// 补给只在**保存**时发生（A1/A7，2026-10-11）：唯一触发器是上游在设置写入后",
@@ -2839,7 +2335,6 @@
       "output: {"
     ],
     "index.ts:112": [
-      "",
       "* @param session - 会话（可选）。",
       "* 手动关机（0.14.0）：销毁本机全部虚拟屏，与设置页「强制销毁」同口径。",
       ".join('\\n')",
@@ -2848,19 +2343,8 @@
       "export type { ScreenAccessDecision, ScreenId, UserScreenScope } from './screen-scope.js'",
       "if (rejection === 403) return { code: 403, body: '' }",
       "mergeModelsDev,",
+      "name: 'settings.section', id: 'android-phone-control', order: 98, label: () => '手机控制',",
       "ops: { type: 'array', required: true, items: { type: 'string' } },"
-    ],
-    "index.ts:125": [
-      "'screenshot', 'ui_detail', 'ui_tree', 'act_input', 'ui_dump', 'ui_click',",
-      "* a save emits (see the auto-apply comment in `apply()`).",
-      "/**",
-      "// 结构化 missing（**包名**口径，与 shell-termux probe() 一致）；bash 缺失 = unusable（整表缺失）。",
-      "delete?(id: unknown): Promise<boolean>",
-      "export interface AdbStatus {",
-      "export interface ProbeResult {",
-      "function decodeNative(method: keyof NativeVdisplayBridge): VdPanelState | undefined {",
-      "kind: { type: 'string', required: true },",
-      "return { code: 403, body: '' }"
     ],
     "index.ts:1255": [
       "* 0.13.8 P0-4：树结构指纹（FNV-1a）——「界面未变」快路径的判定依据。",
@@ -2871,17 +2355,6 @@
       ")",
       "const actionableAncestorOf = (node: UiNode): UiNode | null => {",
       "deferrer.dispose()"
-    ],
-    "index.ts:142": [
-      "",
-      "*/",
-      "// lifecycle controls; HTTP remains a desktop/legacy fallback only.",
-      "adbTier: adbTier ?? deployedAdbTier(),",
-      "contextWindow?: number",
-      "ctx.effect(() => injectStyle('mobile-form', MOBILE_FORM_CSS), 'ui-responsive: mobile form styles')",
-      "execute: async () => {",
-      "export type { BrowserFacts, BrowserTierReport } from './tier.js'",
-      "name: string"
     ],
     "index.ts:1438": [
       "async function screenSize(): Promise<{ w: number; h: number }> {",
@@ -2910,8 +2383,8 @@
       "/** 可选服务读取：未声明 inject 时直接读属性会抛（cordis 4 实测），统一走 ctx.get。 */",
       "// 裸键上匹配，引号键整族漏掩。键清单与壳侧 LogSanitizer SENSITIVE_KV 逐项对齐（含",
       "const readText = (p: string): string | undefined => {",
-      "nav.attach()",
       "ok: true,",
+      "tabs: () => openTabs.getSnapshot(),",
       "this.bashPath = entry.bashPath",
       "}"
     ],
@@ -2928,11 +2401,11 @@
       "try {"
     ],
     "index.ts:251": [
+      "",
       "*/",
       "// 安卓引擎进程的 process.platform 是 'linux'（Termux 快照），以 TERMUX__PREFIX 作壳域标记。",
       "const lifecycleOutput = (verb: string) => ({",
       "if (explicit?.thinkingFormat !== undefined && explicit.thinkingFormat !== 'mimo') continue",
-      "return () => { /* the hook is global and idempotent: no teardown needed */ }",
       "return decorated",
       "return { ok: false, message: '路径不在临时工作区内或不存在' }",
       "type: 'text',",
@@ -2947,21 +2420,9 @@
       "bytes,",
       "const resolved = this.resolvedModes.get(spec as object)",
       "if (!document.hidden) schedulePoll()",
-      "order: 99,",
       "render: (_args: unknown, v: Record<string, unknown>) => [{",
-      "try {"
-    ],
-    "index.ts:281": [
-      "",
-      "// An official exact-id profile outranks passive/catalog descriptions. Explicit",
-      "accessSync(path, constants.X_OK)",
-      "alive = false",
-      "const BASIS_PROP = { type: 'string' } as const",
-      "controlToken: mToken?.[1] || undefined,",
-      "execute: async (_args: unknown, exec: unknown) => callVdOp('vdCreate', 45_000, exec) as never,",
-      "id: 'android-phone-control',",
-      "mkdirSync(dir, { recursive: true })",
-      "toolName: string"
+      "try {",
+      "window.addEventListener('dsh:export-result', onResult)"
     ],
     "index.ts:295": [
       "",
@@ -2971,19 +2432,20 @@
       "return serviceOf<HostSessionController>('sessionController')",
       "return undefined",
       "screens: { type: 'array', required: true, items: { type: 'object', additionalProperties: true } },",
+      "window.removeEventListener('focus', onVisible)",
       "}"
     ],
     "index.ts:298": [
       "",
       "* @param plan - `planCleanup()` 的产物。",
       "/**",
-      "// linux-environment、label 同为「Linux环境」）。dsh-client-ui-slots 对 list 槽的重复 id 是",
       "export async function runConfirmedActiveProbe(",
       "let workspacePromise: { key: string; value: Promise<string | undefined> } | undefined",
       "schema: {",
       "}",
       "} catch {",
-      "},"
+      "},",
+      "}, 'ui-responsive: Android external attachment drafts')"
     ],
     "index.ts:31": [
       "/**",
@@ -2991,7 +2453,7 @@
       "/** SlotMap 本地 augmentation：与上游 keyed/session 语义一致（临时性见文件头注释）。 */",
       "//  故鉴权内联在本文件（包内成员集合保持与基座一致：index/facts/tier/contract）。",
       "// 块 E：白名单扫描/执行/标签（设计与判据见 runtime-cache.ts 头注释）。",
-      "import { ExportResultDialog } from './ExportResultDialog.tsx'",
+      "import { SessionMarker, type SessionsFace } from './mobile/session-marker.ts'",
       "import { detailRecord, pageRows, writeDetailStore } from './detail-store.js'",
       "isVirtualScreenId,",
       "type FetchLike,",
@@ -3000,22 +2462,11 @@
     "index.ts:368": [
       "",
       "/** Signed age is retained for diagnostics; negative means the device clock is ahead. */",
-      "// Export-result dialog: the shell's session-export download finishes on a",
       ": ['浏览器操作 ' + execution.name + ' 需要本次用户批准。']",
       "const bootstrap = serviceOf<LinuxBootstrap>(scope, 'linuxBootstrap')",
       "const style = document.createElement('style')",
       "signal?: AbortSignal",
       "}"
-    ],
-    "index.ts:380": [
-      "",
-      "* caps 随每条控制应答更新，正常相位的补探次数接近 0。",
-      "/**",
-      "//",
-      "export function mergeModelsDevInto(",
-      "inject: () => ({",
-      "token: shellControlToken,",
-      "} catch {"
     ],
     "index.ts:393": [
       "&& typeof height === 'number' && Number.isFinite(height) && height > 0",
@@ -3024,7 +2475,6 @@
       "byId.set(id, fresh)",
       "for (const t of tools()) (ctx.tools as unknown as { register(tool: unknown): void }).register(t)",
       "let placedFor: number | undefined",
-      "observer.attach()",
       "try {",
       "wsvc.register({"
     ],
@@ -3036,8 +2486,7 @@
       "kind: 'exact',",
       "let pendingFor: number | undefined",
       "let sessionId = ''",
-      "report.models.push(fresh)",
-      "return () => { observer.detach() }"
+      "report.models.push(fresh)"
     ],
     "index.ts:42": [
       "* `slots: SlotRegistry`），但 renderer 包不在本插件 client 半的依赖面上（运行时由宿主",
@@ -3047,7 +2496,7 @@
       "headers?: Record<string, string | string[] | undefined>",
       "if (mode === undefined) return fallback",
       "import {",
-      "import { SnapshotPanelsObserver } from './snapshot-panels-observer.ts'",
+      "import { BrowserTitle } from './mobile/upstream-browser/view/BrowserTitle.tsx'",
       "method?: string",
       "tokenMatches,"
     ],
@@ -3060,16 +2509,6 @@
       "}",
       "} catch (e) {"
     ],
-    "index.ts:432": [
-      "'shutdown', 'reboot', 'poweroff', 'halt',",
-      "* 解析到工作区内的规范化真实路径（H3 + 2026-08-23 前缀混用修复）：",
-      "...sizeFields,",
-      "ctx.slots.inject('sidebar.right.pane.tab', () => ctx.slots.register({",
-      "if (req.method !== 'GET') {",
-      "window.clearTimeout(timer)",
-      "}",
-      "},"
-    ],
     "index.ts:44": [
       "* 做法在本地镜像其签名（registry.ts:209 inject / :741 register，均返回 dispose）。",
       "*/",
@@ -3077,25 +2516,16 @@
       "? mode as SandboxMode",
       "defaultMode?: string",
       "headers?: Record<string, string | string[] | undefined>",
-      "import { ComposerPopupGuard } from './composer-popup-guard.ts'",
+      "import type { AndroidBrowserBodyProps } from './mobile/browser-tab.tsx'",
       "mkdirSync(d, { recursive: true })",
       "sendMobileRouteRejection,",
       "} from './control-queue.js'"
-    ],
-    "index.ts:444": [
-      "",
-      "* S5 exists ONLY when the user explicitly configured `fallbacks`; there is no factory",
-      "const rejection = authorizeMobileRoute(req, authOptions())",
-      "wsReal = realpathSync(wsLex)",
-      "}",
-      "} catch (e) {"
     ],
     "index.ts:453": [
       "* @returns the same report.",
       "*/",
       "const PATTERNS_ADB = [",
       "pathReal = realpathSync(pathLex)",
-      "session: () => sidebar.mounted.getSnapshot(),",
       "}",
       "},"
     ],
@@ -3104,29 +2534,18 @@
       "// ok/error 是本工具的**错误出口**：队列目录不可读/不可建时（EACCES 等）必须返回",
       "// 而壳侧 `state` 回的是**快照代次**（每次建树自增）。两个量根本不同源，比较必然判「未变」。",
       "priority: 'extension',",
-      "sessions: () => scope.sessions.list.getSnapshot().ids,",
       "}"
     ],
     "index.ts:477": [
-      "close: (session, tabId) => { scope.sidebarRight.closeIn(session, tabId) },",
       "if (value === undefined) continue",
       "items: { type: 'array', items: { type: 'object', additionalProperties: true } },",
       "let dynamic = false",
       "order: 40,",
       "}"
     ],
-    "index.ts:517": [
-      "const DYNAMIC_LAUNCHER_COMMAND = /(?:^|[;\\n|&])[ \\t]*(?:env|command|exec|nohup|nice|timeout|setsid|sudo|su)\\b[ \\t]+(?:(?:-[^\\s]+|[A-Za-z_][A-Za-z0-9_]*=[^\\s]+)[ \\t]+)*\\$/i",
-      "const lease = draftLeases.get(ticket)",
-      "for (const x of files.slice(keep)) {",
-      "model.sources.reasoningEfforts = 'models-dev'",
-      "},",
-      "}, 'dsh-android-vdisplay: terminal keybar')"
-    ],
     "index.ts:584": [
       "// → 回落 ADB screencap，而不是把「没有截图能力」当结论抛给模型。",
       "allows: (command) => command.trim() === \"dumpsys SurfaceFlinger | grep -E '^(Virtual Display |    name=)'\",",
-      "frame: () => document.querySelector('[data-dsh-frame]'),",
       "res.writeHead(405, { 'content-type': 'application/json' })",
       "}"
     ],
@@ -3135,9 +2554,9 @@
       "'SANDBOX_SELECTION_REQUIRED: Android shell requires this call\\'s session policy to explicitly select danger-full-access. The command was not started.',",
       "* @returns 事实 + 各键来源。",
       "* `webServer` is deliberately **not** injected: it is optional. The headless profile",
-      "import { registerConversationDock, ConversationDropZone, conversationAddress, resolveDockSubagent, CONVERSATION_DOCK_CSS } from './mobile/conversation-dock.tsx'",
       "interface TabDefinition {",
       "return typeof v === 'string' ? v : Array.isArray(v) ? v[0] : undefined",
+      "style.textContent = css",
       "writeAnimationScales?(values: Record<string, string>, auth?: { session?: unknown }): Promise<{ ok: boolean; stdout: string; guidance?: string }>",
       "}"
     ],
@@ -3176,74 +2595,14 @@
     "inject-snapshot.py:106": [
       "for pkg in need_add:"
     ],
-    "keyboard-boundary.ts:48": [
-      "this.media = typeof window.matchMedia === 'function' ? window.matchMedia('(max-width: 767px)') : null"
-    ],
-    "keyboard-boundary.ts:67": [
-      "const frame = document.querySelector<HTMLElement>('[data-dsh-frame]')"
-    ],
-    "keyboard-boundary.ts:94": [
-      "const ime = Number.parseFloat(rootStyle.getPropertyValue('--dsh-android-ime-bottom')) || 0"
-    ],
     "lossless-json.ts:30": [
       "export function toLosslessJson(value: unknown): LosslessJson {"
-    ],
-    "mobile-form.css.ts:21": [
-      "--dsh-mobile-top-inset: max(env(safe-area-inset-top, 0px), var(--dsh-android-system-top, 0px));"
-    ],
-    "mobile-form.css.ts:25": [
-      "Reserve the measured top inset once for all three columns, including the"
-    ],
-    "mobile-form.css.ts:26": [
-      "absolute fullscreen panel anchored in rightbarCol. A 100% grid row would"
-    ],
-    "mobile-form.css.ts:55": [
-      "top: 0;"
-    ],
-    "mobile-settings.css.ts:15": [
-      "* sheet keys on that tag plus the phone-form flag: pure attribute selectors,"
-    ],
-    "native-browser-adapter.ts:202": [
-      "this.visible.clear()"
-    ],
-    "native-browser-adapter.ts:203": [
-      "}"
-    ],
-    "native-browser-presentation.ts:61": [
-      "return bounds.width > 0 && bounds.height > 0 && style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0'"
     ],
     "notify-projection.ts:37": [
       "export function turnEndKind(reason: unknown): TurnEndKindOrUnknown {"
     ],
     "notify-projection.ts:55": [
       "export function reportOutcomeLabel(kind: TurnEndKindOrUnknown): string {"
-    ],
-    "notify-settings.tsx:66": [
-      "* `degraded: string[]` 顶层数组，以及 `channelId`/`enabled` 两个壳侧从不发送的字段——"
-    ],
-    "open-path.ts:33": [
-      "const raw = bridge.openPathChooser(path, mode)"
-    ],
-    "phone-control.tsx:170": [
-      "}"
-    ],
-    "phone-control.tsx:180": [
-      "const result = state.result"
-    ],
-    "phone-control.tsx:196": [
-      "const ROOT_ACCESS_UNREADABLE: RootAccessStatus = {"
-    ],
-    "phone-control.tsx:206": [
-      "}"
-    ],
-    "phone-control.tsx:220": [
-      "*"
-    ],
-    "phone-control.tsx:240": [
-      "return '特权通道已就绪，虚拟屏与特权 shell 可以用了。'"
-    ],
-    "phone-control.tsx:363": [
-      "*"
     ],
     "plugins/dsh-android-bridge/src/capability-gate.ts:12": [
       "* （dsh/packages/core/tools/src/index.ts:1061-1088 / :804-807；tool-subagent/src/index.ts:664-706）。"
@@ -3413,9 +2772,6 @@
     "plugins/dsh-android-linux-env/src/index.ts:353": [
       "activate: (plugin, config) => cordisScope(ctx.plugin(plugin as Parameters<Context['plugin']>[0], config)),"
     ],
-    "plugins/dsh-android-linux-env/src/index.ts:388": [
-      "})"
-    ],
     "plugins/dsh-android-linux-env/src/index.ts:72": [
       "const e = process.env"
     ],
@@ -3461,14 +2817,8 @@
     "plugins/dsh-android-vdisplay/src/index.ts:96": [
       "name: 'android_vdisplay_status',"
     ],
-    "plugins/dsh-android-vdisplay/src/status.ts:131": [
-      "*   - 壳侧 WebView 桥 `vdisplayStatus()`（面板读，**存在且正常**）；"
-    ],
     "plugins/dsh-android-vdisplay/src/status.ts:14": [
       "export const VD_OPS = ['vdCreate', 'vdDestroy', 'vdLaunch', 'vdMoveTask', 'vdInfo', 'vdLaunchApp', 'vdInput'] as const"
-    ],
-    "plugins/dsh-android-vdisplay/src/status.ts:190": [
-      "*"
     ],
     "plugins/dsh-android-vdisplay/test/tools-callable.test.mjs:122": [
       "const expected = schema.properties[key].type"
@@ -3502,15 +2852,6 @@
     ],
     "protocol-v2.ts:349": [
       "r.push(symOf(row.rid)); w.push(symOf(row.windowId))"
-    ],
-    "reference-menu.ts:133": [
-      "}"
-    ],
-    "reference-menu.ts:211": [
-      ""
-    ],
-    "reference-menu.ts:45": [
-      "const GESTURES = ['pointerdown', 'mousedown', 'click'] as const"
     ],
     "screen-scope.ts:200": [
       "let i = from"
@@ -3707,18 +3048,6 @@
     "scripts/make-snapshot.sh:8": [
       "SNAP_PKG_ROOT=\"${DSH_SNAPSHOT_PKG_ROOT:-/data/user/0/com.snoworwind.pocketharness}\""
     ],
-    "scripts/patches/apply-patches.mjs:122": [
-      "try {"
-    ],
-    "scripts/patches/apply-patches.mjs:1568": [
-      "'* caller may disable and is filtered out.',"
-    ],
-    "scripts/patches/apply-patches.mjs:1583": [
-      "'\\t\\t\\tconst open = message.indexOf(\" (\", start);',"
-    ],
-    "scripts/patches/apply-patches.mjs:865": [
-      "return s"
-    ],
     "scripts/patches/data/client-index-loader-barrier.mjs:3": [
       "export function planClientIndexLoaderBarrier(source) {"
     ],
@@ -3728,26 +3057,11 @@
     "scripts/patches/data/undo-safe-transaction-snippet.mjs:1": [
       "// dsh-mobile safe mode transaction (S2) with CAS recovery failover, web-store resolver and factory-bundle filter (S5)."
     ],
-    "scripts/patches/registry.json:211": [
-      "\"summary\": \"每个同步 flush 按名称单次索引 Loader 条目，错误回调后失效；nearestPackage 已解析的 manifest 在 resolveMeta 内复用。保留同步构造错误、启动 settle 顺序及运行期/HMR即时语义\","
-    ],
     "scripts/plugin-dirs.json:1": [
       "{"
     ],
-    "scripts/profile-web.cordis.patch.yml:7": [
-      "presets:"
-    ],
-    "scripts/profile-web.cordis.patch.yml:81": [
-      "disabled: true"
-    ],
     "scripts/source-build/check-dsh-source-snapshot.mjs:25": [
       "import { checkAndroidNativeRuntimePackages } from './check-android-native-runtime-packages.mjs'"
-    ],
-    "scripts/source-build/reconcile-engine-patch-copies.mjs:80": [
-      "const entries = readdirSync(join(engineRoot, directory), { withFileTypes: true })"
-    ],
-    "scripts/source-build/test_prepare_source_release.py:74": [
-      "self.put(path, original)"
     ],
     "scripts/t0-check.ps1:14": [
       "if ($dump -match \"shell-termux[sS]{0,200}?disabled:s*true\") { Write-Output \"WARN: shell-termux appears disabled\"; $fail++ }"
@@ -3763,9 +3077,6 @@
     ],
     "scripts/verify-browser-panel.mjs:66": [
       "// 2) 多页签（模型路径）"
-    ],
-    "scripts/verify-client-plugin-fail-recovery.mjs:1": [
-      "#!/usr/bin/env node"
     ],
     "scripts/verify-client-plugin-fail-recovery.mjs:11": [
       "// 判据八条（每条独立记录 PASS/FAIL/INCONCLUSIVE；缺证据一律 INCONCLUSIVE，exit 2，绝不判绿）："
@@ -3797,38 +3108,11 @@
     "scripts/verify-webview-015.mjs:11": [
       "// 旧写法用它硬编码期望「不是手机形态」，而「16384 横屏」实测跑在 freeform 浮窗里只有"
     ],
-    "scripts/verify-webview-015.mjs:43": [
-      "const CORNER_PROBE = \"(() => { const c = document.querySelector('[data-conversation-header-corner]'); const p = document.querySelector('[data-sidebar-right-panel]'); return { corner: !!c, panel: !!p, open: !!(p && p.hasAttribute('data-sidebar-right-open')), button: !!(c && c.querySelector('button')) } })()\""
-    ],
     "scripts/verify-webview-015.mjs:6": [
       "//"
     ],
-    "session-log-dialog-observer.ts:56": [
-      "target.classList.add(SESSION_LOG_DIALOG_HIDE_CLASS)"
-    ],
-    "session-log-dialog.css.ts:40": [
-      "[role=\"presentation\"].${SESSION_LOG_DIALOG_HIDE_CLASS},"
-    ],
-    "session-marker.ts:67": [
-      "else root.setAttribute(SESSION_ID_ATTRIBUTE, String(current))"
-    ],
-    "settings-document.ts:34": [
-      "} catch {"
-    ],
-    "settings-document.ts:65": [
-      ""
-    ],
-    "settings-document.ts:78": [
-      "export class SettingsDocumentAction {"
-    ],
     "shell-ops.ts:17": [
       "export const SHELL_OPS = ['shExec', 'shPull', 'shPush', 'shRemove'] as const"
-    ],
-    "snapshot-panels-observer.ts:47": [
-      "function snapshotOwners(overlay: HTMLElement): SnapshotOwners | null {"
-    ],
-    "snapshot-panels.css.ts:15": [
-      "z-index: 16;"
     ],
     "status.ts:135": [
       "* 而 `android_vdisplay_create` 同一时刻成功建屏（displayId=25/state=active）。"
@@ -3838,12 +3122,6 @@
     ],
     "status.ts:141": [
       "* @returns 工具快照。"
-    ],
-    "theme-bridge.ts:68": [
-      "globalObj.__dshThemeBridge = {"
-    ],
-    "theme-bridge.ts:81": [
-      "if (android.getSystemDark()) globalObj.__dshThemeBridge.setDark(true)"
     ],
     "tools.ts:1036": [
       "return tools.map(withFailureText)"
@@ -3874,18 +3152,6 @@
     ],
     "tools.ts:73": [
       "/**"
-    ],
-    "trajectory-details.css.ts:16": [
-      "html[data-dsh-mobile-form] aside[aria-label=\"Event details\"] {"
-    ],
-    "trajectory-details.css.ts:44": [
-      "html[data-dsh-mobile-form] [class*=\"ledger\"].dsh-mobile-ledger-raised {"
-    ],
-    "trajectory-panels-observer.ts:43": [
-      "this.ledger.classList.toggle('dsh-mobile-ledger-raised', panel !== null)"
-    ],
-    "use-shell-state.ts:26": [
-      "export function useShellState<T>(getter: () => T, options: ShellStateOptions = {}): readonly [T, () => void] {"
     ],
     "vendor/dsh-undo-savepoint/lib/core.mjs:1180": [
       "return { cfg: { ...cfg, autoDir, manualDir: join(dirname(autoDir), 'manual') } };"
@@ -3943,9 +3209,6 @@
     ],
     "verify-webview-015.mjs:60": [
       ""
-    ],
-    "verify-webview-015.mjs:97": [
-      "(v) => !!v && v.present === true && v.display !== 'none' && v.display !== 'absent'],"
     ]
   }
 }

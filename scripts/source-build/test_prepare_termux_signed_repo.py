@@ -29,6 +29,24 @@ class SignedTermuxRepoParserTest(unittest.TestCase):
         self.assertEqual(module._dependency_applies("target [!amd64]", "root", records), "target")
         self.assertEqual(module._dependency_applies("target [linux-any]", "root", records), "target")
 
+    def test_x86_64_architecture_aliases_select_native_packages_and_dependencies(self):
+        selected = module.select_package_records([
+            {"Package": "nodejs-lts", "Version": "24.1", "Architecture": "aarch64"},
+            {"Package": "nodejs-lts", "Version": "24.1", "Architecture": "x86_64"},
+            {"Package": "ca-certificates", "Version": "1", "Architecture": "all"},
+        ], "x86_64")
+        self.assertEqual(selected["nodejs-lts"]["Architecture"], "x86_64")
+        records = {
+            "root": {"Package": "root", "Version": "1", "Architecture": "x86_64",
+                     "Depends": "libc [amd64] | libc-arm [arm64], ca-certificates:any"},
+            "libc": {"Package": "libc", "Version": "1", "Architecture": "x86_64"},
+            "libc-arm": {"Package": "libc-arm", "Version": "1", "Architecture": "aarch64"},
+            "ca-certificates": {"Package": "ca-certificates", "Version": "1", "Architecture": "all",
+                                 "Multi-Arch": "foreign"},
+        }
+        self.assertEqual(module.dependency_closure(records, ["root"], "x86 test", "x86_64"),
+                         {"root", "libc", "ca-certificates"})
+
     def test_debian_epoch_is_allowed_only_in_package_filename(self):
         path = module.safe_termux_package_filename(
             "pool/main/c/ca-certificates/ca-certificates_1:2026.10.20-1_all.deb"
@@ -62,6 +80,16 @@ class SignedTermuxRepoParserTest(unittest.TestCase):
         self.assertEqual(records["buf"]["Filename"], "new.deb")
         self.assertEqual(records["tie"]["Filename"], "native.deb")
         self.assertNotIn("foreign", records)
+
+    @unittest.skipUnless(shutil.which("dpkg"), "package candidate selection requires dpkg; Linux CI provides it")
+    def test_x86_64_index_selects_x86_64_and_all_but_not_aarch64(self):
+        records = module.select_package_records([
+            {"Package": "nodejs-lts", "Version": "24.1", "Architecture": "aarch64", "Filename": "arm.deb"},
+            {"Package": "nodejs-lts", "Version": "24.1", "Architecture": "x86_64", "Filename": "x64.deb"},
+            {"Package": "ca-certificates", "Version": "1", "Architecture": "all", "Filename": "all.deb"},
+        ], "x86_64")
+        self.assertEqual(records["nodejs-lts"]["Filename"], "x64.deb")
+        self.assertEqual(records["ca-certificates"]["Filename"], "all.deb")
 
     @unittest.skipUnless(shutil.which("dpkg"), "package candidate selection requires dpkg; Linux CI provides it")
     def test_same_version_and_architecture_duplicates_fail_closed(self):

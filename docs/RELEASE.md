@@ -26,7 +26,7 @@
 ## 3. 历史 release/ 目录规范（已退役）
 
     release/
-    ├── v<版本>/apk/pocket-harness-v<版本>-arm64.apk   # 当前独立发行只提供 ARM64
+    ├── v<版本>/apk/pocket-harness-v<版本>-<abi>.apk  # 历史布局；来源草稿按 ABI 分发 APK
     ├── v<版本>/snapshot/snapshot-<abi>.tar.xz         # 双快照（在线更新/重打包用）
     ├── v<版本>/plugins/*.tgz                          # 3 插件
     ├── v<版本>/MANIFEST.txt                           # sha256 清单
@@ -47,8 +47,8 @@
 
 | 入口 | 结果 |
 |---|---|
-| `build-apk-source.yml`，或 `build-apk.yml` 默认 `draft_release=false` | 执行 ARM64 来源双构建、比对和隔离签名，上传 Actions artifact；不创建 Release |
-| `release-source-draft.yml`，或 `build-apk.yml` 显式 `draft_release=true` | 复用同一来源构建，成功核验后创建 **draft + prerelease**；不会自动公开 |
+| `build-apk-source.yml`，或 `build-apk.yml` 默认 `draft_release=false` | 默认执行 ARM64 来源双构建、比对和隔离签名；`abi=x86_64` 可单独构建 x86_64；上传 Actions artifact，不创建 Release |
+| `release-source-draft.yml`，或 `build-apk.yml` 显式 `draft_release=true` | 对 ARM64 与 x86_64 分别执行来源双构建、比对和隔离签名，成功核验后创建 **draft + prerelease**；不会自动公开 |
 
 只构建使用 `gh workflow run build-apk-source.yml --repo snoworwind/pocket-harness --ref main`。需要草稿时使用：
 
@@ -58,18 +58,18 @@ gh workflow run build-apk.yml --repo snoworwind/pocket-harness --ref main -f dra
 
 也可运行 `release-source-draft.yml`。工作流只接受 `main`，复用同提交 `build-apk-source.yml`：
 
-1. 只读构建任务执行原有来源链及全部测试、产物门禁。
-2. 只读准备任务仅下载同次运行 artifact，核对必需证据、来源仓库、提交与 APK 哈希，原字节复制 APK 并压缩证据。
+1. 只读构建任务对两个 ABI 并行执行来源链及全部测试、产物门禁；各 ABI 内含两路独立构建与字节/快照语义比对。
+2. 只读准备任务仅下载同次运行的 ARM64 与 x86_64 artifacts，分别核对必需证据、ABI、来源仓库、提交与 APK 哈希，并要求版本一致；原字节复制两份 APK，按 ABI 分目录压缩证据。
 3. 独立 `contents: write` 任务只下载整理后的同次 artifact、复核哈希并创建草稿；不检出源码、不编译、不重签。
 
-草稿资产为 ARM64 APK、`provenance.zip`、`SHA256SUMS.txt` 与 `notes.md`。tag 为 `hardening-source-<短提交>-<run_id>-<run_attempt>`，避免与主线版本及重跑冲突；不覆盖已有 Release。APK 由仓库加密 Secret 中的独立发布密钥签名，最终门禁核对提交的证书 SHA-256 指纹。自动生成的说明明确标为未做设备验证；公开发布由维护者验收后手动完成。
+草稿资产为 ARM64 与 x86_64 APK、`provenance.zip`、`SHA256SUMS.txt` 与 `notes.md`。tag 为 `hardening-source-<短提交>-<run_id>-<run_attempt>`，避免与主线版本及重跑冲突；不覆盖已有 Release。APK 由仓库加密 Secret 中的独立发布密钥签名，最终门禁核对提交的证书 SHA-256 指纹。自动生成的说明明确标为未做设备验证，并说明 x86_64 当前不含离线 PRoot Linux 资产与 Android Canvas native；公开发布前须按项目设备验收规范验证各 ABI，维护者再手动公开。
 
 构建或证据核验失败不进入写权限任务。上传失败可能留下部分资产的草稿，不得直接公开；检查该次失败记录后重跑，新 attempt 创建独立草稿。来源证明支撑链路追溯，不等于 APK 字节可复现或设备已验收。
 
 
 ## 6. 来源链产物命名
 
-APK 由 `scripts/build-apk.mjs` 按 `pocket-harness-v<versionName><suffix>-arm64.apk` 命名。当前来源工作流固定 `--abi arm64 --suffix -source`；下载入口与证据清单见 [构建详档](AGENTS/build-and-env.md)。
+APK 由 `scripts/build-apk.mjs` 按 `pocket-harness-v<versionName><suffix>-<abi>.apk` 命名。来源工作流的 ABI 输入支持 `arm64` 与 `x86_64`，草稿工作流对两者分别构建；下载入口与证据清单见 [构建详档](AGENTS/build-and-env.md)。
 
 ## 7. 第三方许可合规声明（2026-08-23 起，GPL 义务）
 

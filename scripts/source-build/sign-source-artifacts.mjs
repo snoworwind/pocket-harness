@@ -7,7 +7,8 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import { evaluateVerification, buildVerifyArgs } from '../check-apk-signatures.mjs'
 
 const digest = file => createHash('sha256').update(readFileSync(file)).digest('hex')
-export function finalApks(root) {
+export function finalApks(root, abi = process.env.DSH_ABI || 'arm64') {
+  if (!['arm64', 'x86_64'].includes(abi)) throw new Error(`unsupported source APK ABI: ${abi}`)
   const files = []
   const walk = dir => {
     for (const name of readdirSync(dir)) {
@@ -19,13 +20,15 @@ export function finalApks(root) {
     }
   }
   walk(join(root, 'out'))
-  if (files.length !== 1 || !/pocket-harness-v[\w.+-]+-source-arm64\.apk$/.test(files[0])) throw new Error('expected exactly one ARM64 source APK')
+  if (files.length !== 1 || !new RegExp(`pocket-harness-v[\\w.+-]+-source-${abi}\\.apk$`).test(files[0])) {
+    throw new Error(`expected exactly one ${abi} source APK`)
+  }
   return files
 }
 
-export function verifyRebuildProof(root, apk, commit) {
+export function verifyRebuildProof(root, apk, commit, abi = process.env.DSH_ABI || 'arm64') {
   const proof = JSON.parse(readFileSync(join(root, '.deploy-tmp/source-build/independent-rebuild-verification.json'), 'utf8'))
-  if (proof.independentRebuildMatched !== true || proof.normalizationVersion !== 3 || !/^[0-9a-f]{40}$/.test(commit ?? '') || proof.sourceCommit !== commit
+  if (proof.abi !== abi || proof.independentRebuildMatched !== true || proof.normalizationVersion !== 3 || !/^[0-9a-f]{40}$/.test(commit ?? '') || proof.sourceCommit !== commit
     || proof.primaryUnsignedApkSha256 !== digest(apk)) {
     throw new Error('final signing requires independent proof for these exact APK bytes and source commit')
   }
@@ -34,8 +37,9 @@ export function verifyRebuildProof(root, apk, commit) {
 
 /** Only the isolated final job receives production credentials; builders use ephemeral keys. */
 export function signSourceArtifacts(root = process.cwd()) {
-  const apk = finalApks(root)[0]
-  const proof = verifyRebuildProof(root, apk, process.env.GITHUB_SHA)
+  const abi = process.env.DSH_ABI || 'arm64'
+  const apk = finalApks(root, abi)[0]
+  const proof = verifyRebuildProof(root, apk, process.env.GITHUB_SHA, abi)
   const encoded = process.env.POCKET_SIGNING_KEYSTORE_BASE64
   if (!encoded || !process.env.POCKET_SIGNING_KEYSTORE_PASSWORD) throw new Error('private signing secrets are required')
   const expected = readFileSync(join(root, 'keystore/pocket-harness-cert-sha256.txt'), 'utf8').trim().toLowerCase()
@@ -58,7 +62,7 @@ export function signSourceArtifacts(root = process.cwd()) {
     writeFileSync(join(reports, 'independent-rebuild-verification.json'), JSON.stringify(proof, null, 2) + '\n')
     writeFileSync(join(reports, 'signing-certificate-sha256.txt'), expected + '\n')
     writeFileSync(join(reports, 'apk-sha256.txt'), `${proof.signedApkSha256}  ${relative(root, apk).replaceAll('\\', '/')}\n`)
-    console.log('Production ARM64 APK signed after independent rebuild verification')
+    console.log(`Production ${abi} APK signed after independent rebuild verification`)
   } finally { rmSync(temporary, { recursive: true, force: true }) }
 }
 

@@ -7,11 +7,17 @@ import { copyFileSync, mkdirSync, readFileSync, readdirSync, writeFileSync } fro
 import { execFileSync } from 'node:child_process'
 import { dirname, join, relative, resolve } from 'node:path'
 
-const [sourceArg, overlayArg, backupArg, reportArg] = process.argv.slice(2)
-if (!sourceArg || !overlayArg || !backupArg || !reportArg) {
-  console.error('usage: node prepare-pnpm-deploy-runtime-closure.mjs <harness-source-root> <engine-overlay.json> <backup-dir> <report.json>')
+const args = process.argv.slice(2)
+let abi = 'arm64'
+if (args.length === 5) abi = args.pop()
+const [sourceArg, overlayArg, backupArg, reportArg] = args
+if (args.length !== 4 || !sourceArg || !overlayArg || !backupArg || !reportArg) {
+  console.error('usage: node prepare-pnpm-deploy-runtime-closure.mjs <harness-source-root> <engine-overlay.json> <backup-dir> <report.json> [arm64|x86_64]')
   process.exit(2)
 }
+if (!['arm64', 'x86_64'].includes(abi)) throw new Error(`unsupported Android ABI: ${abi}`)
+const termuxCpu = abi === 'arm64' ? 'arm64' : 'x64'
+const koffiAndroidPackage = `@koromix/koffi-android-${termuxCpu}`
 
 const sourceRoot = resolve(sourceArg)
 const sourceCommit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: sourceRoot, encoding: 'utf8' }).trim()
@@ -54,6 +60,7 @@ if (!importer) throw new Error('pnpm-lock.yaml is missing the apps/cli importer'
 // fallbacks survive the cross-platform deployment step.
 const androidRuntimeDependencies = {
   '@img/sharp-wasm32': '0.35.3',
+  [koffiAndroidPackage]: '3.2.1',
 }
 const dependencies = { ...(manifest.dependencies ?? {}) }
 const importerDependencies = { ...(importer.dependencies ?? {}) }
@@ -66,7 +73,7 @@ const supported = workspaceConfig.supportedArchitectures ?? {}
 workspaceConfig.supportedArchitectures = {
   ...supported,
   os: [...new Set([...(supported.os ?? ['current']), 'android'])],
-  cpu: [...new Set([...(supported.cpu ?? ['current']), 'arm64'])],
+  cpu: [...new Set([...(supported.cpu ?? ['current']), termuxCpu])],
 }
 
 const packageDirs = new Map()
@@ -142,12 +149,14 @@ writeFileSync(reportFile, JSON.stringify({
   productionWorkspacePackages: forcedWorkspacePackages,
   androidRuntimeDependencies: {
     ...androidRuntimeDependencies,
+    abi,
+    koffiAndroidPackage,
     koffiOverride: '3.2.1',
     supportedArchitectures: workspaceConfig.supportedArchitectures,
-    rationale: 'Koffi 3.1.1 has no Android ARM64 binding; upstream Koffi 3.2.1 publishes @koromix/koffi-android-arm64. sharp 0.35.5 retains @img/sharp-wasm32 0.35.3 as its Android-compatible fallback. Both exact upstream packages are included in the pnpm lock and deployment closure.',
+    rationale: `Koffi 3.1.1 has no Android binding; upstream Koffi 3.2.1 publishes ${koffiAndroidPackage}. sharp 0.35.5 retains @img/sharp-wasm32 0.35.3 as its Android-compatible fallback. Exact upstream packages for ${abi} are included in the pnpm lock and deployment closure.`,
   },
   removedFromManifestSections: removedFrom,
   removedFromImporterSections: removedFromImporter,
-  purpose: 'Temporarily add pinned first-party overlay workspace packages and required Android runtime fallback packages to the apps/cli production deploy graph, pin Koffi to its official Android-capable version, and enable Android ARM64 optional dependencies. Original apps/cli/package.json, pnpm-lock.yaml, and pnpm-workspace.yaml are restored after deployment.',
+  purpose: `Temporarily add pinned first-party workspace packages and required Android runtime fallback packages to the apps/cli production deploy graph, pin Koffi to its official Android-capable version, and enable Android ${abi} optional dependencies. Original apps/cli/package.json, pnpm-lock.yaml, and pnpm-workspace.yaml are restored after deployment.`,
 }, null, 2) + '\n')
 console.log(`prepared apps/cli production dependency closure for ${forcedWorkspacePackages.length} first-party packages`)

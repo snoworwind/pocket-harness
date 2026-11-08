@@ -3544,3 +3544,15 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 645. **DSH 升级后 UI 补丁叠加引发漂移（2026-11-08）**
 
     现象：升级 DSH 到 0.2.2-rc.1 后，设置、输入区、导航、菜单和侧栏出现布局与交互异常。真因：客户端适配层不仅接 Android 桥，还复制了 DSH 的响应式框架并依赖多处内部 DOM 结构（设置树、composer、菜单、侧栏气泡/重排、页眉、轨迹/快照等）；上游组件或 DOM 一变，本地旧 selector、MutationObserver、CSS 和 JS 控件就会互相覆盖或失配。修法：让 DSH 原版拥有页面布局、设置树、输入区、菜单与导航；移除这些 UI overrides 和无用补丁，只保留 Android inset/IME、桥、返回层、设置插槽、BrowserHost、SAF/通知等平台接线，并让 vdisplay/native overlay 只读上游 menu/dialog 状态。复验：ui-responsive TypeScript 检查、构建、325 项组件测试；vdisplay 插件 102 项；WebView 探针 self-test 27 项（含旧样式/控件正反例）；执行地图和维护文档门禁通过。未做 APK/设备验收，正式 Release 仍按 §2.1 执行。
+
+646. **本地来源链未封装 Termux 仓库归档，恢复阶段找不到输入 tar（2026-11-08）**
+
+    现象：本地来源链完成签名 Termux 包下载后，先因恢复器缺少 `.deploy-tmp/source-build/termux-package-artifact/termux-package-inputs.tar` 失败；补齐工件后又被拒绝，提示目标 `termux-webroot` 已存在。真因：workflow 的跨作业步骤把独立 producer 输出封装为根目录 tar，再下载到 `termux-package-artifact/`；本地执行器替代上传/下载时既要模拟正确工件路径，也不能把生成目录直接放到恢复器最终解包目标，否则安全恢复器无法验证空目标再原子展开。修法：包仓生成到 `.deploy-tmp/source-build/termux-package-input-source/`，tar 放在 `.deploy-tmp/source-build/termux-package-artifact/`，只含 webroot 与 provenance；来源链计划回归断言同时保护这两个边界。复验：`node --test scripts/source-build/run-local-source-chain.test.mjs` 5/5；x86_64 来源链将从 termux 阶段重跑。
+
+647. **原版 DSH UI 恢复后旧的本地插槽契约仍阻断 APK 门禁（2026-11-08）**
+
+    现象：`check-contract.mjs` 在 APK 前门禁报告 `conversation.header.leading` 与 `android.dock.conversation` 未组合，并因 `conversation-dock.tsx` 已删除而再报本地声明文件缺席。真因：UI 重写让 DSH 原版拥有会话页眉与会话布局，不再从 Android 注入层创建抽屉按钮或 conversation dock；契约表与其自证用例仍保留旧版依赖，导致产品改动正确移除旧接线后，来源构建仍按过时列表拒绝。修法：从消费槽列表与声明表删除两条已废弃依赖；自证用例改为在隔离 fixture 上合成临时本地声明，继续验证 kind/scope 漂移和文件缺席判据。复验：x86 APK 阶段门禁首次发现此漂移；隔离来源检出中的 `check-contract.mjs --self-test` 通过（13 条自证命中，11 条因未提供上游 checkout 按规范标记 N/A）；正式 APK 门禁随完整来源链重跑。
+
+648. **本地来源链续跑复用了已变更输入与旧 Termux staging（2026-11-08）**
+
+    现象：x86_64 来源链续跑时，effective overlay 恢复会因输入与上一轮输出不一致而拒绝；Termux 包快照阶段还会因残留 `.deploy-tmp/source-build/termux-package-inputs.tar` 或已存在的 `termux-webroot` 目录失败。真因：overlay 恢复过程会规范化有效策略文件，旧步骤每次重跑都从当前产物覆盖原始 restore input；Termux 本地 producer/consumer 的等效步骤则复用已有 staging，而安全解包器要求空目标并拒绝覆盖。修法：restore input 只在首次缺席时从本轮原始输入冻结，已存在路径必须是普通非链接文件；本地编排器在 package snapshot 步骤前仅清理四个固定生成根，遇到链接或类型不符时拒绝，并保留其他报告。复验：x86_64 来源 APK 已在 Android 16/API 36 x86_64 AVD 安装运行；发布资产 Python 回归 11/11、来源构建/签名/续跑 Node 回归 54/54 通过，PR #250 静态源码回归通过；GitHub-hosted 双 ABI APK 构建与正式发布设备验收仍待完成。

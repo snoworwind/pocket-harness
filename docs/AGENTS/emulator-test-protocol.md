@@ -1,6 +1,6 @@
 # emulator-test-protocol.md — 正式 Release 前设备验收规范
 
-> **现行设备验收范围**：正式公开发布 GitHub Release 前默认须完成设备验收。若明确声明不做或部分不做，须在 Release 记录中写明 APK/commit、未执行的 CDP/ADB 层、原因与剩余风险，可省略相应设备层但不得记为 PASS；代码、CI、来源构建和签名仍须通过。设备验收使用 Android Studio Google 官方 Android Emulator 的 Android 16（API 36）Pixel AVD，默认 default/arm64-v8a 映像，并补充 ARM64 真机；开发 PR 设备验证可选，不因缺设备阻塞。
+> **现行设备验收范围**：正式公开发布 GitHub Release 前默认须完成设备验收。若明确声明不做或部分不做，须在 Release 记录中写明 APK/commit、未执行的 CDP/ADB 层、原因与剩余风险，可省略相应设备层但不得记为 PASS；代码、CI、来源构建和签名仍须通过。设备验收使用 Android Studio Google 官方 Android Emulator 的 Android 16（API 36）Pixel AVD，默认 default/arm64-v8a 映像，并补充 ARM64 真机；若候选草稿含 x86_64 APK，还须在 Android 16 x86_64 AVD 安装该 APK、完成 ABI 门禁并留 UI 截图。开发 PR 设备验证可选，不因缺设备阻塞。
 
 > 本文件是 `AGENTS.md` §2.1「模拟器测试规范」的**详档**：AGENTS.md 只放强制条款，命令与判据在这里。
 > 正式发布前，代码、CDP 与 ADB 三层证据互补；任一层红说明系统有问题。开发 PR 按 AGENTS.md §4 提供风险相符的代码和静态证据，不要求模拟器/CDP/ADB 验收。
@@ -179,12 +179,12 @@ PR 描述里贴**结论表**（每行一条用户动作）：
 
 ## 7. 方向与 ABI 矩阵
 
-| 阶段 | Android 16 AVD 竖屏 | Android 16 AVD 横屏 | arm64 真机 |
-|---|---|---|---|
-| 开发循环（每次改 UI 可见行为） | 必跑 | 几何/布局类改动必跑 | 必跑（同一设备竖横屏 tap + 截图） |
-| 发布前 | 必跑 | 必跑 | 必跑（V2425A，arm64 产物） |
+| 阶段 | ARM64 Android 16 AVD 竖屏 | ARM64 Android 16 AVD 横屏 | arm64 真机 | x86_64 Android 16 AVD |
+|---|---|---|---|---|
+| 开发循环（每次改 UI 可见行为） | 必跑 | 几何/布局类改动必跑 | 必跑（同一设备竖横屏 tap + 截图） | 可选，用于 x86_64 本地 QA |
+| 发布前 | 必跑 | 必跑 | 必跑（V2425A，arm64 产物） | 候选含 x86_64 APK 时必跑，安装对应包、执行 ABI 门禁并留 UI 截图 |
 
-说明：debug 包内嵌快照决定 ABI（坑见 `AGENTS.md` §6）；AVD 与真机都必须使用 ARM64-v8a 系统/设备并安装 `-arm64.apk`。x86_64 系统映像或旧 x86_64 包不能代替 ARM64 验收。
+说明：debug 包内嵌快照决定 ABI（坑见 `AGENTS.md` §6）；ARM64 AVD 与真机必须安装 `-arm64.apk`。x86_64 AVD 必须安装该候选自身的 `-x86_64.apk`，不能代替 ARM64 验收。
 
 ## 8. 已知陷阱（会制造假通过/假失败）
 
