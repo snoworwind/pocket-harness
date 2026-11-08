@@ -15,8 +15,13 @@ const engine = () => readFileSync(new URL('./build-engine.sh', import.meta.url),
 function checkEngineBuild(source) {
   assert.match(source, /packageManager!=="pnpm@11\.28\.5"/)
   assert.match(source, /npm_retry_flags=\(--fetch-retries=8 --fetch-retry-factor=2 --fetch-retry-mintimeout=1000 --fetch-retry-maxtimeout=30000 --fetch-timeout=300000\)/)
-  assert.equal((source.match(/"\$\{npm_retry_flags\[@\]\}"/g) ?? []).length, 5,
-    'Corepack install, all frozen/lockfile pnpm installs, and pnpm deploy must share the bounded registry retry policy')
+  assert.match(source, /pnpm_retry_env=\([\s\S]*?pnpm_config_fetch_retries=8[\s\S]*?pnpm_config_fetch_retry_factor=2[\s\S]*?pnpm_config_fetch_retry_mintimeout=1000[\s\S]*?pnpm_config_fetch_retry_maxtimeout=30000[\s\S]*?pnpm_config_fetch_timeout=300000[\s\S]*?\)/)
+  assert.equal((source.match(/env "\$\{pnpm_retry_env\[@\]\}" corepack pnpm(?:@12\.2\.0)? /g) ?? []).length, 4,
+    'all frozen/lockfile pnpm installs and pnpm deploy must share pnpm-specific bounded retry settings')
+  assert.match(source, /verify_pnpm_retry_settings pnpm\n/)
+  assert.match(source, /verify_pnpm_retry_settings pnpm@12\.2\.0\n/)
+  assert.doesNotMatch(source, /corepack pnpm(?:@12\.2\.0)?[^\n]*--fetch-/,
+    'npm-only fetch flags must not be passed as pnpm CLI options')
   assert.match(source, /npm install -g corepack@0\.36\.0 --ignore-scripts/)
   checkOfficialClientBuildEnvironment(source)
   const start = source.indexOf('          corepack pnpm run build:native-system')
@@ -75,7 +80,9 @@ test('negative controls reject missing source compiler, stale package manager, b
     source.replace("if (!brand.includes('sidebar.brand.mark') || !brand.includes('sidebar.brand.name')) {", 'if (false) {'),
     source.replace("if (!page.includes('<title>DeepSeek Harness</title>')) throw new Error('Web document did not embed the official Harness title')", '// document title assertion omitted'),
     source.replace('          corepack pnpm run build:web', '          corepack pnpm --recursive --if-present run bundle\n          corepack pnpm run build:web'),
-    source.replace('--fetch-retries=8 --fetch-retry-factor=2', '--fetch-retries=2 --fetch-retry-factor=2')].entries()) {
+    source.replace('--fetch-retries=8 --fetch-retry-factor=2', '--fetch-retries=2 --fetch-retry-factor=2'),
+    source.replace('pnpm_config_fetch_retries=8', 'npm_config_fetch_retries=8'),
+    source.replace('env "${pnpm_retry_env[@]}" corepack pnpm@12.2.0 --pm-on-fail=ignore --filter', 'corepack pnpm@12.2.0 --pm-on-fail=ignore "${npm_retry_flags[@]}" --filter')].entries()) {
     assert.throws(() => checkEngineBuild(bad), assert.AssertionError, `negative control ${index} was not rejected`)
   }
 })

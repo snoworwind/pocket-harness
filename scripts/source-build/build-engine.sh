@@ -65,10 +65,37 @@ cd .deploy-tmp/deepseek-harness
 git checkout -- .
 git clean -fdq
 npm_retry_flags=(--fetch-retries=8 --fetch-retry-factor=2 --fetch-retry-mintimeout=1000 --fetch-retry-maxtimeout=30000 --fetch-timeout=300000)
+pnpm_retry_env=(
+  pnpm_config_fetch_retries=8
+  pnpm_config_fetch_retry_factor=2
+  pnpm_config_fetch_retry_mintimeout=1000
+  pnpm_config_fetch_retry_maxtimeout=30000
+  pnpm_config_fetch_timeout=300000
+)
+pnpm_retry_settings=(
+  fetchRetries=8
+  fetchRetryFactor=2
+  fetchRetryMintimeout=1000
+  fetchRetryMaxtimeout=30000
+  fetchTimeout=300000
+)
+verify_pnpm_retry_settings() {
+  local manager="$1" pair setting expected actual
+  for pair in "${pnpm_retry_settings[@]}"; do
+    setting="${pair%%=*}"
+    expected="${pair#*=}"
+    actual="$(env "${pnpm_retry_env[@]}" corepack "$manager" config get "$setting")"
+    if [[ "$actual" != "$expected" ]]; then
+      echo "::error::pnpm retry setting $setting resolved to '$actual', expected '$expected' ($manager)" >&2
+      return 1
+    fi
+  done
+}
 npm install -g corepack@0.36.0 --ignore-scripts --no-audit --no-fund "${npm_retry_flags[@]}"
 corepack enable
-corepack pnpm install "${npm_retry_flags[@]}" --frozen-lockfile
 test "$(corepack pnpm --version)" = "11.28.5"
+verify_pnpm_retry_settings pnpm
+env "${pnpm_retry_env[@]}" corepack pnpm install --frozen-lockfile
 corepack pnpm --version > "$GITHUB_WORKSPACE/.deploy-tmp/source-build/package-manager-versions.txt"
 printf 'deployment pnpm: ' >> "$GITHUB_WORKSPACE/.deploy-tmp/source-build/package-manager-versions.txt"
 # corepack's fetcher has no download deadline: a stalled connection leaves the
@@ -88,6 +115,7 @@ for attempt in 1 2 3 4 5; do
 done
 test -n "$deployment_pnpm"
 printf '%s\n' "$deployment_pnpm" >> "$GITHUB_WORKSPACE/.deploy-tmp/source-build/package-manager-versions.txt"
+verify_pnpm_retry_settings pnpm@12.2.0
 # The official 0.2.1 builder now has a dedicated Desktop step. Build
 # Android's native/Host/Client/Web artifacts through its public helpers;
 # no tracked upstream source or package manifest is rewritten.
@@ -170,15 +198,15 @@ node "$GITHUB_WORKSPACE/scripts/source-build/prepare-pnpm-deploy-runtime-closure
   "$package_backup_dir" \
   "$GITHUB_WORKSPACE/.deploy-tmp/source-build/pnpm-deploy-runtime-closure.json" \
   "${DSH_ABI:-arm64}"
-corepack pnpm install "${npm_retry_flags[@]}" --lockfile-only --no-frozen-lockfile
-corepack pnpm install "${npm_retry_flags[@]}" --frozen-lockfile --ignore-scripts
+env "${pnpm_retry_env[@]}" corepack pnpm install --lockfile-only --no-frozen-lockfile
+env "${pnpm_retry_env[@]}" corepack pnpm install --frozen-lockfile --ignore-scripts
 # `pnpm deploy` 要求目标目录为空，否则 ERR_PNPM_DEPLOY_DIR_NOT_EMPTY；CI 每轮全新工作区
 # 故从不暴露，本地复跑必撞。语义上这里要的就是「全新的部署树」，故清掉即忠实。
 # Refuse an empty/misdirected workspace or symlinked staging parent before cleanup.
 test -n "$GITHUB_WORKSPACE"
 test "$(realpath "$GITHUB_WORKSPACE/.deploy-tmp")" = "$(realpath "$GITHUB_WORKSPACE")/.deploy-tmp"
 rm -rf -- "$GITHUB_WORKSPACE/.deploy-tmp/engine-deploy"
-corepack pnpm@12.2.0 --pm-on-fail=ignore "${npm_retry_flags[@]}" --filter @deepseek-ai/dsh deploy --prod "$GITHUB_WORKSPACE/.deploy-tmp/engine-deploy"
+env "${pnpm_retry_env[@]}" corepack pnpm@12.2.0 --pm-on-fail=ignore --filter @deepseek-ai/dsh deploy --prod "$GITHUB_WORKSPACE/.deploy-tmp/engine-deploy"
 cp pnpm-lock.yaml "$GITHUB_WORKSPACE/.deploy-tmp/source-build/pnpm-deploy-runtime-closure.lock.yaml"
 restore_deploy_inputs
 trap - EXIT
