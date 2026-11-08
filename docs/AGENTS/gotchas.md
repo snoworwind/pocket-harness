@@ -3548,3 +3548,7 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 646. **本地来源链未封装 Termux 仓库归档，恢复阶段找不到输入 tar（2026-11-08）**
 
     现象：本地来源链完成签名 Termux 包下载后，先因恢复器缺少 `.deploy-tmp/source-build/termux-package-artifact/termux-package-inputs.tar` 失败；补齐工件后又被拒绝，提示目标 `termux-webroot` 已存在。真因：workflow 的跨作业步骤把独立 producer 输出封装为根目录 tar，再下载到 `termux-package-artifact/`；本地执行器替代上传/下载时既要模拟正确工件路径，也不能把生成目录直接放到恢复器最终解包目标，否则安全恢复器无法验证空目标再原子展开。修法：包仓生成到 `.deploy-tmp/source-build/termux-package-input-source/`，tar 放在 `.deploy-tmp/source-build/termux-package-artifact/`，只含 webroot 与 provenance；来源链计划回归断言同时保护这两个边界。复验：`node --test scripts/source-build/run-local-source-chain.test.mjs` 5/5；x86_64 来源链将从 termux 阶段重跑。
+
+647. **原版 DSH UI 恢复后旧的本地插槽契约仍阻断 APK 门禁（2026-11-08）**
+
+    现象：`check-contract.mjs` 在 APK 前门禁报告 `conversation.header.leading` 与 `android.dock.conversation` 未组合，并因 `conversation-dock.tsx` 已删除而再报本地声明文件缺席。真因：UI 重写让 DSH 原版拥有会话页眉与会话布局，不再从 Android 注入层创建抽屉按钮或 conversation dock；契约表与其自证用例仍保留旧版依赖，导致产品改动正确移除旧接线后，来源构建仍按过时列表拒绝。修法：从消费槽列表与声明表删除两条已废弃依赖；自证用例改为在隔离 fixture 上合成临时本地声明，继续验证 kind/scope 漂移和文件缺席判据。复验：x86 APK 阶段门禁首次发现此漂移；更新后的 `check-contract.mjs --self-test` 与 `check-contract.mjs` 待重跑。
