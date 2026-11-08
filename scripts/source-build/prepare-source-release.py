@@ -11,6 +11,13 @@ import sys
 import zipfile
 
 ABIS = ('arm64', 'x86_64')
+OPTIONAL_EVIDENCE_BY_ABI = {
+    # These files are produced only by build-apk-source.yml's ARM64 Linux-asset stages.
+    'x86_64': frozenset((
+        '.deploy-tmp/source-build/linux-bundle-injection.json',
+        '.deploy-tmp/linux-build/provenance/**',
+    )),
+}
 
 
 def digest(path):
@@ -37,6 +44,8 @@ def validate_abi(source, abi, sha, repo, server):
     for pattern in (line.strip() for line in paths.splitlines() if line.strip()):
         matches = glob.glob(str(source / pattern), recursive=True)
         if not any(Path(match).is_file() for match in matches):
+            if pattern in OPTIONAL_EVIDENCE_BY_ABI.get(abi, ()):
+                continue
             raise ValueError(f'missing {abi} evidence: {pattern}')
 
     evidence = source / '.deploy-tmp/source-build'
