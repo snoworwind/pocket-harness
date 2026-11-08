@@ -13,7 +13,7 @@ K11 离线 Linux 资产：`build-linux-assets.yml` → `check-linux-sources.mjs`
 > 2. 手里是**文件或函数** → 查 §2 主表的「关键文件」列，或 §6 分块详解里的小节；
 > 3. 想**先通读一遍** → §1 全局运行顺序（阶段 0-4 + 时序图）→ §2 主表 → §4 耦合矩阵。
 >
-> **当前源码登记**：官方引擎固定为 `b830ec95` / 0.2.1-rc.5；Pocket Harness 0.14.10 已发布，设备三层验收仍未完成。发布证据与缺口见 [ENGINE-UPGRADE-2026-10-31.md](ENGINE-UPGRADE-2026-10-31.md) 和[发布说明](../../release/v0.14.10/notes.md)。旧版本轮次仅作历史溯源。
+> **当前源码登记**：引擎适配目标为 `0.2.2-rc.1`；Pocket Harness `v0.14.12` 发布前设备三层验收按 [升级记录](ENGINE-UPGRADE-2026-11-06.md) 与[发布说明](../../release/v0.14.12/notes.md) 记账。旧版本轮次仅作历史溯源。
 > 锚点格式 `path:line`，路径一律**相对 apk 仓根**；新增或移动锚点用 ``path:line#expect=<URI 编码片段>`` 固定源码语义。旧锚点源码行与出现次数由 `scripts/check-code-map-anchor-baseline.json` 锁定；刷新须审阅基线 diff，命令与拒绝条件见 `docs/AGENTS/build-and-env.md`。插件与三个子仓（`plugins/*`、`dsh-client-ui-responsive`、`dsh-host-web-compat`、`dsh-shell-termux`）在本分支以树内副本为权威，跨树镜像约束已退役（AGENTS.md §4.6），行号以本仓副本为准。
 >
 > **锚点会漂**：改了代码就跑 `node scripts/check-code-map.mjs --self-test` 和 `node scripts/check-code-map.mjs`——它守「覆盖完整、源码内容锚定、耦合证据行号、编号一致」（详见 §7）。
@@ -26,19 +26,18 @@ K11 离线 Linux 资产：`build-linux-assets.yml` → `check-linux-sources.mjs`
 3. **跑排查入口**：查点「症状 → 排查」里的命令 / grep 关键词 / logcat tag（都是本块独有的，别从别处抄）。
 4. **先看疑点**：§3 疑点清单里该查点是否已有登记（含证据、影响、状态），避免重复踩坑。
 
-## 右侧气泡导航实施补充（2026-10-17，不改版本）
+## DSH 原版 UI 对齐（2026-11-08）
 
-- P03：`sidebar-bubbles.ts` 从原生 strip 读取当前会话标签，窄于 768 CSS 像素时挂载导航；`sidebar-bubbles.css.ts` 提供可滚动胶囊与 180ms 退出/进入动画，`sidebar-bubbles.locales.ts` 管理文案。选择和关闭点击原控件，内容节点不迁移。原 strip 重建后按元素身份刷新代理，卸载时恢复 aria/样式并释放引用。
-- K08 / P03：`native-browser-presentation.ts` 观察气泡 open/closing 标记，隐藏原生显示层直到退出动画完成；同一浏览器页与 profile 保留。原生 IME 高度和 visualViewport 共同约束列表下沿。
-- P03：`back-stack.ts` 先收起气泡再走右栏原返回路径；取消长按后首次返回可用，并恢复三点按钮焦点。`sidebar-gestures.ts` 排除导航触点，普通滑动保持列表滚动。
-- 构建期 B1：`scripts/patches/data/sidebar-bubble-reorder.mjs` 通过原 `placeTab` 提交同分栏排序并保留活动页；发布包/Android 源码构建双形态夹具和拒绝写入反例由 `scripts/patches/tests/sidebar-bubble-reorder.test.mjs` 执行。
-- 验收入口：`scripts/verify-sidebar-bubbles.mjs` 在真实 WebView 上读取业务语义，ADB 执行点击、滑动、长按、取消与返回并保存截图。宽屏使用 `--wide`；`--owner` 可选择专用验收会话。详见 `docs/maintenance/sidebar-bubbles-2026-10-17.md`。
+- S01：`dsh-client-ui-responsive/src/client/index.ts` 现在只接入 Android 系统 inset/IME、主题、返回层、文件与通知桥，以及通过 DSH 插槽注册的 Android 设置和 BrowserHost 功能。
+- DSH 原生 AppFrame、响应式列、设置树、侧栏导航、输入区、菜单、内容卡片和全局页面由 pinned DSH 组件呈现；本地不再注入抽屉/气泡/重排/手势、设置 DOM 标记、弹层几何覆盖或额外返回按钮。
+- Android 系统 inset 边界由 `mobile/form-marker.ts`、`mobile/android-insets.css.ts` 和 `keyboard-boundary.ts` 管理；设备布局探针改为检查 Android frame 标记和旧覆盖缺席，不再断言本地重排后的列几何。
+- 详见 [插件设计](../../dsh-client-ui-responsive/docs/design.md)；本次改动的执行地图锚点和覆盖账本由 `node scripts/check-code-map.mjs` 校验。
 
 ## 0.14.5-fx-1 实施补充（2026-10-09）
 
 - K08 / 前端呈现：`BrowserHost.setStageBounds` 与 `BrowserOverlayPolicy` 的 4000ms TTL 为租约；`dsh-client-ui-responsive/src/client/mobile/native-browser-presentation.ts` 可见挂载时每1000ms续租，普通几何去重不得饿死续租。隐藏/卸载停止，前台强制重放；原生 `onActivityResumed` 仅在租约新鲜时重算/请求绘制，不刷新租约。测试 `BrowserOverlayContractTest.kt` 和客户端 `native-browser-presentation.spec.ts`。
 - K02 / K01：`EngineManager.startEngine` 端口拒绝码及 `startupExceptionCode` → `EngineStartFlow` → `GuidePageRenderer` 结构化提示。端口拒绝停止自动undo/retry/属主修复，主按钮重试；已确认权限/空间提示保护，其他错误仍SafeMode。启动owner运行期间及异步监控回执不抢呈现权。测试 `Issue342StartupDiagnosticTest.kt`。
-- 前端Insets：`mobile-form.css.ts` >=768px frame消费动态top，border-box/minmax保持高度；窄屏沿用#135，wide fullscreen随列容器避让。测试 `system-top-insets.spec.ts`。详情见协调仓 `docs/maintenance/0.14.5-fx-1/04-implementation-report.md`；设备尚未验收。
+- 前端Insets（旧形态，2026-11-08 已收敛）：原 `mobile-form.css.ts` 曾按 viewport 改写框架列；现由 Android frame 边界单独消费系统 top inset，不再覆盖 DSH 的 grid tracks。当前实现见 `dsh-client-ui-responsive/src/client/mobile/android-insets.css.ts`，回归 `system-top-insets.spec.ts`。
 
 ## 1. 全局运行顺序（阶段 0-4）
 
@@ -147,7 +146,7 @@ Linux 发现补充（P04，坑 373）：bootstrap `index.js` 串行发现 → `g
 | K05 | 无障碍控制面 | 按需取语义树、节点 lease/代际回收，并对设备执行点击输入滚动截屏 | 控制队列取活 + 无障碍服务回调 | 稳态控制 | K04 控制协议、K06 特权执行 | ControlCarrier 控制队列取活、onServiceConnected、ADB 键盘逐次回执 | DeviceControlService.kt,AccessibilityNodeRecycler.kt,GlobalActionCatalog.kt,AdbKeyboardEdit.kt,AdbKeyboardService.kt,AdbKeyboardReceiver.kt | 高 |
 | K06 | 特权执行、屏幕范围与本地文件面 | Shizuku 特权 shell 通道、屏幕范围门与本地文件出入口 | 引擎 sh* op / 设置页范围写面 / 外部分享与打开 intent | 稳态控制 | 控制队列承载、引擎 bridge 插件、虚拟屏注册表、无障碍控制面 | 引擎 androidPrivilege 服务面与页面桥 | ShellOps.kt,ScreenScope.kt,ShizukuTransport.kt,ShizukuBindState.kt,ShizukuUserService.kt,ShizukuProbe.kt,ShizukuSupport.kt,ProcIo.kt,FileIncoming.kt,PathOpen.kt,ExternalLinks.kt,ConfigTransfer.kt,RootGrant.kt,RootAccess.kt,OwnershipRepairCore.kt,OwnershipRepair.kt,RootRepairMain.kt,RootExecutionFence.kt,RootMaintenanceLease.kt,RootOwnershipJobs.kt,LeaseClearProbe.kt | 高 |
 | K07 | 虚拟屏宿主 | Shizuku 建屏与 viewer Surface 交接的生命周期编排；有效选择、查看器绑定、跨屏输入与应用拉起续期 `lastUsedAt`，并在 `lock` 下更新回收所读的同一记录 | 模型 vd 工具 / 侧栏桥面 / Activity 生命周期 | 交互面 | Shizuku 特权通道、K05 无障碍控制面、K08 浏览器宿主 | MainActivity、DeviceControlService 与 ControlCarrier、侧栏面板 | VdisplayController.kt,VdisplayHost.kt,VdisplayOps.kt | 高 |
-| K08 | 浏览器宿主 | 隔离浏览器：无桥 WebView、准入过滤、几何与保活；无 MULTI_PROFILE 时由用户显式启用兼容模式（共享 Default jar、loopback 仍拒）；官方会话列表连续三轮确认删除后，以窄 `workspaceClose` 销毁该 Session WebView 并请求删除 nonDefault profile；截图文件按 TTL/数量/字节上限回收 | 模型 browser* op（控制队列）/ 面板 browserHost* 桥与 NativeBrowserPlacement | 交互面 | S01,P03,控制队列 | MainActivity 构造，op 与面板下推拉起 | BrowserHost.kt,BrowserHostNavigationPolicy.kt,BrowserOverlayPolicy.kt,BrowserHostProfile.kt,BrowserSharedFallback.kt,ShotCachePolicy.kt,dsh-client-ui-responsive/src/client/mobile/native-browser-auto-place.ts | 高 |
+| K08 | 浏览器宿主 | 隔离浏览器：无桥 WebView、准入过滤、几何与保活；无 MULTI_PROFILE 时由用户显式启用兼容模式（共享 Default jar、loopback 仍拒）；官方会话列表连续三轮确认删除后，以窄 `workspaceClose` 销毁该 Session WebView 并请求删除 nonDefault profile；截图文件按 TTL/数量/字节上限回收 | 模型 browser* op（控制队列）/ 面板 browserHost* 桥与 NativeBrowserPlacement | 交互面 | S01,P03,控制队列 | MainActivity 构造，op 与面板下推拉起 | BrowserHost.kt,BrowserHostNavigationPolicy.kt,BrowserOverlayPolicy.kt,BrowserHostProfile.kt,BrowserSharedFallback.kt,ShotCachePolicy.kt,dsh-client-ui-responsive/src/client/mobile/native-browser-presentation.ts | 高 |
 | K09 | 悬浮球与面板 | 悬浮球三窗口与展开面板：状态、待答、应答、完成态 | 设置页开关或 onResume 补启；点球展开；WS 帧与 live 文件事件 | 交互面 | K01,K10,引擎网关 | K01 宿主 Activity 与桥开关；EngineService 划掉后台时停它 | OverlayService.kt,OverlayPanel.kt | 高 |
 | K10 | 通知中心 | 引擎事件到通知栏应答的投递-应答闭环；延后日志同步提交、恢复与结算 | 引擎 .notify.ndjson / WS waterfall / 通知动作广播 | 交互面 | P01 通知投影、K09 面板 pending | EngineService.onCreate、动作广播冷启动 | NotifyCenter.kt,NotifyBridge.kt,NotifyStore.kt,NotifySuppressQueue.kt,NotifyDecisionQueue.kt | 高 |
 | K11 | Kotlin 单测面 | JVM策略/core/settlement/wiring与instrumentation覆盖；在场不是已执行。0.14.8 P1 增补：刷新窗口内启动请求的有界等待（跨进程真源 = 真 journal 文件；收口即停 / 超预算必返 / 换代立刻收手 / 无事务不等）与接线契约（裸 `flowOwnership.begin() ?: return` 不得回归、推迟必须进 boot-fail），见 `DeferredEngineStartTest.kt`；虚拟屏 idle 时间戳锁争用和操作接线见 `VdisplayTouchLockTest.kt` | 外部Gradle/结果基线门禁 | 测试与门禁 | 横切 | 实际XML/日志与外部三层证据 | app/src/test/java/com/snoworwind/pocketharness,scripts/check-kotlin-test-count.mjs,scripts/kotlin-test-baseline.json,app/build.gradle.kts | 中 |
@@ -155,7 +154,7 @@ Linux 发现补充（P04，坑 373）：bootstrap `index.js` 串行发现 → `g
 | P02 | 管理插件（dsh-android-manage） | 把模型意图落成壳侧无障碍或特权 shell 的屏幕工具面 | 模型每轮 tool call；插件 apply 时注册 14 个工具 | 稳态控制 | 授权桥与控制队列（androidPrivilege）,壳侧无障碍与特权执行面,屏幕范围偏好 | 引擎 cordis 装配（android-bridge 先于 android-manage）；每次模型 tool call | plugins/dsh-android-manage/src/index.ts,plugins/dsh-android-manage/src/ime-broadcast.ts,plugins/dsh-android-manage/src/protocol-v2.ts,plugins/dsh-android-manage/src/vd-shot.ts,plugins/dsh-android-manage/src/tmp-cache.ts | 高 |
 | P03 | 浏览器与虚拟屏插件 | browser_* 与 vd* 工具落壳侧控制 op 并如实回执；vdisplay 原生 Surface 可见性同时让出给 DOM 弹层 | 模型调用 browser_* / android_vdisplay_* 工具 | 稳态控制/交互呈现 | K08,K07,桥控制队列 | 引擎启动时按装配集注册；面板可见性观察 DOM 状态并经 vdisplayBounds 下发 | plugins/dsh-android-browser/src/tools.ts,plugins/dsh-android-browser/src/index.ts,plugins/dsh-android-vdisplay/src/index.ts,plugins/dsh-android-vdisplay/src/status.ts,plugins/dsh-android-vdisplay/src/client/index.ts,plugins/dsh-android-vdisplay/src/client/stage-visibility.ts | 高 |
 | P04 | 文件打开、Linux 环境与模型能力插件 | 外部来件草稿、工具链与缓存清理、模型能力写回 | 壳侧 FileIncoming 投递 / 设置页 HTTP / cordis 装配 | 稳态控制 | 桥与鉴权、客户端注入层、shell-termux 工具链表、快照装配链 | 壳侧 FileIncoming.processIncomingIntent、设置页与开发者选项、cordis 装配 | plugins/dsh-android-file-open/src/index.ts,plugins/dsh-android-linux-env/src/runtime-cache.ts,plugins/dsh-model-capability/src/index.ts | 高 |
-| S01 | 引擎侧注入层（三个子仓） | 页面内发布标记与桥入口、钳面板几何、装配老内核垫片；旧 WebView 缺少 `toSorted`、`findLast`、`findLastIndex` 时由 host compat 在页面早期仅补缺失方法 | 客户端插件 apply() 装载；每个 index 响应经 tapIndex 注入 | 交互面 | K04（壳侧 androidBridge/dshBackBridge 桥面） | 引擎插件系统按 profile-web.cordis.patch.yml 的 insert 行拉起 | dsh-client-ui-responsive/src/client/index.ts,dsh-host-web-compat/lib/index.js,dsh-shell-termux/src/index.ts | 高 |
+| S01 | 引擎侧注入层（三个子仓） | DSH 原生 Web UI 拥有页面布局、响应式行为、设置、输入区、菜单与导航；客户端插件只接 Android inset/IME、主题/返回桥、原生能力槽位、文件与通知桥，以及隔离 BrowserHost | 客户端插件 apply() 装载；每个 index 响应经 tapIndex 注入 | 交互面 | K04（壳侧 androidBridge/dshBackBridge 桥面） | 引擎插件系统按 profile-web.cordis.patch.yml 的 insert 行拉起 | dsh-client-ui-responsive/src/client/index.ts,dsh-host-web-compat/lib/index.js,dsh-shell-termux/src/index.ts | 高 |
 
 | B01 | 构建链与快照注入 | 快照构建 插件注入 门禁收口 到 APK 出包；本地 PowerShell、云端 build-apk.mjs、发布 workflow 的 APK 终端组装共用 build-apk-engine，产物再经 apksigner 校验 v1/v2/v3；本分支 build-apk 无条件复用 build-apk-source，仅允许不读 LFS 快照的 ARM64 来源审计构建（签名 Termux 包 → NDK 跨编译 node-pty → 原生闭包门禁 → 快照 → APK） | 人手动 pwsh -File scripts\build-apk-013.ps1、云端 workflow 或发布链 | 构建与发布 | 门禁块,壳侧快照解压,插件源码与 vendor 固化面,可信上游签名/哈希 | 开发者手动,发布链 build-release.ps1,CI 与云端 build-apk.mjs,build-apk-source.yml | scripts/build-apk-013.ps1,scripts/build-apk.mjs,scripts/build-apk-engine.mjs,scripts/build-apk-engine.test.mjs,scripts/build-release.ps1,scripts/check-apk-signatures.mjs,scripts/build-snapshot-013.mjs,scripts/inject-all.py,scripts/source-build/*,.github/workflows/build-apk.yml,.github/workflows/build-apk-source.yml,.github/workflows/release-source-draft.yml,webpages/tools/build.mjs,webpages/src/assets/app.js,webpages/src/assets/release.js,scripts/patches/data/undo-safe-transaction-snippet.mjs,scripts/patches/data/registry-scan-c4.mjs,scripts/patches/data/client-index-loader-barrier.mjs,scripts/patches/tests/client-index-loader-barrier.test.mjs,scripts/patches/tests/gateway-client-source-g1.test.mjs,scripts/patches/mimo-thinking-toggle-056.mjs,scripts/patches/tests/mimo-thinking-toggle-056.test.mjs,scripts/patches/data/permission-auto-review-default.mjs,scripts/patches/tests/permission-auto-review-default.test.mjs,scripts/patches/data/workspace-write-boundary-warning.mjs,scripts/patches/tests/workspace-write-boundary-warning.test.mjs | 高 |
 | B02 | 静态门禁链与 CI | 33 个静态门禁脚本与三层接线的唯一声明处 | PR/CI、两条打包链、发布链 | 测试与门禁 | B01,B03 | 提交 PR、推 main、构建/发版 | scripts/check-release-gates.mjs,scripts/check-gate-skips.mjs,.github/workflows/pr-gate.yml,scripts/build-apk-013.ps1 | 高 |
@@ -374,12 +373,9 @@ Linux 发现补充（P04，坑 373）：bootstrap `index.js` 串行发现 → `g
 - [P04] 4. 【已确认（代码面），配置写入面】`planModelPatch` 把字符串形态的模型条目规范化成对象（`plugins/dsh-model-capability/src/settings-writer.ts:134`），而第 181 行的判据 `changes.length > 0 || next !== entry` 中 `next !== entry` 恒真（`next` 是新对象）→ 只要该 id 命中 patch，条目必被替换；若同一次调用里该路由另有字段被写，用户写的 `models: ['a','b']` 会被改写成 `[{id:'a'},…]`（值不变、representation 变）。同函数 `changes` 跨 patch 累积，判据本身形同虚设（可单测复现）。
 - [P04] 5. 【2026-10-11 已修；原条目为历史记录】曾：诊断轨迹默认开启且 `tick()` 在早退前无条件写一行、**每 5 秒**一次 → `$DSH_HOME/model-capability.log` 约 1.7 万行/天、无轮转、无上限。**现已两条都改掉**：0.14.2 把 5 秒改成 120 秒兜底（仍每轮无条件写一行），本轮 A7 又把**定时器整体移除** ⇒ 现为**纯事件驱动，全插件无任何定时器**：唯一触发是 settings 保存同步 emit 的 `settings/document-updated`（另有启动期一次首读基线 `tick(false)`，同样**不排任何定时器**；无路由时留待下次保存自然补上）。写日志也改为**只在真有事发生**时（原「早退前无条件写一行」已删）⇒ 不再有常驻 tick、不再每天 1.7 万行。**仍成立的部分**：日志仍无轮转/无上限（`diag` 见 `plugins/dsh-model-capability/src/index.ts:181-185`，`DSH_MODEL_CAPABILITY_TRACE=0` 可关）；且它**仍不在**运行时缓存白名单里（`plugins/dsh-android-linux-env/src/runtime-cache.ts:59` 的 `CACHE_SUBDIR_ALLOW` 为空集、`:73` 的 `HOME_CACHE_ALLOW` 只有 `.node-compile-cache`），所以「清除运行时缓存」仍收不回这份增长——增长速率由每天 1.7 万行降为「每次保存若干行」。
 - [S01] `dsh-host-web-compat/scripts/smoke-injections.mjs:50` + `dsh-host-web-compat/lib/index.js:783,791`（已确认，静态可推）：脚本断言 `transforms.length === 1`，而 `apply()` 现在注册两次 `tapIndex`（polyfill 块 + 静态占位块）→ 该断言必红、`npm test` 与子仓 PR gate 的「注入冒烟」整条红。这是坑 61 防线③（门禁）与源码脱同步；apk 仓自己的 `.github/workflows` 不跑这个脚本，所以本仓 CI 不会暴露。修法：断言改 `>= 1` 或按哨兵分别断言。
-- [S01] **2026-09-25 已修（D2/D4 + D8）**：附件来源菜单此前既**不是返回栈的一层**（`back-stack.ts:94` 只认 `[data-trigger-menu]`；系统返回键不产生 pointerdown/Escape，`BackGate.decide` 在「无历史 + 无层」时给 `FINISH_ACTIVITY`，`BackGate.kt:56-60` → 菜单开着按返回直接退应用），又**劫持了上游加号**（旧 `paperclipInput()` 按「隐藏 file input 之前最近的 BUTTON」认领，0.1.7-rc.1 里那个 BUTTON 正是 `aria-haspopup=listbox` 的指令加号，onClickCapture 的 preventDefault + stopImmediatePropagation 吃掉 `onToggleCommandMenu` → 指令菜单永不打开、回形针消失）。现修法：不再认领任何上游按钮（`attachment-picker-menu.ts:184` 只给自有触发器装 listener），自有回形针挂标准插槽 `conversation.input.left` 的 `[data-slot]` 锚点（`:173`、挂载为 `display:contents`，不改上游 InputBar），并把该菜单登记为返回栈一层（`back-stack.ts:563#expect=attachment-menu` 的 `detectAttachmentMenu`，元素即 `ATTACHMENT_MENU_SELECTOR`（`back-stack.ts:103`））。回归判据：`dsh-client-ui-responsive/tests/attachment-picker-menu.spec.ts:80`（加号自身的 onClick 必须被调用一次且事件未被取消）、`back-stack.spec.ts:311#expect=attachment-menu`（`__dshBackKinds` 含 `attachment-menu` 且 `__dshBack()` 关菜单而不是退应用）。
 - [S01] `dsh-client-ui-responsive/src/client/mobile/native-browser-presentation.ts:44-95`（已确认，COMPAT-REVIEW N-9 已登记；0.14.3 追版后 `publishBounds` 整体迁入本文件）：`publishBounds` 每次都做 `getBoundingClientRect` + `getComputedStyle` + 跨桥 `browserHostBounds`，无「上次元组」去重，而 `watchStageVisibility` 在 `[style,class,hidden,...]` 任意属性变化时按帧触发 → 流式输出期间可能每帧一次桥调用与原生 `setStageBounds`。
-- [S01] `dsh-client-ui-responsive/src/client/enter-guard.ts:63`（未证实）：767 形态门在本块有多个副本——`enter-guard` 读 `window.innerWidth`，`keyboard-boundary.ts:48`、`reference-menu.ts:45`、`mobile-form.css.ts:25`、`MobileChrome.module.css:18` 各自写 `(max-width: 767px)`。视口与 `matchMedia` 在同一帧不一致（旋转/缩放/滚动条）时，Enter 守卫与已发布标记会给出不同答案；`coord:docs/STATE-STALENESS-AUDIT-2026-09-12.md:196` 已把这条列为已知多副本。
-- [S01] `dsh-client-ui-responsive/src/client/mobile/form-marker.ts:58#expect=observer.observe`（未证实，潜伏项）：`syncModal` 只观察 `childList` 不观察 `attributes`，`data-dsh-modal-open` / `data-dsh-settings-dialog` 依赖「对话框条件挂载」这一上游实现细节。上游若改成属性切换同一节点，modal 标记会滞留或缺失 → 抽屉被顶到设置弹层之上/之下；`coord:docs/STATE-STALENESS-AUDIT-2026-09-12.md:681` 记为潜伏项。
 - [B01] 1. `scripts/build-apk-013.ps1:166` 无条件重设 `$apkDir = Join-Path $Root "dsh-mobile-apk"`，把 `:22-23` 的「apk 仓自包含布局」检测作废（已确认，代码可判）：从 apk 仓根直跑时该目录不存在，第 3 步写 assets 与 `Push-Location` 会失败；与脚本自身注释（`:20-21` 声称两种布局共用同一份脚本）矛盾。当前文档口径是「在协调仓根执行」（apk AGENTS.md:30），故影响为潜在；协调仓 `coord:docs/review/state-audit/build-runtime.md:385` 已记录同一条。
-- [B01] 2. `scripts/build-apk-013.ps1:206-212` 注释称 vendor 补丁「默认 ensure 语义（缺席即施加）」，实际调用不带 `--apply`/`--scope`，`scripts/patches/apply-patches.mjs:2463#expect=const%20mode`、`scripts/patches/apply-patches.mjs:2467#expect=const%20scope` 推导为 `mode=check`（已确认）：只校验不施加，补丁必须先打在入库的 `vendor/*/lib/` 里；缺一条即 `Deny-Abi` 拒打包（失败关闭，但排查时按注释预期会找不到「自动施加」这一步）。0.13.7-CERTIFICATION.md:11 亦记 `mode=check`，即注释是旧语义残留。
+- [B01] 2. `scripts/build-apk-013.ps1:206-212` 注释称 vendor 补丁「默认 ensure 语义（缺席即施加）」，实际调用不带 `--apply`/`--scope`，`scripts/patches/apply-patches.mjs:2456#expect=const%20mode`、`scripts/patches/apply-patches.mjs:2460#expect=const%20scope` 推导为 `mode=check`（已确认）：只校验不施加，补丁必须先打在入库的 `vendor/*/lib/` 里；缺一条即 `Deny-Abi` 拒打包（失败关闭，但排查时按注释预期会找不到「自动施加」这一步）。0.13.7-CERTIFICATION.md:11 亦记 `mode=check`，即注释是旧语义残留。
 - [B01] 3. `scripts/make-snapshot.sh:8` 的 `SNAP_PKG_ROOT` 默认 `/data/user/0/com.snoworwind.pocketharness`（不含 `/files`），`:158` 的 sed 会把 heredoc 兜底 patch 的 `/data/data/com.termux/files/usr` 改写成 `.../com.snoworwind.pocketharness/usr/bin/bash`（已确认，触发条件 = 设备上找不到外部权威 patch，走 `:156` 警告分支）→ 设备侧 assertBash 失败、注入包全不装配。该脚本是备选发布入口的输入端（`build-release.ps1:89-114` 要求设备侧产出 `snapshot/snapshot-*.tar.xz`），且这条入口的快照无软链净化、无归档自检（协调仓 `coord:docs/COMPAT-REVIEW-0.14.0-2026-09-19.md:1337` 记 I-4）。
 - [B01] 4. `scripts/build-apk-013.ps1:141-144` 注释称「本次构建前必须重跑 Kotlin 单测由发布链步骤保证」，但 `build-release.ps1` 全文没有 `testDebugUnitTest`（已确认）：发布链经 `check-release-gates.mjs --run --require` 调用 `check-kotlin-test-count.mjs`（`:104` 条目、通用 argvFor 不带 `--allow-missing`），干净机器上无结果即 `exit 1`。本地链用 `--allow-missing`（ps1:145）所以不红——症状是「本地全绿、发布链在干净机器上红」（协调仓 `coord:docs/COMPAT-REVIEW-0.14.0-2026-09-19.md:1334` 记 I-1，P1）。
 5. 【历史项已退役（2026-10-15）】旧 MIRROR_TOP 覆盖缺口只针对已移除的跨树逐字节镜像；现行本仓门禁只校验 registry↔IMPLS 自洽，不能把旧清单当作当前缺陷。入口见 `scripts/check-patch-mirror.mjs:53#expect=const%20regPath`。
@@ -508,7 +504,7 @@ K01 journal 发布：`SnapshotTransaction.writeMarker` 拒绝目标或临时路�
 | K07 | 可信侧栏面板 | phone-control 每 2 秒轮询 vdisplayStatus 与 shizukuStatus，vdisplay 客户端每帧推 vdisplayBounds | dsh-client-ui-responsive/src/client/dev-section/phone-control.tsx:180 |
 | K07 | 引擎侧 vdisplay 工具面 | 状态载荷 enabled/ops/transports/screens/viewers 与 status.ts 的 VD_OPS 逐字段对齐 | plugins/dsh-android-vdisplay/src/status.ts:14 |
 | K07 | DeviceControlService 登记门 | vd* 七个分支必须逐行留在 handle 里，scripts/check-control-ops.mjs 的 A 项按行首引号解析 | app/src/main/java/com/snoworwind/pocketharness/DeviceControlService.kt:742#expect=%22vdCreate%22 |
-| K08 | S01 | 面板每 300ms 下推 left/top/width/height/viewportWidth/viewportHeight/visible/session，壳侧据此切当前工作台并维持停画保鲜；面板用 status().ownerSessionId 做 foreign 判定 | dsh-client-ui-responsive/src/client/mobile/native-browser-presentation.ts:61-66, :81 |
+| K08 | S01 | 面板每 300ms 下推 left/top/width/height/viewportWidth/viewportHeight/visible/session，壳侧据此切当前工作台并维持停画保鲜；面板用 status().ownerSessionId 做 foreign 判定 | dsh-client-ui-responsive/src/client/mobile/native-browser-presentation.ts:70#expect=window.androidBridge |
 | K08 | P03 | op 面 14 条与回执字段 loadState/reason/blockedRequests/pageGeneration/tabId 一一对应；契约声明 platform/mobile 壳侧不读 | plugins/dsh-android-browser/src/contract.ts:42-58, :169 |
 | K08 | 控制队列 | browser* op 在轮询线程内联执行，awaitNavigation 自旋 10s 阻塞同一条队列 | app/src/main/java/com/snoworwind/pocketharness/DeviceControlService.kt:725#expect=%22browserShow%22 |
 | K08 | 引擎鉴权面 | 引擎鉴权 cookie 注入进程级 CookieManager，与隔离 WebView 同池，无清理入口 | app/src/main/java/com/snoworwind/pocketharness/MainActivity.kt:361#expect=CookieManager.getInstance |
@@ -555,7 +551,7 @@ K01 journal 发布：`SnapshotTransaction.writeMarker` 拒绝目标或临时路�
 | P03 | K07 | vd* 工具经同一控制队列落到 VdisplayController，状态真源与建销幂等都在壳侧 | plugins/dsh-android-vdisplay/src/index.ts:198 |
 | P03 | K07 | 面板两阶段契约：先 vdisplayBounds 落 bounds 记录，Surface 创建后再仲裁 attach | plugins/dsh-android-vdisplay/src/client/index.ts:196#expect=visible%3A%20%21occupiedRef.current%20%26%26%20%21collapsed |
 | P03 | 桥控制队列（dsh-android-bridge） | controlExec 是唯一通路，档位门与范围门在服务面复查（browser*/vdInfo/vdCreate/vdDestroy 刻意不在档位门内） | plugins/dsh-android-bridge/src/index.ts:949 |
-| P03 | 注入层与侧栏面板（dsh-client-ui-responsive） | 浏览器面板与虚拟屏 Tab 经 androidBridge 直连壳侧，与插件共用同一 op 契约与 stage bounds 语义 | dsh-client-ui-responsive/src/client/mobile/native-browser-presentation.ts:61 |
+| P03 | 注入层与侧栏面板（dsh-client-ui-responsive） | 浏览器面板与虚拟屏 Tab 经 androidBridge 直连壳侧，与插件共用同一 op 契约与 stage bounds 语义 | dsh-client-ui-responsive/src/client/mobile/native-browser-presentation.ts:70#expect=window.androidBridge |
 | P03 | 测试与门禁 | 交付面由 output.schema 门禁（含 browser_* 夹具）、六面登记门禁与插件单测共同守住 | scripts/check-tool-output-schema.mjs:153 |
 | P04 | 桥与鉴权 | 五条 file-incoming 与四条 env/runtime-cache 路由全部走 authorizeMobileRoute，令牌与控制队列同一枚 shellControlToken；route-auth.ts 只是转发不复制 | plugins/dsh-android-file-open/src/route-auth.ts:47 |
 | P04 | 壳侧文件来件 FileIncoming | 壳把来件拷进 files/home/.dsh/workspaces/incoming 后 POST 本插件；pending ledger 的写者与 cleanup/TTL 共用锁，原子替换完整清单；pending/.sessions 引用读失败时不清理，引用文件与三种元数据受保护 | app/src/main/java/com/snoworwind/pocketharness/FileIncoming.kt:32 |
@@ -578,11 +574,11 @@ K01 journal 发布：`SnapshotTransaction.writeMarker` 拒绝目标或临时路�
 | S01 | 构建链 | 三个子仓由 profile-web.cordis.patch.yml 的 insert 行装载，快照构建只 pack 不 build | scripts/profile-web.cordis.patch.yml:38#expect=-%20insert: |
 | B01 | 门禁块 | 27 项门禁集在 check-release-gates.mjs 唯一声明，本地链逐条内联、发布链走聚合入口 --run --require | scripts/check-release-gates.mjs:28-104,136-140 |
 | B01 | 壳侧快照解压 | 归档软链与权限判据必须对齐设备侧 SnapshotExtractor 的沙箱边界，构建期净化是为了不让设备静默丢弃条目 | scripts/build-snapshot-013.mjs:933-966,1029 |
-| B01 | 插件源码与 vendor 固化面 | 注入内容取自 plugin-dirs.json 指向的插件目录与 vendor 固化副本，补丁由 apply-patches.mjs 施加 | scripts/plugin-dirs.json:1,scripts/patches/apply-patches.mjs:2478#expect=const%20order |
+| B01 | 插件源码与 vendor 固化面 | 注入内容取自 plugin-dirs.json 指向的插件目录与 vendor 固化副本，补丁由 apply-patches.mjs 施加 | scripts/plugin-dirs.json:1,scripts/patches/apply-patches.mjs:2471#expect=const%20order |
 | B01 | 树内副本即权威 | 2026-10-15 起不再做跨树逐字节比对；补丁面由本仓 registry↔IMPLS 自洽判据守 | `scripts/check-patch-mirror.mjs:53#expect=const%20regPath` |
 | B01 | 发布链 build-release.ps1 | 复用同一门禁集与指纹对账，输入走设备侧 make-snapshot.sh 产出的 snapshot/snapshot-*.tar.xz | scripts/build-release.ps1:56-61,89-114,147 |
 | B01 | CI 与云端构建链 | 云端 build-apk.mjs 与本地链门禁集差集必须为 0。0.14.5：原先并列的 apk 仓独立快照 workflow `build-snapshot.yml`（走 inject-snapshot.py 三包注入、无引擎 overlay/补丁/语法降级）已删除，快照构建入口收敛为单一链 | scripts/check-release-gates.mjs:191-212 |
-| B01 | 来源审计 ARM64 构建 | 官方 `1f81c047` / 0.2.1-rc.3 源码构建 CLI/Web/第一方包；Android 构建阶段设置 official client profile/title 并核验 bundle；Cordis 按目标源码、不回退旧版本；bootstrap/InRelease/deb 认证、native 来源审计与 overlay pin 恢复。PTC 与 MiMo 多文件 exact verifier 及全部 pnpm 同包副本同步；最终 snapshot 检查复用同一判据。依赖闭包门禁还递归检查已启用 telemetry 消费者的第三方精确版本，并与 `engine-overlay.json` 的 nested SDK pins 对账。v0.14.9 来源链已正式运行，完整设备三层验收仍未完成，见升级记录。 | .github/workflows/build-apk-source.yml:134,scripts/patches/registry.json:211,scripts/patches/apply-patches.mjs:241#expect=planMimoThinking,scripts/source-build/reconcile-engine-patch-copies.mjs:80,scripts/source-build/check-dsh-source-snapshot.mjs:25 |
+| B01 | 来源审计 ARM64 构建 | 官方 `1f81c047` / 0.2.1-rc.3 源码构建 CLI/Web/第一方包；Android 构建阶段设置 official client profile/title 并核验 bundle；Cordis 按目标源码、不回退旧版本；bootstrap/InRelease/deb 认证、native 来源审计与 overlay pin 恢复。PTC 与 MiMo 多文件 exact verifier 及全部 pnpm 同包副本同步；最终 snapshot 检查复用同一判据。依赖闭包门禁还递归检查已启用 telemetry 消费者的第三方精确版本，并与 `engine-overlay.json` 的 nested SDK pins 对账。v0.14.9 来源链已正式运行，完整设备三层验收仍未完成，见升级记录。 | .github/workflows/build-apk-source.yml:134,scripts/patches/registry.json:214#expect=%E9%A6%96%E9%A1%B5%20HTML,scripts/patches/apply-patches.mjs:234#expect=planMimoThinking,scripts/source-build/reconcile-engine-patch-copies.mjs:79#expect=const%20entries,scripts/source-build/check-dsh-source-snapshot.mjs:25 |
 | B01 | 来源草稿资产边界 | 写权限任务先拒绝额外/缺失/链接/非普通资产，要求哈希清单与实际上传集合一一对应，再核验字节，最后调用 gh 创建草稿；真实 shell 负控见坑 371 | .github/workflows/release-source-draft.yml:83,scripts/source-build/test_prepare_source_release.py:74 |
 | B02 | B01 | 门禁集由两条编排器逐项调用；聚合入口断言本地链与云端链门禁集差集为 0，并锁发布链必须走 --run | scripts/check-release-gates.mjs:135 |
 | B02 | B03 | 冷启动预算的真数据只能来自设备产物，--require-real 由设备验收承担，构建机与 CI 只计 SKIP | scripts/check-boot-budget.mjs:671 |
@@ -684,9 +680,8 @@ K01 journal 发布：`SnapshotTransaction.writeMarker` 拒绝目标或临时路�
 | 4. 工具链状态与设置页/实际不符：`android_toolchain_status` 的 `missing` 是包名口径（bash 缺失 | P04 | 整表 `unusable`），也是 ST-17 单一表的回归点：`grep -n "PROBE_BINARIES" dsh-shell-termux/src/index.ts plugins/dsh-android-linux-env/src/index.ts`；档位显示以 `android_privilege_status`（`androidPrivilege.status()`）为准，工具文本里的 adbTier 只是部署默认视图。 |
 | 5. 点了「清除运行时缓存」几乎没释放：本版白名单只有 `engine.log.1..N` 与 `DSH_HOME/.node-compile-cache`（`cache/` 整类以 `reason=not-allowlisted` 跳过）。看 GET `/api/android/runtime-cache/scan` 返回的 `skipped[].reason`（`log-root-unresolved` / `current-generation-absent` / `not-allowlisted` / `preserved` / `scope-rejected`）与 `label`（`$DSH_HOME/...` 形态）；审计落 `$DSH_FILES_DIR/audit/runtime-cache.ndjson`。 | P04 | （待补） |
 | 白屏/停在 Loading plugins，且服务出的 HTML 里能看到垫片文本 | S01 | 装配后不可解析（坑 61）：跑 `node dsh-host-web-compat/scripts/smoke-injections.mjs`（逐段解析 + 页面标记）；看 `files/boot-diag.log`（`adb shell "run-as com.snoworwind.pocketharness cat files/boot-diag.log"`）里的 `dsh-boot-diag` 行与 `pageSideRuntime=`；logcat 过滤 `[dsh-boot-stall]` / `[dsh-boot-ready]`；grep `POLYFILL_SCRIPT_BODY`、`assertInjectionsParse`。 |
-| 抽屉打不开、设置页只显示窄条、轨迹详情被遮 | S01 | 锚点没发布或没人消费（坑 59）：CDP 求值 `document.documentElement.hasAttribute('data-dsh-mobile-form')`、`document.querySelectorAll('[data-dsh-frame]').length`、`document.querySelector('[data-dsh-mobile-topbar]')`;再 grep 这五个锚点确认消费方样式在场。 |
-| 竖屏设置分类栏或内容空白/互相挤压 | S01 | 核对固定 rc.1 树 `panel > nav(title,list) + content(header,options)` 与 `MobileSettingsStructure.settingsCells()` 标记；两列必须同时可见，nav-list 与 options 各自有 `min-height:0` 和滚动区。不得出现 `data-dsh-settings-level`、自定义返回标题栏或隐藏任一列。 |
-| 竖屏左上同时出现 rail 面板图标与页眉汉堡 | S01 | 查 frame 的 `data-sidebar-collapsed` 和 sidebarCol computed transform；收起态 rail 内上游 `button[data-sidebar-toggle]` 应隐藏，唯一页眉入口为 `[data-dsh-sidebar-toggle]`；展开时反过来由 rail toggle 负责关闭。 |
+| DSH 原生布局、设置、输入区或菜单显示异常 | S01 | 先确认引擎与客户端包都来自本次固定版本；再核对插件只注入 Android inset/IME 与 add-on 样式，不再有退役的 mobile chrome、composer、settings-tree 样式或控件。不要用旧 data-dsh-frame/topbar 锚点判定 UI。 |
+| 设置、菜单或输入区与 DSH 原版不一致 | S01 | 对比同版本 DSH Web UI 并检查宿主实际装载的插件树；设置分类、弹出菜单、输入区均由 DSH 原生组件渲染。只有系统安全区或 IME 偏移异常时，检查 data-dsh-android-frame 与 --dsh-android-* inset。 |
 | 点工具行文件链接弹「无法打开该文件」或点击无反应 | S01 | 会话身份/端点：CDP 读 `document.documentElement.getAttribute('data-dsh-session-id')`；页面 console 的 `[dsh-open-path]` 警告与底部提示条；端点返回体里的 `error` 取值 `session-unknown` / `not-found-in-session` / `not-found`（`dsh-host-web-compat/lib/index.js:895-940`）。 |
 | 目录选择器连弹多次或选完无反应 | S01 | poll 一次性投递与 token：`adb logcat` 看 SAF 与 `dsh-log`；grep `takePoll`（同一 requestId 只投一次）、`x-dsh-pick-token`；返回 `403 forbidden` 即 `DSH_PICK_TOKEN` 与页面 `getPickToken()` 不一致（`EngineManager.kt:2373#expect=%22DSH_PICK_TOKEN%22%20to%20%28pickToken%20%3F%3A%20%22%22%29`）。 |
 | 返回键直接退出应用或层数不降 | S01 | `adb logcat -d | grep dsh-back`（`BackGate.TAG`）；CDP 读 `window.__dshBackDepth` / `__dshBackKinds`；层判据 grep `RIGHT_FULLSCREEN_SELECTOR`（`data-sidebar-right-open` 是权威 open 信号）、`data-sidebar-right-expand`。 |
@@ -1402,7 +1397,7 @@ flowchart TD
   - 工具调用：模型调 `browser_open`/`browser_snapshot`/`browser_click`/`browser_type`/`browser_press`/`browser_scroll`/`browser_get_text`/`browser_wait`/`browser_navigate`/`browser_back`/`browser_forward`/`browser_reload`/`browser_list_tabs`/`browser_follow_tab`/`browser_close_tab`/`browser_set_identity`/`browser_set_viewport`/`browser_screenshot`/`android_browser_tier`，以及 `android_vdisplay_status`/`android_vdisplay_create`/`android_vdisplay_input`/`android_vdisplay_destroy`（`BROWSER_TOOLS` 在 `plugins/dsh-android-browser/src/contract.ts:14`，vdisplay 工具在 `plugins/dsh-android-vdisplay/src/index.ts:96/:251/:321/:388`；`android_vdisplay_input` 是 0.14.1 补实现的承诺工具，见坑 163）。
   - 注册：引擎启动时 `apply(ctx)` 里注册（`plugins/dsh-android-browser/src/index.ts:274`、`plugins/dsh-android-vdisplay/src/index.ts:92`），两个插件都在装配集 `scripts/plugin-dirs.json` 内。
   - 只读 HTTP：`GET /api/android/browser/status`（`index.ts:295`，自带令牌/同源鉴权）、`GET /api/android/vdisplay/status`（vdisplay `index.ts:298`，exact 路由 + 回环栅栏 + 405/403）。
-  - 侧栏面板：浏览器面板与虚拟屏 Tab 在注入层/客户端侧（`dsh-client-ui-responsive/src/client/mobile/native-browser-presentation.ts:61`、`plugins/dsh-android-vdisplay/src/client/index.ts:171`），数据面走 `window.androidBridge` 直连壳侧，不经控制队列。
+  - 侧栏面板：浏览器面板与虚拟屏 Tab 在注入层/客户端侧（`dsh-client-ui-responsive/src/client/mobile/native-browser-presentation.ts:70#expect=window.androidBridge`、`plugins/dsh-android-vdisplay/src/client/index.ts:171`），数据面走 `window.androidBridge` 直连壳侧，不经控制队列。
 
 - **运行顺序**：`稳态控制`阶段，与快照/更新无关，引擎起来即注册完毕。浏览器工具先经过统一 `tools/pre-execute`：read 直接继续；approval 向 `approval.request` 请求一次本次授权；confirm 顺序请求两次；取消、拒绝、服务缺席或异常均不进入工具体。后续 `tools.guard` 再作单调拒绝，阻止其它 listener 把未获批调用改成放行；截图还须当前会话的 `sandboxPolicy.overrideOf(session)` 与 `resolve({session})` 都为 `danger-full-access`。每次获准工具调用随后执行 `execute` → `withFailureText` 包裹（失败文本兜底 + 会话注入）→ `call()` 经 `androidPrivilege.controlExec` 入控制队列 → 壳侧 `DeviceControlService.handle` 分支 →（browser）`BrowserHostHolder.control` → `BrowserHost.controlOp` 按 `args.session` 切 Workspace 后执行 op → 回填 `{ok,data|error}` → 动作/导航类工具（open/navigate/click/type/press/back/forward/reload）再补一次 `browserState` 取 `loadState/title/reason`（snapshot/scroll/get_text/wait/screenshot/页签类不补）→ `render` 出模型可见文本。vdisplay 的生命周期工具同路（`callVdOp`），状态工具优先 `vdInfo`、面板/端点也读同一真源。跑完把控制权交回模型，无后续阶段。
 
@@ -1417,7 +1412,7 @@ flowchart TD
   - 控制面：`androidPrivilege.controlExec`（`plugins/dsh-android-bridge/src/index.ts:949`）是唯一通路；它内部按 `TIER_REQUIRED_OPS`（`index.ts:428`）判档位——`browser*` 与 `vdInfo/vdCreate/vdDestroy` 刻意不在列，`vdInput/vdLaunch/vdLaunchApp/vdMoveTask` 在列。
   - 会话键：`sessionScope`（`AsyncLocalStorage`，`tools.ts:193`）自动把 `session` 塞进每个 op 参数；vdisplay 用 `sessionOf(exec)`（`plugins/dsh-android-vdisplay/src/index.ts:162`）。
   - 壳侧真源字段：`BrowserHost.status()` 的 `url/title/loadState/pageGeneration/canGoBack/canGoForward/tabId/tabs/reason`（`BrowserHost.kt:908-939`）、`tabSummaries()` 五字段（`BrowserHost.kt:91-101`）、`lastError`（`BrowserHost.kt:304`）；`VdisplayController.status()` 的 `state/code/guidance/ops/screens/viewers/ownerSessionId`（`VdisplayController.kt:233-268`）。
-  - 面板/客户端：`window.androidBridge.vdisplayStatus/vdisplaySelect/vdisplayBounds/forceDestroyVdisplay`（`AndroidBridge.kt:319/330/326/348`），`vdisplayBounds` 的 `viewerId='files-sidebar'`（`plugins/dsh-android-vdisplay/src/client/index.ts:93`）与壳侧 viewer 仲裁表同名；收起信号 `[data-sidebar-right-expand]`（`dsh-client-ui-responsive/src/client/mobile/browser-auto-place.ts:103#expect=data-sidebar-right-expand`）。
+  - 面板/客户端：`window.androidBridge.vdisplayStatus/vdisplaySelect/vdisplayBounds/forceDestroyVdisplay`（`AndroidBridge.kt:319/330/326/348`），`vdisplayBounds` 的 `viewerId='files-sidebar'`（`plugins/dsh-android-vdisplay/src/client/index.ts:93`）与壳侧 viewer 仲裁表同名；收起信号 `[data-sidebar-right-expand]`（`plugins/dsh-android-vdisplay/src/client/index.ts:188#expect=document.querySelector`）。
   - 环境/事实：`DSH_BROWSER_FACTS`（`facts.ts:50`）、`DSH_ADB_PREFS_PATH`/`TERMUX__PREFIX`/`DSH_HOME` 决定控制令牌读取路径（`index.ts:69-74`），令牌头 `x-dsh-control-token`（`index.ts:31`）。
   - 门禁：`scripts/check-tool-output-schema.mjs`（VARIANTS 覆盖全部 `browser_*`，`scripts/check-tool-output-schema.mjs:153`）、`scripts/check-control-ops.mjs`、`scripts/check-bridge-symmetry.mjs`。
 
@@ -1580,129 +1575,27 @@ flowchart TD
 
 #### S01 引擎侧注入层（三个子仓）
 
-0.14.12 修复入口：固定 rc.1 SettingsRoot 的 panel 直接子项是 `nav` 与 `content`，内部才是 `title/list` 与 `header/options`；`settings-structure.ts#expect=settingsCells` 只发布结构属性，不接管分类点击或改写界面；`mobile-settings.css.ts` 保留横屏同款的并排 DSH Web UI，并为 nav-list/options 分别提供可滚动区域。禁止把它改为手机专属两级页。`SidebarToggle.tsx` 只在 `data-sidebar-collapsed` 时渲染页眉入口；`mobile-form.css.ts` 仅隐藏收起 rail 内上游 `button[data-sidebar-toggle]`，展开后将关闭职责交还给 rail。正反判据分别在 `settings-structure.spec.ts`、`settings-layout-css.spec.ts` 与 `phone-chrome.spec.tsx`。
+本项目的主 Web UI 由固定版本的 DSH Web 前端完整拥有：页面框架、左右栏、会话列表、设置树、输入区、菜单、卡片和响应式行为都由 DSH 渲染。Android 适配插件只接入系统能力，不再复制或重排这些界面。UI 对齐目标与退役范围见 [dsh-client-ui-responsive 设计说明](../../dsh-client-ui-responsive/docs/design.md)。
 
-Touch reorder: `sidebar-reorder.ts` flushes each synthetic React drag phase. On multitouch, cancellation, detach, or out-of-list release, a source-row drop takes the upstream source-id no-op before dragend; dragend alone can commit a stale hover. DataTransfer types must also satisfy the global file-drop listener. The ReactDOM declaration is covered in the source ledger below. Browser-stage lease timers use numeric window timer handles.
-
-
-> 权威源在协调仓同名路径，`dsh-mobile-apk/<同名目录>` 是逐字节镜像（本轮三个子仓 `src`/`lib`/`scripts` 均一致，仅 `dsh-shell-termux/README.md` 有 6 行行尾差异，见漂移行）。行号按 apk 仓副本读取。
-
-- **一句话**：在引擎返回的页面里发布五个 DOM 锚点与若干桥入口（手机形态、会话身份、返回栈、打开路径、弹出面板几何），并给老内核补 polyfill——页面侧一切「安卓味」都从这里进。
-- **入口/触发**：
-  - 引擎侧装载：`scripts/profile-web.cordis.patch.yml` 的 insert 行拉起三个子仓（`shell-termux` 引擎插件、`host-web-compat` 宿主插件、`ui-responsive` 客户端插件）。
-  - 每个 index 响应：`host-web-compat` 用 `ctx.webServer.tapIndex` 在 `</head>` 前注入四段脚本（polyfill + 看门狗 + 主题桥 + 目录选择/打开路径桥）。
-  - 页面事件：客户端插件 `apply()` 装载后，全部由 click/keydown/touchstart-move-end-cancel/MutationObserver/ResizeObserver/定时器驱动；壳侧回呼 `window.__dshBack`、`window.__dshOpenPath`、`window.__dshBridge.onDirectoryPicked`。
-- **运行顺序**：
-  1. 引擎启动、WebUI 被打开：`host-web-compat.apply()` 先做 `assertInjectionsParse`（`dsh-host-web-compat/lib/index.js:770`），失败即抛 → 插件树装载失败、引擎起不来；通过则注册两次 `tapIndex`（`:783` 主体注入、`:791` 静态失败占位）与三条端点 `/api/android/dir-pick/poll`、`/dir-pick/result`、`/open-path`（`:803-878`）。页面先跑注入脚本（主题桥同步取 `getSystemDark`、picker poll 每 500ms、看门狗 40s 判据 + `readyWatch` 500ms 报就绪），再跑上游 boot 与客户端插件。
-  2. 客户端插件装载：`index.ts:125` 的 `apply()` 按固定顺序注入样式表（mobile-form → mobile-settings → composer-row → composer-insets → composer-menu → attachment-picker-menu → trajectory-details → dev-section），再挂各 marker/守卫（`form-marker` `:135`、`composer-popup-guard` `:163`、`trajectory-panels-observer` `:182`、`enter-guard` `:198`、`keyboard-boundary` `:209`、`theme-bridge` `:218`）、注册槽位（`settings.section` ×2、`settings.general.item`、`shell.overlay` ×2、`sidebar.right.pane.tab` ×2）。`conversation.session.header.utilities` 的「在文件中打开」注册已在 0.14.2 P5 按用户反馈退役，当前源码已无该插槽注册；open-with tab 类型仍保留，另注册 AI 浏览器 tab。0.14.5 #335 增加 `mobile/sidebar-gestures.ts`：只在 `html[data-dsh-mobile-form]` 手机形态下，对触屏内容区起手判向（左右各 32 CSS px 留给系统手势），左、右开关分别读写 `localStorage` 的 `dsh.android.sidebarSwipe.left/right`；右滑打开左栏，左滑在左栏已开/主面板选中时回会话；左滑打开右栏，右滑在右栏已开时关闭当前栏。动作仅按水平 64px 阈值提交，横向意图出现时由显式 `passive:false` 的 `touchmove` 监听器及时阻止浏览器横向接管；垂直位移不调用 `preventDefault`，输入控件/标签/按钮/链接、已选中文本、水平滚动容器及非 settings 模态不认领，settings 弹层仍可用手势返回。定向回归为 `dsh-client-ui-responsive/tests/sidebar-gestures.spec.ts` 与 `general-settings.spec.tsx`。随后启动 browser auto-place 轮询（1s）与来件草稿轮询（4s）。
-  3. 交给谁：标记与桥交给壳侧（K04：`dshBackBridge.setAvailable`、`__dshExportResult`、`__dshThemeBridge`、`browserHost*`），控件交给上游 frame 渲染；此后每次返回键/点击/可见性变化回到本块的入口函数。
-  - `shell-termux` 与页面无关：引擎启动时以 `ctx.shell` provider 身份装载；每次 bash 调用由 `resolve()` 捕获本次 `sandboxPolicy.mode` 并盖 Termux env，再由 `execute()` 校验策略。没有真实路径围栏时，`read-only`/`workspace-write` 在 `assertBash()` 与 spawn 前返回 `SANDBOX_UNAVAILABLE`；`danger-full-access` 必须由该次会话显式选择，否则返回 `SANDBOX_SELECTION_REQUIRED`。`DSH_WRITE_MODE` 等环境变量只作诊断/兼容输入；`probe()` 的工具链表被 `plugins/dsh-android-linux-env` 与 `android_toolchain_status` 复用。
-- **嵌套与线程**：调用链最多 3 层，全部书写于页面主线程（JS 单线程），跨语言处才换线程：
-  1. 目录选择：注入脚本 poll → `fetch(/api/android/dir-pick/poll)` → `androidBridge.pickDirectory`（JavaBridge 线程）→ SAF Activity（壳侧主线程）→ 回来经 `__dshBridge.onDirectoryPicked` → `POST /result` → 引擎侧 Promise 结算（引擎线程）。
-  2. 打开路径：document capture click → `window.__dshOpenPath` → `androidBridge.openPathChooser`（JavaBridge 线程）→ 系统选择器。
-  3. 返回键：Activity `OnBackPressedCallback`（主线程）读 `BackGateState` 的 `@Volatile` 缓存（JavaBridge 线程写）→ `evaluateJavascript(window.__dshBack())`（页面主线程关层）→ 层锚点消失（MutationObserver 异步批）→ `dshBackBridge.setAvailable`（JavaBridge 线程，同步跳）。
-  另有定时器：picker poll 500ms、incoming-draft 4s（加最多 100×100ms 等 session scope）、BrowserAutoPlace 1s、browser-tab 300ms/200ms、`useShellState` 轮询（虚拟屏 2s、无障碍 3s）。
-- **耦合**（发布者 → 消费者，全部点名符号）：
-  - `html[data-dsh-mobile-form]` ← `form-marker.ts:110#expect=data-dsh-mobile-form`；消费者：`mobile-form.css.ts:26,48,55`、`mobile-settings.css.ts:6#expect=html%5Bdata-dsh-mobile-form%5D`、`composer-menu.css.ts:25-41`、`trajectory-details.css.ts:16`、`reference-menu.ts:133`、`back-stack.ts:347`，以及引擎树补丁 `reference-drill-F6` 的 `document.documentElement.hasAttribute("data-dsh-mobile-form")`（`scripts/patches/apply-patches.mjs:1461#expect=reference%20drill`）与设备侧 `scripts/verify-webview-015.mjs:11`。
-  - `[data-dsh-frame]` ← `form-marker.ts:118#expect=FRAME_TAG`（由 `[data-rightbar-col]` 反查）；消费者：`mobile-form.css.ts`、`keyboard-boundary.ts:67`、`MobileChrome.tsx:35`、`SidebarToggle.tsx:33#expect=data-sidebar-collapsed`、`back-stack.ts:445`、`host-web-compat` 看门狗 `rendered()`（`dsh-host-web-compat/lib/index.js:136`）。
-    `SidebarToggle.tsx` 的状态语义是收起时显示页眉 opener、展开时隐藏；收起 rail 内上游按钮由 `mobile-form.css.ts` 隐藏，展开后恢复为 drawer closer。
-  - `html[data-dsh-modal-open]` / `[data-dsh-settings-dialog]` ← `form-marker.ts:104#expect=data-dsh-modal-open` / `:102#expect=SETTINGS_TAG`；前者反映任意受跟踪的 aria-modal surface，后者只标设置面板。设置专用事实 `data-dsh-settings-open` 由 `form-marker.ts:105#expect=SETTINGS_OPEN_TAG` 发布；消费者 `mobile-form.css.ts:101#expect=data-dsh-settings-open`（仅设置打开时保持抽屉在位）、`mobile-settings.css.ts:6#expect=html%5Bdata-dsh-mobile-form%5D`、`settings-document.ts:72#expect=data-dsh-settings-dialog`。设置候选须在本方 `[data-dsh-frame]` 外；frame 内直接带 `nav` 的 drawer modal 不得被标记为设置面板（`form-marker.ts:97#expect=DRAWER_FRAME_SELECTOR`）。此边界由 `[data-rightbar-col]` 反查发布，不依赖上游未提供的 `data-sidebar-drawer`。
-  - 设置树标签由 `settings-structure.ts#expect=settingsCells` 发布：`data-dsh-settings-nav-list/content/header/options`；只供 `mobile-settings.css.ts` 排版，不添加/隐藏/重排上游控件；回归夹具遵循 rc.1 `nav(title,list) + content(header,options)`，见 `tests/settings-structure.spec.ts`。
-  - `[data-dsh-mobile-topbar]` ← `MobileChrome.tsx:85`；消费者：`composer-popup-guard.ts:140`（取 topbarBottom 算高度钳制）。`data-dsh-mobile-mask`（`MobileChrome.tsx:82`）两仓全量 grep 无消费者，仅发布。
-  - 弹出面板几何：`composer-popup-guard.ts:165/171/184` 写 `--dsh-mobile-popup-max-width`、`--dsh-mobile-popup-shift`、`--dsh-mobile-menu-max-height` 与 `[data-dsh-popup]`；消费者 `composer-menu.css.ts:25-48`。
-  - 引用菜单多选：`data-dsh-ref-check/-on/-key/-bar/-bar-count/-add` ← `reference-menu.ts:211-244`；消费者 `REFERENCE_BAR_CSS`（同文件 `:57`）+ 内联 `style.setProperty(..., 'important')`。
-  - 附件来源菜单：`data-dsh-attachment-picker-menu/-item/-trigger` ← `attachment-picker-menu.ts:215/221/189`；消费者 `ATTACHMENT_PICKER_MENU_CSS`。自身触发器由 `:173` 的 `syncMounts` 挂进上游插槽锚点 `[data-slot="conversation.input.left"]`（`SLOT_SELECTOR`，`:32`）；该锚点由上游 ui-renderer 以 `display:contents` 渲染，故按钮是 `.tools` 行的 flex 项。返回栈侧：`back-stack.ts:95` 的 `ATTACHMENT_MENU_SELECTOR` 认同一属性，作为 `attachment-menu` 层（`back-stack.ts:426`）。
-  - `html[data-dsh-session-id]` ← `session-marker.ts:67`；消费者：`browser-auto-place.ts:85`（`domCurrentSessionId`）、`dsh-host-web-compat/lib/index.js:480`（随 open-path 请求带 sessionId）。
-  - `html[data-dsh-incoming-draft-consumer]` / `-poll` ← `index.ts:444` / `incoming-draft.ts:86-189`；消费者：测试 `dsh-client-ui-responsive/tests/incoming-draft.spec.ts:166`（页面侧标记，壳侧不读）。
-  - `dsh-mobile-ledger-raised` / `dsh-mobile-hide-session-log-dialog` class ← `trajectory-panels-observer.ts:43` / `session-log-dialog-observer.ts:56`；消费者 `trajectory-details.css.ts:44` / `session-log-dialog.css.ts:40`。
-  - 快照管理（#288）：`index.ts:142` 安装样式、`:144` attach `SnapshotPanelsObserver`；`snapshot-panels-observer.ts:47` 的 `snapshotOwners` 按 `conversation.header` / `conversation.session.header` / `conversation.session.header.actions` 真实包装链认领。`:111` 同步 header/titleRow 两组租约，`:145` 在最后持有者释放时移除自有 class；`snapshot-panels.css.ts:15` 用包装链抬 header，`:19` 仅解除承载面板的 titleRow 包含约束。打开 → MutationObserver 认领 → 两组 class → 面板 fixed 以视口定位；关闭/移除/插槽重分类 → 释放 → 上游 query container 恢复。覆盖账本已显式登记两源文件；真因与反证见 `docs/AGENTS/gotchas.md` 坑 239。
-  - 壳写页读的变量：`--dsh-android-system-top/-bottom/--dsh-android-ime-bottom/-left/-right` ← `MainActivity.kt:1669#expect=pushWebInsets`（pushWebInsets）；消费者 `mobile-form.css.ts:21,45,74`、`composer-insets.css.ts:13-17`、`keyboard-boundary.ts:94`。
-  - 插件内服务面：`ctx.layout.toggleSidebar`（`index.ts:281`、`back-stack.ts:286`）、`ctx.sidebarRight.openTabIn`（`browser-auto-place.ts:239`）、`ctx.sessions.refresh/open/scope` 与 `ctx.conversation.addFiles`（`index.ts:517-543`）。
-  - 端点面：本块自建 `/api/android/dir-pick/*`、`/api/android/open-path`（token 门 `x-dsh-pick-token`，`dsh-host-web-compat/lib/index.js:802`）；页面另有消费 `/api/android/file-incoming*`（`plugins/dsh-android-file-open/src/index.ts:527`）与 `/api/android/runtime-cache/*`（`plugins/dsh-android-linux-env/src/index.ts:388`）。
-  - **与壳侧桥（K04）的调用点清单**（`androidBridge` 方法 → 页面调用点）：
-    - `getSystemDark` → `dsh-host-web-compat/lib/index.js:389`、`theme-bridge.ts:81`
-    - `pickDirectory` → `dsh-host-web-compat/lib/index.js:430`；`getPickToken` → `dsh-host-web-compat/lib/index.js:400,424,515`
-    - `openPathChooser` → `dsh-host-web-compat/lib/index.js:411`、`open-path.ts:33`、`settings-document.ts:78`；`openNativePath` 回退 → `dsh-host-web-compat/lib/index.js:416`
-    - `settingsPath` / `exportSettingsDocument` → `settings-document.ts:34,50`（页面类型面未声明，已在 `scripts/bridge-symmetry-baseline.json` 登记）
-    - `getImmersiveMode` / `setImmersiveMode` → `GeneralSettings.tsx:43,71`
-    - `getDevLogEnabled` / `setDevLogEnabled` → `DevSection.tsx:60,186`；`getOverlayEnabled` / `setOverlayEnabled` → `DevSection.tsx:31,199`
-    - `hasAllFilesAccess` → `DevSection.tsx:72`；`exportConfig` / `importConfig` → `DevSection.tsx:220,230`
-    - `restartEngine` / `shutdownToGuide` / `reloadWebUI` / `openConsole` → `DevSection.tsx:152,162,170,178`
-    - `getScreenScope` / `setScreenScope` → `phone-control.tsx:170,283`
-    - `vdisplayStatus` → `phone-control.tsx:180`；`getVdisplayScale` / `setVdisplayScale` → `phone-control.tsx:196,288`
-    - `getVdisplayFloatEnabled` / `setVdisplayFloatEnabled` → `phone-control.tsx:206,293`；`a11yStatus` / `openA11ySettings` / `unlockRestrictedSettings` → `phone-control.tsx:240,298,303`
-    - `forceDestroyVdisplay` → `phone-control.tsx:363`；`getNotifySetting` / `setNotifySetting` → `notify-settings.tsx:66,86`
-    - `shizukuStatus` / `openShizukuManager` / `openExternalLink` → `phone-control.tsx:220,346,326`（外链 key 只有 `shizuku-download` / `shizuku-tutorial`，URL 表在壳侧 `ExternalLinks.kt`）
-    - `incomingWorkspacePath` → `incoming-draft.ts:150`；`browserHostStatus` → `browser-auto-place.ts:45,109` 与 `index.ts:380`
-    - `browserHostBounds` → `native-browser-presentation.ts:61`；`browserHostViewport` → `native-browser-adapter.ts:203`；`browserHostIdentity` → `native-browser-adapter.ts:202`；`browserHostShow`/`browserHostHide`/`browserHostReload` 随 0.14.3 上游浏览器面板并入注入层后不再单独跨桥（可见性改由 `browserHostBounds.visible` 单通道下推）
-    - 本块无页面调用点（归壳侧/文件面板/浏览器插件）：`version`、`checkEngine`、`keepScreenOn`、`showNotification`、`copyText`、`requestAllFilesAccess`、`vdisplayCreate`、`vdisplayDestroy`、`vdisplayBounds`、`vdisplaySelect`、`browserHostClose`
-  - **非 androidBridge 的页壳契约**：`window.dshBackBridge.setAvailable` ← `back-stack.ts:590#expect=dshBackBridge`（消费方 `MainActivity.kt:807#expect=val%20running%20%3D%20probe.optBoolean(%22running%22%2C%20false)` 注入、`BackGate.kt:126`）；`window.__dshBack` / `__dshBackDepth` 被 `BackGate.kt:38,44` 求值；`window.__dshExportResult` ← `index.ts:432`，生产方 `MainActivity.kt:1035#expect=override%20fun%20onReceivedError(view%3A%20WebView%2C%20errorCode%3A%20Int%2C%20description%3A%20String%2C%20failingUrl%3A%20String)%20%7B`、`DownloadSaver.kt:61`；`window.__dshThemeBridge.setDark` ← `theme-bridge.ts:68` 与 `dsh-host-web-compat/lib/index.js:381`，生产方 `MainActivity.kt:884#expect=%7D,886`；`window.__dshBridge.onDirectoryPicked/onPermissionRequired` ← `dsh-host-web-compat/lib/index.js:398-405`，生产方 `ConfigTransfer.kt:117,241`；`window.__dshOpenPath` ← `dsh-host-web-compat/lib/index.js:409`；看门狗/就绪行经 `console.error` 的 `[dsh-boot-stall]` / `[dsh-boot-ready]` 前缀（`dsh-host-web-compat/lib/index.js:302,267`）被 `LogCollector.kt:740,742` 与 `EngineStartFlow.kt:206,224` 消费。客户端插件失败的第三条契约行 `[dsh-boot-failed]` 同族（同走 console.error）：页面侧常量 `dsh-host-web-compat/lib/index.js:137`、发布 `dsh-host-web-compat/lib/index.js:360-372`（失败判据 `dsh-host-web-compat/lib/index.js:295-303`）；壳侧消费链 `LogCollector.kt:755`（前缀常量）→ `LogCollector.kt:780`（第三分支）→ `MainActivity.kt:1061#expect=%2F%2F%20the%20exact%20local%20origin%20may%20proceed%2C%20and%20ownership%20is%20proved%20asynchronously%20before%20cookies%20change.` → `EngineStartFlow.kt:317`（回滚编排 `EngineStartFlow.kt:350`）→ `UndoGate.kt:165` / `PluginMounts.kt:259`、`PluginMounts.kt:470`；设备判据 `scripts/verify-client-plugin-fail-recovery.mjs:1-24`。
-- **关键坐标**：
-  - `dsh-host-web-compat/lib/index.js:552` — `POLYFILL_SCRIPT_BODY` 逐段补分号 + 换行装配（坑 61 防线①）。
-  - `dsh-host-web-compat/lib/index.js:770` — 装载期 `assertInjectionsParse` 四段脚本逐段 `new Function` 断言（防线②）。
-  - `dsh-host-web-compat/lib/index.js:783` 与 `:791` — 两次 `tapIndex`：前者带 `x-dsh-pick-token` 幂等哨兵，后者是独立哨兵的静态失败占位。
-  - `dsh-client-ui-responsive/src/client/mobile/form-marker.ts:110#expect=data-dsh-mobile-form` — `html[data-dsh-mobile-form]` 唯一发布点。
-  - `dsh-client-ui-responsive/src/client/mobile/sidebar-gestures.ts` — `touchstart/move/end/cancel` 内容区仲裁唯一入口；左、右设置键分别为 `dsh.android.sidebarSwipe.left` 与 `.right`，缺省启用、`0` 关闭；32 CSS px 外边条不拦截，64px 横移判动作；多指 start/move 会取消，touchend 仅在无剩余触点时结算；仅受 `data-dsh-mobile-form` 门控。
-  - `dsh-client-ui-responsive/src/client/mobile/back-stack.ts:340#expect=window.__dshBack` — `window.__dshBack` 入口（壳侧返回键唯一可达点）；`:587#expect=dshBackBridge` 是上行 `setAvailable` 的唯一出口。
-  - `dsh-client-ui-responsive/src/client/mobile/back-stack.ts:491#expect=drawerDialog` — 已打开 drawer 的 frame 内直接带 `nav` 的 aria-modal root 不重复记层；独立 body-level 设置 dialog 仍作为上层保留。
-  - `dsh-client-ui-responsive/src/client/mobile/native-browser-presentation.ts:61` — `browserHostBounds` 跨桥下推（原生覆盖层几何/可见性的唯一来源）。
-  - `dsh-client-ui-responsive/src/client/enter-guard.ts:63` — 形态门用 `window.innerWidth` 直读（与标记不同源）。
-  - `dsh-host-web-compat/lib/index.js:328` — `publishReady()` 判据 = `rendered() && !bootPagePresent()`；失败页满足旧 `rendered()`（`#root` 有子节点），故必须排除启动页仍在场（`dsh-host-web-compat/lib/index.js:286`）。
-  - `dsh-host-web-compat/lib/index.js:307` — `failedIds()`：容器内 `[class*=failedItem]` 的 textContent，按形状/长度过滤、去重、最多 8 项。
-  - `dsh-shell-termux/src/index.ts:184` — `DSH_WRITE_MODE/DSH_WORKSPACE/DSH_SHARED_DIRS` 拒绝被 `request.env` 覆盖。
-- **不变量**：
-  1. 注入脚本必须「装配后可解析」：`POLYFILL_SCRIPT_BODY` 给每段补分号，`apply()` 装载期断言失败即抛，`scripts/smoke-injections.mjs` 为门禁③。违反 → 整个 `<script>` 被解析器拒绝，页面报 `Iterator is not defined` / `Promise.withResolvers is not a function`，表现为 Failed to load plugins（坑 61）。
-  2. 手机形态只有 `html[data-dsh-mobile-form]` 一个锚点（767px 单一来源）。违反 → 弹出面板越界、设置页窄条、轨迹详情被顶栏遮（坑 59）；反面是宽视口注入手机专用 chrome。
-  3. 任何 `tapIndex` 注入体的**求值后**文本不得含裸 `</head>` 或 `</script>`（第二次注入的 `replace` 会命中注释里的 `</head>`，把内容塞进 `<script>` 内部并渲染成满屏源码）。判据在 `dsh-host-web-compat/scripts/boot-watchdog.test.mjs:231`。
-  4. `/api/android/dir-pick/*` 与 `/open-path` fail-closed：`DSH_PICK_TOKEN` 为空一律 403（`dsh-host-web-compat/lib/index.js:802`）；只有 `/storage/emulated/0/` 前缀且无 `..` 的路径被接受（`:726-730`）。
-  5. 返回栈只通过「层锚点消失」收敛，观测不到或关不掉的层必须消费返回键，绝不退出应用（`back-stack.ts:35-38`）。手机 drawer 自身已是独立返回层，其 frame 内直接带 `nav` 的 aria-modal root 不得重复入栈；设置等独立 body-level dialog 仍作为后续层（`back-stack.ts:491#expect=drawerDialog`、`:496#expect=drawerDialog`）。
-  6. 壳侧状态展示一律回读真源：组件不得在 `useState` 初值器直读桥（`use-shell-state.ts:26` 的单入口；`tests/shell-state-discipline.spec.ts` 守）。违反 → 从系统设置返回后显示旧值。
-  7. `publishReady()` 不得在启动页仍在场时发出：上游 boot 页与失败页都满足旧的「`#root` 有子节点」判据，故就绪判据必须叠加 `!bootPagePresent()`。违反 → 失败页被当成「已就绪」，壳侧 L-1 stall 诊断永不触发、`pageRecovery.pageReady()` 每拍清零 `loadErrorRetryUsed`（真因与设备证据见 `docs/AGENTS/gotchas.md` 坑 245）。
-- **症状 → 排查**：
-  - 白屏/停在 Loading plugins，且服务出的 HTML 里能看到垫片文本 → 装配后不可解析（坑 61）：跑 `node dsh-host-web-compat/scripts/smoke-injections.mjs`（逐段解析 + 页面标记）；看 `files/boot-diag.log`（`adb shell "run-as com.snoworwind.pocketharness cat files/boot-diag.log"`）里的 `dsh-boot-diag` 行与 `pageSideRuntime=`；logcat 过滤 `[dsh-boot-stall]` / `[dsh-boot-ready]`；grep `POLYFILL_SCRIPT_BODY`、`assertInjectionsParse`。
-  - 抽屉打不开、设置页只显示窄条、轨迹详情被遮 → 锚点没发布或没人消费（坑 59）：CDP 求值 `document.documentElement.hasAttribute('data-dsh-mobile-form')`、`document.querySelectorAll('[data-dsh-frame]').length`、`document.querySelector('[data-dsh-mobile-topbar]')`;再 grep 这五个锚点确认消费方样式在场。
-  - 点工具行文件链接弹「无法打开该文件」或点击无反应 → 会话身份/端点：CDP 读 `document.documentElement.getAttribute('data-dsh-session-id')`；页面 console 的 `[dsh-open-path]` 警告与底部提示条；端点返回体里的 `error` 取值 `session-unknown` / `not-found-in-session` / `not-found`（`dsh-host-web-compat/lib/index.js:895-940`）。
-  - 目录选择器连弹多次或选完无反应 → poll 一次性投递与 token：`adb logcat` 看 SAF 与 `dsh-log`；grep `takePoll`（同一 requestId 只投一次）、`x-dsh-pick-token`；返回 `403 forbidden` 即 `DSH_PICK_TOKEN` 与页面 `getPickToken()` 不一致（`EngineManager.kt:2373#expect=%22DSH_PICK_TOKEN%22%20to%20%28pickToken%20%3F%3A%20%22%22%29`）。
-  - 返回键直接退出应用或层数不降 → `adb logcat -d | grep dsh-back`（`BackGate.TAG`）；CDP 读 `window.__dshBackDepth` / `__dshBackKinds`；drawer 打开时应只出现一个 `drawer`，独立设置 dialog 再出现 `dialog`。层判据 grep `RIGHT_FULLSCREEN_SELECTOR`（`data-sidebar-right-open` 是权威 open 信号）、`data-sidebar-right-expand`。附件来源菜单开着时应看到 `attachment-menu` 层（`back-stack.ts:95`），`__dshBack()` 关菜单而非退应用。
-- **可疑点**：
-  - `dsh-host-web-compat/scripts/smoke-injections.mjs:50` + `dsh-host-web-compat/lib/index.js:783,791`（已确认，静态可推）：脚本断言 `transforms.length === 1`，而 `apply()` 现在注册两次 `tapIndex`（polyfill 块 + 静态占位块）→ 该断言必红、`npm test` 与子仓 PR gate 的「注入冒烟」整条红。这是坑 61 防线③（门禁）与源码脱同步；apk 仓自己的 `.github/workflows` 不跑这个脚本，所以本仓 CI 不会暴露。修法：断言改 `>= 1` 或按哨兵分别断言。
-  - `dsh-client-ui-responsive/src/client/mobile/attachment-picker-menu.ts:184`（**2026-09-25 已修，D2/D4 + D8**）：旧实现按「隐藏 file input 之前最近的 BUTTON」认领纸夹，0.1.7-rc.1 里那个 BUTTON 是指令加号（`aria-haspopup=listbox`、`onClick=onToggleCommandMenu`），onClickCapture 的 preventDefault + stopImmediatePropagation 使其指令菜单永不打开；同时该菜单不是返回栈的一层（`BackGate.decide` 在「无历史 + 无层」时 `FINISH_ACTIVITY`）。现修法：不认领任何上游按钮，自有回形针挂 `conversation.input.left` 插槽（`:173`），模型选择器另以 `data-dsh-android-model-menu` 登记 `model-menu`，返回沿上游 Escape 逻辑逐级退出（坑 254）；附件菜单登记为 `attachment-menu` 层（`back-stack.ts:426`）。回归判据见 `dsh-client-ui-responsive/tests/attachment-picker-menu.spec.ts:80`、`dsh-client-ui-responsive/tests/back-stack.spec.ts:311#expect=attachment-menu`。
-  - `dsh-client-ui-responsive/src/client/mobile/native-browser-presentation.ts:44-95`（已确认，COMPAT-REVIEW N-9 已登记；0.14.3 追版后 `publishBounds` 整体迁入本文件）：`publishBounds` 每次都做 `getBoundingClientRect` + `getComputedStyle` + 跨桥 `browserHostBounds`，无「上次元组」去重，而 `watchStageVisibility` 在 `[style,class,hidden,...]` 任意属性变化时按帧触发 → 流式输出期间可能每帧一次桥调用与原生 `setStageBounds`。
-  - `dsh-client-ui-responsive/src/client/enter-guard.ts:63`（未证实）：767 形态门在本块有多个副本——`enter-guard` 读 `window.innerWidth`，`keyboard-boundary.ts:48`、`reference-menu.ts:45`、`mobile-form.css.ts:25`、`MobileChrome.module.css:18` 各自写 `(max-width: 767px)`。视口与 `matchMedia` 在同一帧不一致（旋转/缩放/滚动条）时，Enter 守卫与已发布标记会给出不同答案；`coord:docs/STATE-STALENESS-AUDIT-2026-09-12.md:196` 已把这条列为已知多副本。
-  - `dsh-client-ui-responsive/src/client/mobile/form-marker.ts:58#expect=observer.observe`（属性切换潜伏项）：`syncModal` 只观察 `childList` 不观察 `attributes`；上游若只切换既有 dialog 的 aria 属性，modal 标记可能滞留或缺失，`coord:docs/STATE-STALENESS-AUDIT-2026-09-12.md:681` 已记。rc.1 另有已确认的 drawer 误认设置问题：drawer 自身带直接 nav 的 aria-modal 被选作设置面板；现以 frame 边界排除并有单测覆盖，详见坑 641。
-
-```mermaid
-flowchart TD
-  T1["引擎返回 index.html"] --> T2["注入层两次 tapIndex 写文档 head"]
-  T2 --> T3{"装载期逐段解析断言"}
-  T3 -->|"失败"| F1["插件装载抛错 引擎起不来"]
-  T3 -->|"通过"| T4["页面先跑 polyfill 看门狗 主题桥 picker"]
-  T4 --> T5["ui-responsive apply 注入样式与标记"]
-  T5 --> G1{"767px 手机形态"}
-  G1 -->|"是"| G2["顶栏 抽屉 弹出面板几何钳制"]
-  G1 -->|"否"| G3["桌面形态 只留桥与槽位"]
-  T4 --> P1["picker 每 500ms 领目录请求"]
-  P1 --> B1["调 pickDirectory 交 SAF"]
-  B1 --> B2{"返回路径在存储根且无上级目录符"}
-  B2 -->|"否"| F2["拒绝或按取消结算 客户端报错"]
-  B2 -->|"是"| B3["回传 dir-pick result 解锁引擎侧选择"]
-  T5 --> S1["发布 data-dsh-session-id"]
-  S1 --> C1["点工具行文件链接"]
-  C1 --> C2["POST open-path 带 sessionId"]
-  C2 --> C3{"该会话 cwd 内文件存在"}
-  C3 -->|"否"| F3["页面提示 无法打开该文件"]
-  C3 -->|"是"| O1["__dshOpenPath 交系统选择器"]
-  T5 --> K1["发布 __dshBack 并上行 setAvailable"]
-  K1 --> K2{"返回键 且 有页面层"}
-  K2 -->|"有"| K3["关最上层 锚点消失后降深度"]
-  K2 -->|"无"| K4["交壳侧历史或 finish 应用"]
-```
-
-漂移：`dsh-mobile-apk/docs/AGENTS/gotchas.md:103`（坑 61）说防线③是「常驻 `node dsh-host-web-compat/scripts/smoke-injections.mjs` 门禁」，源码 `dsh-host-web-compat/lib/index.js:783,791` 已是两次 `tapIndex`，而 `dsh-host-web-compat/scripts/smoke-injections.mjs:50` 仍断言 `transforms.length === 1` —— 该门禁当下是红的（apk 仓 `.github/workflows` 不跑它）。
-
-- 已修（2026-10-31）：现行 BRIDGE-API 方法清单已与 `AndroidBridge.kt` 同步，包含通知设置 getter/setter。
-
-漂移：apk 仓 `dsh-shell-termux/README.md` 与协调仓同名副本不是逐字节镜像（6 行行尾 CRLF/LF 差异，正文逐字相同，无功能影响）。
+- 入口与装载：
+  - profile-web.cordis.patch.yml 把 dsh-shell-termux、dsh-host-web-compat、dsh-client-ui-responsive 注入固定快照；host-web-compat 在每个 index 响应前补旧 WebView 缺失的浏览器 API、主题/文件桥和启动诊断。
+  - dsh-client-ui-responsive/src/client/index.ts:75#expect=export%20function%20apply 的 apply() 只挂 Android 系统 inset/IME、窄视口事实、键盘边界、系统主题、系统返回桥、Android 设置槽位、BrowserHost/打开方式标签、文件/通知/导出桥。
+  - 系统栏和输入法 inset 写入 --dsh-android-* 变量；适配样式只消费这些变量，不设置 DSH 页面组件的尺寸、顺序、显隐或布局。对应发布端是 MainActivity.kt:1669#expect=private%20fun%20pushWebInsets
+- 仍然依赖页面结构的窄边界：
+  - dsh-client-ui-responsive/src/client/mobile/form-marker.ts:11#expect=const%20MOBILE_FORM_ATTR 只发布窄视口兼容标记和 Android frame 标记；frame 从上游 [data-rightbar-col] 所在根元素确定。标记不分类 modal、不标记 settings 树，也不操控 sidebar/control DOM。
+  - keyboard-boundary.ts 只沿 Android frame 处理键盘可视边界；settings-document.ts 只用标准 [role=dialog][aria-modal=true] 找原生设置对话框并接系统文件选择器。
+  - back-stack.ts:72#expect=const%20DIALOG_SELECTOR 观察 DSH 原生 drawer、dialog、右栏全屏、触发菜单和主面板。回退时调用相应 DSH 控件/公开 layout service，再由 DOM 事实同步给 dshBackBridge；不构造自定义返回按钮或菜单。
+- Android 专属 UI：
+  - 设置通过 settings.section、settings.general.item 插槽新增 Android 控制项，保留 DSH 设置根组件和原生分类布局；导出结果是独立的 shell.overlay。
+  - BrowserHost 是 Android 专属右栏 tab，依赖 DSH sidebarRight/sidebarRightTabs 服务，原生 WebView 的几何与身份仍由 native-browser-presentation.ts / native-browser-adapter.ts 下推。
+  - 外部文件/分享草稿、通知落点、系统主题、SAF 目录/文件选择和导出回执仍通过 Android 桥接；这些功能不拥有 DSH 的导航、会话列表或输入区视觉。
+- 更新规则：DSH 版本升级仍需要按其公开 slot/service 与少量稳定 DOM 契约做回归；不要靠新增 selector/CSS 追着上游组件树补丁式调整。当前依赖版本在 package manifest 与来源构建锁中固定，升级依赖、重建子仓副本并运行组件回归后再确认兼容性。
+- 不变量：
+  1. 主界面结构与响应式行为来自 DSH；Android 全局样式只处理系统安全区和 IME。
+  2. Android 专属内容以 DSH slots/services 加入，不能复制替换 DSH 页面组件。
+  3. 系统返回层只观测原生 DSH 状态并触发原生关闭路径；没有可关闭层时才由壳侧策略决定是否结束页面。
+  4. dsh-host-web-compat 注入脚本装载前逐段解析断言；polyfill 与启动/失败诊断继续由 host compat 管理。
+- 回归证据：客户端单测位于 dsh-client-ui-responsive/tests/；针对 WebView 的静态探针 scripts/verify-webview-015.mjs 检查 Android bridge/frame 与退役 UI 标记不再出现。正式 Release 再按 §2.1 做设备验收。
 
 ### 构建、门禁与设备验收
 
@@ -1730,7 +1623,7 @@ flowchart TD
 - **耦合**：
   - `scripts/plugin-dirs.json` 的 `dirs`/`externals` 是注入集唯一出处：ps1:174-178 读它、`check-inject-completeness.mjs:37-38` 也读它；增删包只改这一处。
   - `profile-web.cordis.patch.yml` 的 `name:` 行集合 ↔ 注入包 package.json 的 name：`check-patch-mounts.mjs:28-40` 双向差集（挂载 ⊇ 注入，且反向差集只允许 `@deepseek-ai/*` 在挂载侧）。
-  - registry.json 的 `scope` 分区：`engine` 归快照段（build-snapshot-013.mjs:294,297），`vendor` 归打包段（build-apk-013.ps1:211）；`marker` 由 build-snapshot-013.mjs:300-311 逐条复查，`requires` 由 apply-patches.mjs:2497#expect=requirementFailure 提前诊断。
+  - registry.json 的 `scope` 分区：`engine` 归快照段（build-snapshot-013.mjs:294,297），`vendor` 归打包段（build-apk-013.ps1:211）；`marker` 由 build-snapshot-013.mjs:300-311 逐条复查，`requires` 由 apply-patches.mjs:2490#expect=requirementFailure 提前诊断。
   - 补丁变换只用 `replaceOnce` / `replaceOnceRe` 校验锚点唯一；只有可选旧形态迁移可用 `replaceAtMostOnce` 变体。`scripts/patches/tests/replace-once.test.mjs` 对真实 ArkWeb 正则锚点造重复负控，runner 必须失败且保持目标文件不变。
   - 环境变量面：`DSH_INJECT_PRESET`（ps1:17 写入 → inject-all.py:174 决定重压缩 preset，`-Fast`=1、发布档默认 9）、`SOURCE_DATE_EPOCH`（build-snapshot-013.mjs:982 与 inject-all.py:304 共用的固定 mtime，保可复现）、`DSH_SNAPSHOT_STAGE`/`DSH_NO_WSL_REEXEC`/`DSH_PROFILE_PATCH_RELOAD`（:88/:31/:149）、`XZ_THREADS`/`DSH_CPU_THREADS`（scripts/lib/shell.mjs:31）。
   - 装配 profile 常量 `PROFILES=(web,headless)` 与负控 `headless-bad`（inject-all.py:32,35）必须与 `check-inject-completeness.mjs:28` 默认 `--profiles web,headless` 一致；权威 patch 只覆盖前两者、负控显式跳过（inject-all.py:273-281）。
@@ -1744,13 +1637,13 @@ flowchart TD
   - `scripts/build-apk-engine.mjs:33` / `:86`（共用 assemble 与签名验证入口）；调用测试锁住本地、云端、发布三路汇合：`scripts/build-apk-engine.test.mjs:121`
   - `scripts/patches/data/registry-scan-c4.mjs:11`（同步 flush 的 Loader 临时索引与 manifest 复用；详细设备计时/预算见 RUNTIME-PATCHES §7.6，自动补给的异步 checkpoint 见 model-capability README）
   - `scripts/patches/data/client-index-loader-barrier.mjs:3`（G2：首页HTML在快照插件图前等待同一host Loader收敛；静态资源不参与等待）
-  - `scripts/patches/data/undo-safe-transaction-snippet.mjs:1`（Safe Mode 事务代码模板；由 `apply-patches.mjs:627#expect=const%20transaction` 注入 vendor 快照代码）
+  - `scripts/patches/data/undo-safe-transaction-snippet.mjs:1`（Safe Mode 事务代码模板；由 `apply-patches.mjs:620#expect=const%20transaction` 注入 vendor 快照代码）
   - `scripts/build-apk-013.ps1:427`（被拒非空即 exit 1 的收口）
   - `scripts/build-snapshot-013.mjs:31`（Windows 宿主重入 WSL 的判据）
   - `scripts/build-snapshot-013.mjs:297`（引擎树补丁 --apply --scope engine）
   - `scripts/build-snapshot-013.mjs:985`（归档 tar | xz，快照产物的唯一产出点）
   - `scripts/inject-all.py:321`（补缺循环：包内新增文件补 push，坑 63 的主链修复点）
-  - `scripts/patches/apply-patches.mjs:2463#expect=const%20mode`（mode 推导：无 --apply 即 check）与 `scripts/patches/apply-patches.mjs:2467#expect=const%20scope`（--scope 默认 vendor）
+  - `scripts/patches/apply-patches.mjs:2456#expect=const%20mode`（mode 推导：无 --apply 即 check）与 `scripts/patches/apply-patches.mjs:2460#expect=const%20scope`（--scope 默认 vendor）
 - **不变量**：
   - 注入集与 patch 挂载集双向一致，注入成员集合与源包逐项一致且 lib 内相对 import 可解析（`check-patch-mounts.mjs`、`check-inject-completeness.mjs:98-115`）——违反的症状是设备侧 `ERR_MODULE_NOT_FOUND`、引擎启动即死。
   - 新包目录与补缺文件父目录由 `inject-all.py` 的 `ensure_parent_dirs` 共用 `seen_dirs` 记账，包含输入中已有空包目录的情况；不得先裸写目录再补父目录，否则双构建读取器拒绝重复成员。覆盖：`scripts/source-build/test_inject_all.py` 新包与仅目录包两种夹具（坑 439）。
@@ -1767,7 +1660,7 @@ flowchart TD
   - 引擎补丁「marker 全绿但行为不对」：看快照构建日志里四项行为回归（boot-pending-G1 / pi-toolcall-G2 / arkweb-resource-protocol-H1 / external-draft-conversation-seam-J1，build-snapshot-013.mjs:315-349）与 `apply-patches.mjs --list`。
 - **可疑点**：
   1. `scripts/build-apk-013.ps1:166` 无条件重设 `$apkDir = Join-Path $Root "dsh-mobile-apk"`，把 `:22-23` 的「apk 仓自包含布局」检测**作废**（已确认，代码可判）：从 apk 仓根直跑时该目录不存在，第 3 步写 assets 与 `Push-Location` 会失败；与脚本自身注释（`:20-21` 声称两种布局共用同一份脚本）矛盾。当前文档口径是「在协调仓根执行」（apk AGENTS.md:30），故影响为潜在；协调仓 `coord:docs/review/state-audit/build-runtime.md:385` 已记录同一条。
-  2. `scripts/build-apk-013.ps1:206-212` 注释称 vendor 补丁「默认 ensure 语义（缺席即施加）」，实际调用不带 `--apply`/`--scope`，`scripts/patches/apply-patches.mjs:2463#expect=const%20mode`、`scripts/patches/apply-patches.mjs:2467#expect=const%20scope` 推导为 `mode=check`（已确认）：只校验不施加，补丁必须先打在入库的 `vendor/*/lib/` 里；缺一条即 `Deny-Abi` 拒打包（失败关闭，但排查时按注释预期会找不到「自动施加」这一步）。0.13.7-CERTIFICATION.md:11 亦记 `mode=check`，即注释是旧语义残留。
+  2. `scripts/build-apk-013.ps1:206-212` 注释称 vendor 补丁「默认 ensure 语义（缺席即施加）」，实际调用不带 `--apply`/`--scope`，`scripts/patches/apply-patches.mjs:2456#expect=const%20mode`、`scripts/patches/apply-patches.mjs:2460#expect=const%20scope` 推导为 `mode=check`（已确认）：只校验不施加，补丁必须先打在入库的 `vendor/*/lib/` 里；缺一条即 `Deny-Abi` 拒打包（失败关闭，但排查时按注释预期会找不到「自动施加」这一步）。0.13.7-CERTIFICATION.md:11 亦记 `mode=check`，即注释是旧语义残留。
   3. `scripts/make-snapshot.sh:8` 的 `SNAP_PKG_ROOT` 默认 `/data/user/0/com.snoworwind.pocketharness`（不含 `/files`），`:158` 的 sed 会把 heredoc 兜底 patch 的 `/data/data/com.termux/files/usr` 改写成 `.../com.snoworwind.pocketharness/usr/bin/bash`（已确认，触发条件 = 设备上找不到外部权威 patch，走 `:156` 警告分支）→ 设备侧 assertBash 失败、注入包全不装配。该脚本是备选发布入口的输入端（`build-release.ps1:89-114` 要求设备侧产出 `snapshot/snapshot-*.tar.xz`），且这条入口的快照无软链净化、无归档自检（协调仓 `coord:docs/COMPAT-REVIEW-0.14.0-2026-09-19.md:1337` 记 I-4）。
   4. `scripts/build-apk-013.ps1:141-144` 注释称「本次构建前必须重跑 Kotlin 单测由发布链步骤保证」，但 `build-release.ps1` 全文没有 `testDebugUnitTest`（已确认）：发布链经 `check-release-gates.mjs --run --require` 调用 `check-kotlin-test-count.mjs`（`:104` 条目、通用 argvFor 不带 `--allow-missing`），干净机器上无结果即 `exit 1`。本地链用 `--allow-missing`（ps1:145）所以不红——症状是「本地全绿、发布链在干净机器上红」（协调仓 `coord:docs/COMPAT-REVIEW-0.14.0-2026-09-19.md:1334` 记 I-1，P1）。
   5. 【历史项已退役（2026-10-15）】旧 MIRROR_TOP 覆盖缺口只针对已移除的跨树逐字节镜像；现行本仓门禁只校验 registry↔IMPLS 自洽，不能把旧清单当作当前缺陷。入口见 `scripts/check-patch-mirror.mjs:53#expect=const%20regPath`。
@@ -2046,8 +1939,8 @@ flowchart TD
 - **一句话**：装完机之后，把「页面里能不能用、跨层状态有没有真收敛」逐条断言出来的设备侧套件，外加 5 个部署 / 冒烟脚本；除 `scripts/verify-client-plugin-fail-recovery.mjs`（唯一带 adb 用户级原语：`uiautomator dump` / `screencap`，见下方能力边界对照）外，其余都不点屏幕、不截图。
 - **入口/触发**：人手动执行，无 CI 接入（`.github/workflows/pr-gate.yml` 里没有任何一条引用）。三类触发：① 发布前设备门禁（两台模拟器两个朝向 + arm64 真机）；② S-12 双 ABI 重出包后的回归（`coord:docs/0.14.1-REVIEW-CHECKLIST-PROGRESS.md:76`）；③ 改 UI 可见行为后的开发循环。跑之前必须先过 `docs/AGENTS/emulator-test-protocol.md:39-53` 的前置检查（设备在线、`.snapshot-fingerprint` 在场且 `.snapshot-transaction` 不在场、应用在前台、a11y 通道在线）。
 - **运行顺序**：**没有编排者**——每个套件都是一个独立 Node/PowerShell 进程，跑完只打印 PASS/FAIL 计数并把控制权（退出码）交回操作者；谁先跑谁后跑由人决定，`device-smoke.ps1` 是唯一有内部顺序的（T0 → T1 → T2，`scripts/device-smoke.ps1:9,14,19`）。硬约束是**逐个单独跑**：devtools socket 是「每个 app 进程一个」的 `webview_devtools_remote_<pid>`，而宿主侧只有 `tcp:29225` 一条转发，两个套件并跑会互相抢同一条 forward；且每个套件在启动那一刻就把 ws URL 固定下来（`verify-webview-015.mjs:6,79`、`verify-browser-host.mjs:4`、`verify-browser-panel.mjs:12`），套件运行中只要页面重载或应用重启，旧 target 即失效。
-- **嵌套与线程**：套件侧最多 3 层 —— ① `node scripts/verify-*.mjs`（进程入口）→ ② `Runtime.evaluate` 经 WebSocket 发到 WebView 渲染进程（`verify-webview-015.mjs:272#expect=ws.send`）→ ③ 页面里调 `window.androidBridge.*` 进 `@JavascriptInterface`，壳侧再用 `onMain` 把工作搬到主线程（`BrowserHost.kt:1661-1673`：`CountDownLatch.await(2s)`，超时返回 null → JSON 里出现 `available:false` + `main-thread-timeout`）；两处 `BrowserHost.kt:1371,1391` 的导航等待预算是 8s。adb 面是同步阻塞的 `spawnSync`（`verify-state-sync.mjs:27`、`verify-engine-log-copy.mjs:30`），会卡住 Node 事件循环。CDP 求值本身是异步 await，不占线程；壳侧真正的执行落在应用主线程（服务回调 / Binder 回调只在 a11y 与 Shizuku 侧出现，与本块无直接调用链）。
-- **耦合**：`window.androidBridge`（套件读壳侧真源的唯一入口，`verify-state-sync.mjs:107,122,132,142,151`）；`BrowserHost.kt` 的 `statusJson/show/hide/bounds/viewport/identity/close` 与 `pageGeneration` 代次字段（`verify-browser-host.mjs:70-185` 全程按这些字段判）；`browserHostShow` 的入参解析 `showPayload`（`BrowserHost.kt:384-394`，只认 `url`/`session`）；虚拟屏的 `vdisplayStatus.screens[]/viewers[]/presenting/selected` 与 `viewerId: 'files-sidebar'`（`verify-vdisplay-viewer.mjs:81,142,161`）；DOM 锚点 `data-dsh-mobile-form` / `data-dsh-frame` / `data-dsh-mobile-topbar` / `data-conversation-header-corner` / `data-testid="vdisplay-stage"` / `data-sidebar-right-expand`（`verify-webview-015.mjs:11-19`、`verify-vdisplay-viewer.mjs:106,137`）；`window.__dshBack` / `__dshBackDepth` / `__dshBackKinds` / `dshBackBridge`（`verify-webview-015.mjs:60-73`）；偏好文件与键 `shared_prefs/dsh_settings.xml`（`immersive_mode`，`ShellState.kt:38-39`）、`shared_prefs/dsh-overlay.xml`（`enabled`，`OverlayController.kt:22-23`）、`shared_prefs/dsh_prefs.xml`（`dev_log_enabled`，`MainActivity.kt:1168#expect=if%20(isEngineSource(url)%20%26%26%20!userClosedEngine)%20engineFlow.startFreezeWatchdog()`）；系统真源 `appops MANAGE_EXTERNAL_STORAGE` / `SYSTEM_ALERT_WINDOW`、`settings secure enabled_accessibility_services`（`verify-state-sync.mjs:106,118,150`）；`/data/data/<pkg>/files/engine.log` 与其世代后缀（`verify-engine-log-copy.mjs:28,49-53`）；`scripts/golden/session-golden.json` ↔ `scripts/golden/last-run.json`（后者被 `device-smoke.ps1:24` 每次运行覆盖，且是**受版本控制的文件**）。
+- **嵌套与线程**：套件侧最多 3 层 —— ① `node scripts/verify-*.mjs`（进程入口）→ ② `Runtime.evaluate` 经 WebSocket 发到 WebView 渲染进程（`verify-webview-015.mjs:256#expect=ws.send`）→ ③ 页面里调 `window.androidBridge.*` 进 `@JavascriptInterface`，壳侧再用 `onMain` 把工作搬到主线程（`BrowserHost.kt:1661-1673`：`CountDownLatch.await(2s)`，超时返回 null → JSON 里出现 `available:false` + `main-thread-timeout`）；两处 `BrowserHost.kt:1371,1391` 的导航等待预算是 8s。adb 面是同步阻塞的 `spawnSync`（`verify-state-sync.mjs:27`、`verify-engine-log-copy.mjs:30`），会卡住 Node 事件循环。CDP 求值本身是异步 await，不占线程；壳侧真正的执行落在应用主线程（服务回调 / Binder 回调只在 a11y 与 Shizuku 侧出现，与本块无直接调用链）。
+- **耦合**：`window.androidBridge`（套件读壳侧真源的唯一入口，`verify-state-sync.mjs:107,122,132,142,151`）；`BrowserHost.kt` 的 `statusJson/show/hide/bounds/viewport/identity/close` 与 `pageGeneration` 代次字段（`verify-browser-host.mjs:70-185` 全程按这些字段判）；`browserHostShow` 的入参解析 `showPayload`（`BrowserHost.kt:384-394`，只认 `url`/`session`）；虚拟屏的 `vdisplayStatus.screens[]/viewers[]/presenting/selected` 与 `viewerId: 'files-sidebar'`（`verify-vdisplay-viewer.mjs:81,142,161`）；DOM 锚点 `data-dsh-mobile-form` / `data-dsh-android-frame` / `` / `data-conversation-header-corner` / `data-testid="vdisplay-stage"` / `data-sidebar-right-expand`（`verify-webview-015.mjs:11-19`、`verify-vdisplay-viewer.mjs:106,137`）；`window.__dshBack` / `__dshBackDepth` / `__dshBackKinds` / `dshBackBridge`（`verify-webview-015.mjs:60-73`）；偏好文件与键 `shared_prefs/dsh_settings.xml`（`immersive_mode`，`ShellState.kt:38-39`）、`shared_prefs/dsh-overlay.xml`（`enabled`，`OverlayController.kt:22-23`）、`shared_prefs/dsh_prefs.xml`（`dev_log_enabled`，`MainActivity.kt:1168#expect=if%20(isEngineSource(url)%20%26%26%20!userClosedEngine)%20engineFlow.startFreezeWatchdog()`）；系统真源 `appops MANAGE_EXTERNAL_STORAGE` / `SYSTEM_ALERT_WINDOW`、`settings secure enabled_accessibility_services`（`verify-state-sync.mjs:106,118,150`）；`/data/data/<pkg>/files/engine.log` 与其世代后缀（`verify-engine-log-copy.mjs:28,49-53`）；`scripts/golden/session-golden.json` ↔ `scripts/golden/last-run.json`（后者被 `device-smoke.ps1:24` 每次运行覆盖，且是**受版本控制的文件**）。
 - **关键坐标**：`scripts/verify-webview-015.mjs:6`（`const [, , wsUrl] = process.argv` 位置参数，无名字校验）、`scripts/verify-state-sync.mjs:244`（`if (WS && !force) return WS`——传 `--ws` 即永久短路 target 重解析）、`scripts/verify-state-sync.mjs:247`（`pidof` + `forward tcp:29225 localabstract:webview_devtools_remote_<pid>`）、`scripts/verify-browser-host.mjs:55-64`（唯一按 URL 在 `/json/list` 里重解析 target 的实现）、`scripts/verify-browser-panel.mjs:66-73`（多页签项只有 1 页时显式 SKIP）、`scripts/verify-vdisplay-viewer.mjs:165-169`（全套件唯一一条 adb 系统读 `dumpsys display`）、`scripts/verify-vdisplay-float.mjs:95-103`（非法档位判定，见可疑点 1）、`scripts/deploy-device.ps1:31`（调不存在的 `..\web-restart.ps1`）。
 - **不变量**：（1）设备在线**且应用在前台**——后台会让 `/json/list` 为空或 `fetch failed`，`verify-state-sync.mjs:246` 与 `verify-browser-host.mjs:58` 都会把它报成断言失败。（2）快照刷新未在跑（`.snapshot-fingerprint` 在场 + `.snapshot-transaction` 不在场）；违反时不只是假失败——`verify-state-sync.mjs:161` 的 `am force-stop` 撞上坑 37（`docs/AGENTS/gotchas.md:44`：看门狗用半解压运行时拉引擎，用户 settings 被剪成出厂模板）。（3）同一时刻只有一个套件持有 29225 转发，且跑前重建 target（pid 随重启变）。（4）被测包必须是 debug 包：`MainActivity.kt:518#expect=%2F%2F%20%E5%B0%B1%E7%9C%8B%E4%B8%8D%E5%87%BA%E6%9D%A5%E3%80%82%E8%AE%BE%E4%B8%AD%E6%80%A7%E6%B7%B1%E8%89%B2%EF%BC%8C%E4%BD%BF%E3%80%8C%E6%B2%A1%E6%B8%B2%E6%9F%93%E5%87%BA%E6%9D%A5%E3%80%8D%E4%B8%80%E7%9C%BC%E5%8F%AF%E8%BE%A8%EF%BC%88%E4%B8%8E%E5%BC%95%E5%AF%BC%E9%A1%B5%E5%90%8C%E8%89%B2%E7%B3%BB%EF%BC%8C%E9%81%BF%E5%85%8D%E9%97%AA%E7%99%BD%EF%BC%89%E3%80%82` 只在 `debuggable` 时开 `WebView.setWebContentsDebuggingEnabled(true)`，release 包没有 devtools socket，整套 CDP 面直接不可用。（5）页面加载成功且是主页面——所有桥断言读 `window.androidBridge?.x`，连到隔离页或白屏页时静默返回 `undefined`。（6）vdisplay 两套件需要 Shizuku 已注册（viewer 全链、float 第 5 步）。
 - **症状 → 排查**：
@@ -2161,12 +2054,6 @@ scripts/source-build/linux-plugin-dependencies.test.mjs
 plugins/dsh-linux-bootstrap/test/github-limits-negative-control.mjs
 app/src/main/java/com/snoworwind/pocketharness/EngineTransport.kt
 app/src/androidTest/java/com/snoworwind/pocketharness/EngineTransportInstrumentedTest.kt
-dsh-client-ui-responsive/src/client/mobile/sidebar-bubbles.ts
-dsh-client-ui-responsive/src/client/mobile/sidebar-bubbles.css.ts
-dsh-client-ui-responsive/src/client/mobile/sidebar-bubbles.locales.ts
-scripts/verify-sidebar-bubbles.mjs
-scripts/patches/data/sidebar-bubble-reorder.mjs
-scripts/patches/tests/sidebar-bubble-reorder.test.mjs
 glob:scripts/patches/tests/fixtures/dsh-client-ui-sidebar-right-0.2.0-rc.2/**
 glob:scripts/patches/tests/fixtures/dsh-client-ui-sidebar-right-mobile-0.2.0-rc.2/**
 # 0.14.3 actual new source/fixture ledger (not execution evidence)
@@ -2367,8 +2254,6 @@ plugins/dsh-model-capability/test/fixtures/delay-message-channel.mjs
 dsh-client-ui-responsive/src/index.ts
 dsh-client-ui-responsive/src/css-modules.d.ts
 dsh-client-ui-responsive/src/react-dom.d.ts
-dsh-client-ui-responsive/src/client/snapshot-panels-observer.ts
-dsh-client-ui-responsive/src/client/snapshot-panels.css.ts
 glob:dsh-client-ui-responsive/src/client/*.ts
 glob:dsh-client-ui-responsive/src/client/*.tsx
 glob:dsh-client-ui-responsive/src/client/*.module.css

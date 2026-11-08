@@ -27,7 +27,6 @@ import { MIMO_PI_FILE, planMimoThinking } from './mimo-thinking-toggle-056.mjs'
 import { CLIENT_SCAN_MARKER, GATEWAY_CLIENT_MARKER, TYPERT_SCAN_MARKER, planClientRegistryScan, planTypertRegistryScan } from './data/registry-scan-c4.mjs'
 import { CLIENT_INDEX_LOADER_BARRIER_MARKER, planClientIndexLoaderBarrier } from './data/client-index-loader-barrier.mjs'
 import { resolveEnginePatchFile } from './resolve-engine-patch-target.mjs'
-import { hasSidebarReorder, patchSidebarReorder } from './data/sidebar-bubble-reorder.mjs'
 import { MARKER as INSTALL_APPROVAL_MARKER, patchInstallApproval } from './data/market-install-approval.mjs'
 import {
   PERMISSION_AUTO_DEFAULT_MARKER,
@@ -204,12 +203,6 @@ const IMPLS = {
     file: 'usr/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-client-ui-permission-presets/lib/client.js',
     check: (s) => s.includes(WORKSPACE_WRITE_WARNING_MARKER) && patchWorkspaceWriteBoundaryWarning(s) === s,
     apply: patchWorkspaceWriteBoundaryWarning,
-  },
-
-  'sidebar-bubble-reorder-B1': {
-    file: 'usr/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-client-ui-sidebar-right/lib/client.js',
-    check: hasSidebarReorder,
-    apply: patchSidebarReorder,
   },
 
   // Raw npm pins do not include pnpm patchedDependencies; retain the official six-provider patch.

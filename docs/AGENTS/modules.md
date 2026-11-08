@@ -108,9 +108,9 @@
 **不变量**：没有任何一级报出的能力**保持缺失（绝不猜测）**；每个报出的能力**都带 `source`**；`reasoningEfforts` 是**逐模型**值，本模块**从不**产出供应商级设置。
 **合流不是替换**：S3/S5 是插进既有四级的两级，不是用一个实现替换另一个（实现见 [`capability-probe.ts`](../../plugins/dsh-model-capability/src/capability-probe.ts)）。
 
-### 4.2 快照面板的客户端所有权
+### 4.2 DSH 原生 UI 与 Android 适配边界
 
-`dsh-client-ui-responsive/src/client/snapshot-panels-observer.ts` 的 `snapshotOwners` 按真实三层 `data-slot` 认领 vendored 快照面板的 header/titleRow；`SnapshotPanelsObserver` 分别租赁抬升和解除包含的临时 class，并在关闭、重分类、移除或 reload 时恢复。配套 `snapshot-panels.css.ts` 只改变这两个已认领元素的绘制层和包含约束。真因、测试与设备边界见 `gotchas.md` 坑 239。
+0.14.12 UI 重写后，DSH 自身拥有主框架、设置、输入区、菜单和会话导航；此前为快照/轨迹/设置/输入区补加的本地布局覆盖已退役。当前客户端插件入口位于 `dsh-client-ui-responsive/src/client/index.ts`，仅接 Android inset/IME、系统桥和 DSH slots/services；移除实现列表见同目录 `docs/design.md`。历史实现根因和迁移说明见 `gotchas.md` 坑 645。
 
 `dsh-client-ui-responsive/src/client/mobile/incoming-runtime.ts` 是来件草稿的 Cordis 适配边界：`sessions` 负责 refresh/scope，`uiWorkspace` 负责 connect/openSession；来件只有在目标 scope 建立后才 claim 文件并交给正常 composer 草稿路径。导航服务归属与测试见 `gotchas.md` 坑 472。
 
@@ -148,7 +148,7 @@
 | 页面 → 壳 | `window.dshBackBridge`（BackGateBridge） | 注入层回传「页内层栈是否可用」（setAvailable）+ 只读回读（getBackAvailable） |
 | 壳 → 引擎 | HTTP 127.0.0.1:3080 | 文件来件 POST；pick 端点；**只读**状态端点（/api/android/privilege/status）；通知/控制队列 exact 路由自带鉴权 |
 | 引擎 → 插件 | cordis 服务面 | androidPrivilege（状态机/execAdbShell/execAdbLine/gateFor 会话级 danger/screenScope/screenAccess）；dsh-shell-termux 执行器 |
-| 插件 → 页面 | dsh.client 模块 + slots | ui-responsive（移动形态、DevSection/屏幕与 Shizuku 控制、F5 消费端轮询）；bridge client（授权 UI）；undo/marketplace 注册 |
+| 插件 → 页面 | dsh.client 模块 + slots | ui-responsive（Android insets/IME、host bridges、官方 settings slots、BrowserHost/native file features、notification routing）；bridge client（授权 UI）；undo/marketplace 注册 |
 
 **授权模型（现行）**：设备控制要求会话实时档位为 `danger-full-access`。无障碍语义操作要求 AccessibilityService 已连接且心跳新鲜；Shizuku shell 特权操作要求 Shizuku UserService 报告已授权。授权状态由壳侧读取，不能由引擎或工具写入。旧 `fullAccess` / `allowSwitch` / wireless-pairing 字段仍出现在兼容状态与诊断结构中，不代表当前仍启动内嵌 ADB server；`execAdbShell` / `execAdbLine` 是兼容工具名，执行面在 `ShizukuTransport`。`android_capabilities` 另持久化工具组显隐授权：解锁先原子写新全集，成功后才 dispose 当前锁；撤销立即重锁当前进程，只有原子写成功才承诺重启后保持锁定，失败返回 `ok:false` 并提示旧授权可能恢复。部署默认写面档位（tier）只是视图字段，不参与能力门。
 

@@ -52,17 +52,14 @@ function installFrameQueue(view) {
 
 const nextMutationTurn = () => new Promise((resolve) => setImmediate(resolve))
 
-test('侧栏气泡 open/closing 期间隐藏原生虚拟屏，closed 后恢复', { skip: SKIP && 'jsdom 不可用' }, () => {
+test('DSH menu surface hides the native virtual display until dismissal', { skip: SKIP && 'jsdom 不可用' }, () => {
   const { dom, doc, view } = setup()
-  const bubble = doc.createElement('div')
-  for (const state of ['open', 'closing']) {
-    bubble.setAttribute('data-dsh-sidebar-bubbles', state)
-    doc.body.append(bubble)
-    assert.equal(hasBlockingStageOverlay(doc, view), true, state + ' 必须阻挡原生面')
-    bubble.remove()
-  }
-  bubble.setAttribute('data-dsh-sidebar-bubbles', 'closed')
-  doc.body.append(bubble)
+  const menu = doc.createElement('div')
+  menu.setAttribute('role', 'menu')
+  setBounds(menu)
+  doc.body.append(menu)
+  assert.equal(hasBlockingStageOverlay(doc, view), true)
+  menu.remove()
   assert.equal(hasBlockingStageOverlay(doc, view), false)
   dom.window.close()
 })
@@ -102,11 +99,11 @@ test('DOM 属性变更在下一帧合并发布，卸载会断开观察并取消�
   const published = []
   const unwatch = watchStageVisibility(doc, view, () => published.push('publish'))
 
-  const bubble = doc.createElement('div')
-  doc.body.append(bubble)
-  bubble.setAttribute('data-dsh-sidebar-bubbles', 'open')
+  const overlay = doc.createElement('div')
+  doc.body.append(overlay)
+  overlay.setAttribute('role', 'dialog')
   await nextMutationTurn()
-  assert.equal(queue.frames.size, 1, '新增节点和属性变化应合并到同一帧')
+  assert.equal(queue.frames.size, 1, '新增节点和 role 变化应合并到同一帧')
   queue.flush()
   assert.deepEqual(published, ['publish'])
 

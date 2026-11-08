@@ -20,7 +20,6 @@ function browserTab(session: string, id: TabId) {
 afterEach(() => {
   vi.useRealTimers()
   delete window.androidBridge
-  document.documentElement.removeAttribute('data-dsh-browser-pending')
   vi.restoreAllMocks()
 })
 
@@ -55,7 +54,6 @@ describe('NativeBrowserPlacement deleted-session cleanup', () => {
 
     expect(closeWorkspace).toEqual(['session-a'])
     expect(tabs).toEqual([])
-    expect(document.documentElement.hasAttribute('data-dsh-browser-pending')).toBe(false)
     detach()
   })
 

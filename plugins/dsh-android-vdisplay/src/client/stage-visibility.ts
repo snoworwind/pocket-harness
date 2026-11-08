@@ -1,11 +1,10 @@
 /** Visibility rules shared by the virtual-display viewer's native surface publisher. */
 
 const BLOCKING_OVERLAY_SELECTOR = '[role="menu"], [role="dialog"], [aria-modal="true"], [role="listbox"]'
-const SIDEBAR_BUBBLES_SELECTOR = '[data-dsh-sidebar-bubbles="open"], [data-dsh-sidebar-bubbles="closing"]'
 
 /** True while a visible DOM surface owns interaction above the native virtual-display surface. */
 export function hasBlockingStageOverlay(doc: Document, view: Window): boolean {
-  if (doc.querySelector(SIDEBAR_BUBBLES_SELECTOR) !== null || doc.querySelector('[data-dockkit-pointer]') !== null) return true
+  if (doc.querySelector('[data-dockkit-pointer]') !== null) return true
 
   return Array.from(doc.querySelectorAll<HTMLElement>(BLOCKING_OVERLAY_SELECTOR)).some((element) => {
     const bounds = element.getBoundingClientRect()
@@ -42,7 +41,6 @@ export function watchStageVisibility(doc: Document, view: Window, publish: () =>
         attributeFilter: [
           'style', 'class', 'hidden', 'open', 'aria-hidden', 'aria-modal', 'role',
           'data-sidebar-right-open', 'data-sidebar-right-collapsed', 'data-dockkit-pointer',
-          'data-dsh-sidebar-bubbles',
         ],
       })
     }

@@ -23,10 +23,10 @@ function setPhoneForm(on: boolean): void {
   else document.documentElement.removeAttribute('data-dsh-mobile-form')
 }
 
-/** Build the frame root with the sidebar expanded (drawer open) by default. */
+/** Build the DSH frame root with the sidebar expanded by default. */
 function buildFrame(collapsed = false): HTMLElement {
   const frame = document.createElement('div')
-  frame.setAttribute('data-dsh-frame', '')
+  frame.setAttribute('data-dsh-android-frame', '')
   if (collapsed) frame.setAttribute('data-sidebar-collapsed', '')
   document.body.appendChild(frame)
   return frame
@@ -229,22 +229,7 @@ describe('dialog layer', () => {
   })
 })
 
-describe('other layers', () => {
-  it('closes the trajectory "Event details" panel through its close control', async () => {
-    signal.attach()
-    const aside = document.createElement('aside')
-    aside.setAttribute('aria-label', 'Event details')
-    const close = document.createElement('button')
-    close.className = 'x_close'
-    aside.appendChild(close)
-    document.body.appendChild(aside)
-    const seen = record(close)
-    await flush()
-    expect(window.__dshBackKinds).toEqual(['trajectory-details'])
-    expect(window.__dshBack?.()).toBe(true)
-    expect(seen).toEqual(['click'])
-  })
-
+describe('DSH-owned layers', () => {
   it('leaves right-column fullscreen through the mode toggle, else the collapse toggle', async () => {
     signal.attach()
     const panel = document.createElement('div')
@@ -294,44 +279,6 @@ describe('other layers', () => {
     expect(window.__dshBackKinds).toEqual(['right-fullscreen'])
     expect(window.__dshBack?.()).toBe(true)
     expect(seenMode).toEqual(['click'])
-  })
-
-  // D8 (2026-09-25): the plugin's own attachment-source popup is mounted on document.body, so its
-  // presence is exactly "open". It used to be invisible to this stack; the shell's back callback
-  // treats "no layer" as FINISH_ACTIVITY (BackGate.kt:56-60), so back with the menu open exited the
-  // app instead of closing the menu.
-  it('counts the attachment source menu as a layer and closes it, not the activity', async () => {
-    signal.attach()
-    const popup = document.createElement('div')
-    popup.setAttribute('data-dsh-attachment-picker-menu', '')
-    document.body.appendChild(popup)
-    const seen: string[] = []
-    document.addEventListener('pointerdown', event => { seen.push((event.target as Element)?.tagName ?? '') }, true)
-    await flush()
-    expect(window.__dshBackKinds).toEqual(['attachment-menu'])
-    expect(window.__dshBackDepth).toBe(1)
-    expect(uplink).toHaveBeenLastCalledWith(true)
-    expect(window.__dshBack?.()).toBe(true)
-    expect(seen).toEqual(['BODY'])
-
-    // Closing the menu (its own dismissal does this) is what pops the layer.
-    popup.remove()
-    await flush()
-    expect(window.__dshBackKinds).toEqual([])
-    expect(uplink).toHaveBeenLastCalledWith(false)
-  })
-
-  it('stacks the attachment menu above an open upstream menu', async () => {
-    signal.attach()
-    const upstream = document.createElement('div')
-    upstream.setAttribute('data-trigger-menu', '')
-    document.body.appendChild(upstream)
-    const popup = document.createElement('div')
-    popup.setAttribute('data-dsh-attachment-picker-menu', '')
-    document.body.appendChild(popup)
-    await flush()
-    expect(window.__dshBackKinds).toEqual(['menu', 'attachment-menu'])
-    expect(window.__dshBack?.()).toBe(true)
   })
 
   it('dismisses a menu with the menu own outside-pointerdown path', async () => {
@@ -393,69 +340,5 @@ describe('failure direction', () => {
     await flush()
     expect(window.__dshBackKinds).toEqual(['right-fullscreen'])
     expect(uplink).toHaveBeenLastCalledWith(true)
-  })
-})
-
-
-describe('Android model menu portal', () => {
-  it('publishes the open menu and consumes Escape even when its handler prevents default', async () => {
-    signal.attach()
-    const menu = document.createElement('div')
-    menu.setAttribute('role', 'menu')
-    document.body.appendChild(menu)
-    await flush()
-    expect(window.__dshBackKinds).toEqual([])
-    menu.setAttribute('data-dsh-android-model-menu', '')
-    menu.addEventListener('keydown', event => {
-      if (event.key === 'Escape') { event.preventDefault(); menu.remove() }
-    })
-    await flush()
-    expect(window.__dshBackKinds).toEqual(['model-menu'])
-    expect(uplink).toHaveBeenLastCalledWith(true)
-    expect(window.__dshBack?.()).toBe(true)
-    await flush()
-    expect(window.__dshBackKinds).toEqual([])
-    expect(uplink).toHaveBeenLastCalledWith(false)
-  })
-
-  it('lets the upstream drilled pane handle one level before closing on the next Back', async () => {
-    signal.attach()
-    const menu = document.createElement('div')
-    menu.setAttribute('data-dsh-android-model-menu', '')
-    menu.setAttribute('role', 'group')
-    document.body.appendChild(menu)
-    let drilled = true
-    menu.addEventListener('keydown', event => {
-      if (event.key !== 'Escape') return
-      event.preventDefault()
-      if (drilled) { drilled = false; menu.setAttribute('role', 'menu') }
-      else menu.remove()
-    })
-    await flush()
-    expect(window.__dshBack?.()).toBe(true)
-    await flush()
-    expect(menu.isConnected).toBe(true)
-    expect(window.__dshBackKinds).toEqual(['model-menu'])
-    expect(window.__dshBack?.()).toBe(true)
-    await flush()
-    expect(menu.isConnected).toBe(false)
-    expect(window.__dshBackKinds).toEqual([])
-  })
-
-  it('detects a wide Android model menu without the narrow form marker and ignores other menus', async () => {
-    setPhoneForm(false)
-    signal.attach()
-    const menu = document.createElement('div')
-    menu.setAttribute('role', 'menu')
-    menu.setAttribute('data-dsh-mobile-model-menu', '')
-    document.body.appendChild(menu)
-    await flush()
-    expect(window.__dshBackKinds).toEqual([])
-    menu.setAttribute('data-dsh-android-model-menu', '')
-    await flush()
-    expect(window.__dshBackKinds).toEqual(['model-menu'])
-    menu.removeAttribute('data-dsh-android-model-menu')
-    await flush()
-    expect(window.__dshBackKinds).toEqual([])
   })
 })

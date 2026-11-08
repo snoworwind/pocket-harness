@@ -2,7 +2,6 @@
 import type { TabId } from '@deepseek-ai/dsh-client-ui-dockkit'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { SidebarRightOpenTab } from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
-import { BROWSER_PENDING_ATTR } from './browser-auto-place.ts'
 import { NativeBrowserSession } from './native-browser-adapter.ts'
 
 /** All navigation callbacks are captured by the browser registration's injected services. */
@@ -61,7 +60,6 @@ export class NativeBrowserPlacement {
     this.observedSessions.clear()
     this.missingSessionPolls.clear()
     this.retiredSessions.clear()
-    document.documentElement.removeAttribute(BROWSER_PENDING_ATTR)
   }
 
   private tick(): void {
@@ -76,11 +74,10 @@ export class NativeBrowserPlacement {
     }
     if (!Array.isArray(sessionIds) || !Array.isArray(tabs)) return
     const activeSessions = new Set(sessionIds)
-    const cleanupPending = this.reconcileRemovedSessions(activeSessions, tabs)
+    this.reconcileRemovedSessions(activeSessions, tabs)
     const mounted = this.options.mounted()
     const ids = new Set([...sessionIds, ...tabs.map(tab => tab.sessionId), ...this.workspaces.keys()])
     if (mounted !== undefined) ids.add(mounted)
-    let mountedPending = false
     for (const session of ids) {
       if (this.retiredSessions.has(session)) continue
       if (activeSessions.has(session)) {
@@ -121,10 +118,7 @@ export class NativeBrowserPlacement {
             if (!workspace.claim(legacy.tabId, native.tabId, native.uiTabId)) pending.set(native.tabId, legacy.tabId)
             continue
           }
-          if (session !== mounted || !this.options.expanded()) {
-            if (session === mounted) mountedPending = true
-            continue
-          }
+          if (session !== mounted || !this.options.expanded()) continue
           const before = new Set(this.options.tabs().map(tab => tab.tabId))
           this.options.open(session)
           const created = this.options.tabs().find(tab => tab.sessionId === session && tab.kind === this.options.kind && !before.has(tab.tabId))
@@ -138,11 +132,8 @@ export class NativeBrowserPlacement {
         for (const nativeId of pending.keys()) if (!snapshot.tabs.some(tab => tab.tabId === nativeId)) pending.delete(nativeId)
       } catch (_sidebarOperationRefused) {
         workspace.reportFailure('browser-sidebar-operation-refused')
-        if (session === mounted) mountedPending = true
       }
     }
-    if (mountedPending || cleanupPending) document.documentElement.setAttribute(BROWSER_PENDING_ATTR, 'true')
-    else document.documentElement.removeAttribute(BROWSER_PENDING_ATTR)
   }
 
   /** Require three successful inventory polls before destroying a removed Session's native data. */
