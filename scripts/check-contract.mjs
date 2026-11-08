@@ -11,7 +11,7 @@
 // 对应小节以 SKIP 计数并打印汇总；`--require`（发布链）下任何 SKIP 即失败——发布环境必须齐全。
 // --runtime 只用于反证（把目标运行时装成下一版，验 §7 会不会判红），不参与任何默认判据。
 import { readFileSync, existsSync, readdirSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs'
-import { join, dirname, resolve } from 'node:path'
+import { join, dirname, resolve, relative } from 'node:path'
 import { tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
 import { createRequire } from 'node:module'
@@ -914,10 +914,13 @@ function runContractSelfTest() {
   const pristineProfile = readFileSync(PROFILE_PATCH_PATH, 'utf8')
   const pristineDoc = existsSync(DOC_PATH) ? readFileSync(DOC_PATH, 'utf8') : null
   const scratch = mkdtempSync(join(tmpdir(), 'contract-selftest-'))
+  const localSlotRoot = join(scratch, 'local-slot-fixture')
+  mkdirSync(localSlotRoot, { recursive: true })
+  writeFileSync(join(localSlotRoot, 'slots.ts'), "'conversation.header.leading': { kind: 'single', scope: 'root' }\n")
   const addLocalSlot = (c) => c.clientSlots.declarations.push({
     slot: 'conversation.header.leading',
-    repo: 'scripts/patches/tests/fixtures/dsh-client-ui-conversation-0.2.2-rc.1',
-    file: 'lib/client.js', kind: 'single', scope: 'root', why: 'self-test fixture',
+    repo: relative(root, localSlotRoot),
+    file: 'slots.ts', kind: 'single', scope: 'root', why: 'self-test fixture',
   })
   const dropSlot = (c) => { c.clientSlots.upstreamUniverse.entries = c.clientSlots.upstreamUniverse.entries.filter(e => e.slot !== 'shell.overlay') }
   const fakeSlot = (c) => { c.clientSlots.upstreamUniverse.entries.push({ slot: 'zzz.selftest.not.upstream', kind: 'list', scope: 'root', file: 'nowhere' }) }
