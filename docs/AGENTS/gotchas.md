@@ -3556,3 +3556,7 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 648. **本地来源链续跑复用了已变更输入与旧 Termux staging（2026-11-08）**
 
     现象：x86_64 来源链续跑时，effective overlay 恢复会因输入与上一轮输出不一致而拒绝；Termux 包快照阶段还会因残留 `.deploy-tmp/source-build/termux-package-inputs.tar` 或已存在的 `termux-webroot` 目录失败。真因：overlay 恢复过程会规范化有效策略文件，旧步骤每次重跑都从当前产物覆盖原始 restore input；Termux 本地 producer/consumer 的等效步骤则复用已有 staging，而安全解包器要求空目标并拒绝覆盖。修法：restore input 只在首次缺席时从本轮原始输入冻结，已存在路径必须是普通非链接文件；本地编排器在 package snapshot 步骤前仅清理四个固定生成根，遇到链接或类型不符时拒绝，并保留其他报告。复验：x86_64 来源 APK 已在 Android 16/API 36 x86_64 AVD 安装运行；发布资产 Python 回归 11/11、来源构建/签名/续跑 Node 回归 54/54 通过，PR #250 静态源码回归通过；GitHub-hosted 双 ABI APK 构建与正式发布设备验收仍待完成。
+
+649. **x86_64 云构建预检继承环境后误用 ARM64 签名证明 fixture（2026-11-08）**
+
+    现象：双 ABI 草稿 workflow 的 x86_64 primary/reference 在昂贵构建开始前同时失败，日志落在签名证明单测，而 ARM64 两路继续运行。真因：可复用 workflow 按 job 显式设置 `DSH_ABI=x86_64`，`verifyRebuildProof()` 默认读取该环境；单测却把证明 fixture 固定为 `arm64` 并省略 ABI 参数，所以在本地默认环境通过、在 x86 预检中判为错误 ABI。修法：fixture 由 `DSH_ABI` 派生，错误 ABI 负控取相反 ABI；默认参数仍被实际覆盖，不削弱生产校验。复验：`DSH_ABI=x86_64 node --test scripts/source-build/sign-source-artifacts.test.mjs` 与 ARM64 对应命令均通过（Windows 本地运行各 2 项通过、Linux-only signer 测试跳过）；首次 PR Gate 发现新增构建说明使执行地图的行号锚点过期，已将引用更新到 201 行，`node scripts/check-code-map.mjs --self-test` 与正式检查均通过；追加提交后的 PR Gate 和合并后双 ABI 来源 workflow 待复核。失败 run `42456772942` 的 x86 失败日志确认具体断言；已取消无意义的剩余 ARM64 工作。

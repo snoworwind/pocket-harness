@@ -35,12 +35,14 @@ test('signing refuses stale bytes, wrong commit and unverified claims before loa
   mkdirSync(join(root, '.deploy-tmp/source-build'), { recursive: true })
   const apk = join(root, 'candidate.apk')
   writeFileSync(apk, 'candidate')
-  const proof = { abi: 'arm64', independentRebuildMatched: true, normalizationVersion: 3, sourceCommit: 'a'.repeat(40),
+  const abi = process.env.DSH_ABI || 'arm64'
+  const otherAbi = abi === 'arm64' ? 'x86_64' : 'arm64'
+  const proof = { abi, independentRebuildMatched: true, normalizationVersion: 3, sourceCommit: 'a'.repeat(40),
     primaryUnsignedApkSha256: createHash('sha256').update('candidate').digest('hex') }
   try {
     writeFileSync(report, JSON.stringify(proof))
     assert.deepEqual(verifyRebuildProof(root, apk, 'a'.repeat(40)), proof)
-    assert.throws(() => verifyRebuildProof(root, apk, 'a'.repeat(40), 'x86_64'), /independent proof/)
+    assert.throws(() => verifyRebuildProof(root, apk, 'a'.repeat(40), otherAbi), /independent proof/)
     assert.throws(() => verifyRebuildProof(root, apk, 'b'.repeat(40)), /independent proof/)
     writeFileSync(apk, 'tampered')
     assert.throws(() => verifyRebuildProof(root, apk, 'a'.repeat(40)), /independent proof/)

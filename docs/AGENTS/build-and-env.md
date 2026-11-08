@@ -8,6 +8,8 @@
 
 `node scripts/source-build/run-local-source-chain.mjs --abi x86_64` 在 Linux/WSL 中从 `codex/x86-*` 分支的已提交 HEAD 建隔离检出；本地 x86 QA 仍用临时签名，不能充当正式发布构建。云端 `build-apk-source.yml` 可在 main 上以 `-f abi=x86_64` 运行同一 x86 来源链；草稿工作流会对 ARM64 和 x86_64 分别双构建、比对和正式签名。该路线从官方 x86_64 Termux bootstrap 与本轮验签包索引组装底座，按锁定的 Koffi Android x64 包和 NDK 源码构建的 node-pty x64 模块审 ABI；由于当前没有 Android x86_64 Canvas 构建输入和 Linux PRoot 资产，跳过 Canvas native 与离线 Linux 资产步骤。x86_64 APK 适用于对应 ABI 设备；Android 16 x86_64 AVD 可用于功能检查和截图，但不能替代 ARM64 设备验收。上游 Koffi 3.2.1 从该版本起提供 Android x64 预构建包，详见 [Koffi changelog](https://koffi.dev/changelog)。
 
+云端每个 ABI 的预检都会把该 job 的 `DSH_ABI` 传给 Node 测试；测试默认 ABI 的证明 fixture 必须从该环境派生，并保留错误 ABI 负控，避免固定 ARM64 fixture 在 x86_64 job 中误报。
+
 rc.1 的 profile seeder 从 `packages/boot/app-boot/src/profile.ts` 读取 `initProfile`，从 `packages/util/official-bundles/src/bundles.ts` 读取 `PROFILE_TEMPLATES`。模板只由 app-boot 内部导入，不再从 `profile.ts` 导出；误从那里读取会在 bootstrap 组装阶段得到 `undefined` 并使 primary/reference 同时失败。bootstrap 组装先调用 seeder 的 `--self-test` 验证 web/headless 清单与辅助文件，再写入实际 profile；`cloud-workflow.test.mjs` 和 `test_prepare_termux_bootstrap.py` 锁定来源与调用顺序。
 
 ## 双构建比对拒绝重复成员（2026-10-19）
