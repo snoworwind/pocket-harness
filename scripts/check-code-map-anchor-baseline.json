@@ -2123,25 +2123,25 @@
       "# Release output is regenerated as a unit. Old APKs must not survive into this version's"
     ],
     "build-snapshot-013.mjs:1029": [
-      "|| (OVERLAY.keepUnpublished ?? []).some((x) => String(x).replace(/ \\(.+\\)$/, '').trim() === entry.name)"
+      "// glibc/musl 二进制在设备上**永不加载**，却随 APK 出货。"
     ],
     "build-snapshot-013.mjs:294": [
-      "}"
-    ],
-    "build-snapshot-013.mjs:300": [
       "process.exit(1)"
     ],
+    "build-snapshot-013.mjs:300": [
+      "console.error(`[引擎 overlay 断言失败] keepUnpublished 包不在树内: ${name}`)"
+    ],
     "build-snapshot-013.mjs:31": [
-      "// 只有最终 tar.xz 写回 D:。故 Windows 上直接把自己重新执行进 WSL。"
+      "// 结论：要吃到 ext4 的收益，**整个构建必须在 WSL 内跑**（含 python/node 遍历步骤），"
     ],
     "build-snapshot-013.mjs:315": [
-      "// Capture unmodified cache bytes for external regression inputs; this does not execute tests."
+      "log(`施加引擎树补丁（${enginePatches.map((p) => p.id).join(', ')}，apply-patches --scope engine）…`)"
     ],
     "build-snapshot-013.mjs:366": [
-      "}"
+      "process.exit(1)"
     ],
     "build-snapshot-013.mjs:40": [
-      "log0(`Windows 宿主 → 转入 WSL 内执行（工作区落 ext4）：${inner}`)"
+      "const command = forwarded ? `${forwarded} ${inner}` : inner"
     ],
     "build-snapshot-013.mjs:982": [
       "}"
@@ -2922,22 +2922,22 @@
       "# 真因（实测）：这两个输入 tar 由 build-apk-013.ps1 产出，而它**已经**对它们跑过自己的内联门禁集；"
     ],
     "scripts/build-snapshot-013.mjs:169": [
-      "}"
+      "log(`profile 体检: ${r.profile} bundles=${String(r.bundles)} 死键剥除=[${r.stripped.join(', ')}]${r.changed ? ' (已改写)' : ''}`)"
     ],
     "scripts/build-snapshot-013.mjs:297": [
-      "const name = entry.replace(/ \\(.+\\)$/, '')"
+      "for (const entry of OVERLAY.keepUnpublished ?? []) {"
     ],
     "scripts/build-snapshot-013.mjs:31": [
-      "// 只有最终 tar.xz 写回 D:。故 Windows 上直接把自己重新执行进 WSL。"
+      "// 结论：要吃到 ext4 的收益，**整个构建必须在 WSL 内跑**（含 python/node 遍历步骤），"
     ],
     "scripts/build-snapshot-013.mjs:456": [
-      "const outFile = join(pluginDir, 'lib', 'catalog-snapshot.json')"
+      "const generator = join(ROOT, 'scripts', 'gen-model-catalog.mjs')"
     ],
     "scripts/build-snapshot-013.mjs:933": [
-      "}"
+      "// 注：dpkg-deb 不涉编译期路径（操作 .deb 文件），保留原始。"
     ],
     "scripts/build-snapshot-013.mjs:985": [
-      "// ── 8a2. 瘦身扩展（2026-08-25，issue apk#86 相关体积审计）：pnpm 跨平台 reflink .node ──"
+      "// ── 8a2b. 全局 Node 重复包：引擎内副本保留，孤儿 global 副本删除 ───────────"
     ],
     "scripts/check-boot-budget.mjs:609": [
       "okOf(r, 'C1') === false, 'C1 ok=' + okOf(r, 'C1'))"

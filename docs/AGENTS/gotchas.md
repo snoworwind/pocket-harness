@@ -3595,3 +3595,10 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
     真因：上游 `dsh-client-ui-layout` 把移动端抽屉开合键放在 AppFrame 的 `.leadingSeat`，样式为 `position:absolute; top:11px; left:12px`。绝对定位的偏移基准是 frame 的 padding box，而我们此前用 `padding-top: var(--dsh-android-top-inset)` 避让状态栏——padding 只移动常规流（标题行、正文、右栏、composer），**不移动绝对定位子元素**，于是只有这一处少了顶部 inset；右栏按钮在常规流内，所以正常。
     修法：`dsh-client-ui-responsive` 的 `ANDROID_INSETS_CSS` 把 `padding-top` 换成 `border-top: var(--dsh-android-top-inset, 0px) solid transparent`——border 先移动 padding edge，常规流与绝对定位子元素因此同时下移同一距离；不碰 grid tracks、`position`、`transform`，背景仍由 frame 自身的 background 覆盖状态栏区。插件版本 0.3.4。
     复验：`dsh-client-ui-responsive` 单测改为断言该机制（`border-top` 存在、`padding-top` 不存在）；设备层待重装来源包后核对左上按钮与标题行基线对齐（本轮未做设备验收）。
+
+658. **滚动 Termux 索引同名多 stanza：末条胜出会向离线镜像要一个不存在的 .deb（0.14.12 草稿 run 42503966346）**
+
+    现象：发布草稿 run `42503966346` 的四个 build-abi job 全部在「Build runtime snapshot from verified inputs」失败，报 `Required package download failed: libicu: 全部镜像失败: http://127.0.0.1:8787: HTTP 404`；约一小时前的同类 run `42495796138` 全绿。
+    真因：Termux stable 是滚动仓库，同一个包名会同时保留新旧两条 stanza（实测 3122 条 stanza / 3026 个名字，`libicu` 先发布 79.1、后跟一条 78.3）。`prepare-termux-signed-repo.py::select_package_records` 按 Debian 版本选最新，只把 79.1 写进本地镜像；而 `build-snapshot-013.mjs` 用 `pkgs.set()` 顺序解析，后出现的覆盖先出现的 ⇒ 取到 78.3，向只含 79.1 的镜像请求 ⇒ 404。触发条件是上游在两次运行之间发过新版本并保留旧 stanza。
+    修法：索引解析抽到 `scripts/source-build/termux-index.mjs`，同名包按 Debian 版本比较取最新（新增 `scripts/source-build/deb-version.mjs`：epoch / upstream / revision，`~` 排序、数字段按数值、字母先于标点），`rawBlocks` 同步只留最新，与 Python 侧选择口径一致。
+    复验：`node scripts/source-build/deb-version.test.mjs` 3/3、`termux-index.test.mjs` 3/3（含「新版本在前、旧版本在后」的真实复现用例）；`check-snapshot-builder-output.mjs` PASSED；真实产物待下一次草稿 run 验证（本轮无设备层要求）。

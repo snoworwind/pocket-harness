@@ -18,6 +18,7 @@ import { wslPath, sh as wsl, XZ_THREADS } from './lib/shell.mjs'
 import { sanitizeSymlinks } from './lib/symlink-sanitize.mjs'
 import { relocateGitShellPath } from './lib/git-shell-path.mjs'
 import { verifyPinnedNpm } from './lib/pinned-npm.mjs'
+import { parseTermuxIndex } from './source-build/termux-index.mjs'
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)))
 const ABI = process.argv[2] ?? 'arm64'
@@ -481,25 +482,9 @@ const { gunzipSync } = await import('node:zlib') // 动态加载避免顶层依�
 writeFileSync(INDEX_BODY, gunzipSync(gz.buf))
 const indexText = readFileSync(INDEX_BODY, 'utf8')
 
-const pkgs = new Map()
-// 包名 → 索引里的**原始块**（逐字保留，供 dpkg/available 使用）
-const rawBlocks = new Map()
-for (const block of indexText.split('\n\n')) {
-  const name = block.match(/^Package: (.+)$/m)?.[1]
-  if (!name) continue
-  rawBlocks.set(name, block)
-  const get = (k) => block.match(new RegExp(`^${k}: (.+)$`, 'm'))?.[1]?.trim() ?? ''
-  pkgs.set(name, {
-    version: get('Version'),
-    depends: get('Depends').split(',').map((s) => s.trim().split(' ')[0]).filter((s) => s && !s.includes('|') ? s : '').filter(Boolean),
-    filename: get('Filename'),
-    sha256: get('SHA256').toLowerCase(),
-    size: Number(get('Size') || 0),
-    arch: get('Architecture'),
-    maintainer: get('Maintainer'),
-    description: get('Description'),
-  })
-}
+// 同名多 stanza 取最新版：滚动仓库会同时保留新旧版本（2026-11-09 实测 libicu 79.1 + 78.3），
+// 而本地镜像只写了最新那份（Python 侧 select_package_records），末条胜出会向镜像要一个不存在的文件。
+const { pkgs, rawBlocks } = parseTermuxIndex(indexText)
 log('索引包数: ' + pkgs.size)
 
 // ── 2. 依赖闭包（预装清单 → BFS）──
