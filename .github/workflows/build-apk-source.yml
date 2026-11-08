@@ -166,6 +166,15 @@ jobs:
         with:
           distribution: temurin
           java-version: '17.0.20+8'
+      - name: Isolate npm cache from checked-in developer settings
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/dsh-npm-cache"
+          echo "npm_config_cache=$RUNNER_TEMP/dsh-npm-cache" >> "$GITHUB_ENV"
+          npm install -g corepack@0.36.0 --ignore-scripts --no-audit --no-fund \
+            --fetch-retries=8 --fetch-retry-factor=2 --fetch-retry-mintimeout=1000 \
+            --fetch-retry-maxtimeout=30000 --fetch-timeout=300000
 
       - name: Warm pinned Gradle distribution with bounded transient retries
         shell: bash
@@ -191,15 +200,6 @@ jobs:
           done
           echo '::error::Pinned Gradle distribution remained unavailable after 5 attempts'
           exit 1
-      - name: Isolate npm cache from checked-in developer settings
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p "$RUNNER_TEMP/dsh-npm-cache"
-          echo "npm_config_cache=$RUNNER_TEMP/dsh-npm-cache" >> "$GITHUB_ENV"
-          npm install -g corepack@0.36.0 --ignore-scripts --no-audit --no-fund \
-            --fetch-retries=8 --fetch-retry-factor=2 --fetch-retry-mintimeout=1000 \
-            --fetch-retry-maxtimeout=30000 --fetch-timeout=300000
       - name: Verify pinned source replacement before the expensive build
         run: |
           python3 -m unittest discover -s scripts/source-build -p 'test_*.py' -v

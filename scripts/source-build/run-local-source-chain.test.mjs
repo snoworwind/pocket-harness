@@ -26,6 +26,8 @@ test('planSteps：最终复验跟随 apk 阶段，而不是落入 misc', () => {
   const build = planned.find((item) => item.name === BUILD)
   assert.ok(build, '生产 workflow 里必须存在 Build ABI APK')
   assert.equal(build.stage, 'apk')
+  assert.equal(planned.find((item) => item.name === 'Warm pinned Gradle distribution with bounded transient retries')?.stage, 'verify',
+    'the Gradle preflight must still run when resuming the local chain from the APK stage')
   for (const name of FINAL) {
     const item = planned.find((entry) => entry.name === name)
     assert.ok(item, `生产 workflow 里必须存在最终复验步骤：${name}`)

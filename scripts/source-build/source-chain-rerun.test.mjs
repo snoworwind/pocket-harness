@@ -175,7 +175,7 @@ test('fresh no-checkout source clone with HEAD but empty index skips reset', lin
 }))
 test('deploy cleanup is scoped and rejects empty workspace and linked parent', linux, () => fixture(root => {
   const harness = engine
-  const cleanup = harness.slice(harness.indexOf('test -n "$GITHUB_WORKSPACE"'), harness.indexOf('\ncorepack pnpm@12.2.0 --pm-on-fail=ignore --filter'))
+  const cleanup = harness.slice(harness.indexOf('test -n "$GITHUB_WORKSPACE"'), harness.indexOf('\ncorepack pnpm@12.2.0 --pm-on-fail=ignore'))
   mkdirSync(join(root, '.deploy-tmp/engine-deploy'), { recursive: true })
   writeFileSync(join(root, '.deploy-tmp/sibling'), 'keep')
   assert.equal(bash(cleanup, root).status, 0)
