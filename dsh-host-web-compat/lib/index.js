@@ -94,6 +94,13 @@ const POLYFILLS = [
     def('isSupersetOf',function(other){for(var v of other)if(!this.has(v))return false;return true});
     def('isDisjointFrom',function(other){for(var v of this)if(other.has(v))return false;return true});
   })();`,
+  // URL.canParse / URL.parse: Chrome 120+ / Chrome 126+. 0.14.12 真机实测（华为 WebView
+  // 114.0.5735.196）：0.2.2-rc.1 的 markdown 链接与图片路径解析直接调用 URL.canParse
+  // （dsh-web-frontend 内 `!e_(i) && URL.canParse(i)`），缺位即
+  // TypeError: URL.canParse is not a function → conversation.chat.node 槽崩溃
+  // → 对话界面助手正文整段空白，而轨迹（不经过该解析）仍能看到内容。
+  `if(typeof URL!=='undefined'&&typeof URL.canParse!=='function'){URL.canParse=function(input,base){try{new URL(input,base);return true}catch(e){return false}}}`,
+  `if(typeof URL!=='undefined'&&typeof URL.parse!=='function'){URL.parse=function(input,base){try{return new URL(input,base)}catch(e){return null}}}`,
   // rc.3 client uses these on WebViews predating ES2022/2023. Install only absent methods.
   `(function(){
     var ap=Array.prototype;

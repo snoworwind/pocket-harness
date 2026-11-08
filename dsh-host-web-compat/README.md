@@ -52,6 +52,7 @@ This is a standalone profile example. Pocket Harness mounts the plugin through `
 | `Object.groupBy` / `Map.groupBy` | missing | Chrome 117+ |
 | `Set.prototype` set methods | missing | Chrome 122+ (union/intersection/difference/symmetricDifference/isSubsetOf/isSupersetOf/isDisjointFrom) |
 | `Array.fromAsync` | missing | Chrome 121+ |
+| `URL.canParse` / `URL.parse` | missing | Chrome 120+ / 126+; upstream markdown link and image path resolution calls `URL.canParse` unguarded and the thrown TypeError blanks the assistant text slot |
 
 Idempotent: skipped when already present. Every snippet shares **one** `<script>` element, so each
 one must end on a complete statement (see Development constraints).
