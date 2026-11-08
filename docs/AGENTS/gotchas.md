@@ -3588,3 +3588,10 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 656. **华为 WebView 114 缺 `URL.canParse`：对话界面助手正文整段空白，轨迹页却完整（0.14.12 首装实测）**
 
     现象：从旧版升级到 0.14.12（引擎 0.2.2-rc.1）后，对话页只剩用户消息、工具卡片、轮次页脚和操作行，助手正文（含最终答复）完全不渲染；同一会话切到「轨迹」页能看到全部文本。`files/boot-diag.log` 每轮都记 `TypeError: URL.canParse is not a function`，并伴随 `slot entry crashed in 'conversation.chat.node'` 与 `'conversation.view'`。真因：设备 WebView 是 `com.huawei.webview` 114.0.5735.196（Chromium 114），而上游 `dsh-web-frontend` 的 markdown 链接/图片路径解析 `!e_(i) && URL.canParse(i)` 无保护地调用 Chrome 120+ 才有的静态方法；缺位即抛 TypeError，`conversation.chat.node` 槽入口被错误边界摘除（页脚由另一槽渲染，所以仍在）。模型回复里几乎必含路径/URL 词元，触发该解析，故表现为「所有助手正文消失」；轨迹页走纯文本渲染，不经过该解析。修法：在 `dsh-host-web-compat` 的 `POLYFILLS` 补 `URL.canParse` 与 `URL.parse`（可解析返回 true/URL，否则 false/null；既有原生实现不覆盖），插件版本 0.1.15。复验：`node scripts/url-canparse.test.mjs` 3/3（缺失安装、带 base 解析、原生实现不被覆盖）；设备层待重装来源包后复核对话正文（本轮仅静态与单测证据，未做设备验收）。
+
+657. **左上角抽屉键比标题高出一截：frame 用 padding 避让状态栏，绝对定位的 leading 座位不跟随（0.14.12 真机）**
+
+    现象：0.14.12 上对话页左上角的侧栏开合键明显高于标题行，落进状态栏高度带；同一行的标题、右侧「…」与右栏按钮位置正常。
+    真因：上游 `dsh-client-ui-layout` 把移动端抽屉开合键放在 AppFrame 的 `.leadingSeat`，样式为 `position:absolute; top:11px; left:12px`。绝对定位的偏移基准是 frame 的 padding box，而我们此前用 `padding-top: var(--dsh-android-top-inset)` 避让状态栏——padding 只移动常规流（标题行、正文、右栏、composer），**不移动绝对定位子元素**，于是只有这一处少了顶部 inset；右栏按钮在常规流内，所以正常。
+    修法：`dsh-client-ui-responsive` 的 `ANDROID_INSETS_CSS` 把 `padding-top` 换成 `border-top: var(--dsh-android-top-inset, 0px) solid transparent`——border 先移动 padding edge，常规流与绝对定位子元素因此同时下移同一距离；不碰 grid tracks、`position`、`transform`，背景仍由 frame 自身的 background 覆盖状态栏区。插件版本 0.3.4。
+    复验：`dsh-client-ui-responsive` 单测改为断言该机制（`border-top` 存在、`padding-top` 不存在）；设备层待重装来源包后核对左上按钮与标题行基线对齐（本轮未做设备验收）。

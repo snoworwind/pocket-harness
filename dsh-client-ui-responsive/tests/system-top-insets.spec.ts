@@ -3,11 +3,14 @@ import { ANDROID_INSETS_CSS } from '../src/client/mobile/android-insets.css.ts'
 import { COMPOSER_INSETS_CSS } from '../src/client/composer-insets.css.ts'
 
 describe('Android edge-to-edge insets', () => {
-  it('pads only the DSH-owned frame boundary and preserves its grid tracks', () => {
+  it('insets the DSH-owned frame boundary through its padding edge and preserves grid tracks', () => {
     const css = ANDROID_INSETS_CSS.replace(/\/\*[\s\S]*?\*\//g, '')
     expect(css).toContain('[data-dsh-android-frame]')
     expect(css).toContain('box-sizing: border-box')
-    expect(css).toContain('padding-top: var(--dsh-android-top-inset, 0px)')
+    // A transparent top border (not padding) moves the padding edge itself, so the
+    // absolutely positioned mobile drawer seat (upstream: top:11px) is offset too.
+    expect(css).toContain('border-top: var(--dsh-android-top-inset, 0px) solid transparent')
+    expect(css).not.toContain('padding-top')
     expect(css).not.toContain('grid-template')
     expect(css).not.toContain('position:')
     expect(css).not.toContain('transform:')
