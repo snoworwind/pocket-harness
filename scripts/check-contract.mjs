@@ -10,7 +10,7 @@
 // 上游 `dsh/` 只读 checkout 与基线 `node_modules` 都是**本机产物**（gitignore，CI/自包含树不在场）：
 // 对应小节以 SKIP 计数并打印汇总；`--require`（发布链）下任何 SKIP 即失败——发布环境必须齐全。
 // --runtime 只用于反证（把目标运行时装成下一版，验 §7 会不会判红），不参与任何默认判据。
-import { readFileSync, existsSync, readdirSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs'
+import { readFileSync, existsSync, readdirSync, writeFileSync, mkdtempSync, mkdirSync, rmSync } from 'node:fs'
 import { join, dirname, resolve, relative } from 'node:path'
 import { tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'

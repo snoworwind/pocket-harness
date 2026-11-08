@@ -3551,4 +3551,4 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 
 647. **原版 DSH UI 恢复后旧的本地插槽契约仍阻断 APK 门禁（2026-11-08）**
 
-    现象：`check-contract.mjs` 在 APK 前门禁报告 `conversation.header.leading` 与 `android.dock.conversation` 未组合，并因 `conversation-dock.tsx` 已删除而再报本地声明文件缺席。真因：UI 重写让 DSH 原版拥有会话页眉与会话布局，不再从 Android 注入层创建抽屉按钮或 conversation dock；契约表与其自证用例仍保留旧版依赖，导致产品改动正确移除旧接线后，来源构建仍按过时列表拒绝。修法：从消费槽列表与声明表删除两条已废弃依赖；自证用例改为在隔离 fixture 上合成临时本地声明，继续验证 kind/scope 漂移和文件缺席判据。复验：x86 APK 阶段门禁首次发现此漂移；更新后的 `check-contract.mjs --self-test` 与 `check-contract.mjs` 待重跑。
+    现象：`check-contract.mjs` 在 APK 前门禁报告 `conversation.header.leading` 与 `android.dock.conversation` 未组合，并因 `conversation-dock.tsx` 已删除而再报本地声明文件缺席。真因：UI 重写让 DSH 原版拥有会话页眉与会话布局，不再从 Android 注入层创建抽屉按钮或 conversation dock；契约表与其自证用例仍保留旧版依赖，导致产品改动正确移除旧接线后，来源构建仍按过时列表拒绝。修法：从消费槽列表与声明表删除两条已废弃依赖；自证用例改为在隔离 fixture 上合成临时本地声明，继续验证 kind/scope 漂移和文件缺席判据。复验：x86 APK 阶段门禁首次发现此漂移；隔离来源检出中的 `check-contract.mjs --self-test` 通过（13 条自证命中，11 条因未提供上游 checkout 按规范标记 N/A）；正式 APK 门禁随完整来源链重跑。
