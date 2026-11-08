@@ -81,10 +81,14 @@ pnpm_retry_settings=(
 )
 verify_pnpm_retry_settings() {
   local manager="$1" pair setting expected actual
+  local manager_args=()
+  if [[ "$manager" == "pnpm@12.2.0" ]]; then
+    manager_args=(--pm-on-fail=ignore)
+  fi
   for pair in "${pnpm_retry_settings[@]}"; do
     setting="${pair%%=*}"
     expected="${pair#*=}"
-    actual="$(env "${pnpm_retry_env[@]}" corepack "$manager" config get "$setting")"
+    actual="$(env "${pnpm_retry_env[@]}" corepack "$manager" "${manager_args[@]}" config get "$setting")"
     if [[ "$actual" != "$expected" ]]; then
       echo "::error::pnpm retry setting $setting resolved to '$actual', expected '$expected' ($manager)" >&2
       return 1
