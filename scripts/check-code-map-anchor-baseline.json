@@ -2273,16 +2273,16 @@
       "const style = window.getComputedStyle(element)"
     ],
     "dsh-host-web-compat/lib/index.js:302": [
-      "return !!page;"
+      "// 客户端插件装配失败时上游渲染的**就是** boot 页（只是多了 [class*=failedItem] 失败投影），"
     ],
     "dsh-host-web-compat/lib/index.js:783": [
-      "*"
+      "const POLYFILL_SCRIPT_BODY = POLYFILLS"
     ],
     "dsh-host-web-compat/lib/index.js:794": [
-      "*"
+      "*     `AndroidBridge.copyText` 的注释与 2026-08-17 的 #27 修复都是这条实测的产物）。"
     ],
     "dsh-host-web-compat/lib/index.js:895": [
-      "* `visibility:hidden`，注入即可见，于是它实际被当成了「启动画面」：一次**健康但稍慢**的启动也会"
+      "* 本块的两个不变量："
     ],
     "dsh-host-web-compat/scripts/boot-watchdog.test.mjs:231": [
       "// 判据取**求值后**的脚本体（源码切片测不出模板串语义），并在 VM 里跑出真实行为："
@@ -2307,7 +2307,6 @@
       "* Collect each related child's own descriptor through existing historical codecs.",
       "const incidental = new Set([",
       "function signature(pattern) {",
-      "if (!a.ok)",
       "let total = 0;",
       "manifest = JSON.parse(readFileSync(manifestPath, \"utf8\"));",
       "return true;",

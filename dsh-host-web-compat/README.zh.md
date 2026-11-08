@@ -49,6 +49,7 @@
 | `Object.groupBy` / `Map.groupBy` | 缺失时 | Chrome 117+ |
 | `Set.prototype` 集合方法 | 缺失时 | Chrome 122+（union/intersection/difference/symmetricDifference/isSubsetOf/isSupersetOf/isDisjointFrom） |
 | `Array.fromAsync` | 缺失时 | Chrome 121+ |
+| `URL.canParse` / `URL.parse` | 缺失时 | Chrome 120+ / 126+；上游 markdown 链接与图片路径解析无保护地调用 `URL.canParse`，缺失即抛错并让助手正文槽整段空白 |
 
 幂等：已存在则跳过。全部片段拼成**一个** `<script>`，因此每个片段必须以完整语句结尾
 （见「开发约束」）。
