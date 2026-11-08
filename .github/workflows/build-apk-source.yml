@@ -67,7 +67,7 @@ jobs:
           bootstrap_url=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["url"])' <<< "$bootstrap_pin")
           bootstrap_sha256=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["sha256"])' <<< "$bootstrap_pin")
           bootstrap_archive="$bootstrap_root/bootstrap-$DSH_ABI.zip"
-          curl --fail --location --retry 3 "$bootstrap_url" -o "$bootstrap_archive"
+          curl --fail --location --retry 8 --retry-max-time 600 "$bootstrap_url" -o "$bootstrap_archive"
           printf '%s  %s\n' "$bootstrap_sha256" "$bootstrap_archive" | sha256sum --check --strict
           python3 scripts/source-build/prepare-termux-bootstrap.py --extract-bootstrap-only --abi "$DSH_ABI" \
             "$bootstrap_archive" "$bootstrap_root/bootstrap-extracted/usr"
@@ -329,7 +329,7 @@ jobs:
           bootstrap_sha256=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["sha256"])' <<< "$bootstrap_pin")
           bootstrap_archive=".deploy-tmp/source-build/bootstrap-$DSH_ABI.zip"
           if ! printf '%s  %s\n' "$bootstrap_sha256" "$bootstrap_archive" | sha256sum --check --status 2>/dev/null; then
-            curl --fail --location --retry 3 "$bootstrap_url" --output "$bootstrap_archive"
+            curl --fail --location --retry 8 --retry-max-time 600 "$bootstrap_url" --output "$bootstrap_archive"
           fi
           # 先清空解包目标：本步对**同一目录**重跑不安全——上一轮按 SYMLINKS.txt 建出的符号链接
           # 会让这一轮的 safe_member 解析出界（报 `bootstrap path escaped staging root`）。
