@@ -150,6 +150,8 @@ function checkTermuxPackageSnapshotFlow(source) {
   assert.equal((source.match(/unsupported ABI: \$DSH_ABI/g) ?? []).length, 2,
     'both the preflight and builder must fail before work when an unsupported ABI is supplied')
   assert.match(preflight, /python3 scripts\/source-build\/prepare-termux-signed-repo\.py/)
+  assert.match(preflight, /curl --fail --location --retry 8 --retry-max-time 600 "\$bootstrap_url" -o "\$bootstrap_archive"/,
+    'the pinned bootstrap download must tolerate longer transient GitHub Release 5xx incidents')
   assert.equal((preflight.match(/prepare-termux-signed-repo\.py/g) ?? []).length, 1,
     'the rolling Termux repository must be resolved exactly once per workflow run')
   assert.match(preflight, /tar --create --file=\.deploy-tmp\/termux-package-inputs\.tar/)
@@ -165,6 +167,8 @@ function checkTermuxPackageSnapshotFlow(source) {
   assert.match(readFileSync(new URL('./prepare-termux-signed-repo.py', import.meta.url), 'utf8'),
     /webroot\.parent \/ "termux-packages-provenance\.json"/)
   assert.match(build, /needs: termux-package-inputs/)
+  assert.match(build, /curl --fail --location --retry 8 --retry-max-time 600 "\$bootstrap_url" --output "\$bootstrap_archive"/,
+    'the cached build bootstrap download must use the same bounded transient-error retry window')
   assert.match(build, artifactName)
   assert.doesNotMatch(build, /^\s*name:.*github\.run_attempt/m,
     'consumers must not request an artifact name that changes between attempts')
@@ -201,6 +205,10 @@ test('negative controls reject independent repo fetches, missing dependency, or 
   const source = read('build-apk-source.yml')
   for (const bad of [
     source.replace('    needs: termux-package-inputs\n', ''),
+    source.replace('curl --fail --location --retry 8 --retry-max-time 600 "$bootstrap_url" -o "$bootstrap_archive"',
+      'curl --fail --location --retry 3 "$bootstrap_url" -o "$bootstrap_archive"'),
+    source.replace('curl --fail --location --retry 8 --retry-max-time 600 "$bootstrap_url" --output "$bootstrap_archive"',
+      'curl --fail --location --retry 3 "$bootstrap_url" --output "$bootstrap_archive"'),
     source.replace("          name: termux-package-inputs-${{ inputs.abi || 'arm64' }}-${{ github.run_id }}\n          path: .deploy-tmp/source-build",
       '          name: termux-package-inputs-stale-run\n          path: .deploy-tmp/source-build'),
     source.replace('          overwrite: true\n', ''),

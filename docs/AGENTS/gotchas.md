@@ -3567,4 +3567,8 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 
 651. **失败 job 重跑时 Termux 输入 artifact 仍按 attempt 命名（2026-11-08）**
 
-    现象：双 ABI workflow attempt 2 重跑失败消费者时，ARM64 reference 找不到 `termux-package-inputs-arm64-<run-id>-2`；成功的 producer 被 GitHub Actions 复用，artifact 实际仍叫 `...-1`。真因：artifact 名称包含 `github.run_attempt`，但 `gh run rerun --failed` 会跳过已成功的输入准备 job；消费者 attempt 已变而 producer artifact 不变，确定性地产生命名断链。修法：按 ABI + workflow run ID 命名 producer/consumer 共用 artifact，移除 attempt 部分；上传设 `overwrite: true`，使完整 workflow rerun 重新生成同名输入时可替换旧快照。复验：`cloud-workflow.test.mjs` 验证生产/消费同名且不含 attempt、覆盖标志必需，并对名称漂移及移除覆盖标志设负控；PR 与新的双 ABI完整 draft run 结果待补记。
+    现象：双 ABI workflow attempt 2 重跑失败消费者时，ARM64 reference 找不到 `termux-package-inputs-arm64-<run-id>-2`；成功的 producer 被 GitHub Actions 复用，artifact 实际仍叫 `...-1`。真因：artifact 名称包含 `github.run_attempt`，但 `gh run rerun --failed` 会跳过已成功的输入准备 job；消费者 attempt 已变而 producer artifact 不变，确定性地产生命名断链。修法：按 ABI + workflow run ID 命名 producer/consumer 共用 artifact，移除 attempt 部分；上传设 `overwrite: true`，使完整 workflow rerun 重新生成同名输入时可替换旧快照。复验：`cloud-workflow.test.mjs` 验证生产/消费同名且不含 attempt、覆盖标志必需，并对名称漂移及移除覆盖标志设负控；PR #253 已合并。新的双 ABI完整 draft run 结果待补记。
+
+652. **GitHub Release bootstrap 504 重试窗口过短（2026-11-08）**
+
+    现象：双 ABI 草稿 run `42467045882` 的 ARM64 与 x86_64 Termux 预检都在下载固定 bootstrap ZIP 时连续收到 HTTP 504，curl 重试 3 次后约 18 秒失败，来源链尚未进入 ABI 构建。真因：GitHub Release asset CDN 出现短时网关超时，而预检与 build job 的固定 bootstrap 下载仅使用默认三次瞬态重试；请求对象与固定 SHA-256 pin 均未变化。修法：两处 bootstrap 下载统一设为最多 8 次、最长 600 秒的 curl 瞬态错误重试，仍在解压前严格校验 ABI 固定 SHA-256；不重试非瞬态错误。复验：`cloud-workflow.test.mjs` 正向断言预检和 build 下载都有该重试边界，负控分别缩回 3 次即失败；PR 与后续完整双 ABI draft run 待补记。
