@@ -36,7 +36,7 @@ node scripts/source-build/record-project-components.mjs inputs \
 # 而从源码树重建会得到不同字节 —— 0.1.5 时代就踩过（源码构建产物与发布产物闭合形态不同，
 # 需要一条源码构建专用的补丁改写兜着）。改用发布产物后该改写随之退役，锚点天然对齐。
 marketplace_tarball=.deploy-tmp/component-sources/dshmarketplace-plugin-0.1.7.tgz
-curl --fail --location --retry 8 --retry-max-time 600 --max-time 300 \
+bash "$GITHUB_WORKSPACE/scripts/source-build/retry-curl.sh" --fail --location --retry 8 --retry-max-time 600 --max-time 300 \
   https://registry.npmjs.org/dshmarketplace-plugin/-/dshmarketplace-plugin-0.1.7.tgz \
   --output "$marketplace_tarball"
 printf '%s  %s\n' '881c21ec33a4a91ad65c61676540faab4122440e3f9685f69939533a6dbbc0c1' "$marketplace_tarball" | sha256sum --check -
