@@ -27,10 +27,15 @@ class ReleasePreparationTest(unittest.TestCase):
         for abi in module.ABIS:
             for line in paths.splitlines():
                 path = line.strip()
-                if '*' not in path:
+                arm64_only_evidence = {
+                    '.deploy-tmp/source-build/linux-bundle-injection.json',
+                    '.deploy-tmp/linux-build/provenance/**',
+                }
+                if '*' not in path and not (abi == 'x86_64' and path in arm64_only_evidence):
                     self.put(abi, path, '{}')
             self.put(abi, 'scripts/patches/tests/fixtures/test-0.2.2-rc.1/probe.js', 'fixture')
-            self.put(abi, '.deploy-tmp/linux-build/provenance/linux-assets.json', '{}')
+            if abi == 'arm64':
+                self.put(abi, '.deploy-tmp/linux-build/provenance/linux-assets.json', '{}')
         self.apks = {}
         self.base = '.deploy-tmp/source-build/'
         for abi in module.ABIS:
@@ -56,6 +61,9 @@ class ReleasePreparationTest(unittest.TestCase):
 
     def test_unchanged_apks_and_hidden_evidence_for_both_abis(self):
         self.run_prepare()
+        self.assertTrue((self.root / 'arm64/.deploy-tmp/source-build/linux-bundle-injection.json').is_file())
+        self.assertFalse((self.root / 'x86_64/.deploy-tmp/source-build/linux-bundle-injection.json').exists())
+        self.assertFalse((self.root / 'x86_64/.deploy-tmp/linux-build/provenance').exists())
         for abi, apk in self.apks.items():
             self.assertEqual((self.root / abi / apk).read_bytes(), (self.output / Path(apk).name).read_bytes())
         with zipfile.ZipFile(self.output / 'provenance.zip') as archive:
@@ -140,6 +148,19 @@ class ReleasePreparationTest(unittest.TestCase):
         (self.root / 'arm64' / self.base / 'snapshot-normalization.json').unlink()
         with self.assertRaisesRegex(ValueError, 'missing arm64 evidence'):
             self.run_prepare()
+
+    def test_arm64_linux_bundle_evidence_remains_required(self):
+        (self.root / 'arm64' / self.base / 'linux-bundle-injection.json').unlink()
+        with self.assertRaisesRegex(ValueError, 'missing arm64 evidence: .deploy-tmp/source-build/linux-bundle-injection.json'):
+            self.run_prepare()
+        self.assertFalse(self.output.exists())
+
+    def test_arm64_linux_asset_provenance_remains_required(self):
+        import shutil
+        shutil.rmtree(self.root / 'arm64/.deploy-tmp/linux-build/provenance')
+        with self.assertRaisesRegex(ValueError, 'missing arm64 evidence: .deploy-tmp/linux-build/provenance/\\*\\*'):
+            self.run_prepare()
+        self.assertFalse(self.output.exists())
 
     def test_wrong_or_stale_independent_proof_blocks_preparation(self):
         path = self.root / 'x86_64' / self.base / 'independent-rebuild-verification.json'

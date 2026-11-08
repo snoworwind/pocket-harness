@@ -3560,3 +3560,7 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 649. **x86_64 云构建预检继承环境后误用 ARM64 签名证明 fixture（2026-11-08）**
 
     现象：双 ABI 草稿 workflow 的 x86_64 primary/reference 在昂贵构建开始前同时失败，日志落在签名证明单测，而 ARM64 两路继续运行。真因：可复用 workflow 按 job 显式设置 `DSH_ABI=x86_64`，`verifyRebuildProof()` 默认读取该环境；单测却把证明 fixture 固定为 `arm64` 并省略 ABI 参数，所以在本地默认环境通过、在 x86 预检中判为错误 ABI。修法：fixture 由 `DSH_ABI` 派生，错误 ABI 负控取相反 ABI；默认参数仍被实际覆盖，不削弱生产校验。复验：`DSH_ABI=x86_64 node --test scripts/source-build/sign-source-artifacts.test.mjs` 与 ARM64 对应命令均通过（Windows 本地运行各 2 项通过、Linux-only signer 测试跳过）；首次 PR Gate 发现新增构建说明使执行地图的行号锚点过期，已将引用更新到 201 行，`node scripts/check-code-map.mjs --self-test` 与正式检查均通过；追加提交后的 PR Gate 和合并后双 ABI 来源 workflow 待复核。失败 run `42456772942` 的 x86 失败日志确认具体断言；已取消无意义的剩余 ARM64 工作。
+
+650. **双 ABI 发布资产准备器把 ARM64 专属 Linux 证明误设为 x86 必需（2026-11-08）**
+
+    现象：ARM64 与 x86_64 primary/reference 构建、独立 APK 字节比对和签名全通过，草稿 workflow 却在 `prepare` 因缺少 x86_64 `linux-bundle-injection.json` 失败。真因：来源工作流仅在 `DSH_ABI=arm64` 时构建离线 Linux 资产并生成 bundle 注入证明及 Linux provenance；发布准备器虽然逐 ABI 校验上传清单，却把清单中这些 ARM64 专属路径一律当成两 ABI 都必需，测试夹具也错误地给 x86 填了这些文件。修法：只对 x86_64 豁免这两个已知 ARM64 专属证据路径，其他清单项仍逐项 fail-closed；回归夹具模拟 x86 真实缺席、ARM64 保留正控，并为 ARM64 bundle 注入和 Linux provenance 各增加缺失负控。复验：双 ABI 来源 run `42458598647` 的构建/比对/签名通过，资产准备日志确认首次缺项；Windows Python 回归 13 项通过、2 项 Linux 专属测试按平台跳过；维护文档、执行地图和 `git diff --check` 通过，PR CI 与合并后完整双 ABI 草稿工作流待复核。
