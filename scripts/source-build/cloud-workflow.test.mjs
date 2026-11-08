@@ -172,15 +172,17 @@ function checkTermuxPackageSnapshotFlow(source) {
   assert.equal((build.match(/prepare-termux-signed-repo\.py/g) ?? []).length, 0,
     'build replicas must consume the shared snapshot instead of independently resolving stable')
   assert.match(build, /Download this run's authenticated Termux package snapshot/)
-  assert.match(build, /Freeze ABI-specific Termux base provenance/)
   const assemble = build.indexOf('Assemble clean Termux base with the source-built Android binding')
   const reclaim = build.indexOf('node scripts/source-build/reclaim-build-disk.mjs --root "$GITHUB_WORKSPACE"')
-  const freeze = build.indexOf('Freeze ABI-specific Termux base provenance')
-  assert.ok(assemble > 0 && reclaim > assemble && freeze > reclaim,
-    'ABI-specific provenance must be frozen after its source exists and after disk reclamation')
-  const freezeBlock = build.slice(freeze, build.indexOf('\n      - name:', freeze))
-  assert.ok(freezeBlock.includes('cp ".deploy-tmp/$base_name/base-usr.tar.xz.provenance.json" \\\n            .deploy-tmp/source-build/termux-base-provenance.json'))
+  const assembleEnd = build.indexOf('\n      - name:', assemble)
+  const assembleBlock = build.slice(assemble, assembleEnd)
+  assert.ok(assemble > 0 && assembleEnd > assemble && reclaim > assembleEnd,
+    'ABI-specific base provenance must be copied after assembly and before disk reclamation')
+  assert.ok(assembleBlock.includes('cp "$base_root/base-usr.tar.xz.provenance.json"'))
+  assert.ok(assembleBlock.includes('.deploy-tmp/source-build/termux-base-provenance.json'))
   assert.match(build, /\.deploy-tmp\/source-build\/termux-base-provenance\.json/)
+  assert.equal((source.match(/\.deploy-tmp\/source-build\/termux-base-provenance\.json/g) ?? []).length, 4,
+    'primary, verified, and signed artifacts must upload this ABI-specific provenance')
   assert.doesNotMatch(build, /\.deploy-tmp\/(?:arm64|x64)-base\/base-usr\.tar\.xz\.provenance\.json/)
 }
 test('both replicas for either ABI consume one authenticated Termux package snapshot per workflow run', () => {

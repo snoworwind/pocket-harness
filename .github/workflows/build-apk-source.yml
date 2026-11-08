@@ -578,6 +578,8 @@ jobs:
             .deploy-tmp/deepseek-harness \
             .deploy-tmp/engine-deploy \
             "$base_root/base-usr.tar.xz"
+          cp "$base_root/base-usr.tar.xz.provenance.json" \
+            .deploy-tmp/source-build/termux-base-provenance.json
 
       - name: Install Linux asset cross-build tools
         if: env.DSH_ABI == 'arm64'
@@ -865,14 +867,6 @@ jobs:
           import { copyFileSync } from 'node:fs'
           copyFileSync(process.env.POCKET_BUILD_CERTIFICATE_FILE, '.deploy-tmp/source-build/signing-certificate-sha256.txt')
           NODE
-
-      - name: Freeze ABI-specific Termux base provenance
-        shell: bash
-        run: |
-          set -euo pipefail
-          base_name="$([ "$DSH_ABI" = arm64 ] && echo arm64-base || echo x64-base)"
-          cp ".deploy-tmp/$base_name/base-usr.tar.xz.provenance.json" \
-            .deploy-tmp/source-build/termux-base-provenance.json
 
       - name: Upload intermediate APK and provenance
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
