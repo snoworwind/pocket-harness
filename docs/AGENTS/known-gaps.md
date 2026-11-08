@@ -65,7 +65,7 @@
 | **仓库坐标写死上游（已修）** | 实测：`record-project-components.mjs` 把 provenance 的 `sourceRepository` 写死 `github.com/kelai141/dsh-mobile-apk`（而来源链会调用它两次）；`upload-release.mjs` / `sync-release-notes.mjs` 写死 `OWNER/REPO` 并需对方 PAT；`webpages/` 的 canonical/og/发布 API/下载链接全指向上游 | 已改为运行时解析（`DSH_*` 环境变量 > CI 变量 > `git origin`，取不到即判红）与构建期占位符注入，默认指向本 fork；站点测试同步改为按解析值断言。**两个手工发布脚本已按用户指示删除**（零调用者、非来源链路径）。证据与根因见坑 327 |
 | **跨树镜像纪律退役（永久分叉，已记账）** | 按用户决定移除跨树镜像层：`check-patch-mirror.mjs` 只保留 registry↔IMPLS 自洽（`--peer` / `--require-peer` / `DSH_MIRROR_PEER` 显式拒绝，exit 2），`check-release-gates.mjs` 的「两树同版」断言删除，AGENTS §4.6 改为「树内副本即权威」。受影响文件：`scripts/check-patch-mirror.mjs`、`scripts/check-release-gates.mjs`、`scripts/build-apk.mjs`（注释） | 这些文件自此与协调仓永久分叉，将来若引入上游改动必冲突；**代价不是依赖而是合并成本**。原跨树防线（防「云端快照静默缺引擎补丁」）在本分支不再适用：不存在第二棵树，交付只由本仓自洽面 + 补丁回归 + fixtures 代对齐保障 |
 | **补丁夹具 capture 重封（vendor-only registry 变更）** | `1dac77f` 新增 vendor 补丁 `market-install-approval-R2` 后未重跑 `probe-engine-anchors --fixtures`；PR Gate 的 `check-patch-fixtures` 比较完整 registry 哈希，在 `main` 首次运行即判红。CI 失败明细只报 capture 身份不符，未报任何 fixture 文件 hash 不符，说明 engine 夹具字节仍与 capture 一致 | 已将 `manifest.capture.registrySha256` 重封为当前 registry 哈希 `671699cb51c447204f45fcdca6529ae57f9d9e4d1a97dc047c8a2407fe0def9e`；engine / sourceCommit / 文件哈希未改。补丁夹具的真实重捕获仍应在下一次有 engine 产物的构建中执行，届时覆盖本行 |
-| **来源链草稿发布** | 用户于 2026-10-17 允许手动来源构建成功后自动创建预发布草稿；2026-11-08 本分支改为 ARM64 与 x86_64 双 ABI | 具体政策见 [RELEASE.md §5](../RELEASE.md)；自动公开未启用，候选设备验收仍须补齐；本分支 CI 尚待验证 |
+| **来源链草稿发布** | 用户于 2026-10-17 允许手动来源构建成功后自动创建预发布草稿；2026-11-08 本分支改为 ARM64 与 x86_64 双 ABI | 具体政策见 [RELEASE.md §5](../RELEASE.md)；PR #250 的 workflow validate、Kotlin 与静态源码回归已通过；main-only 来源构建在 PR 中跳过，双 ABI 云端草稿构建尚未运行；自动公开未启用，候选设备验收仍须补齐 |
 
 ## 吸收上游 `main`（2026-10-16，上游尖端 `5fca94f`）
 
