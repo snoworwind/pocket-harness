@@ -120,7 +120,7 @@ jobs:
           print('BOOTSTRAP_SHA256=' + values['BOOTSTRAP_SHA256'])
           PY
           source .deploy-tmp/linux-termux/bootstrap-pins.env
-          curl --fail --location --retry 8 --retry-max-time 600 "$BOOTSTRAP_URL" -o .deploy-tmp/linux-termux/bootstrap-aarch64.zip
+          bash scripts/source-build/retry-curl.sh --fail --location --retry 8 --retry-max-time 600 "$BOOTSTRAP_URL" -o .deploy-tmp/linux-termux/bootstrap-aarch64.zip
           printf '%s  %s\n' "$BOOTSTRAP_SHA256" .deploy-tmp/linux-termux/bootstrap-aarch64.zip | sha256sum --check --strict
           python3 scripts/source-build/prepare-termux-bootstrap.py --extract-bootstrap-only \
             .deploy-tmp/linux-termux/bootstrap-aarch64.zip .deploy-tmp/linux-termux/bootstrap-extracted/usr
@@ -144,8 +144,8 @@ jobs:
           archive_fingerprint=$(node -p 'require("./scripts/source-build/linux-inputs.json").debianArchiveKey13Fingerprint')
           release_sha=$(node -p 'require("./scripts/source-build/linux-inputs.json").debianReleaseKey13Sha256')
           release_fingerprint=$(node -p 'require("./scripts/source-build/linux-inputs.json").debianReleaseKey13Fingerprint')
-          curl --fail --location --retry 8 --retry-max-time 600 https://ftp-master.debian.org/keys/archive-key-13.asc -o "$keydir/archive-key-13.asc"
-          curl --fail --location --retry 8 --retry-max-time 600 https://ftp-master.debian.org/keys/release-13.asc -o "$keydir/release-13.asc"
+          bash scripts/source-build/retry-curl.sh --fail --location --retry 8 --retry-max-time 600 https://ftp-master.debian.org/keys/archive-key-13.asc -o "$keydir/archive-key-13.asc"
+          bash scripts/source-build/retry-curl.sh --fail --location --retry 8 --retry-max-time 600 https://ftp-master.debian.org/keys/release-13.asc -o "$keydir/release-13.asc"
           printf '%s  %s\n%s  %s\n' "$archive_sha" "$keydir/archive-key-13.asc" "$release_sha" "$keydir/release-13.asc" | sha256sum --check --strict
           gpg --batch --quiet --homedir "$homedir" --import /usr/share/keyrings/debian-archive-keyring.gpg "$keydir/archive-key-13.asc" "$keydir/release-13.asc"
           fingerprints=$(gpg --batch --homedir "$homedir" --with-colons --list-keys | awk -F: '$1 == "fpr" { print $10 }')

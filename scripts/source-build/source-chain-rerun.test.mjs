@@ -95,10 +95,12 @@ function prepare(root) {
     'if sys.argv[1] == "--print-pin": print(json.dumps({"url": "https://example.invalid/bootstrap.zip", "sha256": "' + sha + '"}))',
     '',
   ].join('\n'))
+  writeFileSync(join(root, 'scripts/source-build/retry-curl.sh'),
+    readFileSync(join(ROOT, 'scripts/source-build/retry-curl.sh')))
   writeFileSync(join(root, 'download'), good)
   const curl = [
     '#!/bin/bash', 'set -eu', 'printf "download\\n" >> "$HOME/calls"',
-    'while [ "$#" -gt 0 ]; do if [ "$1" = "--output" ]; then output="$2"; break; fi; shift; done',
+    'while [ "$#" -gt 0 ]; do if [ "$1" = "--output" ] || [ "$1" = "-o" ]; then output="$2"; break; fi; shift; done',
     'if [ "' + '$' + '{INTERRUPT:-0}" = 1 ] && [ ! -f "$HOME/interrupted" ]; then printf partial > "$output"; touch "$HOME/interrupted"; exit 22; fi',
     'cp "$HOME/download" "$output"', '',
   ].join('\n')

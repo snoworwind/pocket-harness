@@ -40,9 +40,9 @@ test('negative control: provenance nested inside the webroot is rejected', () =>
 function checkLinuxAssetDownloads(source) {
   assert.match(source, /npm ci --no-audit --no-fund --fetch-retries=8 --fetch-retry-factor=2 \\\n\s+--fetch-retry-mintimeout=1000 --fetch-retry-maxtimeout=30000 --fetch-timeout=300000/,
     'the source-built Node addon dependency install must retry registry 5xx with a finite timeout')
-  assert.match(source, /curl --fail --location --retry 8 --retry-max-time 600 "\$DEBIAN_SNAPSHOT\/dists\/trixie\/InRelease"/,
+  assert.match(source, /bash scripts\/source-build\/retry-curl\.sh --fail --location --retry 8 --retry-max-time 600 "\$DEBIAN_SNAPSHOT\/dists\/trixie\/InRelease"/,
     'the signed Debian Release metadata download must tolerate transient gateway errors')
-  assert.match(source, /curl --fail --location --retry 8 --retry-max-time 600 "https:\/\/nodejs\.org\/dist\/v\$NODE_VERSION\/node-v\$NODE_VERSION-linux-arm64\.tar\.xz"/,
+  assert.match(source, /bash scripts\/source-build\/retry-curl\.sh --fail --location --retry 8 --retry-max-time 600 "https:\/\/nodejs\.org\/dist\/v\$NODE_VERSION\/node-v\$NODE_VERSION-linux-arm64\.tar\.xz"/,
     'the fixed Node.js asset download must use the bounded retry window')
   assert.match(source, /printf '%s  %s\\n' "\$DEBIAN_SHA" "\$WORK\/input\/debian-InRelease" \| sha256sum --check --strict/,
     'retrying the Release download must not bypass its existing digest check')
@@ -57,9 +57,9 @@ test('pinned Linux asset downloads retry transient failures and still verify fix
 test('negative controls reject short retry windows or missing pinned asset digest checks', () => {
   const source = readFileSync(new URL('./build-linux-assets.sh', import.meta.url), 'utf8').replaceAll('\r\n', '\n')
   for (const bad of [
-    source.replace('curl --fail --location --retry 8 --retry-max-time 600 "$DEBIAN_SNAPSHOT/dists/trixie/InRelease"',
+    source.replace('bash scripts/source-build/retry-curl.sh --fail --location --retry 8 --retry-max-time 600 "$DEBIAN_SNAPSHOT/dists/trixie/InRelease"',
       'curl --fail --location --retry 3 "$DEBIAN_SNAPSHOT/dists/trixie/InRelease"'),
-    source.replace('curl --fail --location --retry 8 --retry-max-time 600 "https://nodejs.org/dist/v$NODE_VERSION/node-v$NODE_VERSION-linux-arm64.tar.xz"',
+    source.replace('bash scripts/source-build/retry-curl.sh --fail --location --retry 8 --retry-max-time 600 "https://nodejs.org/dist/v$NODE_VERSION/node-v$NODE_VERSION-linux-arm64.tar.xz"',
       'curl --fail --location --retry 3 "https://nodejs.org/dist/v$NODE_VERSION/node-v$NODE_VERSION-linux-arm64.tar.xz"'),
     source.replace('--fetch-retries=8 --fetch-retry-factor=2', '--fetch-retries=2 --fetch-retry-factor=2'),
     source.replace('printf \'%s  %s\\n\' "$DEBIAN_SHA" "$WORK/input/debian-InRelease" | sha256sum --check --strict', '# missing Debian Release digest check'),
@@ -74,6 +74,8 @@ function checkLinuxAssetWorkflowDownloads(source) {
     'each standalone Linux plugin dependency install must use the bounded registry retry policy')
   assert.equal((source.match(/--retry 8 --retry-max-time 600/g) ?? []).length, 3,
     'bootstrap ZIP and both Debian signing-key downloads need the extended bounded retry window')
+  assert.equal((source.match(/bash scripts\/source-build\/retry-curl\.sh/g) ?? []).length, 3,
+    'all fixed Linux asset workflow downloads must retry known curl transport errors')
   assert.match(source, /printf '%s  %s\\n' "\$BOOTSTRAP_SHA256" \.deploy-tmp\/linux-termux\/bootstrap-aarch64\.zip \| sha256sum --check --strict/,
     'the Termux bootstrap retry must remain protected by its pinned digest')
   assert.match(source, /printf '%s  %s\\n%s  %s\\n' "\$archive_sha" "\$keydir\/archive-key-13\.asc" "\$release_sha" "\$keydir\/release-13\.asc" \| sha256sum --check --strict/,
@@ -88,8 +90,8 @@ test('negative controls reject short standalone asset retries and removed digest
   const source = readWorkflow('build-linux-assets.yml').replaceAll('\r\n', '\n')
   for (const bad of [
     source.replace('--fetch-retries=8 --fetch-retry-factor=2', '--fetch-retries=2 --fetch-retry-factor=2'),
-    source.replace('curl --fail --location --retry 8 --retry-max-time 600 "$BOOTSTRAP_URL"', 'curl --fail --location --retry 3 "$BOOTSTRAP_URL"'),
-    source.replace('curl --fail --location --retry 8 --retry-max-time 600 https://ftp-master.debian.org/keys/archive-key-13.asc', 'curl --fail --location --retry 3 https://ftp-master.debian.org/keys/archive-key-13.asc'),
+    source.replace('bash scripts/source-build/retry-curl.sh --fail --location --retry 8 --retry-max-time 600 "$BOOTSTRAP_URL"', 'curl --fail --location --retry 3 "$BOOTSTRAP_URL"'),
+    source.replace('bash scripts/source-build/retry-curl.sh --fail --location --retry 8 --retry-max-time 600 https://ftp-master.debian.org/keys/archive-key-13.asc', 'curl --fail --location --retry 3 https://ftp-master.debian.org/keys/archive-key-13.asc'),
     source.replace('printf \'%s  %s\\n\' "$BOOTSTRAP_SHA256" .deploy-tmp/linux-termux/bootstrap-aarch64.zip | sha256sum --check --strict', '# bootstrap digest omitted'),
     source.replace('printf \'%s  %s\\n%s  %s\\n\' "$archive_sha" "$keydir/archive-key-13.asc" "$release_sha" "$keydir/release-13.asc" | sha256sum --check --strict', '# signing key digests omitted'),
   ]) assert.throws(() => checkLinuxAssetWorkflowDownloads(bad), assert.AssertionError)

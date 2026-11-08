@@ -156,7 +156,7 @@ function checkTermuxPackageSnapshotFlow(source) {
   assert.equal((source.match(/unsupported ABI: \$DSH_ABI/g) ?? []).length, 2,
     'both the preflight and builder must fail before work when an unsupported ABI is supplied')
   assert.match(preflight, /python3 scripts\/source-build\/prepare-termux-signed-repo\.py/)
-  assert.match(preflight, /curl --fail --location --retry 8 --retry-max-time 600 "\$bootstrap_url" -o "\$bootstrap_archive"/,
+  assert.match(preflight, /bash scripts\/source-build\/retry-curl\.sh --fail --location --retry 8 --retry-max-time 600 "\$bootstrap_url" -o "\$bootstrap_archive"/,
     'the pinned bootstrap download must tolerate longer transient GitHub Release 5xx incidents')
   assert.equal((preflight.match(/prepare-termux-signed-repo\.py/g) ?? []).length, 1,
     'the rolling Termux repository must be resolved exactly once per workflow run')
@@ -173,7 +173,7 @@ function checkTermuxPackageSnapshotFlow(source) {
   assert.match(readFileSync(new URL('./prepare-termux-signed-repo.py', import.meta.url), 'utf8'),
     /webroot\.parent \/ "termux-packages-provenance\.json"/)
   assert.match(build, /needs: termux-package-inputs/)
-  assert.match(build, /curl --fail --location --retry 8 --retry-max-time 600 "\$bootstrap_url" --output "\$bootstrap_archive"/,
+  assert.match(build, /bash scripts\/source-build\/retry-curl\.sh --fail --location --retry 8 --retry-max-time 600 "\$bootstrap_url" --output "\$bootstrap_archive"/,
     'the cached build bootstrap download must use the same bounded transient-error retry window')
   assert.match(build, artifactName)
   assert.doesNotMatch(build, /^\s*name:.*github\.run_attempt/m,
@@ -211,9 +211,9 @@ test('negative controls reject independent repo fetches, missing dependency, or 
   const source = read('build-apk-source.yml')
   for (const bad of [
     source.replace('    needs: termux-package-inputs\n', ''),
-    source.replace('curl --fail --location --retry 8 --retry-max-time 600 "$bootstrap_url" -o "$bootstrap_archive"',
+    source.replace('bash scripts/source-build/retry-curl.sh --fail --location --retry 8 --retry-max-time 600 "$bootstrap_url" -o "$bootstrap_archive"',
       'curl --fail --location --retry 3 "$bootstrap_url" -o "$bootstrap_archive"'),
-    source.replace('curl --fail --location --retry 8 --retry-max-time 600 "$bootstrap_url" --output "$bootstrap_archive"',
+    source.replace('bash scripts/source-build/retry-curl.sh --fail --location --retry 8 --retry-max-time 600 "$bootstrap_url" --output "$bootstrap_archive"',
       'curl --fail --location --retry 3 "$bootstrap_url" --output "$bootstrap_archive"'),
     source.replace("          name: termux-package-inputs-${{ inputs.abi || 'arm64' }}-${{ github.run_id }}\n          path: .deploy-tmp/source-build",
       '          name: termux-package-inputs-stale-run\n          path: .deploy-tmp/source-build'),
@@ -269,15 +269,17 @@ function checkTransientBuildStartup(source) {
 
   assert.equal((source.match(/--retry 8 --retry-max-time 600/g) ?? []).length, 5,
     'all five fixed downloads in the APK source workflow must use the longer bounded retry window')
+  assert.equal((source.match(/bash scripts\/source-build\/retry-curl\.sh/g) ?? []).length, 5,
+    'all fixed APK source downloads must retry known curl transport errors')
   assert.match(source, /npm install -g corepack@0\.36\.0[\s\S]*?--fetch-retries=8 --fetch-retry-factor=2 --fetch-retry-mintimeout=1000[\s\S]*?--fetch-retry-maxtimeout=30000 --fetch-timeout=300000/)
   assert.match(source, /printf '%s  %s\\n' "\$ndk_sha1" "\$ndk_archive" \| sha1sum --check -/)
   assert.match(source, /sha256sum --check --strict/)
 
   const engine = readFileSync(new URL('./build-engine.sh', import.meta.url), 'utf8').replaceAll('\r\n', '\n')
-  assert.match(engine, /curl --fail --location --retry 8 --retry-max-time 600 --max-time 300/)
+  assert.match(engine, /retry-curl\.sh" --fail --location --retry 8 --retry-max-time 600 --max-time 300/)
   assert.match(engine, /881c21ec33a4a91ad65c61676540faab4122440e3f9685f69939533a6dbbc0c1.*sha256sum --check/)
   const preflight = readFileSync(new URL('./preflight-source-chain.mjs', import.meta.url), 'utf8')
-  assert.match(preflight, /'--retry', '8', '--retry-max-time', '600', '--max-time', '300'/)
+  assert.match(preflight, /retry-curl\.sh'[\s\S]*?'--retry', '8', '--retry-max-time', '600', '--max-time', '300'/)
   assert.match(preflight, /actualSha256 !== facts\.expectedSha256/)
   const dependencyInstaller = readFileSync(new URL('./install-project-dependencies.mjs', import.meta.url), 'utf8')
   checkProjectNpmRetryPolicy(dependencyInstaller)
@@ -288,7 +290,7 @@ test('pinned Java, Gradle and source downloads recover from transient 504s befor
 })
 
 function checkMarketplaceRetryAndHash(source) {
-  assert.match(source, /curl --fail --location --retry 8 --retry-max-time 600 --max-time 300/)
+  assert.match(source, /retry-curl\.sh" --fail --location --retry 8 --retry-max-time 600 --max-time 300/)
   assert.match(source, /881c21ec33a4a91ad65c61676540faab4122440e3f9685f69939533a6dbbc0c1.*sha256sum --check/)
 }
 
@@ -314,6 +316,7 @@ test('negative controls reject missing startup retries, unpinned Java, and missi
   checkProjectNpmRetryPolicy(projectInstaller)
   assert.throws(() => checkProjectNpmRetryPolicy(projectInstaller.replace("'--fetch-retries=8'", "'--fetch-retries=2'")), assert.AssertionError)
   checkMarketplaceRetryAndHash(engine)
+  assert.throws(() => checkMarketplaceRetryAndHash(engine.replace('retry-curl.sh', 'curl')), assert.AssertionError)
   assert.throws(() => checkMarketplaceRetryAndHash(engine.replace("printf '%s  %s\\n' '881c21ec33a4a91ad65c61676540faab4122440e3f9685f69939533a6dbbc0c1' \"$marketplace_tarball\" | sha256sum --check -", '# digest omitted')), assert.AssertionError)
 })
 

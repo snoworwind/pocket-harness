@@ -67,7 +67,7 @@ jobs:
           bootstrap_url=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["url"])' <<< "$bootstrap_pin")
           bootstrap_sha256=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["sha256"])' <<< "$bootstrap_pin")
           bootstrap_archive="$bootstrap_root/bootstrap-$DSH_ABI.zip"
-          curl --fail --location --retry 8 --retry-max-time 600 "$bootstrap_url" -o "$bootstrap_archive"
+          bash scripts/source-build/retry-curl.sh --fail --location --retry 8 --retry-max-time 600 "$bootstrap_url" -o "$bootstrap_archive"
           printf '%s  %s\n' "$bootstrap_sha256" "$bootstrap_archive" | sha256sum --check --strict
           python3 scripts/source-build/prepare-termux-bootstrap.py --extract-bootstrap-only --abi "$DSH_ABI" \
             "$bootstrap_archive" "$bootstrap_root/bootstrap-extracted/usr"
@@ -374,7 +374,7 @@ jobs:
           bootstrap_sha256=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["sha256"])' <<< "$bootstrap_pin")
           bootstrap_archive=".deploy-tmp/source-build/bootstrap-$DSH_ABI.zip"
           if ! printf '%s  %s\n' "$bootstrap_sha256" "$bootstrap_archive" | sha256sum --check --status 2>/dev/null; then
-            curl --fail --location --retry 8 --retry-max-time 600 "$bootstrap_url" --output "$bootstrap_archive"
+            bash scripts/source-build/retry-curl.sh --fail --location --retry 8 --retry-max-time 600 "$bootstrap_url" --output "$bootstrap_archive"
           fi
           # 先清空解包目标：本步对**同一目录**重跑不安全——上一轮按 SYMLINKS.txt 建出的符号链接
           # 会让这一轮的 safe_member 解析出界（报 `bootstrap path escaped staging root`）。
@@ -564,7 +564,7 @@ jobs:
           # 已存在且钉死的哈希对得上就跳过下载：本地复跑省 704 MB（CI 每轮全新目录，无操作）。
           # 跳过不等于放行——下面那条 sha1sum --check 无论下载与否都照跑。
           if ! printf '%s  %s\n' "$ndk_sha1" "$ndk_archive" | sha1sum --check --status 2>/dev/null; then
-            curl --fail --location --retry 8 --retry-max-time 600 \
+            bash scripts/source-build/retry-curl.sh --fail --location --retry 8 --retry-max-time 600 \
               https://dl.google.com/android/repository/android-ndk-r30-linux.zip \
               --output "$ndk_archive"
           fi
@@ -649,8 +649,8 @@ jobs:
           archive_fingerprint=$(node -p 'require("./scripts/source-build/linux-inputs.json").debianArchiveKey13Fingerprint')
           release_sha=$(node -p 'require("./scripts/source-build/linux-inputs.json").debianReleaseKey13Sha256')
           release_fingerprint=$(node -p 'require("./scripts/source-build/linux-inputs.json").debianReleaseKey13Fingerprint')
-          curl --fail --location --retry 8 --retry-max-time 600 https://ftp-master.debian.org/keys/archive-key-13.asc -o "$keydir/archive-key-13.asc"
-          curl --fail --location --retry 8 --retry-max-time 600 https://ftp-master.debian.org/keys/release-13.asc -o "$keydir/release-13.asc"
+          bash scripts/source-build/retry-curl.sh --fail --location --retry 8 --retry-max-time 600 https://ftp-master.debian.org/keys/archive-key-13.asc -o "$keydir/archive-key-13.asc"
+          bash scripts/source-build/retry-curl.sh --fail --location --retry 8 --retry-max-time 600 https://ftp-master.debian.org/keys/release-13.asc -o "$keydir/release-13.asc"
           printf '%s  %s\n%s  %s\n' "$archive_sha" "$keydir/archive-key-13.asc" "$release_sha" "$keydir/release-13.asc" | sha256sum --check --strict
           gpg --batch --quiet --homedir "$homedir" --import /usr/share/keyrings/debian-archive-keyring.gpg "$keydir/archive-key-13.asc" "$keydir/release-13.asc"
           fingerprints=$(gpg --batch --homedir "$homedir" --with-colons --list-keys | awk -F: '$1 == "fpr" { print $10 }')

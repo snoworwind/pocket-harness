@@ -12,7 +12,7 @@ SOURCE_PROOF_INPUTS=(
   plugins/dsh-linux-bootstrap/build.mjs plugins/dsh-linux-bootstrap/client
   plugins/dsh-linux-bootstrap/package-lock.json plugins/dsh-linux-bootstrap/package.json
   plugins/dsh-linux-bootstrap/src plugins/dsh-linux-bootstrap/test
-  scripts/source-build/build-linux-assets.sh scripts/source-build/linux-inputs.json
+  scripts/source-build/build-linux-assets.sh scripts/source-build/retry-curl.sh scripts/source-build/linux-inputs.json
   scripts/source-build/linux-backend-packages.json scripts/source-build/linux-source-manifest.json
   scripts/snapshot-config/preinstall.json scripts/lib/shell.mjs
   scripts/source-build/prepare-termux-bootstrap.py scripts/source-build/prepare-termux-signed-repo.py
@@ -80,7 +80,7 @@ fi
 tar --sort=name --mtime="@$EPOCH" --owner=0 --group=0 --numeric-owner -cJf \
   "$STAGE/proot-backend-aarch64.tar.xz" -C "$WORK/backend" bin lib libexec share LICENSE-GPL-2.0.txt
 
-curl --fail --location --retry 8 --retry-max-time 600 "$DEBIAN_SNAPSHOT/dists/trixie/InRelease" -o "$WORK/input/debian-InRelease"
+bash scripts/source-build/retry-curl.sh --fail --location --retry 8 --retry-max-time 600 "$DEBIAN_SNAPSHOT/dists/trixie/InRelease" -o "$WORK/input/debian-InRelease"
 printf '%s  %s\n' "$DEBIAN_SHA" "$WORK/input/debian-InRelease" | sha256sum --check --strict
 gpgv --keyring "$DEBIAN_KEYRING" "$WORK/input/debian-InRelease"
 # Never recursively clean a leftover host bind mount or a redirected directory.
@@ -164,7 +164,7 @@ sudo tar --sort=name --mtime="@$EPOCH" --owner=0 --group=0 --numeric-owner --exc
 sudo chmod 644 "$STAGE/debian-minimal-aarch64.tar.xz"
 
 NODE_ARCHIVE="$WORK/input/node-v$NODE_VERSION-linux-arm64.tar.xz"
-curl --fail --location --retry 8 --retry-max-time 600 "https://nodejs.org/dist/v$NODE_VERSION/node-v$NODE_VERSION-linux-arm64.tar.xz" -o "$NODE_ARCHIVE"
+bash scripts/source-build/retry-curl.sh --fail --location --retry 8 --retry-max-time 600 "https://nodejs.org/dist/v$NODE_VERSION/node-v$NODE_VERSION-linux-arm64.tar.xz" -o "$NODE_ARCHIVE"
 printf '%s  %s\n' "$NODE_SHA" "$NODE_ARCHIVE" | sha256sum --check --strict
 python3 scripts/source-build/package-linux-assets.py "$WORK" "$EPOCH"
 qemu-aarch64-static -L "$ROOTFS" "$WORK/node-stage/bin/node" --version | grep -Fx "v$NODE_VERSION"
