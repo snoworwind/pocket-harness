@@ -38,7 +38,8 @@ SOURCE_PROOF_SYMLINK=$(find "${SOURCE_PROOF_INPUTS[@]}" -type l -print -quit)
 [[ -z "$SOURCE_PROOF_SYMLINK" ]] || { echo "Linux source proof input is a symlink: $SOURCE_PROOF_SYMLINK" >&2; exit 1; }
 (
   cd plugins/dsh-linux-bootstrap
-  npm ci --no-audit --no-fund
+  npm ci --no-audit --no-fund --fetch-retries=8 --fetch-retry-factor=2 \
+    --fetch-retry-mintimeout=1000 --fetch-retry-maxtimeout=30000 --fetch-timeout=300000
   npm run build
 )
 WORK="$ROOT/.deploy-tmp/linux-build"
@@ -79,7 +80,7 @@ fi
 tar --sort=name --mtime="@$EPOCH" --owner=0 --group=0 --numeric-owner -cJf \
   "$STAGE/proot-backend-aarch64.tar.xz" -C "$WORK/backend" bin lib libexec share LICENSE-GPL-2.0.txt
 
-curl --fail --location --retry 3 "$DEBIAN_SNAPSHOT/dists/trixie/InRelease" -o "$WORK/input/debian-InRelease"
+curl --fail --location --retry 8 --retry-max-time 600 "$DEBIAN_SNAPSHOT/dists/trixie/InRelease" -o "$WORK/input/debian-InRelease"
 printf '%s  %s\n' "$DEBIAN_SHA" "$WORK/input/debian-InRelease" | sha256sum --check --strict
 gpgv --keyring "$DEBIAN_KEYRING" "$WORK/input/debian-InRelease"
 # Never recursively clean a leftover host bind mount or a redirected directory.
@@ -163,7 +164,7 @@ sudo tar --sort=name --mtime="@$EPOCH" --owner=0 --group=0 --numeric-owner --exc
 sudo chmod 644 "$STAGE/debian-minimal-aarch64.tar.xz"
 
 NODE_ARCHIVE="$WORK/input/node-v$NODE_VERSION-linux-arm64.tar.xz"
-curl --fail --location --retry 3 "https://nodejs.org/dist/v$NODE_VERSION/node-v$NODE_VERSION-linux-arm64.tar.xz" -o "$NODE_ARCHIVE"
+curl --fail --location --retry 8 --retry-max-time 600 "https://nodejs.org/dist/v$NODE_VERSION/node-v$NODE_VERSION-linux-arm64.tar.xz" -o "$NODE_ARCHIVE"
 printf '%s  %s\n' "$NODE_SHA" "$NODE_ARCHIVE" | sha256sum --check --strict
 python3 scripts/source-build/package-linux-assets.py "$WORK" "$EPOCH"
 qemu-aarch64-static -L "$ROOTFS" "$WORK/node-stage/bin/node" --version | grep -Fx "v$NODE_VERSION"

@@ -38,7 +38,7 @@ const ROOT = resolve(import.meta.dirname, '..', '..')
 
 /** 步骤名 → 阶段。未列出的步骤按「跟随前一个具名阶段」处理（见文件头注释）。 */
 export const STAGES = [
-  { key: 'verify', label: '输入与工具自检', match: /^Verify pinned source replacement/ },
+  { key: 'verify', label: '输入与工具自检', match: /^(Warm pinned Gradle distribution|Verify pinned source replacement)/ },
   { key: 'apksigner', label: '解析 apksigner（含签名自证）', match: /^Resolve the Android SDK apksigner/ },
   { key: 'sources', label: '取固定来源（Harness / 组件 / 市场产物）', match: /^Checkout pinned/ },
   { key: 'harness', label: '从源码构建 Harness 并打包', match: /^Build and pack DeepSeek Harness/ },
