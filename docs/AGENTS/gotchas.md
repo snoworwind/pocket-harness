@@ -3544,3 +3544,7 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 645. **DSH 升级后 UI 补丁叠加引发漂移（2026-11-08）**
 
     现象：升级 DSH 到 0.2.2-rc.1 后，设置、输入区、导航、菜单和侧栏出现布局与交互异常。真因：客户端适配层不仅接 Android 桥，还复制了 DSH 的响应式框架并依赖多处内部 DOM 结构（设置树、composer、菜单、侧栏气泡/重排、页眉、轨迹/快照等）；上游组件或 DOM 一变，本地旧 selector、MutationObserver、CSS 和 JS 控件就会互相覆盖或失配。修法：让 DSH 原版拥有页面布局、设置树、输入区、菜单与导航；移除这些 UI overrides 和无用补丁，只保留 Android inset/IME、桥、返回层、设置插槽、BrowserHost、SAF/通知等平台接线，并让 vdisplay/native overlay 只读上游 menu/dialog 状态。复验：ui-responsive TypeScript 检查、构建、325 项组件测试；vdisplay 插件 102 项；WebView 探针 self-test 27 项（含旧样式/控件正反例）；执行地图和维护文档门禁通过。未做 APK/设备验收，正式 Release 仍按 §2.1 执行。
+
+646. **本地来源链未封装 Termux 仓库归档，恢复阶段找不到输入 tar（2026-11-08）**
+
+    现象：本地来源链完成签名 Termux 包下载后，在“安全恢复认证的 Termux 包快照”步骤因 `.deploy-tmp/source-build/termux-package-artifact/termux-package-inputs.tar` 不存在而失败。真因：workflow 的跨作业上传步骤同时把 webroot 与 provenance 封装为 tar；本地执行器用自定义命令替代 artifact 下载时只重跑了包仓生成器，漏掉同等的 tar 封装命令。修法：本地生成器完成后按同一根目录、同一两项内容生成 `.deploy-tmp/termux-package-inputs.tar`，并以来源链计划回归断言保护生产者与消费者契约。复验：`node --test scripts/source-build/run-local-source-chain.test.mjs` 5/5；x86_64 来源链将从 termux 阶段续跑。

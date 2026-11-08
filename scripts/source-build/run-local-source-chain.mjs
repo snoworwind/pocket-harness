@@ -145,6 +145,7 @@ export function planSteps(workflowText) {
         '  .deploy-tmp/source-build/termux-webroot \\',
         '  scripts/snapshot-config/preinstall.json \\',
         '  --abi "$DSH_ABI"',
+        'COPYFILE_DISABLE=1 tar --create --file=.deploy-tmp/termux-package-inputs.tar --directory=.deploy-tmp/source-build termux-webroot termux-packages-provenance.json',
       ].join('\n')
     }
     if (!run) continue
