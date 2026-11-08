@@ -140,13 +140,13 @@ export function planSteps(workflowText) {
     if (!run && step.name === "Download this run's authenticated Termux package snapshot") {
       run = [
         'set -euo pipefail',
+        'mkdir -p .deploy-tmp/source-build/termux-package-artifact',
         'python3 scripts/source-build/prepare-termux-signed-repo.py \\',
         '  .deploy-tmp/source-build/bootstrap-extracted/usr \\',
-        '  .deploy-tmp/source-build/termux-webroot \\',
+        '  .deploy-tmp/source-build/termux-package-input-source/termux-webroot \\',
         '  scripts/snapshot-config/preinstall.json \\',
         '  --abi "$DSH_ABI"',
-        'mkdir -p .deploy-tmp/source-build/termux-package-artifact',
-        'COPYFILE_DISABLE=1 tar --create --file=.deploy-tmp/source-build/termux-package-artifact/termux-package-inputs.tar --directory=.deploy-tmp/source-build termux-webroot termux-packages-provenance.json',
+        'COPYFILE_DISABLE=1 tar --create --file=.deploy-tmp/source-build/termux-package-artifact/termux-package-inputs.tar --directory=.deploy-tmp/source-build/termux-package-input-source termux-webroot termux-packages-provenance.json',
       ].join('\n')
     }
     if (!run) continue
