@@ -315,7 +315,7 @@ Linux bootstrap 本地安全分叉（2026-10-18）：`check-vendored-linux-boots
 
 ## 签名前独立双构建
 
-当前云端来源链按输入 ABI 执行：两个 build-abi replica 从同一提交、全新 runner 各自构建，只有临时签名证书；verify-abi 不执行产物，只比较实际 APK 条目、hard manifest 与 v3 快照语义，并把 ABI 写入证明；sign-abi 校验证明 ABI 与实际 APK 一致后才读取正式 PKCS12 Secret，使用固定生产证书 pin 验证三签并更新 APK 摘要。草稿工作流分别调用该链构建 ARM64 与 x86_64，再核对二者版本、来源和摘要后上传。本地 run-local-source-chain 仅跑一个 ABI 的 build replica，GITHUB_ENV 的四个白名单构建变量在步骤间传递，临时签名 APK 明确禁止交付。有效 overlay 恢复输入会保留原始字节，Termux 本地续跑会清理固定 staging 输出后重建。自测入口 compare-independent-builds.mjs --self-test 与 sign-source-artifacts.mjs --self-test。共用上游或 runner 环境失陷仍是信任边界；真实双构建结果必须单独取得。
+当前云端来源链按输入 ABI 执行：两个 build-abi replica 从同一提交、全新 runner 各自构建，只有临时签名证书；verify-abi 不执行产物，只比较实际 APK 条目、hard manifest 与 v3 快照语义，并把 ABI 写入证明；sign-abi 校验证明 ABI 与实际 APK 一致后才读取正式 PKCS12 Secret，使用固定生产证书 pin 验证三签并更新 APK 摘要。草稿工作流分别调用该链构建 ARM64 与 x86_64，再核对二者版本、来源和摘要后上传。本地 run-local-source-chain 仅跑一个 ABI 的 build replica，GITHUB_ENV 的四个白名单构建变量在步骤间传递，临时签名 APK 明确禁止交付。有效 overlay 恢复输入会保留原始字节，Termux 本地续跑会清理固定 staging 输出后重建。云端 Termux 输入快照 artifact 按 ABI 与 run ID 命名，不带 run attempt：失败 job 重跑会复用已成功的 producer，而整轮重跑时 `overwrite: true` 可替换同名快照，避免消费者追逐未重新生成的 attempt 名称。自测入口 compare-independent-builds.mjs --self-test 与 sign-source-artifacts.mjs --self-test。共用上游或 runner 环境失陷仍是信任边界；真实双构建结果必须单独取得。
 
 bootstrap 的 package-lock.json 与 package.json 一样属于逐字节来源输入，.gitattributes 禁止 autocrlf；check-linux-sources --self-test 用实际 Git checkout 和删除属性负控证明这一点，不能按本机 CRLF 字节重封批准摘要。
 

@@ -3564,3 +3564,7 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 650. **双 ABI 发布资产准备器把 ARM64 专属 Linux 证明误设为 x86 必需（2026-11-08）**
 
     现象：ARM64 与 x86_64 primary/reference 构建、独立 APK 字节比对和签名全通过，草稿 workflow 却在 `prepare` 因缺少 x86_64 `linux-bundle-injection.json` 失败。真因：来源工作流仅在 `DSH_ABI=arm64` 时构建离线 Linux 资产并生成 bundle 注入证明及 Linux provenance；发布准备器虽然逐 ABI 校验上传清单，却把清单中这些 ARM64 专属路径一律当成两 ABI 都必需，测试夹具也错误地给 x86 填了这些文件。修法：只对 x86_64 豁免这两个已知 ARM64 专属证据路径，其他清单项仍逐项 fail-closed；回归夹具模拟 x86 真实缺席、ARM64 保留正控，并为 ARM64 bundle 注入和 Linux provenance 各增加缺失负控。复验：双 ABI 来源 run `42458598647` 的构建/比对/签名通过，资产准备日志确认首次缺项；Windows Python 回归 13 项通过、2 项 Linux 专属测试按平台跳过；维护文档、执行地图和 `git diff --check` 通过，PR CI 与合并后完整双 ABI 草稿工作流待复核。
+
+651. **失败 job 重跑时 Termux 输入 artifact 仍按 attempt 命名（2026-11-08）**
+
+    现象：双 ABI workflow attempt 2 重跑失败消费者时，ARM64 reference 找不到 `termux-package-inputs-arm64-<run-id>-2`；成功的 producer 被 GitHub Actions 复用，artifact 实际仍叫 `...-1`。真因：artifact 名称包含 `github.run_attempt`，但 `gh run rerun --failed` 会跳过已成功的输入准备 job；消费者 attempt 已变而 producer artifact 不变，确定性地产生命名断链。修法：按 ABI + workflow run ID 命名 producer/consumer 共用 artifact，移除 attempt 部分；上传设 `overwrite: true`，使完整 workflow rerun 重新生成同名输入时可替换旧快照。复验：`cloud-workflow.test.mjs` 验证生产/消费同名且不含 attempt、覆盖标志必需，并对名称漂移及移除覆盖标志设负控；PR 与新的双 ABI完整 draft run 结果待补记。

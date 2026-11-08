@@ -154,13 +154,22 @@ function checkTermuxPackageSnapshotFlow(source) {
     'the rolling Termux repository must be resolved exactly once per workflow run')
   assert.match(preflight, /tar --create --file=\.deploy-tmp\/termux-package-inputs\.tar/)
   assert.match(preflight, /--directory="\$artifact_root" termux-webroot termux-packages-provenance\.json/)
-  assert.match(preflight, /name: termux-package-inputs-\$\{\{ inputs\.abi \|\| 'arm64' \}\}-\$\{\{ github\.run_id \}\}-\$\{\{ github\.run_attempt \}\}/)
+  const artifactName = /^\s*name: (termux-package-inputs-\$\{\{ inputs\.abi \|\| 'arm64' \}\}-\$\{\{ github\.run_id \}\})$/m
+  assert.match(preflight, artifactName)
+  assert.doesNotMatch(preflight, /^\s*name:.*github\.run_attempt/m,
+    'artifact identity must survive failed-job reruns that reuse a successful producer job')
+  assert.match(preflight, /^\s*overwrite: true$/m,
+    'a full workflow rerun must be able to replace the prior run-scoped artifact')
   assert.match(preflight, /path: \.deploy-tmp\/termux-package-inputs\.tar/)
   assert.match(preflight, /compression-level: 0/)
   assert.match(readFileSync(new URL('./prepare-termux-signed-repo.py', import.meta.url), 'utf8'),
     /webroot\.parent \/ "termux-packages-provenance\.json"/)
   assert.match(build, /needs: termux-package-inputs/)
-  assert.match(build, /name: termux-package-inputs-\$\{\{ inputs\.abi \|\| 'arm64' \}\}-\$\{\{ github\.run_id \}\}-\$\{\{ github\.run_attempt \}\}/)
+  assert.match(build, artifactName)
+  assert.doesNotMatch(build, /^\s*name:.*github\.run_attempt/m,
+    'consumers must not request an artifact name that changes between attempts')
+  assert.equal(preflight.match(artifactName)?.[1], build.match(artifactName)?.[1],
+    'producer and consumers must use an identical attempt-independent artifact identity')
   assert.match(build, /path: \.deploy-tmp\/source-build\/termux-package-artifact/)
   assert.match(build, /tarfile\.open\(archive, mode='r:'\)/)
   assert.match(build, /bundle\.extractall\(destination, members=members, filter='data'\)/)
@@ -188,12 +197,15 @@ function checkTermuxPackageSnapshotFlow(source) {
 test('both replicas for either ABI consume one authenticated Termux package snapshot per workflow run', () => {
   checkTermuxPackageSnapshotFlow(read('build-apk-source.yml'))
 })
-test('negative controls reject independent repo fetches, missing dependency, or mismatched artifact names', () => {
+test('negative controls reject independent repo fetches, missing dependency, or retry-unsafe artifact contracts', () => {
   const source = read('build-apk-source.yml')
   for (const bad of [
     source.replace('    needs: termux-package-inputs\n', ''),
-    source.replace("          name: termux-package-inputs-${{ inputs.abi || 'arm64' }}-${{ github.run_id }}-${{ github.run_attempt }}\n          path: .deploy-tmp/source-build",
+    source.replace("          name: termux-package-inputs-${{ inputs.abi || 'arm64' }}-${{ github.run_id }}\n          path: .deploy-tmp/source-build",
       '          name: termux-package-inputs-stale-run\n          path: .deploy-tmp/source-build'),
+    source.replace('          overwrite: true\n', ''),
+    source.replace("          name: termux-package-inputs-${{ inputs.abi || 'arm64' }}-${{ github.run_id }}\n          path: .deploy-tmp/termux-package-inputs.tar",
+      "          name: termux-package-inputs-${{ inputs.abi || 'arm64' }}-${{ github.run_id }}-${{ github.run_attempt }}\n          path: .deploy-tmp/termux-package-inputs.tar"),
     source.replace('          path: .deploy-tmp/termux-package-inputs.tar',
       '          path: .deploy-tmp/termux-package-artifact/'),
     source.replace("bundle.extractall(destination, members=members, filter='data')",
