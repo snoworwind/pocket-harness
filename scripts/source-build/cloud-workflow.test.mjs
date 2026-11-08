@@ -20,6 +20,8 @@ function checkEngineBuild(source) {
     'all frozen/lockfile pnpm installs and pnpm deploy must share pnpm-specific bounded retry settings')
   assert.match(source, /verify_pnpm_retry_settings pnpm\n/)
   assert.match(source, /verify_pnpm_retry_settings pnpm@12\.2\.0\n/)
+  assert.match(source, /manager_args=\(\)[\s\S]*?manager_args=\(--pm-on-fail=ignore\)/)
+  assert.match(source, /corepack "\$manager" "\$\{manager_args\[@\]\}" config get/)
   assert.doesNotMatch(source, /corepack pnpm(?:@12\.2\.0)?[^\n]*--fetch-/,
     'npm-only fetch flags must not be passed as pnpm CLI options')
   assert.match(source, /npm install -g corepack@0\.36\.0 --ignore-scripts/)
@@ -82,6 +84,7 @@ test('negative controls reject missing source compiler, stale package manager, b
     source.replace('          corepack pnpm run build:web', '          corepack pnpm --recursive --if-present run bundle\n          corepack pnpm run build:web'),
     source.replace('--fetch-retries=8 --fetch-retry-factor=2', '--fetch-retries=2 --fetch-retry-factor=2'),
     source.replace('pnpm_config_fetch_retries=8', 'npm_config_fetch_retries=8'),
+    source.replace('manager_args=(--pm-on-fail=ignore)', 'manager_args=()'),
     source.replace('env "${pnpm_retry_env[@]}" corepack pnpm@12.2.0 --pm-on-fail=ignore --filter', 'corepack pnpm@12.2.0 --pm-on-fail=ignore "${npm_retry_flags[@]}" --filter')].entries()) {
     assert.throws(() => checkEngineBuild(bad), assert.AssertionError, `negative control ${index} was not rejected`)
   }
