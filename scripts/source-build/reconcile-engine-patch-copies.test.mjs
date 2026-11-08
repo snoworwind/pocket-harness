@@ -19,7 +19,6 @@ import {
   PERMISSION_AUTO_UI_SNAPSHOT_ANCHOR,
   REFERENCE_DRILL_UI_SNAPSHOT_ANCHOR,
   reconcileEnginePatchCopies,
-  SIDEBAR_REORDER_UI_SNAPSHOT_ANCHOR,
   verifyCanonicalEnginePatch,
   WORKSPACE_WRITE_UI_SNAPSHOT_ANCHOR,
 } from './reconcile-engine-patch-copies.mjs'
@@ -114,10 +113,6 @@ test('Auto Review multi-file reconciliation checks each target with its own mark
       .find((item) => item.id === 'workspace-write-boundary-warning-WW1')
     assert.ok(workspacePatch)
     const browserPatchIds = {
-      'sidebar-bubble-reorder-B1': [
-        `${PREFIX}/node_modules/@deepseek-ai/dsh-client-ui-sidebar-right/lib/client.js`,
-        SIDEBAR_REORDER_UI_SNAPSHOT_ANCHOR,
-      ],
       'external-draft-conversation-seam-J1': [
         `${PREFIX}/node_modules/@deepseek-ai/dsh-client-ui-conversation/lib/client.js`,
         EXTERNAL_DRAFT_UI_SNAPSHOT_ANCHOR,

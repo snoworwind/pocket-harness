@@ -20,6 +20,8 @@ const fileDeclaration = source.split('\n').find(line => line.startsWith('const F
 const fileProbe = vm.runInNewContext(fileDeclaration + '; FILE_BUTTON_PROBE');
 const retiredDeclaration = source.split('\n').find(line => line.startsWith('const RETIRED_OPEN_ENTRY_PROBE ='));
 const retiredProbe = vm.runInNewContext(retiredDeclaration + '; RETIRED_OPEN_ENTRY_PROBE');
+const retiredUiDeclaration = source.split('\n').find(line => line.startsWith('const RETIRED_UI_PROBE ='));
+const retiredUiProbe = vm.runInNewContext(retiredUiDeclaration + '; RETIRED_UI_PROBE');
 
 async function exercise({ entry = 'more', control = true, reset = true, disabled = false, locale = 'zh', decoy = false, probeExpression = probe } = {}) {
   const dom = new JSDOM('<body></body>', { runScripts: 'outside-only' });
@@ -244,5 +246,33 @@ test('retired open-entry probe reports every hit when both locales revive', () =
     const verdict = dom.window.eval(retiredProbe);
     assert.equal(verdict.present, true);
     assert.equal(verdict.hits.length, 2);
+  } finally { dom.window.close(); }
+});
+
+test('UI ownership probe accepts the original DSH surface without retired adapter overlays', () => {
+  const dom = new JSDOM('<body><div data-rightbar-col></div></body>', { runScripts: 'outside-only' });
+  try {
+    const verdict = dom.window.eval(retiredUiProbe);
+    assert.equal(verdict.clean, true);
+    assert.equal(verdict.controls, 0);
+    assert.deepEqual(Array.from(verdict.styles), []);
+  } finally { dom.window.close(); }
+});
+
+test('negative control: UI ownership probe rejects a retired composer stylesheet', () => {
+  const dom = new JSDOM('<style data-plugin="composer-menu"></style>', { runScripts: 'outside-only' });
+  try {
+    const verdict = dom.window.eval(retiredUiProbe);
+    assert.equal(verdict.clean, false);
+    assert.deepEqual(Array.from(verdict.styles), ['composer-menu']);
+  } finally { dom.window.close(); }
+});
+
+test('negative control: UI ownership probe rejects a retired custom sidebar control', () => {
+  const dom = new JSDOM('<button data-dsh-sidebar-toggle></button>', { runScripts: 'outside-only' });
+  try {
+    const verdict = dom.window.eval(retiredUiProbe);
+    assert.equal(verdict.clean, false);
+    assert.equal(verdict.controls, 1);
   } finally { dom.window.close(); }
 });

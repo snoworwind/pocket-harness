@@ -37,14 +37,13 @@ beforeEach(() => {
 afterEach(() => { owner.detach(); delete window.androidBridge; vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.useRealTimers() })
 
 describe('native browser stage ownership lease (#341)', () => {
-  it('hides for bubble navigation and its closing animation, then restores the same native page', () => {
+  it('hides while a DSH menu owns input, then restores the same native page', () => {
     stage(); owner.mount('stage')
-    const bubbles = document.createElement('nav')
-    bubbles.setAttribute('data-dsh-sidebar-bubbles', 'open'); document.body.append(bubbles); mutate()
+    const menu = document.createElement('nav')
+    menu.getBoundingClientRect = () => rect(30, 30, 100, 50)
+    menu.setAttribute('role', 'menu'); document.body.append(menu); mutate()
     expect(latest()).toMatchObject({ tabId: 'native-a', uiTabId: 'ui-a', visible: false })
-    bubbles.setAttribute('data-dsh-sidebar-bubbles', 'closing'); mutate()
-    expect(latest().visible).toBe(false)
-    bubbles.setAttribute('data-dsh-sidebar-bubbles', 'closed'); mutate()
+    menu.remove(); mutate()
     expect(latest()).toMatchObject({ tabId: 'native-a', uiTabId: 'ui-a', visible: true })
   })
   it('renews unchanged visible bounds beyond the native 4000ms TTL without reopening a page', () => {

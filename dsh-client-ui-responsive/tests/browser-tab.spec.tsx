@@ -99,7 +99,6 @@ afterEach(async () => {
   root = undefined
   host?.remove()
   host = undefined
-  localStorage.clear()
   vi.restoreAllMocks()
 })
 

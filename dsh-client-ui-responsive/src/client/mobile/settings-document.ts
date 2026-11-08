@@ -68,8 +68,9 @@ function isSettingsDocumentAction(target: EventTarget | null): boolean {
   if (!(target instanceof Element)) return false
   const button = target.closest('button')
   if (button === null) return false
-  // The settings dialog marker is set by the mobile form marker; the action lives in its header.
-  if (button.closest('[data-dsh-settings-dialog]') === null) return false
+  // Treat the dialog semantics as the boundary; do not mirror DSH's internal
+  // settings DOM shape into an Android-only marker.
+  if (button.closest('[role="dialog"][aria-modal="true"]') === null) return false
   const label = (button.textContent ?? '').trim()
   return ACTION_LABELS.includes(label)
 }

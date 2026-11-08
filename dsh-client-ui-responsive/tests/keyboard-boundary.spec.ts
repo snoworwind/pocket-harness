@@ -40,7 +40,7 @@ beforeEach(() => {
   setImeInset(0)
   viewport = installViewport()
   frame = document.createElement('div')
-  frame.setAttribute('data-dsh-frame', '')
+  frame.setAttribute('data-dsh-android-frame', '')
   document.body.appendChild(frame)
   seat = document.createElement('div')
   seat.setAttribute('data-composer-seat', '')
@@ -126,7 +126,7 @@ describe('KeyboardBoundary 生命周期', () => {
     expect(frame.style.height).toBe('')
   })
 
-  it('无 [data-dsh-frame] frame：不抛错', () => {
+  it('无 Android frame：不抛错', () => {
     frame.remove()
     expect(() => boundary.attach()).not.toThrow()
   })

@@ -1,6 +1,6 @@
 # gotchas.md — 关键实现细节与坑（全量）
 
-324. **气泡导航代理必须跟随原生标签栏节点重建**：上游在活动 TabHost 下挂载 strip；同分栏切页会替换结构相同的原按钮。只比 outerHTML 会保留断连按钮闭包，导致全屏、收起和新标签无响应。代理缓存同时比较元素身份，并释放断连 strip 引用。长按后只抑制物理释放产生的标签点击，取消/失焦要清理；系统返回不能被吞，并须把焦点交还三点按钮。列表范围同时读取 visualViewport 与原生 IME inset；Android adjustNothing 下真实键盘出现时 visualViewport 仍可保持全高。真实设备复验入口：`scripts/verify-sidebar-bubbles.mjs`。
+324. **气泡导航代理必须跟随原生标签栏节点重建**：上游在活动 TabHost 下挂载 strip；同分栏切页会替换结构相同的原按钮。只比 outerHTML 会保留断连按钮闭包，导致全屏、收起和新标签无响应。代理缓存同时比较元素身份，并释放断连 strip 引用。长按后只抑制物理释放产生的标签点击，取消/失焦要清理；系统返回不能被吞，并须把焦点交还三点按钮。列表范围同时读取 visualViewport 与原生 IME inset；Android adjustNothing 下真实键盘出现时 visualViewport 仍可保持全高。当时的真实设备验收入口现已随气泡 UI 退役；历史截图与结论保留在 `docs/maintenance/sidebar-bubbles-2026-10-17.md`。
 
 > grep 用法：`grep -n "<坑号>\." docs/AGENTS/gotchas.md` 或按关键词（如 `borrowSession`、`MANAGE_EXTERNAL_STORAGE`、`store-rehome`）定位。
 > 维护约定：新坑追加到文末并递增编号；修复后保留条目（教训与历史归档）。
@@ -3541,3 +3541,6 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 644. **手机收起侧栏时上游 rail 开关与页眉开关同时可见（2026-11-07）**
 
     现象：手机主界面左上有两个都能展开左栏的按钮。真因：Pocket Harness 在会话页眉增加开栏按钮时，窄屏侧栏仍保留上游 SidebarRoot 的 rail 开关；此前实现只根据抽屉状态切换自定义按钮，没有在收起态隐藏仍可见的 rail 副本。原选择器按生成类名子串 `toggle` 隐藏按钮，虽匹配 pinned SidebarRoot，却可能误含其它 sidebar toggle 控件。修法：手机窄屏且 frame 收起时仅隐藏侧栏列内带稳定标记 `data-sidebar-toggle` 的上游开关；页眉按钮仅在收起态显示，抽屉展开后由抽屉内上游开关负责关闭。复验：phone-chrome 新增 CSSOM 回归以验证 rail 开关隐藏、无关控件未隐藏、展开时 rail 开关恢复；测试由 GitHub CI 执行。本轮未做 Android 完整应用装机验收。
+645. **DSH 升级后 UI 补丁叠加引发漂移（2026-11-08）**
+
+    现象：升级 DSH 到 0.2.2-rc.1 后，设置、输入区、导航、菜单和侧栏出现布局与交互异常。真因：客户端适配层不仅接 Android 桥，还复制了 DSH 的响应式框架并依赖多处内部 DOM 结构（设置树、composer、菜单、侧栏气泡/重排、页眉、轨迹/快照等）；上游组件或 DOM 一变，本地旧 selector、MutationObserver、CSS 和 JS 控件就会互相覆盖或失配。修法：让 DSH 原版拥有页面布局、设置树、输入区、菜单与导航；移除这些 UI overrides 和无用补丁，只保留 Android inset/IME、桥、返回层、设置插槽、BrowserHost、SAF/通知等平台接线，并让 vdisplay/native overlay 只读上游 menu/dialog 状态。复验：ui-responsive TypeScript 检查、构建、325 项组件测试；vdisplay 插件 102 项；WebView 探针 self-test 27 项（含旧样式/控件正反例）；执行地图和维护文档门禁通过。未做 APK/设备验收，正式 Release 仍按 §2.1 执行。

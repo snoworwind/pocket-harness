@@ -64,7 +64,7 @@ export class KeyboardBoundary {
   }
 
   private readonly onViewportChange = (): void => {
-    const frame = document.querySelector<HTMLElement>('[data-dsh-frame]')
+    const frame = document.querySelector<HTMLElement>('[data-dsh-android-frame]')
     if (frame === null) return
     this.frame = frame
     this.apply(frame)

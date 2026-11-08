@@ -10,7 +10,8 @@ let button: HTMLButtonElement
 
 beforeEach(() => {
   dialog = document.createElement('div')
-  dialog.setAttribute('data-dsh-settings-dialog', '')
+  dialog.setAttribute('role', 'dialog')
+  dialog.setAttribute('aria-modal', 'true')
   button = document.createElement('button')
   button.textContent = '打开配置文件'
   dialog.appendChild(button)

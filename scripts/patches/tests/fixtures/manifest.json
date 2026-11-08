@@ -2795,10 +2795,7 @@
       "targets": {
         "lib/client.js": "usr/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-client-ui-sidebar-right/lib/client.js",
         "package.json": "usr/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-client-ui-sidebar-right/package.json"
-      },
-      "patchIds": [
-        "sidebar-bubble-reorder-B1"
-      ]
+      }
     },
     "node-addon-require-builtin-0.2.2-rc.1": {
       "source": "engine-tgz",
@@ -3312,6 +3309,6 @@
       ]
     },
     "overlaySha256": "313130b56467a2f093c32c0bcd1ea94a0e078adfe14e458b46ff31c6673aeafe",
-    "registrySha256": "c0872fd9c61160c67bfa2f9009c48c7e3c85ca9137ab6f4a9f0030a6a8de76a8"
+    "registrySha256": "b26e4b30cec36ed8fee525049097bd43890c3a06aa9f584797060e98a7a87ed4"
   }
 }

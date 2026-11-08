@@ -13,24 +13,20 @@
  * - `WebView.canGoBack()` does not see same-document history entries on the
  *   measured WebView (Chromium 110), so pushState routing cannot drive the shell;
  * - one synthetic Escape would hit every mounted document-level listener at once
- *   (settings, Modal, menu, lightbox) and still miss drawer, trajectory details,
- *   and the right column.
+ *   (settings, Modal, menu, lightbox) and still miss the right column.
  *
  * Each layer is closed through its OWN control, by stable hook (data attributes,
  * roles, mask structure), not by localized copy:
  * - drawer: the layout service's own toggle (the top-bar button's action);
  * - dialog (settings panel, `Modal`, image lightbox): its mask, else its close
  *   button, else its clickable backdrop;
- * - trajectory "Event details" `<aside>`: its close button;
  * - right column fullscreen, while the column is presented: its mode toggle, else its
  *   collapse toggle;
  * - `@`/slash menu: the menu's own outside-pointerdown dismissal;
  * - menu drill-down: the last enabled breadcrumb (one level per press).
- * - attachment source menu (this plugin's own paperclip popup): its own
- *   outside-pointerdown dismissal, which the enhancer implements.
  * - global main panel (upstream's plugin manager and its kin): one detail level
- *   per press through the page's own crumb control, then the page's own back
- *   control (this plugin's, at the list root — see mobile/main-panel-back.ts).
+ *   per press through the page's own crumb control, then the layout service
+ *   selection action at the list root.
  *
  * Failure direction: the stack only ever pops through reconciliation (a layer's
  * anchor disappearing from the DOM). A layer whose control cannot be found keeps
@@ -38,21 +34,17 @@
  * activity ("an unobserved or unclosable layer must never exit the app").
  *
  * The main-panel layer is the one kind that always finds a closure: its top level
- * (the plugin manager list root) draws no control upstream, so it ends at the layout
- * service's own panel selection rather than consuming the press without effect.
+ * ends at the layout service's panel selection rather than consuming the press
+ * without effect.
  */
 
 /** Layer kinds, bottom to top as detected within one pass. */
 export type BackLayerKind =
   | 'drawer'
   | 'dialog'
-  | 'trajectory-details'
   | 'right-fullscreen'
-  | 'sidebar-bubbles'
   | 'menu'
   | 'menu-drill'
-  | 'attachment-menu'
-  | 'model-menu'
   | 'main-panel'
 
 /** One observed layer plus the closure that pops it. */
@@ -71,15 +63,13 @@ interface BackLayer extends BackLayerDetection {
 
 /** The phone-form marker (`mobile/form-marker.ts`); the drawer is a layer only on phones. */
 const MOBILE_FORM_ATTR = 'data-dsh-mobile-form'
-/** The frame root, tagged by the form marker; identified before the tag lands by its right column. */
-const FRAME_SELECTOR = '[data-dsh-frame]'
+/** Android marker follows the DSH frame without tagging its layout internals. */
+const FRAME_SELECTOR = '[data-dsh-android-frame]'
 const RIGHT_COL_SELECTOR = '[data-rightbar-col]'
 /** Frame attribute: present while the left sidebar is collapsed (drawer closed). */
 const SIDEBAR_COLLAPSED_ATTR = 'data-sidebar-collapsed'
 /** Every upstream modal surface (settings panel, ui-primitives Modal, image lightbox). */
 const DIALOG_SELECTOR = '[role="dialog"][aria-modal="true"]'
-/** Accessible names of the trajectory "Event details" side panel (zh + en dictionaries). */
-const TRAJECTORY_LABELS = ['Event details', '事件详情']
 /**
  * Right column in its fullscreen presentation **and actually shown**.
  *
@@ -94,17 +84,6 @@ const TRAJECTORY_LABELS = ['Event details', '事件详情']
 const RIGHT_FULLSCREEN_SELECTOR =
   '[data-sidebar-right-panel="fullscreen"][data-sidebar-right-open]:not([aria-hidden="true"])'
 const MENU_SELECTOR = '[data-trigger-menu]'
-// ComposerPopupGuard marks only the open, aria-controlled Android ModelSelect portal.
-const MODEL_MENU_SELECTOR = '[data-dsh-android-model-menu]'
-/**
- * This plugin's own attachment-source popup (attachment-picker-menu.ts).
- *
- * D8: the menu is mounted on document.body and removed on close, so its presence is exactly
- * "open". It was not a layer, and the shell's back callback treats "no layer" as FINISH_ACTIVITY
- * (BackGate.kt:56-60), so pressing system back with the menu open exited the app instead of
- * closing it.
- */
-const ATTACHMENT_MENU_SELECTOR = '[data-dsh-attachment-picker-menu]'
 /** The drilled-listing breadcrumb header (a `nav`; the candidate list is a `div[role=listbox]`). */
 const MENU_DRILL_SELECTOR = '[data-trigger-menu] nav'
 /** Hashed CSS-module close controls still carry the class token (`[class*=ledger]` precedent). */
@@ -117,8 +96,6 @@ const CLOSE_CLASS_HINT = '[class*="close"]'
 const PANEL_DETAIL_SELECTORS = ['[data-plugin-detail]', '[data-plugin-item-detail]', '[data-plugin-row-detail]'] as const
 /** The crumb button inside one of those levels (class token survives CSS-module hashing). */
 const CRUMB_BUTTON_HINT = 'button[class*="crumb"]'
-/** This plugin's back control, mounted by mobile/main-panel-back.ts at the list root. */
-const PANEL_BACK_SELECTOR = '[data-dsh-main-panel-back]'
 /** Attributes any layer's presence is derived from; the filter keeps the observer cheap. */
 const OBSERVED_ATTRIBUTES = [
   MOBILE_FORM_ATTR,
@@ -130,11 +107,7 @@ const OBSERVED_ATTRIBUTES = [
   'data-sidebar-right-panel',
   'data-sidebar-right-open',
   'data-trigger-menu',
-  'data-dsh-attachment-picker-menu',
-  'data-dsh-android-model-menu',
   'data-plugin-panel',
-  'data-dsh-main-panel-back',
-  'data-dsh-sidebar-bubbles',
 ]
 
 declare global {
@@ -198,18 +171,6 @@ function closeDialog(dialog: Element): boolean {
 }
 
 /**
- * Close the trajectory "Event details" side panel through its own close button.
- * @param aside - the panel element.
- * @returns whether the close control was found and triggered.
- */
-function closeTrajectoryDetails(aside: Element): boolean {
-  const close = aside.querySelector(`button${CLOSE_CLASS_HINT}`) ?? aside.querySelector(CLOSE_CLASS_HINT)
-  if (close === null) return false
-  dispatchMouse(close, 'click')
-  return true
-}
-
-/**
  * Leave the right column's fullscreen presentation.
  * @param panel - the `[data-sidebar-right-panel=fullscreen]` element.
  * @returns whether a control was found and triggered.
@@ -229,9 +190,7 @@ function closeRightFullscreen(panel: Element): boolean {
  *
  * The plugin manager owns a depth hierarchy (list -> package -> row) and each
  * detail level draws its own crumb control, so a press pops exactly one level
- * through that control rather than writing the page's store. The list root
- * draws no control of its own, so the fallback is this plugin's back button
- * (mobile/main-panel-back.ts), which is the control that layer closes through.
+ * through that control rather than writing the page's store.
  * @returns whether a control was found and triggered.
  */
 function closeMainPanel(leave: () => void): boolean {
@@ -243,15 +202,7 @@ function closeMainPanel(leave: () => void): boolean {
     dispatchMouse(crumb, 'click')
     return true
   }
-  // The list root: the injected control when this plugin mounted one (phone form).
-  const back = document.querySelector(PANEL_BACK_SELECTOR)
-  if (back !== null) {
-    dispatchMouse(back, 'click')
-    return true
-  }
-  // The list root upstream draws no control at all, at any width. Leaving the panel is
-  // then the layout service own panel selection - the exact action the sidebar rows and
-  // the injected button perform - not a write into the page private store.
+  // The list root: use the public layout service instead of injecting a control.
   leave()
   return true
 }
@@ -430,21 +381,12 @@ export class BackStackSignal {
     const mainPanel = this.detectMainPanel()
     if (mainPanel !== null) found.push(mainPanel)
     for (const dialog of this.detectDialogs()) found.push(dialog)
-    const trajectory = this.detectTrajectoryDetails()
-    if (trajectory !== null) found.push(trajectory)
     const fullscreen = this.detectRightFullscreen()
     if (fullscreen !== null) found.push(fullscreen)
-    const bubbles = document.querySelector('[data-dsh-sidebar-bubbles="open"]')
-    const bubbleToggle = bubbles?.parentElement?.querySelector<HTMLElement>('[data-dsh-sidebar-bubbles-toggle]')
-    if (bubbles && bubbleToggle) found.push({ id: 'sidebar-bubbles', kind: 'sidebar-bubbles', close: () => { bubbleToggle.click(); return true } })
     const menu = this.detectMenu()
     if (menu !== null) found.push(menu)
     const drill = this.detectMenuDrill()
     if (drill !== null) found.push(drill)
-    const modelMenu = this.detectModelMenu()
-    if (modelMenu !== null) found.push(modelMenu)
-    const attachmentMenu = this.detectAttachmentMenu()
-    if (attachmentMenu !== null) found.push(attachmentMenu)
     return found
   }
 
@@ -503,19 +445,6 @@ export class BackStackSignal {
       }))
   }
 
-  /** The trajectory inspector side panel. */
-  private detectTrajectoryDetails(): BackLayerDetection | null {
-    for (const aside of document.querySelectorAll<HTMLElement>('aside[aria-label]')) {
-      if (!TRAJECTORY_LABELS.includes(aside.getAttribute('aria-label') ?? '')) continue
-      return {
-        id: 'trajectory-details',
-        kind: 'trajectory-details',
-        close: () => closeTrajectoryDetails(aside),
-      }
-    }
-    return null
-  }
-
   /** The right column's fullscreen presentation. */
   private detectRightFullscreen(): BackLayerDetection | null {
     const panel = document.querySelector<HTMLElement>(RIGHT_FULLSCREEN_SELECTOR)
@@ -532,35 +461,6 @@ export class BackStackSignal {
     const menu = document.querySelector<HTMLElement>(MENU_SELECTOR)
     if (menu === null) return null
     return { id: 'menu', kind: 'menu', close: () => closeMenu(menu) }
-  }
-
-  /** ModelSelect owns Escape: leave its drilled pane first, then close and restore trigger focus. */
-  private detectModelMenu(): BackLayerDetection | null {
-    const menu = document.querySelector<HTMLElement>(MODEL_MENU_SELECTOR)
-    if (menu === null) return null
-    return {
-      id: 'model-menu',
-      kind: 'model-menu',
-      close: () => {
-        menu.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }))
-        // ModelSelect prevents default when it handles Escape. dispatchEvent's false return
-        // therefore means handled, not a reason for the Android shell to finish the Activity.
-        return true
-      },
-    }
-  }
-
-  /**
-   * This plugin's own attachment-source menu.
-   *
-   * Distinct from the upstream trigger menus: it is our node, mounted on document.body, and the
-   * enhancer already closes it on the same outside-pointerdown gesture upstream menus use - so the
-   * shared dismissal path below is the right control.
-   */
-  private detectAttachmentMenu(): BackLayerDetection | null {
-    const menu = document.querySelector<HTMLElement>(ATTACHMENT_MENU_SELECTOR)
-    if (menu === null) return null
-    return { id: 'attachment-menu', kind: 'attachment-menu', close: () => closeMenu(menu) }
   }
 
   /** A menu listing descended into a directory (its breadcrumb header is up). */

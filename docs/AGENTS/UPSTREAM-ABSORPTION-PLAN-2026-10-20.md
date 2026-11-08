@@ -1,5 +1,7 @@
 # 上游源码吸收实施计划（2026-10-20）
 
+> 2026-11-08 补记：本仓 Android UI 适配已全面退回 DSH 原生 frame、设置、composer、菜单与导航呈现。本文涉及 `sidebar-bubbles.ts`、自定义气泡开合信号及其 vdisplay 消费方案均为历史实施记录，不是当前 UI 实现或恢复计划；当前做法见 [ui-responsive 设计说明](../../dsh-client-ui-responsive/docs/design.md)。
+
 本文按本仓宗旨复核后修订。2026-10-20 已执行 A、B、F 的源码修改与离线代码验证；按用户要求，本轮不做 APK 与设备侧验收，相关 L2/L3 工作包仍保持开放。固定源码与比较事实见 [跟踪账本](UPSTREAM-TRACKING.md)、[第二轮源码复核](UPSTREAM-SOURCE-REVIEW-2026-10-20.md)；本文同时记录吸收取舍、进入条件、执行证据与未覆盖范围，不改写历史取证结果。
 
 ## 1. 宗旨审查结论与实施顺序

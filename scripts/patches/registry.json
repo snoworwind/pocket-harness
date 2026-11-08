@@ -30,14 +30,6 @@
       "marker": "dsh-mobile every plugin install requires approval (R2)"
     },
     {
-      "id": "sidebar-bubble-reorder-B1",
-      "target": "usr/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-client-ui-sidebar-right/lib/client.js",
-      "scope": "engine",
-      "summary": "为窄窗口气泡导航提供同分栏 reorderIn：复用 placeTab，保留当前活动标签，拒绝失效会话与跨分栏目标",
-      "provenance": "2026-10-17 右侧多任务面板气泡导航；发布版控制器未公开 DockKit 排序动作",
-      "marker": "dsh-mobile sidebar bubble reorder (B1)"
-    },
-    {
       "id": "market-B",
       "target": "dshmarketplace-plugin/lib/index.js",
       "summary": "安装 runner execPath 安全化：TERMUX__PREFIX 兜底烧写快照内 node 绝对路径",

@@ -30,7 +30,6 @@ import { resolveEnginePatchTarget } from '../patches/resolve-engine-patch-target
 // use reviewed behavior anchors for those targets, never their comment markers.
 export const PERMISSION_AUTO_UI_SNAPSHOT_ANCHOR = 'select(AUTO_REVIEW_PRESET);'
 export const WORKSPACE_WRITE_UI_SNAPSHOT_ANCHOR = 'if (id === "danger-full-access" || id === "auto" || id === "workspace-write")'
-export const SIDEBAR_REORDER_UI_SNAPSHOT_ANCHOR = 'reorderIn(sessionId, '
 export const EXTERNAL_DRAFT_UI_SNAPSHOT_ANCHOR = 'this.input.shell(sessionId);'
 export const ARKWEB_RESOURCE_UI_SNAPSHOT_ANCHOR = 'return authority === null ? void 0 : authority[1].toLowerCase();'
 export const REFERENCE_DRILL_UI_SNAPSHOT_ANCHOR = 'document.documentElement.hasAttribute("data-dsh-mobile-form")'
@@ -98,9 +97,6 @@ export function enginePatchTargets(patch, engineRoot = undefined) {
     },
     'workspace-write-boundary-warning-WW1': {
       'usr/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-client-ui-permission-presets/lib/client.js': WORKSPACE_WRITE_UI_SNAPSHOT_ANCHOR,
-    },
-    'sidebar-bubble-reorder-B1': {
-      'usr/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-client-ui-sidebar-right/lib/client.js': SIDEBAR_REORDER_UI_SNAPSHOT_ANCHOR,
     },
     'external-draft-conversation-seam-J1': {
       'usr/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-client-ui-conversation/lib/client.js': EXTERNAL_DRAFT_UI_SNAPSHOT_ANCHOR,
