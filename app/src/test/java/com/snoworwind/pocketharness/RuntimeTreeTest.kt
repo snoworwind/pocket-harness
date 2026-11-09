@@ -145,6 +145,6 @@ class RuntimeTreeTest {
 
   private companion object {
     /** 快照实测为**符号链接**的四条（其余是普通文件）——见 RuntimeTree 类注释。 */
-    val LINKED_LIBS = setOf("libz.so.1", "libsqlite3.so", "libicui18n.so.78", "libicuuc.so.78")
+    val LINKED_LIBS = setOf("libz.so.1", "libsqlite3.so", "libicui18n.so.79", "libicuuc.so.79")
   }
 }

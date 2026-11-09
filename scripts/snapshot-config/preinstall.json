@@ -10,10 +10,8 @@
     "@napi-rs/canvas@1.0.8": "sha512-/SaLcvlqGWdm0HSCWMgHu7cjJiQXfP8/mOY+6dUyV9flQz7sPBBZ+ed2zYtoukojPmxOaL7bm+d/G4GeWWoN7g==",
     "@napi-rs/canvas-android-arm64@1.0.8": "sha512-5+nkh8i3gt6lqS/d2jTZ1xAn6tdgtB4Lf1mW6T0Qm5/rXNwBuV1sAEyLEWan5o9gJPU/GuvHR3rvSeZ+FaGrbw=="
   },
-  "pins": {
-    "libicu": "78.3"
-  },
-  "$pinsComment": "Termux stable keeps publishing an older version beside a newer one. nodejs-lts 24.22.2 links libicuuc.so.78 / libicui18n.so.78, and the shell's RuntimeTree.REQUIRED_LIBS asserts those sonames after staging, so the snapshot must keep ICU 78.3 even though the rolling index already lists 79.1. Update this pin (and RuntimeTree.REQUIRED_LIBS) only together with a nodejs-lts rebuild.",
+  "pins": {},
+  "$pinsComment": "Optional escape hatch: name -> exact version, honored by every Termux record selector (offline mirror preparation, PRoot backend, snapshot builder) and fail-closed when the pin is absent from the signed index. Empty right now: 2026-11-09 the rolling repository withdrew libicu 78.3 and rebuilt nodejs-lts against ICU 79, so the snapshot and RuntimeTree.REQUIRED_LIBS both moved to .so.79. Re-pin only when a published package would otherwise pick an ABI the bundled runtime cannot link.",
   "targets": [
     "python", "python-pip", "perl", "ruby", "ripgrep", "zip", "vim", "openssl", "openssl-tool",
     "zsh", "socat", "busybox", "dpkg", "termux-exec", "termux-elf-cleaner", "termux-keyring",
