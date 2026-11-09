@@ -367,7 +367,6 @@ export function mountKeybar(host: KeybarHost): KeybarHandle {
 
   // visualViewport 兜底：resize **与** scroll 双监听（只监听 resize 会漏掉 offsetTop 变化）。
   const view = doc.defaultView
-  const queue = frameQueue(view)
   const onViewport = (): void => { reconcile() }
   let observer: MutationObserver | null = null
 
@@ -376,7 +375,6 @@ export function mountKeybar(host: KeybarHost): KeybarHandle {
     if (disposed) return
     disposed = true
     if (latchTimer !== null) { view?.clearTimeout(latchTimer); latchTimer = null }
-    queue.cancel()
     observer?.disconnect()
     view?.visualViewport?.removeEventListener('resize', onViewport)
     view?.visualViewport?.removeEventListener('scroll', onViewport)
@@ -400,7 +398,9 @@ export function mountKeybar(host: KeybarHost): KeybarHandle {
     ? new MutationObserverCtor((records) => {
         if (disposed) return
         if (!host.root.isConnected) { teardown(); return }
-        if (records.some((record) => record.target === host.root)) queue.schedule(reconcile)
+        // 只在本根的直接子列表变化时重挂（React 重建子列表）。这种事件很少，
+        // 且 reconcile 只读本根、不做全文档查询，因此直接同步收敛即可（保持既有测试的微任务时序）。
+        if (records.some((record) => record.target === host.root)) reconcile()
       })
     : null
   observer?.observe(doc.body, { childList: true, subtree: true })
