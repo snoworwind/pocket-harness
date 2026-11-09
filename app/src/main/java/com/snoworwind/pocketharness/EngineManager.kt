@@ -2632,12 +2632,14 @@ internal fun zshFunctionPath(prefix: File): String? {
   if (!functions.isDirectory) return null
   val directories = mutableListOf<File>()
   fun collect(directory: File) {
-    if (!directory.isDirectory) return
-    directories += directory
     directory.listFiles()
       ?.filter { it.isDirectory }
       ?.sortedBy { it.name }
-      ?.forEach { collect(it) }
+      ?.forEach { child ->
+        // 只收**子目录**：functions 父目录本身不能进 fpath（autoload 不会递归）。
+        directories += child
+        collect(child)
+      }
   }
   collect(functions)
   for (name in listOf("site-functions", "vendor-completions")) {

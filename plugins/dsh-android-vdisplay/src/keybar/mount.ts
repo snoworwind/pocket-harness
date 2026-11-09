@@ -501,11 +501,13 @@ export function watchTerminalKeybars(deps: {
         for (const node of record.addedNodes) {
           if (node.nodeType !== 1) continue
           const element = node as Element
-          const inside = typeof element.closest === 'function'
+          const isRoot = element.matches(TERMINAL_ROOT_SELECTOR)
+          // closest 会把元素**自己**也算进去：新增的根本身就是一个终端根，不能当成「既有终端内部」跳过。
+          const inside = !isRoot && typeof element.closest === 'function'
             ? element.closest(TERMINAL_ROOT_SELECTOR)
             : null
           if (inside !== null) continue
-          if (element.matches(TERMINAL_ROOT_SELECTOR) || element.querySelector(TERMINAL_ROOT_SELECTOR) !== null) {
+          if (isRoot || element.querySelector(TERMINAL_ROOT_SELECTOR) !== null) {
             needScan = true
             break
           }
