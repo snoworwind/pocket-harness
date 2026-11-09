@@ -124,6 +124,7 @@ adb -s <serial> install -r -t out\v<版本>\pocket-harness-v<版本>-arm64.apk
 | **安全审计流程 / 仓库外归档规则** | `docs/AGENTS/SECURITY-AUDIT-PROCESS.md`（审计产物存于仓库外，不提交到仓库） |
 | 安全加固分支宗旨、原则与证据要求 | `docs/AGENTS/SECURITY-HARDENING.md` |
 | Hard / Soft / Data 持久化路径、SharedPreferences keys、恢复来源 | `docs/AGENTS/PERSISTENT-DATA.md` |
+| **出厂全局指令基线（`~/.dsh/AGENTS.md`）与用户全局约定（`~/.agents/AGENTS.md`）** | `docs/AGENTS/PERSISTENT-DATA.md` 两行归属 + 坑位 662；内容源 `scripts/global-AGENTS.md` |
 
 ---
 
@@ -168,6 +169,7 @@ adb -s <serial> install -r -t out\v<版本>\pocket-harness-v<版本>-arm64.apk
 | 构建链、门禁、WSL 环境差异 | 构建与环境 | `docs/AGENTS/build-and-env.md` + `docs/AGENTS/gotchas.md` |
 | 改 `scripts/patches/**` 或 `assets/patched` | 运行时补丁 | `docs/AGENTS/RUNTIME-PATCHES.md` §7.1 登记 + §2 字节数按实测更新 |
 | gradle 依赖增删/升级 | 依赖台账 | `docs/AGENTS/DEPENDENCIES.md` |
+| **改出厂全局指令基线 `scripts/global-AGENTS.md`** | 归属与迁移（工厂件 vs `~/.agents`） | `docs/AGENTS/PERSISTENT-DATA.md`（Factory/User global instructions 两行）+ 坑位 662；改完跑 `node scripts/check-global-agents.mjs` |
 | 发现未实现 / 有意留下的缺口 | 已知缺口 | `docs/AGENTS/known-gaps.md` |
 | **代码执行顺序 / 嵌套 / 耦合 / 流程图（排查入口）** | 执行地图对应查点 + 覆盖账本 | `docs/AGENTS/EXECUTION-MAP.md`（改完跑 `node scripts/check-code-map.mjs`） |
 | 改设备验收方式 / 新增套件或操作原语 | 模拟器验收规范 | `docs/AGENTS/emulator-test-protocol.md` |

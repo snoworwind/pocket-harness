@@ -19,6 +19,7 @@ import { sanitizeSymlinks } from './lib/symlink-sanitize.mjs'
 import { relocateGitShellPath } from './lib/git-shell-path.mjs'
 import { verifyPinnedNpm } from './lib/pinned-npm.mjs'
 import { parseTermuxIndex } from './source-build/termux-index.mjs'
+import { validateGlobalAgents } from './source-build/global-agents-policy.mjs'
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)))
 const ABI = process.argv[2] ?? 'arm64'
@@ -655,6 +656,33 @@ if (existsSync(cordisTpl)) {
   console.error('[cordis 模板缺失] scripts/profile-web.cordis.patch.yml 不存在——装配清单不完整，快照不可发布')
   process.exit(1)
 }
+// 7b3. 出厂全局指令基线（0.15.x）：home/.dsh/AGENTS.md
+//
+// 为什么在构建期写、而不是让壳侧首次运行生成：这份正文是「对每一个安装都成立」的运行时事实，
+// 要随版本演进。走快照 ⇒ 与引擎内容同源同版本，净安装即有；壳侧生成会多出第二份真源，
+// 且它要到首次启动才落盘，和快照刷新/回滚是两条时间线。
+//
+// 归属纪律（谁覆盖谁）在 SnapshotUserData：AGENTS.md 进 factorySnapshotNames（**升级整份替换**），
+// 用户自己的全局约定写 home/.agents/AGENTS.md（不在工厂档案里，升级不动）。
+// 正文本身也必须声明「这是工厂件、不要往里写」——见 scripts/global-AGENTS.md 开头。
+// 内容判据单实现 = scripts/source-build/global-agents-policy.mjs（禁止夹带本机私有事实）。
+const agentsTpl = join(ROOT, 'scripts', 'global-AGENTS.md')
+const agentsDst = join(STAGE, 'root', 'home', '.dsh', 'AGENTS.md')
+if (!existsSync(agentsTpl)) {
+  console.error('[全局指令基线缺失] scripts/global-AGENTS.md 不存在——出厂基线不可发布')
+  process.exit(1)
+}
+const globalAgentsText = readFileSync(agentsTpl, 'utf8')
+const globalAgentsProblems = validateGlobalAgents(globalAgentsText)
+if (globalAgentsProblems.length > 0) {
+  for (const problem of globalAgentsProblems) console.error('[全局指令基线不合规] ' + problem)
+  process.exit(1)
+}
+// 基座（base-dsh）可能带着导出设备上的同名文件——先删再写，杜绝把本机私有事实打进安装包。
+rmSync(agentsDst, { recursive: true, force: true })
+mkdirSync(dirname(agentsDst), { recursive: true })
+writeFileSync(agentsDst, globalAgentsText.endsWith('\n') ? globalAgentsText : globalAgentsText + '\n', { mode: 0o600 })
+log('出厂全局指令基线写就（home/.dsh/AGENTS.md，' + Buffer.byteLength(globalAgentsText.trim(), 'utf8') + ' 字节）')
 // 7c. ripgrep 平台包：Termux 动态 rg 复制进 @vscode/ripgrep-android-<abi>/bin/rg + 最小包清单（require.resolve 路径机制）
 const rgBin = join(U, 'bin', 'rg')
 const platformDir = join(STAGE, 'root', npmDshRoot, RGPKG)
