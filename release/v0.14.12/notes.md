@@ -1,5 +1,11 @@
 # Pocket Harness v0.14.12
 
+> 当前发布（2026-11-09）：提交 `b6e6324b82bb`，来源 run [42556539194](https://github.com/snoworwind/pocket-harness/actions/runs/42556539194)，**ARM64 + x86_64 双 ABI**。
+> 本版修复：助手正文整段空白（WebView 114 缺 `URL.canParse`）、左上角抽屉键高过标题行（frame 改透明 `border-top` 避让）、
+> 快照按滚动 Termux 仓库选版并跟随上游把 node 迁到 ICU 79。ARM64 APK SHA-256 `0911301f563682c289e360e47444624c36a6c72d5b40f82f8c3e105f6a6e3bc0`。
+> 设备验收（用户执行）：HUAWEI SGT-AL10 / Android 36 / WebView 114 安装 ARM64 包后启动成功、对话正文恢复、左上角按钮对齐；
+> CDP verify 套件本轮未执行，x86_64 未做设备层验证。下方各节描述上一版（`080daeed` / run 42375273206）的 ARM64 单 ABI 发布，保留作历史对照。
+
 本版修复 Android 竖屏设置界面与左侧栏入口问题，并继续基于 DeepSeek Harness `0.2.2-rc.1`。
 
 ## 安装与升级
