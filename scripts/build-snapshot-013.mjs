@@ -484,7 +484,7 @@ const indexText = readFileSync(INDEX_BODY, 'utf8')
 
 // 同名多 stanza 取最新版：滚动仓库会同时保留新旧版本（2026-11-09 实测 libicu 79.1 + 78.3），
 // 而本地镜像只写了最新那份（Python 侧 select_package_records），末条胜出会向镜像要一个不存在的文件。
-const { pkgs, rawBlocks } = parseTermuxIndex(indexText)
+const { pkgs, rawBlocks } = parseTermuxIndex(indexText, PREINSTALL.pins ?? {})
 log('索引包数: ' + pkgs.size)
 
 // ── 2. 依赖闭包（预装清单 → BFS）──

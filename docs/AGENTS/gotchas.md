@@ -3602,3 +3602,10 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
     真因：Termux stable 是滚动仓库，同一个包名会同时保留新旧两条 stanza（实测 3122 条 stanza / 3026 个名字，`libicu` 先发布 79.1、后跟一条 78.3）。`prepare-termux-signed-repo.py::select_package_records` 按 Debian 版本选最新，只把 79.1 写进本地镜像；而 `build-snapshot-013.mjs` 用 `pkgs.set()` 顺序解析，后出现的覆盖先出现的 ⇒ 取到 78.3，向只含 79.1 的镜像请求 ⇒ 404。触发条件是上游在两次运行之间发过新版本并保留旧 stanza。
     修法：索引解析抽到 `scripts/source-build/termux-index.mjs`，同名包按 Debian 版本比较取最新（新增 `scripts/source-build/deb-version.mjs`：epoch / upstream / revision，`~` 排序、数字段按数值、字母先于标点），`rawBlocks` 同步只留最新，与 Python 侧选择口径一致。
     复验：`node scripts/source-build/deb-version.test.mjs` 3/3、`termux-index.test.mjs` 3/3（含「新版本在前、旧版本在后」的真实复现用例）；`check-snapshot-builder-output.mjs` PASSED；真实产物待下一次草稿 run 验证（本轮无设备层要求）。
+
+659. **滚动 Termux 的「最新版 libicu」会让快照装不上：nodejs-lts 仍链 .so.78，壳侧判据因此拒换树（0.14.12 真机 10:22 启动失败）**
+
+    现象：装上 run `42508817934` 的 APK 后无法启动，界面报 `runtime-unavailable`；诊断包 `snapshot-stage-incomplete` 的 logcat 真因是 `staged runtime incomplete: missing=lib/libicui18n.so.78, lib/libicuuc.so.78`（其余 9 个必需项都在）。boot-fail.log 里 `snapshotEmbedded=dc5665ee…`，与草稿 APK 的 `assets/snapshot.tar.xz` 摘要一致。
+    真因：上一轮把「同名多 stanza」改成取最新后，`libicu` 选中了滚动仓库里较新的 **79.1**（`libicuuc.so.79`），而快照里的 `usr/bin/node`（nodejs-lts 24.22.2）DT_NEEDED 仍是 `libicuuc.so.78` / `libicui18n.so.78`（用 ELF 解析核对过）；壳侧 `RuntimeTree.REQUIRED_LIBS` 断言的正是 .78 ⇒ 暂存树被判缺件、拒绝换树（这次判据救了用户：否则换树后 node 会链接失败）。索引里同时保留 78.3 与 79.1 两条 stanza，仓库尚未把 node 重建到 79。
+    修法：在 `scripts/snapshot-config/preinstall.json` 增加显式 `pins`（当前 `libicu: 78.3`），三处选版都尊重它并在钉缺席时 fail closed：`prepare-termux-signed-repo.py`（建离线镜像）、`prepare-proot-backend.py`（PRoot 后端闭包）、`parseTermuxIndex()`（快照构建）。注释写明「必须与 nodejs-lts 重建、`RuntimeTree.REQUIRED_LIBS` 同批更新」。
+    复验：JS `termux-index.test.mjs` 5/5（含钉覆盖最新版、钉缺席报错）、Python `test_prepare_termux_signed_repo.py` 21/21（含同一对用例）、`check-snapshot-builder-output.mjs` 与 `check-code-map.mjs` 通过；真实产物待下一次草稿 run + 重装验证。

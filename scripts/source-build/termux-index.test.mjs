@@ -44,3 +44,18 @@ test('strips version constraints and keeps the first branch of an alternative', 
   const { pkgs } = parseTermuxIndex(index)
   assert.deepEqual(pkgs.get('python').depends, ['libc++', 'libffi', 'openssl', 'zlib'])
 })
+
+test('honors an explicit pin even when a newer version is published', () => {
+  // nodejs-lts links libicuuc.so.78 while the rolling index also lists 79.1.
+  const index = [
+    stanza('libicu', '79.1', 'pool/main/libi/libicu/libicu_79.1_aarch64.deb'),
+    stanza('libicu', '78.3', 'pool/main/libi/libicu/libicu_78.3_aarch64.deb'),
+  ].join('\n')
+  const { pkgs } = parseTermuxIndex(index, { libicu: '78.3' })
+  assert.equal(pkgs.get('libicu').version, '78.3')
+})
+
+test('fails closed when a pinned version is absent from the index', () => {
+  const index = stanza('libicu', '79.1', 'pool/main/libi/libicu/libicu_79.1_aarch64.deb')
+  assert.throws(() => parseTermuxIndex(index, { libicu: '78.3' }), /pinned Termux package version is absent/)
+})

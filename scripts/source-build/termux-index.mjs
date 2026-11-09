@@ -14,11 +14,12 @@ import { compareDebVersion } from './deb-version.mjs'
  * Parse a `Packages` index into the record map the builder consumes.
  * Duplicate names keep the newest Debian version, matching the Python selection.
  */
-export function parseTermuxIndex(indexText) {
+export function parseTermuxIndex(indexText, pins = {}) {
   /** @type {Map<string, object>} */
   const pkgs = new Map()
   // 包名 → 索引里的**原始块**（逐字保留，供 dpkg/available 使用）；与 pkgs 同步只留最新。
   const rawBlocks = new Map()
+  const seenPins = new Set()
   for (const block of indexText.split('\n\n')) {
     const name = block.match(/^Package: (.+)$/m)?.[1]
     if (!name) continue
@@ -33,10 +34,23 @@ export function parseTermuxIndex(indexText) {
       maintainer: get('Maintainer'),
       description: get('Description'),
     }
+    if (Object.hasOwn(pins, name)) {
+      if (candidate.version === pins[name]) {
+        rawBlocks.set(name, block)
+        pkgs.set(name, candidate)
+        seenPins.add(name)
+      }
+      continue
+    }
     const previous = pkgs.get(name)
     if (previous !== undefined && compareDebVersion(candidate.version, previous.version) <= 0) continue
     rawBlocks.set(name, block)
     pkgs.set(name, candidate)
+  }
+  const missingPins = Object.keys(pins).filter((name) => !seenPins.has(name))
+  if (missingPins.length > 0) {
+    throw new Error('pinned Termux package version is absent from the signed index: '
+      + missingPins.map((name) => name + '=' + pins[name]).join(', '))
   }
   return { pkgs, rawBlocks }
 }

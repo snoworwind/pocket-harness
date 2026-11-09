@@ -122,7 +122,9 @@ def authenticated_package_index(webroot: Path, provenance: dict, bootstrap_usr: 
         text = gzip.decompress(index_bytes).decode("utf-8")
     except (OSError, UnicodeDecodeError) as error:
         raise ValueError(f"authenticated Termux Packages.gz is invalid: {error}") from error
-    return select_package_records(parse_stanzas(text))
+    config_path = Path(__file__).resolve().parent.parent / "snapshot-config" / "preinstall.json"
+    pins = json.loads(config_path.read_text(encoding="utf-8")).get("pins") or {}
+    return select_package_records(parse_stanzas(text), pins=pins)
 
 
 def package_prefix(extracted: Path) -> Path:
