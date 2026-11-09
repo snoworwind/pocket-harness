@@ -3630,3 +3630,39 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
     真因：引擎的用户级指令只从两个固定位置发现文件——`$DSH_HOME/AGENTS.md`（本机 `~/.dsh/AGENTS.md`）与 `~/.agents/AGENTS.md`——且两处都只认 `AGENTS.md`。`~/.dsh/AGENTS.md` 在 0.15.x 之前是「未分类 `.dsh` 条目」，升级规则是**保留 live**，所以它天然是「用户数据」：既不可能随版本更新，也不可能出现在净安装里。另有一个反直觉点：`AGENTS.local.md` 覆盖层**只作用于项目目录链**，写 `~/.dsh/AGENTS.local.md` 不会被任何会话读到。
     修法：① `scripts/global-AGENTS.md` 作为工厂内容源，`build-snapshot-013.mjs` 构建期写入 `home/.dsh/AGENTS.md`（先删基座同名文件，防止把导出设备的本机事实打进包）；② 把它加进 `SnapshotUserData.factorySnapshotNames` ⇒ 升级**整份替换**，新装/升级同源同版本；③ 用户面另设 `home/.agents/AGENTS.md`（不在工厂档案里、升级不动），并在出厂正文里显式写明「本文件随安装包发布，你自己的约定写到 `~/.agents/AGENTS.md`」；④ 旧安装上用户手改过的 `~/.dsh/AGENTS.md` 由 `SnapshotUserData.prepareStagedSnapshot` 在换树前**改名迁移**到 `~/.agents/AGENTS.md`（内容不动；已有同名文件时旧件另存 `AGENTS.md.superseded-<ts>`），避免升级静默删掉用户笔记；判据必须看**首行出厂标记** `<!-- dsh-mobile-factory-baseline -->` 而不是「内容与新版不同」——每次基线更新后旧版工厂件的内容当然不同，按内容判会把上一版说明当用户笔记迁走，导致陈旧指令继续被注入；⑤ 内容门禁 `scripts/check-global-agents.mjs`（判据单实现 `scripts/source-build/global-agents-policy.mjs`，`--self-test` 含 9 条受控负控）禁止夹带本机私有事实（绝对应用路径、个人账号、代理端口、token 形态、emoji）并限制注入预算。
     复验：`node scripts/check-global-agents.mjs`（正样本 + 负控）、`node scripts/source-build/global-agents-policy.test.mjs`、`GlobalAgentsBaselineTest.kt`（净安装落盘 / 未改不迁移 / 改过先迁移 / 已有用户件时另存 / 无工厂件时不动）。
+
+663. **侧栏 zsh 的启动三行报错与「退格变空格」是同一个根因：快照搬了 Termux 前缀，但 zsh/ncurses 二进制里的搜索路径没搬（0.15.1 实修）**
+    现象：侧栏终端选 zsh，首个提示符前固定打印
+    `__dsh_shell_init:2: add-zle-hook-widget: function definition file not found`（第 3、4 行同型）；
+    退格不删字符，只把光标处改成一个空格（`bash` 同一终端里退格正常）。缓冲区其实是删对的，
+    回车执行的是删后的命令，坏的只是显示。
+    真因：快照把前缀从 `/data/data/com.termux/files/usr` 搬到 `<files>/usr`，但 zsh 的 `fpath`
+    与 ncurses 的 terminfo 搜索路径都是**编译期写死**的旧前缀（`strings libncursesw.so` 可见）。
+    ① `TERMINFO` 缺失 ⇒ zsh 的 ZLE 没有 `cub1`（左移一列）；擦除只剩「写空格」一步，光标不回退；
+    ② `fpath` 缺失 ⇒ 引擎注入的 `__dsh_shell_init` 里 `autoload -Uz add-zsh-hook
+    add-zle-hook-widget` 失败，忙碌/空闲上报也一并失效。
+    `bash` 不中招是因为 readline 对「左移一列」有内建回退（直接发 `\b`），不依赖 terminfo。
+    引擎进程环境里只有 `TERMUX__PREFIX`（EngineManager.shellEnv），既没有经典的 `PREFIX`，
+    也没有 `TERMINFO`/`FPATH`；侧栏终端继承引擎 env，所以两项都缺。
+    修法：`EngineManager.shellEnv()` 追加 `relocatedTermuxEnv(usrDir)`，按**真实存在的目录**注入
+    `PREFIX`、`TERMINFO`、`FPATH`（zsh 的 fpath 是「每个函数子目录一条」，故递归展开
+    `share/zsh/functions/**` 再加 `site-functions`/`vendor-completions`）。目录缺席时一律不注入。
+    复验：设备上用临时 `~/.zshenv` 等价注入实测——`echoti cub1` 从空变成 `\b`，退格恢复
+    `\b \b` 擦除；`${+functions[add-zsh-hook]}=1`，三行报错消失。
+    JVM 边界：`RelocatedTermuxEnvTest`（真实目录树 + 不编造路径 + prefix 缺席）+ `W3ShellContractTest`
+    锁「shellEnv 真的接上」。本条只到代码/单测，未做 APK 设备层验收。
+
+664. **侧栏九键条曾把「每次 xterm 回显」变成全文档查询 + 强制样式计算 + 样式失效，是输入延迟的主放大器（0.15.1 实修）**
+    现象：侧栏终端输入延迟高，输出越多越明显；快速输入还会出现字符错乱（后者另有上游 IME 成分）。
+    真因：`dsh-android-vdisplay` 的键条接线层对 `document.body` 挂 `{childList,subtree}` 观察者：
+    `watchTerminalKeybars` 与每个 `mountKeybar` 各一条；回调里 `querySelectorAll('[data-sidebar-terminal]')`
+    扫全文档、`getComputedStyle(document.documentElement)` 强制样式计算，并无条件写
+    `--dsh-terminal-keybar-inset`（写同名自定义属性会让终端子树样式失效并重排）。
+    xterm 6 用 DOM renderer，每个变化行做 `replaceChildren`，一次按键回显就是一串 childList 变更
+    ⇒ 上述全量工作被钉在每个字符上，且发生在绘制前的 MutationObserver 微任务里。
+    修法：① rAF 合并（`frameQueue`，一帧最多收敛一次）；② 回调只按 mutation record 判断
+    「新增元素可能含终端根 / 已挂载根断开」，终端内部深层重绘直接跳过；③ `mountKeybar` 只用
+    自己绑定的 `host.root`，不再全文档取「最后一个根」（分栏时也不会把键条挂到别的终端）；
+    ④ 留白值未变化时不写；根断开时统一 `teardown`。
+    复验：新增三条离线回归（jsdom）——深层重绘后全文档 `querySelectorAll` 调用数为 0；留白未变时
+    写变量次数为 0；无关新增不触发扫描而新终端根仍能挂上键条。设备层帧率/输入延迟未做量化。

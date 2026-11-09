@@ -2394,7 +2394,7 @@ class EngineManager(private val context: Context, private val pickToken: String?
       // 实测口径：--max-old-space-size=N ⇒ heap_size_limit = N + 96MB；引擎最小可用堆约 70MB。
       // 读不到设备内存时退回下限，保证「任何设备都够启动」而不是编造一个值。
       "NODE_OPTIONS" to heapOptionFrom(engineHeapMb(deviceTotalRamMb())),
-    ) + certEnv + PythonPackages.environment(context.filesDir, usrDir)
+    ) + certEnv + PythonPackages.environment(context.filesDir, usrDir) + relocatedTermuxEnv(usrDir)
   }
 
   /** Move user-installed packages away from usr, which is replaced as a whole on refresh. */
@@ -2583,6 +2583,69 @@ internal fun engineHeapMb(totalRamMb: Int): Int {
 internal fun heapOptionFrom(heapMb: Int): String =
   "--max-old-space-size=" + heapMb.coerceAtLeast(ENGINE_HEAP_FLOOR_MB)
 
+
+/**
+ * 侧栏终端的**前缀重定位**补齐（0.15.1）。
+ *
+ * 快照把 Termux 前缀从 `/data/data/com.termux/files/usr` 搬到了 `<files>/usr`，但 zsh / ncurses
+ * **二进制里写死的搜索路径没搬**，于是侧栏 zsh 出现两类只在它身上可见的故障：
+ *
+ *  1. `TERMINFO` 找不到：ncurses 只查编译期目录（旧前缀）。zsh 的 ZLE 擦除一个字符依赖
+ *     terminfo 的 `cub1`（左移一列）；缺它时只写空格、光标不回退 → 用户看到「退格变空格、
+ *     删不掉」（缓冲区其实已删，坏的只是显示）。bash 不受影响，因为 readline 对左移有内建回退。
+ *  2. `fpath` 找不到：编译进 zsh 的函数目录是旧前缀，引擎注入的 `__dsh_shell_init` 里
+ *     `autoload -Uz add-zsh-hook add-zle-hook-widget` 失败，首次提示符打印三行
+ *     "function definition file not found"，忙碌/空闲上报也一并失效。
+ *
+ * 三条都靠**环境变量**覆盖（引擎是所有工具子进程与侧栏终端的父进程，环境自动继承）：
+ *  - `PREFIX`：Termux 脚本使用的经典前缀变量（引擎默认没有；模型 bash 工具由
+ *    dsh-shell-termux 另行注入，二者同值）；
+ *  - `TERMINFO`：指向快照自带的 terminfo 数据库；
+ *  - `FPATH`：zsh 的 fpath 环境变量，按「每个函数子目录一条」冒号分隔。
+ *
+ * 只在目标目录真实存在时注入，缺失时保持不设置——绝不把猜出来的路径写进 env。
+ * @param prefix - 快照前缀目录（= filesDir/usr）。
+ * @returns 需要合并进 shell env 的键值（可能为空）。
+ */
+internal fun relocatedTermuxEnv(prefix: File): Map<String, String> {
+  if (!prefix.isDirectory) return emptyMap()
+  val env = linkedMapOf<String, String>()
+  env["PREFIX"] = prefix.absolutePath
+  val terminfo = File(File(prefix, "share"), "terminfo")
+  if (terminfo.isDirectory) env["TERMINFO"] = terminfo.absolutePath
+  zshFunctionPath(prefix)?.let { env["FPATH"] = it }
+  return env
+}
+
+/**
+ * zsh 的 `fpath` 形态：**每个函数子目录一条**（不是 functions 父目录），按名字稳定展开。
+ *
+ * 与 zsh 出厂 fpath 一致：`share/zsh/functions` 下的全部目录（递归），再加 `site-functions` 与
+ * `vendor-completions`（存在才收）。返回冒号分隔串，可直接作为 `FPATH` 环境变量；
+ * `functions` 目录缺失时返回 null（不编造路径）。
+ * @param prefix - 快照前缀目录（= filesDir/usr）。
+ * @returns `FPATH` 的值，或 null。
+ */
+internal fun zshFunctionPath(prefix: File): String? {
+  val zsh = File(File(prefix, "share"), "zsh")
+  val functions = File(zsh, "functions")
+  if (!functions.isDirectory) return null
+  val directories = mutableListOf<File>()
+  fun collect(directory: File) {
+    if (!directory.isDirectory) return
+    directories += directory
+    directory.listFiles()
+      ?.filter { it.isDirectory }
+      ?.sortedBy { it.name }
+      ?.forEach { collect(it) }
+  }
+  collect(functions)
+  for (name in listOf("site-functions", "vendor-completions")) {
+    val extra = File(zsh, name)
+    if (extra.isDirectory) directories += extra
+  }
+  return directories.joinToString(":") { it.absolutePath }
+}
 
 /**
  * 0.14.1 块K ③（反馈三）：pnpm store 目录——**唯一真源**，与 HOME 同源派生。
