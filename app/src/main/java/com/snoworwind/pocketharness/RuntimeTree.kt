@@ -20,7 +20,7 @@ import java.nio.file.Files
  * 对发布快照 `readelf -d usr/bin/node`（WSL 实测，两个版本）：
  *   v0.14.2-fx-1 与 v0.14.0 的 DT_NEEDED **逐条完全相同**：
  *     libz.so.1 libcares.so libsqlite3.so libcrypto.so.3 libssl.so.3
- *     libicui18n.so.78 libicuuc.so.78 libc.so libm.so libdl.so libc++_shared.so
+ *     libicui18n.so.79 libicuuc.so.79 libc.so libm.so libdl.so libc++_shared.so
  * `libc` / `libm` / `libdl` 是 bionic 系统库（设备自带，快照里没有）⇒ **不计**；其余 8 条见 [REQUIRED_LIBS]。
  *
  * 为什么取全部 8 条而不是「挑几个代表形态」：只缺 `libcrypto.so.3` 的树同样必死，
@@ -31,7 +31,7 @@ import java.nio.file.Files
  *   · 链接名在场即计在场；
  *   · 相对目标 ⇒ 本目录下有该条目即成立；
  *   · 绝对目标 ⇒ 必须以**本树 lib 目录的绝对路径**为前缀（历史坑：软链指向构建机路径）。
- * 实测：8 条里 4 条是相对链接（libz.so.1 / libsqlite3.so / libicui18n.so.78 / libicuuc.so.78），
+ * 实测：8 条里 4 条是相对链接（libz.so.1 / libsqlite3.so / libicui18n.so.79 / libicuuc.so.79），
  * 4 条是普通文件；按本规则在两个真快照上算出的**缺失条目数均为 0**（不假阳性）。
  *
  * ── 与 shouldDegradeRefresh 的交互（**不要改它**）──────────────────────────────
@@ -41,15 +41,21 @@ import java.nio.file.Files
  */
 internal object RuntimeTree {
 
-  /** 运行时必需的非系统动态库（依据见类注释的 readelf 实测）。顺序无关，仅影响报错可读性。 */
+  /**
+   * 运行时必需的非系统动态库（依据见类注释的 readelf 实测）。顺序无关，仅影响报错可读性。
+   *
+   * ICU 的 soname 跟着 Termux 的 nodejs-lts 走：2026-11-09 上游把 node 重建到 libicu 79
+   * （`libicui18n.so.79` / `libicuuc.so.79`），同时从索引里撤掉 78.3。这张表必须与**随包发布的
+   * 快照**同批更新；换 ICU 大版本时先核对 `readelf -d usr/bin/node`，再改这里。
+   */
   internal val REQUIRED_LIBS: List<String> = listOf(
     "libz.so.1",
     "libcares.so",
     "libsqlite3.so",
     "libcrypto.so.3",
     "libssl.so.3",
-    "libicui18n.so.78",
-    "libicuuc.so.78",
+    "libicui18n.so.79",
+    "libicuuc.so.79",
     "libc++_shared.so",
   )
 

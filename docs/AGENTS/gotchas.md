@@ -3609,3 +3609,10 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
     真因：上一轮把「同名多 stanza」改成取最新后，`libicu` 选中了滚动仓库里较新的 **79.1**（`libicuuc.so.79`），而快照里的 `usr/bin/node`（nodejs-lts 24.22.2）DT_NEEDED 仍是 `libicuuc.so.78` / `libicui18n.so.78`（用 ELF 解析核对过）；壳侧 `RuntimeTree.REQUIRED_LIBS` 断言的正是 .78 ⇒ 暂存树被判缺件、拒绝换树（这次判据救了用户：否则换树后 node 会链接失败）。索引里同时保留 78.3 与 79.1 两条 stanza，仓库尚未把 node 重建到 79。
     修法：在 `scripts/snapshot-config/preinstall.json` 增加显式 `pins`（当前 `libicu: 78.3`），三处选版都尊重它并在钉缺席时 fail closed：`prepare-termux-signed-repo.py`（建离线镜像）、`prepare-proot-backend.py`（PRoot 后端闭包）、`parseTermuxIndex()`（快照构建）。注释写明「必须与 nodejs-lts 重建、`RuntimeTree.REQUIRED_LIBS` 同批更新」。
     复验：JS `termux-index.test.mjs` 5/5（含钉覆盖最新版、钉缺席报错）、Python `test_prepare_termux_signed_repo.py` 21/21（含同一对用例）、`check-snapshot-builder-output.mjs` 与 `check-code-map.mjs` 通过；真实产物待下一次草稿 run + 重装验证。
+
+660. **上游撤掉 libicu 78.3 并把 node 重建到 79：钉版本不可满足，必须同步壳侧 soname 表（0.14.12 草稿 42553543887）**
+
+    现象：加上 libicu 78.3 的钉之后，草稿 run `42553543887` 的两个 `termux-package-inputs` job 都在「Authenticate the pinned Termux bootstrap and prepare this run's package snapshot」失败，`ValueError: pinned Termux package version is absent from the signed index: libicu=78.3`。
+    真因：Termux stable 是滚动仓库，2026-11-09 当天撤掉了 `libicu` 78.3 的 stanza（索引里只剩 79.1），并把 `nodejs-lts` 重建为 `24.22.2-1`。把新 deb 抽出来解析 ELF 动态段：新版 node 的 DT_NEEDED 是 `libicui18n.so.79` / `libicuuc.so.79`（旧版是 .78）。因此「钉 78.3」已无法满足，继续钉只会让每次构建在鉴权阶段就失败。
+    修法：① `preinstall.json` 的 `pins` 清空为 `{}`，保留机制与说明（钉是逃生口，不是常态）；② 壳侧 `RuntimeTree.REQUIRED_LIBS` 的 ICU 两条改为 `libicui18n.so.79` / `libicuuc.so.79`，并在注释里写清「这张表必须与随包快照同批更新，换 ICU 大版本先 `readelf -d usr/bin/node` 核对」；③ 单测 `RuntimeTreeTest.LINKED_LIBS` 同步改 .79。
+    复验：JS 5/5、Python 21/21 + PRoot 16 用例通过；check-snapshot-builder-output 与 check-code-map 通过；真实产物待下一次草稿 run + 重装验证（启动成功、`boot-diag.log` 无 `snapshot-stage-incomplete`）。
