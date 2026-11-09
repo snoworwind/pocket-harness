@@ -1,6 +1,6 @@
 # Pocket Harness v0.14.12
 
-> 当前发布（2026-11-09）：提交 `b6e6324b82bb`，来源 run [42556539194](https://github.com/snoworwind/pocket-harness/actions/runs/42556539194)，**ARM64 + x86_64 双 ABI**。
+> 历史记录：本版曾于 2026-11-09 发布，同日因缺陷删除 Release 对象（source tag `hardening-source-b6e6324b82bb-42556539194-1` 保留），由 [v0.15.0](../v0.15.0/notes.md) 接替。提交 `b6e6324b82bb`，来源 run [42556539194](https://github.com/snoworwind/pocket-harness/actions/runs/42556539194)，**ARM64 + x86_64 双 ABI**。
 > 本版修复：助手正文整段空白（WebView 114 缺 `URL.canParse`）、左上角抽屉键高过标题行（frame 改透明 `border-top` 避让）、
 > 快照按滚动 Termux 仓库选版并跟随上游把 node 迁到 ICU 79。ARM64 APK SHA-256 `0911301f563682c289e360e47444624c36a6c72d5b40f82f8c3e105f6a6e3bc0`。
 > 设备验收（用户执行）：HUAWEI SGT-AL10 / Android 36 / WebView 114 安装 ARM64 包后启动成功、对话正文恢复、左上角按钮对齐；
