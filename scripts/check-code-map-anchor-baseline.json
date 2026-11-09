@@ -2123,28 +2123,28 @@
       "# Release output is regenerated as a unit. Old APKs must not survive into this version's"
     ],
     "build-snapshot-013.mjs:1029": [
-      "// glibc/musl 二进制在设备上**永不加载**，却随 APK 出货。"
+      "wsl(`rm -rf \"${wslPath(globalDir)}\"`)"
     ],
     "build-snapshot-013.mjs:294": [
-      "process.exit(1)"
+      "console.error(`[引擎 overlay 失败——快照不可发布] ${e?.stack ?? String(e)}`)"
     ],
     "build-snapshot-013.mjs:300": [
-      "console.error(`[引擎 overlay 断言失败] keepUnpublished 包不在树内: ${name}`)"
+      "if (!existsSync(join(overlayPkgDir(name), 'package.json'))) {"
     ],
     "build-snapshot-013.mjs:31": [
-      "// 结论：要吃到 ext4 的收益，**整个构建必须在 WSL 内跑**（含 python/node 遍历步骤），"
+      "// D: 慢 9~97 倍（写 2000 个小文件：D: 3.0 s vs UNC 28.7 s；读 0.36 s vs 34.8 s）。"
     ],
     "build-snapshot-013.mjs:315": [
-      "log(`施加引擎树补丁（${enginePatches.map((p) => p.id).join(', ')}，apply-patches --scope engine）…`)"
+      "const enginePatches = registry.patches.filter((p) => p.scope === 'engine')"
     ],
     "build-snapshot-013.mjs:366": [
-      "process.exit(1)"
+      "console.error('[引擎树补丁行为回归失败] arkweb-resource-protocol-H1: ' + arkWebOut.slice(-1000))"
     ],
     "build-snapshot-013.mjs:40": [
-      "const command = forwarded ? `${forwarded} ${inner}` : inner"
+      "const inner = `cd ${wslPath(ROOT)} && node scripts/build-snapshot-013.mjs ${ABI}`"
     ],
     "build-snapshot-013.mjs:982": [
-      "}"
+      "// ── 8a. 快照瘦身（2026-08-23 体积审计）：node-pty 非 Android prebuilds + 全树 sourcemap ──"
     ],
     "check-build-chain-abort.mjs:53": [
       "// ── A. 唯一自增点：Deny-Abi helper ─────────────────────────────────────────"
@@ -2339,10 +2339,10 @@
       ".join('\\n')",
       "/** Default permission mode reported to the shell tool. Android cannot enforce path-restricted modes. */",
       "create(id?: unknown, opts?: { meta?: Record<string, unknown> }): HostSession",
+      "ctx.slots.inject('settings.section', () => ctx.slots.register({",
       "export type { ScreenAccessDecision, ScreenId, UserScreenScope } from './screen-scope.js'",
       "if (rejection === 403) return { code: 403, body: '' }",
       "mergeModelsDev,",
-      "name: 'settings.section', id: 'android-phone-control', order: 98, label: () => '手机控制',",
       "ops: { type: 'array', required: true, items: { type: 'string' } },"
     ],
     "index.ts:1255": [
@@ -2383,9 +2383,9 @@
       "// 裸键上匹配，引号键整族漏掩。键清单与壳侧 LogSanitizer SENSITIVE_KV 逐项对齐（含",
       "const readText = (p: string): string | undefined => {",
       "ok: true,",
-      "tabs: () => openTabs.getSnapshot(),",
       "this.bashPath = entry.bashPath",
-      "}"
+      "}",
+      "}, ExternalOpenTab))"
     ],
     "index.ts:1664": [
       "//",
@@ -2400,10 +2400,10 @@
       "try {"
     ],
     "index.ts:251": [
-      "",
       "*/",
       "// 安卓引擎进程的 process.platform 是 'linux'（Termux 快照），以 TERMUX__PREFIX 作壳域标记。",
       "const lifecycleOutput = (verb: string) => ({",
+      "const unsubscribe = ctx.layout.panelInfo.subscribe(() => { backStack.refresh() })",
       "if (explicit?.thinkingFormat !== undefined && explicit.thinkingFormat !== 'mimo') continue",
       "return decorated",
       "return { ok: false, message: '路径不在临时工作区内或不存在' }",
@@ -2414,37 +2414,37 @@
     "index.ts:263": [
       "",
       "// 0.13.5 W4：无障碍控制通道事实（服务连接状态 + 队列共享令牌）",
+      "// The native export completes outside the page thread; report its outcome to",
       "? configuredEfforts as ReasoningEfforts",
       "],",
       "bytes,",
       "const resolved = this.resolvedModes.get(spec as object)",
       "if (!document.hidden) schedulePoll()",
       "render: (_args: unknown, v: Record<string, unknown>) => [{",
-      "try {",
-      "window.addEventListener('dsh:export-result', onResult)"
+      "try {"
     ],
     "index.ts:295": [
       "",
       "...bashVersion !== undefined ? { bashVersion } : {},",
       "/**",
+      "createIncomingDraftRuntime({ sessions, workspaces, uiWorkspace, conversation }),",
       "function optionalService<T>(ctx: Context, name: string): T | undefined {",
       "return serviceOf<HostSessionController>('sessionController')",
       "return undefined",
       "screens: { type: 'array', required: true, items: { type: 'object', additionalProperties: true } },",
-      "window.removeEventListener('focus', onVisible)",
       "}"
     ],
     "index.ts:298": [
       "",
       "* @param plan - `planCleanup()` 的产物。",
       "/**",
+      "const timer = window.setInterval(() => { if (document.visibilityState === 'visible') poll() }, 4000)",
       "export async function runConfirmedActiveProbe(",
       "let workspacePromise: { key: string; value: Promise<string | undefined> } | undefined",
       "schema: {",
       "}",
       "} catch {",
-      "},",
-      "}, 'ui-responsive: Android external attachment drafts')"
+      "},"
     ],
     "index.ts:31": [
       "/**",
@@ -2452,7 +2452,7 @@
       "/** SlotMap 本地 augmentation：与上游 keyed/session 语义一致（临时性见文件头注释）。 */",
       "//  故鉴权内联在本文件（包内成员集合保持与基座一致：index/facts/tier/contract）。",
       "// 块 E：白名单扫描/执行/标签（设计与判据见 runtime-cache.ts 头注释）。",
-      "import { SessionMarker, type SessionsFace } from './mobile/session-marker.ts'",
+      "import { SettingsDocumentAction } from './mobile/settings-document.ts'",
       "import { detailRecord, pageRows, writeDetailStore } from './detail-store.js'",
       "isVirtualScreenId,",
       "type FetchLike,",
@@ -2494,8 +2494,8 @@
       "function queueDir(): string {",
       "headers?: Record<string, string | string[] | undefined>",
       "if (mode === undefined) return fallback",
+      "import type { BrowserInjected } from './mobile/upstream-browser/browser/BrowserController.ts'",
       "import {",
-      "import { BrowserTitle } from './mobile/upstream-browser/view/BrowserTitle.tsx'",
       "method?: string",
       "tokenMatches,"
     ],
@@ -2515,7 +2515,7 @@
       "? mode as SandboxMode",
       "defaultMode?: string",
       "headers?: Record<string, string | string[] | undefined>",
-      "import type { AndroidBrowserBodyProps } from './mobile/browser-tab.tsx'",
+      "import { BrowserTitle } from './mobile/upstream-browser/view/BrowserTitle.tsx'",
       "mkdirSync(d, { recursive: true })",
       "sendMobileRouteRejection,",
       "} from './control-queue.js'"
@@ -2553,9 +2553,9 @@
       "'SANDBOX_SELECTION_REQUIRED: Android shell requires this call\\'s session policy to explicitly select danger-full-access. The command was not started.',",
       "* @returns 事实 + 各键来源。",
       "* `webServer` is deliberately **not** injected: it is optional. The headless profile",
+      "const style = document.createElement('style')",
       "interface TabDefinition {",
       "return typeof v === 'string' ? v : Array.isArray(v) ? v[0] : undefined",
-      "style.textContent = css",
       "writeAnimationScales?(values: Record<string, string>, auth?: { session?: unknown }): Promise<{ ok: boolean; stdout: string; guidance?: string }>",
       "}"
     ],
@@ -2922,22 +2922,22 @@
       "# 真因（实测）：这两个输入 tar 由 build-apk-013.ps1 产出，而它**已经**对它们跑过自己的内联门禁集；"
     ],
     "scripts/build-snapshot-013.mjs:169": [
-      "log(`profile 体检: ${r.profile} bundles=${String(r.bundles)} 死键剥除=[${r.stripped.join(', ')}]${r.changed ? ' (已改写)' : ''}`)"
+      "if (r.missing) throw new Error(`出厂 profile 清单缺席: ${r.profile}（${r.path}）——快照不可发布`)"
     ],
     "scripts/build-snapshot-013.mjs:297": [
-      "for (const entry of OVERLAY.keepUnpublished ?? []) {"
+      "// keepUnpublished 断言：登记表内包必须仍在树内（防未来误删）"
     ],
     "scripts/build-snapshot-013.mjs:31": [
-      "// 结论：要吃到 ext4 的收益，**整个构建必须在 WSL 内跑**（含 python/node 遍历步骤），"
+      "// D: 慢 9~97 倍（写 2000 个小文件：D: 3.0 s vs UNC 28.7 s；读 0.36 s vs 34.8 s）。"
     ],
     "scripts/build-snapshot-013.mjs:456": [
-      "const generator = join(ROOT, 'scripts', 'gen-model-catalog.mjs')"
+      "if (existsSync(join(pluginDir, 'package.json'))) {"
     ],
     "scripts/build-snapshot-013.mjs:933": [
-      "// 注：dpkg-deb 不涉编译期路径（操作 .deb 文件），保留原始。"
+      "const trustedDir = join(U, 'etc', 'apt', 'trusted.gpg.d')"
     ],
     "scripts/build-snapshot-013.mjs:985": [
-      "// ── 8a2b. 全局 Node 重复包：引擎内副本保留，孤儿 global 副本删除 ───────────"
+      "// 清单外置 snapshot-config/slim.json（nodePtyPrebuilds / sourcemapDelete）。"
     ],
     "scripts/check-boot-budget.mjs:609": [
       "okOf(r, 'C1') === false, 'C1 ok=' + okOf(r, 'C1'))"

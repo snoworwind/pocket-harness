@@ -1,6 +1,7 @@
 package com.snoworwind.pocketharness
 
 import java.io.File
+import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.NoSuchFileException
 import java.nio.file.attribute.BasicFileAttributes
@@ -33,14 +34,39 @@ internal object SnapshotUserData {
     "models-store.json", ".node-compile-cache",
   )
 
+  /** 出厂全局指令文件名（`home/.dsh/AGENTS.md`）。 */
+  private const val FACTORY_GLOBAL_INSTRUCTION = "AGENTS.md"
+
+  /**
+   * 出厂标记（正文首行）：区分「用户手写的历史文件」与「旧版本工厂件」。
+   *
+   * 判据为什么不能是「内容与新版不同」：每次基线更新后，旧版工厂件的内容**当然**和新版不同，
+   * 按内容判就会把上一版说明当成用户笔记迁进 `~/.agents/`，于是陈旧指令被重复注入。
+   * 标记由 [scripts/global-AGENTS.md] 提供并被构建期内容门禁强制，见 docs/AGENTS/PERSISTENT-DATA.md。
+   */
+  private const val FACTORY_BASELINE_SENTINEL = "<!-- dsh-mobile-factory-baseline -->"
+
+  /** 用户级指令的共享根（`home/.agents`）：与 `.dsh` 同级、不在工厂档案里，升级不动。 */
+  private const val USER_GLOBAL_AGENTS_DIR = ".agents"
+
   /**
    * Direct children of the current factory `home/.dsh` archive. Existing paths outside
    * this inventory are user or third-party data and must be preserved on collision.
    * Add a name only after verifying its ownership in the snapshot builder and documenting
    * why replacing an existing user path is required. The verified current archive
-   * inventory is profiles/, settings.yaml, and .private-layout; recheck it when assets change.
+   * inventory is profiles/, settings.yaml, .private-layout and AGENTS.md; recheck it when
+   * assets change.
+   *
+   * 出厂全局指令基线（`home/.dsh/AGENTS.md`，0.15.x）刻意放在这个清单里：**升级整份替换**。
+   * 这份正文讲的是「对每一个安装都成立」的运行时事实，要随版本演进（新装与升级必须拿到同一份）。
+   * 用户自己的全局约定有独立落点——`home/.agents/AGENTS.md`：引擎把 `~/.dsh/AGENTS.md` 与
+   * `~/.agents/AGENTS.md` 都作为用户级指令注入，升级只动前者。
+   *
+   * 迁移目标为什么必须是 `~/.agents`：引擎对用户级指令只认 `<root>/AGENTS.md`（两个根），
+   * **不读** `~/.dsh/AGENTS.local.md`（`.local` 覆盖只作用于项目目录那条链）。把用户内容搬到
+   * `.local` 等于让它从此不再被注入。
    */
-  internal val factorySnapshotNames = setOf("profiles", "settings.yaml", ".private-layout")
+  internal val factorySnapshotNames = setOf("profiles", "settings.yaml", ".private-layout", FACTORY_GLOBAL_INSTRUCTION)
 
   /**
    * Small singletons that are restored wholesale. A leftover backup means the refresh
@@ -83,7 +109,72 @@ internal object SnapshotUserData {
         if (SnapshotFs.exists(File(liveProfile, name))) discard(File(profile, name), "profiles/" + profile.name + "/" + name)
       }
     }
+    notes += preserveEditedFactoryInstruction(stagedDsh, liveDsh)
     return notes
+  }
+
+  /**
+   * 0.15.x：把**用户改过的**全局指令迁到用户面，再让换树把工厂版写回 `home/.dsh/AGENTS.md`。
+   *
+   * 为什么必须有这一步：0.15.x 之前 `AGENTS.md` 在 `.dsh` 里是「未分类条目」，升级规则是保留 live
+   * （见 [SnapshotTransaction.swap] 的 `factorySnapshotNames` 分支），于是先行用户——包括本项目的
+   * 开发设备——把它当成了自己的全局纪律存放处。现在它变成工厂件（升级整份替换），直接覆盖等于
+   * 静默删掉用户的笔记。迁移 = 改名不动内容，写在用户面 [USER_GLOBAL_AGENTS_DIR]/AGENTS.md。
+   *
+   * 为什么放在换树之前：这是「只改文件名、不改内容」的搬运。即使随后刷新失败并回滚，用户内容依然
+   * 被引擎注入（两个用户级根的内容都会加载），不存在信息丢失窗口；反过来先覆盖再恢复才有窗口。
+   *
+   * 只有「既与工厂版不同、又没有出厂标记」才迁移：内容相同 = 没动过；带标记 = 旧版工厂件
+   * （每次基线更新都会不同，把它当用户笔记迁走会让陈旧指令继续被注入）。
+   *
+   * @return 供 swapNotes 留档的说明；空 = 无需迁移。
+   * @throws IOException 读不到/搬不动时**中止刷新**（保留 live 原样），而不是在无法比对的情况下覆盖。
+   */
+  private fun preserveEditedFactoryInstruction(stagedDsh: File, liveDsh: File): List<String> {
+    val staged = File(stagedDsh, FACTORY_GLOBAL_INSTRUCTION)
+    val live = File(liveDsh, FACTORY_GLOBAL_INSTRUCTION)
+    if (!SnapshotFs.exists(staged) || !SnapshotFs.exists(live)) return emptyList()
+    val liveBytes = try {
+      Files.readAllBytes(live.toPath())
+    } catch (t: Throwable) {
+      throw IOException(
+        "无法读取现有全局指令（" + live.absolutePath + "），拒绝在无法比对的情况下覆盖：" + t.message, t,
+      )
+    }
+    val stagedBytes = Files.readAllBytes(staged.toPath())
+    if (liveBytes.contentEquals(stagedBytes)) return emptyList()
+    // 旧版工厂件（含出厂标记）不是用户笔记：整份替换即可，不迁移、也不另存——每个版本都留一份
+    // 旧工厂件只会把 .dsh 变成垃圾场；文件开头已明确写着「不要在这里写，升级会替换」。
+    if (looksLikeFactoryBaseline(liveBytes)) return emptyList()
+    val target = File(File(liveDsh.parentFile, USER_GLOBAL_AGENTS_DIR), FACTORY_GLOBAL_INSTRUCTION)
+    val destination = if (SnapshotFs.exists(target)) {
+      File(liveDsh, FACTORY_GLOBAL_INSTRUCTION + ".superseded-" + System.currentTimeMillis())
+    } else target
+    SnapshotFs.createDirectories(destination.parentFile)
+    try {
+      Files.move(live.toPath(), destination.toPath(), java.nio.file.StandardCopyOption.ATOMIC_MOVE)
+    } catch (t: Throwable) {
+      throw IOException(
+        "无法迁移用户改过的全局指令（" + live.absolutePath + " -> " + destination.absolutePath + "）：" + t.message, t,
+      )
+    }
+    return listOf(
+      if (destination == target) {
+        "迁移用户改过的全局指令到 ~/.agents/AGENTS.md（工厂版将整份替换 ~/.dsh/AGENTS.md）"
+      } else {
+        "用户已有 ~/.agents/AGENTS.md；旧全局指令另存为 " + destination.name
+      },
+    )
+  }
+
+  /**
+   * 该文件是不是我们自己发出去的出厂基线（看头部有没有出厂标记）。
+   *
+   * 只看头部 256 字节：标记约定在首行，读全文件没有额外判别力，却让 4KB 的文件被整份解码一次。
+   */
+  private fun looksLikeFactoryBaseline(bytes: ByteArray): Boolean {
+    val head = String(bytes, 0, minOf(bytes.size, 256), Charsets.UTF_8)
+    return head.contains(FACTORY_BASELINE_SENTINEL)
   }
 
   /** Quarantines a known blank factory seed resurrected by an older upgrade; custom YAML is untouched. */
