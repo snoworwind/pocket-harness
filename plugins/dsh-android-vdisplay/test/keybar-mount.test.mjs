@@ -16,7 +16,7 @@ import { pathToFileURL } from 'node:url'
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { KEYBAR_ATTR, KEYBAR_INSET_VAR, KEYBAR_NOTICE_ATTR, KEYBAR_STYLE_ID } from '../src/keybar/layout.ts'
-import { KEYBAR_TEXT, defineLegacyKeyFields, mountKeybar } from '../src/keybar/mount.ts'
+import { KEYBAR_TEXT, defineLegacyKeyFields, mountKeybar, watchTerminalKeybars } from '../src/keybar/mount.ts'
 import { resolveCtrlChar } from '../src/keybar/keymap.ts'
 
 /** 按候选路径解析 jsdom（不新增依赖）。 */
@@ -486,4 +486,82 @@ test('反证：visualViewport 缺失时不得崩溃（旧内核/桌面）', { sk
   press(doc, 'down')
   assert.ok(doc.querySelector('[' + KEYBAR_ATTR + ']'))
   handle.dispose()
+})
+
+// ---------------------------------------------------------------------------
+// 性能回归：键条不得成为「每次回显都全文档扫描 / 强制样式重算 / 样式失效」的热路径
+//
+// 背景（0.15.1 用户实报「侧栏 bash 特别卡、输入延迟高」）：
+//   xterm 6 用 DOM renderer，每帧输出对变化行做 replaceChildren，一个按键的回显就是
+//   一串 childList 变更。旧实现每个变更批次都 querySelectorAll(全文档) + getComputedStyle
+//   + 无条件写 CSS 变量，等于把输入延迟钉在每个字符上。下面的用例锁住修复后的口径。
+// ---------------------------------------------------------------------------
+
+test('性能：终端内部的深层重绘不得触发全文档查询（每键一次的旧开销）', { skip: SKIP && 'jsdom 不可用' }, async () => {
+  const { doc, root, handle } = setup()
+  const original = doc.querySelectorAll
+  let scans = 0
+  doc.querySelectorAll = function (...args) { scans += 1; return original.apply(this, args) }
+  try {
+    const screen = root.querySelector('.screen')
+    for (let i = 0; i < 20; i += 1) {
+      const row = doc.createElement('div')
+      row.className = 'xterm-rows'
+      row.append(doc.createElement('span'))
+      screen.append(row)
+    }
+    await new Promise((resolve) => setTimeout(resolve, 40))
+    assert.equal(scans, 0, '终端内部重绘不得触发全文档 querySelectorAll（旧实现即卡顿源）')
+  } finally {
+    delete doc.querySelectorAll
+    handle.dispose()
+  }
+})
+
+test('性能：留白值未变化时不得重复写 CSS 变量（写它会让终端子树样式失效重排）', { skip: SKIP && 'jsdom 不可用' }, async () => {
+  const { doc, root, handle } = setup()
+  const style = root.style
+  let writes = 0
+  const original = style.setProperty.bind(style)
+  style.setProperty = (name, value, priority) => {
+    if (name === KEYBAR_INSET_VAR) writes += 1
+    original(name, value, priority)
+  }
+  try {
+    const baseline = writes
+    // React 重建子列表：触发一次自愈 reconcile，但留白值没有变化。
+    root.replaceChildren()
+    await new Promise((resolve) => setTimeout(resolve, 40))
+    assert.equal(writes, baseline, '同一留白值重复写入会强制终端重排，必须跳过')
+  } finally {
+    delete style.setProperty
+    handle.dispose()
+  }
+})
+
+test('性能：无关的 DOM 新增不触发扫描，出现新终端根才挂键条', { skip: SKIP && 'jsdom 不可用' }, async () => {
+  const dom = new JSDOM('<!doctype html><html><body></body></html>', { pretendToBeVisual: true })
+  const doc = dom.window.document
+  const watch = watchTerminalKeybars({ doc })
+  const original = doc.querySelectorAll
+  let scans = 0
+  doc.querySelectorAll = function (...args) { scans += 1; return original.apply(this, args) }
+  try {
+    // 聊天流式吐字的形态：一批无关元素插入，都不是终端根。
+    for (let i = 0; i < 20; i += 1) doc.body.append(doc.createElement('span'))
+    await new Promise((resolve) => setTimeout(resolve, 40))
+    assert.equal(scans, 0, '无关变更不得触发全文档扫描')
+
+    // 出现终端根 -> 必须挂上键条（延迟不超过一帧）。
+    const root = doc.createElement('section')
+    root.setAttribute('data-sidebar-terminal', '')
+    root.innerHTML = '<div class="screen"><div class="xterm"><textarea class="xterm-helper-textarea"></textarea></div></div>'
+    doc.body.append(root)
+    await new Promise((resolve) => setTimeout(resolve, 80))
+    assert.equal(watch.count(), 1, '新终端根必须挂上键条')
+    assert.ok(root.querySelector('[' + KEYBAR_ATTR + ']'), '键条必须落在新根上')
+  } finally {
+    delete doc.querySelectorAll
+    watch.dispose()
+  }
 })

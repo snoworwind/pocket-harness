@@ -259,6 +259,27 @@ class W3ShellContractTest {
   }
 
   @Test
+  fun shellEnvInjectsTheRelocatedTermuxPrefixPaths() {
+    val code = codeOnly(source("EngineManager.kt"))
+    // 0.15.1：侧栏终端的 PREFIX/TERMINFO/FPATH 必须经 shellEnv() 注入，引擎与所有子进程继承。
+    // 否则 zsh 的 ZLE 拿不到 cub1（退格变空格）、add-zsh-hook 无法 autoload（启动三行报错）。
+    assertTrue(
+      "shellEnv() 必须把重定位后的 PREFIX/TERMINFO/FPATH 一并注入",
+      code.contains("+ relocatedTermuxEnv(usrDir)"),
+    )
+    // 反证：不得把 Termux 编译期前缀写死成注入值（那正是缺陷形态）。
+    assertFalse(
+      "不得把 /data/data/com.termux/files/usr 写成注入路径",
+      code.contains("env[\"TERMINFO\"] = \"/data/data/com.termux"),
+    )
+    // 反证：三个变量必须由同一纯函数按真实目录存在性给出，不得各自散落在 shellEnv 里。
+    assertFalse(
+      "PREFIX/TERMINFO 不得绕过 relocatedTermuxEnv 各自硬编码",
+      code.contains("\"TERMINFO\" to \"/"),
+    )
+  }
+
+  @Test
   fun shellEnvPinsThePnpmStoreDir() {
     // 判据（值这一半）：store 目录必须与 HOME 同源派生，且落在 pnpm 默认口径
     // （$HOME/.local/share/pnpm/store）——不改变既有 store 位置，已装 node_modules 元数据继续有效。

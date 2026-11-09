@@ -82,6 +82,45 @@ function ensureStyle(doc: Document): () => void {
   return () => { style.remove() }
 }
 
+/**
+ * 把收敛工作合并到**每帧一次**（rAF）；没有 rAF 的内核退回 0ms 宏任务。
+ *
+ * 为什么必须合并：xterm 的 DOM renderer 对每个变化行做 `replaceChildren`，一次回显就是
+ * 一串 childList 变更。逐条回调 = 逐条全文档查询 / 样式计算 / 样式失效，正好压在
+ * 「按键 -> 出字」那一帧前面，输入延迟随输出量增长。合并后同一帧内 N 条变更只收敛一次。
+ */
+function frameQueue(view: Window | null | undefined): {
+  schedule(task: () => void): void
+  cancel(): void
+} {
+  let frame = 0
+  let pending: (() => void) | undefined
+  const run = (): void => {
+    frame = 0
+    const task = pending
+    pending = undefined
+    task?.()
+  }
+  const canAnimate = view !== null && view !== undefined &&
+    typeof view.requestAnimationFrame === 'function' && typeof view.cancelAnimationFrame === 'function'
+  return {
+    schedule(task: () => void): void {
+      pending = task
+      if (frame !== 0) return
+      frame = canAnimate && view !== null && view !== undefined
+        ? view.requestAnimationFrame(run)
+        : (setTimeout(run, 0) as unknown as number)
+    },
+    cancel(): void {
+      if (frame === 0) return
+      if (canAnimate && view !== null && view !== undefined) view.cancelAnimationFrame(frame)
+      else clearTimeout(frame)
+      frame = 0
+      pending = undefined
+    },
+  }
+}
+
 /** 读一个 CSS 变量为像素数（读不到给 0）。 */
 function readPx(styles: CSSStyleDeclaration, name: string): number {
   const raw = styles.getPropertyValue(name).trim()
@@ -296,39 +335,73 @@ export function mountKeybar(host: KeybarHost): KeybarHandle {
     })
     if (insetHost !== null && insetHost !== host) insetHost.style.removeProperty(KEYBAR_INSET_VAR)
     insetHost = host
-    host.style.setProperty(KEYBAR_INSET_VAR, inset + 'px')
+    // 值没变就不写。写同名自定义属性同样会让终端子树样式失效并触发重排；而 xterm 每次回显
+    // 都会产生 childList 变更（见文件头），无条件写等于把这条热路径钉死在每个字符上。
+    const value = inset + 'px'
+    if (host.style.getPropertyValue(KEYBAR_INSET_VAR) !== value) {
+      host.style.setProperty(KEYBAR_INSET_VAR, value)
+    }
   }
 
-  /** 自愈挂载：键条必须是 .root 的最后一个子节点（保证「终端底边 <= 键条顶边」）。 */
+  /**
+   * 自愈挂载：键条必须是**本句柄绑定的**终端根的最后子节点（保证「终端底边 <= 键条顶边」）。
+   *
+   * 只用 host.root、不做全文档查询：句柄本来就绑死在一棵根上，旧实现每次回调都
+   * `querySelectorAll` 全文档并取「最后一个根」，既是每键一次的固定开销，也会在分栏时
+   * 把键条挪到另一棵根上。
+   */
   const reconcile = (): void => {
     if (disposed) return
-    const roots = doc.querySelectorAll<HTMLElement>(TERMINAL_ROOT_SELECTOR)
-    const current = roots[roots.length - 1]
-    if (current === undefined) {
-      bar.remove()
-      noticeEl.remove()
-      if (insetHost !== null) { insetHost.style.removeProperty(KEYBAR_INSET_VAR); insetHost = null }
+    if (!host.root.isConnected) {
+      // 根已被上游移除（关标签/换页）：键条随之走，不能悬空。
+      teardown()
       return
     }
     // 挂在最后：终端 .screen 是 flex:1，键条 flex:none 在流内 -> 不遮挡。
-    if (bar.parentElement !== current || current.lastElementChild !== noticeEl) {
-      current.append(bar)
-      current.append(noticeEl)
+    if (bar.parentElement !== host.root || host.root.lastElementChild !== noticeEl) {
+      host.root.append(bar)
+      host.root.append(noticeEl)
     }
-    syncInset(current)
+    syncInset(host.root)
   }
 
   // visualViewport 兜底：resize **与** scroll 双监听（只监听 resize 会漏掉 offsetTop 变化）。
   const view = doc.defaultView
   const onViewport = (): void => { reconcile() }
+  let observer: MutationObserver | null = null
+
+  /** 卸载（幂等）：DOM、监听器、共享样式与排队中的帧。 */
+  const teardown = (): void => {
+    if (disposed) return
+    disposed = true
+    if (latchTimer !== null) { view?.clearTimeout(latchTimer); latchTimer = null }
+    observer?.disconnect()
+    view?.visualViewport?.removeEventListener('resize', onViewport)
+    view?.visualViewport?.removeEventListener('scroll', onViewport)
+    view?.removeEventListener('resize', onViewport)
+    bar.remove()
+    noticeEl.remove()
+    // 留白变量挂在根节点上：卸载必须清掉，否则下一个键条会继承一个陈旧的非零留白。
+    if (insetHost !== null) { insetHost.style.removeProperty(KEYBAR_INSET_VAR); insetHost = null }
+    disposeStyle()
+  }
+
   view?.visualViewport?.addEventListener('resize', onViewport)
   view?.visualViewport?.addEventListener('scroll', onViewport)
   view?.addEventListener('resize', onViewport)
 
   // 上游 .root 的子列表会随状态分支重建，可能摘掉我们手动插入的节点 -> 观察并挂回。
+  // 观察范围仍是 body（要感知根被整体替换），但回调只做 O(records) 的身份/连通性判断；
+  // 全文档查询、getComputedStyle 与样式写入只发生在「本根直接子列表变化 / 视口变化」时。
   const MutationObserverCtor = view === null || view === undefined ? undefined : view.MutationObserver
-  const observer = typeof MutationObserverCtor === 'function'
-    ? new MutationObserverCtor(() => { reconcile() })
+  observer = typeof MutationObserverCtor === 'function'
+    ? new MutationObserverCtor((records) => {
+        if (disposed) return
+        if (!host.root.isConnected) { teardown(); return }
+        // 只在本根的直接子列表变化时重挂（React 重建子列表）。这种事件很少，
+        // 且 reconcile 只读本根、不做全文档查询，因此直接同步收敛即可（保持既有测试的微任务时序）。
+        if (records.some((record) => record.target === host.root)) reconcile()
+      })
     : null
   observer?.observe(doc.body, { childList: true, subtree: true })
 
@@ -336,20 +409,7 @@ export function mountKeybar(host: KeybarHost): KeybarHandle {
   reconcile()
 
   return {
-    dispose(): void {
-      if (disposed) return
-      disposed = true
-      if (latchTimer !== null) { view?.clearTimeout(latchTimer); latchTimer = null }
-      observer?.disconnect()
-      view?.visualViewport?.removeEventListener('resize', onViewport)
-      view?.visualViewport?.removeEventListener('scroll', onViewport)
-      view?.removeEventListener('resize', onViewport)
-      bar.remove()
-      noticeEl.remove()
-      // 留白变量挂在根节点上：卸载必须清掉，否则下一个键条会继承一个陈旧的非零留白。
-      if (insetHost !== null) { insetHost.style.removeProperty(KEYBAR_INSET_VAR); insetHost = null }
-      disposeStyle()
-    },
+    dispose: teardown,
     latch: () => state,
     notice: () => notice,
   }
@@ -388,8 +448,13 @@ export function watchTerminalKeybars(deps: {
 } = {}): KeybarWatchHandle {
   const doc = deps.doc ?? document
   const mounted = new Map<HTMLElement, KeybarHandle>()
+  const queue = frameQueue(doc.defaultView)
+  let disposed = false
+  /** 是否真的有「可能新增/移除终端根」的变更；为 false 时连全文档查询都不做。 */
+  let needScan = true
 
   const reconcile = (): void => {
+    if (disposed) return
     const roots = [...doc.querySelectorAll<HTMLElement>(TERMINAL_ROOT_SELECTOR)]
     for (const [root, handle] of mounted) {
       if (!roots.includes(root)) { handle.dispose(); mounted.delete(root) }
@@ -407,14 +472,63 @@ export function watchTerminalKeybars(deps: {
     }
   }
 
+  const run = (): void => {
+    if (disposed) return
+    needScan = false
+    reconcile()
+  }
+
+  /**
+   * 只认「可能新增/移除终端根」的变更，其余（xterm 行重绘、聊天流式吐字）一概跳过：
+   *
+   *  - 已挂载的根断开 -> 需要重扫（关标签 / 根被整体替换）；
+   *  - 新增元素落在既有终端内部 -> 与本层无关（这就是每键一次的旧开销来源），直接跳过；
+   *  - 新增元素本身或其子树含 [data-sidebar-terminal] -> 需要重扫（新建/分栏终端）。
+   *
+   * 回调只做 O(records) 的判断，查询合并到 rAF 后执行一次。
+   */
+  const onRecords = (records: MutationRecord[]): void => {
+    if (disposed) return
+    for (const [root, handle] of mounted) {
+      if (!root.isConnected) {
+        handle.dispose()
+        mounted.delete(root)
+        needScan = true
+      }
+    }
+    if (!needScan) {
+      for (const record of records) {
+        for (const node of record.addedNodes) {
+          if (node.nodeType !== 1) continue
+          const element = node as Element
+          const isRoot = element.matches(TERMINAL_ROOT_SELECTOR)
+          // closest 会把元素**自己**也算进去：新增的根本身就是一个终端根，不能当成「既有终端内部」跳过。
+          const inside = !isRoot && typeof element.closest === 'function'
+            ? element.closest(TERMINAL_ROOT_SELECTOR)
+            : null
+          if (inside !== null) continue
+          if (isRoot || element.querySelector(TERMINAL_ROOT_SELECTOR) !== null) {
+            needScan = true
+            break
+          }
+        }
+        if (needScan) break
+      }
+    }
+    if (needScan) queue.schedule(run)
+  }
+
   const ObserverCtor = doc.defaultView?.MutationObserver
-  const observer = ObserverCtor === undefined ? null : new ObserverCtor(() => { reconcile() })
+  const observer = ObserverCtor === undefined ? null : new ObserverCtor(onRecords)
   observer?.observe(doc.body, { childList: true, subtree: true })
   reconcile()
+  needScan = false
 
   return {
     count: () => mounted.size,
     dispose(): void {
+      disposed = true
+      queue.cancel()
       observer?.disconnect()
       for (const handle of mounted.values()) handle.dispose()
       mounted.clear()
