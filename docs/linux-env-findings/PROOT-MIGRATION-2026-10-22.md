@@ -1,6 +1,6 @@
 # Linux 环境迁移到 Termux PRoot（2026-10-22）
 
-> 阶段记录：本文主体记录 Linux 环境迁移与来源构建历史。0.14.11 的 PRoot `.102` 审查锁已进入候选 PR，合入后的来源草稿构建仍待执行；当前结果与设备验收状态见 [构建与环境记录](../AGENTS/build-and-env.md)。
+> 阶段记录：本文主体记录 Linux 环境迁移与来源构建历史。0.14.11 的 PRoot `.102` 审查锁已合入，并随该版正式发布（run [41798463258](https://github.com/snoworwind/pocket-harness/actions/runs/41798463258) 双构建与签名）；当前结果与设备验收状态见 [构建与环境记录](../AGENTS/build-and-env.md)。
 
 ## 决定与迁移阶段状态
 
