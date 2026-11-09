@@ -3616,3 +3616,10 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
     真因：Termux stable 是滚动仓库，2026-11-09 当天撤掉了 `libicu` 78.3 的 stanza（索引里只剩 79.1），并把 `nodejs-lts` 重建为 `24.22.2-1`。把新 deb 抽出来解析 ELF 动态段：新版 node 的 DT_NEEDED 是 `libicui18n.so.79` / `libicuuc.so.79`（旧版是 .78）。因此「钉 78.3」已无法满足，继续钉只会让每次构建在鉴权阶段就失败。
     修法：① `preinstall.json` 的 `pins` 清空为 `{}`，保留机制与说明（钉是逃生口，不是常态）；② 壳侧 `RuntimeTree.REQUIRED_LIBS` 的 ICU 两条改为 `libicui18n.so.79` / `libicuuc.so.79`，并在注释里写清「这张表必须与随包快照同批更新，换 ICU 大版本先 `readelf -d usr/bin/node` 核对」；③ 单测 `RuntimeTreeTest.LINKED_LIBS` 同步改 .79。
     复验：JS 5/5、Python 21/21 + PRoot 16 用例通过；check-snapshot-builder-output 与 check-code-map 通过；真实产物待下一次草稿 run + 重装验证（启动成功、`boot-diag.log` 无 `snapshot-stage-incomplete`）。
+
+661. **快照管理面板被对话正文盖住、遮罩只剩页眉高：上游 titleRow 的 container-type 同时是 stacking context 与 fixed 包含块（0.14.12 真实机 2026-11-09）**
+
+    现象：打开「快照管理」后，面板被对话正文压在下面（正文文字直接叠在面板按钮上，看起来像面板半透明）；按钮区以外的背景没有变暗。面板本身的底色是 `--dsw-alias-bg-layer-1`，暗色主题实测 `#232324`（不透明），遮罩 `#00000080`，所以不是透明度问题。
+    真因：vendor `dsh-undo-savepoint` 把 `div.u_overlay[data-undo-panel]`（`position:fixed; inset:0; z-index:9999`）渲染进 `conversation.session.header.actions`，不是 body portal。上游 rc.1 的会话页眉 `._19OyGq_titleRow` 带 `container-type:inline-size` ⇒ layout containment，使这一行同时成为 **stacking context** 和 **fixed 后代的包含块**：遮罩被压到页眉高度（≈30–76px），面板溢出显示；页眉自身没有 z-index，正文消息行的 `z-index:1/6/7/9/12` 因此盖在 9999 之上（9999 只在该 stacking context 内比较）。
+    修法：恢复 0.13.x 的 #288 方案——`dsh-client-ui-responsive` 的 `SnapshotPanelsObserver` 在面板打开时给页眉加 `dsh-mobile-snapshot-header-raised`（`z-index:16`，压过正文 12、仍低于 frame overlay 20 / drawer 30 / 右栏全屏 40），给 titleRow 加 `dsh-mobile-snapshot-title-row-uncontained`（`container-type:normal; contain:none`，恢复视口尺寸遮罩）；关闭即撤类，lease 计数处理重叠面板。这两个文件与测试在 `f04e9cd refactor: restore upstream DSH UI ownership` 中被整体删除，本次按原实现恢复并重新在 `index.ts` 注册（插件 0.3.5）。
+    复验：`snapshot-panels.spec.ts` 从历史恢复（jsdom，vendor 缺席时该条显式 skip）；`check-code-map` PASSED。设备层未验收（本机无 ADB/无障碍通道），需重装来源包后打开面板确认：面板在正文之上、遮罩覆盖整屏。
