@@ -24,6 +24,8 @@ import { ThemeBridge } from './theme-bridge.ts'
 import { KeyboardBoundary } from './keyboard-boundary.ts'
 import { AndroidSurfaceMarker, MOBILE_FORM_MAX_WIDTH } from './mobile/form-marker.ts'
 import { ANDROID_INSETS_CSS } from './mobile/android-insets.css.ts'
+import { SnapshotPanelsObserver } from './snapshot-panels-observer.ts'
+import { SNAPSHOT_PANELS_CSS } from './snapshot-panels.css.ts'
 import { COMPOSER_INSETS_CSS } from './composer-insets.css.ts'
 import { ExportResultChannel, reportUserFacingResult, type ExportResultPayload } from './export-result.ts'
 import { SettingsDocumentAction } from './mobile/settings-document.ts'
@@ -73,6 +75,15 @@ function injectStyle(id: string, css: string): () => void {
 
 /** Client plugin body: Android services over DSH-owned interface components. */
 export function apply(ctx: ClientContext): void {
+  // SnapshotPanel is owned by the header actions seat, so promote that header (and drop the
+  // title row's containment) only while it is open; see snapshot-panels-observer.ts.
+  ctx.effect(() => injectStyle('snapshot-panels', SNAPSHOT_PANELS_CSS), 'ui-responsive: snapshot panel paint')
+  ctx.effect(() => {
+    const observer = new SnapshotPanelsObserver()
+    observer.attach()
+    return () => { observer.detach() }
+  }, 'ui-responsive: snapshot panel ancestor ownership')
+
   // The only layout CSS is platform chrome: safe areas and the Android IME.
   ctx.effect(() => injectStyle('android-insets', ANDROID_INSETS_CSS), 'ui-responsive: Android system insets')
   ctx.effect(() => injectStyle('composer-insets', COMPOSER_INSETS_CSS), 'ui-responsive: Android composer insets')
