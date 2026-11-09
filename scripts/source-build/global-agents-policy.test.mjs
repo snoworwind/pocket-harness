@@ -33,6 +33,12 @@ test('每条必需锚点缺一即判红（逐条负控）', () => {
 
 // 每条禁止模式一条**专属样本**：样本必须命中该模式本身（而不是碰巧被别的模式抓到）。
 // 新增禁止模式而未补样本时，下面的覆盖断言会判红——这正是我们想要的维护压力。
+// 凭据形态的样本一律**运行时拼接**：源码里不能出现连续的密钥/token 字面量，
+// 否则仓库自带的 docs-hygiene 敏感信息扫描会把测试自身判红（已实测踩过）。
+const GH_TOKEN_SHAPED = ['gho', 'abcdefghijklmnop'].join('_')
+const SK_SHAPED = ['sk', 'abcdefghijkl'].join('-')
+const PRIVATE_KEY_HEADER_SHAPED = ['-----BEGIN', 'RSA PRIVATE KEY-----'].join(' ')
+
 const SAMPLE_BY_PATTERN = new Map([
   ['\\/data\\/data\\/', '见 /data/data/com.example/files'],
   ['\\/data\\/user\\/\\d+\\/', '见 /data/user/0/com.example/files'],
@@ -42,9 +48,9 @@ const SAMPLE_BY_PATTERN = new Map([
   ['env-backup', '工作区 env-backup'],
   ['opt\\/INDEX\\.md', '台账 ~/.dsh/opt/INDEX.md'],
   ['snoworwind', '账号 snoworwind'],
-  ['\\bg(?:ho|hp|hs)_[A-Za-z0-9]{8,}', 'gho_abcdefghijklmnop'],
-  ['\\bsk-[A-Za-z0-9]{8,}', 'sk-abcdefghijkl'],
-  ['-----BEGIN [A-Z ]*PRIVATE KEY-----', '-----BEGIN RSA PRIVATE KEY-----'],
+  ['\\bg(?:ho|hp|hs)_[A-Za-z0-9]{8,}', GH_TOKEN_SHAPED],
+  ['\\bsk-[A-Za-z0-9]{8,}', SK_SHAPED],
+  ['-----BEGIN [A-Z ]*PRIVATE KEY-----', PRIVATE_KEY_HEADER_SHAPED],
   ['[\\u{1F300}-\\u{1FAFF}\\u{2600}-\\u{27BF}\\u{FE0F}]', '注意⚠️'],
 ])
 

@@ -35,6 +35,9 @@ function selfTest() {
     '自己的约定写 ~/.agents/AGENTS.md，项目级写 AGENTS.local.md。',
   ].join('\n')
 
+  // 凭据形态的样本运行时拼接，避免源码出现连续密钥/token 字面量（docs-hygiene 会扫自己）。
+  const tokenShaped = ['gho', 'abcdefghijklmnop'].join('_')
+
   const cases = [
     { label: '正样本', text: good, expectPass: true },
     { label: '空正文', text: '   \n', expectPass: false },
@@ -44,7 +47,7 @@ function selfTest() {
     { label: '含应用绝对路径', text: good + '\n见 /data/data/com.example/files/usr\n', expectPass: false },
     { label: '含个人账号名', text: good + '\n见 snoworwind 的仓库\n', expectPass: false },
     { label: '含代理端口', text: good + '\n代理走 127.0.0.1:7897\n', expectPass: false },
-    { label: '含 token 形态', text: good + '\ngho_abcdefghijklmnop\n', expectPass: false },
+    { label: '含 token 形态', text: good + '\n' + tokenShaped + '\n', expectPass: false },
     { label: '含 emoji', text: good + '\n注意⚠️\n', expectPass: false },
     { label: '超预算', text: good + '\n' + 'x'.repeat(13 * 1024), expectPass: false },
   ]
