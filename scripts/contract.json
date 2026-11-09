@@ -23,11 +23,6 @@
         "rowId": "host-web-compat",
         "pkg": "@dsh-android/dsh-host-web-compat",
         "why": "本轮实测其 package.json 无任何 @deepseek-ai/dsh* peer ⇒ 走的是上游「无 peer 即放行」，不是验过兼容。追版后的真处置是补 peer（§4 G-7 兼容元数据单一真源）；补上后本条必须删除。"
-      },
-      {
-        "rowId": "dsh-undo-savepoint",
-        "pkg": "dsh-undo-savepoint",
-        "why": "Third-party vendor copy 0.4.9 has no @deepseek-ai/dsh* peer; upstream fail-open is not a compatibility test. Runtime behavior remains subject to the registered Android undo patches and future artifact/runtime acceptance."
       }
     ],
     "exemptions": [],

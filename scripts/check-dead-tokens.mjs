@@ -39,7 +39,6 @@ const skip = (msg) => { skipped += 1; console.log('SKIP(#' + skipped + ')  ' + m
 const SCAN_DIRS = [
   'dsh-client-ui-responsive/src',
   'plugins',
-  'vendor/dsh-undo-savepoint',
   'vendor/dshmarketplace-plugin',
 ]
 /**

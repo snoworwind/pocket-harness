@@ -77,8 +77,7 @@ function stepMarketplaceChain() {
   try {
     const vendor = join(scratch, 'vendor')
     mkdirSync(join(vendor, 'dshmarketplace-plugin'), { recursive: true })
-    // 只比市场插件：其余 vendor 包原样带过去，免得 undo-* 补丁因缺文件误报。
-    cpSync(join(ROOT, 'vendor', 'dsh-undo-savepoint'), join(vendor, 'dsh-undo-savepoint'), { recursive: true })
+    // 只比市场插件：其余 vendor 包原样带过去。
     const target = join(vendor, 'dshmarketplace-plugin')
     // 归档走 stdin、解到 cwd：路径里带盘符冒号时 GNU tar 会把它当远端主机，Windows 上必炸；
     // 干脆不给 tar 传任何路径参数（cwd 由 Node 设）。

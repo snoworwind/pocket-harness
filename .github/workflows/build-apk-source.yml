@@ -854,10 +854,6 @@ jobs:
             tarball: 'https://registry.npmjs.org/dshmarketplace-plugin/-/dshmarketplace-plugin-0.1.7.tgz',
             tarballSha256: crypto.createHash('sha256').update(fs.readFileSync('.deploy-tmp/component-sources/dshmarketplace-plugin-0.1.7.tgz')).digest('hex'),
           }
-          out.components['dsh-undo-savepoint'] = {
-            source: 'checked-in JavaScript source',
-            fileSha256: crypto.createHash('sha256').update(fs.readFileSync('vendor/dsh-undo-savepoint/lib/index.js')).digest('hex'),
-          }
           fs.writeFileSync('.deploy-tmp/source-build/component-source-provenance.json', JSON.stringify(out, null, 2) + '\n')
           NODE
           sha256sum app/build.gradle.kts build.gradle.kts settings.gradle.kts \

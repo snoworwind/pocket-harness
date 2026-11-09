@@ -17,7 +17,9 @@
       "id": "workspace-write-boundary-warning-WW1",
       "target": "usr/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-client-ui-permission-presets/lib/client.js",
       "scope": "engine",
-      "requires": ["permission-auto-review-default-AR1"],
+      "requires": [
+        "permission-auto-review-default-AR1"
+      ],
       "summary": "选择 Workspace Write 时说明 Android 路径级沙箱不覆盖所有工具，并要求用户确认有限边界",
       "provenance": "Pocket Harness Android sandbox audit: Termux Shell fails closed for workspace-write; native tools and plugins have tool-specific access boundaries",
       "marker": "dsh-mobile workspace-write warns about incomplete Android sandboxing (WW1)"
@@ -56,86 +58,6 @@
       "summary": "卡片兼容徽章（dshm-compat 四色）+ 搜索框「仅移动端可用」复选框",
       "provenance": "0.13.2 W1（patch D client 侧）",
       "marker": "dshm-compat"
-    },
-    {
-      "id": "undo-E1",
-      "target": "dsh-undo-savepoint/lib/client.js",
-      "summary": "移除头部撤销/恢复/快照按钮（保留快照徽章）",
-      "provenance": "0.13.0 真机适配；产品决策用户拍板：头部只留快照徽章",
-      "marker": "size: 14 }), t(\"snapshots\")]（存在=未应用）"
-    },
-    {
-      "id": "undo-E2",
-      "target": "dsh-undo-savepoint/lib/client.js",
-      "summary": "移除 KeyBindRow 函数区域（settings.general.item 注册组件）",
-      "provenance": "0.13.0 真机适配（手机无键盘）",
-      "marker": "//#region KeyBindRow (settings.general.item)（存在=未应用）"
-    },
-    {
-      "id": "undo-E3",
-      "target": "dsh-undo-savepoint/lib/client.js",
-      "summary": "移除 settings.general.item 注册块（undo-keys 快捷键行）",
-      "provenance": "0.13.0 真机适配（Ctrl+Alt+Z/Y 录入行彻底移除）",
-      "marker": "}, KeyBindRow)));（存在=未应用）"
-    },
-    {
-      "id": "undo-E4",
-      "target": "dsh-undo-savepoint/lib/client.js",
-      "summary": "移除全局 keydown 键盘监听（无快捷键配置后的死监听）",
-      "provenance": "0.13.0 真机适配",
-      "marker": "\"dsh-undo-savepoint: keyboard\"（存在=未应用）"
-    },
-    {
-      "id": "undo-E5",
-      "target": "dsh-undo-savepoint/lib/client.js",
-      "summary": "移除 exports.KeyBindRow 导出",
-      "provenance": "0.13.0 真机适配（E2/E3 连带）",
-      "marker": "exports.KeyBindRow（存在=未应用）"
-    },
-    {
-      "id": "undo-E6",
-      "target": "dsh-undo-savepoint/lib/client.js",
-      "summary": "徽章文本裁剪（去掉相对时间，防与 Session log 重叠）",
-      "provenance": "0.13.0 真机适配",
-      "marker": "relativeTime(stat.latest, t) || \"\"（存在=未应用）"
-    },
-    {
-      "id": "undo-E7",
-      "target": "dsh-undo-savepoint/lib/client.js",
-      "summary": "徽章宽度封顶（max-width:30vw + 省略号，新增类）",
-      "provenance": "0.13.0 真机适配（双保险）",
-      "marker": "gap:5px;white-space:nowrap;flex:none;max-width:30vw（存在=已应用）"
-    },
-    {
-      "id": "undo-E8",
-      "target": "dsh-undo-savepoint/lib/client.js",
-      "summary": "快照徽章折叠成小绿点（数量与含义挪进 title/aria-label，点击行为不变；20x20 圆形后置覆盖胶囊样式）",
-      "provenance": "2026-09-10 用户定例；360dp 竖屏头部被模式徽章/打开方式/…/右栏键占满，文字徽章挤标题且更窄处错位",
-      "marker": "dsh-mobile dot-only badge"
-    },
-    {
-      "id": "undo-safe-align-S1",
-      "target": "dsh-undo-savepoint/lib/core.mjs",
-      "summary": "safe 生成逻辑使用最终快照的 exact entry id/name 权属：只隔离无法匹配工厂身份的 insert 子条目，保留用户源码、unknown fields 与全部顶层 disable 行",
-      "provenance": "2026-09-26 追版 0.4.9；用户口径「undo 要确保保留我们自己的插件」。上游 safeModeSet 原把 cordis.patch.yml 整份覆写成只含一条 insert 的最小文件，实测会摘掉 12 个 @dsh-android/* 引用与 7 条 disabled: true（含安全关键的 client-hmr，会重开 /plugins/events 无鉴权 SSE）",
-      "marker": "dsh-mobile safe ownership identity v2"
-    },
-    {
-      "id": "undo-safe-transaction-S2",
-      "target": "dsh-undo-savepoint/lib/core.mjs",
-      "summary": "Safe Mode 为 patch、home 与包状态写入主备份及独立 SHA-256 内容寻址恢复副本；任一路双副本失效即拒绝全部 live 写入。新 web 状态绑定 profile；兼容唯一既有 scoped marker，双位置冲突 fail closed",
-      "provenance": "2026-10-05 Hard/Soft/Data 重构审计：多个 Safe Mode 入口曾在改配置后才写状态，崩溃会丢失退出依据",
-      "requires": [
-        "undo-safe-align-S1"
-      ],
-      "marker": "dsh-mobile safe mode transaction (S2) with CAS recovery failover, web-store resolver and factory-bundle filter (S5)"
-    },
-    {
-      "id": "undo-api-auth-U1",
-      "target": "dsh-undo-savepoint/lib/index.js",
-      "summary": "为 /api/undo 更长 prefix 重建 Host/Origin、浏览器会话和壳侧 controlToken 鉴权；所有读写在 body/快照操作前失败关闭",
-      "provenance": "0.14.0 apk #222：exact 先于 prefix、longest-prefix 路由分派使 /api/undo 绕过 client-connection 的 /api 信任栅栏",
-      "marker": "dsh-mobile undo route auth (U1)"
     },
     {
       "id": "narb-android-N1",

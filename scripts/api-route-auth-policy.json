@@ -3,10 +3,6 @@
   "version": 1,
   "routeRegistrations": [
     {
-      "source": "vendor/dsh-undo-savepoint/lib/index.js",
-      "expected": 1
-    },
-    {
       "source": "vendor/dshmarketplace-plugin/lib/index.js",
       "expected": 2
     },
@@ -66,7 +62,9 @@
     {
       "source": "plugins/dsh-model-capability/src/index.ts",
       "expression": "MANUAL_FILL_ROUTE",
-      "resolvesTo": ["/api/android/model-capability/fill"],
+      "resolvesTo": [
+        "/api/android/model-capability/fill"
+      ],
       "literalEvidence": "export const MANUAL_FILL_ROUTE = '/api/android/model-capability/fill'",
       "reason": "A6 手动补齐路由的路径常量：宿主注册与页面调用共用同一字面量，避免两处各写一份导致漂移。"
     },
@@ -194,17 +192,6 @@
       "access": "protected",
       "authMarker": "authorizeMobileRoute(req, options.auth())",
       "authCallMarker": "authorizeMobileRoute(req, options.auth())"
-    },
-    {
-      "id": "undo-api",
-      "path": "/api/undo",
-      "kind": "prefix",
-      "registrationSource": "vendor/dsh-undo-savepoint/lib/index.js",
-      "registration": "path: '/api/undo'",
-      "endpointSource": "vendor/dsh-undo-savepoint/lib/index.js",
-      "access": "protected",
-      "authMarker": "dsh-mobile undo route auth (U1)",
-      "authCallMarker": "dshMobileUndoAuthorize(req)"
     },
     {
       "id": "marketplace-search",

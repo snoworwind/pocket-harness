@@ -56,10 +56,6 @@ const EXPECTED_SOURCE_CHANGES = [
   'scripts/patches/tests/fixtures/',
   // 组件源按固定 npm 产物整目录替换，并施加已登记的 market-* 补丁。
   'vendor/dshmarketplace-plugin/',
-  // build-apk.mjs 的 apply-patches 会就地改写 undo 补丁目标。
-  'vendor/dsh-undo-savepoint/lib/client.js',
-  'vendor/dsh-undo-savepoint/lib/core.mjs',
-  'vendor/dsh-undo-savepoint/lib/index.js',
   // install-project-dependencies.mjs 先 npm install --package-lock-only 再 npm ci，会更新 lock。
   'dsh-shell-termux/package-lock.json',
   'dsh-client-ui-responsive/package-lock.json',

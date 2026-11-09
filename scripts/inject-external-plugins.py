@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """inject-external-plugins.py — 通用插件注入（非 @dsh-android 命名空间，node_modules 根级包）。
 
-与 inject-snapshot.py（@dsh-android 专用）互补：处理 dsh-undo-savepoint、dshmarketplace-plugin
+与 inject-snapshot.py（@dsh-android 专用）互补：处理 dshmarketplace-plugin
 等根级插件包。字节级 tar 流注入，保留 symlink 元数据（Windows 上 bsdtar 解包 symlink 需特权，
 本脚本直接从 tar 流替换条目，不在文件系统物化链接）。
 

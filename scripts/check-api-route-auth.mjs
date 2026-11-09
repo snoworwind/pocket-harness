@@ -635,7 +635,6 @@ if (snapshotIndex >= 0 && snapshotPath === undefined) {
 } else if (snapshotPath !== undefined) {
   check('post-injection route-auth snapshot 在场', existsSync(snapshotPath), snapshotPath)
   const artifactMarkers = [
-    ['dsh-undo-savepoint/lib/index.js', 'dsh-mobile undo route auth (U1)'],
     ['dshmarketplace-plugin/lib/index.js', 'dsh-mobile marketplace route auth (U2)'],
     ['@dsh-android/dsh-android-bridge/lib/route-auth.js', 'authorizeMobileRoute'],
     ['@dsh-android/dsh-android-linux-env/lib/index.js', 'authorizeMobileRoute(req, authOptions())'],
