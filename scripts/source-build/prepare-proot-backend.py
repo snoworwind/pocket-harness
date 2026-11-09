@@ -73,7 +73,7 @@ def signed_sha256(release_text: str, relative_path: str) -> tuple[str, int]:
     raise ValueError(f"verified Termux Release does not list {relative_path}")
 
 
-def authenticated_package_index(webroot: Path, provenance: dict, bootstrap_usr: Path) -> dict[str, dict]:
+def authenticated_package_index(webroot: Path, provenance: dict, bootstrap_usr: Path, pins=None) -> dict[str, dict]:
     key_dir = bootstrap_usr / "share" / "termux-keyring"
     keys = sorted(key_dir.glob("*.gpg"))
     if not keys or key_dir.is_symlink():
@@ -122,7 +122,7 @@ def authenticated_package_index(webroot: Path, provenance: dict, bootstrap_usr: 
         text = gzip.decompress(index_bytes).decode("utf-8")
     except (OSError, UnicodeDecodeError) as error:
         raise ValueError(f"authenticated Termux Packages.gz is invalid: {error}") from error
-    return select_package_records(parse_stanzas(text))
+    return select_package_records(parse_stanzas(text), pins=pins or {})
 
 
 def package_prefix(extracted: Path) -> Path:
@@ -318,7 +318,7 @@ def patch_needed_library(data: bytearray, old: bytes, new: bytes) -> bool:
 
 
 def assemble(webroot_arg: str, provenance_arg: str, inputs_arg: str, bootstrap_usr_arg: str,
-             backend_arg: str, native_arg: str) -> dict:
+             backend_arg: str, native_arg: str, pins=None) -> dict:
     webroot = Path(webroot_arg).resolve(strict=True)
     provenance_path = Path(provenance_arg).resolve(strict=True)
     inputs_path = Path(inputs_arg).resolve(strict=True)
@@ -330,7 +330,7 @@ def assemble(webroot_arg: str, provenance_arg: str, inputs_arg: str, bootstrap_u
     backend_config = json.loads((Path(__file__).with_name("linux-backend-packages.json")).read_text(encoding="utf-8"))
     if provenance.get("repository") != TERMUX_REPOSITORY or provenance.get("suite") != "stable":
         raise ValueError("Termux provenance repository or suite is not approved")
-    signed_records = authenticated_package_index(webroot, provenance, bootstrap_usr)
+    signed_records = authenticated_package_index(webroot, provenance, bootstrap_usr, pins)
     provenance_packages = provenance.get("packages")
     if not isinstance(provenance_packages, list):
         raise ValueError("Termux provenance package list is invalid")
@@ -493,5 +493,7 @@ def assemble(webroot_arg: str, provenance_arg: str, inputs_arg: str, bootstrap_u
 if __name__ == "__main__":
     if len(sys.argv) != 7:
         raise SystemExit("usage: prepare-proot-backend.py <termux-webroot> <termux-provenance.json> <linux-inputs.json> <extracted-bootstrap-usr> <backend-dir> <native-libs-dir>")
-    result = assemble(*sys.argv[1:])
+    config_path = Path(__file__).resolve().parent.parent / "snapshot-config" / "preinstall.json"
+    pins = json.loads(config_path.read_text(encoding="utf-8")).get("pins") or {}
+    result = assemble(*sys.argv[1:], pins=pins)
     print("assembled authenticated Termux PRoot closure: " + result["targetVersion"])

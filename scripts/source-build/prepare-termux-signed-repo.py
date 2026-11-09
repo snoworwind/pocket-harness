@@ -273,8 +273,12 @@ def main() -> None:
     actual_index_hash = hashlib.sha256(index_gz).hexdigest()
     if len(index_gz) != expected_index_size or actual_index_hash != expected_index_hash:
         raise ValueError("Termux Packages.gz does not match the signed Release file")
-    records = select_package_records(parse_stanzas(gzip.decompress(index_gz).decode("utf-8")), termux_arch)
     config = json.loads(preinstall_file.read_text(encoding="utf-8"))
+    pins = config.get("pins") or {}
+    if not isinstance(pins, dict):
+        raise ValueError("preinstall.json pins must be an object")
+    records = select_package_records(
+        parse_stanzas(gzip.decompress(index_gz).decode("utf-8")), termux_arch, pins)
     backend_config_path = pathlib.Path(__file__).with_name("linux-backend-packages.json")
     backend_config = json.loads(backend_config_path.read_text(encoding="utf-8"))
     linux_inputs = json.loads(pathlib.Path(__file__).with_name("linux-inputs.json").read_text(encoding="utf-8"))

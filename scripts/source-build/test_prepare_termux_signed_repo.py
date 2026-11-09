@@ -153,6 +153,16 @@ class SignedTermuxRepoParserTest(unittest.TestCase):
         self.assertEqual(records["tie"]["Filename"], "native.deb")
         self.assertNotIn("foreign", records)
 
+    def test_pinned_version_overrides_newest_and_fails_closed_when_absent(self):
+        stanzas = [
+            {"Package": "libicu", "Version": "79.1", "Architecture": "aarch64", "Filename": "79.deb"},
+            {"Package": "libicu", "Version": "78.3", "Architecture": "aarch64", "Filename": "78.deb"},
+        ]
+        records = module.select_package_records(stanzas, "aarch64", {"libicu": "78.3"})
+        self.assertEqual(records["libicu"]["Filename"], "78.deb")
+        with self.assertRaisesRegex(ValueError, "pinned Termux package version is absent"):
+            module.select_package_records(stanzas, "aarch64", {"libicu": "77.1"})
+
     @unittest.skipUnless(shutil.which("dpkg"), "package candidate selection requires dpkg; Linux CI provides it")
     def test_x86_64_index_selects_x86_64_and_all_but_not_aarch64(self):
         records = module.select_package_records([

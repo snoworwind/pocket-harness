@@ -41,11 +41,21 @@ def _compare_versions(left: str, right: str) -> int:
     return 0
 
 
-def select_package_records(stanzas, native_arch: str = "aarch64") -> dict[str, dict]:
-    """Choose the newest usable native-ABI record, preferring it over `all` on ties."""
+def select_package_records(stanzas, native_arch: str = "aarch64", pins=None) -> dict[str, dict]:
+    """Choose the newest usable native-ABI record, preferring it over `all` on ties.
+
+    `pins` (package name -> version) overrides the newest-version rule for packages
+    whose runtime ABI must stay put. The Termux repository keeps publishing older
+    versions beside a newer one, and `libicu` is the measured case: nodejs-lts links
+    `libicuuc.so.78` while the rolling index also publishes 79.1, so "newest" would
+    install an ICU the runtime cannot link against.
+    """
     if native_arch not in ("aarch64", "x86_64"):
         raise ValueError(f"unsupported Termux package architecture: {native_arch}")
+    if pins is None:
+        pins = {}
     selected = {}
+    seen_pins = {}
     for record in stanzas:
         name = record.get("Package")
         version = record.get("Version")
@@ -53,6 +63,10 @@ def select_package_records(stanzas, native_arch: str = "aarch64") -> dict[str, d
         if not isinstance(name, str) or not name or not isinstance(version, str) or not version:
             raise ValueError("signed Termux package stanza has no package name or version")
         if architecture not in (native_arch, "all"):
+            continue
+        if name in pins:
+            if version == pins[name]:
+                seen_pins[name] = record
             continue
 
         current = selected.get(name)
@@ -70,4 +84,11 @@ def select_package_records(stanzas, native_arch: str = "aarch64") -> dict[str, d
                 raise ValueError(
                     f"duplicate signed Termux package candidate: {name}={version} [{architecture}]"
                 )
+    missing = sorted(name for name in pins if name not in seen_pins)
+    if missing:
+        raise ValueError(
+            "pinned Termux package version is absent from the signed index: "
+            + ", ".join(f"{name}={pins[name]}" for name in missing)
+        )
+    selected.update(seen_pins)
     return selected
