@@ -26,6 +26,8 @@ internal class TerminalViewHost(
   private var view: TerminalView? = null
   private var bounds: TerminalStageBounds? = null
   private var visible = false
+  /** 当前原生视图归属的终端 tab；同一 tab 重挂时复用视图，避免反复 close/create 触发 resize 重绘。 */
+  private var owner: String? = null
 
   fun open(raw: String): String = onUi { openOnUi(raw) }
 
@@ -37,7 +39,12 @@ internal class TerminalViewHost(
     }
     return try {
       val config = JSONObject(raw)
+      val token = config.optString("owner", "")
+      if (view != null && token.isNotEmpty() && owner == token) {
+        return ok(JSONObject().put("reused", true))
+      }
       closeOnUi()
+      owner = token.ifEmpty { null }
       val created = TerminalView(root.context)
       created.onInput = { bytes -> deliverInput(bytes) }
       created.onResized = { cols, rows -> deliverResize(cols, rows) }
@@ -68,8 +75,17 @@ internal class TerminalViewHost(
       max(1, (parsed.width * density).toInt()),
       max(1, (parsed.height * density).toInt()),
     )
-    params.leftMargin = (parsed.left * density).toInt()
-    params.topMargin = (parsed.top * density).toInt()
+    // 页面矩形是 WebView 视口坐标；overlay 是 root 的子视图。两者原点可能不同
+    // （状态栏/刘海 inset、侧栏 padding），必须加上 WebView 相对 root 的偏移，
+    // 否则 overlay 会盖住顶部 tab 栏并吞掉侧栏按钮的触摸。
+    val rootLocation = IntArray(2)
+    root.getLocationInWindow(rootLocation)
+    val webLocation = IntArray(2)
+    dshWebView.getLocationInWindow(webLocation)
+    val offsetX = webLocation[0] - rootLocation[0]
+    val offsetY = webLocation[1] - rootLocation[1]
+    params.leftMargin = offsetX + (parsed.left * density).toInt()
+    params.topMargin = offsetY + (parsed.top * density).toInt()
     created.layoutParams = params
     created.visibility = if (parsed.visible) View.VISIBLE else View.GONE
     if (parsed.visible) created.requestLayout()
@@ -113,6 +129,7 @@ internal class TerminalViewHost(
   private fun closeOnUi(): String {
     val created = view
     view = null
+    owner = null
     bounds = null
     visible = false
     if (created != null) {
