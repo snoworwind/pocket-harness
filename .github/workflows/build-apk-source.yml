@@ -611,6 +611,16 @@ jobs:
           fs.writeFileSync(path, JSON.stringify(policy, null, 2) + '\n')
           NODE
 
+      - name: Cross-compile native terminal (libvterm) from source
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/source-build/build-terminal-native.mjs \
+            .deploy-tmp/source-build/ndk/android-ndk-r30 \
+            .deploy-tmp/source-build/terminal-native-libs \
+            --abi "$DSH_ABI" \
+            --report .deploy-tmp/source-build/terminal-native-build.json
+
       - name: Assemble clean Termux base with the source-built Android binding
         shell: bash
         run: |

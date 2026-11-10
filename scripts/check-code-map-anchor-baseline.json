@@ -9,7 +9,8 @@
     "ControlPoller.kt:158": 1,
     "app/src/main/java/com/snoworwind/pocketharness/OverlayService.kt:155": 1,
     "WatchdogV2.kt:109": 1,
-    "app/src/main/java/com/snoworwind/pocketharness/AndroidBridge.kt:423": 2,
+    "app/src/main/java/com/snoworwind/pocketharness/AndroidBridge.kt:455": 2,
+    "AndroidBridge.kt:455": 2,
     "app/src/test/java/com/snoworwind/pocketharness/BrowserHostNavigationPolicyTest.kt:129": 1,
     "app/src/main/java/com/snoworwind/pocketharness/BrowserHost.kt:187": 1,
     "app/src/main/java/com/snoworwind/pocketharness/BrowserHost.kt:821": 1,
@@ -39,7 +40,8 @@
     "scripts/verify-browser-panel.mjs:123": 3,
     "app/src/main/java/com/snoworwind/pocketharness/BrowserHost.kt:384": 1,
     "plugins/dsh-android-file-open/src/index.ts:43": 1,
-    "app/src/main/java/com/snoworwind/pocketharness/MainActivity.kt:193": 1,
+    "app/src/main/java/com/snoworwind/pocketharness/MainActivity.kt:195": 1,
+    "MainActivity.kt:195": 1,
     "app/src/main/java/com/snoworwind/pocketharness/OverlayService.kt:299": 1,
     "app/src/main/java/com/snoworwind/pocketharness/OverlayService.kt:274": 1,
     "dsh-host-web-compat/scripts/smoke-injections.mjs:50": 3,
@@ -49,11 +51,14 @@
     "scripts/build-apk-013.ps1:141": 3,
     "GuidePageRenderer.kt:363": 1,
     "EngineStartFlow.kt:96": 1,
-    "MainActivity.kt:422": 1,
+    "MainActivity.kt:424": 1,
+    "app/src/main/java/com/snoworwind/pocketharness/MainActivity.kt:424": 1,
     "MainActivity.kt:78": 1,
+    "app/src/main/java/com/snoworwind/pocketharness/MainActivity.kt:78": 1,
     "dsh-host-web-compat/lib/index.js:794": 1,
     "EngineStartFlow.kt:427": 1,
-    "MainActivity.kt:191": 1,
+    "MainActivity.kt:193": 1,
+    "app/src/main/java/com/snoworwind/pocketharness/MainActivity.kt:193": 1,
     "ARCHITECTURE.md:15": 1,
     "docs/AGENTS/ARCHITECTURE.md:12": 2,
     "docs/AGENTS/ARCHITECTURE.md:15": 2,
@@ -63,8 +68,7 @@
     "WatchdogV2.kt:96": 1,
     "EngineService.kt:140": 1,
     "EngineStartFlow.kt:497": 1,
-    "AndroidBridge.kt:423": 2,
-    "app/build.gradle.kts:126": 2,
+    "app/build.gradle.kts:133": 2,
     "BrowserHostNavigationPolicyTest.kt:129": 2,
     "ControlProtocolV2.kt:196": 2,
     "protocol-v2.ts:349": 2,
@@ -106,7 +110,8 @@
     "OverlayLiveFeed.kt:160": 2,
     "OverlayService.kt:512": 2,
     "OverlayService.kt:737": 2,
-    "MainActivity.kt:296": 3,
+    "MainActivity.kt:298": 3,
+    "app/src/main/java/com/snoworwind/pocketharness/MainActivity.kt:298": 3,
     "docs/AGENTS/ARCHITECTURE.md:27": 3,
     "docs/AGENTS/ARCHITECTURE.md:29": 3,
     "OverlayPanel.kt:818": 5,
@@ -126,13 +131,13 @@
     "OverlayService.kt:683": 3,
     "NotifyCenter.kt:145": 2,
     ".github/workflows/pr-gate.yml:140": 1,
-    "scripts/build-apk.mjs:197": 1,
+    "scripts/build-apk.mjs:200": 1,
     "scripts/build-apk-013.ps1:145": 2,
     "scripts/check-release-gates.mjs:104": 1,
     ".github/workflows/pr-gate.yml:91": 1,
-    "scripts/build-apk.mjs:347": 1,
+    "scripts/build-apk.mjs:350": 1,
     "scripts/build-apk-013.ps1:388": 2,
-    "app/build.gradle.kts:88": 1,
+    "app/build.gradle.kts:91": 1,
     "app/src/test/java/com/snoworwind/pocketharness/CallSiteContractTest.kt:294": 2,
     "app/src/test/java/com/snoworwind/pocketharness/OverlayHaloInvariantTest.kt:92": 2,
     "app/src/test/java/com/snoworwind/pocketharness/NotifyCenterChannelTest.kt:33": 2,
@@ -261,7 +266,8 @@
     "plugins/dsh-android-vdisplay/src/index.ts:140": 2,
     "tools.ts:73": 2,
     "plugins/dsh-android-vdisplay/src/client/index.ts:83": 2,
-    "AndroidBridge.kt:325": 2,
+    "AndroidBridge.kt:335": 2,
+    "app/src/main/java/com/snoworwind/pocketharness/AndroidBridge.kt:335": 2,
     "dsh-client-ui-responsive/src/client/android-bridge.ts:82": 2,
     "app/src/main/java/com/snoworwind/pocketharness/FileIncoming.kt:35": 2,
     "plugins/dsh-android-file-open/src/index.ts:238": 3,
@@ -305,19 +311,22 @@
     "app/src/main/java/com/snoworwind/pocketharness/EngineStartFlow.kt:408": 1,
     "app/src/main/java/com/snoworwind/pocketharness/EngineStartFlow.kt:659": 1,
     "app/src/main/java/com/snoworwind/pocketharness/EngineManager.kt:211": 1,
-    "app/src/main/java/com/snoworwind/pocketharness/MainActivity.kt:306": 1,
+    "app/src/main/java/com/snoworwind/pocketharness/MainActivity.kt:308": 2,
+    "MainActivity.kt:308": 2,
     "app/src/main/java/com/snoworwind/pocketharness/EngineStartFlow.kt:670": 1,
     "app/src/main/java/com/snoworwind/pocketharness/WebUiChrome.kt:19": 1,
-    "app/src/main/java/com/snoworwind/pocketharness/MainActivity.kt:205": 1,
-    "app/src/main/java/com/snoworwind/pocketharness/MainActivity.kt:391": 1,
-    "app/src/main/java/com/snoworwind/pocketharness/MainActivity.kt:296": 2,
-    "app/src/main/java/com/snoworwind/pocketharness/MainActivity.kt:137": 1,
-    "app/src/main/java/com/snoworwind/pocketharness/MainActivity.kt:266": 1,
+    "app/src/main/java/com/snoworwind/pocketharness/MainActivity.kt:207": 1,
+    "MainActivity.kt:207": 1,
+    "app/src/main/java/com/snoworwind/pocketharness/MainActivity.kt:393": 1,
+    "MainActivity.kt:393": 1,
+    "app/src/main/java/com/snoworwind/pocketharness/MainActivity.kt:139": 1,
+    "MainActivity.kt:139": 1,
+    "app/src/main/java/com/snoworwind/pocketharness/MainActivity.kt:268": 1,
+    "MainActivity.kt:268": 1,
     "app/src/main/java/com/snoworwind/pocketharness/EngineStartFlow.kt:294": 1,
     "app/src/main/java/com/snoworwind/pocketharness/ConsoleActivity.kt:154": 1,
     "app/src/main/java/com/snoworwind/pocketharness/BootReceiver.kt:24": 1,
     "EngineStartFlow.kt:738": 1,
-    "MainActivity.kt:306": 2,
     "EngineStartFlow.kt:659": 1,
     "EngineService.kt:207": 1,
     "EngineStartFlow.kt:345": 1,
@@ -337,11 +346,14 @@
     "app/src/main/java/com/snoworwind/pocketharness/EngineManager.kt:68": 1,
     "app/src/main/java/com/snoworwind/pocketharness/FactoryProfilePatch.kt:79": 1,
     "app/src/main/java/com/snoworwind/pocketharness/MainActivity.kt:89": 1,
+    "MainActivity.kt:89": 1,
     "app/src/main/java/com/snoworwind/pocketharness/DownloadSaver.kt:101": 1,
     "app/src/main/java/com/snoworwind/pocketharness/EngineManager.kt:193": 1,
     "app/src/main/java/com/snoworwind/pocketharness/PublicRepoProvision.kt:1": 1,
-    "MainActivity.kt:354": 1,
-    "app/src/main/java/com/snoworwind/pocketharness/MainActivity.kt:160": 1,
+    "MainActivity.kt:356": 1,
+    "app/src/main/java/com/snoworwind/pocketharness/MainActivity.kt:356": 1,
+    "app/src/main/java/com/snoworwind/pocketharness/MainActivity.kt:162": 1,
+    "MainActivity.kt:162": 1,
     "app/src/main/java/com/snoworwind/pocketharness/MainFrameBridge.kt:36": 1,
     "app/src/main/java/com/snoworwind/pocketharness/ControlCarrier.kt:110": 1,
     "plugins/dsh-android-bridge/src/control-queue.ts:347": 2,
@@ -349,7 +361,7 @@
     "app/src/main/java/com/snoworwind/pocketharness/UndoGate.kt:136": 1,
     "app/src/main/java/com/snoworwind/pocketharness/EngineTransport.kt:15": 1,
     "scripts/check-bridge-symmetry.mjs:1": 1,
-    "app/build.gradle.kts:127": 1,
+    "app/build.gradle.kts:134": 1,
     "app/src/main/java/com/snoworwind/pocketharness/ControlPoller.kt:158": 2,
     "app/src/main/java/com/snoworwind/pocketharness/AdbKeyboardEdit.kt:37": 1,
     "plugins/dsh-android-manage/src/ime-broadcast.ts:1": 1,
@@ -364,7 +376,8 @@
     "app/src/main/java/com/snoworwind/pocketharness/EngineStartFlow.kt:550": 1,
     "app/src/main/java/com/snoworwind/pocketharness/VdisplayController.kt:324": 1,
     "app/src/main/java/com/snoworwind/pocketharness/VdisplayController.kt:608": 1,
-    "app/src/main/java/com/snoworwind/pocketharness/MainActivity.kt:206": 1,
+    "app/src/main/java/com/snoworwind/pocketharness/MainActivity.kt:208": 1,
+    "MainActivity.kt:208": 1,
     "dsh-client-ui-responsive/src/client/dev-section/phone-control.tsx:180": 2,
     "plugins/dsh-android-vdisplay/src/status.ts:14": 3,
     "plugins/dsh-android-browser/src/contract.ts:42": 1,
@@ -379,7 +392,8 @@
     "plugins/dsh-android-bridge/src/index.ts:1564": 1,
     "app/src/main/java/com/snoworwind/pocketharness/NotifyBridge.kt:207": 1,
     "app/src/main/java/com/snoworwind/pocketharness/NotifyCenter.kt:828": 1,
-    "app/src/main/java/com/snoworwind/pocketharness/AndroidBridge.kt:375": 1,
+    "app/src/main/java/com/snoworwind/pocketharness/AndroidBridge.kt:385": 1,
+    "AndroidBridge.kt:385": 1,
     "app/src/main/java/com/snoworwind/pocketharness/NotifyCenter.kt:145": 1,
     "app/src/main/java/com/snoworwind/pocketharness/NotifyStore.kt:321": 1,
     "app/src/main/java/com/snoworwind/pocketharness/NotifyStore.kt:68": 1,
@@ -485,7 +499,8 @@
     "VdisplayController.kt:306": 1,
     "VdisplayOps.kt:20": 1,
     "ScreenScope.kt:31": 1,
-    "AndroidBridge.kt:319": 2,
+    "AndroidBridge.kt:329": 2,
+    "app/src/main/java/com/snoworwind/pocketharness/AndroidBridge.kt:329": 2,
     "ShellOps.kt:197": 1,
     "app/src/main/java/com/snoworwind/pocketharness/VdisplayController.kt:306": 1,
     "app/src/main/java/com/snoworwind/pocketharness/VdisplayController.kt:372": 1,
@@ -540,7 +555,6 @@
     "NotifyStore.kt:233": 1,
     "NotifyBridge.kt:165": 1,
     "NotifyActionReceiver.kt:82": 1,
-    "AndroidBridge.kt:375": 1,
     "NotifyCenter.kt:257": 1,
     "EngineService.kt:40": 1,
     "EngineService.kt:116": 1,
@@ -614,7 +628,8 @@
     "lossless-json.ts:30": 1,
     "notify-projection.ts:37": 1,
     "app/src/main/java/com/snoworwind/pocketharness/AdbKeyboardService.kt:132": 1,
-    "app/src/main/java/com/snoworwind/pocketharness/MainActivity.kt:255": 1,
+    "app/src/main/java/com/snoworwind/pocketharness/MainActivity.kt:257": 1,
+    "MainActivity.kt:257": 1,
     "plugins/dsh-android-manage/src/ime-component.ts:2": 1,
     "index.ts:44": 1,
     "plugins/dsh-android-manage/src/protocol-v2.ts:114": 1,
@@ -802,16 +817,28 @@
     "AdbKeyboardService.kt:122": [
       "else -> AdbKeyboardEditStatus.BAD_REQUEST"
     ],
-    "AndroidBridge.kt:319": [
+    "AndroidBridge.kt:329": [
       ""
     ],
-    "AndroidBridge.kt:325": [
+    "app/src/main/java/com/snoworwind/pocketharness/AndroidBridge.kt:329": [
       ""
     ],
-    "AndroidBridge.kt:375": [
+    "AndroidBridge.kt:335": [
+      ""
+    ],
+    "app/src/main/java/com/snoworwind/pocketharness/AndroidBridge.kt:335": [
+      ""
+    ],
+    "AndroidBridge.kt:385": [
       "*/"
     ],
-    "AndroidBridge.kt:423": [
+    "app/src/main/java/com/snoworwind/pocketharness/AndroidBridge.kt:385": [
+      "*/"
+    ],
+    "AndroidBridge.kt:455": [
+      "fun getVdisplayScale(): Double = onGetVdisplayScale()"
+    ],
+    "app/src/main/java/com/snoworwind/pocketharness/AndroidBridge.kt:455": [
       "fun getVdisplayScale(): Double = onGetVdisplayScale()"
     ],
     "BackGate.kt:132": [
@@ -1027,22 +1054,40 @@
     "LogCollector.kt:785": [
       "}"
     ],
-    "MainActivity.kt:191": [
+    "MainActivity.kt:193": [
       "Toast.LENGTH_LONG,"
     ],
-    "MainActivity.kt:296": [
+    "app/src/main/java/com/snoworwind/pocketharness/MainActivity.kt:193": [
+      "Toast.LENGTH_LONG,"
+    ],
+    "MainActivity.kt:298": [
       "/** 回退测试界面（委托 GuidePageRenderer）。 */"
     ],
-    "MainActivity.kt:306": [
+    "app/src/main/java/com/snoworwind/pocketharness/MainActivity.kt:298": [
+      "/** 回退测试界面（委托 GuidePageRenderer）。 */"
+    ],
+    "MainActivity.kt:308": [
       "internal fun showWeb() {"
     ],
-    "MainActivity.kt:354": [
+    "app/src/main/java/com/snoworwind/pocketharness/MainActivity.kt:308": [
+      "internal fun showWeb() {"
+    ],
+    "MainActivity.kt:356": [
       "/** Start the first engine navigation after readiness; true means WebView accepted the request. */"
     ],
-    "MainActivity.kt:422": [
+    "app/src/main/java/com/snoworwind/pocketharness/MainActivity.kt:356": [
+      "/** Start the first engine navigation after readiness; true means WebView accepted the request. */"
+    ],
+    "MainActivity.kt:424": [
+      "if (webView.url == null || webView.url == \"about:blank\") webView.loadUrl(EngineProbe.ENGINE_URL)"
+    ],
+    "app/src/main/java/com/snoworwind/pocketharness/MainActivity.kt:424": [
       "if (webView.url == null || webView.url == \"about:blank\") webView.loadUrl(EngineProbe.ENGINE_URL)"
     ],
     "MainActivity.kt:78": [
+      ".setPositiveButton(\"允许\") { _, _ ->"
+    ],
+    "app/src/main/java/com/snoworwind/pocketharness/MainActivity.kt:78": [
       ".setPositiveButton(\"允许\") { _, _ ->"
     ],
     "MuxClient.kt:45": [
@@ -1453,13 +1498,13 @@
     "WebUiChrome.kt:37": [
       "* 定案靠设备层 A/B。本仓实测（Medium_Phone 1080x2400 / 420dpi / 手势条）：改前导航条 inset"
     ],
-    "app/build.gradle.kts:126": [
+    "app/build.gradle.kts:133": [
       "}"
     ],
-    "app/build.gradle.kts:127": [
+    "app/build.gradle.kts:134": [
       "}"
     ],
-    "app/build.gradle.kts:88": [
+    "app/build.gradle.kts:91": [
       "}"
     ],
     "app/src/main/AndroidManifest.xml:65": [
@@ -1473,12 +1518,6 @@
     ],
     "app/src/main/java/com/snoworwind/pocketharness/AdbKeyboardService.kt:132": [
       "val f = nonceFile(context)"
-    ],
-    "app/src/main/java/com/snoworwind/pocketharness/AndroidBridge.kt:375": [
-      "*/"
-    ],
-    "app/src/main/java/com/snoworwind/pocketharness/AndroidBridge.kt:423": [
-      "fun getVdisplayScale(): Double = onGetVdisplayScale()"
     ],
     "app/src/main/java/com/snoworwind/pocketharness/BackGate.kt:38": [
       "const val DISPATCH_SCRIPT: String = \"window.__dshBack && window.__dshBack()\""
@@ -1597,37 +1636,58 @@
     "app/src/main/java/com/snoworwind/pocketharness/LogCollector.kt:465": [
       "try { f.renameTo(prev) } catch (_: Throwable) { /* 轮转失败则继续追加 */ }"
     ],
-    "app/src/main/java/com/snoworwind/pocketharness/MainActivity.kt:137": [
+    "app/src/main/java/com/snoworwind/pocketharness/MainActivity.kt:139": [
       "*  与引擎 env 的 DSH_PICK_TOKEN 始终一致；C1 修复）。 */"
     ],
-    "app/src/main/java/com/snoworwind/pocketharness/MainActivity.kt:160": [
+    "MainActivity.kt:139": [
+      "*  与引擎 env 的 DSH_PICK_TOKEN 始终一致；C1 修复）。 */"
+    ],
+    "app/src/main/java/com/snoworwind/pocketharness/MainActivity.kt:162": [
       "private var initialAuthRecoveryDeadline = 0L"
     ],
-    "app/src/main/java/com/snoworwind/pocketharness/MainActivity.kt:193": [
+    "MainActivity.kt:162": [
+      "private var initialAuthRecoveryDeadline = 0L"
+    ],
+    "app/src/main/java/com/snoworwind/pocketharness/MainActivity.kt:195": [
       "}"
     ],
-    "app/src/main/java/com/snoworwind/pocketharness/MainActivity.kt:205": [
+    "MainActivity.kt:195": [
+      "}"
+    ],
+    "app/src/main/java/com/snoworwind/pocketharness/MainActivity.kt:207": [
       ""
     ],
-    "app/src/main/java/com/snoworwind/pocketharness/MainActivity.kt:206": [
+    "MainActivity.kt:207": [
+      ""
+    ],
+    "app/src/main/java/com/snoworwind/pocketharness/MainActivity.kt:208": [
       "/**"
     ],
-    "app/src/main/java/com/snoworwind/pocketharness/MainActivity.kt:255": [
+    "MainActivity.kt:208": [
       "/**"
     ],
-    "app/src/main/java/com/snoworwind/pocketharness/MainActivity.kt:266": [
+    "app/src/main/java/com/snoworwind/pocketharness/MainActivity.kt:257": [
+      "/**"
+    ],
+    "MainActivity.kt:257": [
+      "/**"
+    ],
+    "app/src/main/java/com/snoworwind/pocketharness/MainActivity.kt:268": [
       "}"
     ],
-    "app/src/main/java/com/snoworwind/pocketharness/MainActivity.kt:296": [
-      "/** 回退测试界面（委托 GuidePageRenderer）。 */"
+    "MainActivity.kt:268": [
+      "}"
     ],
-    "app/src/main/java/com/snoworwind/pocketharness/MainActivity.kt:306": [
-      "internal fun showWeb() {"
+    "app/src/main/java/com/snoworwind/pocketharness/MainActivity.kt:393": [
+      "applyGuidePhase("
     ],
-    "app/src/main/java/com/snoworwind/pocketharness/MainActivity.kt:391": [
+    "MainActivity.kt:393": [
       "applyGuidePhase("
     ],
     "app/src/main/java/com/snoworwind/pocketharness/MainActivity.kt:89": [
+      "}"
+    ],
+    "MainActivity.kt:89": [
       "}"
     ],
     "app/src/main/java/com/snoworwind/pocketharness/MainFrameBridge.kt:36": [
@@ -2906,10 +2966,10 @@
     "scripts/build-apk-engine.test.mjs:121": [
       "return { status: 0 }"
     ],
-    "scripts/build-apk.mjs:197": [
+    "scripts/build-apk.mjs:200": [
       "// review C6：适配层契约（上游 bundle 行引用 / 注入包 lib 产物 / 客户端槽位 / 版本钉台账）。"
     ],
-    "scripts/build-apk.mjs:347": [
+    "scripts/build-apk.mjs:350": [
       "// 前置于本步的插件 npm build 已产出 plugins/*/lib，门禁真跑各插件 apply() 采集工具定义。"
     ],
     "scripts/build-apk.mjs:61": [
