@@ -24,26 +24,28 @@ internal class TerminalViewHost(
   private var bounds: TerminalStageBounds? = null
   private var visible = false
 
-  fun open(raw: String): String = try {
+  fun open(raw: String): String {
     // 原生库未编入（旧 APK/降级构建）：如实失败，让页面显示回退入口，而不是留一块空白。
     if (!TerminalNative.available) return failed("native-terminal-unavailable", null)
-    val config = JSONObject(raw)
-    close()
-    val created = TerminalView(root.context)
-    created.onInput = { bytes -> deliverInput(bytes) }
-    created.onResized = { cols, rows -> deliverResize(cols, rows) }
-    val params = FrameLayout.LayoutParams(1, 1)
-    params.leftMargin = 0
-    params.topMargin = 0
-    created.visibility = View.GONE
-    root.addView(created, params)
-    view = created
-    val cols = max(2, config.optInt("cols", 80))
-    val rows = max(1, config.optInt("rows", 24))
-    created.open(cols, rows, null, null)
-    ok(JSONObject().put("cols", cols).put("rows", rows))
-  } catch (t: Throwable) {
-    failed("invalid-terminal-config", t)
+    return try {
+      val config = JSONObject(raw)
+      close()
+      val created = TerminalView(root.context)
+      created.onInput = { bytes -> deliverInput(bytes) }
+      created.onResized = { cols, rows -> deliverResize(cols, rows) }
+      val params = FrameLayout.LayoutParams(1, 1)
+      params.leftMargin = 0
+      params.topMargin = 0
+      created.visibility = View.GONE
+      root.addView(created, params)
+      view = created
+      val cols = max(2, config.optInt("cols", 80))
+      val rows = max(1, config.optInt("rows", 24))
+      created.open(cols, rows, null, null)
+      ok(JSONObject().put("cols", cols).put("rows", rows))
+    } catch (t: Throwable) {
+      failed("invalid-terminal-config", t)
+    }
   }
 
   fun setBounds(raw: String): String {
