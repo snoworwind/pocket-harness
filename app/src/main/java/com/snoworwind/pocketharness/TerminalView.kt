@@ -134,8 +134,7 @@ internal class TerminalView(context: Context) : View(context) {
     // 视口 = 回看行 + 当前屏；scrollOffset 为距底部的行数（0 = 贴底）。
     val scrollback = TerminalNative.nativeScrollbackCount(handle)
     scrollOffset = scrollOffset.coerceIn(0, scrollback)
-    val total = scrollback + rows
-    val top = total - rows - scrollOffset
+    val top = terminalViewportTop(scrollback, scrollOffset)
     val cursor = TerminalNative.nativeCursor(handle)
     val cursorVisible = scrollOffset == 0 && (cursor and 1) != 0
     val cursorCol = (cursor ushr 1) and 0x7FFF
@@ -344,4 +343,13 @@ internal class TerminalView(context: Context) : View(context) {
     const val ATTR_BOLD = 1
     const val ATTR_UNDERLINE = 2
   }
+}
+
+/**
+ * 视口顶部对应的虚拟行号：回看行 0..scrollback-1，当前屏行 scrollback..。
+ * offsetFromBottom 从底部起算并夹在 [0, scrollback]，纯函数便于 JVM 单测。
+ */
+internal fun terminalViewportTop(scrollback: Int, offsetFromBottom: Int): Int {
+  val safeScrollback = scrollback.coerceAtLeast(0)
+  return safeScrollback - offsetFromBottom.coerceIn(0, safeScrollback)
 }
