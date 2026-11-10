@@ -1,12 +1,15 @@
 package com.snoworwind.pocketharness
 
 import android.content.Context
+import android.os.Looper
 import android.util.Base64
 import android.view.View
 import android.view.inputmethod.InputMethodManager
 import android.webkit.WebView
 import android.widget.FrameLayout
 import org.json.JSONObject
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import kotlin.math.max
 
 /**
@@ -24,7 +27,9 @@ internal class TerminalViewHost(
   private var bounds: TerminalStageBounds? = null
   private var visible = false
 
-  fun open(raw: String): String {
+  fun open(raw: String): String = onUi { openOnUi(raw) }
+
+  private fun openOnUi(raw: String): String {
     // 原生库未编入（旧 APK/降级构建）：如实失败，让页面显示回退入口，而不是留一块空白。
     if (!TerminalNative.available) {
       return JSONObject().put("ok", false).put("reason", "native-terminal-unavailable")
@@ -32,7 +37,7 @@ internal class TerminalViewHost(
     }
     return try {
       val config = JSONObject(raw)
-      close()
+      closeOnUi()
       val created = TerminalView(root.context)
       created.onInput = { bytes -> deliverInput(bytes) }
       created.onResized = { cols, rows -> deliverResize(cols, rows) }
@@ -51,7 +56,9 @@ internal class TerminalViewHost(
     }
   }
 
-  fun setBounds(raw: String): String {
+  fun setBounds(raw: String): String = onUi { setBoundsOnUi(raw) }
+
+  private fun setBoundsOnUi(raw: String): String {
     val parsed = TerminalStageBounds.parse(raw) ?: return failed("invalid-terminal-bounds", null)
     bounds = parsed
     visible = parsed.visible
@@ -69,14 +76,18 @@ internal class TerminalViewHost(
     return ok(JSONObject().put("visible", parsed.visible))
   }
 
-  fun setVisible(flag: Boolean): String {
+  fun setVisible(flag: Boolean): String = onUi { setVisibleOnUi(flag) }
+
+  private fun setVisibleOnUi(flag: Boolean): String {
     visible = flag
     view?.visibility = if (flag) View.VISIBLE else View.GONE
     return ok(JSONObject().put("visible", flag))
   }
 
   /** PTY 输出（base64）；无视图或解码失败时返回结构化失败，不抛给桥。 */
-  fun output(encoded: String): String {
+  fun output(encoded: String): String = onUi { outputOnUi(encoded) }
+
+  private fun outputOnUi(encoded: String): String {
     val created = view ?: return failed("terminal-not-open", null)
     return try {
       val bytes = if (encoded.isEmpty()) ByteArray(0) else Base64.decode(encoded, Base64.DEFAULT)
@@ -87,7 +98,9 @@ internal class TerminalViewHost(
     }
   }
 
-  fun focus(): String {
+  fun focus(): String = onUi { focusOnUi() }
+
+  private fun focusOnUi(): String {
     val created = view ?: return failed("terminal-not-open", null)
     created.requestFocus()
     val imm = root.context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
@@ -95,7 +108,9 @@ internal class TerminalViewHost(
     return ok(JSONObject())
   }
 
-  fun close(): String {
+  fun close(): String = onUi { closeOnUi() }
+
+  private fun closeOnUi(): String {
     val created = view
     view = null
     bounds = null
@@ -108,7 +123,7 @@ internal class TerminalViewHost(
   }
 
   fun destroy() {
-    close()
+    onUi { closeOnUi() }
   }
 
   private fun deliverInput(bytes: ByteArray) {
@@ -129,6 +144,31 @@ internal class TerminalViewHost(
         null,
       )
     }
+  }
+
+  /**
+   * 桥方法在 JavaBridge 线程同步调用，而 View 操作必须在主线程。
+   * 短等待把结果同步带回桥线程；超时或 detach 时抛给 invoke 转成 bridge-call-failed。
+   */
+  private fun <T> onUi(block: () -> T): T {
+    if (Looper.myLooper() == Looper.getMainLooper()) return block()
+    val latch = CountDownLatch(1)
+    var value: T? = null
+    var failure: Throwable? = null
+    val posted = root.post {
+      try {
+        value = block()
+      } catch (t: Throwable) {
+        failure = t
+      } finally {
+        latch.countDown()
+      }
+    }
+    if (!posted) throw IllegalStateException("terminal view host detached")
+    if (!latch.await(3, TimeUnit.SECONDS)) throw IllegalStateException("terminal view host timeout")
+    failure?.let { throw it }
+    @Suppress("UNCHECKED_CAST")
+    return value as T
   }
 
   private fun ok(payload: JSONObject): String =
