@@ -376,10 +376,30 @@ jobs:
           echo "::error::trusted engine base is locked but absent; run build-base.yml for this key"
           exit 1
 
+      # Harness 的 pnpm store 跨 run 复用：lock 与 overlay 不变时 store 命中，省掉大部分下载/解包时间。
+      # 包完整性仍由 pnpm 按 lockfile 校验，缓存只存内容寻址的 store。
+      - name: Restore pnpm store
+        id: pnpm-store
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: |
+            ~/.local/share/pnpm/store
+            ~/.cache/pnpm
+          key: pnpm-store-${{ runner.os }}-${{ hashFiles('scripts/contract.json', 'scripts/snapshot-config/engine-overlay.json', 'scripts/snapshot-config/engine-overlay-licenses.json') }}
+
       - name: Build and pack DeepSeek Harness from source
         if: steps.engine-cache.outputs.cache-hit != 'true'
         shell: bash
         run: bash scripts/source-build/build-engine.sh
+
+      - name: Save pnpm store
+        if: steps.engine-cache.outputs.cache-hit != 'true' && steps.pnpm-store.outputs.cache-hit != 'true'
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: |
+            ~/.local/share/pnpm/store
+            ~/.cache/pnpm
+          key: pnpm-store-${{ runner.os }}-${{ hashFiles('scripts/contract.json', 'scripts/snapshot-config/engine-overlay.json', 'scripts/snapshot-config/engine-overlay-licenses.json') }}
 
       - name: Authenticate official Termux bootstrap and extract signing keys
         shell: bash
