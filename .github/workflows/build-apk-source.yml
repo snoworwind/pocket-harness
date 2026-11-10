@@ -8,6 +8,10 @@ on:
         type: choice
         options: [arm64, x86_64]
         default: arm64
+      reference:
+        description: Also run the independent reference replica (release provenance; disable for dev iteration)
+        type: boolean
+        default: true
   workflow_call:
     inputs:
       abi:
@@ -15,6 +19,11 @@ on:
         type: string
         required: false
         default: arm64
+      reference:
+        description: Also run the independent reference replica
+        type: boolean
+        required: false
+        default: true
 
 permissions:
   contents: read
@@ -109,7 +118,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        replica: [primary, reference]
+        # 参考副本只服务发布来源独立性；开发迭代 reference=false 直接省掉一整条 40-50 分钟构建。
+        replica: ${{ fromJSON(inputs.reference != false && '["primary","reference"]' || '["primary"]') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 180
     env:
@@ -998,10 +1008,12 @@ jobs:
           name: pocket-harness-${{ inputs.abi || 'arm64' }}-build-primary-${{ github.sha }}
           path: .
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        if: inputs.reference != false
         with:
           name: pocket-harness-${{ inputs.abi || 'arm64' }}-build-reference-${{ github.sha }}
           path: .deploy-tmp/independent-reference
       - name: Verify independent ABI builds from actual APK bytes
+        if: inputs.reference != false
         run: node scripts/source-build/compare-independent-builds.mjs
       - name: Upload verified APK and provenance
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
