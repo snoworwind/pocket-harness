@@ -155,6 +155,25 @@ function NativeTerminalBody(props: any): ReactNode {
     model.acknowledge(render.revision)
   }, [state?.render, model])
 
+  // 会话状态：未恢复/已不存在/达到上限时不要留一个永远转圈的空面板。
+  if (state === undefined) return null
+  if (state.issue === 'missingTerminal' || state.issue === 'terminalLimit') {
+    const message = state.issue === 'missingTerminal'
+      ? '终端已不存在（可能已被关闭或恢复失败）。'
+      : '终端数量已达上限，请先关闭不用的终端。'
+    return (
+      <div style={{ position: 'absolute', inset: 0, padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <p style={{ margin: 0, opacity: 0.8 }}>{message}</p>
+        <button
+          type="button"
+          onClick={() => { (tab as any).actions?.openTab?.(NATIVE_TERMINAL_TAB_KIND, { replaceTab: true }) }}
+        >
+          新建原生终端
+        </button>
+      </div>
+    )
+  }
+
   // 降级：壳侧未编入原生内核或桥未接线时，给出明确入口去用上游 Web 终端，而不是空白面板。
   if (unavailable) {
     return (
