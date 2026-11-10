@@ -1579,7 +1579,7 @@ flowchart TD
 
 - 入口与装载：
   - profile-web.cordis.patch.yml 把 dsh-shell-termux、dsh-host-web-compat、dsh-client-ui-responsive 注入固定快照；host-web-compat 在每个 index 响应前补旧 WebView 缺失的浏览器 API、主题/文件桥和启动诊断。
-  - dsh-client-ui-responsive/src/client/index.ts:77#expect=export%20function%20apply 的 apply() 只挂 Android 系统 inset/IME、窄视口事实、键盘边界、系统主题、系统返回桥、Android 设置槽位、BrowserHost/打开方式标签、文件/通知/导出桥。
+  - dsh-client-ui-responsive/src/client/index.ts:78#expect=export%20function%20apply 的 apply() 只挂 Android 系统 inset/IME、窄视口事实、键盘边界、系统主题、系统返回桥、Android 设置槽位、BrowserHost/打开方式标签、文件/通知/导出桥。
   - 系统栏和输入法 inset 写入 --dsh-android-* 变量；适配样式只消费这些变量，不设置 DSH 页面组件的尺寸、顺序、显隐或布局。对应发布端是 MainActivity.kt:1679#expect=private%20fun%20pushWebInsets
 - 仍然依赖页面结构的窄边界：
   - dsh-client-ui-responsive/src/client/mobile/form-marker.ts:11#expect=const%20MOBILE_FORM_ATTR 只发布窄视口兼容标记和 Android frame 标记；frame 从上游 [data-rightbar-col] 所在根元素确定。标记不分类 modal、不标记 settings 树，也不操控 sidebar/control DOM。

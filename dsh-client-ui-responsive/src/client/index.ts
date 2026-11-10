@@ -25,6 +25,7 @@ import { KeyboardBoundary } from './keyboard-boundary.ts'
 import { AndroidSurfaceMarker, MOBILE_FORM_MAX_WIDTH } from './mobile/form-marker.ts'
 import { ANDROID_INSETS_CSS } from './mobile/android-insets.css.ts'
 import { SnapshotPanelsObserver } from './snapshot-panels-observer.ts'
+import { registerNativeTerminal } from './mobile/native-terminal.tsx'
 import { SNAPSHOT_PANELS_CSS } from './snapshot-panels.css.ts'
 import { COMPOSER_INSETS_CSS } from './composer-insets.css.ts'
 import { ExportResultChannel, reportUserFacingResult, type ExportResultPayload } from './export-result.ts'
@@ -238,6 +239,9 @@ export function apply(ctx: ClientContext): void {
     }, BrowserTabMenu)), 'ui-responsive.browser.menu')
     scope.effect(() => placement.attach(), 'ui-responsive.browser.native-tab-placement')
   })
+
+  // 侧栏原生终端（第一版落在 ui-responsive；会话仍归 webTerminals）。
+  registerNativeTerminal(ctx)
 
   // System Back crosses the WebView/Activity boundary synchronously. Keep the
   // page-side layer signal, but let the current DSH controls dismiss each UI.
