@@ -58,6 +58,8 @@ function NativeTerminalBody(props: any): ReactNode {
   const [unavailable, setUnavailable] = useState(false)
   const [diagnostic, setDiagnostic] = useState('')
 
+  const reportRef = useRef<() => void>(() => {})
+
   const openNative = (cols: number, rows: number): boolean => {
     const api = bridge()
     if (api?.termViewOpen === undefined) {
@@ -143,6 +145,7 @@ function NativeTerminalBody(props: any): ReactNode {
     window.addEventListener('resize', report)
     window.visualViewport?.addEventListener('resize', report)
     window.visualViewport?.addEventListener('scroll', report)
+    reportRef.current = report
     report()
     return () => {
       observer?.disconnect()
@@ -158,7 +161,13 @@ function NativeTerminalBody(props: any): ReactNode {
     if (info === undefined) return
     if (openedFor.current === info.id) return
     openedFor.current = info.id
-    if (openNative(info.cols, info.rows)) bridge()?.termViewFocus?.()
+    if (openNative(info.cols, info.rows)) {
+      bridge()?.termViewFocus?.()
+      // 原生视图创建时是 1x1/GONE；open 成功后必须立刻把当前矩形再送一次，
+      // 否则会一直不可见（ResizeObserver 不会因为视图创建而再次触发）。
+      reportRef.current()
+      requestAnimationFrame(() => reportRef.current())
+    }
   }, [state?.info])
 
   // 渲染帧：snapshot 先 reset（首帧）再整屏写入；output 增量写入。
@@ -170,7 +179,7 @@ function NativeTerminalBody(props: any): ReactNode {
     // 兜底：极端情况下 render 早于 info（例如恢复会话快照先到），先按默认网格开视图再写。
     if (openedFor.current === undefined) {
       openedFor.current = 'render-first'
-      openNative(80, 24)
+      if (openNative(80, 24)) reportRef.current()
     }
     if (frame.type === 'snapshot') {
       bridge()?.termViewOutput?.(textFrameBase64(frame.screen))
