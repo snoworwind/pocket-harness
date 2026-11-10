@@ -68,7 +68,7 @@
     "WatchdogV2.kt:96": 1,
     "EngineService.kt:140": 1,
     "EngineStartFlow.kt:497": 1,
-    "app/build.gradle.kts:126": 2,
+    "app/build.gradle.kts:133": 2,
     "BrowserHostNavigationPolicyTest.kt:129": 2,
     "ControlProtocolV2.kt:196": 2,
     "protocol-v2.ts:349": 2,
@@ -131,13 +131,13 @@
     "OverlayService.kt:683": 3,
     "NotifyCenter.kt:145": 2,
     ".github/workflows/pr-gate.yml:140": 1,
-    "scripts/build-apk.mjs:197": 1,
+    "scripts/build-apk.mjs:200": 1,
     "scripts/build-apk-013.ps1:145": 2,
     "scripts/check-release-gates.mjs:104": 1,
     ".github/workflows/pr-gate.yml:91": 1,
-    "scripts/build-apk.mjs:347": 1,
+    "scripts/build-apk.mjs:350": 1,
     "scripts/build-apk-013.ps1:388": 2,
-    "app/build.gradle.kts:88": 1,
+    "app/build.gradle.kts:91": 1,
     "app/src/test/java/com/snoworwind/pocketharness/CallSiteContractTest.kt:294": 2,
     "app/src/test/java/com/snoworwind/pocketharness/OverlayHaloInvariantTest.kt:92": 2,
     "app/src/test/java/com/snoworwind/pocketharness/NotifyCenterChannelTest.kt:33": 2,
@@ -361,7 +361,7 @@
     "app/src/main/java/com/snoworwind/pocketharness/UndoGate.kt:136": 1,
     "app/src/main/java/com/snoworwind/pocketharness/EngineTransport.kt:15": 1,
     "scripts/check-bridge-symmetry.mjs:1": 1,
-    "app/build.gradle.kts:127": 1,
+    "app/build.gradle.kts:134": 1,
     "app/src/main/java/com/snoworwind/pocketharness/ControlPoller.kt:158": 2,
     "app/src/main/java/com/snoworwind/pocketharness/AdbKeyboardEdit.kt:37": 1,
     "plugins/dsh-android-manage/src/ime-broadcast.ts:1": 1,
@@ -1498,13 +1498,13 @@
     "WebUiChrome.kt:37": [
       "* 定案靠设备层 A/B。本仓实测（Medium_Phone 1080x2400 / 420dpi / 手势条）：改前导航条 inset"
     ],
-    "app/build.gradle.kts:126": [
+    "app/build.gradle.kts:133": [
       "}"
     ],
-    "app/build.gradle.kts:127": [
+    "app/build.gradle.kts:134": [
       "}"
     ],
-    "app/build.gradle.kts:88": [
+    "app/build.gradle.kts:91": [
       "}"
     ],
     "app/src/main/AndroidManifest.xml:65": [
@@ -2966,10 +2966,10 @@
     "scripts/build-apk-engine.test.mjs:121": [
       "return { status: 0 }"
     ],
-    "scripts/build-apk.mjs:197": [
+    "scripts/build-apk.mjs:200": [
       "// review C6：适配层契约（上游 bundle 行引用 / 注入包 lib 产物 / 客户端槽位 / 版本钉台账）。"
     ],
-    "scripts/build-apk.mjs:347": [
+    "scripts/build-apk.mjs:350": [
       "// 前置于本步的插件 npm build 已产出 plugins/*/lib，门禁真跑各插件 apply() 采集工具定义。"
     ],
     "scripts/build-apk.mjs:61": [

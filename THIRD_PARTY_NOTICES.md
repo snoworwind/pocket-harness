@@ -7,6 +7,7 @@
 | 组件 | 版本 | 许可证 | 上游源码 |
 |---|---|---|---|
 | attr | 2.6.0 | LGPL-2.1+ | [termux-packages/attr](https://github.com/termux/termux-packages/tree/master/packages/attr) |
+| libvterm | 934bc2f（vendored） | MIT | [neovim/libvterm](https://github.com/neovim/libvterm)（APK 内随 `assets/licenses/libvterm.txt` 分发） |
 | busybox | 1.38.0-1 | GPL-2.0 | [termux-packages/busybox](https://github.com/termux/termux-packages/tree/master/packages/busybox) |
 | bzip2 | 1.0.8-8 | BSD-2-Clause | [termux-packages/bzip2](https://github.com/termux/termux-packages/tree/master/packages/bzip2) |
 | c-ares | 1.34.8 | MIT | [termux-packages/c-ares](https://github.com/termux/termux-packages/tree/master/packages/c-ares) |

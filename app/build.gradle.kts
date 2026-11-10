@@ -6,6 +6,9 @@ plugins {
 val pocketReleaseSigningAvailable = !providers.environmentVariable("POCKET_SIGNING_KEYSTORE_PATH").orNull.isNullOrBlank() &&
   !providers.environmentVariable("POCKET_SIGNING_KEYSTORE_PASSWORD").orNull.isNullOrBlank()
 val linuxNativeLibraryDir = providers.gradleProperty("linuxNativeLibraryDir").orNull
+// 侧栏原生终端 .so：来源链用 NDK r30 预编译后按 jniLibs 目录注入（不做 AGP externalNativeBuild，
+// 以免 Kotlin 单测作业也被迫依赖 NDK）。属性未提供时本模块没有该 .so，TerminalNative.available=false。
+val terminalNativeLibraryDir = providers.gradleProperty("terminalNativeLibraryDir").orNull
 
 android {
   namespace = "com.snoworwind.pocketharness"
@@ -112,6 +115,10 @@ android {
 
 if (!linuxNativeLibraryDir.isNullOrBlank()) {
   android.sourceSets.getByName("main").jniLibs.srcDir(file(linuxNativeLibraryDir))
+}
+
+if (!terminalNativeLibraryDir.isNullOrBlank()) {
+  android.sourceSets.getByName("main").jniLibs.srcDir(file(terminalNativeLibraryDir))
 }
 
 tasks.configureEach {

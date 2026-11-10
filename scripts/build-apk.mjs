@@ -137,6 +137,9 @@ const SKIP_INJECT = args.includes('--skip-inject')
 const DRY_RUN = args.includes('--dry-run')
 const SNAP = opt('snapshot', '')
 const linuxNativeLibraryDir = join(ROOT, '.deploy-tmp', 'linux-build', 'native-libs')
+// 侧栏原生终端（libvterm）由来源链 build-terminal-native.mjs 预编译；存在则注入，不存在则不声明该目录。
+const terminalNativeLibraryDir = join(ROOT, '.deploy-tmp', 'source-build', 'terminal-native-libs')
+const terminalNativeSo = join(terminalNativeLibraryDir, ABI === 'arm64' ? 'arm64-v8a' : 'x86_64', 'libpocketharness_terminal.so')
 
 if (!['arm64', 'x86_64'].includes(ABI)) { console.error(`未知 ABI: ${ABI}`); process.exit(2) }
 
@@ -397,6 +400,7 @@ try {
     outputDir: OUT,
     artifactName: name,
     linuxNativeLibraryDir: ABI === 'arm64' ? linuxNativeLibraryDir : undefined,
+    terminalNativeLibraryDir: existsSync(terminalNativeSo) ? terminalNativeLibraryDir : undefined,
     suffix: SUFFIX,
     clean: true,
     fingerprintGate: gate('check-snapshot-fingerprint.mjs'),
