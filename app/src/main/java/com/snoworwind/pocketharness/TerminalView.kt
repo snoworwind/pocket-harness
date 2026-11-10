@@ -134,8 +134,7 @@ internal class TerminalView(context: Context) : View(context) {
     // 视口 = 回看行 + 当前屏；scrollOffset 为距底部的行数（0 = 贴底）。
     val scrollback = TerminalNative.nativeScrollbackCount(handle)
     scrollOffset = scrollOffset.coerceIn(0, scrollback)
-    val total = scrollback + rows
-    val top = total - rows - scrollOffset
+    val top = terminalViewportTop(scrollback, scrollOffset)
     val cursor = TerminalNative.nativeCursor(handle)
     val cursorVisible = scrollOffset == 0 && (cursor and 1) != 0
     val cursorCol = (cursor ushr 1) and 0x7FFF
