@@ -26,7 +26,10 @@ internal class TerminalViewHost(
 
   fun open(raw: String): String {
     // 原生库未编入（旧 APK/降级构建）：如实失败，让页面显示回退入口，而不是留一块空白。
-    if (!TerminalNative.available) return failed("native-terminal-unavailable", null)
+    if (!TerminalNative.available) {
+      return JSONObject().put("ok", false).put("reason", "native-terminal-unavailable")
+        .put("detail", TerminalNative.loadError ?: "").toString()
+    }
     return try {
       val config = JSONObject(raw)
       close()
