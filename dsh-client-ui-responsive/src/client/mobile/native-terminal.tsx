@@ -97,6 +97,18 @@ function NativeTerminalBody(props: any): ReactNode {
     }
   }, [model])
 
+  // 页面卸载/热重载时主动回收原生视图：React 卸载回调在整页刷新时不一定执行，
+  // 否则 overlay 会留在壳侧直到 Activity 销毁。
+  useEffect(() => {
+    const close = (): void => { bridge()?.termViewClose?.() }
+    window.addEventListener('pagehide', close)
+    window.addEventListener('beforeunload', close)
+    return () => {
+      window.removeEventListener('pagehide', close)
+      window.removeEventListener('beforeunload', close)
+    }
+  }, [])
+
   // 打开原生视图 + 持续上报几何。
   useEffect(() => {
     const element = stage.current
