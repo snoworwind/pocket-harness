@@ -257,6 +257,39 @@ function NativeTerminalBody(props: any): ReactNode {
   )
 }
 
+/** 新建前的 shell 选择（bash/zsh…）；选中后带 shellPath 打开原生终端 tab。 */
+function NativeTerminalGuide(props: any): ReactNode {
+  const { tab } = props.useTabInfo()
+  const [shells, setShells] = useState<any[]>([])
+  const [selected, setSelected] = useState('')
+  useEffect(() => {
+    const controller = new AbortController()
+    props.loadShells(controller.signal).then((choice: any) => {
+      setShells(choice.shells ?? [])
+      setSelected(choice.selectedShell ?? choice.shells?.[0]?.path ?? '')
+    }).catch(() => {})
+    return () => controller.abort()
+  }, [])
+  const open = (): void => {
+    const params = selected.length > 0 ? { shellPath: selected } : undefined
+    ;(tab as any).actions?.openTab?.(NATIVE_TERMINAL_TAB_KIND, { replaceTab: true, params })
+  }
+  return (
+    <div style={{ display: 'flex', gap: 8, alignItems: 'center', padding: 8 }}>
+      <select
+        value={selected}
+        onChange={(event) => setSelected(event.target.value)}
+        style={{ minWidth: 96, padding: '4px 6px' }}
+      >
+        {shells.map((shell: any) => (
+          <option key={shell.path} value={shell.path}>{shell.name}</option>
+        ))}
+      </select>
+      <button type="button" onClick={open} style={{ padding: '4px 10px' }}>打开原生终端</button>
+    </div>
+  )
+}
+
 /** 注册原生终端 tab（与上游 terminal 并存；替换时再禁用上游）。 */
 export function registerNativeTerminal(ctx: ClientContext): void {
   ctx.inject(['sidebarRight', 'sidebarRightTabs', 'slots', 'webTerminals'], (scope: any) => {
@@ -286,6 +319,15 @@ export function registerNativeTerminal(ctx: ClientContext): void {
         description: () => '在侧栏运行 shell（原生渲染；支持触摸滚动与 IME）',
       }],
     } as any), 'ui-responsive.native-terminal.type')
+    scope.effect(() => scope.slots.inject('sidebar.right.tab.guide.entry', () => scope.slots.register({
+      name: 'sidebar.right.tab.guide.entry',
+      key: NATIVE_TERMINAL_TAB_ID,
+      inject: (sessionId: string) => ({
+        loadShells: (signal: AbortSignal) => scope.webTerminals.launchShells(sessionId, signal),
+        selectShell: (path: string) => { scope.webTerminals.selectShell(path) },
+      }),
+    } as any, NativeTerminalGuide as any)), 'ui-responsive.native-terminal.guide')
+
     // 关闭 tab 必须同时关闭宿主侧 PTY；否则只是删了 UI tab，后续新开会被终端上限拒绝。
     scope.effect(() => scope.sidebarRight.registerCloseHandler(NATIVE_TERMINAL_TAB_KIND, (sessionId: string, tab: any) => {
       const occurrence = scope.sidebarRight.tabDomain.occurrence(sessionId, { id: tab.id })
