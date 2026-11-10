@@ -55,7 +55,7 @@ internal class TerminalView(context: Context) : View(context) {
     override fun run() {
       if (!flingScroller.computeScrollOffset()) return
       val available = if (handle == 0L) 0 else TerminalNative.nativeScrollbackCount(handle)
-      scrollOffset = (flingScroller.currY / cellHeight).coerceIn(0, available)
+      scrollOffset = (flingScroller.currY / cellHeight).toInt().coerceIn(0, available)
       invalidate()
       postOnAnimation(this)
     }
@@ -342,8 +342,8 @@ internal class TerminalView(context: Context) : View(context) {
           if (kotlin.math.abs(velocity) > 300f) {
             val available = TerminalNative.nativeScrollbackCount(handle)
             flingScroller.fling(
-              0, scrollOffset * cellHeight, 0, (-velocity).toInt(),
-              0, 0, 0, available * cellHeight,
+              0, (scrollOffset * cellHeight).toInt(), 0, (-velocity).toInt(),
+              0, 0, 0, (available * cellHeight).toInt(),
             )
             postOnAnimation(flingStep)
           }
