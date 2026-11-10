@@ -9,7 +9,7 @@
  *
  * 模型侧 `bash`/`terminal` 工具不经过这里。
  */
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
 
@@ -55,6 +55,19 @@ function NativeTerminalBody(props: any): ReactNode {
   const stage = useRef<HTMLDivElement | null>(null)
   const openedFor = useRef<string | undefined>(undefined)
   const lastRevision = useRef(0)
+  const [unavailable, setUnavailable] = useState(false)
+
+  const openNative = (cols: number, rows: number): boolean => {
+    const result = bridge()?.termViewOpen?.(JSON.stringify({ cols, rows }))
+    if (result === undefined) { setUnavailable(true); return false }
+    try {
+      if (JSON.parse(result)?.ok === false) { setUnavailable(true); return false }
+      return true
+    } catch {
+      setUnavailable(true)
+      return false
+    }
+  }
 
   useEffect(() => {
     const mounted = model.mount?.()
@@ -120,8 +133,7 @@ function NativeTerminalBody(props: any): ReactNode {
     if (info === undefined) return
     if (openedFor.current === info.id) return
     openedFor.current = info.id
-    bridge()?.termViewOpen?.(JSON.stringify({ cols: info.cols, rows: info.rows }))
-    bridge()?.termViewFocus?.()
+    if (openNative(info.cols, info.rows)) bridge()?.termViewFocus?.()
   }, [state?.info])
 
   // 渲染帧：snapshot 先 reset（首帧）再整屏写入；output 增量写入。
@@ -133,7 +145,7 @@ function NativeTerminalBody(props: any): ReactNode {
     // 兜底：极端情况下 render 早于 info（例如恢复会话快照先到），先按默认网格开视图再写。
     if (openedFor.current === undefined) {
       openedFor.current = 'render-first'
-      bridge()?.termViewOpen?.(JSON.stringify({ cols: 80, rows: 24 }))
+      openNative(80, 24)
     }
     if (frame.type === 'snapshot') {
       bridge()?.termViewOutput?.(textFrameBase64(frame.screen))
@@ -143,6 +155,20 @@ function NativeTerminalBody(props: any): ReactNode {
     model.acknowledge(render.revision)
   }, [state?.render, model])
 
+  // 降级：壳侧未编入原生内核或桥未接线时，给出明确入口去用上游 Web 终端，而不是空白面板。
+  if (unavailable) {
+    return (
+      <div style={{ position: 'absolute', inset: 0, padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <p style={{ margin: 0, opacity: 0.8 }}>原生终端不可用：当前壳侧未编入原生内核，或 termView 桥未接线。</p>
+        <button
+          type="button"
+          onClick={() => { (tab as any).actions?.openTab?.('terminal', { replaceTab: true }) }}
+        >
+          打开 Web 终端
+        </button>
+      </div>
+    )
+  }
   return (
     <div
       ref={stage}

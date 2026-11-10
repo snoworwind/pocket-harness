@@ -26,6 +26,12 @@ internal object TerminalNative {
   /** 把整屏写入 [buffer]，返回 cell 数；句柄无效或容量不足返回 -1。 */
   external fun nativeCopyScreen(handle: Long, buffer: ByteBuffer): Int
 
+  /** 回看行数（0 = 只有当前屏）。 */
+  external fun nativeScrollbackCount(handle: Long): Int
+
+  /** 拷一行回看（index 从最旧开始）到 [buffer]，返回列数；失败 -1。 */
+  external fun nativeCopyScrollback(handle: Long, index: Int, buffer: ByteBuffer): Int
+
   /** bit0 可见；bit1..15 列；bit16..31 行。 */
   external fun nativeCursor(handle: Long): Int
 
