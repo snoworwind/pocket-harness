@@ -75,3 +75,23 @@
 
 - 本机只做代码与文档；编译/测试一律走来源链 CI（ARM64/x86_64），不在设备上跑 Gradle。
 - 许可证：libvterm MIT 全文与 NOTICE 必须进 `LICENSES/`、`THIRD_PARTY_NOTICES.md`、`scripts/third-party-licenses.json`，并随 APK `assets/licenses/` 分发。
+
+## 9. 实施进度与打包路径（2026-11-10 更新）
+
+已落地：
+- libvterm（MIT）vendored + JNI/CMake；Kotlin `TerminalNative`/`TerminalView`/`TerminalViewHost`。
+- `termViewOpen/Bounds/Visible/Output/Focus/Close` 桥与 `MainActivity` 生命周期接线（仅侧栏用户终端）。
+- 来源链预编译：`scripts/source-build/build-terminal-native.mjs`（NDK r30，per-ABI .so），
+  `-PterminalNativeLibraryDir` 以 jniLibs 注入；PR 单测作业不依赖 NDK。
+
+打包路径核实（重要）：
+- 本仓 `plugins/*` 的客户端产物**不是由 APK 来源链安装**的；`home/.dsh/profiles/web/node_modules/@dsh-android/*`
+  随基座快照提供（base 构建），APK workflow 只做校验/哈希。新增独立插件包需要同步基座构建。
+- 因此第一版可设备验证的实现放在**已在包内、可热推**的 `dsh-client-ui-responsive` 客户端插件里注册
+  `terminal-native` 右侧栏 tab（`sidebarRightTabs` + `sidebar.right.pane.tab`），body 驱动 `termView*`
+  并复用 controller 的 `webTerminals` 会话；待体验稳定后再决定是否抽成独立可安装包（届时补 base 构建接线）。
+
+下一步（M2）：
+- ui-responsive 内注册原生终端 tab；body 负责 bounds 上报、`termViewOpen/Close`、帧输出（base64）、
+  `__dshTermInput`/`__dshTermResize` 回写 `webTerminals` 模型。
+- 与上游 `ui-sidebar-terminal` 并存验证后再禁用上游；`sb_pushline` 滚动回看与触摸滚动随后补。
