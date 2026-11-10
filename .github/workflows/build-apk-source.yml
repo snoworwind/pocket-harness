@@ -8,6 +8,10 @@ on:
         type: choice
         options: [arm64, x86_64]
         default: arm64
+      reference:
+        description: Also run the independent reference replica (release provenance; disable for dev iteration)
+        type: boolean
+        default: true
   workflow_call:
     inputs:
       abi:
@@ -15,6 +19,11 @@ on:
         type: string
         required: false
         default: arm64
+      reference:
+        description: Also run the independent reference replica
+        type: boolean
+        required: false
+        default: true
 
 permissions:
   contents: read
@@ -109,7 +118,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        replica: [primary, reference]
+        # 参考副本只服务发布来源独立性；开发迭代 reference=false 直接省掉一整条 40-50 分钟构建。
+        replica: ${{ fromJSON(inputs.reference != false && '["primary","reference"]' || '["primary"]') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 180
     env:
@@ -166,6 +176,14 @@ jobs:
         with:
           distribution: temurin
           java-version: '17.0.20+8'
+      # 真正的构建耗时在 Gradle/APK 段（实测约 15 分钟）。此前本 job 没有 Gradle 缓存，
+      # 每次冷跑依赖解析 + Kotlin 编译；接上 setup-gradle 后跨 run 复用 Gradle User Home 与
+      # build cache（gradle.properties 已开 org.gradle.caching）。
+      - name: Set up Gradle build cache
+        uses: gradle/actions/setup-gradle@0b6dd653ba04f4f93bf581ec31e66cbd7dcb644d # v4
+        with:
+          cache-read-only: false
+
       - name: Isolate npm cache from checked-in developer settings
         shell: bash
         run: |
@@ -358,10 +376,30 @@ jobs:
           echo "::error::trusted engine base is locked but absent; run build-base.yml for this key"
           exit 1
 
+      # Harness 的 pnpm store 跨 run 复用：lock 与 overlay 不变时 store 命中，省掉大部分下载/解包时间。
+      # 包完整性仍由 pnpm 按 lockfile 校验，缓存只存内容寻址的 store。
+      - name: Restore pnpm store
+        id: pnpm-store
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: |
+            ~/.local/share/pnpm/store
+            ~/.cache/pnpm
+          key: pnpm-store-${{ runner.os }}-${{ hashFiles('scripts/contract.json', 'scripts/snapshot-config/engine-overlay.json', 'scripts/snapshot-config/engine-overlay-licenses.json') }}
+
       - name: Build and pack DeepSeek Harness from source
         if: steps.engine-cache.outputs.cache-hit != 'true'
         shell: bash
         run: bash scripts/source-build/build-engine.sh
+
+      - name: Save pnpm store
+        if: steps.engine-cache.outputs.cache-hit != 'true' && steps.pnpm-store.outputs.cache-hit != 'true'
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: |
+            ~/.local/share/pnpm/store
+            ~/.cache/pnpm
+          key: pnpm-store-${{ runner.os }}-${{ hashFiles('scripts/contract.json', 'scripts/snapshot-config/engine-overlay.json', 'scripts/snapshot-config/engine-overlay-licenses.json') }}
 
       - name: Authenticate official Termux bootstrap and extract signing keys
         shell: bash
@@ -669,8 +707,18 @@ jobs:
           gpg --batch --quiet --homedir "$homedir" --export > "$keydir/debian-archive-keyring.gpg"
           test -s "$keydir/debian-archive-keyring.gpg"
 
-      - name: Build source-owned offline ARM64 Linux assets
+      # Debian/PRoot rootfs 构建约 6 分钟。缓存 key 只由 pinned 输入哈希决定；rootfs 内的包仍按
+      # linux-inputs.json 的 SHA256 校验，provenance 随缓存一起恢复，来源判据不变。
+      - name: Restore Linux ARM64 assets
+        id: linux-assets
         if: env.DSH_ABI == 'arm64'
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: .deploy-tmp/linux-build
+          key: linux-assets-${{ runner.os }}-${{ hashFiles('scripts/source-build/linux-inputs.json', 'scripts/source-build/linux-source-manifest.json', 'scripts/source-build/build-linux-assets.sh', 'scripts/source-build/package-linux-assets.py', 'scripts/source-build/prepare-proot-backend.py', 'scripts/source-build/ensure-no-rootfs-mounts.py') }}
+
+      - name: Build source-owned offline ARM64 Linux assets
+        if: env.DSH_ABI == 'arm64' && steps.linux-assets.outputs.cache-hit != 'true'
         shell: bash
         env:
           DEBIAN_KEYRING: ${{ github.workspace }}/.deploy-tmp/linux-keyring/debian-archive-keyring.gpg
@@ -680,6 +728,13 @@ jobs:
         run: |
           set -euo pipefail
           bash scripts/source-build/build-linux-assets.sh
+
+      - name: Save Linux ARM64 assets
+        if: env.DSH_ABI == 'arm64' && steps.linux-assets.outputs.cache-hit != 'true'
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: .deploy-tmp/linux-build
+          key: linux-assets-${{ runner.os }}-${{ hashFiles('scripts/source-build/linux-inputs.json', 'scripts/source-build/linux-source-manifest.json', 'scripts/source-build/build-linux-assets.sh', 'scripts/source-build/package-linux-assets.py', 'scripts/source-build/prepare-proot-backend.py', 'scripts/source-build/ensure-no-rootfs-mounts.py') }}
 
       - name: Build runtime snapshot from verified inputs
         shell: bash
@@ -998,10 +1053,12 @@ jobs:
           name: pocket-harness-${{ inputs.abi || 'arm64' }}-build-primary-${{ github.sha }}
           path: .
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        if: inputs.reference != false
         with:
           name: pocket-harness-${{ inputs.abi || 'arm64' }}-build-reference-${{ github.sha }}
           path: .deploy-tmp/independent-reference
       - name: Verify independent ABI builds from actual APK bytes
+        if: inputs.reference != false
         run: node scripts/source-build/compare-independent-builds.mjs
       - name: Upload verified APK and provenance
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
