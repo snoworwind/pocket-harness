@@ -1,7 +1,7 @@
 package com.snoworwind.pocketharness
 
-import kotlin.test.Test
-import kotlin.test.assertEquals
+import org.junit.Assert.assertEquals
+import org.junit.Test
 
 /** 原生终端视口纯函数：回看行 + 当前屏的顶部行号。 */
 class TerminalViewportTest {
