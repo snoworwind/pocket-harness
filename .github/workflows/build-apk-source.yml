@@ -1133,7 +1133,8 @@ jobs:
 
   sign-abi:
     needs: verify-abi
-    if: github.ref == 'refs/heads/main'
+    # 最终签名只在发布形态（reference 副本 + 独立比对产物齐全）下进行；开发迭代只到 verify-abi。
+    if: github.ref == 'refs/heads/main' && inputs.reference != false
     runs-on: ubuntu-latest
     env:
       DSH_ABI: ${{ inputs.abi || 'arm64' }}
