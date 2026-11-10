@@ -59,7 +59,6 @@ function NativeTerminalBody(props: any): ReactNode {
   const [diagnostic, setDiagnostic] = useState('')
 
   const reportRef = useRef<() => void>(() => {})
-  const lastBounds = useRef('-')
 
   const openNative = (cols: number, rows: number): boolean => {
     const api = bridge()
@@ -131,7 +130,6 @@ function NativeTerminalBody(props: any): ReactNode {
     if (element === null) return
     const report = (): void => {
       const rect = element.getBoundingClientRect()
-      lastBounds.current = `${Math.round(rect.width)}x${Math.round(rect.height)}`
       bridge()?.termViewBounds?.(JSON.stringify({
         left: rect.left,
         top: rect.top,
@@ -234,9 +232,6 @@ function NativeTerminalBody(props: any): ReactNode {
       {state?.info === undefined ? (
         <div style={{ padding: 16, opacity: 0.7 }}>正在创建终端…</div>
       ) : null}
-      <div style={{ position: 'absolute', left: 4, top: 4, fontSize: 10, opacity: 0.55, pointerEvents: 'none' }}>
-        {`phase=${state?.phase ?? '?'} info=${state?.info === undefined ? 'no' : 'yes'} rev=${lastRevision.current} open=${openedFor.current ?? '-'} bounds=${lastBounds.current}`}
-      </div>
     </div>
   )
 }

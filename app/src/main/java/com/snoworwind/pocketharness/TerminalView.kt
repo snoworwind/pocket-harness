@@ -325,7 +325,8 @@ internal class TerminalView(context: Context) : View(context) {
       }
       android.view.MotionEvent.ACTION_MOVE -> {
         velocityTracker?.addMovement(event)
-        val delta = touchStartY - event.y
+        // 手指向下拖 = 看更旧的内容（scrollOffset 增大），与自然滚动方向一致。
+        val delta = event.y - touchStartY
         if (!touchDragging && kotlin.math.abs(delta) > cellHeight) touchDragging = true
         if (touchDragging && handle != 0L) {
           val available = TerminalNative.nativeScrollbackCount(handle)
@@ -342,7 +343,7 @@ internal class TerminalView(context: Context) : View(context) {
           if (kotlin.math.abs(velocity) > 300f) {
             val available = TerminalNative.nativeScrollbackCount(handle)
             flingScroller.fling(
-              0, (scrollOffset * cellHeight).toInt(), 0, (-velocity).toInt(),
+              0, (scrollOffset * cellHeight).toInt(), 0, velocity.toInt(),
               0, 0, 0, (available * cellHeight).toInt(),
             )
             postOnAnimation(flingStep)
