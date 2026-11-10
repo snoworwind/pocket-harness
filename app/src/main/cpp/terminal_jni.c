@@ -16,6 +16,12 @@
 
 /** 每个 cell 的固定字节数：chars(4) + fg(4) + bg(4) + attrs(1) + width(1) + pad(2)。 */
 #define DSH_CELL_BYTES 16
+/** 回看行数上限（与 Kotlin 侧触摸滚动共享同一真源）。 */
+#define DSH_SCROLLBACK_MAX 2000
+
+typedef struct {
+  unsigned char *cells;
+} DshScrollbackLine;
 
 typedef struct {
   VTerm *vt;
@@ -25,7 +31,19 @@ typedef struct {
   int cursor_row;
   int cursor_col;
   int cursor_visible;
+  DshScrollbackLine sb[DSH_SCROLLBACK_MAX];
+  int sb_head;
+  int sb_count;
 } DshTerminal;
+
+static void dsh_scrollback_clear(DshTerminal *term) {
+  for (int i = 0; i < DSH_SCROLLBACK_MAX; i++) {
+    free(term->sb[i].cells);
+    term->sb[i].cells = NULL;
+  }
+  term->sb_head = 0;
+  term->sb_count = 0;
+}
 
 static int dsh_move_cursor(VTermPos pos, VTermPos old_pos, int visible, void *user) {
   (void)old_pos;
@@ -66,6 +84,30 @@ static void dsh_write_cell(unsigned char *out, const VTermScreenCell *cell, uint
   out[15] = 0;
 }
 
+/* 滚动出屏的一行：按固定 cell 布局拷进回看环，供 Kotlin 侧绘制。 */
+static int dsh_sb_pushline(int cols, const VTermScreenCell *cells, void *user) {
+  DshTerminal *term = (DshTerminal *)user;
+  if (term == NULL || cols <= 0 || cols != term->cols) return 0;
+  unsigned char *line = (unsigned char *)malloc((size_t)cols * DSH_CELL_BYTES);
+  if (line == NULL) return 0;
+  for (int col = 0; col < cols; col++) {
+    VTermScreenCell cell = cells[col];
+    uint32_t fg = dsh_color_rgb(term->screen, &cell.fg, 0);
+    uint32_t bg = dsh_color_rgb(term->screen, &cell.bg, 1);
+    dsh_write_cell(line + (size_t)col * DSH_CELL_BYTES, &cell, fg, bg);
+  }
+  if (term->sb_count == DSH_SCROLLBACK_MAX) {
+    free(term->sb[term->sb_head].cells);
+    term->sb[term->sb_head].cells = NULL;
+    term->sb_head = (term->sb_head + 1) % DSH_SCROLLBACK_MAX;
+    term->sb_count -= 1;
+  }
+  int slot = (term->sb_head + term->sb_count) % DSH_SCROLLBACK_MAX;
+  term->sb[slot].cells = line;
+  term->sb_count += 1;
+  return 1;
+}
+
 static DshTerminal *dsh_from(jlong handle) { return (DshTerminal *)(intptr_t)handle; }
 
 JNIEXPORT jlong JNICALL
@@ -84,7 +126,10 @@ Java_com_snoworwind_pocketharness_TerminalNative_nativeCreate(JNIEnv *env, jobje
   term->cols = cols;
   vterm_set_utf8(term->vt, 1);
   term->screen = vterm_obtain_screen(term->vt);
-  static VTermScreenCallbacks callbacks = { .movecursor = dsh_move_cursor };
+  static VTermScreenCallbacks callbacks = {
+    .movecursor = dsh_move_cursor,
+    .sb_pushline = dsh_sb_pushline,
+  };
   if (term->screen == NULL) {
     vterm_free(term->vt);
     free(term);
@@ -103,6 +148,7 @@ Java_com_snoworwind_pocketharness_TerminalNative_nativeDestroy(JNIEnv *env, jobj
   (void)self;
   DshTerminal *term = dsh_from(handle);
   if (term == NULL) return;
+  dsh_scrollback_clear(term);
   if (term->vt != NULL) vterm_free(term->vt);
   free(term);
 }
@@ -129,6 +175,7 @@ Java_com_snoworwind_pocketharness_TerminalNative_nativeResize(JNIEnv *env, jobje
   (void)self;
   DshTerminal *term = dsh_from(handle);
   if (term == NULL || cols < 2 || rows < 1) return;
+  if (cols != term->cols) dsh_scrollback_clear(term);
   vterm_set_size(term->vt, rows, cols);
   term->rows = rows;
   term->cols = cols;
@@ -161,6 +208,35 @@ Java_com_snoworwind_pocketharness_TerminalNative_nativeCopyScreen(JNIEnv *env, j
     }
   }
   return cells;
+}
+
+/** 回看行数（0 = 只有当前屏）。 */
+JNIEXPORT jint JNICALL
+Java_com_snoworwind_pocketharness_TerminalNative_nativeScrollbackCount(JNIEnv *env, jobject self, jlong handle) {
+  (void)env;
+  (void)self;
+  DshTerminal *term = dsh_from(handle);
+  return term == NULL ? 0 : term->sb_count;
+}
+
+/**
+ * 拷一行回看（index 从最旧开始）到 direct ByteBuffer；返回 cols，失败 -1。
+ * 布局与屏幕 cell 完全一致（16 字节/列），Kotlin 复用同一绘制路径。
+ */
+JNIEXPORT jint JNICALL
+Java_com_snoworwind_pocketharness_TerminalNative_nativeCopyScrollback(JNIEnv *env, jobject self, jlong handle,
+                                                                     jint index, jobject buffer) {
+  (void)self;
+  DshTerminal *term = dsh_from(handle);
+  if (term == NULL || buffer == NULL || index < 0 || index >= term->sb_count) return -1;
+  int slot = (term->sb_head + index) % DSH_SCROLLBACK_MAX;
+  const unsigned char *cells = term->sb[slot].cells;
+  if (cells == NULL) return -1;
+  jlong capacity = (*env)->GetDirectBufferCapacity(env, buffer);
+  unsigned char *out = (unsigned char *)(*env)->GetDirectBufferAddress(env, buffer);
+  if (out == NULL || capacity < (jlong)term->cols * DSH_CELL_BYTES) return -1;
+  memcpy(out, cells, (size_t)term->cols * DSH_CELL_BYTES);
+  return term->cols;
 }
 
 /** 光标：bit0 可见，bit1..15 列，bit16..31 行。 */
