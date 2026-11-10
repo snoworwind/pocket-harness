@@ -885,6 +885,20 @@ jobs:
             .deploy-tmp/source-build/source-build-policy.json
           cp scripts/source-build/check-dsh-source-snapshot-gate.mjs scripts/check-engine-overlay.mjs
           node scripts/build-apk.mjs --abi "$DSH_ABI" --suffix -source
+          # 原生终端 .so 必须真的进包；缺失即失败，避免「装了包但没有原生内核」的假绿。
+          abi_dir=$([ "$DSH_ABI" = arm64 ] && echo arm64-v8a || echo x86_64)
+          apk_path=$(find out -type f -name "*${DSH_ABI}.apk" | head -1)
+          test -n "$apk_path"
+          python3 - "$apk_path" "$abi_dir" <<'APKCHECK'
+          import sys, zipfile
+          apk, abi = sys.argv[1], sys.argv[2]
+          want = f'lib/{abi}/libpocketharness_terminal.so'
+          with zipfile.ZipFile(apk) as z:
+              names = set(z.namelist())
+          if want not in names:
+              raise SystemExit(f'native terminal library missing from APK: {want}')
+          print(f'PASS native terminal library packaged: {want}')
+          APKCHECK
           echo "构建步骤退出，记录产物来源；上传前统一验证三签与证书"
           find out -type f -name '*.apk' -print -exec sha256sum {} \; > .deploy-tmp/source-build/apk-sha256.txt
           echo "apk-sha256.txt 行数: $(wc -l < .deploy-tmp/source-build/apk-sha256.txt)"
