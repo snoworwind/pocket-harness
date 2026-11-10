@@ -56,14 +56,27 @@ function NativeTerminalBody(props: any): ReactNode {
   const openedFor = useRef<string | undefined>(undefined)
   const lastRevision = useRef(0)
   const [unavailable, setUnavailable] = useState(false)
+  const [diagnostic, setDiagnostic] = useState('')
 
   const openNative = (cols: number, rows: number): boolean => {
-    const result = bridge()?.termViewOpen?.(JSON.stringify({ cols, rows }))
-    if (result === undefined) { setUnavailable(true); return false }
+    const api = bridge()
+    if (api?.termViewOpen === undefined) {
+      setDiagnostic('androidBridge.termViewOpen 不存在（壳侧桥未接线）')
+      setUnavailable(true)
+      return false
+    }
+    const result = api.termViewOpen(JSON.stringify({ cols, rows }))
     try {
-      if (JSON.parse(result)?.ok === false) { setUnavailable(true); return false }
+      const parsed = JSON.parse(result)
+      if (parsed?.ok === false) {
+        const detail = typeof parsed.detail === 'string' && parsed.detail.length > 0 ? ` / ${parsed.detail}` : ''
+        setDiagnostic(`${parsed.reason ?? 'unknown'}${detail}`)
+        setUnavailable(true)
+        return false
+      }
       return true
     } catch {
+      setDiagnostic(`返回值不是 JSON：${String(result).slice(0, 80)}`)
       setUnavailable(true)
       return false
     }
@@ -191,6 +204,7 @@ function NativeTerminalBody(props: any): ReactNode {
     return (
       <div style={{ position: 'absolute', inset: 0, padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
         <p style={{ margin: 0, opacity: 0.8 }}>原生终端不可用：当前壳侧未编入原生内核，或 termView 桥未接线。</p>
+        {diagnostic.length > 0 ? <p style={{ margin: 0, opacity: 0.6, fontSize: 12 }}>诊断：{diagnostic}</p> : null}
         <button
           type="button"
           onClick={() => { (tab as any).actions?.openTab?.('terminal', { replaceTab: true }) }}
