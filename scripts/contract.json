@@ -1913,7 +1913,7 @@
       {
         "key": "ui-sidebar-terminal",
         "name": "@deepseek-ai/dsh-client-ui-sidebar-terminal",
-        "upstreamDisabled": false,
+        "upstreamDisabled": true,
         "bundle": "web-app"
       },
       {
