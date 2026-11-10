@@ -707,8 +707,18 @@ jobs:
           gpg --batch --quiet --homedir "$homedir" --export > "$keydir/debian-archive-keyring.gpg"
           test -s "$keydir/debian-archive-keyring.gpg"
 
-      - name: Build source-owned offline ARM64 Linux assets
+      # Debian/PRoot rootfs 构建约 6 分钟。缓存 key 只由 pinned 输入哈希决定；rootfs 内的包仍按
+      # linux-inputs.json 的 SHA256 校验，provenance 随缓存一起恢复，来源判据不变。
+      - name: Restore Linux ARM64 assets
+        id: linux-assets
         if: env.DSH_ABI == 'arm64'
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: .deploy-tmp/linux-build
+          key: linux-assets-${{ runner.os }}-${{ hashFiles('scripts/source-build/linux-inputs.json', 'scripts/source-build/linux-source-manifest.json', 'scripts/source-build/build-linux-assets.sh', 'scripts/source-build/package-linux-assets.py', 'scripts/source-build/prepare-proot-backend.py', 'scripts/source-build/ensure-no-rootfs-mounts.py') }}
+
+      - name: Build source-owned offline ARM64 Linux assets
+        if: env.DSH_ABI == 'arm64' && steps.linux-assets.outputs.cache-hit != 'true'
         shell: bash
         env:
           DEBIAN_KEYRING: ${{ github.workspace }}/.deploy-tmp/linux-keyring/debian-archive-keyring.gpg
@@ -718,6 +728,13 @@ jobs:
         run: |
           set -euo pipefail
           bash scripts/source-build/build-linux-assets.sh
+
+      - name: Save Linux ARM64 assets
+        if: env.DSH_ABI == 'arm64' && steps.linux-assets.outputs.cache-hit != 'true'
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: .deploy-tmp/linux-build
+          key: linux-assets-${{ runner.os }}-${{ hashFiles('scripts/source-build/linux-inputs.json', 'scripts/source-build/linux-source-manifest.json', 'scripts/source-build/build-linux-assets.sh', 'scripts/source-build/package-linux-assets.py', 'scripts/source-build/prepare-proot-backend.py', 'scripts/source-build/ensure-no-rootfs-mounts.py') }}
 
       - name: Build runtime snapshot from verified inputs
         shell: bash
