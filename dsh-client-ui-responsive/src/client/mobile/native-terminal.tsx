@@ -56,14 +56,30 @@ function NativeTerminalBody(props: any): ReactNode {
   const openedFor = useRef<string | undefined>(undefined)
   const lastRevision = useRef(0)
   const [unavailable, setUnavailable] = useState(false)
+  const [diagnostic, setDiagnostic] = useState('')
+
+  const reportRef = useRef<() => void>(() => {})
+  const lastBounds = useRef('-')
 
   const openNative = (cols: number, rows: number): boolean => {
-    const result = bridge()?.termViewOpen?.(JSON.stringify({ cols, rows }))
-    if (result === undefined) { setUnavailable(true); return false }
+    const api = bridge()
+    if (api?.termViewOpen === undefined) {
+      setDiagnostic('androidBridge.termViewOpen 不存在（壳侧桥未接线）')
+      setUnavailable(true)
+      return false
+    }
+    const result = api.termViewOpen(JSON.stringify({ cols, rows }))
     try {
-      if (JSON.parse(result)?.ok === false) { setUnavailable(true); return false }
+      const parsed = JSON.parse(result)
+      if (parsed?.ok === false) {
+        const detail = typeof parsed.detail === 'string' && parsed.detail.length > 0 ? ` / ${parsed.detail}` : ''
+        setDiagnostic(`${parsed.reason ?? 'unknown'}${detail}`)
+        setUnavailable(true)
+        return false
+      }
       return true
     } catch {
+      setDiagnostic(`返回值不是 JSON：${String(result).slice(0, 80)}`)
       setUnavailable(true)
       return false
     }
@@ -97,12 +113,25 @@ function NativeTerminalBody(props: any): ReactNode {
     }
   }, [model])
 
+  // 页面卸载/热重载时主动回收原生视图：React 卸载回调在整页刷新时不一定执行，
+  // 否则 overlay 会留在壳侧直到 Activity 销毁。
+  useEffect(() => {
+    const close = (): void => { bridge()?.termViewClose?.() }
+    window.addEventListener('pagehide', close)
+    window.addEventListener('beforeunload', close)
+    return () => {
+      window.removeEventListener('pagehide', close)
+      window.removeEventListener('beforeunload', close)
+    }
+  }, [])
+
   // 打开原生视图 + 持续上报几何。
   useEffect(() => {
     const element = stage.current
     if (element === null) return
     const report = (): void => {
       const rect = element.getBoundingClientRect()
+      lastBounds.current = `${Math.round(rect.width)}x${Math.round(rect.height)}`
       bridge()?.termViewBounds?.(JSON.stringify({
         left: rect.left,
         top: rect.top,
@@ -118,6 +147,7 @@ function NativeTerminalBody(props: any): ReactNode {
     window.addEventListener('resize', report)
     window.visualViewport?.addEventListener('resize', report)
     window.visualViewport?.addEventListener('scroll', report)
+    reportRef.current = report
     report()
     return () => {
       observer?.disconnect()
@@ -133,7 +163,13 @@ function NativeTerminalBody(props: any): ReactNode {
     if (info === undefined) return
     if (openedFor.current === info.id) return
     openedFor.current = info.id
-    if (openNative(info.cols, info.rows)) bridge()?.termViewFocus?.()
+    if (openNative(info.cols, info.rows)) {
+      bridge()?.termViewFocus?.()
+      // 原生视图创建时是 1x1/GONE；open 成功后必须立刻把当前矩形再送一次，
+      // 否则会一直不可见（ResizeObserver 不会因为视图创建而再次触发）。
+      reportRef.current()
+      requestAnimationFrame(() => reportRef.current())
+    }
   }, [state?.info])
 
   // 渲染帧：snapshot 先 reset（首帧）再整屏写入；output 增量写入。
@@ -145,7 +181,7 @@ function NativeTerminalBody(props: any): ReactNode {
     // 兜底：极端情况下 render 早于 info（例如恢复会话快照先到），先按默认网格开视图再写。
     if (openedFor.current === undefined) {
       openedFor.current = 'render-first'
-      openNative(80, 24)
+      if (openNative(80, 24)) reportRef.current()
     }
     if (frame.type === 'snapshot') {
       bridge()?.termViewOutput?.(textFrameBase64(frame.screen))
@@ -155,11 +191,31 @@ function NativeTerminalBody(props: any): ReactNode {
     model.acknowledge(render.revision)
   }, [state?.render, model])
 
+  // 会话状态：未恢复/已不存在/达到上限时不要留一个永远转圈的空面板。
+  if (state === undefined) return null
+  if (state.issue === 'missingTerminal' || state.issue === 'terminalLimit') {
+    const message = state.issue === 'missingTerminal'
+      ? '终端已不存在（可能已被关闭或恢复失败）。'
+      : '终端数量已达上限，请先关闭不用的终端。'
+    return (
+      <div style={{ position: 'absolute', inset: 0, padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <p style={{ margin: 0, opacity: 0.8 }}>{message}</p>
+        <button
+          type="button"
+          onClick={() => { (tab as any).actions?.openTab?.(NATIVE_TERMINAL_TAB_KIND, { replaceTab: true }) }}
+        >
+          新建原生终端
+        </button>
+      </div>
+    )
+  }
+
   // 降级：壳侧未编入原生内核或桥未接线时，给出明确入口去用上游 Web 终端，而不是空白面板。
   if (unavailable) {
     return (
       <div style={{ position: 'absolute', inset: 0, padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
         <p style={{ margin: 0, opacity: 0.8 }}>原生终端不可用：当前壳侧未编入原生内核，或 termView 桥未接线。</p>
+        {diagnostic.length > 0 ? <p style={{ margin: 0, opacity: 0.6, fontSize: 12 }}>诊断：{diagnostic}</p> : null}
         <button
           type="button"
           onClick={() => { (tab as any).actions?.openTab?.('terminal', { replaceTab: true }) }}
@@ -178,6 +234,9 @@ function NativeTerminalBody(props: any): ReactNode {
       {state?.info === undefined ? (
         <div style={{ padding: 16, opacity: 0.7 }}>正在创建终端…</div>
       ) : null}
+      <div style={{ position: 'absolute', left: 4, top: 4, fontSize: 10, opacity: 0.55, pointerEvents: 'none' }}>
+        {`phase=${state?.phase ?? '?'} info=${state?.info === undefined ? 'no' : 'yes'} rev=${lastRevision.current} open=${openedFor.current ?? '-'} bounds=${lastBounds.current}`}
+      </div>
     </div>
   )
 }

@@ -13,7 +13,12 @@ import java.nio.ByteBuffer
  * 未编入原生库时 [available] 为 false；视图据此降级为只读提示，绝不崩溃。
  */
 internal object TerminalNative {
-  val available: Boolean = runCatching { System.loadLibrary("pocketharness_terminal") }.isSuccess
+  /** `null` 表示加载成功；否则是 `System.loadLibrary` 的异常文本，供页面显示降级原因。 */
+  val loadError: String? = runCatching { System.loadLibrary("pocketharness_terminal") }
+    .exceptionOrNull()
+    ?.let { "${it.javaClass.simpleName}: ${it.message}" }
+
+  val available: Boolean get() = loadError == null
 
   external fun nativeCreate(cols: Int, rows: Int): Long
 

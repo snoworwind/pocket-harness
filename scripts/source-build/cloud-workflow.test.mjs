@@ -475,7 +475,10 @@ test('independent builders and verifier never receive production secrets; only t
   const build = source.split('  build-abi:')[1].split('  verify-abi:')[0]
   const verify = source.split('  verify-abi:')[1].split('  sign-abi:')[0]
   const sign = source.split('  sign-abi:')[1]
-  assert.match(build, /replica: \[primary, reference\]/)
+  // 参考副本是否运行由 reference 输入控制（开发迭代可只跑 primary）；JSON 表达式必须保留两条 ABI 语义。
+  assert.match(build, /replica: \$\{\{ fromJSON\(inputs\.reference != false && '\["primary","reference"\]' \|\| '\["primary"\]'\) \}\}/)
+  assert.match(source, /reference:[^\n]*\n\s*description: Also run the independent reference replica/)
+  assert.match(verify, /if: inputs\.reference != false/)
   assert.match(build, /keytool -genkeypair/)
   assert.doesNotMatch(build + verify, /secrets\./)
   assert.match(verify, /needs: build-abi/)

@@ -49,6 +49,17 @@ internal class TerminalView(context: Context) : View(context) {
   private var touchStartY = 0f
   private var touchStartOffset = 0
   private var touchDragging = false
+  private val flingScroller = android.widget.OverScroller(context)
+  private var velocityTracker: android.view.VelocityTracker? = null
+  private val flingStep = object : Runnable {
+    override fun run() {
+      if (!flingScroller.computeScrollOffset()) return
+      val available = if (handle == 0L) 0 else TerminalNative.nativeScrollbackCount(handle)
+      scrollOffset = (flingScroller.currY / cellHeight).toInt().coerceIn(0, available)
+      invalidate()
+      postOnAnimation(this)
+    }
+  }
 
   /** xterm 16 色基础调色板；与主题的后续映射在里程碑 M2 接。 */
   private val palette = intArrayOf(
@@ -134,8 +145,7 @@ internal class TerminalView(context: Context) : View(context) {
     // 视口 = 回看行 + 当前屏；scrollOffset 为距底部的行数（0 = 贴底）。
     val scrollback = TerminalNative.nativeScrollbackCount(handle)
     scrollOffset = scrollOffset.coerceIn(0, scrollback)
-    val total = scrollback + rows
-    val top = total - rows - scrollOffset
+    val top = terminalViewportTop(scrollback, scrollOffset)
     val cursor = TerminalNative.nativeCursor(handle)
     val cursorVisible = scrollOffset == 0 && (cursor and 1) != 0
     val cursorCol = (cursor ushr 1) and 0x7FFF
@@ -304,12 +314,17 @@ internal class TerminalView(context: Context) : View(context) {
   override fun onTouchEvent(event: android.view.MotionEvent): Boolean {
     when (event.actionMasked) {
       android.view.MotionEvent.ACTION_DOWN -> {
+        flingScroller.forceFinished(true)
+        removeCallbacks(flingStep)
+        velocityTracker?.recycle()
+        velocityTracker = android.view.VelocityTracker.obtain().also { it.addMovement(event) }
         touchStartY = event.y
         touchStartOffset = scrollOffset
         touchDragging = false
         return true
       }
       android.view.MotionEvent.ACTION_MOVE -> {
+        velocityTracker?.addMovement(event)
         val delta = touchStartY - event.y
         if (!touchDragging && kotlin.math.abs(delta) > cellHeight) touchDragging = true
         if (touchDragging && handle != 0L) {
@@ -321,6 +336,18 @@ internal class TerminalView(context: Context) : View(context) {
         return true
       }
       android.view.MotionEvent.ACTION_UP -> {
+        if (touchDragging && handle != 0L) {
+          velocityTracker?.computeCurrentVelocity(1000)
+          val velocity = velocityTracker?.yVelocity ?: 0f
+          if (kotlin.math.abs(velocity) > 300f) {
+            val available = TerminalNative.nativeScrollbackCount(handle)
+            flingScroller.fling(
+              0, (scrollOffset * cellHeight).toInt(), 0, (-velocity).toInt(),
+              0, 0, 0, (available * cellHeight).toInt(),
+            )
+            postOnAnimation(flingStep)
+          }
+        }
         if (!touchDragging) {
           requestFocus()
           val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
@@ -328,8 +355,21 @@ internal class TerminalView(context: Context) : View(context) {
         }
         return true
       }
+      android.view.MotionEvent.ACTION_CANCEL -> {
+        flingScroller.forceFinished(true)
+        removeCallbacks(flingStep)
+        return true
+      }
     }
     return super.onTouchEvent(event)
+  }
+
+  override fun onDetachedFromWindow() {
+    flingScroller.forceFinished(true)
+    removeCallbacks(flingStep)
+    velocityTracker?.recycle()
+    velocityTracker = null
+    super.onDetachedFromWindow()
   }
 
   private fun emit(bytes: ByteArray) {
@@ -344,4 +384,13 @@ internal class TerminalView(context: Context) : View(context) {
     const val ATTR_BOLD = 1
     const val ATTR_UNDERLINE = 2
   }
+}
+
+/**
+ * 视口顶部对应的虚拟行号：回看行 0..scrollback-1，当前屏行 scrollback..。
+ * offsetFromBottom 从底部起算并夹在 [0, scrollback]，纯函数便于 JVM 单测。
+ */
+internal fun terminalViewportTop(scrollback: Int, offsetFromBottom: Int): Int {
+  val safeScrollback = scrollback.coerceAtLeast(0)
+  return safeScrollback - offsetFromBottom.coerceIn(0, safeScrollback)
 }
