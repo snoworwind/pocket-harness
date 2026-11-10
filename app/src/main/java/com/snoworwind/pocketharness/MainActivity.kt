@@ -112,6 +112,8 @@ class MainActivity : ComponentActivity() {
   private lateinit var browserHost: BrowserHost
   /** Native SurfaceView output for the VirtualDisplay Files-sidebar stage. */
   private lateinit var vdisplayHost: VdisplayHost
+  /** 侧栏用户终端的原生视图宿主（xterm 替代；模型 terminal 工具不经过它）。 */
+  private lateinit var terminalViewHost: TerminalViewHost
   /** 虚拟屏空闲回收定时器（前台期间每 [VDISPLAY_REAP_INTERVAL_MS] 扫一次；退后台停掉）。 */
   private var vdisplayReaper: android.os.Handler? = null
   /** 0.14.0：退后台时把虚拟屏画面以小窗浮在系统上（只读；回前台立即隐藏并交还侧栏）。 */
@@ -539,6 +541,7 @@ class MainActivity : ComponentActivity() {
     provisionPublicRepoAndRefreshChip(PublicRepoProvision.TRIGGER_ON_CREATE)
     browserHost = BrowserHost(this, root, webView)
     vdisplayHost = VdisplayHost(root, webView)
+    terminalViewHost = TerminalViewHost(root, webView)
     vdisplayFloat = VdisplayFloat(this)
     // The accessibility control service carries the model-facing browser* ops; it reaches this
     // Activity-owned isolated WebView only through the process-wide holder.
@@ -912,6 +915,7 @@ class MainActivity : ComponentActivity() {
     // Tear down native stage owners before their trusted geometry source is destroyed.
     if (::vdisplayFloat.isInitialized) vdisplayFloat.destroy()
     if (::vdisplayHost.isInitialized) vdisplayHost.destroy()
+    if (::terminalViewHost.isInitialized) terminalViewHost.destroy()
     if (::browserHost.isInitialized) {
       browserHost.destroy()
       if (BrowserHostHolder.host === browserHost) BrowserHostHolder.host = null
@@ -1359,6 +1363,12 @@ class MainActivity : ComponentActivity() {
         onVdisplayCreate = { VdisplayController.create(this).toString() },
         onVdisplayDestroy = { VdisplayController.destroy(this).toString() },
         onVdisplayBounds = { bounds -> vdisplayHost.setStageBounds(bounds) },
+        onTermViewOpen = { config -> terminalViewHost.open(config) },
+        onTermViewBounds = { bounds -> terminalViewHost.setBounds(bounds) },
+        onTermViewVisible = { visible -> terminalViewHost.setVisible(visible) },
+        onTermViewOutput = { encoded -> terminalViewHost.output(encoded) },
+        onTermViewFocus = { terminalViewHost.focus() },
+        onTermViewClose = { terminalViewHost.close() },
         onVdisplaySelect = { alias -> VdisplayController.select(this, alias).toString() },
         onGetVdisplayScale = { VdisplayPrefs.scale(this) },
         onSetVdisplayScale = { value -> VdisplayPrefs.setScale(this, value); VdisplayPrefs.scale(this) },
