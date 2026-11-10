@@ -43,6 +43,12 @@ internal class TerminalView(context: Context) : View(context) {
   private var cellHeight = 0f
   private var defaultFg = 0xFFE8E8E8.toInt()
   private var defaultBg = 0xFF101014.toInt()
+  /** 回看偏移（行，0 = 贴底）；触摸拖动更新，输入时归零。 */
+  private var scrollOffset = 0
+  private var scrollLine: ByteBuffer? = null
+  private var touchStartY = 0f
+  private var touchStartOffset = 0
+  private var touchDragging = false
 
   /** xterm 16 色基础调色板；与主题的后续映射在里程碑 M2 接。 */
   private val palette = intArrayOf(
@@ -73,6 +79,8 @@ internal class TerminalView(context: Context) : View(context) {
     rows = max(1, initialRows)
     handle = TerminalNative.nativeCreate(cols, rows)
     cells = null
+    scrollLine = null
+    scrollOffset = 0
     invalidate()
   }
 
@@ -89,6 +97,8 @@ internal class TerminalView(context: Context) : View(context) {
       handle = 0L
     }
     cells = null
+    scrollLine = null
+    scrollOffset = 0
     invalidate()
   }
 
@@ -116,65 +126,107 @@ internal class TerminalView(context: Context) : View(context) {
       canvas.drawText("native terminal unavailable", 8f, 8f - paint.ascent(), paint)
       return
     }
-    val buffer = ensureCells()
-    val count = TerminalNative.nativeCopyScreen(handle, buffer)
+    val live = ensureCells()
+    val count = TerminalNative.nativeCopyScreen(handle, live)
     if (count <= 0) return
-    buffer.order(ByteOrder.LITTLE_ENDIAN)
+    live.order(ByteOrder.LITTLE_ENDIAN)
+
+    // 视口 = 回看行 + 当前屏；scrollOffset 为距底部的行数（0 = 贴底）。
+    val scrollback = TerminalNative.nativeScrollbackCount(handle)
+    scrollOffset = scrollOffset.coerceIn(0, scrollback)
+    val total = scrollback + rows
+    val top = total - rows - scrollOffset
     val cursor = TerminalNative.nativeCursor(handle)
-    val cursorVisible = (cursor and 1) != 0
+    val cursorVisible = scrollOffset == 0 && (cursor and 1) != 0
     val cursorCol = (cursor ushr 1) and 0x7FFF
     val cursorRow = (cursor ushr 16) and 0xFFFF
+    val line = ensureScrollLine()
 
-    for (row in 0 until rows) {
-      var col = 0
-      while (col < cols) {
-        val offset = (row * cols + col) * CELL_BYTES
-        val charCode = buffer.getInt(offset)
-        val fg = buffer.getInt(offset + 4)
-        val bg = buffer.getInt(offset + 8)
-        val attrs = buffer.get(offset + 12).toInt()
-        val width = buffer.get(offset + 13).toInt()
-        if (width <= 0) {
-          col += 1
-          continue
+    for (viewRow in 0 until rows) {
+      val virtual = top + viewRow
+      if (virtual < scrollback) {
+        val copied = TerminalNative.nativeCopyScrollback(handle, virtual, line)
+        if (copied > 0) {
+          line.order(ByteOrder.LITTLE_ENDIAN)
+          drawRow(canvas, line, 0, viewRow, -1, -1, -1)
         }
-        val bgColor = if (bg == DEFAULT_COLOR) defaultBg else bg
-        if (bgColor != defaultBg) {
-          backgroundPaint.color = bgColor
-          canvas.drawRect(
-            col * cellWidth,
-            row * cellHeight,
-            (col + width) * cellWidth,
-            (row + 1) * cellHeight,
-            backgroundPaint,
-          )
-        }
-        if (charCode != 0 && charCode != ' '.code) {
-          paint.color = if (fg == DEFAULT_COLOR) defaultFg else fg
-          paint.isFakeBoldText = attrs and ATTR_BOLD != 0
-          paint.isUnderlineText = attrs and ATTR_UNDERLINE != 0
-          canvas.drawText(
-            String(Character.toChars(charCode)),
-            col * cellWidth,
-            row * cellHeight - paint.ascent(),
-            paint,
-          )
-        }
-        if (cursorVisible && row == cursorRow && col == cursorCol) {
-          cursorPaint.color = if (fg == DEFAULT_COLOR) defaultFg else fg
-          cursorPaint.alpha = 140
-          canvas.drawRect(
-            col * cellWidth,
-            row * cellHeight,
-            (col + width) * cellWidth,
-            (row + 1) * cellHeight,
-            cursorPaint,
-          )
-        }
-        col += width
+      } else {
+        val liveRow = (virtual - scrollback).coerceIn(0, rows - 1)
+        drawRow(
+          canvas, live, liveRow * cols * CELL_BYTES, viewRow, liveRow,
+          if (cursorVisible) cursorRow else -1,
+          if (cursorVisible) cursorCol else -1,
+        )
       }
     }
     cursorPaint.alpha = 255
+  }
+
+  /** 绘制一行 cell；liveRow < 0 表示回看行（不画光标）。 */
+  private fun drawRow(
+    canvas: Canvas,
+    buffer: ByteBuffer,
+    base: Int,
+    viewRow: Int,
+    liveRow: Int,
+    cursorRow: Int,
+    cursorCol: Int,
+  ) {
+    var col = 0
+    while (col < cols) {
+      val offset = base + col * CELL_BYTES
+      val charCode = buffer.getInt(offset)
+      val fg = buffer.getInt(offset + 4)
+      val bg = buffer.getInt(offset + 8)
+      val attrs = buffer.get(offset + 12).toInt()
+      val width = buffer.get(offset + 13).toInt()
+      if (width <= 0) {
+        col += 1
+        continue
+      }
+      val bgColor = if (bg == DEFAULT_COLOR) defaultBg else bg
+      if (bgColor != defaultBg) {
+        backgroundPaint.color = bgColor
+        canvas.drawRect(
+          col * cellWidth,
+          viewRow * cellHeight,
+          (col + width) * cellWidth,
+          (viewRow + 1) * cellHeight,
+          backgroundPaint,
+        )
+      }
+      if (charCode != 0 && charCode != ' '.code) {
+        paint.color = if (fg == DEFAULT_COLOR) defaultFg else fg
+        paint.isFakeBoldText = attrs and ATTR_BOLD != 0
+        paint.isUnderlineText = attrs and ATTR_UNDERLINE != 0
+        canvas.drawText(
+          String(Character.toChars(charCode)),
+          col * cellWidth,
+          viewRow * cellHeight - paint.ascent(),
+          paint,
+        )
+      }
+      if (liveRow >= 0 && liveRow == cursorRow && col == cursorCol) {
+        cursorPaint.color = if (fg == DEFAULT_COLOR) defaultFg else fg
+        cursorPaint.alpha = 140
+        canvas.drawRect(
+          col * cellWidth,
+          viewRow * cellHeight,
+          (col + width) * cellWidth,
+          (viewRow + 1) * cellHeight,
+          cursorPaint,
+        )
+      }
+      col += width
+    }
+  }
+
+  private fun ensureScrollLine(): ByteBuffer {
+    val existing = scrollLine
+    if (existing != null && existing.capacity() >= cols * CELL_BYTES) return existing
+    val created = ByteBuffer.allocateDirect(cols * CELL_BYTES).order(ByteOrder.LITTLE_ENDIAN)
+    scrollLine = created
+    return created
   }
 
   private fun ensureCells(): ByteBuffer {
@@ -250,15 +302,39 @@ internal class TerminalView(context: Context) : View(context) {
   }
 
   override fun onTouchEvent(event: android.view.MotionEvent): Boolean {
-    if (event.action == android.view.MotionEvent.ACTION_UP) {
-      requestFocus()
-      val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
-      imm.showSoftInput(this, InputMethodManager.SHOW_IMPLICIT)
+    when (event.actionMasked) {
+      android.view.MotionEvent.ACTION_DOWN -> {
+        touchStartY = event.y
+        touchStartOffset = scrollOffset
+        touchDragging = false
+        return true
+      }
+      android.view.MotionEvent.ACTION_MOVE -> {
+        val delta = touchStartY - event.y
+        if (!touchDragging && kotlin.math.abs(delta) > cellHeight) touchDragging = true
+        if (touchDragging && handle != 0L) {
+          val available = TerminalNative.nativeScrollbackCount(handle)
+          val lines = (delta / cellHeight).toInt()
+          scrollOffset = (touchStartOffset + lines).coerceIn(0, available)
+          invalidate()
+        }
+        return true
+      }
+      android.view.MotionEvent.ACTION_UP -> {
+        if (!touchDragging) {
+          requestFocus()
+          val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+          imm.showSoftInput(this, InputMethodManager.SHOW_IMPLICIT)
+        }
+        return true
+      }
     }
-    return true
+    return super.onTouchEvent(event)
   }
 
   private fun emit(bytes: ByteArray) {
+    // 输入即回到底部：用户在回看时继续打字，视口应跟随提示符。
+    scrollOffset = 0
     onInput?.invoke(bytes)
   }
 
