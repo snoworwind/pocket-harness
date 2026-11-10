@@ -344,3 +344,12 @@ internal class TerminalView(context: Context) : View(context) {
     const val ATTR_UNDERLINE = 2
   }
 }
+
+/**
+ * 视口顶部对应的虚拟行号：回看行 0..scrollback-1，当前屏行 scrollback..。
+ * offsetFromBottom 从底部起算并夹在 [0, scrollback]，纯函数便于 JVM 单测。
+ */
+internal fun terminalViewportTop(scrollback: Int, offsetFromBottom: Int): Int {
+  val safeScrollback = scrollback.coerceAtLeast(0)
+  return safeScrollback - offsetFromBottom.coerceIn(0, safeScrollback)
+}
