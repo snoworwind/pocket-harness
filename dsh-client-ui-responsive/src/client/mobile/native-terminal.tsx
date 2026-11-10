@@ -130,6 +130,11 @@ function NativeTerminalBody(props: any): ReactNode {
     if (render === undefined || render.revision <= lastRevision.current) return
     lastRevision.current = render.revision
     const frame = render.frame
+    // 兜底：极端情况下 render 早于 info（例如恢复会话快照先到），先按默认网格开视图再写。
+    if (openedFor.current === undefined) {
+      openedFor.current = 'render-first'
+      bridge()?.termViewOpen?.(JSON.stringify({ cols: 80, rows: 24 }))
+    }
     if (frame.type === 'snapshot') {
       bridge()?.termViewOutput?.(textFrameBase64(frame.screen))
     } else if (frame.type === 'output') {
