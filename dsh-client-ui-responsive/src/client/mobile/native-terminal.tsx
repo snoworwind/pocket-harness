@@ -59,6 +59,8 @@ function NativeTerminalBody(props: any): ReactNode {
   const [diagnostic, setDiagnostic] = useState('')
 
   const reportRef = useRef<() => void>(() => {})
+  const stateRef = useRef<any>(undefined)
+  stateRef.current = state
 
   const openNative = (cols: number, rows: number): boolean => {
     const api = bridge()
@@ -67,7 +69,7 @@ function NativeTerminalBody(props: any): ReactNode {
       setUnavailable(true)
       return false
     }
-    const result = api.termViewOpen(JSON.stringify({ cols, rows }))
+    const result = api.termViewOpen(JSON.stringify({ cols, rows, owner: String(tab.id) }))
     try {
       const parsed = JSON.parse(result)
       if (parsed?.ok === false) {
@@ -123,6 +125,25 @@ function NativeTerminalBody(props: any): ReactNode {
       window.removeEventListener('beforeunload', close)
     }
   }, [])
+
+  // 页面回到前台 / 从冻结恢复：原生视图可能已被回收，重新 open 并重报矩形。
+  useEffect(() => {
+    const resume = (): void => {
+      if (document.visibilityState !== 'visible') return
+      const info = stateRef.current?.info
+      if (info === undefined) return
+      if (openNative(info.cols, info.rows)) {
+        bridge()?.termViewFocus?.()
+        reportRef.current()
+      }
+    }
+    window.addEventListener('pageshow', resume)
+    document.addEventListener('visibilitychange', resume)
+    return () => {
+      window.removeEventListener('pageshow', resume)
+      document.removeEventListener('visibilitychange', resume)
+    }
+  }, [model])
 
   // 打开原生视图 + 持续上报几何。
   useEffect(() => {
@@ -265,6 +286,14 @@ export function registerNativeTerminal(ctx: ClientContext): void {
         description: () => '在侧栏运行 shell（原生渲染；支持触摸滚动与 IME）',
       }],
     } as any), 'ui-responsive.native-terminal.type')
+    // 关闭 tab 必须同时关闭宿主侧 PTY；否则只是删了 UI tab，后续新开会被终端上限拒绝。
+    scope.effect(() => scope.sidebarRight.registerCloseHandler(NATIVE_TERMINAL_TAB_KIND, (sessionId: string, tab: any) => {
+      const occurrence = scope.sidebarRight.tabDomain.occurrence(sessionId, { id: tab.id })
+      const navigation = occurrence.navigation.getSnapshot()
+      const params = navigation.params
+      const terminalId = params !== undefined && 'terminalId' in params ? params.terminalId : undefined
+      scope.webTerminals.close(sessionId, tab.id, tab.contentId ?? navigation.address, terminalId)
+    }), 'ui-responsive.native-terminal.close')
     scope.effect(() => scope.slots.inject('sidebar.right.pane.tab', () => scope.slots.register({
       name: 'sidebar.right.pane.tab',
       key: NATIVE_TERMINAL_TAB_ID,
