@@ -414,3 +414,10 @@ engine 的 checkout/upstream/overlay/patches/build/deploy 步骤集中到 `scrip
 执行地图锚点同时验证文件/行存在、既有源码行快照与新/移动引用的显式内容片段。新锚点写成 ``path:line#expect=<URI 编码片段>``，片段应短且能区分目标源码；旧引用基线在 `scripts/check-code-map-anchor-baseline.json`。检查器变更先运行 `node scripts/check-code-map.mjs --self-test`，再跑正式检查。只有审阅所有源码行差异后才运行 `node scripts/check-code-map.mjs --refresh-anchor-baseline`；刷新会拒绝未标注的新坐标和旧坐标新增引用，除非先为其添加 `#expect=`。不得以刷新基线代替核对执行地图语义。耦合矩阵证据仍独立检查文件存在与行号范围。判据反例见 [gotchas.md](gotchas.md) 坑 601。
 
 来源派发前市场包预检从 `scripts/contract.json` 的 `runtimeCompat.metadataDeltas` 读取唯一 URL、版本与 SHA-256，并核对 `build-apk-source.yml` 消费同一发布包。`node scripts/source-build/preflight-source-chain.mjs --self-test` 覆盖真实输入和五项受控负控；完整预检中的 tar 重打包测试须在 Linux/CI 验证，Windows GNU tar 的反斜线成员路径会使该测试失败（见[坑 613](gotchas.md)）。
+
+## 原生可执行载荷迁移
+
+实施状态、工具范围和参考项目复核见 [原生迁移账本](NATIVE-RUNTIME-MIGRATION.md)。
+来源链在本轮 APK 的注入后快照归一化步骤中生成 `native-runtime-inventory.json`，并将其传递到
+独立验证与最终签名 artifact；PR Gate 执行 `inventory-native-runtime.py --self-test` 和 Python
+自动发现回归。该报告是盘点，不代表宿主程序已经从可写目录迁出或完成设备验收。

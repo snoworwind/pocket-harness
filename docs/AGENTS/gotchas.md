@@ -3666,3 +3666,16 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
     ④ 留白值未变化时不写；根断开时统一 `teardown`。
     复验：新增三条离线回归（jsdom）——深层重绘后全文档 `querySelectorAll` 调用数为 0；留白未变时
     写变量次数为 0；无关新增不触发扫描而新终端根仍能挂上键条。设备层帧率/输入延迟未做量化。
+
+665. **原生运行时不能按扩展名或执行位盘点，也不能把 PRoot 客体误改成 Android `.so`（2026-11-12，Linux 实验分支）**
+    现象：只看 `usr/bin` 会漏掉 Git helper、Python/Node 原生扩展；只看 `*.so` 会漏掉
+    无后缀 ELF 与 `.node`；只看执行位会漏掉经 dlopen 加载的普通只读模块。
+    真因：执行入口、动态加载与客体执行是不同链路，文件名和执行位均不能代表 ELF 载荷范围。
+    修法：`inventory-native-runtime.py` 按内容扫整树与 APK 原生成员，记录解释器、动态依赖、
+    ABI、对齐、摘要和链接；宿主快照与 Linux rootfs/Node 分档，客体绝对链接只在输入树内
+    词法解析，不打开宿主 `/usr`。Linux 程序不生成 APK 改名候选；所有盘点结果仍明确未迁移。
+    复验：`python3 scripts/source-build/inventory-native-runtime.py --self-test` 覆盖无执行位模块、
+    helper、客体绝对链接、损坏 ELF、错 ABI、空盘点、目录链接与树外报告负控；来源 workflow
+    回归验证从本轮 APK 取注入后快照，报告跨 builder/verifier/signer 传递。
+    边界：不展开嵌套归档、不证明 ELF 已能在设备运行；高 targetSdk、用户编译产物和完整
+    Linux 工具链仍须后续真实产物及平台证据，不以参考项目的说明代替。

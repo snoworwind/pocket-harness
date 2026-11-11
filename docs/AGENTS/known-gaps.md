@@ -190,3 +190,11 @@
 ## 已收口事项的历史详档
 
 Engine base 复用的实现与阶段证据保留在 [ENGINE-BASE-2026-10-19.md](ENGINE-BASE-2026-10-19.md)；该文档记录 2026-10-19/20 的构建阶段，不作为当前阻塞清单。版本发布与设备验收范围以本页顶部链接和 [版本历史](changelog-archive.md) 为准。
+
+## 原生宿主可执行载荷迁移
+
+实验分支目标为免 Root、无 Termux 的完整 Linux/glibc 用户空间，允许 PRoot；用户明确禁止
+合并 main。已增加 APK/快照与独立 Linux rootfs/Node 目录盘点，尚未切换现有
+Node/bash/Undo/PTY/PTC 执行路径，也未补齐全部常用工具。现有 Linux 底座仍依赖 Termux
+PRoot 包且仅 ARM64；来源构建尚需实际产出盘点报告，不能称已脱离 Termux。阶段与判据见
+[原生迁移账本](NATIVE-RUNTIME-MIGRATION.md)。
