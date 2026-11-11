@@ -175,16 +175,20 @@ function NativeTerminalBody(props: any): ReactNode {
         && element.offsetParent !== null && rect.width > 1 && rect.height > 1 && inViewport
       if (!visible) {
         suspendedRef.current = false
-        bridge()?.termViewClose?.()
+        // 只隐藏，不销毁：VM 状态保留，切回来不需要重放快照（否则会空白）。
+        bridge()?.termViewVisible?.(false)
         return
       }
       if (suspendedRef.current) return
       const info = stateRef.current?.info
-      if (info !== undefined && openNative(info.cols, info.rows)) reportRef.current()
+      if (info !== undefined && openNative(info.cols, info.rows)) {
+        bridge()?.termViewVisible?.(true)
+        reportRef.current()
+      }
     }
     const suspend = (): void => {
       suspendedRef.current = true
-      bridge()?.termViewClose?.()
+      bridge()?.termViewVisible?.(false)
     }
     const wake = (event: Event): void => {
       const target = event.target
