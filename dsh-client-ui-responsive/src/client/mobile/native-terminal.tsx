@@ -20,11 +20,11 @@ export const NATIVE_TERMINAL_TAB_KIND = 'terminal-native'
 /** 壳侧桥（可选：非 Android 宿主/旧壳没有这些方法时静默降级）。 */
 interface TerminalBridge {
   termViewOpen?: (config: string) => string
-  termViewBounds?: (bounds: string) => string
-  termViewVisible?: (visible: boolean) => string
-  termViewOutput?: (encoded: string) => string
-  termViewFocus?: () => string
-  termViewClose?: () => string
+  termViewBounds?: (bounds: string, owner: string) => string
+  termViewVisible?: (visible: boolean, owner: string) => string
+  termViewOutput?: (encoded: string, owner: string) => string
+  termViewFocus?: (owner: string) => string
+  termViewClose?: (owner: string) => string
 }
 
 function bridge(): TerminalBridge | undefined {
@@ -51,6 +51,7 @@ function textFrameBase64(text: string): string {
 /** 原生终端 body；props 由 sidebar slot 注入（useTabInfo/useTerminal/view）。 */
 function NativeTerminalBody(props: any): ReactNode {
   const { tab } = props.useTabInfo()
+  const owner = String(tab.id)
   const model = props.view(tab.id)
   const state = props.useTerminal(tab.id)
   const hasSidebarHook = typeof props.useSidebarMounted === 'function'
@@ -118,14 +119,14 @@ function NativeTerminalBody(props: any): ReactNode {
     return () => {
       delete target.__dshTermInput
       delete target.__dshTermResize
-      bridge()?.termViewClose?.()
+      bridge()?.termViewClose?.(owner)
     }
   }, [model])
 
   // 页面卸载/热重载时主动回收原生视图：React 卸载回调在整页刷新时不一定执行，
   // 否则 overlay 会留在壳侧直到 Activity 销毁。
   useEffect(() => {
-    const close = (): void => { bridge()?.termViewClose?.() }
+    const close = (): void => { bridge()?.termViewClose?.(owner) }
     window.addEventListener('pagehide', close)
     window.addEventListener('beforeunload', close)
     return () => {
@@ -141,7 +142,7 @@ function NativeTerminalBody(props: any): ReactNode {
       const info = stateRef.current?.info
       if (info === undefined) return
       if (openNative(info.cols, info.rows)) {
-        bridge()?.termViewFocus?.()
+        bridge()?.termViewFocus?.(owner)
         reportRef.current()
       }
     }
@@ -157,7 +158,7 @@ function NativeTerminalBody(props: any): ReactNode {
   useEffect(() => {
     if (!hasSidebarHook) return
     if (sidebarMounted === undefined) {
-      bridge()?.termViewClose?.()
+      bridge()?.termViewClose?.(owner)
       return
     }
     const info = stateRef.current?.info
@@ -180,19 +181,19 @@ function NativeTerminalBody(props: any): ReactNode {
       if (!visible) {
         suspendedRef.current = false
         // 只隐藏，不销毁：VM 状态保留，切回来不需要重放快照（否则会空白）。
-        bridge()?.termViewVisible?.(false)
+        bridge()?.termViewVisible?.(false, owner)
         return
       }
       if (suspendedRef.current) return
       const info = stateRef.current?.info
       if (info !== undefined && openNative(info.cols, info.rows)) {
-        bridge()?.termViewVisible?.(true)
+        bridge()?.termViewVisible?.(true, owner)
         reportRef.current()
       }
     }
     const suspend = (): void => {
       suspendedRef.current = true
-      bridge()?.termViewVisible?.(false)
+      bridge()?.termViewVisible?.(false, owner)
     }
     const wake = (event: Event): void => {
       const target = event.target
@@ -225,7 +226,7 @@ function NativeTerminalBody(props: any): ReactNode {
         viewportWidth: window.innerWidth,
         viewportHeight: window.innerHeight,
         visible: document.visibilityState !== 'hidden' && rect.width > 1 && rect.height > 1,
-      }))
+      }), owner)
     }
     const observer = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(report)
     observer?.observe(element)
@@ -249,7 +250,7 @@ function NativeTerminalBody(props: any): ReactNode {
     if (openedFor.current === info.id) return
     openedFor.current = info.id
     if (openNative(info.cols, info.rows)) {
-      bridge()?.termViewFocus?.()
+      bridge()?.termViewFocus?.(owner)
       // 原生视图创建时是 1x1/GONE；open 成功后必须立刻把当前矩形再送一次，
       // 否则会一直不可见（ResizeObserver 不会因为视图创建而再次触发）。
       reportRef.current()
@@ -269,9 +270,9 @@ function NativeTerminalBody(props: any): ReactNode {
       if (openNative(80, 24)) reportRef.current()
     }
     if (frame.type === 'snapshot') {
-      bridge()?.termViewOutput?.(textFrameBase64(frame.screen))
+      bridge()?.termViewOutput?.(textFrameBase64(frame.screen), owner)
     } else if (frame.type === 'output') {
-      bridge()?.termViewOutput?.(textFrameBase64(frame.data))
+      bridge()?.termViewOutput?.(textFrameBase64(frame.data), owner)
     }
     model.acknowledge(render.revision)
   }, [state?.render, model])

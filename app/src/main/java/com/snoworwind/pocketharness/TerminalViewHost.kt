@@ -63,7 +63,10 @@ internal class TerminalViewHost(
     }
   }
 
-  fun setBounds(raw: String): String = onUi { setBoundsOnUi(raw) }
+  fun setBounds(raw: String, owner: String): String = onUi {
+    if (this.owner != null && this.owner != owner) return@onUi ok(JSONObject().put("ignored", true))
+    setBoundsOnUi(raw)
+  }
 
   private fun setBoundsOnUi(raw: String): String {
     val parsed = TerminalStageBounds.parse(raw) ?: return failed("invalid-terminal-bounds", null)
@@ -92,7 +95,13 @@ internal class TerminalViewHost(
     return ok(JSONObject().put("visible", parsed.visible))
   }
 
-  fun setVisible(flag: Boolean): String = onUi { setVisibleOnUi(flag) }
+  fun setVisible(flag: Boolean, owner: String): String = onUi {
+    if (this.owner != null && this.owner != owner) return@onUi ok(JSONObject().put("ignored", true))
+    setVisibleOnUi(flag)
+  }
+
+  /** Activity 返回等无 owner 场景：直接隐藏当前视图。 */
+  fun hide(): String = onUi { setVisibleOnUi(false) }
 
   private fun setVisibleOnUi(flag: Boolean): String {
     visible = flag
@@ -101,7 +110,10 @@ internal class TerminalViewHost(
   }
 
   /** PTY 输出（base64）；无视图或解码失败时返回结构化失败，不抛给桥。 */
-  fun output(encoded: String): String = onUi { outputOnUi(encoded) }
+  fun output(encoded: String, owner: String): String = onUi {
+    if (this.owner != null && this.owner != owner) return@onUi ok(JSONObject().put("ignored", true))
+    outputOnUi(encoded)
+  }
 
   private fun outputOnUi(encoded: String): String {
     val created = view ?: return failed("terminal-not-open", null)
@@ -114,7 +126,10 @@ internal class TerminalViewHost(
     }
   }
 
-  fun focus(): String = onUi { focusOnUi() }
+  fun focus(owner: String): String = onUi {
+    if (this.owner != null && this.owner != owner) return@onUi ok(JSONObject().put("ignored", true))
+    focusOnUi()
+  }
 
   private fun focusOnUi(): String {
     val created = view ?: return failed("terminal-not-open", null)
@@ -124,7 +139,10 @@ internal class TerminalViewHost(
     return ok(JSONObject())
   }
 
-  fun close(): String = onUi { closeOnUi() }
+  fun close(owner: String): String = onUi {
+    if (this.owner != null && this.owner != owner) return@onUi ok(JSONObject().put("ignored", true))
+    closeOnUi()
+  }
 
   private fun closeOnUi(): String {
     val created = view
