@@ -266,7 +266,13 @@ try {
 
   // ---- 3. 插件注入链（python，跨平台）----
   let snapIn
-  if (!SKIP_INJECT) {
+  // 跨 run 复用：injected 快照由 workflow 以「源快照 sha + 全部插件/补丁输入哈希」为 key 缓存。
+  // 命中时注入内容已固化，直接拿它跑下游门禁，省掉 inject-all 的解压+重压缩。
+  const injectedCache = process.env.DSH_INJECTED_SNAPSHOT
+  if (!SKIP_INJECT && injectedCache && existsSync(injectedCache)) {
+    log('复用注入后的快照缓存（跳过 inject-all）…')
+    snapIn = injectedCache
+  } else if (!SKIP_INJECT) {
     // 统一补丁门禁（Phase 2a）：engine + vendor 补丁幂等施加与校验（registry.json）
     run('node', [join(ROOT, 'scripts', 'patches', 'apply-patches.mjs'), join(ROOT, 'vendor')])
     // 浏览器语法下限：注入段降级（0.14.1 块C G-1，与本地链 build-apk-013.ps1:219-255 等价）

@@ -241,7 +241,8 @@ def main() -> None:
             check=True,
         )
         with tmp_tar.open("rb") as source, out_path.open("wb") as dest:
-            subprocess.run(["xz", "-T4", "-9e", "-c"], stdin=source, stdout=dest, check=True)
+            preset = os.environ.get("DSH_TERMUX_XZ_PRESET", "9e")
+            subprocess.run(["xz", "-T4", f"-{preset}", "-c"], stdin=source, stdout=dest, check=True)
     finally:
         tmp_tar.unlink(missing_ok=True)
 
