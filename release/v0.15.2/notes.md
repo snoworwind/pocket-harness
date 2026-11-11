@@ -17,7 +17,9 @@
   - IME 输入（组合/退格/回车/方向键/Ctrl），不再受 xterm.js 在 Android IME 下的重复/回放问题影响；
   - 回看 2000 行，手指拖动 + 惯性滚动，输入自动回底；
   - 新建时可选 bash/zsh；关闭 tab 会同时关闭宿主 PTY；切走/返回保留终端状态（不再空白）；
-  - `termViewOpen/Bounds/Visible/Output/Focus/Close` 桥，仅侧栏用户终端使用。
+  - `termViewOpen/Bounds/Visible/Output/Focus/Close` 桥，仅侧栏用户终端使用；
+  - 引导卡跟随浅色/深色主题，横屏窄侧栏下标题不再竖排、shell 选项可换行；
+  - 终端颜色把 JNI 的 RGB 正确补成不透明 ARGB，OMZ 彩色提示符/背景可见。
 - **构建**：来源链以 NDK r30 预编译 per-ABI `.so` 并作为 jniLibs 注入；PR 单测作业不依赖 NDK。
 - **许可**：libvterm MIT 文本随 `assets/licenses/libvterm.txt` 分发，并在 `THIRD_PARTY_NOTICES.md` 登记。
 - **CI**：engine base 自动构建/自证复用（不再依赖人工 lock），injected snapshot、Linux assets、Gradle、pnpm store 按内容哈希缓存；开发档可用 `fast=true` 降低压缩耗时。
@@ -26,7 +28,7 @@
 
 - 触摸滚动是逐行拖动 + 惯性；暂未提供选区/复制与双指缩放。
 - 原生终端不提供上游 xterm 的完整主题映射，当前使用内置 16 色 + 默认前景/背景。
-- 设备验收：真机完成终端核心路径人工验收（打开、IME 输入、回看/滚动、返回、tab 切换、关闭后重建）；未执行完整 §2.1 CDP/ADB 矩阵，按未验收层记录。
+- 设备验收：真机完成终端核心路径人工验收（打开、IME 输入、回看/滚动、返回、tab 切换、关闭后重建），以及引导卡浅色/横屏与 OMZ 彩色提示符复验；未执行完整 §2.1 CDP/ADB 矩阵，按未验收层记录。
 - 首次构建仍为冷启动；命中阶段缓存后的耗时会显著下降。
 
 ## 验证范围
