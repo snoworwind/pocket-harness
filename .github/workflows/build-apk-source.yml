@@ -730,7 +730,10 @@ jobs:
         if: env.DSH_ABI == 'arm64' && steps.linux-assets.outputs.cache-hit != 'true'
         uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830
         with:
-          path: .deploy-tmp/linux-build
+          path: |
+            .deploy-tmp/linux-build/assets
+            .deploy-tmp/linux-build/provenance
+            .deploy-tmp/linux-build/native-libs
           key: linux-assets-${{ runner.os }}-${{ hashFiles('scripts/source-build/linux-inputs.json', 'scripts/source-build/linux-source-manifest.json', 'scripts/source-build/build-linux-assets.sh', 'scripts/source-build/package-linux-assets.py', 'scripts/source-build/prepare-proot-backend.py', 'scripts/source-build/ensure-no-rootfs-mounts.py') }}
 
       - name: Build runtime snapshot from verified inputs
