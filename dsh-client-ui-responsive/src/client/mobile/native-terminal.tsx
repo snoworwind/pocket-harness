@@ -10,6 +10,7 @@
  * 模型侧 `bash`/`terminal` 工具不经过这里。
  */
 import { useEffect, useRef, useState } from 'react'
+import { PluginArtworkTerminal } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { ReactNode } from 'react'
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
 
@@ -145,6 +146,50 @@ function NativeTerminalBody(props: any): ReactNode {
     }
   }, [model])
 
+  // 页面导航/侧栏隐藏时关闭原生 overlay；返回终端时再打开。
+  // back/popstate 不会让 React 卸载 body，若只靠卸载清理，overlay 会一直盖在新界面上。
+  useEffect(() => {
+    const element = stage.current
+    if (element === null) return
+    let suspended = false
+    const reconcile = (): void => {
+      const rect = element.getBoundingClientRect()
+      const visible = document.visibilityState === 'visible' && rect.width > 1 && rect.height > 1 && element.offsetParent !== null
+      if (!visible) { bridge()?.termViewClose?.(); return }
+      if (suspended) return
+      const info = stateRef.current?.info
+      if (info === undefined) return
+      if (openNative(info.cols, info.rows)) {
+        bridge()?.termViewFocus?.()
+        reportRef.current()
+      }
+    }
+    // 页面级返回（popstate/hashchange）不会卸载 body；先关 overlay，等用户回到终端区域再重开。
+    const navigateAway = (): void => {
+      suspended = true
+      bridge()?.termViewClose?.()
+    }
+    const wake = (): void => {
+      suspended = false
+      reconcile()
+    }
+    const observer = typeof IntersectionObserver === 'undefined' ? undefined : new IntersectionObserver(reconcile, { threshold: 0 })
+    observer?.observe(element)
+    document.addEventListener('visibilitychange', reconcile)
+    window.addEventListener('popstate', navigateAway)
+    window.addEventListener('hashchange', navigateAway)
+    window.addEventListener('pointerdown', wake)
+    window.addEventListener('focus', wake)
+    return () => {
+      observer?.disconnect()
+      document.removeEventListener('visibilitychange', reconcile)
+      window.removeEventListener('popstate', navigateAway)
+      window.removeEventListener('hashchange', navigateAway)
+      window.removeEventListener('pointerdown', wake)
+      window.removeEventListener('focus', wake)
+    }
+  }, [model])
+
   // 打开原生视图 + 持续上报几何。
   useEffect(() => {
     const element = stage.current
@@ -237,9 +282,9 @@ function NativeTerminalBody(props: any): ReactNode {
         {diagnostic.length > 0 ? <p style={{ margin: 0, opacity: 0.6, fontSize: 12 }}>诊断：{diagnostic}</p> : null}
         <button
           type="button"
-          onClick={() => { (tab as any).actions?.openTab?.('terminal', { replaceTab: true }) }}
+          onClick={() => { (tab as any).actions?.openTab?.(NATIVE_TERMINAL_TAB_KIND, { replaceTab: true }) }}
         >
-          打开 Web 终端
+          新建原生终端
         </button>
       </div>
     )
@@ -261,31 +306,39 @@ function NativeTerminalBody(props: any): ReactNode {
 function NativeTerminalGuide(props: any): ReactNode {
   const { tab } = props.useTabInfo()
   const [shells, setShells] = useState<any[]>([])
-  const [selected, setSelected] = useState('')
   useEffect(() => {
     const controller = new AbortController()
     props.loadShells(controller.signal).then((choice: any) => {
       setShells(choice.shells ?? [])
-      setSelected(choice.selectedShell ?? choice.shells?.[0]?.path ?? '')
     }).catch(() => {})
     return () => controller.abort()
   }, [])
-  const open = (): void => {
-    const params = selected.length > 0 ? { shellPath: selected } : undefined
+  const open = (path: string): void => {
+    if (path.length > 0) props.selectShell(path)
+    const params = path.length > 0 ? { shellPath: path } : undefined
     ;(tab as any).actions?.openTab?.(NATIVE_TERMINAL_TAB_KIND, { replaceTab: true, params })
   }
   return (
-    <div style={{ display: 'flex', gap: 8, alignItems: 'center', padding: 8 }}>
-      <select
-        value={selected}
-        onChange={(event) => setSelected(event.target.value)}
-        style={{ minWidth: 96, padding: '4px 6px' }}
-      >
-        {shells.map((shell: any) => (
-          <option key={shell.path} value={shell.path}>{shell.name}</option>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 20px', borderRadius: 20, background: '#22252a', color: '#e8e8e8', width: '100%', boxSizing: 'border-box' }}>
+      <span style={{ width: 26, height: 26, display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: 0.85 }}>
+        <PluginArtworkTerminal size={24} />
+      </span>
+      <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 3 }}>
+        <span style={{ fontSize: 14, lineHeight: 1.4 }}>原生终端</span>
+        <span style={{ fontSize: 11, lineHeight: 1.4, opacity: 0.6 }}>在侧栏运行 shell，选择 bash 或 zsh</span>
+      </div>
+      <div style={{ display: 'flex', gap: 8, flex: 'none' }}>
+        {shells.length === 0 ? <span style={{ fontSize: 11, opacity: 0.6 }}>读取 shell…</span> : shells.map((shell: any) => (
+          <button
+            key={shell.path}
+            type="button"
+            onClick={() => open(shell.path)}
+            style={{ padding: '6px 12px', borderRadius: 999, border: '1px solid #3a3f46', background: 'transparent', color: 'inherit', font: 'inherit', fontSize: 12 }}
+          >
+            {shell.name}
+          </button>
         ))}
-      </select>
-      <button type="button" onClick={open} style={{ padding: '4px 10px' }}>打开原生终端</button>
+      </div>
     </div>
   )
 }
