@@ -135,6 +135,8 @@ internal class TerminalViewHost(
     if (created != null) {
       created.close()
       root.removeView(created)
+      // 原生视图关闭后把焦点还给 WebView，否则 IME 仍挂在已销毁的视图上，页面输入会「打不了字」。
+      dshWebView.requestFocus()
     }
     return ok(JSONObject())
   }

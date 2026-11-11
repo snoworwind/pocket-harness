@@ -62,6 +62,7 @@ function NativeTerminalBody(props: any): ReactNode {
   const [diagnostic, setDiagnostic] = useState('')
 
   const reportRef = useRef<() => void>(() => {})
+  const suspendedRef = useRef(false)
   const stateRef = useRef<any>(undefined)
   stateRef.current = state
 
@@ -159,45 +160,44 @@ function NativeTerminalBody(props: any): ReactNode {
     if (info !== undefined && openNative(info.cols, info.rows)) reportRef.current()
   }, [sidebarMounted])
 
-  // 页面导航/侧栏隐藏时关闭原生 overlay；返回终端时再打开。
-  // back/popstate 不会让 React 卸载 body，若只靠卸载清理，overlay 会一直盖在新界面上。
+  // 可见性兜底：不再依赖事件猜测页面状态，直接按节拍检查 stage 是否真的在视口内且未被 display/visibility 隐藏。
+  // 侧栏收起、页面返回、tab 切走最终都会让 stage 不可见；Activity 返回还会发 dsh-term-suspended 抑制重开。
   useEffect(() => {
     const element = stage.current
     if (element === null) return
-    let suspended = false
-    const reconcile = (): void => {
+    const check = (): void => {
       const rect = element.getBoundingClientRect()
-      const visible = document.visibilityState === 'visible' && rect.width > 1 && rect.height > 1 && element.offsetParent !== null
-      if (!visible) { bridge()?.termViewClose?.(); return }
-      if (suspended) return
-      const info = stateRef.current?.info
-      if (info === undefined) return
-      if (openNative(info.cols, info.rows)) {
-        bridge()?.termViewFocus?.()
-        reportRef.current()
+      const style = getComputedStyle(element)
+      const inViewport = rect.bottom > 0 && rect.right > 0
+        && rect.top < window.innerHeight && rect.left < window.innerWidth
+      const visible = document.visibilityState === 'visible'
+        && style.display !== 'none' && style.visibility !== 'hidden'
+        && element.offsetParent !== null && rect.width > 1 && rect.height > 1 && inViewport
+      if (!visible) {
+        suspendedRef.current = false
+        bridge()?.termViewClose?.()
+        return
       }
+      if (suspendedRef.current) return
+      const info = stateRef.current?.info
+      if (info !== undefined && openNative(info.cols, info.rows)) reportRef.current()
     }
-    // 页面级返回（popstate/hashchange）不会卸载 body；先关 overlay，等用户回到终端区域再重开。
-    const navigateAway = (): void => {
-      suspended = true
+    const suspend = (): void => {
+      suspendedRef.current = true
       bridge()?.termViewClose?.()
     }
-    const wake = (): void => {
-      suspended = false
-      reconcile()
+    const wake = (event: Event): void => {
+      const target = event.target
+      if (event.type === 'pointerdown' && target instanceof Node && !element.contains(target)) return
+      suspendedRef.current = false
     }
-    const observer = typeof IntersectionObserver === 'undefined' ? undefined : new IntersectionObserver(reconcile, { threshold: 0 })
-    observer?.observe(element)
-    document.addEventListener('visibilitychange', reconcile)
-    window.addEventListener('popstate', navigateAway)
-    window.addEventListener('hashchange', navigateAway)
+    const timer = setInterval(check, 300)
+    window.addEventListener('dsh-term-suspended', suspend)
     window.addEventListener('pointerdown', wake)
     window.addEventListener('focus', wake)
     return () => {
-      observer?.disconnect()
-      document.removeEventListener('visibilitychange', reconcile)
-      window.removeEventListener('popstate', navigateAway)
-      window.removeEventListener('hashchange', navigateAway)
+      clearInterval(timer)
+      window.removeEventListener('dsh-term-suspended', suspend)
       window.removeEventListener('pointerdown', wake)
       window.removeEventListener('focus', wake)
     }
