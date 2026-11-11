@@ -674,8 +674,16 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          sudo apt-get update
-          sudo apt-get install -y gcc-aarch64-linux-gnu debootstrap debian-archive-keyring qemu-user-static binfmt-support xz-utils
+          retry() {
+            for attempt in 1 2 3 4 5; do
+              if "$@"; then return 0; fi
+              echo "apt attempt ${attempt} failed; retrying"
+              sleep 10
+            done
+            return 1
+          }
+          retry sudo apt-get update
+          retry sudo apt-get install -y gcc-aarch64-linux-gnu debootstrap debian-archive-keyring qemu-user-static binfmt-support xz-utils
           sudo update-binfmts --enable qemu-aarch64
 
       - name: Prepare pinned Debian archive trust keys for Linux assets

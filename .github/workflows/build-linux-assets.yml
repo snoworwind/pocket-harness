@@ -46,8 +46,17 @@ jobs:
         with: { node-version: '24' }
       - name: Install native validation toolchain
         run: |
-          sudo apt-get update
-          sudo apt-get install -y gcc gcc-aarch64-linux-gnu dpkg-dev gnupg
+          set -euo pipefail
+          retry() {
+            for attempt in 1 2 3 4 5; do
+              if "$@"; then return 0; fi
+              echo "apt attempt ${attempt} failed; retrying"
+              sleep 10
+            done
+            return 1
+          }
+          retry sudo apt-get update
+          retry sudo apt-get install -y gcc gcc-aarch64-linux-gnu dpkg-dev gnupg
       - name: Verify reviewed inputs and native payload shape
         run: |
           node scripts/source-build/check-linux-sources.mjs --self-test

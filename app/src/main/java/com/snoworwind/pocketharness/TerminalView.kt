@@ -21,6 +21,12 @@ import kotlin.math.max
  * 这一层的职责只有「渲染 + 输入」：会话/PTY 在引擎侧，字节由 [output] 进来、按键经 [onInput] 出去。
  * 触摸滚动/选区/缩放是后续里程碑；当前先保证 IME、光标、基础 SGR 与 resize 正确。
  */
+/** JNI 的 `0x00RRGGBB` 与 Android `Paint` 的 `0xAARRGGBB` 之间的边界；DEFAULT 保持哨兵值。 */
+internal const val TERMINAL_DEFAULT_COLOR = 0xFFFFFFFF.toInt()
+
+internal fun terminalArgb(rgb: Int): Int =
+  if (rgb == TERMINAL_DEFAULT_COLOR) rgb else rgb or 0xFF000000.toInt()
+
 internal class TerminalView(context: Context) : View(context) {
 
   /** 用户输入（已编码为终端字节）。 */
@@ -194,7 +200,7 @@ internal class TerminalView(context: Context) : View(context) {
         col += 1
         continue
       }
-      val bgColor = if (bg == DEFAULT_COLOR) defaultBg else bg
+      val bgColor = if (bg == DEFAULT_COLOR) defaultBg else terminalArgb(bg)
       if (bgColor != defaultBg) {
         backgroundPaint.color = bgColor
         canvas.drawRect(
@@ -206,7 +212,7 @@ internal class TerminalView(context: Context) : View(context) {
         )
       }
       if (charCode != 0 && charCode != ' '.code) {
-        paint.color = if (fg == DEFAULT_COLOR) defaultFg else fg
+        paint.color = if (fg == DEFAULT_COLOR) defaultFg else terminalArgb(fg)
         paint.isFakeBoldText = attrs and ATTR_BOLD != 0
         paint.isUnderlineText = attrs and ATTR_UNDERLINE != 0
         canvas.drawText(
@@ -217,7 +223,7 @@ internal class TerminalView(context: Context) : View(context) {
         )
       }
       if (liveRow >= 0 && liveRow == cursorRow && col == cursorCol) {
-        cursorPaint.color = if (fg == DEFAULT_COLOR) defaultFg else fg
+        cursorPaint.color = if (fg == DEFAULT_COLOR) defaultFg else terminalArgb(fg)
         cursorPaint.alpha = 140
         canvas.drawRect(
           col * cellWidth,
@@ -381,7 +387,7 @@ internal class TerminalView(context: Context) : View(context) {
 
   private companion object {
     const val CELL_BYTES = 16
-    const val DEFAULT_COLOR = 0xFFFFFFFF.toInt()
+    const val DEFAULT_COLOR = TERMINAL_DEFAULT_COLOR
     const val ATTR_BOLD = 1
     const val ATTR_UNDERLINE = 2
   }
