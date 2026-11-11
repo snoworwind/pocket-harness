@@ -436,9 +436,9 @@ Linux 发现补充（P04，坑 373）：bootstrap `index.js` 串行发现 → `g
 | K01 | 快照事务（跨进程真源） | 0.14.8 P1：启动请求与安全模式重启都不得在刷新窗口内被静默丢弃。判据 = 事务 journal（`SnapshotTransaction.readMarker(filesDir)`，跨进程）而不是本 Activity 实例的内存态所有权；`start()`/`restart()` 的 destroyed 与 running 必须分开处置，安全模式重启在**停旧引擎之前**先判事务 | app/src/main/java/com/snoworwind/pocketharness/EngineStartFlow.kt:659；app/src/main/java/com/snoworwind/pocketharness/EngineManager.kt:211 |
 
 K01 journal 发布：`SnapshotTransaction.writeMarker` 拒绝目标或临时路径为非普通文件，写入并同步临时文件后才替换，失败不得直接截断旧 journal；模拟器三层验收仍未完成。
-| K01 | 引擎鉴权与探活 | HTTP 探活成功后注入首屏 cookie 并设置 `engineHttpReady`；`showWeb` 才发起首次导航，原生引导页保持到首个引擎文档 `onPageCommitVisible`，之后切入 WebView | app/src/main/java/com/snoworwind/pocketharness/MainActivity.kt:308；app/src/main/java/com/snoworwind/pocketharness/MainActivity.kt:1136#expect=bootstrapScript, app/src/main/java/com/snoworwind/pocketharness/EngineStartFlow.kt:781#expect=activity.runOnUiThread |
+| K01 | 引擎鉴权与探活 | HTTP 探活成功后注入首屏 cookie 并设置 `engineHttpReady`；`showWeb` 才发起首次导航，原生引导页保持到首个引擎文档 `onPageCommitVisible`，之后切入 WebView | app/src/main/java/com/snoworwind/pocketharness/MainActivity.kt:308；app/src/main/java/com/snoworwind/pocketharness/MainActivity.kt:1139#expect=bootstrapScript, app/src/main/java/com/snoworwind/pocketharness/EngineStartFlow.kt:781#expect=activity.runOnUiThread |
 | K01 | 前台服务与看门狗 | startEngineService 挂载前台服务，回撤阈值取 WatchdogV2.effectiveFailureCount | app/src/main/java/com/snoworwind/pocketharness/EngineStartFlow.kt:670 |
-| K01 | 诊断落盘 | 启动分段、引导页 stall、HTTP/TLS/渲染进程错误全部经 LogCollector 写壳侧自有文件 | app/src/main/java/com/snoworwind/pocketharness/MainActivity.kt:1121#expect=%2F%2F%20Foreground%20crashes%20and%20foreground%20eviction%20also%20recreate%20once%2C%20without%20engine%20restart. |
+| K01 | 诊断落盘 | 启动分段、引导页 stall、HTTP/TLS/渲染进程错误全部经 LogCollector 写壳侧自有文件 | app/src/main/java/com/snoworwind/pocketharness/MainActivity.kt:1124#expect=%2F%2F%20Foreground%20crashes%20and%20foreground%20eviction%20also%20recreate%20once%2C%20without%20engine%20restart. |
 | K01 | 沉浸式与开发者日志真源 | onCreate/onWindowFocusChanged 读 ImmersiveMode，onResume 读 DevLogControl（单一真源，壳侧不再持第二份） | app/src/main/java/com/snoworwind/pocketharness/WebUiChrome.kt:19 |
 | K01 | 隔离浏览器舞台 | onCreate 建 BrowserHost 并挂 BrowserHostHolder，onPause/onDestroy 暂停与销毁 | app/src/main/java/com/snoworwind/pocketharness/MainActivity.kt:207 |
 | K01 | 虚拟屏舞台 | onStart/onStop 决定虚拟屏浮窗让位与查看器接管，并起停 2 分钟空闲回收定时器 | app/src/main/java/com/snoworwind/pocketharness/MainActivity.kt:393 |
@@ -563,9 +563,9 @@ K01 journal 发布：`SnapshotTransaction.writeMarker` 拒绝目标或临时路�
 | P04 | 构建与快照装配 | 三个插件靠 profile-web.cordis.patch.yml 的 insert 才被挂载；model-capability 依赖构建期生成的 lib/catalog-snapshot.json，缺失即整段 engine-catalog 阶段禁用 | scripts/profile-web.cordis.patch.yml:112#expect=-%20id:%20android-linux-env |
 | P04 | 引擎鉴权与日志面 | 运行时缓存清理与当前代 engine.log 共享 files 域：删当前代即断 EngineAuth.tokenFromLog 的令牌链，因此只删历史代 | plugins/dsh-android-linux-env/src/runtime-cache.ts:40 |
 | S01 | K04 | 页面经 window.androidBridge 与 dshBackBridge 调壳侧桥面，页面类型面在 android-bridge.ts 与 back-stack.ts，壳侧实现在 AndroidBridge.kt 与 BackGate.kt | dsh-client-ui-responsive/src/client/android-bridge.ts:17 |
-| S01 | K04 | 壳侧 pushWebInsets 写 --dsh-android-system-* 与 --dsh-android-ime-bottom，注入层样式与键盘边界消费 | app/src/main/java/com/snoworwind/pocketharness/MainActivity.kt:1679#expect=pushWebInsets |
+| S01 | K04 | 壳侧 pushWebInsets 写 --dsh-android-system-* 与 --dsh-android-ime-bottom，注入层样式与键盘边界消费 | app/src/main/java/com/snoworwind/pocketharness/MainActivity.kt:1682#expect=pushWebInsets |
 | S01 | K04 | 返回键在主线程读 BackGateState 缓存，页面经 window.__dshBack 关层并用 dshBackBridge 上行可用性 | app/src/main/java/com/snoworwind/pocketharness/BackGate.kt:38 |
-| S01 | K04 | 导出结果经 window.__dshExportResult 回传，页面转成 dsh:export-result 事件由 ExportResultDialog 呈现 | app/src/main/java/com/snoworwind/pocketharness/MainActivity.kt:1039#expect=override%20fun%20onReceivedError(view%3A%20WebView%2C%20errorCode%3A%20Int%2C%20description%3A%20String%2C%20failingUrl%3A%20String)%20%7B |
+| S01 | K04 | 导出结果经 window.__dshExportResult 回传，页面转成 dsh:export-result 事件由 ExportResultDialog 呈现 | app/src/main/java/com/snoworwind/pocketharness/MainActivity.kt:1042#expect=override%20fun%20onReceivedError(view%3A%20WebView%2C%20errorCode%3A%20Int%2C%20description%3A%20String%2C%20failingUrl%3A%20String)%20%7B |
 | S01 | K04 | 页面看门狗与就绪快报经 console.error 前缀 [dsh-boot-stall] / [dsh-boot-ready] 上报，壳侧落 files/boot-diag.log | dsh-host-web-compat/lib/index.js:302 |
 | S01 | 引擎侧 file-open 插件 | 来件草稿消费端轮询 /api/android/file-incoming 与 claim/content/complete，端点由该插件注册 | plugins/dsh-android-file-open/src/index.ts:527 |
 | S01 | 引擎侧 linux-env 插件 | 开发者选项的运行时缓存面板读写 /api/android/runtime-cache/scan 与 execute | dsh-client-ui-responsive/src/client/dev-section/runtime-cache.tsx:91 |

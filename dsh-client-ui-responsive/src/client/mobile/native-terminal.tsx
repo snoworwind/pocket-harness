@@ -53,6 +53,7 @@ function NativeTerminalBody(props: any): ReactNode {
   const { tab } = props.useTabInfo()
   const model = props.view(tab.id)
   const state = props.useTerminal(tab.id)
+  const sidebarMounted = props.useSidebarMounted?.()
   const stage = useRef<HTMLDivElement | null>(null)
   const openedFor = useRef<string | undefined>(undefined)
   const lastRevision = useRef(0)
@@ -145,6 +146,16 @@ function NativeTerminalBody(props: any): ReactNode {
       document.removeEventListener('visibilitychange', resume)
     }
   }, [model])
+
+  // 侧栏被收起/切走（mounted 变为 undefined）时关闭 overlay；重新打开时恢复。
+  useEffect(() => {
+    if (sidebarMounted === undefined) {
+      bridge()?.termViewClose?.()
+      return
+    }
+    const info = stateRef.current?.info
+    if (info !== undefined && openNative(info.cols, info.rows)) reportRef.current()
+  }, [sidebarMounted])
 
   // 页面导航/侧栏隐藏时关闭原生 overlay；返回终端时再打开。
   // back/popstate 不会让 React 卸载 body，若只靠卸载清理，overlay 会一直盖在新界面上。
@@ -395,6 +406,7 @@ export function registerNativeTerminal(ctx: ClientContext): void {
       inject: (sessionId: string) => ({
         view: (key: string) => view(sessionId, key),
         keyedHooks: { terminal: (key: string) => view(sessionId, key).state },
+        hooks: { sidebarMounted: scope.sidebarRight.mounted },
       }),
     } as any, NativeTerminalBody as any)), 'ui-responsive.native-terminal.body')
   })
