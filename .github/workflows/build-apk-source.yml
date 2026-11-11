@@ -876,7 +876,7 @@ jobs:
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
         with:
           path: .deploy-tmp/build-${{ env.DSH_ABI }}/snap-final2.tar.xz
-          key: injected-${{ github.sha }}-${{ steps.snapshot-base.outputs.sha }}-${{ hashFiles('plugins/*/src/**', 'plugins/*/package.json', 'plugins/*/package-lock.json', 'dsh-client-ui-responsive/src/**', 'dsh-client-ui-responsive/package.json', 'dsh-client-ui-responsive/package-lock.json', 'dsh-shell-termux/**', 'vendor/**', 'scripts/patches/**', 'scripts/profile-web.cordis.patch.yml', 'scripts/inject-all.py', 'scripts/snapshot-config/**') }}
+          key: injected-${{ steps.snapshot-base.outputs.sha }}-${{ hashFiles('plugins/*/src/**', 'plugins/*/package.json', 'plugins/*/package-lock.json', 'dsh-client-ui-responsive/src/**', 'dsh-client-ui-responsive/package.json', 'dsh-client-ui-responsive/package-lock.json', 'dsh-shell-termux/**', 'vendor/**', 'scripts/patches/**', 'scripts/profile-web.cordis.patch.yml', 'scripts/inject-all.py', 'scripts/snapshot-config/**') }}
 
       - name: Build ABI APK
         shell: bash
@@ -981,7 +981,7 @@ jobs:
         uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830
         with:
           path: .deploy-tmp/build-${{ env.DSH_ABI }}/snap-final2.tar.xz
-          key: injected-${{ github.sha }}-${{ steps.snapshot-base.outputs.sha }}-${{ hashFiles('plugins/*/src/**', 'plugins/*/package.json', 'plugins/*/package-lock.json', 'dsh-client-ui-responsive/src/**', 'dsh-client-ui-responsive/package.json', 'dsh-client-ui-responsive/package-lock.json', 'dsh-shell-termux/**', 'vendor/**', 'scripts/patches/**', 'scripts/profile-web.cordis.patch.yml', 'scripts/inject-all.py', 'scripts/snapshot-config/**') }}
+          key: injected-${{ steps.snapshot-base.outputs.sha }}-${{ hashFiles('plugins/*/src/**', 'plugins/*/package.json', 'plugins/*/package-lock.json', 'dsh-client-ui-responsive/src/**', 'dsh-client-ui-responsive/package.json', 'dsh-client-ui-responsive/package-lock.json', 'dsh-shell-termux/**', 'vendor/**', 'scripts/patches/**', 'scripts/profile-web.cordis.patch.yml', 'scripts/inject-all.py', 'scripts/snapshot-config/**') }}
 
       - name: Snapshot semantic normalization digest
         shell: bash
