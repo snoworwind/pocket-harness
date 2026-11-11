@@ -122,8 +122,15 @@ jobs:
           retention-days: 7
           overwrite: true
 
+  base:
+    # 自动构建/复用 engine base：内容键命中即复用，未命中由 build-base 双副本构建并发布。
+    uses: ./.github/workflows/build-base.yml
+    with:
+      component: engine
+      ref: main
+
   build-abi:
-    needs: termux-package-inputs
+    needs: [termux-package-inputs, base]
     strategy:
       fail-fast: false
       matrix:
@@ -339,9 +346,8 @@ jobs:
       # Only meaningful when a trusted base is committed. Without base-lock.json there is
       # nothing to restore, and resolving a key would fail the build on unrelated toolchain
       # drift; skip it so the source chain keeps building from source.
-      - name: Resolve engine base key and lock
+      - name: Resolve engine base key
         id: engine-base
-        if: hashFiles('base-lock.json') != ''
         shell: bash
         run: |
           if [ "${GITHUB_ACTIONS:-}" = "true" ]; then
@@ -350,13 +356,13 @@ jobs:
             echo "local source chain: base cache disabled; engine will build from source"
           fi
 
-      - name: Restore trusted engine base
+      - name: Restore engine base by content key
         id: engine-cache
-        if: steps.engine-base.outputs.trusted == 'true'
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
         with:
+          # 发布产物按 plan.key 稳定存放；消费端用 manifest 自证（双副本证明 + payload 哈希）。
           path: .deploy-tmp/base-cache
-          key: ${{ steps.engine-base.outputs.cache_key }}
+          key: base-engine-${{ steps.engine-base.outputs.key }}
 
       - name: Materialize trusted engine base
         if: steps.engine-cache.outputs.cache-hit == 'true'
@@ -366,7 +372,7 @@ jobs:
             echo "local source chain: no locked base to materialize"
             exit 0
           fi
-          node scripts/source-build/engine-base.mjs materialize .deploy-tmp/base-cache
+          node scripts/source-build/engine-base.mjs materialize-self .deploy-tmp/base-cache .deploy-tmp/engine-base-plan.json
 
       - name: Freeze current project component inputs for trusted cache hit
         if: steps.engine-cache.outputs.cache-hit == 'true'
@@ -377,14 +383,11 @@ jobs:
           node scripts/source-build/record-project-components.mjs inputs \
             .deploy-tmp/source-build/project-component-provenance.json
 
-      - name: Fail closed when a trusted engine base is unavailable
-        if: steps.engine-base.outputs.trusted == 'true' && steps.engine-cache.outputs.cache-hit != 'true'
+      - name: Fail closed when the auto-built engine base is unavailable
+        if: steps.engine-cache.outputs.cache-hit != 'true'
         shell: bash
         run: |
-          if [ "${GITHUB_ACTIONS:-}" != "true" ]; then
-            exit 0
-          fi
-          echo "::error::trusted engine base is locked but absent; run build-base.yml for this key"
+          echo "::error::engine base was not published for this content key"
           exit 1
 
       # Harness 的 pnpm store 跨 run 复用：lock 与 overlay 不变时 store 命中，省掉大部分下载/解包时间。

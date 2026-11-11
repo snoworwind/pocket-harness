@@ -255,6 +255,55 @@ export function materialize(root, artifact, env = process.env) {
   } finally { rmSync(scratch, { recursive: true, force: true }) }
 }
 
+/** 自证 base：manifest.key 与 plan 一致、有双副本独立重建证明、payload 哈希全对，不依赖人工 lock。 */
+export function verifySelf(root, artifact, planPath) {
+  const plan = json(resolve(planPath))
+  const manifestPath = join(artifact, 'manifest.json')
+  if (!existsSync(manifestPath)) fail('base manifest missing')
+  const manifest = json(manifestPath)
+  if (manifest.key !== plan.key) fail('base key differs from current plan')
+  if (manifest.independentRebuildMatched !== true) fail('base lacks independent rebuild proof')
+  if (canonicalJson(manifest.replicas) !== canonicalJson(['primary', 'reference'])) fail('base replicas mismatch')
+  verifyManifest(root, { components: { engine: { ...manifest, manifestSha256: sha(readFileSync(manifestPath)) } } }, 'engine', manifestPath, artifact)
+  checkPayload(artifact, manifest)
+  return manifest
+}
+
+/** 用自证 base 覆盖引擎树（不读 base-lock.json）。 */
+export function materializeSelf(root, artifact, planPath, env = process.env) {
+  requireMain(root, env)
+  const manifest = verifySelf(root, artifact, planPath)
+  const file = manifest.outputs.find(output => output.path === `base-engine-${manifest.key}.tar.zst`)
+  if (!file) fail('base archive missing')
+  const scratch = mkdtempSync(join(tmpdir(), 'engine-materialize-self-'))
+  try {
+    const tar = join(scratch, 'payload.tar'), payload = join(scratch, 'payload')
+    execFileSync('zstd', ['-d', '-q', join(artifact, file.path), '-o', tar])
+    execFileSync('python3', [join(HERE, 'base-archive.py'), tar, payload])
+    if (canonicalJson(indexTree(payload)) + '\n' !== readFileSync(join(artifact, 'tree.json'), 'utf8')) fail('payload tree differs from receipt')
+    for (const [from, to, support] of [
+      ['engine-deploy', '.deploy-tmp/engine-deploy', false],
+      ['engine-overlay', '.deploy-tmp/engine-overlay', false],
+      ['harness-source', '.deploy-tmp/deepseek-harness', true],
+      ['marketplace', 'vendor/dshmarketplace-plugin', false],
+    ]) {
+      const destination = join(root, to)
+      rmSync(destination, { recursive: true, force: true })
+      copyTree(join(payload, from), destination, support)
+    }
+    const reports = join(root, '.deploy-tmp/source-build')
+    mkdirSync(reports, { recursive: true })
+    for (const name of readdirSync(join(payload, 'reports'))) {
+      cpSync(join(payload, 'reports', name), join(reports, name), { force: true })
+    }
+    const components = join(root, '.deploy-tmp/component-sources')
+    mkdirSync(components, { recursive: true })
+    cpSync(join(payload, 'component-sources/dshmarketplace-plugin-0.1.7.tgz'),
+      join(components, 'dshmarketplace-plugin-0.1.7.tgz'), { force: true })
+    return manifest
+  } finally { rmSync(scratch, { recursive: true, force: true }) }
+}
+
 export function publishCandidate(root, plan, primary, reference, destination, env = process.env) {
   const sourceCommit = requireMain(root, env)
   if (plan.sourceCommit !== sourceCommit || committedInputs(root, plan.toolchain).key !== plan.key) fail('comparison plan drifted')
@@ -301,6 +350,17 @@ function main() {
     if (canonicalJson(expected) !== canonicalJson(actual)) fail('builder differs from resolved plan')
   } else if (command === 'materialize') {
     materialize(root, resolve(args[0]))
+  } else if (command === 'verify-self') {
+    verifySelf(root, resolve(args[0]), resolve(args[1]))
+    console.log('base self-verification ok')
+  } else if (command === 'materialize-self') {
+    materializeSelf(root, resolve(args[0]), resolve(args[1]))
+  } else if (command === 'reuse-self') {
+    requireMain(root)
+    const artifact = resolve(args[0]), destination = resolve(args[1])
+    verifySelf(root, artifact, resolve(args[2]))
+    if (existsSync(destination) && readdirSync(destination).length) fail('reuse destination must be empty')
+    cpSync(artifact, destination, { recursive: true })
   } else if (command === 'reuse') {
     requireMain(root)
     const artifact = resolve(args[0]), destination = resolve(args[1]), lock = json(join(root, 'base-lock.json'))
