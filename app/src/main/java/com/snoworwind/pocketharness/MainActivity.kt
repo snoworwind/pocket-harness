@@ -959,7 +959,11 @@ class MainActivity : ComponentActivity() {
         if (guideViewReady && guideView.visibility == View.VISIBLE && guideRenderer.management.back()) return
         // 原生终端 overlay 在 Activity 根布局上，页面返回不会自动收它；返回时先关掉，
         // 避免「UI 已退出但终端还盖在上面」。
-        if (::terminalViewHost.isInitialized) terminalViewHost.close()
+        if (::terminalViewHost.isInitialized) {
+          terminalViewHost.close()
+          // 通知页面：本次返回是退出终端，别按可见性检查立刻重开。
+          webView.evaluateJavascript("window.dispatchEvent(new Event('dsh-term-suspended'))", null)
+        }
         val canGoBack = webViewReady && webView.canGoBack()
         val pageStack = webViewReady && backGateState.pageStackAvailable
         val decision = BackGate.decide(canGoBack, pageStack)
