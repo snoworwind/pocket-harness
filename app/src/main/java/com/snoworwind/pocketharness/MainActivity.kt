@@ -961,6 +961,10 @@ class MainActivity : ComponentActivity() {
         // 避免「UI 已退出但终端还盖在上面」。
         if (::terminalViewHost.isInitialized) {
           terminalViewHost.close()
+          // 焦点/IME 归还 WebView：原生终端视图销毁后 IME 仍可能挂在它上面，导致页面输入失效。
+          webView.requestFocus()
+          (getSystemService(INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager)
+            .hideSoftInputFromWindow(webView.windowToken, 0)
           // 通知页面：本次返回是退出终端，别按可见性检查立刻重开。
           webView.evaluateJavascript("window.dispatchEvent(new Event('dsh-term-suspended'))", null)
         }
