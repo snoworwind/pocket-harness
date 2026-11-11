@@ -341,28 +341,42 @@ function NativeTerminalGuide(props: any): ReactNode {
     ;(tab as any).actions?.openTab?.(NATIVE_TERMINAL_TAB_KIND, { replaceTab: true, params })
   }
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 20px', borderRadius: 20, background: '#22252a', color: '#e8e8e8', width: '100%', boxSizing: 'border-box' }}>
-      <span style={{ width: 26, height: 26, display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: 0.85 }}>
+    <div style={{
+      boxSizing: 'border-box',
+      width: 380,
+      maxWidth: '100%',
+      minHeight: 56,
+      color: 'var(--dsw-alias-label-primary)',
+      background: 'var(--dsw-alias-bg-layer-1)',
+      border: '.5px solid var(--dsw-alias-border-l3)',
+      borderRadius: 'var(--dsl-guide-entry-radius, 20px)',
+      display: 'flex',
+      alignItems: 'center',
+      flexWrap: 'wrap',
+      gap: 14,
+      padding: '14px 20px',
+      textAlign: 'left',
+    }}>
+      <span style={{ width: 26, height: 26, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--dsw-alias-label-secondary)', flex: 'none' }}>
         <PluginArtworkTerminal size={24} />
       </span>
-      <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 3 }}>
-        <span style={{ fontSize: 14, lineHeight: 1.4 }}>原生终端</span>
-        <span style={{ fontSize: 11, lineHeight: 1.4, opacity: 0.6 }}>在侧栏运行 shell，选择 bash 或 zsh</span>
+      <div style={{ flex: '1 1 150px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 3 }}>
+        <span style={{ fontSize: 14, lineHeight: 1.4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>原生终端</span>
+        <span style={{ fontSize: 11, lineHeight: 1.4, color: 'var(--dsw-alias-label-tertiary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>在侧栏运行 shell，选择 bash 或 zsh</span>
       </div>
-      <div style={{ display: 'flex', gap: 8, flex: 'none' }}>
-        {shells.length === 0 ? <span style={{ fontSize: 11, opacity: 0.6 }}>读取 shell…</span> : shells.map((shell: any) => (
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', flex: '0 1 auto', marginLeft: 'auto' }}>
+        {shells.length === 0 ? <span style={{ fontSize: 11, color: 'var(--dsw-alias-label-tertiary)' }}>读取 shell…</span> : shells.map((shell: any) => (
           <button
             key={shell.path}
             type="button"
             onClick={() => open(shell.path)}
-            style={{ padding: '6px 12px', borderRadius: 999, border: '1px solid #3a3f46', background: 'transparent', color: 'inherit', font: 'inherit', fontSize: 12 }}
+            style={{ padding: '6px 12px', borderRadius: 999, border: '1px solid var(--dsw-alias-border-l3)', background: 'transparent', color: 'var(--dsw-alias-label-primary)', font: 'inherit', fontSize: 12, whiteSpace: 'nowrap' }}
           >
             {shell.name}
           </button>
         ))}
       </div>
-    </div>
-  )
+    </div>  )
 }
 
 /** 注册原生终端 tab（与上游 terminal 并存；替换时再禁用上游）。 */
