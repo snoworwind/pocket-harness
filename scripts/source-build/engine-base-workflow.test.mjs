@@ -13,8 +13,8 @@ function check(text) {
   assert.ok(resolve.indexOf('test "$SOURCE_REF" = refs/heads/main') < resolve.indexOf('uses: actions/checkout@'))
   assert.match(resolve, /test "\$COMPONENT" = engine/)
   assert.match(resolve, /main\|refs\/heads\/main\) ;;/)
-  assert.match(resolve, /steps\.plan\.outputs\.trusted == 'true' && !inputs\.force/)
-  assert.match(resolve, /engine-base\.mjs reuse/)
+  assert.match(resolve, /key: base-engine-\$\{\{ steps\.plan\.outputs\.key \}\}/)
+  assert.match(resolve, /engine-base\.mjs reuse-self/)
   assert.equal((text.match(/uses: actions\/setup-java@cf277c60eb25467037889841efdb72551f06f6c3/g) ?? []).length, 6,
     'both trusted-base jobs must retry the pinned Java action up to three attempts')
   assert.equal((text.match(/java-version: '17\.0\.20\+8'/g) ?? []).length, 6,
@@ -37,17 +37,17 @@ function check(text) {
   const compareAt = compare.indexOf('engine-base.mjs compare')
   assert.ok(compareAt >= 0 && compareAt < compare.indexOf('uses: actions/cache/save@'))
   assert.match(compare, /cache_key=base-engine-\$\{manifest\.key\}-\$\{createHash/)
-  assert.equal((text.match(/path: \.deploy-tmp\/base-cache\n/g) ?? []).length, 2, 'cache restore/save paths must share the same cache version')
+  assert.equal((text.match(/path: \.deploy-tmp\/base-cache\n/g) ?? []).length, 3, 'cache restore/save paths must share the same cache version')
   assert.equal((text.match(/runs-on: ubuntu-24\.04/g) ?? []).length, 3)
 }
 function checkSourceCachePath(text) {
-  const restore = text.split('      - name: Restore trusted engine base\n')[1]?.split('      - name: Materialize trusted engine base\n')[0]
-  const materialize = text.split('      - name: Materialize trusted engine base\n')[1]?.split('      - name: Fail closed when a trusted engine base is unavailable\n')[0]
+  const restore = text.split('      - name: Restore engine base by content key\n')[1]?.split('      - name: Materialize trusted engine base\n')[0]
+  const materialize = text.split('      - name: Materialize trusted engine base\n')[1]?.split('      - name: Fail closed when the auto-built engine base is unavailable\n')[0]
   assert.ok(restore, 'source workflow must restore the trusted engine base')
   assert.ok(materialize, 'source workflow must materialize the trusted engine base')
   const restorePath = restore.match(/^\s+path: (.+)$/m)?.[1]
   assert.equal(restorePath, '.deploy-tmp/base-cache', 'restore path must use the cache path saved by build-base.yml')
-  assert.match(materialize, /engine-base\.mjs materialize \.deploy-tmp\/base-cache\s/)
+  assert.match(materialize, /engine-base\.mjs materialize-self \.deploy-tmp\/base-cache \.deploy-tmp\/engine-base-plan\.json/)
 }
 test('base workflow is main-only and publishes only after actual dual comparison', () => check(workflow))
 test('source workflow restores and materializes the exact build-base cache path', () => checkSourceCachePath(sourceWorkflow))

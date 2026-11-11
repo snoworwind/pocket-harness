@@ -182,7 +182,7 @@ function checkTermuxPackageSnapshotFlow(source) {
   assert.match(preflight, /compression-level: 0/)
   assert.match(readFileSync(new URL('./prepare-termux-signed-repo.py', import.meta.url), 'utf8'),
     /webroot\.parent \/ "termux-packages-provenance\.json"/)
-  assert.match(build, /needs: termux-package-inputs/)
+  assert.match(build, /needs: \[termux-package-inputs, base\]/)
   assert.match(build, /bash scripts\/source-build\/retry-curl\.sh --fail --location --retry 8 --retry-max-time 600 "\$bootstrap_url" --output "\$bootstrap_archive"/,
     'the cached build bootstrap download must use the same bounded transient-error retry window')
   assert.match(build, artifactName)
@@ -220,7 +220,7 @@ test('both replicas for either ABI consume one authenticated Termux package snap
 test('negative controls reject independent repo fetches, missing dependency, or retry-unsafe artifact contracts', () => {
   const source = read('build-apk-source.yml')
   for (const bad of [
-    source.replace('    needs: termux-package-inputs\n', ''),
+    source.replace('    needs: [termux-package-inputs, base]\n', ''),
     source.replace('bash scripts/source-build/retry-curl.sh --fail --location --retry 8 --retry-max-time 600 "$bootstrap_url" -o "$bootstrap_archive"',
       'curl --fail --location --retry 3 "$bootstrap_url" -o "$bootstrap_archive"'),
     source.replace('bash scripts/source-build/retry-curl.sh --fail --location --retry 8 --retry-max-time 600 "$bootstrap_url" --output "$bootstrap_archive"',

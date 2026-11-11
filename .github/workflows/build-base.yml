@@ -70,15 +70,16 @@ jobs:
         run: node scripts/source-build/engine-base.mjs plan .deploy-tmp/base-plan.json
       - uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
         id: cache
-        if: steps.plan.outputs.trusted == 'true' && !inputs.force
+        if: ${{ !inputs.force }}
         with:
+          # 稳定内容键：同一 plan.key 的发布产物自动复用，不依赖人工 base-lock。
           path: .deploy-tmp/base-cache
-          key: ${{ steps.plan.outputs.cache_key }}
-      - name: Verify a trusted cache hit or fail closed
+          key: base-engine-${{ steps.plan.outputs.key }}
+      - name: Verify a self-describing cache hit
         id: reuse
         if: steps.cache.outputs.cache-hit == 'true'
         run: |
-          node scripts/source-build/engine-base.mjs reuse .deploy-tmp/base-cache .deploy-tmp/base-result
+          node scripts/source-build/engine-base.mjs reuse-self .deploy-tmp/base-cache .deploy-tmp/base-result .deploy-tmp/base-plan.json
           echo 'reused=true' >> "$GITHUB_OUTPUT"
       - name: Upload resolved plan
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
@@ -205,6 +206,11 @@ jobs:
         with:
           path: .deploy-tmp/base-cache
           key: ${{ steps.manifest.outputs.cache_key }}
+      - name: Cache the independently verified base under its content key
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: .deploy-tmp/base-cache
+          key: base-engine-${{ needs.resolve.outputs.key }}
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: base-engine-${{ needs.resolve.outputs.key }}
