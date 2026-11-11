@@ -53,7 +53,8 @@ function NativeTerminalBody(props: any): ReactNode {
   const { tab } = props.useTabInfo()
   const model = props.view(tab.id)
   const state = props.useTerminal(tab.id)
-  const sidebarMounted = props.useSidebarMounted?.()
+  const hasSidebarHook = typeof props.useSidebarMounted === 'function'
+  const sidebarMounted = hasSidebarHook ? props.useSidebarMounted((value: any) => value) : 'unknown'
   const stage = useRef<HTMLDivElement | null>(null)
   const openedFor = useRef<string | undefined>(undefined)
   const lastRevision = useRef(0)
@@ -149,6 +150,7 @@ function NativeTerminalBody(props: any): ReactNode {
 
   // 侧栏被收起/切走（mounted 变为 undefined）时关闭 overlay；重新打开时恢复。
   useEffect(() => {
+    if (!hasSidebarHook) return
     if (sidebarMounted === undefined) {
       bridge()?.termViewClose?.()
       return
