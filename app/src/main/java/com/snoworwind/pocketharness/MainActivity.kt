@@ -961,7 +961,7 @@ class MainActivity : ComponentActivity() {
         // 避免「UI 已退出但终端还盖在上面」。
         if (::terminalViewHost.isInitialized) {
           // 只隐藏、不销毁：VM 状态保留，返回终端时不会空白。
-          terminalViewHost.setVisible(false)
+          terminalViewHost.hide()
           // 焦点/IME 归还 WebView：原生终端视图隐藏后 IME 仍可能挂在它上面，导致页面输入失效。
           webView.requestFocus()
           (getSystemService(INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager)
@@ -1376,11 +1376,11 @@ class MainActivity : ComponentActivity() {
         onVdisplayDestroy = { VdisplayController.destroy(this).toString() },
         onVdisplayBounds = { bounds -> vdisplayHost.setStageBounds(bounds) },
         onTermViewOpen = { config -> terminalViewHost.open(config) },
-        onTermViewBounds = { bounds -> terminalViewHost.setBounds(bounds) },
-        onTermViewVisible = { visible -> terminalViewHost.setVisible(visible) },
-        onTermViewOutput = { encoded -> terminalViewHost.output(encoded) },
-        onTermViewFocus = { terminalViewHost.focus() },
-        onTermViewClose = { terminalViewHost.close() },
+        onTermViewBounds = { bounds, owner -> terminalViewHost.setBounds(bounds, owner) },
+        onTermViewVisible = { visible, owner -> terminalViewHost.setVisible(visible, owner) },
+        onTermViewOutput = { encoded, owner -> terminalViewHost.output(encoded, owner) },
+        onTermViewFocus = { owner -> terminalViewHost.focus(owner) },
+        onTermViewClose = { owner -> terminalViewHost.close(owner) },
         onVdisplaySelect = { alias -> VdisplayController.select(this, alias).toString() },
         onGetVdisplayScale = { VdisplayPrefs.scale(this) },
         onSetVdisplayScale = { value -> VdisplayPrefs.setScale(this, value); VdisplayPrefs.scale(this) },

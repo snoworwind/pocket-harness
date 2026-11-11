@@ -167,11 +167,11 @@ export interface AndroidShellBridge {
   vdisplayBounds?: (bounds: string) => string
   /** 侧栏用户终端的原生视图（仅用户终端；模型 terminal 工具不使用）。 */
   termViewOpen?: (config: string) => string
-  termViewBounds?: (bounds: string) => string
-  termViewVisible?: (visible: boolean) => string
-  termViewOutput?: (encoded: string) => string
-  termViewFocus?: () => string
-  termViewClose?: () => string
+  termViewBounds?: (bounds: string, owner: string) => string
+  termViewVisible?: (visible: boolean, owner: string) => string
+  termViewOutput?: (encoded: string, owner: string) => string
+  termViewFocus?: (owner: string) => string
+  termViewClose?: (owner: string) => string
   /** Select the controller-owned presentation target (only owned virtual aliases are selectable). */
   vdisplaySelect?: (alias: string) => string
   /** 0.14.0 设置页「手机控制」：虚拟屏分辨率档位（0.5 / 0.75 / 1.0）。 */

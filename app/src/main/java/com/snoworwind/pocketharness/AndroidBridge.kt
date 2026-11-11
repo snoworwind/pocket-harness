@@ -86,11 +86,11 @@ class AndroidBridge(
    * 页面只给配置/矩形/字节，壳侧持有 View 与会话；未接线时返回结构化失败，不抛异常。
    */
   private val onTermViewOpen: (String) -> String = { _ -> """{"ok":false,"reason":"terminal-view-not-wired"}""" },
-  private val onTermViewBounds: (String) -> String = { _ -> """{"ok":false,"reason":"terminal-view-not-wired"}""" },
-  private val onTermViewVisible: (Boolean) -> String = { _ -> """{"ok":false,"reason":"terminal-view-not-wired"}""" },
-  private val onTermViewOutput: (String) -> String = { _ -> """{"ok":false,"reason":"terminal-view-not-wired"}""" },
-  private val onTermViewFocus: () -> String = { """{"ok":false,"reason":"terminal-view-not-wired"}""" },
-  private val onTermViewClose: () -> String = { """{"ok":false,"reason":"terminal-view-not-wired"}""" },
+  private val onTermViewBounds: (String, String) -> String = { _, _ -> """{"ok":false,"reason":"terminal-view-not-wired"}""" },
+  private val onTermViewVisible: (Boolean, String) -> String = { _, _ -> """{"ok":false,"reason":"terminal-view-not-wired"}""" },
+  private val onTermViewOutput: (String, String) -> String = { _, _ -> """{"ok":false,"reason":"terminal-view-not-wired"}""" },
+  private val onTermViewFocus: (String) -> String = { _ -> """{"ok":false,"reason":"terminal-view-not-wired"}""" },
+  private val onTermViewClose: (String) -> String = { _ -> """{"ok":false,"reason":"terminal-view-not-wired"}""" },
   /** 0.13.5 W4：无障碍控制通道状态 JSON {enabled, label, restrictedHint}。 */
   private val onA11yStatus: () -> String = { """{"enabled":false}""" },
   /** 0.13.5 W4：跳系统无障碍设置页（用户手动开启「DSH 设备控制」）。 */
@@ -434,21 +434,21 @@ class AndroidBridge(
 
   /** 侧栏用户终端：CSS 像素矩形 + 可见性（壳侧换算为物理像素）。 */
   @JavascriptInterface
-  fun termViewBounds(bounds: String): String = onTermViewBounds(bounds)
+  fun termViewBounds(bounds: String, owner: String): String = onTermViewBounds(bounds, owner)
 
   @JavascriptInterface
-  fun termViewVisible(visible: Boolean): String = onTermViewVisible(visible)
+  fun termViewVisible(visible: Boolean, owner: String): String = onTermViewVisible(visible, owner)
 
   /** PTY 输出（base64）写入原生视图。 */
   @JavascriptInterface
-  fun termViewOutput(encoded: String): String = onTermViewOutput(encoded)
+  fun termViewOutput(encoded: String, owner: String): String = onTermViewOutput(encoded, owner)
 
   @JavascriptInterface
-  fun termViewFocus(): String = onTermViewFocus()
+  fun termViewFocus(owner: String): String = onTermViewFocus(owner)
 
   /** 关闭视图（插件禁用/卸载、tab 关闭时必须调用）。 */
   @JavascriptInterface
-  fun termViewClose(): String = onTermViewClose()
+  fun termViewClose(owner: String): String = onTermViewClose(owner)
 
   /** 0.14.0：虚拟屏分辨率档位读写（设置页「手机控制」）。 */
   @JavascriptInterface
