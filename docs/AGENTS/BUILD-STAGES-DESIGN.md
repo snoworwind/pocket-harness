@@ -29,7 +29,8 @@
 - engine base：`base-lock.json` 可刷新（#280）；命中后跳过 Harness 源码构建。
 - pnpm store：key 改为工具链 + replica，避免 contract 变更误伤、避免双副本抢同一 cache key。
 - Linux assets：缓存改为 `assets/provenance/native-libs`，不再打包 root-owned `rootfs`，修复 save 失败；命中时跳过 apt/keyring。
-- injected snapshot：workflow 以 `源快照 sha256 + 插件/补丁/profile patch 输入哈希` 为 key 缓存 `snap-final2.tar.xz`；命中时 `build-apk.mjs` 跳过 inject-all，仍对所有门禁跑在缓存快照上。
+- injected snapshot：以 `源快照 sha256 + 插件/补丁/profile patch/构建脚本 输入哈希` 为 key 缓存 `snap-final2.tar.xz`；命中时 `build-apk.mjs` 跳过 inject-all，仍对所有门禁跑在缓存快照上。key 不绑定 APK project commit（下游校验绑定的是 Harness source manifest）。
+- Linux assets：key 为 pinned 输入哈希（不绑定 project commit）；命中后 `attest-linux-cache.mjs` 校验 release manifest/摘要与 provenance 输入逐字节一致，再把 `project-source-commit.txt` 改写为当前 commit，并写 `reused-from-commit.txt` + `reuse-attestation.json`。
 - `fast` 输入：inject `lzma preset=1`、Termux base `xz -6`（开发档，产物内容一致、体积略大）。
 
 ## 待办
