@@ -76,6 +76,10 @@ function NativeTerminalBody(props: any): ReactNode {
     const result = api.termViewOpen(JSON.stringify({ cols, rows, owner: String(tab.id) }))
     try {
       const parsed = JSON.parse(result)
+      if (parsed?.ok === true) {
+        // 重挂/重连时 state.render 可能还是上一次的旧帧；先吃掉它，等 attach 的新 snapshot。
+        lastRevision.current = stateRef.current?.render?.revision ?? 0
+      }
       if (parsed?.ok === false) {
         const detail = typeof parsed.detail === 'string' && parsed.detail.length > 0 ? ` / ${parsed.detail}` : ''
         setDiagnostic(`${parsed.reason ?? 'unknown'}${detail}`)
