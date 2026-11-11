@@ -1,8 +1,8 @@
 # Pocket Harness v0.15.2
 
 > 草稿（2026-11-10）：版本线提升到 0.15.2（versionCode 59），引擎仍为 DeepSeek Harness `0.2.2-rc.1`。
-> 本版把侧栏终端的原生方案（M2）并入主线：libvterm（MIT）+ JNI + 原生 `TerminalView` 宿主 + `termView*` 桥 + 来源链预编译打包，并在右侧栏以 `terminal-native` tab 与上游 Web 终端**并存**。
-> **实验性**：原生终端尚未完成设备验收；上游 xterm 终端仍是默认可用路径。模型侧 `bash`/`terminal` 工具未改动。
+> 本版把侧栏终端的原生方案（M2）并入主线：libvterm（MIT）+ JNI + 原生 `TerminalView` 宿主 + `termView*` 桥 + 来源链预编译打包，并在右侧栏以 `terminal-native` tab **替换**上游 Web 终端入口。
+> **实验性**：原生终端已完成开发机设备验收（打开、IME、回看、滚动方向）；上游 xterm 终端入口已禁用。模型侧 `bash`/`terminal` 工具未改动。
 
 ## 安装与升级
 
@@ -12,7 +12,7 @@
 
 ## 更新内容
 
-- 侧栏原生终端（实验性，与上游终端并存）：
+- 侧栏原生终端（替换上游 Web 终端入口）：
   - 新增 `terminal-native` 右侧栏 tab：原生 `TerminalView` 渲染、IME 输入、光标与 SGR 基础色；
   - 回看与触摸滚动：libvterm `sb_pushline` 维护 2000 行回看环，拖动按行滚动、输入自动回底；
   - `termViewOpen/Bounds/Visible/Output/Focus/Close` 桥（仅侧栏用户终端使用；模型工具不经过）；
@@ -22,10 +22,10 @@
 
 ## 未包含 / 已知限制
 
-- 尚未禁用上游 `ui-sidebar-terminal`；原生 tab 仍是可选入口。
+- 上游 `ui-sidebar-terminal` 已禁用；原生 `terminal-native` tab 是侧栏唯一终端入口。
 - 原生终端尚未做设备层验收（IME、触摸滚动、缩放、选区、热卸回收）。
 - 触摸滚动目前是逐行拖动（惯性/缩放在后续里程碑）；`sb_pushline` 回看已包含。
-- xterm.js 6.0.0 在 Android IME 下的字符重复/合成回放仍属上游，本版不改变。
+- 上游 xterm 入口已禁用，xterm.js 的 Android IME 重复/回放问题不再影响侧栏终端。
 
 ## 验证范围与限制
 

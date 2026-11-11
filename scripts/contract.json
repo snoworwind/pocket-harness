@@ -175,7 +175,8 @@
       "settings.section",
       "settings.general.item",
       "sidebar.right.pane.tab.title",
-      "sidebar.right.tab.menu.item"
+      "sidebar.right.tab.menu.item",
+      "sidebar.right.tab.guide.entry"
     ],
     "rowId": "ui-layout",
     "enabledRow": "ui-layout",
@@ -222,6 +223,13 @@
         "kind": "list",
         "scope": "session",
         "why": "右栏标签动作菜单座位，承载 Android 原生浏览器控件入口（android-browser.native-controls）。上游实测为 kind=list + scope=session —— 若上游改成 keyed 或收掉，原生控件入口会与既有菜单项互相覆盖或整条消失，本登记即为该事故的判据。"
+      },
+      {
+        "slot": "sidebar.right.tab.guide.entry",
+        "file": "packages/client/ui-sidebar-right/src/client/contract/slots.ts",
+        "kind": "keyed",
+        "scope": "session",
+        "why": "新建终端前的 shell 选择入口（原生终端 tab 的 guide entry）。keyed/session：按 tab 类型 id 注册；上游若改 kind/scope，注入会静默落空，故登记。"
       }
     ],
     "upstreamUniverse": {
@@ -1913,7 +1921,7 @@
       {
         "key": "ui-sidebar-terminal",
         "name": "@deepseek-ai/dsh-client-ui-sidebar-terminal",
-        "upstreamDisabled": false,
+        "upstreamDisabled": true,
         "bundle": "web-app"
       },
       {
