@@ -147,8 +147,24 @@ jobs:
           path: .deploy-tmp/base-plan-input
       - name: Check replica environment and immutable inputs
         run: node scripts/source-build/engine-base.mjs check-plan .deploy-tmp/base-plan-input/base-plan.json
+      - name: Restore pnpm store
+        id: pnpm-store
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: |
+            ~/.local/share/pnpm/store
+            ~/.cache/pnpm
+          key: pnpm-store-${{ runner.os }}-${{ matrix.replica }}-${{ hashFiles('scripts/source-build/engine-toolchain.json') }}
       - name: Build engine using the shared source script
         run: bash scripts/source-build/build-engine.sh
+      - name: Save pnpm store
+        if: steps.pnpm-store.outputs.cache-hit != 'true'
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: |
+            ~/.local/share/pnpm/store
+            ~/.cache/pnpm
+          key: pnpm-store-${{ runner.os }}-${{ matrix.replica }}-${{ hashFiles('scripts/source-build/engine-toolchain.json') }}
       - name: Capture engine payload and file hashes
         run: node scripts/source-build/engine-base.mjs capture .deploy-tmp/base-plan-input/base-plan.json .deploy-tmp/base-result
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
