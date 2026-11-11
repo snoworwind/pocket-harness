@@ -736,6 +736,16 @@ jobs:
             .deploy-tmp/linux-build/native-libs
           key: linux-assets-${{ runner.os }}-${{ hashFiles('scripts/source-build/linux-inputs.json', 'scripts/source-build/linux-source-manifest.json', 'scripts/source-build/build-linux-assets.sh', 'scripts/source-build/package-linux-assets.py', 'scripts/source-build/prepare-proot-backend.py', 'scripts/source-build/ensure-no-rootfs-mounts.py') }}
 
+      - name: Reclaim the ARM64 Linux rootfs after packaging
+        if: env.DSH_ABI == 'arm64'
+        shell: bash
+        run: |
+          set -euo pipefail
+          # rootfs 是 debootstrap 的中间产物，打包进 assets 后不再需要；它由 root 拥有且体积大，
+          # arm64 作业在 snapshot 步骤前释放它，避免与 x86 不同步的 ENOSPC（x86 不构建 Linux assets）。
+          sudo rm -rf .deploy-tmp/linux-build/rootfs
+          df -h "$GITHUB_WORKSPACE" | tail -1
+
       - name: Build runtime snapshot from verified inputs
         shell: bash
         run: |
