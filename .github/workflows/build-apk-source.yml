@@ -712,7 +712,7 @@ jobs:
             .deploy-tmp/linux-build/assets
             .deploy-tmp/linux-build/provenance
             .deploy-tmp/linux-build/native-libs
-          key: linux-assets-${{ runner.os }}-${{ github.sha }}-${{ hashFiles('scripts/source-build/linux-inputs.json', 'scripts/source-build/linux-source-manifest.json', 'scripts/source-build/build-linux-assets.sh', 'scripts/source-build/package-linux-assets.py', 'scripts/source-build/prepare-proot-backend.py', 'scripts/source-build/ensure-no-rootfs-mounts.py') }}
+          key: linux-assets-${{ runner.os }}-${{ hashFiles('scripts/source-build/linux-inputs.json', 'scripts/source-build/linux-source-manifest.json', 'scripts/source-build/build-linux-assets.sh', 'scripts/source-build/package-linux-assets.py', 'scripts/source-build/prepare-proot-backend.py', 'scripts/source-build/ensure-no-rootfs-mounts.py') }}
 
       - name: Build source-owned offline ARM64 Linux assets
         if: env.DSH_ABI == 'arm64' && steps.linux-assets.outputs.cache-hit != 'true'
@@ -734,7 +734,15 @@ jobs:
             .deploy-tmp/linux-build/assets
             .deploy-tmp/linux-build/provenance
             .deploy-tmp/linux-build/native-libs
-          key: linux-assets-${{ runner.os }}-${{ github.sha }}-${{ hashFiles('scripts/source-build/linux-inputs.json', 'scripts/source-build/linux-source-manifest.json', 'scripts/source-build/build-linux-assets.sh', 'scripts/source-build/package-linux-assets.py', 'scripts/source-build/prepare-proot-backend.py', 'scripts/source-build/ensure-no-rootfs-mounts.py') }}
+          key: linux-assets-${{ runner.os }}-${{ hashFiles('scripts/source-build/linux-inputs.json', 'scripts/source-build/linux-source-manifest.json', 'scripts/source-build/build-linux-assets.sh', 'scripts/source-build/package-linux-assets.py', 'scripts/source-build/prepare-proot-backend.py', 'scripts/source-build/ensure-no-rootfs-mounts.py') }}
+
+      - name: Attest reused Linux assets for this commit
+        if: env.DSH_ABI == 'arm64' && steps.linux-assets.outputs.cache-hit == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/source-build/attest-linux-cache.mjs --self-test
+          node scripts/source-build/attest-linux-cache.mjs .deploy-tmp/linux-build "$GITHUB_SHA"
 
       - name: Reclaim the ARM64 Linux rootfs after packaging
         if: env.DSH_ABI == 'arm64'
@@ -876,7 +884,7 @@ jobs:
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
         with:
           path: .deploy-tmp/build-${{ env.DSH_ABI }}/snap-final2.tar.xz
-          key: injected-${{ github.sha }}-${{ steps.snapshot-base.outputs.sha }}-${{ hashFiles('plugins/*/src/**', 'plugins/*/package.json', 'plugins/*/package-lock.json', 'dsh-client-ui-responsive/src/**', 'dsh-client-ui-responsive/package.json', 'dsh-client-ui-responsive/package-lock.json', 'dsh-shell-termux/**', 'vendor/**', 'scripts/patches/**', 'scripts/profile-web.cordis.patch.yml', 'scripts/inject-all.py', 'scripts/snapshot-config/**') }}
+          key: injected-${{ steps.snapshot-base.outputs.sha }}-${{ hashFiles('plugins/*/src/**', 'plugins/*/package.json', 'plugins/*/package-lock.json', 'dsh-client-ui-responsive/src/**', 'dsh-client-ui-responsive/package.json', 'dsh-client-ui-responsive/package-lock.json', 'dsh-shell-termux/**', 'vendor/**', 'scripts/patches/**', 'scripts/profile-web.cordis.patch.yml', 'scripts/inject-all.py', 'scripts/build-apk.mjs', 'scripts/check-browser-syntax-floor.mjs', 'scripts/snapshot-config/**') }}
 
       - name: Build ABI APK
         shell: bash
@@ -981,7 +989,7 @@ jobs:
         uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830
         with:
           path: .deploy-tmp/build-${{ env.DSH_ABI }}/snap-final2.tar.xz
-          key: injected-${{ github.sha }}-${{ steps.snapshot-base.outputs.sha }}-${{ hashFiles('plugins/*/src/**', 'plugins/*/package.json', 'plugins/*/package-lock.json', 'dsh-client-ui-responsive/src/**', 'dsh-client-ui-responsive/package.json', 'dsh-client-ui-responsive/package-lock.json', 'dsh-shell-termux/**', 'vendor/**', 'scripts/patches/**', 'scripts/profile-web.cordis.patch.yml', 'scripts/inject-all.py', 'scripts/snapshot-config/**') }}
+          key: injected-${{ steps.snapshot-base.outputs.sha }}-${{ hashFiles('plugins/*/src/**', 'plugins/*/package.json', 'plugins/*/package-lock.json', 'dsh-client-ui-responsive/src/**', 'dsh-client-ui-responsive/package.json', 'dsh-client-ui-responsive/package-lock.json', 'dsh-shell-termux/**', 'vendor/**', 'scripts/patches/**', 'scripts/profile-web.cordis.patch.yml', 'scripts/inject-all.py', 'scripts/build-apk.mjs', 'scripts/check-browser-syntax-floor.mjs', 'scripts/snapshot-config/**') }}
 
       - name: Snapshot semantic normalization digest
         shell: bash
