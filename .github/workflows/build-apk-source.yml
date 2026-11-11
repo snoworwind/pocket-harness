@@ -390,30 +390,10 @@ jobs:
           echo "::error::engine base was not published for this content key"
           exit 1
 
-      # Harness 的 pnpm store 跨 run 复用：lock 与 overlay 不变时 store 命中，省掉大部分下载/解包时间。
-      # 包完整性仍由 pnpm 按 lockfile 校验，缓存只存内容寻址的 store。
-      - name: Restore pnpm store
-        id: pnpm-store
-        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
-        with:
-          path: |
-            ~/.local/share/pnpm/store
-            ~/.cache/pnpm
-          key: pnpm-store-${{ runner.os }}-${{ matrix.replica }}-${{ hashFiles('scripts/source-build/engine-toolchain.json') }}
-
       - name: Build and pack DeepSeek Harness from source
         if: steps.engine-cache.outputs.cache-hit != 'true'
         shell: bash
         run: bash scripts/source-build/build-engine.sh
-
-      - name: Save pnpm store
-        if: steps.engine-cache.outputs.cache-hit != 'true' && steps.pnpm-store.outputs.cache-hit != 'true'
-        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830
-        with:
-          path: |
-            ~/.local/share/pnpm/store
-            ~/.cache/pnpm
-          key: pnpm-store-${{ runner.os }}-${{ matrix.replica }}-${{ hashFiles('scripts/source-build/engine-toolchain.json') }}
 
       - name: Authenticate official Termux bootstrap and extract signing keys
         shell: bash
@@ -750,7 +730,10 @@ jobs:
         if: env.DSH_ABI == 'arm64' && steps.linux-assets.outputs.cache-hit != 'true'
         uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830
         with:
-          path: .deploy-tmp/linux-build
+          path: |
+            .deploy-tmp/linux-build/assets
+            .deploy-tmp/linux-build/provenance
+            .deploy-tmp/linux-build/native-libs
           key: linux-assets-${{ runner.os }}-${{ hashFiles('scripts/source-build/linux-inputs.json', 'scripts/source-build/linux-source-manifest.json', 'scripts/source-build/build-linux-assets.sh', 'scripts/source-build/package-linux-assets.py', 'scripts/source-build/prepare-proot-backend.py', 'scripts/source-build/ensure-no-rootfs-mounts.py') }}
 
       - name: Build runtime snapshot from verified inputs
@@ -983,7 +966,8 @@ jobs:
           cat .deploy-tmp/source-build/apk-sha256.txt
 
       - name: Save injected snapshot
-        if: steps.injected-cache.outputs.cache-hit != 'true'
+        # 共享 key：只让 primary 保存，避免 primary/reference 抢同一 cache key（ReserveCacheError）。
+        if: matrix.replica == 'primary' && steps.injected-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830
         with:
           path: .deploy-tmp/build-${{ env.DSH_ABI }}/snap-final2.tar.xz
