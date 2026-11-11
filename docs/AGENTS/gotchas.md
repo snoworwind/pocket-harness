@@ -3679,3 +3679,17 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
     回归验证从本轮 APK 取注入后快照，报告跨 builder/verifier/signer 传递。
     边界：不展开嵌套归档、不证明 ELF 已能在设备运行；高 targetSdk、用户编译产物和完整
     Linux 工具链仍须后续真实产物及平台证据，不以参考项目的说明代替。
+
+666. **把 PRoot 改成独立源码编译时，不能沿用 Termux 的隐式构建环境或用编译成功冒充运行修复（2026-11-12，实验分支）**
+    现象：官方 NDK r30 直接编译锁定源码，shmem 因 `_PATH_TMP` 未定义失败；PRoot 的
+    ashmem_memfd 因 strcmp/memset 缺少声明被新 Clang 拒绝。talloc 默认 SONAME `.so.2`
+    还会与 APK 安装命名冲突。
+    真因：旧包依赖 Termux 工具链注入的路径宏和编译环境，拿已编译 `.deb` 看不到这些前提；
+    APK 的文件名与动态依赖名也不是同一个事实。182 退出码还可由 loader 的 FATAL 发出，
+    不能单凭该码把根因定为 seccomp。
+    修法：`build-proot-source.py` 验源码摘要、固定 NDK/API，从源码构建完整闭包；shmem
+    改读 PROOT_TMP_DIR/TMPDIR 且检查路径/长度；talloc 构建时明确 SONAME；PRoot 定点补头文件。
+    不读取 Termux 包索引、bootstrap、keyring 或 `.deb`，不关闭编译诊断、不事后改 ELF 字符串。
+    复验：源码构建自证包含宿主真实 C 路径测试及坏源码/NDK/ABI/对齐/依赖/SONAME 负控；
+    双 ABI 实际编译、另目录重建四件 ELF 摘要一致，命令和源码差异已落盘。完整边界见
+    [PRoot 源码构建](PROOT-SOURCE-BUILD.md)；尚未接入 APK，未在设备运行，不称兼容性验收通过。

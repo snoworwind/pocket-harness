@@ -154,6 +154,7 @@ jobs:
         if: always()
         run: |
           python3 scripts/source-build/inventory-native-runtime.py --self-test
+          python3 scripts/source-build/build-proot-source.py --self-test
           python3 -m unittest discover -s scripts/source-build -p 'test_*.py' -v
           node --test scripts/source-build/*.test.mjs
           node scripts/source-build/check-package-lock-roots.mjs

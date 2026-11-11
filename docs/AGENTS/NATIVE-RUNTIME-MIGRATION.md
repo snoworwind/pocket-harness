@@ -33,7 +33,7 @@ termux-exec 环境钩子。可审阅并借鉴开源 Android PRoot 补丁，但�
 | 阶段 | 交付物与完成判据 | 状态 |
 | --- | --- | --- |
 | P0 实际载荷盘点 | 扫 APK 原生目录和当前快照，支持独立 Linux rootfs/Node 目录；自证、负控；来源链携带报告 | 扫描器、测试和现有 APK 接线已实现；真实来源构建报告待生成 |
-| P1 独立 Linux 来源底座 | 固定 Debian snapshot/源码包闭包、双 ABI；源码构建 Android PRoot/loader，不再依赖 Termux bootstrap/包仓 | PRoot/依赖的独立编译验证中，其余待实现 |
+| P1 独立 Linux 来源底座 | 固定 Debian snapshot/源码包闭包、双 ABI；源码构建 Android PRoot/loader，不再依赖 Termux bootstrap/包仓 | PRoot/loader/talloc/shmem 双 ABI 已实际自编译并过 ELF 门禁，未接入 APK；其余待实现，见 [构建详档](PROOT-SOURCE-BUILD.md) |
 | P2 壳直接引导 Linux | Kotlin 解包/校验/事务准备 rootfs；不能先起 Termux Node 才安装 Linux；宿主与客体 env 分开 | 待实现 |
 | P3 引擎/工具统一迁入 Linux | DSH 与原生 addon 使用 Linux ABI；PTY、PTC、Undo、控制台、文件路径和插件桥统一客体启动合同，替代 shell-termux | 待实现 |
 | P4 常用工具补齐 | 下表工具/helper/依赖均从固定源码构建后预装；用户可在客体安装依赖与编译，必须验证新产物实际可运行 | 待实现 |

@@ -2037,6 +2037,10 @@ node scripts/verify-client-plugin-fail-recovery.mjs --self-test   # 客户端插
 scripts/source-build/inventory-native-runtime.py
 scripts/source-build/test_native_runtime_inventory.py
 scripts/source-build/native-runtime-inventory-workflow.test.mjs
+scripts/source-build/build-proot-source.py
+scripts/source-build/test_proot_source_build.py
+scripts/source-build/proot-source/pocket_shmem_path.h
+scripts/source-build/proot-source/talloc-cross-answers.txt
 app/src/main/java/com/snoworwind/pocketharness/TerminalNative.kt
 app/src/main/java/com/snoworwind/pocketharness/TerminalStageBounds.kt
 app/src/main/java/com/snoworwind/pocketharness/TerminalView.kt
