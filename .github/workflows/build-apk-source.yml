@@ -12,6 +12,10 @@ on:
         description: Also run the independent reference replica (release provenance; disable for dev iteration)
         type: boolean
         default: true
+      fast:
+        description: Faster compression for dev builds (larger snapshot, same content)
+        type: boolean
+        default: false
   workflow_call:
     inputs:
       abi:
@@ -24,6 +28,11 @@ on:
         type: boolean
         required: false
         default: true
+      fast:
+        description: Faster compression for dev builds
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   contents: read
@@ -125,6 +134,8 @@ jobs:
     env:
       DSH_APK_DIR: ${{ github.workspace }}
       DSH_ABI: ${{ inputs.abi || 'arm64' }}
+      DSH_INJECT_PRESET: ${{ inputs.fast && '1' || '9' }}
+      DSH_TERMUX_XZ_PRESET: ${{ inputs.fast && '6' || '9e' }}
     steps:
       - name: Require the maintained source branch
         env:
@@ -385,7 +396,7 @@ jobs:
           path: |
             ~/.local/share/pnpm/store
             ~/.cache/pnpm
-          key: pnpm-store-${{ runner.os }}-${{ hashFiles('scripts/contract.json', 'scripts/snapshot-config/engine-overlay.json', 'scripts/snapshot-config/engine-overlay-licenses.json') }}
+          key: pnpm-store-${{ runner.os }}-${{ matrix.replica }}-${{ hashFiles('scripts/source-build/engine-toolchain.json') }}
 
       - name: Build and pack DeepSeek Harness from source
         if: steps.engine-cache.outputs.cache-hit != 'true'
@@ -399,7 +410,7 @@ jobs:
           path: |
             ~/.local/share/pnpm/store
             ~/.cache/pnpm
-          key: pnpm-store-${{ runner.os }}-${{ hashFiles('scripts/contract.json', 'scripts/snapshot-config/engine-overlay.json', 'scripts/snapshot-config/engine-overlay-licenses.json') }}
+          key: pnpm-store-${{ runner.os }}-${{ matrix.replica }}-${{ hashFiles('scripts/source-build/engine-toolchain.json') }}
 
       - name: Authenticate official Termux bootstrap and extract signing keys
         shell: bash
@@ -676,7 +687,7 @@ jobs:
             .deploy-tmp/source-build/termux-base-provenance.json
 
       - name: Install Linux asset cross-build tools
-        if: env.DSH_ABI == 'arm64'
+        if: env.DSH_ABI == 'arm64' && steps.linux-assets.outputs.cache-hit != 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -685,7 +696,7 @@ jobs:
           sudo update-binfmts --enable qemu-aarch64
 
       - name: Prepare pinned Debian archive trust keys for Linux assets
-        if: env.DSH_ABI == 'arm64'
+        if: env.DSH_ABI == 'arm64' && steps.linux-assets.outputs.cache-hit != 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -714,7 +725,10 @@ jobs:
         if: env.DSH_ABI == 'arm64'
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
         with:
-          path: .deploy-tmp/linux-build
+          path: |
+            .deploy-tmp/linux-build/assets
+            .deploy-tmp/linux-build/provenance
+            .deploy-tmp/linux-build/native-libs
           key: linux-assets-${{ runner.os }}-${{ hashFiles('scripts/source-build/linux-inputs.json', 'scripts/source-build/linux-source-manifest.json', 'scripts/source-build/build-linux-assets.sh', 'scripts/source-build/package-linux-assets.py', 'scripts/source-build/prepare-proot-backend.py', 'scripts/source-build/ensure-no-rootfs-mounts.py') }}
 
       - name: Build source-owned offline ARM64 Linux assets
@@ -852,8 +866,26 @@ jobs:
           chmod +x gradlew
           ./gradlew :app:testDebugUnitTest --no-daemon --console=plain
 
+      - name: Snapshot fingerprint for injected cache
+        id: snapshot-base
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha=$(sha256sum ".deploy-tmp/snapshot-013/$DSH_ABI/snapshot.tar.xz" | cut -d' ' -f1)
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "source snapshot sha256=$sha"
+
+      - name: Restore injected snapshot
+        id: injected-cache
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: .deploy-tmp/build-${{ env.DSH_ABI }}/snap-final2.tar.xz
+          key: injected-${{ steps.snapshot-base.outputs.sha }}-${{ hashFiles('plugins/*/src/**', 'plugins/*/package.json', 'plugins/*/package-lock.json', 'dsh-client-ui-responsive/src/**', 'dsh-client-ui-responsive/package.json', 'dsh-client-ui-responsive/package-lock.json', 'dsh-shell-termux/**', 'vendor/**', 'scripts/patches/**', 'scripts/profile-web.cordis.patch.yml', 'scripts/inject-all.py', 'scripts/snapshot-config/**') }}
+
       - name: Build ABI APK
         shell: bash
+        env:
+          DSH_INJECTED_SNAPSHOT: ${{ steps.injected-cache.outputs.cache-hit == 'true' && format('.deploy-tmp/build-{0}/snap-final2.tar.xz', env.DSH_ABI) || '' }}
         run: |
           set -euo pipefail
           overlay_gate_backup=.deploy-tmp/source-build/check-engine-overlay.original.mjs
@@ -946,6 +978,13 @@ jobs:
             | sort -z | xargs -0 -r sha256sum \
             > .deploy-tmp/source-build/gradle-artifacts-sha256.txt
           cat .deploy-tmp/source-build/apk-sha256.txt
+
+      - name: Save injected snapshot
+        if: steps.injected-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: .deploy-tmp/build-${{ env.DSH_ABI }}/snap-final2.tar.xz
+          key: injected-${{ steps.snapshot-base.outputs.sha }}-${{ hashFiles('plugins/*/src/**', 'plugins/*/package.json', 'plugins/*/package-lock.json', 'dsh-client-ui-responsive/src/**', 'dsh-client-ui-responsive/package.json', 'dsh-client-ui-responsive/package-lock.json', 'dsh-shell-termux/**', 'vendor/**', 'scripts/patches/**', 'scripts/profile-web.cordis.patch.yml', 'scripts/inject-all.py', 'scripts/snapshot-config/**') }}
 
       - name: Snapshot semantic normalization digest
         shell: bash
