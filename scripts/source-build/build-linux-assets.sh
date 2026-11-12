@@ -146,19 +146,41 @@ sudo chown -R "$(id -u):$(id -g)" "$WORK/provenance"
 cleanup_mounts
 trap - EXIT
 
-# 根文件系统收尾：删掉引导残留与 apt 缓存，再按兼容脚本归一化（与既有判据同源）。
+# Rootfs finalize: drop bootstrap residue, install the glibc compat preload that PRoot needs,
+# then normalize and verify the guest image before archiving it.
+sudo rm -f "$ROOTFS/usr/bin/qemu-aarch64-static"
+sudo chroot "$ROOTFS" dpkg-query -W '-f=${binary:Package}\t${Version}\t${source:Package}\t${source:Version}\n' > "$WORK/provenance/debian-packages.tsv"
+mkdir -p "$WORK/provenance"
+aarch64-linux-gnu-gcc -shared -fPIC -O2 -Wall -Wextra -Werror \
+  -ffile-prefix-map="$ROOT"=/usr/src/pocket-harness -fdebug-prefix-map="$ROOT"=/usr/src/pocket-harness \
+  -Wl,-soname,libpocket-linux-compat.so \
+  -o "$WORK/provenance/libpocket-linux-compat.so" vendor/linux-proot/compat/termfold_compat.c -ldl
+sudo install -D -m755 "$WORK/provenance/libpocket-linux-compat.so" "$ROOTFS/opt/pocket-harness/libpocket-linux-compat.so"
 sudo rm -rf -- "$ROOTFS/debootstrap" "$ROOTFS/var/lib/apt/lists" "$ROOTFS/var/cache/apt/archives" "$ROOTFS/etc/apt/sources.list.d"
 sudo mkdir -p "$ROOTFS/var/lib/apt/lists/partial" "$ROOTFS/var/cache/apt/archives/partial" "$ROOTFS/etc/apt/sources.list.d"
 sudo rm -f "$ROOTFS/etc/resolv.conf" "$ROOTFS/etc/machine-id" "$ROOTFS/var/lib/dbus/machine-id" "$ROOTFS/var/cache/ldconfig/aux-cache"
 sudo find "$ROOTFS/var/log" -type f -exec truncate -s0 {} +
 sudo sh vendor/linux-proot/scripts/prepare-rootfs.sh --rootfs "$ROOTFS"
 sudo sh vendor/linux-proot/scripts/prepare-rootfs.sh --rootfs "$ROOTFS" --verify
-test ! -e "$ROOTFS/etc/hostname"
-printf '%s\n' '127.0.0.1 localhost' '::1 localhost ip6-localhost ip6-loopback' | diff - "$ROOTFS/etc/hosts"
-if grep -RniE 'Acquire::(http|https)::Proxy|proxy=' "$ROOTFS/etc/apt/apt.conf.d"; then
-  echo 'Rootfs verification found host-specific apt proxy configuration' >&2
+sudo rm -f "$ROOTFS/etc/hostname"
+sudo tee "$ROOTFS/etc/hosts" >/dev/null <<'HOSTS'
+127.0.0.1 localhost
+::1 localhost ip6-localhost ip6-loopback
+HOSTS
+# Keep future apt updates explicit, separate from the reproducible factory image.
+sudo tee "$ROOTFS/etc/apt/sources.list" >/dev/null <<'SOURCES'
+deb https://deb.debian.org/debian trixie main
+deb https://deb.debian.org/debian trixie-updates main
+deb https://security.debian.org/debian-security trixie-security main
+SOURCES
+sudo find "$ROOTFS/etc/apt/apt.conf.d" -maxdepth 1 -type f -iname '*proxy*' -delete
+if sudo grep -RniE 'Acquire::(http|https)::Proxy|proxy=' "$ROOTFS/etc/apt/apt.conf.d"; then
+  echo 'Unexpected host-specific apt proxy configuration in guest rootfs' >&2
   exit 1
 fi
+sha256sum "$NATIVE_LIBS"/*.so > "$WORK/provenance/linux-native-libraries.sha256"
+node scripts/source-build/check-linux-native-libraries.mjs "$WORK/native-libs"
+find "$ROOTFS/var/cache/apt/archives" -type f -name '*.deb' -print0 | sort -z | xargs -0 -r sha256sum > "$WORK/provenance/debian-debs.sha256"
 
 sudo tar --sort=name --mtime="@$EPOCH" --owner=0 --group=0 --numeric-owner --exclude='./dev/*' --exclude='./proc/*' \
   -cJf "$STAGE/debian-minimal-aarch64.tar.xz" -C "$ROOTFS" .
