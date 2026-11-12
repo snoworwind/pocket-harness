@@ -126,6 +126,7 @@ object SnapshotExtractor {
     onProgress: (Long, Long) -> Unit,
     runtimeRoot: File = dest,
     limits: Limits = Limits.DEFAULT,
+    guestLinks: Boolean = false,
   ) {
     // D-3（0.14.7 / task-9）：tar/xz 必须在**任何**退出路径上关闭。
     // 旧实现把 `tar.close()` 放在函数体末尾（无 try/finally）：中途抛异常（超限判据、路径解算失败、
@@ -137,7 +138,7 @@ object SnapshotExtractor {
     val tar = TarArchiveInputStream(xz)
     var primary: Throwable? = null
     try {
-      extractEntries(tar, dest, totalBytes, onProgress, runtimeRoot, limits)
+      extractEntries(tar, dest, totalBytes, onProgress, runtimeRoot, limits, guestLinks)
     } catch (t: Throwable) {
       primary = t
       throw t
@@ -171,6 +172,7 @@ object SnapshotExtractor {
     onProgress: (Long, Long) -> Unit,
     runtimeRoot: File,
     limits: Limits,
+    guestLinks: Boolean = false,
   ) {
     val destCanon = dest.canonicalPath
     val runtimeCanon = try {
@@ -209,7 +211,9 @@ object SnapshotExtractor {
         entry.isSymbolicLink -> {
           target.parentFile?.mkdirs()
           val linkPath = java.nio.file.Paths.get(entry.linkName)
-          if (!isLinkTargetAllowed(entry.linkName, target.parentFile, destCanon, runtimeCanon)) {
+          // 客体 rootfs 的绝对链接（/bin/sh -> /usr/bin/dash）在宿主看来指向不存在的位置，
+          // 它们只在该客体的命名空间里成立；归档是固定摘要的可信输入，这里按原文保留。
+          if (!guestLinks && !isLinkTargetAllowed(entry.linkName, target.parentFile, destCanon, runtimeCanon)) {
             Log.w("dsh-snap", "skipping unsafe symlink: " + entry.name + " -> " + entry.linkName)
             entry = tar.nextEntry
             continue

@@ -1601,12 +1601,11 @@ class EngineManager(private val context: Context, private val pickToken: String?
   /** boot-mode.json 未开启时返回 null；开启后由 LinuxGuestBoot 决定可启动或拒绝。 */
   private fun guestBootLaunch(port: Int): LinuxGuestBoot.Result? {
     val linuxEnvironment = File(context.filesDir, "linux-environment")
-    if (LinuxGuestBoot.mode(linuxEnvironment, LinuxGuestBoot.runtimeInstalled(linuxEnvironment)) != LinuxGuestBoot.MODE_LINUX) return null
+    if (LinuxGuestBoot.mode(linuxEnvironment, LinuxGuestBoot.installed(context.filesDir)) != LinuxGuestBoot.MODE_LINUX) return null
     return LinuxGuestBoot.resolve(
       LinuxGuestBoot.Paths(
-        runtimeRoot = File(linuxEnvironment, "runtime"),
+        filesDir = context.filesDir,
         nativeLibraryDir = File(context.applicationInfo.nativeLibraryDir),
-        engineDir = File(context.filesDir, "engine"),
         homeDir = homeDir,
         port = port,
       ),

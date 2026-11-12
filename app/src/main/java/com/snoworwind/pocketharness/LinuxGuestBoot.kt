@@ -28,27 +28,17 @@ internal object LinuxGuestBoot {
     data class Refused(val code: String, val detail: String) : Result()
   }
 
-  data class Paths(
-    val runtimeRoot: File,
-    val nativeLibraryDir: File,
-    val engineDir: File,
-    val homeDir: File,
-    val port: Int,
-  )
-
   /**
-   * 启动模式：
-   * - boot-mode.json 显式写 `linux`/`termux` 时以它为准；
-   * - 文件缺失时，装了 Linux 实例就走客体（本轮目标“PRoot 下的纯 Linux”），没装就走 Termux；
-   * - 文件损坏按 Termux 处理，避免一个坏文件让应用起不来。
+   * 启动模式：boot-mode.json 显式写 `termux`/`linux` 时以它为准；文件缺失时按实例是否就绪决定，
+   * 文件损坏按 Termux 处理，避免坏文件让应用起不来。
    */
   fun mode(linuxEnvironment: File, runtimeInstalled: Boolean): String {
     val file = File(linuxEnvironment, PREFERENCE_FILE)
     if (!file.isFile) return if (runtimeInstalled) MODE_LINUX else MODE_TERMUX
     return try {
       when (JSONObject(file.readText()).optString("mode")) {
-        MODE_LINUX -> MODE_LINUX
         MODE_TERMUX -> MODE_TERMUX
+        MODE_LINUX -> MODE_LINUX
         else -> if (runtimeInstalled) MODE_LINUX else MODE_TERMUX
       }
     } catch (_: Exception) {
@@ -56,57 +46,46 @@ internal object LinuxGuestBoot {
     }
   }
 
-  fun runtimeInstalled(linuxEnvironment: File): Boolean =
-    File(linuxEnvironment, "runtime/active.json").isFile
+  data class Paths(
+    val filesDir: File,
+    val nativeLibraryDir: File,
+    val homeDir: File,
+    val port: Int,
+  )
 
+  /** 读取/落地内置实例；未安装时由调用方决定是否解包。 */
   fun resolve(paths: Paths): Result {
-    val active = File(paths.runtimeRoot, "active.json")
-    if (!active.isFile) return Result.Refused("linux-guest-not-installed", "active.json 不存在")
-    val record = try {
-      JSONObject(active.readText())
-    } catch (error: Exception) {
-      return Result.Refused("linux-guest-install-corrupt", "active.json 无法解析：${error.message}")
+    val instance = when (val opened = LinuxInstanceInstaller.open(paths.filesDir)) {
+      is LinuxInstanceInstaller.Result.Ready -> opened.instance
+      is LinuxInstanceInstaller.Result.Failed -> return Result.Refused(opened.code, opened.detail)
     }
-    if (record.optInt("schemaVersion", -1) != ACTIVE_SCHEMA) {
-      return Result.Refused("linux-guest-install-corrupt", "active.json schemaVersion 不是 $ACTIVE_SCHEMA")
-    }
-    val instanceId = record.optString("instanceId")
-    val nodeKey = record.optString("nodeKey")
-    if (!SAFE_ID.matches(instanceId) || !SAFE_ID.matches(nodeKey)) {
-      return Result.Refused("linux-guest-install-corrupt", "active.json 的实例或 Node 键非法")
-    }
-
-    val instance = File(paths.runtimeRoot, "instances/$instanceId")
-    val rootfs = File(instance, "rootfs")
     val proot = File(paths.nativeLibraryDir, "libpocketharness_proot.so")
     val loader = File(paths.nativeLibraryDir, "libpocketharness_proot_loader.so")
-    val node = File(paths.runtimeRoot, "shared/node/$nodeKey/arm64/bin/node")
-    val engineEntry = File(paths.engineDir, ENGINE_ENTRY)
-    val addon = File(paths.engineDir, "@deepseek-ai/dsh/node_modules/$ADDON_PACKAGE/bin/glibc/system.node")
-    val resolv = File(instance, "proot-tmp/resolv.conf")
-
+    val engineEntry = File(instance.engine, ENGINE_ENTRY)
+    val addon = File(instance.engine, "@deepseek-ai/dsh/node_modules/$ADDON_PACKAGE/bin/glibc/system.node")
     for ((file, code) in listOf(
-      rootfs to "linux-guest-install-incomplete",
       proot to "linux-guest-native-missing",
       loader to "linux-guest-native-missing",
-      node to "linux-guest-node-missing",
+      instance.rootfs to "linux-instance-incomplete",
+      instance.node to "linux-instance-incomplete",
       engineEntry to "linux-guest-engine-missing",
       addon to "linux-guest-addon-missing",
     )) {
       if (!file.exists()) return Result.Refused(code, "缺少 ${file.absolutePath}")
     }
+    val prootTmp = File(instance.root, "proot-tmp").apply { mkdirs() }
+    val shm = File(instance.root, "dev-shm").apply { mkdirs() }
 
     val binds = mutableListOf(
       "-b", "/dev/null", "-b", "/dev/zero", "-b", "/dev/random", "-b", "/dev/urandom",
-      "-b", "${instance.absolutePath}/dev-shm:/dev/shm",
-      "-b", "${node.absolutePath}:${node.absolutePath}",
-      "-b", "${paths.engineDir.absolutePath}:$GUEST_ENGINE_ROOT",
+      "-b", "${shm.absolutePath}:/dev/shm",
+      "-b", "${instance.node.absolutePath}:${instance.node.absolutePath}",
+      "-b", "${instance.engine.absolutePath}:$GUEST_ENGINE_ROOT",
       "-b", "${paths.homeDir.absolutePath}:${paths.homeDir.absolutePath}",
     )
-    if (resolv.isFile) binds.addAll(listOf("-b", "${resolv.absolutePath}:/etc/resolv.conf"))
 
     val argv = mutableListOf(
-      proot.absolutePath, "-r", rootfs.absolutePath, "-0",
+      proot.absolutePath, "-r", instance.rootfs.absolutePath, "-0",
       "-w", paths.homeDir.absolutePath, "--sysvipc", "--kill-on-exit",
     )
     argv.addAll(binds)
@@ -118,20 +97,23 @@ internal object LinuxGuestBoot {
         "TMPDIR=/tmp",
         "LANG=C.UTF-8",
         // require-builtin 的降级路径需要 V8 内部绑定；Termux 侧同样带这个开关。
-        node.absolutePath, "--expose-internals", "$GUEST_ENGINE_ROOT/$ENGINE_ENTRY", "web",
+        instance.node.absolutePath, "--expose-internals", "$GUEST_ENGINE_ROOT/$ENGINE_ENTRY", "web",
         "--port", paths.port.toString(), "--no-open",
       ),
     )
 
     val env = mapOf(
       "PROOT_LOADER" to loader.absolutePath,
-      "PROOT_TMP_DIR" to File(instance, "proot-tmp").absolutePath,
+      "PROOT_TMP_DIR" to prootTmp.absolutePath,
       // Android 16/6.6 上 PRoot 的 seccomp 加速器会间歇性 exit 182，客体执行统一关掉它。
       "PROOT_NO_SECCOMP" to "1",
       "LD_LIBRARY_PATH" to paths.nativeLibraryDir.absolutePath,
     )
     return Result.Ready(Launch(argv = argv, env = env, workingDirectory = paths.homeDir))
   }
+
+  /** 实例是否已就绪（不解包，只读结构）。 */
+  fun installed(filesDir: File): Boolean = LinuxInstanceInstaller.open(filesDir) is LinuxInstanceInstaller.Result.Ready
 
   private val SAFE_ID = Regex("[A-Za-z0-9][A-Za-z0-9._-]*")
 }
