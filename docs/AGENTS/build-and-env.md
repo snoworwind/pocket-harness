@@ -425,3 +425,6 @@ engine 的 checkout/upstream/overlay/patches/build/deploy 步骤集中到 `scrip
 自动发现回归。该报告是盘点，不代表宿主程序已经从可写目录迁出或完成设备验收。
 
 实验分支 Linux 资产链使用 NDK_ROOT 指向固定官方 NDK r30，通过 build-proot-source.py 和 prepare-proot-source-backend.py 自编译后端，不再读取 Termux 后端包。主运行时构建不受此切换覆盖。来源协议、归档与许可证见 [PRoot 源码构建](PROOT-SOURCE-BUILD.md)。
+
+用户授权的 ARM64 本地 Linux 实验构建使用 `node scripts/source-build/run-local-source-chain.mjs --experimental-linux`，
+只接受 `codex/linux-runtime-experiment`，在 GitHub Actions 中不可启用。产物使用临时签名，仅供 Android 16 AVD 测试；不得合并 main 或作为正式发布产物。

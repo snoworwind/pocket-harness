@@ -127,6 +127,20 @@ test('source workflow rejects tags, PR refs and feature branches before checkout
     ...process.env, SOURCE_REF: 'refs/heads/codex/candidate', DSH_ABI: 'x86_64', DSH_LOCAL_X86_QA: '1',
   } })
   assert.equal(x86WrongBranch.status, 1)
+  for (const [actions, enabled, ref, abi, expected] of [
+    ['', '1', 'refs/heads/codex/linux-runtime-experiment', 'arm64', 0],
+    ['true', '1', 'refs/heads/codex/linux-runtime-experiment', 'arm64', 1],
+    ['', '', 'refs/heads/codex/linux-runtime-experiment', 'arm64', 1],
+    ['', '1', 'refs/heads/codex/candidate', 'arm64', 1],
+    ['', '1', 'refs/heads/codex/linux-runtime-experiment', 'x86_64', 1],
+  ]) {
+    const result = spawnSync('/bin/bash', ['-e', '-c', run], { env: {
+      ...process.env, GITHUB_ACTIONS: actions, DSH_LOCAL_LINUX_QA: enabled,
+      SOURCE_REF: ref, DSH_ABI: abi, DSH_LOCAL_X86_QA: '',
+    } })
+    assert.equal(result.status, expected, `${actions}/${enabled}/${ref}/${abi}`)
+  }
+
 })
 
 test('both wrapper modes fail the contract if signing secrets are not passed', () => {

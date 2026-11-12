@@ -54,6 +54,7 @@ jobs:
             exit 1
           fi
           if [[ "$SOURCE_REF" == refs/heads/main ]]; then exit 0; fi
+          if [[ "${GITHUB_ACTIONS:-}" != true && "${DSH_LOCAL_LINUX_QA:-}" == 1 && "$DSH_ABI" == arm64 && "$SOURCE_REF" == refs/heads/codex/linux-runtime-experiment ]]; then exit 0; fi
           if [[ "${DSH_ABI:-arm64}" == x86_64 && "${DSH_LOCAL_X86_QA:-}" == 1 && "$SOURCE_REF" == refs/heads/codex/x86-* ]]; then exit 0; fi
           echo "::error::source builds require main"
           exit 1
@@ -154,6 +155,7 @@ jobs:
             exit 1
           fi
           if [[ "$SOURCE_REF" == refs/heads/main ]]; then exit 0; fi
+          if [[ "${GITHUB_ACTIONS:-}" != true && "${DSH_LOCAL_LINUX_QA:-}" == 1 && "$DSH_ABI" == arm64 && "$SOURCE_REF" == refs/heads/codex/linux-runtime-experiment ]]; then exit 0; fi
           if [[ "${DSH_ABI:-arm64}" == x86_64 && "${DSH_LOCAL_X86_QA:-}" == 1 && "$SOURCE_REF" == refs/heads/codex/x86-* ]]; then exit 0; fi
           echo "::error::source builds require main"
           exit 1

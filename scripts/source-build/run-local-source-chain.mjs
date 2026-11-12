@@ -264,7 +264,7 @@ function main() {
     for (const item of selected) console.log(`  将执行 [${item.stage}] ${item.name}`)
     process.exit(0)
   }
-  try { assertMaintainedSource(ROOT, { abi, allowX86Qa: abi === 'x86_64' }) } catch (error) {
+  try { assertMaintainedSource(ROOT, { abi, allowX86Qa: abi === 'x86_64', allowLinuxExperiment: flag('--experimental-linux') && process.env.GITHUB_ACTIONS !== 'true' }) } catch (error) {
     console.error(error.message)
     process.exit(2)
   }
@@ -305,6 +305,7 @@ function main() {
     GITHUB_SHA: repoCommit,
     SOURCE_REF: sourceRef,
     DSH_ABI: abi,
+    DSH_LOCAL_LINUX_QA: flag('--experimental-linux') ? '1' : '',
     ...(abi === 'x86_64' ? { DSH_LOCAL_X86_QA: '1' } : {}),
     RUNNER_TEMP: join(buildRoot, '.deploy-tmp', 'runner-temp'),
     GITHUB_ENV: join(buildRoot, '.deploy-tmp', 'local-github-env'),
