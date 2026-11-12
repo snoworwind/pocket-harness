@@ -17,6 +17,7 @@ SOURCE_PROOF_INPUTS=(
   scripts/snapshot-config/preinstall.json scripts/lib/shell.mjs
   scripts/source-build/build-proot-source.py scripts/source-build/proot-source
   scripts/source-build/inventory-native-runtime.py scripts/source-build/test_native_runtime_inventory.py
+  scripts/source-build/guest-tools.json scripts/source-build/verify-guest-tools.py scripts/source-build/build-guest-addons.py
   scripts/source-build/proot_source_provenance.py
   scripts/source-build/prepare-proot-source-backend.py scripts/source-build/test_proot_source_build.py
   scripts/source-build/test_proot_source_backend.py scripts/source-build/ensure-no-rootfs-mounts.py \
@@ -58,8 +59,10 @@ export XZ_OPT="-T$THREADS -6"
 EPOCH=$(git show -s --format=%ct HEAD)
 NODE_VERSION=$(node -p 'require("./scripts/source-build/linux-inputs.json").node')
 NODE_SHA=$(node -p 'require("./scripts/source-build/linux-inputs.json").nodeSha256')
+NODE_HEADERS_SHA=$(node -p 'require("./scripts/source-build/linux-inputs.json").nodeHeadersSha256')
 DEBIAN_SNAPSHOT=$(node -p 'require("./scripts/source-build/linux-inputs.json").debianSnapshot')
 DEBIAN_SHA=$(node -p 'require("./scripts/source-build/linux-inputs.json").debianInReleaseSha256')
+GUEST_TOOLS=$(node -p 'require("./scripts/source-build/guest-tools.json").packages.join(",")')
 : "${DEBIAN_KEYRING:?DEBIAN_KEYRING must identify the pinned Debian archive keyring}"
 : "${NDK_ROOT:?NDK_ROOT must identify the pinned Android NDK r30}"
 test -s "$DEBIAN_KEYRING"
@@ -113,7 +116,7 @@ REAL_WGET=$(command -v wget)
 [[ "$REAL_WGET" == /* && -x "$REAL_WGET" ]] || { echo 'Cannot resolve the real wget executable' >&2; exit 1; }
 sudo env "PATH=$DEBOOTSTRAP_BIN:$PATH" "DEBOOTSTRAP_REAL_WGET=$REAL_WGET" debootstrap --arch=arm64 --foreign --variant=minbase --components=main \
   --keyring="$DEBIAN_KEYRING" \
-  --include=apt,bash,ca-certificates,debian-archive-keyring,libstdc++6 trixie "$ROOTFS" "$DEBIAN_SNAPSHOT"
+  --include="apt,bash,ca-certificates,debian-archive-keyring,libstdc++6,$GUEST_TOOLS" trixie "$ROOTFS" "$DEBIAN_SNAPSHOT"
 sudo install -m755 /usr/bin/qemu-aarch64-static "$ROOTFS/usr/bin/qemu-aarch64-static"
 sudo mkdir -p "$ROOTFS/dev" "$ROOTFS/proc"
 cleanup_mounts() {
@@ -128,8 +131,26 @@ sudo mount -t proc proc "$ROOTFS/proc"
 sudo chroot "$ROOTFS" /debootstrap/debootstrap --second-stage
 test "$(sudo chroot "$ROOTFS" dpkg --print-architecture)" = arm64
 sudo chroot "$ROOTFS" /bin/bash -ec '/lib/ld-linux-aarch64.so.1 --version; /usr/bin/apt-get --version'
+python3 scripts/source-build/verify-guest-tools.py --rootfs "$ROOTFS" \
+  --report "$WORK/provenance/guest-tools-report.json" --qemu /usr/bin/qemu-aarch64-static
 cleanup_mounts
 trap - EXIT
+
+# Guest engine addons: assembled here because the Android engine tree is pruned for
+# linux-arm64 at pack time, so a Debian/glibc guest has none otherwise.
+HEADERS_ARCHIVE="$WORK/input/node-v$NODE_VERSION-headers.tar.gz"
+bash scripts/source-build/retry-curl.sh --fail --location --retry 8 --retry-max-time 600 "https://nodejs.org/dist/v$NODE_VERSION/node-v$NODE_VERSION-headers.tar.gz" -o "$HEADERS_ARCHIVE"
+printf '%s  %s\n' "$NODE_HEADERS_SHA" "$HEADERS_ARCHIVE" | sha256sum --check --strict
+mkdir -p "$WORK/input/node-headers"
+tar -xzf "$HEADERS_ARCHIVE" -C "$WORK/input/node-headers"
+python3 scripts/source-build/build-guest-addons.py \
+  --harness .deploy-tmp/deepseek-harness \
+  --headers "$WORK/input/node-headers/node-v$NODE_VERSION/include/node" \
+  --cc aarch64-linux-gnu-gcc \
+  --out "$WORK/guest-addons" | tee "$WORK/provenance/guest-addons-build.log"
+cp "$WORK/guest-addons/guest-addons.json" "$WORK/provenance/guest-addons.json"
+sudo install -D -m755 "$WORK/guest-addons/system.node" \
+  "$ROOTFS/opt/pocket-harness/addons/linux-arm64/system.node"
 sudo rm -f "$ROOTFS/usr/bin/qemu-aarch64-static"
 sudo chroot "$ROOTFS" dpkg-query -W '-f=${binary:Package}\t${Version}\t${source:Package}\t${source:Version}\n' > "$WORK/provenance/debian-packages.tsv"
 mkdir -p "$WORK/provenance"

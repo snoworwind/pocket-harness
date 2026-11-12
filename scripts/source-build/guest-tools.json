@@ -1,0 +1,469 @@
+{
+  "schemaVersion": 1,
+  "comment": "Guest (Debian/glibc) tool baseline for the PRoot runtime. Every entry names the Debian package that provides the command and the probe used to prove it runs inside the guest. Commands must work without Termux, without the Android shell, and without network at runtime.",
+  "packages": [
+    "bash",
+    "coreutils",
+    "findutils",
+    "grep",
+    "sed",
+    "gawk",
+    "tar",
+    "gzip",
+    "xz-utils",
+    "bzip2",
+    "zstd",
+    "zip",
+    "unzip",
+    "file",
+    "less",
+    "procps",
+    "psmisc",
+    "util-linux",
+    "diffutils",
+    "patch",
+    "bc",
+    "time",
+    "curl",
+    "wget",
+    "ca-certificates",
+    "openssh-client",
+    "rsync",
+    "socat",
+    "netcat-openbsd",
+    "dnsutils",
+    "iproute2",
+    "git",
+    "vim",
+    "nano",
+    "jq",
+    "sqlite3",
+    "python3",
+    "python3-pip",
+    "python3-venv",
+    "perl",
+    "ruby",
+    "gcc",
+    "g++",
+    "make",
+    "pkg-config",
+    "cmake",
+    "ninja-build",
+    "build-essential",
+    "libssl-dev",
+    "zlib1g-dev",
+    "libffi-dev",
+    "autoconf",
+    "automake",
+    "libtool",
+    "bison",
+    "flex",
+    "gdb",
+    "strace",
+    "lsof",
+    "tmux",
+    "htop",
+    "zsh",
+    "dash",
+    "tree",
+    "ripgrep",
+    "openssl",
+    "gnupg",
+    "man-db",
+    "locales",
+    "busybox-static"
+  ],
+  "commands": [
+    {
+      "command": "bash",
+      "args": [
+        "--version"
+      ],
+      "package": "bash"
+    },
+    {
+      "command": "ls",
+      "args": [
+        "--version"
+      ],
+      "package": "coreutils"
+    },
+    {
+      "command": "find",
+      "args": [
+        "--version"
+      ],
+      "package": "findutils"
+    },
+    {
+      "command": "grep",
+      "args": [
+        "--version"
+      ],
+      "package": "grep"
+    },
+    {
+      "command": "sed",
+      "args": [
+        "--version"
+      ],
+      "package": "sed"
+    },
+    {
+      "command": "awk",
+      "args": [
+        "--version"
+      ],
+      "package": "gawk"
+    },
+    {
+      "command": "tar",
+      "args": [
+        "--version"
+      ],
+      "package": "tar"
+    },
+    {
+      "command": "gzip",
+      "args": [
+        "--version"
+      ],
+      "package": "gzip"
+    },
+    {
+      "command": "xz",
+      "args": [
+        "--version"
+      ],
+      "package": "xz-utils"
+    },
+    {
+      "command": "bzip2",
+      "args": [
+        "--version"
+      ],
+      "package": "bzip2"
+    },
+    {
+      "command": "zstd",
+      "args": [
+        "--version"
+      ],
+      "package": "zstd"
+    },
+    {
+      "command": "zip",
+      "args": [
+        "-v"
+      ],
+      "package": "zip"
+    },
+    {
+      "command": "unzip",
+      "args": [
+        "-v"
+      ],
+      "package": "unzip"
+    },
+    {
+      "command": "file",
+      "args": [
+        "--version"
+      ],
+      "package": "file"
+    },
+    {
+      "command": "less",
+      "args": [
+        "--version"
+      ],
+      "package": "less"
+    },
+    {
+      "command": "ps",
+      "args": [
+        "--version"
+      ],
+      "package": "procps"
+    },
+    {
+      "command": "killall",
+      "args": [
+        "--version"
+      ],
+      "package": "psmisc"
+    },
+    {
+      "command": "mountpoint",
+      "args": [
+        "--version"
+      ],
+      "package": "util-linux"
+    },
+    {
+      "command": "diff",
+      "args": [
+        "--version"
+      ],
+      "package": "diffutils"
+    },
+    {
+      "command": "patch",
+      "args": [
+        "--version"
+      ],
+      "package": "patch"
+    },
+    {
+      "command": "bc",
+      "args": [
+        "--version"
+      ],
+      "package": "bc"
+    },
+    {
+      "command": "curl",
+      "args": [
+        "--version"
+      ],
+      "package": "curl"
+    },
+    {
+      "command": "wget",
+      "args": [
+        "--version"
+      ],
+      "package": "wget"
+    },
+    {
+      "command": "ssh",
+      "args": [
+        "-V"
+      ],
+      "package": "openssh-client",
+      "allowExitCodes": [
+        0
+      ]
+    },
+    {
+      "command": "rsync",
+      "args": [
+        "--version"
+      ],
+      "package": "rsync"
+    },
+    {
+      "command": "socat",
+      "args": [
+        "-V"
+      ],
+      "package": "socat"
+    },
+    {
+      "command": "nc",
+      "args": [
+        "-h"
+      ],
+      "package": "netcat-openbsd",
+      "allowExitCodes": [
+        1
+      ]
+    },
+    {
+      "command": "dig",
+      "args": [
+        "-v"
+      ],
+      "package": "dnsutils"
+    },
+    {
+      "command": "ip",
+      "args": [
+        "-V"
+      ],
+      "package": "iproute2"
+    },
+    {
+      "command": "git",
+      "args": [
+        "--version"
+      ],
+      "package": "git"
+    },
+    {
+      "command": "vim",
+      "args": [
+        "--version"
+      ],
+      "package": "vim"
+    },
+    {
+      "command": "nano",
+      "args": [
+        "--version"
+      ],
+      "package": "nano"
+    },
+    {
+      "command": "jq",
+      "args": [
+        "--version"
+      ],
+      "package": "jq"
+    },
+    {
+      "command": "sqlite3",
+      "args": [
+        "--version"
+      ],
+      "package": "sqlite3"
+    },
+    {
+      "command": "python3",
+      "args": [
+        "--version"
+      ],
+      "package": "python3"
+    },
+    {
+      "command": "pip3",
+      "args": [
+        "--version"
+      ],
+      "package": "python3-pip"
+    },
+    {
+      "command": "perl",
+      "args": [
+        "--version"
+      ],
+      "package": "perl"
+    },
+    {
+      "command": "ruby",
+      "args": [
+        "--version"
+      ],
+      "package": "ruby"
+    },
+    {
+      "command": "gcc",
+      "args": [
+        "--version"
+      ],
+      "package": "gcc"
+    },
+    {
+      "command": "g++",
+      "args": [
+        "--version"
+      ],
+      "package": "g++"
+    },
+    {
+      "command": "make",
+      "args": [
+        "--version"
+      ],
+      "package": "make"
+    },
+    {
+      "command": "pkg-config",
+      "args": [
+        "--version"
+      ],
+      "package": "pkg-config"
+    },
+    {
+      "command": "cmake",
+      "args": [
+        "--version"
+      ],
+      "package": "cmake"
+    },
+    {
+      "command": "ninja",
+      "args": [
+        "--version"
+      ],
+      "package": "ninja-build"
+    },
+    {
+      "command": "gdb",
+      "args": [
+        "--version"
+      ],
+      "package": "gdb"
+    },
+    {
+      "command": "strace",
+      "args": [
+        "-V"
+      ],
+      "package": "strace"
+    },
+    {
+      "command": "lsof",
+      "args": [
+        "-v"
+      ],
+      "package": "lsof"
+    },
+    {
+      "command": "tmux",
+      "args": [
+        "-V"
+      ],
+      "package": "tmux"
+    },
+    {
+      "command": "htop",
+      "args": [
+        "--version"
+      ],
+      "package": "htop"
+    },
+    {
+      "command": "zsh",
+      "args": [
+        "--version"
+      ],
+      "package": "zsh"
+    },
+    {
+      "command": "tree",
+      "args": [
+        "--version"
+      ],
+      "package": "tree"
+    },
+    {
+      "command": "rg",
+      "args": [
+        "--version"
+      ],
+      "package": "ripgrep"
+    },
+    {
+      "command": "openssl",
+      "args": [
+        "version"
+      ],
+      "package": "openssl"
+    },
+    {
+      "command": "gpg",
+      "args": [
+        "--version"
+      ],
+      "package": "gnupg"
+    },
+    {
+      "command": "busybox",
+      "args": [
+        "--help"
+      ],
+      "package": "busybox-static"
+    }
+  ]
+}

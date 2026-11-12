@@ -15,5 +15,6 @@
   "prootSourceSha256": "30d12a6e2cc4147123756ff58edea262d3083bbc238c12d0ab9b39e3d1c40852",
   "termuxPackagesRecipeCommit": "b734bc49dc0eedb2c454e1c5d3c48d35d81d4bc9",
   "runtimeVersion": "0.6.2",
-  "minimumAppVersion": "0.14.0"
+  "minimumAppVersion": "0.14.0",
+  "nodeHeadersSha256": "00e9f08b9057f9f5428387a5ffd496e53f274565b40b144b7ba876700755352a"
 }
