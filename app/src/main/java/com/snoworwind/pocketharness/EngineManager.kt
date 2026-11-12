@@ -1606,8 +1606,7 @@ class EngineManager(private val context: Context, private val pickToken: String?
       LinuxGuestBoot.Paths(
         runtimeRoot = File(linuxEnvironment, "runtime"),
         nativeLibraryDir = File(context.applicationInfo.nativeLibraryDir),
-        engineUsr = usrDir,
-        engineBin = dshBin,
+        engineDir = File(context.filesDir, "engine"),
         homeDir = homeDir,
         port = port,
       ),

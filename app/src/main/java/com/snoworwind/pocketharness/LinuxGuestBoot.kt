@@ -17,6 +17,9 @@ internal object LinuxGuestBoot {
   private const val ACTIVE_SCHEMA = 1
   private const val GUEST_PATH = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
   private const val ADDON_PACKAGE = "@deepseek-ai/node-addon-system-linux-arm64"
+  /** 客体里的引擎树挂载点；引擎 JS 与 addon 都从这棵宿主树 bind 进去。 */
+  const val GUEST_ENGINE_ROOT = "/opt/dsh"
+  const val ENGINE_ENTRY = "@deepseek-ai/dsh/lib/bin.js"
 
   data class Launch(val argv: List<String>, val env: Map<String, String>, val workingDirectory: File)
 
@@ -28,8 +31,7 @@ internal object LinuxGuestBoot {
   data class Paths(
     val runtimeRoot: File,
     val nativeLibraryDir: File,
-    val engineUsr: File,
-    val engineBin: File,
+    val engineDir: File,
     val homeDir: File,
     val port: Int,
   )
@@ -79,8 +81,8 @@ internal object LinuxGuestBoot {
     val proot = File(paths.nativeLibraryDir, "libpocketharness_proot.so")
     val loader = File(paths.nativeLibraryDir, "libpocketharness_proot_loader.so")
     val node = File(paths.runtimeRoot, "shared/node/$nodeKey/arm64/bin/node")
-    val addonPackage = File(rootfs, "opt/pocket-harness/addons/$ADDON_PACKAGE")
-    val addon = File(addonPackage, "bin/glibc/system.node")
+    val engineEntry = File(paths.engineDir, ENGINE_ENTRY)
+    val addon = File(paths.engineDir, "@deepseek-ai/dsh/node_modules/$ADDON_PACKAGE/bin/glibc/system.node")
     val resolv = File(instance, "proot-tmp/resolv.conf")
 
     for ((file, code) in listOf(
@@ -88,7 +90,7 @@ internal object LinuxGuestBoot {
       proot to "linux-guest-native-missing",
       loader to "linux-guest-native-missing",
       node to "linux-guest-node-missing",
-      paths.engineBin to "linux-guest-engine-missing",
+      engineEntry to "linux-guest-engine-missing",
       addon to "linux-guest-addon-missing",
     )) {
       if (!file.exists()) return Result.Refused(code, "缺少 ${file.absolutePath}")
@@ -98,8 +100,7 @@ internal object LinuxGuestBoot {
       "-b", "/dev/null", "-b", "/dev/zero", "-b", "/dev/random", "-b", "/dev/urandom",
       "-b", "${instance.absolutePath}/dev-shm:/dev/shm",
       "-b", "${node.absolutePath}:${node.absolutePath}",
-      "-b", "${paths.engineUsr.absolutePath}:${paths.engineUsr.absolutePath}",
-      "-b", "${addonPackage.absolutePath}:${paths.engineUsr.absolutePath}/lib/node_modules/$ADDON_PACKAGE",
+      "-b", "${paths.engineDir.absolutePath}:$GUEST_ENGINE_ROOT",
       "-b", "${paths.homeDir.absolutePath}:${paths.homeDir.absolutePath}",
     )
     if (resolv.isFile) binds.addAll(listOf("-b", "${resolv.absolutePath}:/etc/resolv.conf"))
@@ -117,7 +118,7 @@ internal object LinuxGuestBoot {
         "TMPDIR=/tmp",
         "LANG=C.UTF-8",
         // require-builtin 的降级路径需要 V8 内部绑定；Termux 侧同样带这个开关。
-        node.absolutePath, "--expose-internals", paths.engineBin.absolutePath, "web",
+        node.absolutePath, "--expose-internals", "$GUEST_ENGINE_ROOT/$ENGINE_ENTRY", "web",
         "--port", paths.port.toString(), "--no-open",
       ),
     )

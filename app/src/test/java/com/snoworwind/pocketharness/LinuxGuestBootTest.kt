@@ -27,8 +27,8 @@ class LinuxGuestBootTest {
     val root = File(files, "linux-environment/runtime")
     val instance = File(root, "instances/debian-minimal-abc")
     val nodeKey = "sha256-deadbeef"
-    val engineUsr = File(files, "usr")
-    val addon = File(instance, "rootfs/opt/pocket-harness/addons/@deepseek-ai/node-addon-system-linux-arm64")
+    val engineUsr = File(files, "engine")
+    val addon = File(engineUsr, "@deepseek-ai/dsh/node_modules/@deepseek-ai/node-addon-system-linux-arm64")
     root.mkdirs()
     File(root, "active.json").writeText(
       """{"schemaVersion":1,"instanceId":"debian-minimal-abc","runtimeId":"debian-minimal","version":"0.6.2","architecture":"arm64","nodeKey":"$nodeKey","activatedAt":"2026-11-12T00:00:00Z"}""",
@@ -37,13 +37,12 @@ class LinuxGuestBootTest {
     touch(File(native, "libpocketharness_proot.so"))
     touch(File(native, "libpocketharness_proot_loader.so"))
     touch(File(root, "shared/node/$nodeKey/arm64/bin/node"))
-    touch(File(engineUsr, "lib/node_modules/@deepseek-ai/dsh/lib/bin.js"))
+    touch(File(engineUsr, "@deepseek-ai/dsh/lib/bin.js"))
     touch(File(addon, "bin/glibc/system.node"))
     return LinuxGuestBoot.Paths(
       runtimeRoot = root,
       nativeLibraryDir = native,
-      engineUsr = engineUsr,
-      engineBin = File(engineUsr, "lib/node_modules/@deepseek-ai/dsh/lib/bin.js"),
+      engineDir = engineUsr,
       homeDir = File(files, "home"),
       port = 3080,
     )
@@ -61,7 +60,7 @@ class LinuxGuestBootTest {
   @Test
   fun refusesWhenTheGuestAddonIsMissing() {
     val paths = fixture()
-    File(paths.runtimeRoot, "instances/debian-minimal-abc/rootfs/opt/pocket-harness/addons/@deepseek-ai/node-addon-system-linux-arm64/bin/glibc/system.node").delete()
+    File(paths.engineDir, "@deepseek-ai/dsh/node_modules/@deepseek-ai/node-addon-system-linux-arm64/bin/glibc/system.node").delete()
     val result = LinuxGuestBoot.resolve(paths)
     assertEquals("linux-guest-addon-missing", (result as LinuxGuestBoot.Result.Refused).code)
   }
@@ -83,8 +82,8 @@ class LinuxGuestBootTest {
     assertTrue(argv.containsAll(listOf("-r", File(paths.runtimeRoot, "instances/debian-minimal-abc/rootfs").absolutePath, "-0")))
     assertTrue(argv.contains("--kill-on-exit"))
     assertTrue(argv.windowed(2).any { (a, b) -> a == "--port" && b == "3080" })
-    assertTrue(argv.any { it.endsWith("/lib/node_modules/@deepseek-ai/dsh/lib/bin.js") })
-    assertTrue(argv.any { it.endsWith("node-addon-system-linux-arm64") })
+    assertTrue(argv.any { it == "/opt/dsh/@deepseek-ai/dsh/lib/bin.js" })
+    assertTrue(argv.contains("${paths.engineDir.absolutePath}:/opt/dsh"))
     assertEquals("1", ready.launch.env["PROOT_NO_SECCOMP"])
     assertEquals(paths.nativeLibraryDir.absolutePath, ready.launch.env["LD_LIBRARY_PATH"])
   }
