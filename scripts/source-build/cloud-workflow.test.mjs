@@ -127,18 +127,23 @@ test('source workflow rejects tags, PR refs and feature branches before checkout
     ...process.env, SOURCE_REF: 'refs/heads/codex/candidate', DSH_ABI: 'x86_64', DSH_LOCAL_X86_QA: '1',
   } })
   assert.equal(x86WrongBranch.status, 1)
-  for (const [actions, enabled, ref, abi, expected] of [
-    ['', '1', 'refs/heads/codex/linux-runtime-experiment', 'arm64', 0],
-    ['true', '1', 'refs/heads/codex/linux-runtime-experiment', 'arm64', 1],
-    ['', '', 'refs/heads/codex/linux-runtime-experiment', 'arm64', 1],
-    ['', '1', 'refs/heads/codex/candidate', 'arm64', 1],
-    ['', '1', 'refs/heads/codex/linux-runtime-experiment', 'x86_64', 1],
+  for (const [actions, enabled, ref, abi, experiment, expected] of [
+    ['', '1', 'refs/heads/codex/linux-runtime-experiment', 'arm64', '', 0],
+    ['true', '1', 'refs/heads/codex/linux-runtime-experiment', 'arm64', '', 1],
+    ['', '', 'refs/heads/codex/linux-runtime-experiment', 'arm64', '', 1],
+    ['', '1', 'refs/heads/codex/candidate', 'arm64', '', 1],
+    ['', '1', 'refs/heads/codex/linux-runtime-experiment', 'x86_64', '', 1],
+    // 云端显式分发：只对实验分支 + ARM64 + 显式开关放行，默认关闭。
+    ['true', '', 'refs/heads/codex/linux-runtime-experiment', 'arm64', 'true', 0],
+    ['true', '', 'refs/heads/codex/candidate', 'arm64', 'true', 1],
+    ['true', '', 'refs/heads/codex/linux-runtime-experiment', 'x86_64', 'true', 1],
+    ['true', '', 'refs/heads/main', 'arm64', 'false', 0],
   ]) {
     const result = spawnSync('/bin/bash', ['-e', '-c', run], { env: {
       ...process.env, GITHUB_ACTIONS: actions, DSH_LOCAL_LINUX_QA: enabled,
-      SOURCE_REF: ref, DSH_ABI: abi, DSH_LOCAL_X86_QA: '',
+      SOURCE_REF: ref, DSH_ABI: abi, DSH_LOCAL_X86_QA: '', LINUX_EXPERIMENT: experiment,
     } })
-    assert.equal(result.status, expected, `${actions}/${enabled}/${ref}/${abi}`)
+    assert.equal(result.status, expected, `${actions}/${enabled}/${ref}/${abi}/${experiment}`)
   }
 
 })

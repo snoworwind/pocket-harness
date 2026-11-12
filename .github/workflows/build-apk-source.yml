@@ -16,6 +16,10 @@ on:
         description: Faster compression for dev builds (larger snapshot, same content)
         type: boolean
         default: false
+      linux_experiment:
+        description: Allow the ARM64 Linux experiment build on its experimental branch (never main)
+        type: boolean
+        default: false
   workflow_call:
     inputs:
       abi:
@@ -33,6 +37,11 @@ on:
         type: boolean
         required: false
         default: false
+      linux_experiment:
+        description: Allow the ARM64 Linux experiment build on its experimental branch
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   contents: read
@@ -47,6 +56,7 @@ jobs:
       - name: Require the maintained source branch
         env:
           SOURCE_REF: ${{ github.ref }}
+          LINUX_EXPERIMENT: ${{ inputs.linux_experiment }}
         shell: bash
         run: |
           if [[ "$DSH_ABI" != arm64 && "$DSH_ABI" != x86_64 ]]; then
@@ -54,6 +64,7 @@ jobs:
             exit 1
           fi
           if [[ "$SOURCE_REF" == refs/heads/main ]]; then exit 0; fi
+          if [[ "${LINUX_EXPERIMENT:-false}" == true && "$DSH_ABI" == arm64 && "$SOURCE_REF" == refs/heads/codex/linux-runtime-experiment ]]; then exit 0; fi
           if [[ "${GITHUB_ACTIONS:-}" != true && "${DSH_LOCAL_LINUX_QA:-}" == 1 && "$DSH_ABI" == arm64 && "$SOURCE_REF" == refs/heads/codex/linux-runtime-experiment ]]; then exit 0; fi
           if [[ "${DSH_ABI:-arm64}" == x86_64 && "${DSH_LOCAL_X86_QA:-}" == 1 && "$SOURCE_REF" == refs/heads/codex/x86-* ]]; then exit 0; fi
           echo "::error::source builds require main"
@@ -148,6 +159,7 @@ jobs:
       - name: Require the maintained source branch
         env:
           SOURCE_REF: ${{ github.ref }}
+          LINUX_EXPERIMENT: ${{ inputs.linux_experiment }}
         shell: bash
         run: |
           if [[ "$DSH_ABI" != arm64 && "$DSH_ABI" != x86_64 ]]; then
@@ -155,6 +167,7 @@ jobs:
             exit 1
           fi
           if [[ "$SOURCE_REF" == refs/heads/main ]]; then exit 0; fi
+          if [[ "${LINUX_EXPERIMENT:-false}" == true && "$DSH_ABI" == arm64 && "$SOURCE_REF" == refs/heads/codex/linux-runtime-experiment ]]; then exit 0; fi
           if [[ "${GITHUB_ACTIONS:-}" != true && "${DSH_LOCAL_LINUX_QA:-}" == 1 && "$DSH_ABI" == arm64 && "$SOURCE_REF" == refs/heads/codex/linux-runtime-experiment ]]; then exit 0; fi
           if [[ "${DSH_ABI:-arm64}" == x86_64 && "${DSH_LOCAL_X86_QA:-}" == 1 && "$SOURCE_REF" == refs/heads/codex/x86-* ]]; then exit 0; fi
           echo "::error::source builds require main"
