@@ -89,6 +89,13 @@ Debian 13 aarch64 的 Node v24.22.0 里 `require()` 成功并导出 `tryLock`，
 - P2 的验收只覆盖“壳能在没有 Termux Node 的情况下解包、校验并启动客体 Node”，
   addon 全部可用属于 P3；两层证据分开记录。
 
+## 组件来源原则（2026-11-12 用户定例）
+
+**能用包管理器管理的，就不自己编译成原生库。** 宿主侧只有 PRoot/loader 及其 bionic 依赖
+（talloc、libandroid-shmem）必须自编译并以 `lib*.so` 放进 `nativeLibraryDir`；客体侧
+（引擎、node-pty、flock、gcc/python/git 等）一律来自 Debian apt 或 npm 固定版本包。
+这样用户 `apt install` 的软件、包管理器的升级路径、以及 ABI/补丁兼容性都由 Debian 承担。
+
 ## 客体引擎树（2026-11-12 实测）
 
 `package-guest-engine.py` 已能从 Android 引擎树装配出客体树：保留 JS、裁掉非 linux-arm64 原生变体、

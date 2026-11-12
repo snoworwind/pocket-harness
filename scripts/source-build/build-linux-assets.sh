@@ -142,71 +142,7 @@ python3 scripts/source-build/verify-guest-tools.py --rootfs "$ROOTFS" \
 cleanup_mounts
 trap - EXIT
 
-# Guest engine addons: assembled here because the Android engine tree is pruned for
-# linux-arm64 at pack time, so a Debian/glibc guest has none otherwise.
-HEADERS_ARCHIVE="$WORK/input/node-v$NODE_VERSION-headers.tar.gz"
-bash scripts/source-build/retry-curl.sh --fail --location --retry 8 --retry-max-time 600 "https://nodejs.org/dist/v$NODE_VERSION/node-v$NODE_VERSION-headers.tar.gz" -o "$HEADERS_ARCHIVE"
-printf '%s  %s\n' "$NODE_HEADERS_SHA" "$HEADERS_ARCHIVE" | sha256sum --check --strict
-mkdir -p "$WORK/input/node-headers"
-tar -xzf "$HEADERS_ARCHIVE" -C "$WORK/input/node-headers"
-python3 scripts/source-build/build-guest-addons.py \
-  --harness .deploy-tmp/deepseek-harness \
-  --headers "$WORK/input/node-headers/node-v$NODE_VERSION/include/node" \
-  --cc aarch64-linux-gnu-gcc \
-  --out "$WORK/guest-addons/system" | tee "$WORK/provenance/guest-addons-build.log"
-# node-pty has no linux prebuild; the guest engine loads it from the Debian tree, so it is
-# cross-built here instead of shipping the Android/Bionic build.
-PTY_SHA=$(node -p 'require("./scripts/source-build/linux-inputs.json").nodePty.sha256')
-PTY_VERSION=$(node -p 'require("./scripts/source-build/linux-inputs.json").nodePty.version')
-NAPI_SHA=$(node -p 'require("./scripts/source-build/linux-inputs.json").nodeAddonApi.sha256')
-NAPI_VERSION=$(node -p 'require("./scripts/source-build/linux-inputs.json").nodeAddonApi.version')
-bash scripts/source-build/retry-curl.sh --fail --location --retry 8 --retry-max-time 600 \
-  "https://registry.npmjs.org/node-pty/-/node-pty-$PTY_VERSION.tgz" -o "$WORK/input/node-pty.tgz"
-bash scripts/source-build/retry-curl.sh --fail --location --retry 8 --retry-max-time 600 \
-  "https://registry.npmjs.org/node-addon-api/-/node-addon-api-$NAPI_VERSION.tgz" -o "$WORK/input/node-addon-api.tgz"
-printf '%s  %s\n%s  %s\n' "$PTY_SHA" "$WORK/input/node-pty.tgz" "$NAPI_SHA" "$WORK/input/node-addon-api.tgz" | sha256sum --check --strict
-python3 scripts/source-build/build-guest-node-pty.py \
-  --node-pty "$WORK/input/node-pty.tgz" \
-  --node-addon-api "$WORK/input/node-addon-api.tgz" \
-  --headers "$WORK/input/node-headers/node-v$NODE_VERSION" \
-  --cc aarch64-linux-gnu-gcc --cxx aarch64-linux-gnu-g++ \
-  --node "$(command -v node)" \
-  --node-gyp "$(node -p "require('path').join(require('path').dirname(process.execPath),'..','lib','node_modules','npm','node_modules','node-gyp','bin','node-gyp.js')")" \
-  --out "$WORK/guest-addons/node-pty" | tee "$WORK/provenance/guest-node-pty-build.log"
-cp "$WORK/guest-addons/system/guest-addons.json" "$WORK/provenance/guest-addons.json"
-sudo mkdir -p "$ROOTFS/opt/pocket-harness/addons"
-sudo cp -a "$WORK/guest-addons/system" \
-  "$ROOTFS/opt/pocket-harness/addons/@deepseek-ai/node-addon-system-linux-arm64"
-sudo chmod -R a+rX "$ROOTFS/opt/pocket-harness/addons"
-sudo rm -f "$ROOTFS/usr/bin/qemu-aarch64-static"
-sudo chroot "$ROOTFS" dpkg-query -W '-f=${binary:Package}\t${Version}\t${source:Package}\t${source:Version}\n' > "$WORK/provenance/debian-packages.tsv"
-mkdir -p "$WORK/provenance"
-aarch64-linux-gnu-gcc -shared -fPIC -O2 -Wall -Wextra -Werror \
-  -ffile-prefix-map="$ROOT"=/usr/src/pocket-harness -fdebug-prefix-map="$ROOT"=/usr/src/pocket-harness \
-  -Wl,-soname,libpocket-linux-compat.so \
-  -o "$WORK/provenance/libpocket-linux-compat.so" vendor/linux-proot/compat/termfold_compat.c -ldl
-sudo install -D -m755 "$WORK/provenance/libpocket-linux-compat.so" "$ROOTFS/opt/pocket-harness/libpocket-linux-compat.so"
-sudo sh vendor/linux-proot/scripts/prepare-rootfs.sh --rootfs "$ROOTFS"
-sudo sh vendor/linux-proot/scripts/prepare-rootfs.sh --rootfs "$ROOTFS" --verify
-sha256sum "$NATIVE_LIBS"/*.so > "$WORK/provenance/linux-native-libraries.sha256"
-node scripts/source-build/check-linux-native-libraries.mjs "$WORK/native-libs"
-find "$ROOTFS/var/cache/apt/archives" -type f -name '*.deb' -print0 | sort -z | xargs -0 -r sha256sum > "$WORK/provenance/debian-debs.sha256"
-# Keep future apt updates explicit, separate from the reproducible factory image.
-sudo tee "$ROOTFS/etc/apt/sources.list" >/dev/null <<'SOURCES'
-deb https://deb.debian.org/debian trixie main
-deb https://deb.debian.org/debian trixie-updates main
-deb https://security.debian.org/debian-security trixie-security main
-SOURCES
-sudo rm -f "$ROOTFS/etc/hostname"
-sudo tee "$ROOTFS/etc/hosts" >/dev/null <<'HOSTS'
-127.0.0.1 localhost
-::1 localhost ip6-localhost ip6-loopback
-HOSTS
-sudo find "$ROOTFS/etc/apt/apt.conf.d" -maxdepth 1 -type f -iname '*proxy*' -delete
-if sudo grep -RniE 'Acquire::(http|https)::Proxy|proxy=' "$ROOTFS/etc/apt/apt.conf.d"; then
-  echo 'Unexpected host-specific apt proxy configuration in guest rootfs' >&2
-  exit 1
-fi
+# 根文件系统收尾：删掉引导残留与 apt 缓存，再按兼容脚本归一化（与既有判据同源）。
 sudo rm -rf -- "$ROOTFS/debootstrap" "$ROOTFS/var/lib/apt/lists" "$ROOTFS/var/cache/apt/archives" "$ROOTFS/etc/apt/sources.list.d"
 sudo mkdir -p "$ROOTFS/var/lib/apt/lists/partial" "$ROOTFS/var/cache/apt/archives/partial" "$ROOTFS/etc/apt/sources.list.d"
 sudo rm -f "$ROOTFS/etc/resolv.conf" "$ROOTFS/etc/machine-id" "$ROOTFS/var/lib/dbus/machine-id" "$ROOTFS/var/cache/ldconfig/aux-cache"
@@ -219,6 +155,7 @@ if grep -RniE 'Acquire::(http|https)::Proxy|proxy=' "$ROOTFS/etc/apt/apt.conf.d"
   echo 'Rootfs verification found host-specific apt proxy configuration' >&2
   exit 1
 fi
+
 sudo tar --sort=name --mtime="@$EPOCH" --owner=0 --group=0 --numeric-owner --exclude='./dev/*' --exclude='./proc/*' \
   -cJf "$STAGE/debian-minimal-aarch64.tar.xz" -C "$ROOTFS" .
 sudo chmod 644 "$STAGE/debian-minimal-aarch64.tar.xz"

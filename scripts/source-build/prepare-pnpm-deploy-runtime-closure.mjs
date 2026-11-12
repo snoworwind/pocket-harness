@@ -72,8 +72,11 @@ workspaceConfig.overrides = { ...(workspaceConfig.overrides ?? {}), koffi: '3.2.
 const supported = workspaceConfig.supportedArchitectures ?? {}
 workspaceConfig.supportedArchitectures = {
   ...supported,
-  os: [...new Set([...(supported.os ?? ['current']), 'android'])],
-  cpu: [...new Set([...(supported.cpu ?? ['current']), termuxCpu])],
+  // android：Termux/Bionic 运行时；linux：PRoot/Debian 客体运行时。两者都要装，
+  // 由客体装配器按平台裁剪，而不是让某一侧在安装期缺包。
+  os: [...new Set([...(supported.os ?? ['current']), 'android', 'linux'])],
+  cpu: [...new Set([...(supported.cpu ?? ['current']), termuxCpu, 'arm64'])],
+  libc: [...new Set([...(supported.libc ?? []), 'glibc'])],
 }
 
 const packageDirs = new Map()

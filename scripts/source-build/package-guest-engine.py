@@ -7,7 +7,7 @@ guest loads `process.platform === 'linux'` variants, so the tree has to be rewri
 
   * keep the JavaScript packages (platform independent),
   * drop every non-linux-arm64 native prebuild,
-  * install the self-built node-pty and node-addon-system (glibc/aarch64).
+  * keep the npm-provided glibc/aarch64 packages (node-pty prebuild, node-addon-system).
 
 Usage:
   python3 package-guest-engine.py --tree <node_modules> --node-pty <dir> \
@@ -84,6 +84,9 @@ def copy_engine_tree(tree, out):
 
 
 def install_node_pty(root, node_pty):
+    if node_pty is None:
+        # npm 包自带 prebuilds/linux-arm64；客体树保留它即可，不再自编译。
+        return dict(package='node-pty', pty='package-manager', state='from-npm-prebuilds')
     node_pty = Path(node_pty)
     pty_dirs = list(root.glob('@deepseek-ai/dsh/node_modules/.pnpm/node-pty@*/node_modules/node-pty'))
     if len(pty_dirs) != 1:
@@ -105,6 +108,8 @@ def install_node_pty(root, node_pty):
 
 
 def install_system_addon(root, addon):
+    if addon is None:
+        return dict(package=ADDON_PACKAGE, system='package-manager', state='from-npm-package')
     addon = Path(addon)
     source = addon / 'bin/glibc/system.node'
     if not source.is_file():
@@ -213,8 +218,8 @@ def main(argv=None):
     args = parser.parse_args(argv)
     if args.self_test:
         return self_test()
-    if not all([args.tree, args.node_pty, args.addon, args.out]):
-        parser.error('--tree, --node-pty, --addon and --out are required')
+    if not all([args.tree, args.out]):
+        parser.error('--tree and --out are required')
     try:
         receipt = assemble(args.tree, args.node_pty, args.addon, args.out, args.epoch)
     except ValueError as error:

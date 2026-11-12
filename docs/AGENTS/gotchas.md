@@ -3894,3 +3894,16 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
     **总是**走客体路径，缺实例就先由壳侧 `LinuxInstanceInstaller` 解包，再 PRoot 启动。x86_64 QA 档
     没有内置资产时才保留旧的 Termux 分支。Gradle 资产闸门改为“linux 资产或旧快照至少一个”。
     复验：Kotlin 编译通过；后续需来源 APK + AVD 实机确认首启解包与引擎启动。
+
+689. **有了 PRoot/Debian 就别再手编客体组件：能被 apt/npm 管理的交给包管理器（2026-11-12，实验分支）**
+    现象：此前把 node-pty、flock 都从源码交叉编译并塞进引擎树/rootfs，构建链多两条自编译支线。
+    真因：PRoot 让客体拥有完整的 Debian 与 npm 生态，重复自编译只会增加维护面与兼容风险；
+    **只有宿主侧（bionic、必须放 nativeLibraryDir 的 PRoot/loader 及其 bionic 依赖）无法交给包管理器**。
+    修法：
+    - 引擎树的 pnpm `supportedArchitectures` 增加 `linux`/`arm64`/`glibc`，让
+      `node-pty` prebuild 与 `@deepseek-ai/node-addon-system-linux-arm64` 正常安装；
+    - 客体装配器只做“裁掉非 linux-arm64 变体”，不再注入自编译产物；
+    - `build-linux-assets.sh` 删掉 node-pty/flock 的交叉编译与 rootfs 注入；
+    - **顺序**：客体引擎树必须在“平台死重剔除”之前装配，否则被剔掉的正是客体要用的 linux 包。
+    - 自编译脚本（`build-guest-addons.py`/`build-guest-node-pty.py`）保留为离线工具，不接链。
+    复验：链脚本语法、Python 回归、门禁通过；下一次来源 APK 出包后按 AVD 清单验收。

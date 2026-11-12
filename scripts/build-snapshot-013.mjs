@@ -1051,6 +1051,31 @@ for (const entry of SLIM.engineStalePackages ?? []) {
   log(`  剔除基座残留 ${entry.name}（${entry.lastSeenVersion ?? '?'}，登记表与依赖闭包都不认）`)
 }
 
+const SOURCE_DATE_EPOCH = process.env.SOURCE_DATE_EPOCH ?? '1704067200'
+// ── 客体引擎树（PRoot/Debian）：必须在「平台死重剔除」之前装配 ────────────────
+// 剔除是给 Android 快照瘦身用的；客体树恰好需要被剔掉的那批 linux-arm64 包
+// （node-pty prebuild、node-addon-system-linux-arm64 等），所以顺序不能反。
+if (ABI === 'arm64') {
+  log('装配客体引擎树 engine-glibc.tar.xz…')
+  const engineOut = join(OUT_DIR, 'engine')
+  const result = spawnSync(PYTHON, [
+    join(ROOT, 'scripts', 'source-build', 'package-guest-engine.py'),
+    '--tree', join(STAGE, 'root', 'usr', 'lib', 'node_modules'),
+    '--out', engineOut,
+    '--epoch', SOURCE_DATE_EPOCH,
+  ], { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 })
+  if (result.status !== 0) {
+    console.error(`客体引擎树装配失败：${result.stderr || result.stdout}`)
+    process.exit(1)
+  }
+  const engineArchive = join(OUT_DIR, 'engine-glibc.tar.xz')
+  writeFileSync(join(OUT_DIR, 'engine-glibc.sha256'),
+    createHash('sha256').update(readFileSync(engineArchive)).digest('hex'))
+  log(`客体引擎树就绪：${engineArchive}`)
+} else {
+  log(`跳过客体引擎树（ABI=${ABI}；本分支客体资产仅 ARM64）`)
+}
+
 // ── 平台死重剔除（来源链体积审计实锤：1.07 GB，APK 3.1 倍）────────────────────
 // 来源链做的是**完整 pnpm deploy**，而 CI 在 Linux 上 ⇒ pnpm 按**宿主平台**解析 optional
 // 依赖，把 linux-x64 / linux-arm64 的原生载荷一并装进引擎树。Android 是 bionic，这些
@@ -1207,7 +1232,6 @@ rmSync(archive, { force: true })
 // 完全相同的两次构建**产出不同 sha256 → 设备每次都判定「快照变了」并重解压（模拟器实测每次
 // 多花 3-5 分钟）。统一 `--mtime=@<固定纪元>`（GNU tar）后，同一输入的产物字节稳定；inject-all.py
 // 新增文件同样取固定 mtime（SOURCE_DATE_EPOCH 可覆写）。
-const SOURCE_DATE_EPOCH = process.env.SOURCE_DATE_EPOCH ?? '1704067200'
 wsl(`
   cd "${wslPath(join(STAGE, 'root'))}" && \
   tar -c --mtime=@${SOURCE_DATE_EPOCH} usr home/.dsh home/.gitconfig 2>/dev/null | xz -T${XZ_THREADS} -6 > "${wslPath(archive)}" && \
@@ -1216,53 +1240,6 @@ wsl(`
 const sha = createHash('sha256').update(readFileSync(archive)).digest('hex')
 writeFileSync(join(OUT_DIR, 'snapshot.sha256'), sha)
 
-// ── 8b. 客体引擎树（PRoot/Debian）────────────────────────────────────────────
-// 引擎本体必须能脱离 Termux 在 glibc 客体里运行：这里从同一棵引擎树装配出
-// engine-glibc.tar.xz（保留 JS、裁掉非 linux-arm64 原生变体、覆盖自编译 addon）。
-if (ABI === 'arm64') {
-  const guestAddons = join(ROOT, '.deploy-tmp', 'linux-build', 'guest-addons')
-  const ptyDir = join(guestAddons, 'node-pty')
-  const systemDir = join(guestAddons, 'system')
-  for (const required of [ptyDir, systemDir]) {
-    if (!existsSync(required)) {
-      console.error(`缺少客体 addon 构建产物：${required}（先跑 linux-assets 阶段）`)
-      process.exit(1)
-    }
-  }
-  log('装配客体引擎树 engine-glibc.tar.xz…')
-  const engineOut = join(OUT_DIR, 'engine')
-  const result = spawnSync(PYTHON, [
-    join(ROOT, 'scripts', 'source-build', 'package-guest-engine.py'),
-    '--tree', join(STAGE, 'root', 'usr', 'lib', 'node_modules'),
-    '--node-pty', ptyDir,
-    '--addon', systemDir,
-    '--out', engineOut,
-    '--epoch', SOURCE_DATE_EPOCH,
-  ], { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 })
-  if (result.status !== 0) {
-    console.error(`客体引擎树装配失败：${result.stderr || result.stdout}`)
-    process.exit(1)
-  }
-  // 用户态种子（home/.dsh 初始 profile、硬插件清单、AGENTS.md、gitconfig）原本随 Termux
-  // 快照解压；快照不再出货后必须单独作为内置资产落地。
-  const homeSeed = join(OUT_DIR, 'home-seed.tar.xz')
-  const homeTar = spawnSync('bash', ['-c',
-    `cd ${JSON.stringify(join(STAGE, 'root'))} && tar -c --mtime=@${SOURCE_DATE_EPOCH} home/.dsh home/.gitconfig 2>/dev/null | xz -T${XZ_THREADS} -6 > ${JSON.stringify(homeSeed)}`],
-  { encoding: 'utf8' })
-  if (homeTar.status !== 0) {
-    console.error(`home 种子打包失败：${homeTar.stderr || ''}`)
-    process.exit(1)
-  }
-  writeFileSync(join(OUT_DIR, 'home-seed.sha256'),
-    createHash('sha256').update(readFileSync(homeSeed)).digest('hex'))
-  log(`home 种子就绪：${homeSeed}`)
-  const engineArchive = join(OUT_DIR, 'engine-glibc.tar.xz')
-  const engineSha = createHash('sha256').update(readFileSync(engineArchive)).digest('hex')
-  writeFileSync(join(OUT_DIR, 'engine-glibc.sha256'), engineSha)
-  log(`客体引擎树就绪：${engineArchive} sha256=${engineSha.slice(0, 16)}…`)
-} else {
-  log(`跳过客体引擎树（ABI=${ABI}；本分支客体资产仅 ARM64）`)
-}
 // 归档后自检（2026-08-23：x86 曾出现「stage 有、归档无」的 LICENSES 目录怪癖——防再犯）。
 // 2026-08-24 修复（两次实锤，三个错误方案依次排除）：
 //   1) wsl tar -tf | grep -c 经 execSync 捕获时：localhost 代理噪音行混入 → Number(整串) NaN；
