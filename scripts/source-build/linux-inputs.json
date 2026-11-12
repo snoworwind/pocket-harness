@@ -16,5 +16,13 @@
   "termuxPackagesRecipeCommit": "b734bc49dc0eedb2c454e1c5d3c48d35d81d4bc9",
   "runtimeVersion": "0.6.2",
   "minimumAppVersion": "0.14.0",
-  "nodeHeadersSha256": "00e9f08b9057f9f5428387a5ffd496e53f274565b40b144b7ba876700755352a"
+  "nodeHeadersSha256": "00e9f08b9057f9f5428387a5ffd496e53f274565b40b144b7ba876700755352a",
+  "nodePty": {
+    "version": "1.2.0-beta.15",
+    "sha256": "114ac80c3fe075eff76217a4122d135576582695f49c03a5da3835cdfc2f89c5"
+  },
+  "nodeAddonApi": {
+    "version": "7.1.0",
+    "sha256": "8e621f150678b183225c394c0faca7338396eb4fa620b447b88995f8990af522"
+  }
 }

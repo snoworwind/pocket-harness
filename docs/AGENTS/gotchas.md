@@ -3878,3 +3878,10 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
     `node-addon-system-linux-arm64` 覆盖；收据记录裁剪清单与产物摘要。
     复验：真实快照树装配出 `engine-glibc.tar.xz` 79 MB，在 Debian 13 aarch64 客体 Node 中执行
     `@deepseek-ai/dsh/lib/bin.js --version` 输出 `0.2.2-rc.1`；自证含悬空链接保留与缺入口负控。
+
+687. **客体引擎树要在快照阶段生成，并依赖 linux-assets 阶段的自编译 addon（2026-11-12，实验分支）**
+    现象：把 `package-guest-engine.py` 接到构建链时，快照阶段拿不到 node-pty/flock 的 glibc 构建产物。
+    真因：引擎树在快照阶段才装配，而两个 addon 在 linux-assets 阶段交叉编译；两者目录约定必须显式。
+    修法：linux-assets 输出固定目录 `guest-addons/system`（flock 包）与 `guest-addons/node-pty`；
+    快照阶段在归档后用这两个目录调用装配器，产出 `engine-glibc.tar.xz` 与 sha256；x86_64 明确跳过。
+    复验：两段脚本语法与门禁通过；真实树装配产物 79 MB 并已在 Debian 客体中启动（见坑位 686）。

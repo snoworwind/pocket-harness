@@ -1215,6 +1215,41 @@ wsl(`
 `)
 const sha = createHash('sha256').update(readFileSync(archive)).digest('hex')
 writeFileSync(join(OUT_DIR, 'snapshot.sha256'), sha)
+
+// ── 8b. 客体引擎树（PRoot/Debian）────────────────────────────────────────────
+// 引擎本体必须能脱离 Termux 在 glibc 客体里运行：这里从同一棵引擎树装配出
+// engine-glibc.tar.xz（保留 JS、裁掉非 linux-arm64 原生变体、覆盖自编译 addon）。
+if (ABI === 'arm64') {
+  const guestAddons = join(ROOT, '.deploy-tmp', 'linux-build', 'guest-addons')
+  const ptyDir = join(guestAddons, 'node-pty')
+  const systemDir = join(guestAddons, 'system')
+  for (const required of [ptyDir, systemDir]) {
+    if (!existsSync(required)) {
+      console.error(`缺少客体 addon 构建产物：${required}（先跑 linux-assets 阶段）`)
+      process.exit(1)
+    }
+  }
+  log('装配客体引擎树 engine-glibc.tar.xz…')
+  const engineOut = join(OUT_DIR, 'engine')
+  const result = spawnSync(PYTHON, [
+    join(ROOT, 'scripts', 'source-build', 'package-guest-engine.py'),
+    '--tree', join(STAGE, 'root', 'usr', 'lib', 'node_modules'),
+    '--node-pty', ptyDir,
+    '--addon', systemDir,
+    '--out', engineOut,
+    '--epoch', SOURCE_DATE_EPOCH,
+  ], { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 })
+  if (result.status !== 0) {
+    console.error(`客体引擎树装配失败：${result.stderr || result.stdout}`)
+    process.exit(1)
+  }
+  const engineArchive = join(OUT_DIR, 'engine-glibc.tar.xz')
+  const engineSha = createHash('sha256').update(readFileSync(engineArchive)).digest('hex')
+  writeFileSync(join(OUT_DIR, 'engine-glibc.sha256'), engineSha)
+  log(`客体引擎树就绪：${engineArchive} sha256=${engineSha.slice(0, 16)}…`)
+} else {
+  log(`跳过客体引擎树（ABI=${ABI}；本分支客体资产仅 ARM64）`)
+}
 // 归档后自检（2026-08-23：x86 曾出现「stage 有、归档无」的 LICENSES 目录怪癖——防再犯）。
 // 2026-08-24 修复（两次实锤，三个错误方案依次排除）：
 //   1) wsl tar -tf | grep -c 经 execSync 捕获时：localhost 代理噪音行混入 → Number(整串) NaN；

@@ -153,10 +153,29 @@ python3 scripts/source-build/build-guest-addons.py \
   --harness .deploy-tmp/deepseek-harness \
   --headers "$WORK/input/node-headers/node-v$NODE_VERSION/include/node" \
   --cc aarch64-linux-gnu-gcc \
-  --out "$WORK/guest-addons" | tee "$WORK/provenance/guest-addons-build.log"
-cp "$WORK/guest-addons/guest-addons.json" "$WORK/provenance/guest-addons.json"
+  --out "$WORK/guest-addons/system" | tee "$WORK/provenance/guest-addons-build.log"
+# node-pty has no linux prebuild; the guest engine loads it from the Debian tree, so it is
+# cross-built here instead of shipping the Android/Bionic build.
+PTY_SHA=$(node -p 'require("./scripts/source-build/linux-inputs.json").nodePty.sha256')
+PTY_VERSION=$(node -p 'require("./scripts/source-build/linux-inputs.json").nodePty.version')
+NAPI_SHA=$(node -p 'require("./scripts/source-build/linux-inputs.json").nodeAddonApi.sha256')
+NAPI_VERSION=$(node -p 'require("./scripts/source-build/linux-inputs.json").nodeAddonApi.version')
+bash scripts/source-build/retry-curl.sh --fail --location --retry 8 --retry-max-time 600 \
+  "https://registry.npmjs.org/node-pty/-/node-pty-$PTY_VERSION.tgz" -o "$WORK/input/node-pty.tgz"
+bash scripts/source-build/retry-curl.sh --fail --location --retry 8 --retry-max-time 600 \
+  "https://registry.npmjs.org/node-addon-api/-/node-addon-api-$NAPI_VERSION.tgz" -o "$WORK/input/node-addon-api.tgz"
+printf '%s  %s\n%s  %s\n' "$PTY_SHA" "$WORK/input/node-pty.tgz" "$NAPI_SHA" "$WORK/input/node-addon-api.tgz" | sha256sum --check --strict
+python3 scripts/source-build/build-guest-node-pty.py \
+  --node-pty "$WORK/input/node-pty.tgz" \
+  --node-addon-api "$WORK/input/node-addon-api.tgz" \
+  --headers "$WORK/input/node-headers/node-v$NODE_VERSION" \
+  --cc aarch64-linux-gnu-gcc --cxx aarch64-linux-gnu-g++ \
+  --node "$(command -v node)" \
+  --node-gyp "$(node -p "require('path').join(require('path').dirname(process.execPath),'..','lib','node_modules','npm','node_modules','node-gyp','bin','node-gyp.js')")" \
+  --out "$WORK/guest-addons/node-pty" | tee "$WORK/provenance/guest-node-pty-build.log"
+cp "$WORK/guest-addons/system/guest-addons.json" "$WORK/provenance/guest-addons.json"
 sudo mkdir -p "$ROOTFS/opt/pocket-harness/addons"
-sudo cp -a "$WORK/guest-addons" \
+sudo cp -a "$WORK/guest-addons/system" \
   "$ROOTFS/opt/pocket-harness/addons/@deepseek-ai/node-addon-system-linux-arm64"
 sudo chmod -R a+rX "$ROOTFS/opt/pocket-harness/addons"
 sudo rm -f "$ROOTFS/usr/bin/qemu-aarch64-static"
