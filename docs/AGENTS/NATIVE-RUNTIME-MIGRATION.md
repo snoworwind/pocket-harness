@@ -32,8 +32,8 @@ termux-exec 环境钩子。可审阅并借鉴开源 Android PRoot 补丁，但�
 
 | 阶段 | 交付物与完成判据 | 状态 |
 | --- | --- | --- |
-| P0 实际载荷盘点 | 扫 APK 原生目录和当前快照，支持独立 Linux rootfs/Node 目录；自证、负控；来源链携带报告 | 扫描器、测试和现有 APK 接线已实现；真实来源构建报告待生成 |
-| P1 独立 Linux 来源底座 | 固定 Debian snapshot/源码包闭包、双 ABI；源码构建 Android PRoot/loader，不再依赖 Termux bootstrap/包仓 | PRoot/loader/talloc/shmem 双 ABI 已实际自编译并过 ELF 门禁，已接入 Linux 资产和 APK 来源校验协议，完整 Linux 资产构建通过，APK 待构建验收；其余待实现，见 [构建详档](PROOT-SOURCE-BUILD.md) |
+| P0 实际载荷盘点 | 扫 APK 原生目录和当前快照，支持独立 Linux rootfs/Node 目录；自证、负控；来源链携带报告 | 扫描器、自测与来源接线已实现；`186c7d55` ARM64 来源 APK 报告已生成，628 ELF/511 脚本，仍为 inventory-only |
+| P1 独立 Linux 来源底座 | 固定 Debian snapshot/源码包闭包、双 ABI；源码构建 Android PRoot/loader，不再依赖 Termux bootstrap/包仓 | PRoot/loader/talloc/shmem 双 ABI 已实际自编译并过 ELF 门禁，已接入 Linux 资产和 APK 来源校验协议，完整 Linux 资产与 ARM64 来源 APK 已构建；AVD 首装、模型调用及重启恢复定向通过，其余待实现，见 [构建详档](PROOT-SOURCE-BUILD.md) |
 | P2 壳直接引导 Linux | Kotlin 解包/校验/事务准备 rootfs；不能先起 Termux Node 才安装 Linux；宿主与客体 env 分开 | 待实现 |
 | P3 引擎/工具统一迁入 Linux | DSH 与原生 addon 使用 Linux ABI；PTY、PTC、Undo、控制台、文件路径和插件桥统一客体启动合同，替代 shell-termux | 待实现 |
 | P4 常用工具补齐 | 下表工具/helper/依赖均从固定源码构建后预装；用户可在客体安装依赖与编译，必须验证新产物实际可运行 | 待实现 |
@@ -42,11 +42,18 @@ termux-exec 环境钩子。可审阅并借鉴开源 Android PRoot 补丁，但�
 
 本分支不进入正式版本发布流程，不以实验提交触发正式 Release。
 
+2026-11-12 定向设备证据：来源 APK `186c7d55`、签名与实际工具调用结果见
+[已知缺口的实验验证范围](known-gaps.md)；
+原始证据入口 `.deploy-tmp/native-runtime-p0/resume-validation.md`。P0 盘点通过不表示宿主
+ELF 已迁出快照，P1 的 AVD 探针通过也不替代 P2/P3 主启动链迁移。
+
 现有可复用代码：`build-linux-assets.sh` 已构建 Debian 13 rootfs 与 Linux Node；
-`prepare-proot-backend.py` 已组装 APK 内 PRoot/loader；`LinuxAssetIO` 提供宿主解包原语；
+`prepare-proot-source-backend.py` 已从本仓固定源码构建回执组装 APK 内 PRoot/loader；`LinuxAssetIO` 提供宿主解包原语；
 `vendor/dsh-linux-runtime` 有客体启动与安装事务逻辑。
-当前仍有明确缺口：底座仅 ARM64、PRoot 来自 Termux 验签包、Linux 是已启动引擎内的
-可选插件而非壳直接引导的主运行时、主 Node/bash 仍来自 Termux。以上不能标为已完成。
+当前 Android 宿主 PRoot/loader/talloc/shmem 已改用固定源码自行构建，不再消费 Termux
+PRoot 二进制包。当前仍有明确缺口：Linux 底座仅 ARM64；Debian rootfs 与 Linux Node
+仍使用有记录的预编译发行版输入，尚未完成全部客体源码构建；Linux 是已启动引擎内的
+可选插件而非壳直接引导的主运行时，主 Node/bash 仍来自 Termux。以上不能标为已完成。
 
 ## 参考实现与复用边界
 

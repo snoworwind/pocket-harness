@@ -3760,7 +3760,8 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
     `additionalProperties:false`），并把注册失败改为经 `ctx.logger` 告警而非静默；
     回归用例按引擎子集规则校验两个 schema，禁止属性级 `required`。
     复验：`node --test vendor/dsh-linux-runtime/test/manager.test.mjs` 37 项全过。
-    设备复验仍需重出 APK（运行时插件随安装从内置包解包）。
+    后续来源 APK `186c7d55` 在 Android 16 ARM64 AVD 完成干净安装与真实模型调用，
+    `linux_bash` 注册缺陷的定向复验通过；范围与证据见 `known-gaps.md` 的实验验证记录。
 
 675. **引擎重启后注入的 Linux 运行时插件不再激活，状态会被同步成「未启用」（2026-11-12，实验分支）**
     现象：装好并启用的 Linux 环境在应用重启后 `enabled/injectionActivated` 变 false，
@@ -3772,7 +3773,9 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
     用持久化的 `pluginDirectory` + `pinnedManifest` 重新 `install({enable:true})` 并解析 manager；
     失败则记录 `linux-runtime-reactivate-failed` 并让随后的同步按宿主视图禁用。
     复验：新增 3 条用例（成功重激活保持 enabled、失败留错误码并禁用、未启用时不动），
-    `plugins/dsh-linux-bootstrap/test/*.test.mjs` 15 项全过。设备复验仍需重出 APK。
+    `plugins/dsh-linux-bootstrap/test/*.test.mjs` 15 项全过。后续来源 APK `186c7d55`
+    在 Android 16 ARM64 AVD 重启后保持启用与同一实例，模型再次调用 `linux_bash` 成功，
+    报告文件摘要不变；范围与证据见 `known-gaps.md` 的实验验证记录。
 
 676. **重启恢复修复未同步 Linux 来源清单，来源链在打包前拒绝（2026-11-12，实验分支）**
     现象：`07d6774f` 本地来源链在 `Build source-owned offline ARM64 Linux assets` 报

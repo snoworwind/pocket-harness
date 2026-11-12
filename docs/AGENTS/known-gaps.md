@@ -205,13 +205,14 @@ PRoot 包且仅 ARM64；来源构建尚需实际产出盘点报告，不能称�
 
 - 首个真机链路缺陷已修：首装时原生 PRoot 探测的 cwd 不存在会误报 `ENOENT`，见坑位 673；
   修复后 Linux 环境可安装，health 探针在 PRoot 里跑通共享 glibc Node（`v24.22.0`）。
-- **`linux_bash` 工具面修复待新 APK 复验**：安装/重装后状态为 `enabled=true`、
-  `injectionActivated=true`，旧 APK 的新旧会话均只看到 Termux `bash`。已确认根因是
-  `tools.register()` 要求编译态 JSON Schema，属性级 `required: true` 被拒且异常被吞；
-  `aaa80f18` 已修正输入/输出 schema 并记录注册异常，回归覆盖引擎 schema 子集规则，见坑位 674。
-  尚未用包含此提交的来源 APK 验证模型实际调用。
-- **重启恢复修复待新 APK 复验**：旧实现只在当前进程动态注入 runtime，重启后同步逻辑将
-  宿主未激活误作用户禁用。`a86830dd` 已按持久化的启用态、插件目录与 pinned manifest
-  重激活，覆盖成功、失败与用户未启用三条回归，见坑位 675；尚未完成新 APK 重启验证。
+- **工具注册与重启恢复定向验证已通过**：来源提交 `186c7d55` 的 ARM64 APK
+  （SHA-256 `61d7eef579933e4e5937c5b8e3594f1cf3f7ab5ea9f6c000e23f5d5da2b386e0`）
+  在 Android 16 API 36 ARM64 AVD（host GPU）卸载旧版后安装，Linux 首装健康。
+  实际模型会话记录 4 次成功的 `linux_bash` 调用；首次生成并回读 Debian 13/glibc 2.41/
+  Node v24.22.0 报告，应用重启后自动恢复同一 runtime 实例，回读文件的 908 字节与
+  SHA-256 均保持一致。schema 与恢复修复原因见坑位 674、675；命令、原始日志、截图与
+  独立文件核验见 `.deploy-tmp/native-runtime-p0/resume-validation.md`。
+  这是单台 AVD 的定向实验验证；未覆盖 ARM64 真机、横屏、x86_64、更新/重装/卸载、
+  apt/dpkg、原生扩展与编译产物执行，不能据此称完整 Linux 迁移或正式发布验收完成。
 - **重复安装的错误回执仍待改善**：`install` 在已安装时直接报错且不写 `lastError`，
   路由层只回 `linux-operation-failed`；上述重激活修复不覆盖此错误回执。
