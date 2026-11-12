@@ -113,8 +113,6 @@ jobs:
     needs: resolve
     if: needs.resolve.outputs.reused != 'true' && (github.ref == 'refs/heads/main' || inputs.linux_experiment)
     runs-on: ubuntu-24.04
-    env:
-      DSH_LINUX_EXPERIMENT: ${{ inputs.linux_experiment && '1' || '0' }}
     timeout-minutes: 90
     strategy:
       fail-fast: false
@@ -122,6 +120,7 @@ jobs:
         replica: [primary, reference]
     env:
       BASE_REPLICA: ${{ matrix.replica }}
+      DSH_LINUX_EXPERIMENT: ${{ inputs.linux_experiment && '1' || '0' }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
