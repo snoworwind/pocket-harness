@@ -84,4 +84,8 @@ loader 静态入口、talloc/shmem SONAME、无 RPATH/RUNPATH、无可写可执�
 `prepare-proot-source-backend.py` 接入 Linux 资产链：重验 ELF/收据、原始归档摘要并重放补丁，
 生成 schema 2 的源码来源协议，保留三个源码归档和源许可证；APK 字节门禁和 notices
 分别消费该协议。schema 1 的历史包来源仍可审计，但源码产物禁止携带其验签包字段。
-主运行时仍未切换；完整 Linux 资产构建与新 APK/Android 16 运行验收尚未完成。
+完整 Linux 资产链已在实验提交 `8ab359a9` 成功运行：
+[run 43145766367](https://github.com/snoworwind/pocket-harness/actions/runs/43145766367)
+完成后端源码编译、组装、Debian rootfs/Node 资产和原生库校验；下载后的 schema 2 收据也通过本地复核。
+这包含发行版/官方预编译的 guest 工具和 Node，不代表所有客体程序已自编译。
+主运行时仍未切换；新 APK/Android 16 运行验收尚未完成。

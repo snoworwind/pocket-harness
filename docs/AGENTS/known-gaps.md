@@ -199,4 +199,4 @@ Node/bash/Undo/PTY/PTC 执行路径，也未补齐全部常用工具。现有 Li
 PRoot 包且仅 ARM64；来源构建尚需实际产出盘点报告，不能称已脱离 Termux。阶段与判据见
 [原生迁移账本](NATIVE-RUNTIME-MIGRATION.md)。
 实验性的独立 PRoot/loader/talloc/shmem 源码构建已完成双 ABI 编译和同机独立目录字节比对，
-实验分支已接入 Linux 资产链及源码许可协议，完整资产构建和新 APK/设备运行仍未验证；见 [构建边界](PROOT-SOURCE-BUILD.md)。
+实验分支已接入 Linux 资产链及源码许可协议，完整 Linux 资产构建通过，新 APK/设备运行仍未验证；见 [构建边界](PROOT-SOURCE-BUILD.md)。
