@@ -44,12 +44,12 @@
     "plugins/dsh-linux-bootstrap/test/github-limits-negative-control.mjs": "464a2c6290e5521c72a834c228d9f72d5096c29c92b807183c30a1a11a1ad6a0",
     "plugins/dsh-linux-bootstrap/test/github-limits.test.mjs": "5668b2ab5ac13751616850f0d366f8e2aa9647ab767c293e2fa91cdc379bfb22",
     "vendor/dsh-linux-runtime/LICENSE": "e9f4502fb52418dcd3e320d8d15e1bd7b43094ec3f2fdd5c33dd88f5a2ba85d9",
-    "vendor/dsh-linux-runtime/README.md": "2f0833dadde43cf651001be55b22ef7937af20fdfc5d0a849a0581f7fd0aca58",
+    "vendor/dsh-linux-runtime/README.md": "3f84937175b4de67e48e230924eb4e5d5e257f94d46ab8f6da5a2ea2decd67b7",
     "vendor/dsh-linux-runtime/lib/index.js": "94efd8bf0c99586dd2bf0516a8957ddc83492b08c6f5c1521ddd5e0e977d3a5a",
     "vendor/dsh-linux-runtime/modules/asset-installer.js": "036774735e016d605cecf91093384371903129ef15b17c7dd8927f9acdc8d7e1",
     "vendor/dsh-linux-runtime/modules/manager.js": "73c90336046c4c0564accaa180a9c8b274ce850245ade199335122302d12dc1b",
     "vendor/dsh-linux-runtime/modules/manifest.js": "36b8a2fcf7f305b89aeabd18bc950ebe84f308d739c20382c40ada04f8071c1a",
-    "vendor/dsh-linux-runtime/package.json": "df2dfc91344ce4daa8fb4753be6de1163574354f57758363b3c022095393c375",
+    "vendor/dsh-linux-runtime/package.json": "744950c244c64cdd8f179b8f16065c456a080c7743372740a343646753bcf8bc",
     "vendor/dsh-linux-runtime/test/manager.test.mjs": "fecf98a3adc2f71366ec7c48063ccdaf75cb477e1de0d9c2f43f365a02d8d78c",
     "vendor/linux-proot/SOURCE.json": "f5306bccc71c0c45a2fa968af3641b2a150d01e16cdee4d7dc92c18ce987b85e",
     "vendor/linux-proot/compat/LICENSE": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
@@ -85,7 +85,7 @@
     },
     "vendor/dsh-linux-runtime/README.md": {
       "upstreamSha256": "91a18de24c9ceb4f5aba6ce7b28d0e769ae26e1178d529d14e139b437214b187",
-      "reason": "Document the PRoot architecture, Android seccomp mode, non-login shell PATH, install-probe diagnostics, app-UID boundary, withheld host procfs, hard-link fallback, source/license evidence and outstanding device acceptance."
+      "reason": "Document the PRoot architecture, Android seccomp mode, non-login shell PATH, install-probe diagnostics, app-UID boundary, withheld host procfs, hard-link fallback, source/license evidence and outstanding device acceptance. Describe the experimental source-built Android backend and preserve explicit guest-source and device-validation limits."
     },
     "vendor/dsh-linux-runtime/lib/index.js": {
       "upstreamSha256": "4cbe776c5079e445e47cd3949f907d304659573a3d448b629a1c1de0630109bc",
@@ -101,7 +101,7 @@
     },
     "vendor/dsh-linux-runtime/package.json": {
       "upstreamSha256": "1d65abf96889a13f9bfce9266f44839c1957ffc5bc6691fa047cb6061041c476",
-      "reason": "Bump the internal Linux runtime package identity to 0.6.2 for the Android PRoot smoke-probe fix."
+      "reason": "Bump the internal Linux runtime package identity to 0.6.2 for the Android PRoot smoke-probe fix. Describe the experimental source-built Android backend and preserve explicit guest-source and device-validation limits."
     },
     "vendor/dsh-linux-runtime/test/manager.test.mjs": {
       "upstreamSha256": "4549fefea91b30dfceefab3a2a0418270da4f5ce7c5ecb9b4264081ec2607c02",
