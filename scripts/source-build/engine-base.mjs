@@ -315,10 +315,11 @@ export function materializeSelf(root, artifact, planPath, env = process.env) {
 
 export function publishCandidate(root, plan, primary, reference, destination, env = process.env) {
   const sourceCommit = requireMain(root, env)
-  if (plan.sourceCommit !== sourceCommit || committedInputs(root, plan.toolchain).key !== plan.key) fail('comparison plan drifted')
+  const expectedRef = experimentalDispatch(env) ? LINUX_EXPERIMENT_REF : 'refs/heads/main'
+  if (plan.sourceCommit !== sourceCommit || plan.sourceRef !== expectedRef || committedInputs(root, plan.toolchain).key !== plan.key) fail('comparison plan drifted')
   const a = json(join(primary, 'manifest.json')), b = json(join(reference, 'manifest.json'))
   for (const manifest of [a, b]) {
-    if (manifest.sourceCommit !== sourceCommit || manifest.sourceRef !== 'refs/heads/main' || manifest.buildRun !== plan.buildRun) fail('replica source identity mismatch')
+    if (manifest.sourceCommit !== sourceCommit || manifest.sourceRef !== expectedRef || manifest.buildRun !== plan.buildRun) fail('replica source identity mismatch')
     if (manifest.key !== plan.key || canonicalJson(manifest.toolchain) !== canonicalJson(plan.toolchain)) fail('replica plan mismatch')
     if (committedInputs(root, manifest.toolchain).key !== manifest.key) fail('replica inputs mismatch')
   }

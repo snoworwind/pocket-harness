@@ -5,7 +5,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync, existsSync
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { COMPONENTS } from './base-lock.mjs'
-import { capture, checkPayload, makePlan, materialize, publishCandidate, rebase, requireMain, verifyTrusted } from './engine-base.mjs'
+import { capture, checkPayload, LINUX_EXPERIMENT_REF, makePlan, materialize, publishCandidate, rebase, requireMain, verifyTrusted } from './engine-base.mjs'
 import { checkDshRuntimeDependencies } from './check-dsh-runtime-dependencies.mjs'
 
 const runtime = { node: '24.21.0', pnpm: '11.28.5', deploymentPnpm: '12.2.0', localDevelopment: true }
@@ -62,6 +62,16 @@ test('main/commit guards reject feature branches and PR contexts', () => fixture
   assert.throws(() => requireMain(root, { GITHUB_ACTIONS: 'true', GITHUB_REF: 'refs/pull/1/merge' }), /main workflow/)
   git(root, 'switch', '-qc', 'feature')
   assert.throws(() => makePlan(root, runtime, env), /attached main/)
+}))
+
+test('only the explicit linux experiment dispatch may produce a non-main base', () => fixture(root => {
+  const commit = git(root, 'rev-parse', 'HEAD')
+  const base = { GITHUB_ACTIONS: 'true', GITHUB_SHA: commit, GITHUB_REF: LINUX_EXPERIMENT_REF, GITHUB_EVENT_NAME: 'workflow_dispatch', DSH_LINUX_EXPERIMENT: '1', GITHUB_RUN_ID: 'experiment-run' }
+  assert.equal(requireMain(root, base), commit)
+  assert.equal(makePlan(root, runtime, base).sourceRef, LINUX_EXPERIMENT_REF)
+  assert.throws(() => requireMain(root, { ...base, GITHUB_REF: 'refs/heads/codex/candidate' }), /main workflow/)
+  assert.throws(() => requireMain(root, { ...base, DSH_LINUX_EXPERIMENT: '0' }), /main workflow/)
+  assert.throws(() => requireMain(root, { ...base, GITHUB_EVENT_NAME: 'pull_request' }), /main workflow/)
 }))
 
 test('content key ignores unrelated commits but rejects modified build inputs', () => fixture(root => {
