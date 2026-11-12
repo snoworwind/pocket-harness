@@ -1061,6 +1061,7 @@ if (ABI === 'arm64') {
   const result = spawnSync(PYTHON, [
     join(ROOT, 'scripts', 'source-build', 'package-guest-engine.py'),
     '--tree', join(STAGE, 'root', 'usr', 'lib', 'node_modules'),
+    '--addon', join(ROOT, '.deploy-tmp', 'linux-build', 'guest-addons', 'system'),
     '--out', engineOut,
     '--epoch', SOURCE_DATE_EPOCH,
   ], { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 })

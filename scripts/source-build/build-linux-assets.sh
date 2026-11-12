@@ -146,6 +146,22 @@ sudo chown -R "$(id -u):$(id -g)" "$WORK/provenance"
 cleanup_mounts
 trap - EXIT
 
+# Guest glibc addon: @deepseek-ai/node-addon-system-linux-arm64 is a first-party workspace
+# package in the pinned harness source, not a registry prebuild, so it has to be compiled
+# from that source (flock). node-pty needs no build: its npm tarball ships linux-arm64.
+HEADERS_ARCHIVE="$WORK/input/node-v$NODE_VERSION-headers.tar.gz"
+bash scripts/source-build/retry-curl.sh --fail --location --retry 8 --retry-max-time 600 "https://nodejs.org/dist/v$NODE_VERSION/node-v$NODE_VERSION-headers.tar.gz" -o "$HEADERS_ARCHIVE"
+printf '%s  %s\n' "$NODE_HEADERS_SHA" "$HEADERS_ARCHIVE" | sha256sum --check --strict
+rm -rf "$WORK/input/node-headers"
+mkdir -p "$WORK/input/node-headers"
+tar -xzf "$HEADERS_ARCHIVE" -C "$WORK/input/node-headers"
+python3 scripts/source-build/build-guest-addons.py \
+  --harness .deploy-tmp/deepseek-harness \
+  --headers "$WORK/input/node-headers/node-v$NODE_VERSION/include/node" \
+  --cc aarch64-linux-gnu-gcc \
+  --out "$WORK/guest-addons/system" | tee "$WORK/provenance/guest-addons-build.log"
+cp "$WORK/guest-addons/system/guest-addons.json" "$WORK/provenance/guest-addons.json"
+
 # Rootfs finalize: drop bootstrap residue, install the glibc compat preload that PRoot needs,
 # then normalize and verify the guest image before archiving it.
 sudo rm -f "$ROOTFS/usr/bin/qemu-aarch64-static"
