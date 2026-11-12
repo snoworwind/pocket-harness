@@ -200,3 +200,16 @@ PRoot 包且仅 ARM64；来源构建尚需实际产出盘点报告，不能称�
 [原生迁移账本](NATIVE-RUNTIME-MIGRATION.md)。
 实验性的独立 PRoot/loader/talloc/shmem 源码构建已完成双 ABI 编译和同机独立目录字节比对，
 实验分支已接入 Linux 资产链及源码许可协议，完整 Linux 资产构建通过，新 APK/设备运行仍未验证；见 [构建边界](PROOT-SOURCE-BUILD.md)。
+
+### 实验分支设备验证缺口（2026-11-12，Android 16 API 36 ARM64 AVD）
+
+- 首个真机链路缺陷已修：首装时原生 PRoot 探测的 cwd 不存在会误报 `ENOENT`，见坑位 673；
+  修复后 Linux 环境可安装，health 探针在 PRoot 里跑通共享 glibc Node（`v24.22.0`）。
+- **`linux_bash` 未出现在模型工具面**：安装/重装后状态为 `enabled=true`、`injectionActivated=true`，
+  但同一引擎内的旧会话与新会话都只看到 `bash`（Termux）。`registerLinuxBash` 在
+  `ctx.tools` 缺失时静默返回空 disposer，动态注入的子 scope 很可能没有 tools 服务；
+  尚未定位是作用域还是工具目录快照时机，未修。
+- **重启后激活态丢失**：引擎重启后 bootstrap 的 `synchronizeInjectionState` 把
+  `enabled/injectionActivated` 置 false，`linux_bash` 消失；要恢复只能整包重装（reinstall），
+  而 `install` 在已安装时会因“已安装”直接报错且不写 `lastError`，路由层只回 `linux-operation-failed`。
+  这两个行为都需要产品级决定（是否启动自动重激活、错误是否需要可读回执）。

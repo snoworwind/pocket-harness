@@ -3,6 +3,7 @@
 > 全部版本历史都堆在这里（AGENTS.md 不再设更新记录表）。**新条目倒序加在表格最上方**。细节写进对应详档，这里只留一行摘要。
 
 | 时间 | 版本 | 更新内容 | 更新者 |
+| 2026-11-12 | **Linux 实验：设备验证发现工具面缺口** | Android 16 ARM64 AVD 上 Linux 环境安装成功、PRoot health 探针通过；记录 `linux_bash` 未进模型工具面、重启丢失激活态两项待决缺口。 | Codex |
 | 2026-11-12 | **Linux 实验：修复首装原生探测误报 ENOENT** | 原生 PRoot 探测前先建 manager 数据目录；新增首装无 dataDir 的回归用例。源码清单摘要同步，Android 设备复验待重出 APK。 | Codex |
 | 2026-11-12 | **Linux 实验：源码后端接入资产链（待 APK 验收）** | 自编译 PRoot 闭包接入 Linux 资产，新增源码来源协议、原始归档与许可证保留、APK 字节校验；允许显式本地 ARM64 实验构建，云端正式分支限制不变。完整构建和设备证据待补，不合并 main。 | Codex |
 | 2026-11-12 | **Linux 实验：PRoot 宿主闭包独立源码构建（未接 APK）** | 官方 NDK r30 从固定源码编译 PRoot/loader/talloc/shmem，移除 Termux 包仓与 bootstrap 构建依赖；修正 shmem 临时路径、talloc SONAME 与 PRoot 头文件。双 ABI 实际编译及同机独立目录字节比对通过，设备未运行，不合并 main。见 [构建详档](PROOT-SOURCE-BUILD.md)。 | Codex |
