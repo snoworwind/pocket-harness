@@ -3701,4 +3701,4 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
     现象：手机竖屏侧栏终端里 `stty size` 恒为 `24 80`、`echo $COLUMNS` 为 80，但屏幕一行只放得下约 40 列。输入到行尾后尾部「消失」，退格把提示符本身擦掉；应用 `stty cols N` 后长行折行仍会错位、重绘内容散落到相邻行。
     真因：`TerminalViewHost.openOnUi` 把页面传来的 `info.cols/rows`（PTY 自己的旧值，引擎默认 80×24）直接交给 `TerminalView.open()` 建网格；而 `onSizeChanged` 只在「新网格 != 当前网格」时回报 resize，视图先被 1×1 初始布局触发一次、open 又用 80×24 覆盖，之后若尺寸不再变化就再也不会把真实列数推给 PTY。页面侧的 `__dshTermResize → model.resize` 因此从未收到真实尺寸。
     修法：`TerminalView.open()` 在视图已布局时以 `terminalGridFor(width,height,cellW,cellH)` 为准（页面值只作兜底）并在 `nativeCreate` 后无条件回报一次；新增 `syncGrid(force)`；`TerminalViewHost` 在 open 后、bounds 应用后、可见性恢复时各补一次同步（复用时强制）。`terminalGridFor` 是纯函数，JVM 单测锁定推导与最小值/非法度量边界。
-    复验：`TerminalGridTest` 覆盖 1320×2400/33×55 → 40×43、未布局/过小返回 null、NaN/Infinity/0/负值拒绝、不足一格向下取整；设备层待来源链出 APK 后按横竖屏、系统字体大小、键盘弹出/收起四种情况看 `stty size` 是否跟随可见网格。
+    复验：`TerminalGridTest` 覆盖 1320×2400/33×55 → 40×43、未布局/过小返回 null、NaN/Infinity/0/负值拒绝、不足一格向下取整；设备层已用来源链 APK（run 43154506740，commit 0fd2f22）覆盖安装确认：竖屏 `stty size` 跟随可见网格（不再是固定 80），长输入折行与连续退格正常。横屏与系统字体大小走同一 `onSizeChanged`/Activity 重建路径，本次未单独截图取证。
