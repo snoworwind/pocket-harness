@@ -115,7 +115,8 @@ jobs:
           PY
           sha256sum --check SHA256SUMS.txt
           tag="hardening-source-${SOURCE_SHA:0:12}-${RUN_ID}-${RUN_ATTEMPT}"
+          version=$(ls ./*.apk | head -1 | sed -E 's/.*pocket-harness-(v[^-]+)-source-.*/\1/')
           gh release create "$tag" ./*.apk provenance.zip SHA256SUMS.txt notes.md \
             --target "$SOURCE_SHA" --draft --prerelease \
-            --title "Hardening source dual-ABI ${SOURCE_SHA:0:12}" \
+            --title "Pocket Harness ${version} (ARM64 + x86_64)" \
             --notes-file notes.md
