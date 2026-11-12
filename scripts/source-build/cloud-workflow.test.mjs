@@ -572,3 +572,14 @@ test('final injected snapshot is checked against profile identity before APK ass
   assert.equal(check(source), true)
   assert.equal(check(source.replace("run(PYTHON, [gate('check-snapshot-profile-identity.py'), snapIn])", '')), false)
 })
+
+
+test('missing CI engine base still fails closed while local chain builds pinned source', () => {
+  const source = read('build-apk-source.yml')
+  const block = source.split('      - name: Fail closed when the auto-built engine base is unavailable')[1].split('      - name: Build and pack DeepSeek Harness from source')[0]
+  const run = block.split('        run: |\n')[1].split('\n').map(line => line.replace(/^ {10}/, '')).join('\n')
+  for (const [actions, expected] of [['', 0], ['true', 1]]) {
+    const result = spawnSync('/bin/bash', ['-e', '-c', run], { env: { ...process.env, GITHUB_ACTIONS: actions } })
+    assert.equal(result.status, expected, result.stderr)
+  }
+})

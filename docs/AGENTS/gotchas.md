@@ -3708,3 +3708,9 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
     修法：增加显式 `--experimental-linux`，仅授权当前 ARM64 实验分支的本地隔离来源构建；
     工作流门禁要求非 GitHub Actions，保留真实 Git ref。云端正式构建与发布规则不变。
     复验：本地来源身份与工作流测试覆盖显式授权、错分支、错 ABI、未授权及云端拒绝。
+
+669. **本地来源链不能要求只在 CI 产生的引擎缓存（2026-11-12）**
+    现象：实验本地构建通过前置与回归后，停在 auto-built engine base unavailable。
+    真因：本地不执行 Actions cache/reusable workflow，但逐步运行器仍执行云端缓存缺失阻断。
+    修法：仅非 Actions 环境跳过该缓存缺失阻断，下一步仍从固定源码构建引擎；云端缺失仍红。
+    复验：工作流真实 shell 在本地返回成功、Actions 返回失败；不伪造缓存、Git 身份或来源收据。

@@ -389,6 +389,10 @@ jobs:
         if: steps.engine-cache.outputs.cache-hit != 'true'
         shell: bash
         run: |
+          if [ "${GITHUB_ACTIONS:-}" != "true" ]; then
+            echo 'local source chain: build the engine from pinned source without a CI base cache'
+            exit 0
+          fi
           echo "::error::engine base was not published for this content key"
           exit 1
 
