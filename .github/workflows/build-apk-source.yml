@@ -139,7 +139,8 @@ jobs:
     uses: ./.github/workflows/build-base.yml
     with:
       component: engine
-      ref: main
+      ref: ${{ inputs.linux_experiment && 'codex/linux-runtime-experiment' || 'main' }}
+      linux_experiment: ${{ inputs.linux_experiment }}
 
   build-abi:
     needs: [termux-package-inputs, base]
