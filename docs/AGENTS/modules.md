@@ -5,7 +5,7 @@
 > grep 用法：`grep -n "<文件名>.kt" docs/AGENTS/modules.md`。行号随版本漂移，以函数名为准。
 > 与 docs/AGENTS/ARCHITECTURE.md 冲突时以 ARCHITECTURE.md 为准。
 
-原生侧栏终端（2026-11-12）：`TerminalNative.kt`（libvterm JNI 绑定、`loadError`/`available`、screen/scrollback/cursor externals）、`TerminalView.kt`（Canvas 渲染、SGR/宽字符、IME、拖动/惯性滚动、`terminalArgb` 的 RGB→ARGB 边界）、`TerminalViewHost.kt`（Activity 根布局 overlay、`onUi` 线程封送、owner 复用、bounds/visible/output/focus/close）、`TerminalStageBounds.kt`（stage 矩形纯函数）。客户端 `dsh-client-ui-responsive/src/client/mobile/native-terminal.tsx` 注册右侧栏 tab、引导卡（主题变量 + shell 选择）、可见性节拍与收尾。来源链 `scripts/source-build/attest-linux-cache.mjs` 负责 Linux 缓存复用的自证。
+原生侧栏终端（2026-11-12）：`TerminalNative.kt`（libvterm JNI 绑定、`loadError`/`available`、screen/scrollback/cursor externals）、`TerminalView.kt`（Canvas 渲染、SGR/宽字符、IME、拖动/惯性滚动、`terminalArgb` 的 RGB→ARGB 边界、`terminalGridFor` 网格推导与 `syncGrid` 尺寸回推）、`TerminalViewHost.kt`（Activity 根布局 overlay、`onUi` 线程封送、owner 复用、bounds/visible/output/focus/close）、`TerminalStageBounds.kt`（stage 矩形纯函数）。客户端 `dsh-client-ui-responsive/src/client/mobile/native-terminal.tsx` 注册右侧栏 tab、引导卡（主题变量 + shell 选择）、可见性节拍与收尾。来源链 `scripts/source-build/attest-linux-cache.mjs` 负责 Linux 缓存复用的自证。
 
 ## 4. 目录与源文件作用（关键函数带代码位置；文件行数随版本变化，以函数名为准）
 

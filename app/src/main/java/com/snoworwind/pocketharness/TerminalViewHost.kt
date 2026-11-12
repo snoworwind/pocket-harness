@@ -41,6 +41,9 @@ internal class TerminalViewHost(
       val config = JSONObject(raw)
       val token = config.optString("owner", "")
       if (view != null && token.isNotEmpty() && owner == token) {
+        // 复用同一个 tab 的视图：会话可能已经换过/重建过，补一次尺寸同步，
+        // 否则新会话仍按引擎默认的 80×24 工作。
+        view?.syncGrid(force = true)
         return ok(JSONObject().put("reused", true))
       }
       closeOnUi()
@@ -54,9 +57,12 @@ internal class TerminalViewHost(
       created.visibility = View.GONE
       root.addView(created, params)
       view = created
+      // 这两个只是「视图还没布局」时的兜底；open() 在视图已有真实尺寸时以视图为准。
       val cols = max(2, config.optInt("cols", 80))
       val rows = max(1, config.optInt("rows", 24))
       created.open(cols, rows, null, null)
+      // open() 之后布局才会发生，等这一轮 layout 结束再按真实像素补一次同步。
+      created.post { created.syncGrid(force = true) }
       ok(JSONObject().put("cols", cols).put("rows", rows))
     } catch (t: Throwable) {
       failed("invalid-terminal-config", t)
@@ -91,7 +97,13 @@ internal class TerminalViewHost(
     params.topMargin = offsetY + (parsed.top * density).toInt()
     created.layoutParams = params
     created.visibility = if (parsed.visible) View.VISIBLE else View.GONE
-    if (parsed.visible) created.requestLayout()
+    if (parsed.visible) {
+      created.requestLayout()
+      // 布局是异步的：等这一轮 layout 结束后用真实像素重算网格并推 PTY。
+      // 不能只依赖 onSizeChanged——它在 open 之前被 1x1 的初始布局触发过一次，
+      // 之后若尺寸恰好与当前网格相同就不会再回报。
+      created.post { created.syncGrid(force = false) }
+    }
     return ok(JSONObject().put("visible", parsed.visible))
   }
 
@@ -106,6 +118,11 @@ internal class TerminalViewHost(
   private fun setVisibleOnUi(flag: Boolean): String {
     visible = flag
     view?.visibility = if (flag) View.VISIBLE else View.GONE
+    if (flag) {
+      // 从隐藏恢复（切回 tab / 页面回前台）时强制补推尺寸：隐藏期间 PTY
+      // 可能被重建或复位成默认 80×24，而视图尺寸本身没有变化、不会触发 onSizeChanged。
+      view?.post { view?.syncGrid(force = true) }
+    }
     return ok(JSONObject().put("visible", flag))
   }
 
