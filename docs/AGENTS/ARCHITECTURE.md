@@ -32,7 +32,11 @@
 | MainFrameBridge.kt | 主 WebView 唯一原生 transport：nonce 认证、声明方法与实参类型校验、可信顶层同步 facade；Activity 销毁时撤销 | MainActivity（唯一主 WebView addJavascriptInterface 点）、AndroidBridge、BackGateBridge |
 | BrowserHost.kt / BrowserHostNavigationPolicy.kt / BrowserOverlayPolicy.kt / BrowserHostProfile.kt | Session/tab 捕获目标与 model/UI focus 分离；每tab无桥WebView先验证nonDefault profile，再允许HTTP/loopback并保留受保护控制origin拒绝；stage/letterbox/TTL租约（客户端可见时1000ms续租、原生4000ms过期）；前台只重放新鲜舞台；不支持profile默认拒绝、不回Default；用户显式启用兼容模式时改用 BrowserSharedFallback（共享jar、status=shared、loopback仍拒）；Session 删除经窄 `workspaceClose` 销毁本会话WebView并请求删除nonDefault profile，共享兼容jar保留 | MainActivity、可信browserHostCommand、模型controlOp |
 | ScreenScope.kt | 0.14 新增：ScreenScope/ScreenTargets/ScreenScopePrefs——用户屏幕范围的 native 真源（损坏/未知回落 virtual-only） | AndroidBridge、DeviceControlService |
+| TerminalViewHost.kt | 原生侧栏终端宿主：Activity 根布局 overlay、`onUi` 线程封送、owner（tab id）复用与 bounds/visible/output/focus/close；仅在 body 卸载/关闭 tab 时销毁视图 | MainActivity、AndroidBridge |
+| TerminalView.kt / TerminalNative.kt | libvterm JNI 屏幕 + Canvas 渲染 + IME/滚动；RGB→ARGB 边界、回看缓冲与光标 | TerminalViewHost |
 | WebViewShim.kt | WebView 版本敏感面唯一入口：provider 回读（`getCurrentWebViewPackage`+major 解析单实现）、androidx.webkit 特性门、settings 两档（baseline=引擎页/控制台，+isolation=BrowserHost）；LocalDocs 静态文档面刻意不走 baseline | MainActivity、BrowserHost、ConsoleActivity、EngineManager |
+
+原生终端方向：页面插件（`native-terminal.tsx`）只经 `termView*` 桥送 stage 矩形、可见性、输入字节与 base64 输出；壳侧 `TerminalViewHost` 直接把 `TerminalView` 挂到 Activity 根布局并上报按键，PTY/会话仍在引擎侧。原生视图不进入 WebView DOM，桥调用按 tab owner 隔离。
 
 注入方向：MainActivity 字段初始化阶段 `by lazy`/直接构造各协作类并传 `this`（如 `engineFlow = EngineStartFlow(this)`）；ActivityResult 注册必须在 STARTED 前，故 dirPickerController/mediaPickerController 为字段直接构造。协作类只回调 MainActivity 的 internal 方法，不持有彼此。
 
