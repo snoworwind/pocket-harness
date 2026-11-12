@@ -9,7 +9,7 @@
 // 输出：.deploy-tmp/snapshot-013/<abi>/snapshot.tar.xz（插件注入与装配由 inject-snapshot.py 在归档后执行）
 //
 // 用法：node scripts/build-snapshot-013.mjs <arm64|x86_64>   （基座缺省 .deploy-tmp/{arm64,x64}-base/base-usr.tar.xz）
-import { execSync, spawnSync } from 'node:child_process'
+import { execFileSync, execSync, spawnSync } from 'node:child_process'
 import { mkdirSync, existsSync, writeFileSync, readFileSync, readdirSync, rmSync, statSync, renameSync, copyFileSync, lstatSync, readlinkSync, symlinkSync } from 'node:fs'
 import { join, dirname, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
