@@ -1077,11 +1077,21 @@ if (ABI === 'arm64') {
   const canvasVersion = PREINSTALL.canvas.version
   const canvasName = '@napi-rs/canvas-linux-arm64-gnu'
   const canvasTgz = join(OUT_DIR, 'canvas-linux-arm64-gnu.tgz')
-  const response = await fetch(`https://registry.npmjs.org/${canvasName}/-/canvas-linux-arm64-gnu-${canvasVersion}.tgz`, { signal: AbortSignal.timeout(180000) })
-  if (!response.ok) throw new Error(`guest canvas fetch failed: ${response.status}`)
-  const canvasBytes = Buffer.from(await response.arrayBuffer())
+  // Use the repo's retrying curl wrapper: the direct fetch path died with EPIPE on the CI
+  // runner while other pinned downloads are already covered by bounded retries.
+  rmSync(canvasTgz, { force: true })
+  const canvasDownload = spawnSync('bash', [
+    join(ROOT, 'scripts', 'source-build', 'retry-curl.sh'),
+    '--fail', '--location', '--retry', '8', '--retry-max-time', '600',
+    `https://registry.npmjs.org/${canvasName}/-/canvas-linux-arm64-gnu-${canvasVersion}.tgz`,
+    '-o', canvasTgz,
+  ], { stdio: 'inherit' })
+  if (canvasDownload.status !== 0 || !existsSync(canvasTgz)) {
+    rmSync(canvasTgz, { force: true })
+    throw new Error(`guest canvas download failed (exit ${canvasDownload.status})`)
+  }
+  const canvasBytes = readFileSync(canvasTgz)
   verifyPinnedNpm(canvasBytes, canvasName, canvasVersion, PREINSTALL.npmIntegrity)
-  writeFileSync(canvasTgz, canvasBytes)
   const homeStage = join(OUT_DIR, 'home-seed')
   rmSync(homeStage, { recursive: true, force: true })
   execFileSync(PYTHON, [join(ROOT, 'scripts/source-build/prepare-guest-home.py'), join(STAGE, 'root/home'), homeStage, canvasTgz], { stdio: 'inherit' })
