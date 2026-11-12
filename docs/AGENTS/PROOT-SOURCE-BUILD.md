@@ -89,3 +89,10 @@ loader 静态入口、talloc/shmem SONAME、无 RPATH/RUNPATH、无可写可执�
 完成后端源码编译、组装、Debian rootfs/Node 资产和原生库校验；下载后的 schema 2 收据也通过本地复核。
 这包含发行版/官方预编译的 guest 工具和 Node，不代表所有客体程序已自编译。
 主运行时仍未切换；新 APK/Android 16 运行验收尚未完成。
+
+补齐源码归档后的实验提交 `a764c83e` 再次全链成功：
+[run 43147536575](https://github.com/snoworwind/pocket-harness/actions/runs/43147536575)。
+下载后的归档确认包含根 LICENSE、ELF 测试夹具及源码组装器；schema 2 收据复核通过。
+ARM64 Android 16（API 36）host GPU AVD 上，云端源码产物在 ADB shell UID 下通过
+`--version` 与禁用 seccomp 加速器的 shell tracee 烟测。该测试不代表应用 UID 权限、
+APK 安装/提取路径、Linux rootfs 或 UI 验收；证据位于 `.deploy-tmp/native-runtime-p0/`。
