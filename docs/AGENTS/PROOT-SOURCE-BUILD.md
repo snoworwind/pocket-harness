@@ -98,3 +98,8 @@ loader 静态入口、talloc/shmem SONAME、无 RPATH/RUNPATH、无可写可执�
 ARM64 Android 16（API 36）host GPU AVD 上，云端源码产物在 ADB shell UID 下通过
 `--version` 与禁用 seccomp 加速器的 shell tracee 烟测。该测试不代表应用 UID 权限、
 APK 安装/提取路径、Linux rootfs 或 UI 验收；证据位于 `.deploy-tmp/native-runtime-p0/`。
+
+GNU awk 前置检查来自实际本地失败；另用上游 loader-info.awk 与受控符号表复现了
+BSD awk 返回 0 退出码却将预期偏移 128 生成为 0 的情况。这类生成元数据未由 ELF 头门禁覆盖。
+此前 macOS 双目录字节一致仅说明旧配方的输出稳定，不能用来证明生成偏移语义正确；
+更新配方统一要求 GNU awk，旧构建证据仍按各自提交保存，不替代更新配方和应用 UID 验收。

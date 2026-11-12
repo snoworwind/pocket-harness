@@ -3725,6 +3725,7 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 671. **PRoot loader 生成依赖 GNU awk，不能默认任意 awk 均兼容（2026-11-12）**
     现象：本地自编译通过 talloc/shmem 后在 loader-info.awk 因 strtonum 未定义失败。
     真因：干净 Ubuntu 容器默认 mawk，云端预装 gawk，隐式工具差异未被配方声明。
+    macOS BSD awk 还可因不识别 GNU 词边界而静默不匹配：受控符号表预期偏移 128，却成功输出 0。
     修法：两条 Linux 资产消费链显式安装 gawk；源码构建提前验证 GNU awk，优先选择 gawk，
     将工具路径放入私有 awk 包装目录，并在收据记录版本/摘要。不修改第三方算法来掩盖环境差异。
     复验：GNU awk 正例、非 GNU 和缺失负控通过；原始失败编译日志保留于本地来源证据。
