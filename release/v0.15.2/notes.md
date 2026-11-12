@@ -1,6 +1,6 @@
 # Pocket Harness v0.15.2
 
-> 2026-11-11 正式版（versionCode 59），引擎仍为 DeepSeek Harness `0.2.2-rc.1`。
+> 2026-11-12 正式版（versionCode 59，返工），引擎仍为 DeepSeek Harness `0.2.2-rc.1`。
 > 本版把侧栏用户终端从 Web/xterm 替换为**原生 Android 终端**：VT 由 libvterm（MIT）解析，壳侧原生 `TerminalView` 渲染与输入；上游 `ui-sidebar-terminal` 已禁用。
 > 模型侧 `bash`/`terminal` 工具与 `dsh-shell-termux` 未改动。
 

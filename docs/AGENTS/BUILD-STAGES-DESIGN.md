@@ -15,7 +15,7 @@
 
 每个阶段 = 一个可独立触发/复用的构建单元，输出「tar/zip + manifest」，key = 输入内容哈希：
 
-1. **engine-base**（已有 `build-base.yml`）：Harness commit + overlay + patches → `base-engine-<key>.tar.zst`；已发布缓存 + `base-lock.json`。
+1. **engine-base**（已有 `build-base.yml`）：Harness commit + overlay + patches → `base-engine-<key>.tar.zst`；内容键缓存 + manifest 自证（`base-lock.json` 已不再消费）。
 2. **termux-base**：bootstrap pin + preinstall + node-pty 构建输入 → `base-usr-<abi>.tar.xz` + provenance。
 3. **linux-assets**（已有 `build-linux-assets.yml` 雏形）：linux-inputs + 脚本哈希 → `assets/provenance/native-libs`。
 4. **source-snapshot**：termux-base + engine-base + snapshot-config/patches → `snapshot.tar.xz`。
@@ -26,12 +26,13 @@
 
 ## 已落地（本轮）
 
-- engine base：`base-lock.json` 可刷新（#280）；命中后跳过 Harness 源码构建。
+- engine base：内容键自动构建 + 自证复用（#293）；稳定缓存命中即跳过 Harness 源码构建，`base-lock.json` 不再参与消费链。
 - pnpm store：key 改为工具链 + replica，避免 contract 变更误伤、避免双副本抢同一 cache key。
-- Linux assets：缓存改为 `assets/provenance/native-libs`，不再打包 root-owned `rootfs`，修复 save 失败；命中时跳过 apt/keyring。
+- Linux assets：缓存改为 `assets/provenance/native-libs`，不再打包 root-owned `rootfs`，修复 save 失败；`Restore` 已移到 apt 之前（#313），命中时真正跳过 apt/keyring。
 - injected snapshot：以 `源快照 sha256 + 插件/补丁/profile patch/构建脚本 输入哈希` 为 key 缓存 `snap-final2.tar.xz`；命中时 `build-apk.mjs` 跳过 inject-all，仍对所有门禁跑在缓存快照上。key 不绑定 APK project commit（下游校验绑定的是 Harness source manifest）。
 - Linux assets：key 为 pinned 输入哈希（不绑定 project commit）；命中后 `attest-linux-cache.mjs` 校验 release manifest/摘要与 provenance 输入逐字节一致，再把 `project-source-commit.txt` 改写为当前 commit，并写 `reused-from-commit.txt` + `reuse-attestation.json`。
 - `fast` 输入：inject `lzma preset=1`、Termux base `xz -6`（开发档，产物内容一致、体积略大）。
+- 可靠性：apt update/install 有界重试（#310/#311）；发布草稿标题从 APK 文件名生成 `Pocket Harness vX.Y.Z (ARM64 + x86_64)`（#314）。
 
 ## 待办
 

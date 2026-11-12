@@ -15,7 +15,7 @@ DeepSeek Harness 的独立安卓应用 **Pocket Harness**（包名与 Kotlin nam
 
 **关键约束：AI 可见的能力全部来自插件**，壳侧不直接注册工具。
 
-**运行时**：内嵌 Termux 快照（`assets/snapshot.tar.xz` → `files/usr` + `files/home`）；正式发行版 v0.15.0 的来源目标为 **0.2.2-rc.1**（源码固定、Android 适配及验收范围见 [升级记录](docs/AGENTS/ENGINE-UPGRADE-2026-11-06.md) 与 [发布说明](release/v0.15.0/notes.md)），监听 `127.0.0.1:3080`；WebView 加载引擎 Web UI。
+**运行时**：内嵌 Termux 快照（`assets/snapshot.tar.xz` → `files/usr` + `files/home`）；当前正式版 v0.15.2 的来源目标为 **0.2.2-rc.1**（源码固定、Android 适配及验收范围见 [升级记录](docs/AGENTS/ENGINE-UPGRADE-2026-11-06.md) 与 [发布说明](release/v0.15.2/notes.md)），监听 `127.0.0.1:3080`；WebView 加载引擎 Web UI。
 
 **构建链**：minSdk 26 / targetSdk 34 / compileSdk 36；Kotlin 2.0.21；AGP 8.8.2；Java 17。
 
@@ -107,7 +107,7 @@ adb -s <serial> install -r -t out\v<版本>\pocket-harness-v<版本>-arm64.apk
 | **项目基线 / 未迁移标识** | `docs/AGENTS/BASELINE.md` |
 | **安全审计方法 / 仓库外结果归档** | `docs/AGENTS/SECURITY-AUDIT-PROCESS.md`（Cloudflare `security-audit` skill；审计输出保存到仓库同级的 `../pocket-harness-security-audits/SECURITY-AUDIT-<被审查提交短哈希>/`） |
 | **Linux 环境调查 / 保留决策（2026-10-19）** | `docs/linux-env-findings/README.md`（原始报告、源码复核、两轮实机、迁移/保留决策） |
-| **构建拆分 / 复用架构（2026-10-19）** | `docs/AGENTS/BUILD-DECOMPOSITION-2026-10-19.md`（组件键、base-lock、双构建、分阶段） |
+| **构建拆分 / 复用架构（2026-10-19）** | `docs/AGENTS/BUILD-DECOMPOSITION-2026-10-19.md`（2026-10-19 历史设计；`base-lock` 已由内容键 + 自证取代，现行拓扑见 [BUILD-STAGES-DESIGN](docs/AGENTS/BUILD-STAGES-DESIGN.md)） |
 | **坑位（历史实锤，权威）** | `docs/AGENTS/gotchas.md`（递增编号，允许空缺；grep 关键词） |
 | 模块职责 / 函数位置 | `docs/AGENTS/modules.md` |
 | 架构 / 依赖方向 | `docs/AGENTS/ARCHITECTURE.md` |
