@@ -3748,3 +3748,16 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
     既有测试都先用 `makeAndroidNativeLibraries` 隐式建出 dataDir，因此长期未覆盖首装路径。
     复验：`node --test vendor/dsh-linux-runtime/test/manager.test.mjs` 36 项全过（含新用例）。
     设备复验需重出 APK：运行时会从内置插件包重新解包，直接改设备上的 `manager.js` 会在重启时被覆盖。
+
+674. **原生 `tools.register` 要编译态 JSON Schema，`defineTool` 的 `required: true` 写法会被拒并静默丢工具（2026-11-12，实验分支）**
+    现象：Linux 环境安装健康、状态 `enabled/injectionActivated=true`，但模型工具面里始终没有
+    `linux_bash`（新旧会话都没有），模型只能用 Termux 的 `bash`。
+    真因：`vendor/dsh-linux-runtime` 直接调 `ctx.tools.register()`，却沿用了 `defineTool` 的
+    作者态 schema（每个属性 `required: true`）。引擎 `assertSupportedJsonSchema` 只接受对象级
+    `required: string[]`，于是注册抛错；`syncTool` 的 `catch {}` 把错误吞掉，工具静默消失。
+    插件内的 `defineTool` 用户之所以没踩到，是因为 `defineTool` 会先做 schema 归一化。
+    修法：`parameters`/`output.schema` 改为编译态（对象级 `required` 数组、
+    `additionalProperties:false`），并把注册失败改为经 `ctx.logger` 告警而非静默；
+    回归用例按引擎子集规则校验两个 schema，禁止属性级 `required`。
+    复验：`node --test vendor/dsh-linux-runtime/test/manager.test.mjs` 37 项全过。
+    设备复验仍需重出 APK（运行时插件随安装从内置包解包）。

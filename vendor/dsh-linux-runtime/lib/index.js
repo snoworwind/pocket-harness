@@ -57,10 +57,18 @@ export function registerLinuxBash(ctx, manager, options = {}) {
   const tools = ctx?.tools;
   if (!tools || typeof tools.register !== 'function') return () => {};
 
+  // `tools.register` takes compiled JSON Schemas, not `defineTool`'s authoring
+  // spec. The authoring form's per-property `required: true` is rejected by
+  // `assertSupportedJsonSchema`; requiredness has to be an object-level array.
   const parameterSchema = {
-    command: { type: 'string', required: true, description: 'Shell command to run as /bin/bash -c inside the Linux environment.' },
-    cwd: { type: 'string', description: 'Absolute working directory. A guest path such as /root or a shared host directory.' },
-    timeoutMs: { type: 'number', description: 'Command timeout in milliseconds.' },
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      command: { type: 'string', description: 'Shell command to run as /bin/bash -c inside the Linux environment.' },
+      cwd: { type: 'string', description: 'Absolute working directory. A guest path such as /root or a shared host directory.' },
+      timeoutMs: { type: 'number', description: 'Command timeout in milliseconds.' },
+    },
+    required: ['command'],
   };
 
   const tool = {
@@ -72,13 +80,14 @@ export function registerLinuxBash(ctx, manager, options = {}) {
         type: 'object',
         additionalProperties: false,
         properties: {
-          stdout: { type: 'string', required: true },
-          stderr: { type: 'string', required: true },
+          stdout: { type: 'string' },
+          stderr: { type: 'string' },
           exitCode: { type: 'number' },
           timedOut: { type: 'boolean' },
           cwd: { type: 'string' },
           runtimeId: { type: 'string' },
         },
+        required: ['stdout', 'stderr'],
       },
       render: (_args, value) =>
         [
@@ -144,8 +153,13 @@ export function apply(ctx, config = {}) {
     if (manager.status().healthy) {
       try {
         disposeTool = registerLinuxBash(ctx, manager) ?? (() => {});
-      } catch {
+      } catch (error) {
+        // A rejected schema must not disappear: swallowing it made the tool
+        // silently absent while every status surface still read "enabled".
         disposeTool = () => {};
+        ctx?.logger?.('dsh-linux-runtime')?.warn?.(
+          `linux_bash registration failed: ${String(error?.message ?? error)}`,
+        );
       }
     }
   };

@@ -1047,3 +1047,50 @@ test('manifest validation rejects unsafe assets and unsupported selections', () 
   assert.throws(() => selectRuntime(fixture.manifest, 'debian-minimal', 'x64'), /not present in the manifest/);
   assert.throws(() => validateAsset({ url: fixture.manifest.runtimes[0].rootfsAsset.url, sha256: 'a'.repeat(64), size: 0, unpackedSize: 1 }), /size/);
 });
+
+// ── linux_bash tool registration ───────────────────────────────────────────────
+// `tools.register` takes compiled JSON Schemas. The engine's
+// `assertSupportedJsonSchema` rejects the authoring-only `required: true`
+// annotation, and a rejected registration used to be swallowed, so the tool was
+// silently absent while status still reported the runtime as enabled.
+const SUPPORTED_SCHEMA_KEYWORDS = new Set([
+  'type', 'oneOf', 'properties', 'required', 'additionalProperties',
+  'items', 'enum', 'const', 'description', 'title', 'default', 'examples',
+])
+
+function assertEngineSchema(schema, path = 'schema') {
+  assert.equal(typeof schema, 'object', `${path} must be an object`)
+  for (const key of Object.keys(schema)) {
+    assert.equal(SUPPORTED_SCHEMA_KEYWORDS.has(key), true, `${path}.${key} is not a supported keyword`)
+  }
+  if (schema.required !== undefined) {
+    assert.equal(Array.isArray(schema.required), true, `${path}.required must be an array of property names`)
+    for (const name of schema.required) assert.equal(typeof name, 'string', `${path}.required entries must be strings`)
+    assert.equal(schema.type, 'object', `${path}.required is only allowed on an object schema`)
+    for (const name of schema.required) assert.ok(name in (schema.properties ?? {}), `${path}.required names unknown property ${name}`)
+  }
+  if (schema.properties !== undefined) {
+    assert.equal(Array.isArray(schema.properties), false, `${path}.properties must be a map`)
+    for (const [name, child] of Object.entries(schema.properties)) assertEngineSchema(child, `${path}.properties.${name}`)
+  }
+  if (schema.items !== undefined) assertEngineSchema(schema.items, `${path}.items`)
+  if (schema.oneOf !== undefined) schema.oneOf.forEach((child, index) => assertEngineSchema(child, `${path}.oneOf[${index}]`))
+}
+
+test('linux_bash registers schemas the engine schema subset accepts', async () => {
+  const { registerLinuxBash } = await import('../lib/index.js')
+  const registered = []
+  const ctx = { tools: { register: definition => { registered.push(definition); return () => {} } } }
+  const dispose = registerLinuxBash(ctx, { execute: async () => ({ stdout: '', stderr: '', exitCode: 0 }) })
+  assert.equal(typeof dispose, 'function')
+  assert.equal(registered.length, 1)
+  const [definition] = registered
+  assert.equal(definition.name, 'linux_bash')
+  assertEngineSchema(definition.parameters, 'parameters')
+  assertEngineSchema(definition.output.schema, 'output.schema')
+  assert.deepEqual(definition.output.schema.required, ['stdout', 'stderr'])
+  assert.deepEqual(definition.parameters.required, ['command'])
+  for (const child of Object.values(definition.output.schema.properties)) {
+    assert.equal('required' in child, false, 'per-property required annotations are authoring-only')
+  }
+})
