@@ -164,6 +164,17 @@ def replace_once(path, before, after):
     return dict(beforeSha256=original, afterSha256=native.sha256_file(path))
 
 
+def require_gnu_awk():
+    executable = shutil.which('gawk') or shutil.which('awk')
+    if not executable:
+        raise ValueError('GNU awk is required to generate PRoot loader metadata; install gawk')
+    result = subprocess.run([executable, '--version'], capture_output=True, text=True, timeout=15)
+    if result.returncode or not result.stdout.startswith('GNU Awk '):
+        raise ValueError('GNU awk is required to generate PRoot loader metadata; install gawk')
+    executable = Path(executable).resolve()
+    return dict(path=str(executable), version=result.stdout.splitlines()[0], sha256=native.sha256_file(executable))
+
+
 def patch_sources(sources):
     changes = {}
     changes['libtalloc/wscript'] = replace_once(sources['libtalloc'] / 'wscript',
@@ -248,6 +259,7 @@ def build(sources_dir, ndk, output, abi):
         if path.is_symlink() or not path.is_file() or native.sha256_file(path) != row['sha256']:
             raise ValueError(f'source archive digest mismatch: {name}')
         archives[name] = path
+    awk = require_gnu_awk()
     work = Path(tempfile.mkdtemp(prefix=f'work-{abi}-', dir=output))
     source = {name: unpack_source(path, work / name) for name, path in archives.items()}
     changes = patch_sources(source)
@@ -256,6 +268,7 @@ def build(sources_dir, ndk, output, abi):
     (stage / 'lib').mkdir()
     tools = work / 'tools'
     tools.mkdir()
+    (tools / 'awk').symlink_to(awk['path'])
     (tools / 'readelf').symlink_to(toolbin / 'llvm-readelf')
     logs = work / 'logs'
     logs.mkdir()
@@ -310,7 +323,7 @@ def build(sources_dir, ndk, output, abi):
     adapters = {path.name: native.sha256_file(path) for path in sorted(ADAPTERS.iterdir()) if path.is_file()}
     compiler_version = subprocess.check_output([str(cc), '--version'], text=True).splitlines()[0]
     report = dict(schemaVersion=1, abi=abi, androidApi=API, sourceBuild=True, deviceValidation='not-run',
-        ndkRevision=NDK_REVISION, compilerVersion=compiler_version,
+        ndkRevision=NDK_REVISION, compilerVersion=compiler_version, hostAwk=awk,
         compilerExecutableSha256=native.sha256_file((toolbin / 'clang').resolve()),
         ndkPropertiesSha256=native.sha256_file(ndk / 'source.properties'), sources=records, sourcePatches=changes,
         adapterSha256=adapters, buildScriptSha256=native.sha256_file(Path(__file__)),

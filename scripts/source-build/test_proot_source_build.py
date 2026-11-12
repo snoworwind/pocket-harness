@@ -56,6 +56,23 @@ class SourceBuildTests(unittest.TestCase):
             path.chmod(0o755)
         return directory
 
+    def test_gnu_awk_required_before_loader_generation(self):
+        executable = self.root / 'gawk'
+        executable.write_text('fixture GNU awk executable')
+        class Result:
+            returncode = 0
+            stdout = 'GNU Awk 5.3.0\n'
+        with patch.object(MODULE.shutil, 'which', return_value=str(executable)), patch.object(MODULE.subprocess, 'run', return_value=Result()):
+            self.assertEqual(MODULE.require_gnu_awk()['sha256'], MODULE.native.sha256_file(executable))
+        Result.returncode = 2
+        Result.stdout = ''
+        with patch.object(MODULE.shutil, 'which', return_value=str(executable)), patch.object(MODULE.subprocess, 'run', return_value=Result()):
+            with self.assertRaisesRegex(ValueError, 'GNU awk'):
+                MODULE.require_gnu_awk()
+        with patch.object(MODULE.shutil, 'which', return_value=None):
+            with self.assertRaisesRegex(ValueError, 'GNU awk'):
+                MODULE.require_gnu_awk()
+
     def test_fixed_sources_are_source_archives_not_termux_packages(self):
         records = MODULE.source_records()
         self.assertEqual(set(records), {'proot', 'libtalloc', 'libandroid-shmem'})

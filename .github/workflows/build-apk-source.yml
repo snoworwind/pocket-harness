@@ -689,7 +689,7 @@ jobs:
             return 1
           }
           retry sudo apt-get update
-          retry sudo apt-get install -y gcc-aarch64-linux-gnu debootstrap debian-archive-keyring qemu-user-static binfmt-support xz-utils
+          retry sudo apt-get install -y gcc-aarch64-linux-gnu debootstrap debian-archive-keyring qemu-user-static binfmt-support gawk xz-utils
           sudo update-binfmts --enable qemu-aarch64
 
       - name: Prepare pinned Debian archive trust keys for Linux assets

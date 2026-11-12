@@ -110,7 +110,7 @@ jobs:
       - name: Install signed distribution build tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y gcc-aarch64-linux-gnu debootstrap debian-archive-keyring qemu-user-static binfmt-support xz-utils gnupg unzip make
+          sudo apt-get install -y gcc-aarch64-linux-gnu debootstrap debian-archive-keyring qemu-user-static binfmt-support gawk xz-utils gnupg unzip make
           sudo update-binfmts --enable qemu-aarch64
       - name: Prepare pinned Android NDK for source-built PRoot
         shell: bash

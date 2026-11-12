@@ -18,6 +18,8 @@ python3 scripts/source-build/build-proot-source.py <源码缓存目录> <NDK根>
 python3 scripts/source-build/build-proot-source.py --self-test
 ```
 
+宿主需要 GNU make、GNU awk（gawk，生成 loader 元数据需要 strtonum）和 Python 3。构建器优先使用 gawk，拒绝 mawk/BSD awk，并记录其版本与摘要。
+
 支持 Linux 和 macOS 构建宿主，Android API 26、ARM64/x86_64；不编译或承诺 32 位客体 loader。
 NDK 预编译工具链是构建引导输入，不进入 APK。源归档身份直接读取现有
 `linux-backend-packages.json::packageSources` 与 `expectedVersions`，但不执行 Termux recipe，
