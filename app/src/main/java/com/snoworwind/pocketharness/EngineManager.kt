@@ -1330,214 +1330,13 @@ class EngineManager(private val context: Context, private val pickToken: String?
     lastStartRefusalCode = null
     lastStartRefusalConfirmed = emptyList()
     // 纯 Linux 路径：装了内置实例就走客体，不再触碰 Termux 快照闸门。
-    if (LinuxInstanceInstaller.bundled(context)) return startGuestEngine(port)
-    snapshotFingerprintProblem()?.let { problem ->
-      lastStartRefusalCode = REFUSAL_RUNTIME_UNAVAILABLE
-      lastStartRefusal = problem.failureCode + ": " + problem.detail
-      return false
-    }
-    // 快照刷新进行中禁止拉起（看门狗旁路闸门）：主流程刷新完成后自会启动；期间拉起只会
-    // 起在半新半旧的运行时上。返回 true = 「无需再启动」（与冷却窗语义一致，5s 后看门狗复检）。
-    if (EngineManager.snapshotRefreshing.get()) {
-      LogCollector.log(TAG, "engine start skipped (snapshot refresh in progress)")
-      return true
-    }
-    // LD_PRELOAD depends on the snapshot's termux-exec lib: when missing, every child exec fails,
-    // and combined with the cooldown window that means a silent 90s engine outage — assert explicitly
-    // before starting and fail loudly if absent.
-    val preload = File(usrDir, "lib/libtermux-exec-ld-preload.so")
-    if (!preload.exists()) {
-      Log.e(TAG, "engine start failed: termux-exec preload missing at " + preload.absolutePath)
-      lastStartRefusalCode = REFUSAL_RUNTIME_UNAVAILABLE
-      lastStartRefusal = "termux-exec 预载库缺失（" + preload.absolutePath + "）"
-      return false
-    }
-    // ── issue #271 ④：刷新失败后的**半搬态**不得再走 spawn ─────────────────────────────
-    //
-    // 现场形态：快照事务在 replaceEntry 里失败后，live 的 usr 已被搬进 .snapshot-previous、
-    // staged 没搬进来 ⇒ node 不在。此后每一次 boot / 看门狗重启都照旧 spawn，子进程必然
-    // 立即死亡（issue 里引擎日志末行就是 `exec …/files/usr/bin/node: No such file or directory`），
-    // 而 boot 只看到「进程在 90s 预算内死亡、Web 端口未就绪」——用户侧就是「反复重启 + 一堆
-    // 没有指向的报错」。
-    //
-    // 判据复用既有的 [liveRuntimeComplete]（降级闸门用的就是它，口径单一）：live 不完整时
-    // **明确拒绝启动并给出可归因的原因**，让失败停在「运行时快照刷新失败」这一层，
-    // 而不是放大成 90s 超时 + 反复重启。
-    if (!liveRuntimeComplete()) {
-      // issue #309 建议 5：旧文案写「请重试刷新」，而当时**没有任何入口**能做这件事——文案承诺
-      // 了一个不存在的动作。现在两个出口都真实存在，文案按事实改写：
-      //   · 缺的是快照自身条目（确诊项）⇒ 调用方**自动**删指纹重做运行时，用户什么都不用做；
-      //   · 只缺低置信度条目 ⇒ 自动路径刻意不动（见 RuntimeTree.START_RECOVERY_CONFIRMED_ENTRIES），
-      //     用户可在错误页点主按钮强制重做一次。
-      lastStartRefusal = "运行时快照不完整（live 树缺 node/bin.js/profile）——上一次快照刷新失败留下的半搬态；" +
-        "缺的是快照自身条目时会自动重做运行时，否则可在错误页点主按钮强制重做；" +
-        "本次不拉起引擎（避免 90s 超时与反复重启）"
-      // issue #309：给出结构化原因码，调用方据此触发**一次**「删指纹 + 清账本」的恢复动作。
-      // 没有它就没有恢复路径：拒启 ⇒ 不 spawn ⇒ engine.log 永不产生 ⇒ 闸门 B 判据恒为假。
-      lastStartRefusalCode = REFUSAL_LIVE_RUNTIME_INCOMPLETE
-      // issue #309：**删指纹之前**取证。恢复会覆盖现场，取证只能在此刻做；分级决定要不要恢复。
-      val missing = RuntimeTree.missingEntries(
-        root = usrDir,
-        profileDir = File(homeDir, ".dsh/profiles/web"),
-      )
-      val confirmed = RuntimeTree.confirmedDamage(missing)
-      lastStartRefusalConfirmed = confirmed
-      lastStartRefusalEvidence = liveRuntimeEvidence(missing, confirmed)
-      Log.e(TAG, "engine start refused: live runtime incomplete — " + lastStartRefusal)
-      Log.e(TAG, "live runtime evidence: " + lastStartRefusalEvidence)
-      LogCollector.log(TAG, "engine start refused (live runtime incomplete) evidence=" + lastStartRefusalEvidence)
-      return false
-    }
-    // Persisted profile state can predate the current Hard manifest (for example, a bundle
-    // selection missing from an older migration). Reconcile before *every* spawn decision, even
-    // when the extracted snapshot fingerprint is already fresh. Only exact installed identities
-    // from the trusted manifest may be added; user Soft selections and pins remain intact.
-    val hard = PluginMounts.ensureHard(context, PluginMounts.currentFingerprint(context))
-    if (hard == null) {
-      lastStartRefusalCode = REFUSAL_HARD_BUNDLE_SELECTION
-      lastStartRefusal = "当前版本 Hard 插件清单缺失或与运行时快照不匹配；拒绝启动引擎，profile 未修改"
-      Log.e(TAG, "engine start refused: " + lastStartRefusal)
-      return false
-    }
-    val hardBundleRepair = PluginMounts.ensureHardBundlesSelected(
-      File(homeDir, ".dsh/profiles/web/package.json"),
-      File(usrDir, "lib/node_modules/@deepseek-ai/dsh/node_modules"),
-      hard,
-    )
-    if (hardBundleRepair.failure != null) {
-      lastStartRefusalCode = REFUSAL_HARD_BUNDLE_SELECTION
-      lastStartRefusal = "Hard bundle profile 校验/修复失败；拒绝启动引擎，" + hardBundleRepair.failure
-      Log.e(TAG, "engine start refused: " + lastStartRefusal)
-      return false
-    }
-    if (hardBundleRepair.changed) {
-      LogCollector.log(TAG, "required Hard factory bundles added to web profile; engine restart required")
-    }
-    val restartForHardBundleRepair = hardBundleRepair.changed
-    // 通过闸门 A：码与确诊项已在入口清过（见函数头注释），此处无需重复。
-    // 取证字段**刻意不清**：它是只增的现场记录，供诊断包读取。
-    val now = System.currentTimeMillis()
-    // Process-level CAS: only one concurrent call really starts (device-measured EADDRINUSE double-start).
-    if (!STARTING.compareAndSet(false, true)) return true
-    // A tracked child proves exactly whether another manager is cold-booting.
-    // If it has exited, a caller may retry immediately; deferring on a timestamp
-    // alone turns a real early crash into a 90-second outage.
-    val withinCooldown = now - EngineManager.lastStartAttemptAt < START_COOLDOWN_MS
-    val availability = probeAvailability(1_000)
-    val managedProcessAlive = engineProcess?.isAlive == true
-    lastAvailability = availability
-    if (availability == EngineProbe.EngineAvailability.PORT_FOREIGN) {
-      val refusal = "本机 3080 端口由未归属到本壳的进程占用；为保护该进程，本次不杀、不重启、不拉起引擎"
-      lastStartRefusalCode = REFUSAL_PORT_FOREIGN
-      lastStartRefusal = refusal
-      LogCollector.log(TAG, "engine start refused (PORT_FOREIGN; force=$force)")
-      Log.w(TAG, refusal)
-      STARTING.set(false)
-      return false
-    }
-    val engineUsable = availability == EngineProbe.EngineAvailability.OUR_PROCESS ||
-      availability == EngineProbe.EngineAvailability.OUR_HTTP
-    val degradedHttp = engineUsable && WatchdogV2.degradedHttpTripped()
-    if (!force && !restartForHardBundleRepair && engineUsable && !degradedHttp) {
-      STARTING.set(false)
-      LogCollector.log(TAG, "engine start skipped (existing engine usable: " + availability + ")")
-      return true
-    }
-    if ((force || restartForHardBundleRepair || degradedHttp) && availability == EngineProbe.EngineAvailability.OUR_HTTP && !managedProcessAlive) {
-      lastStartRefusal = "引擎 HTTP 响应可归属，但本壳没有可安全停止的子进程句柄；拒绝盲目重启"
-      LogCollector.log(TAG, "engine restart refused (owned HTTP without tracked process handle)")
-      STARTING.set(false)
-      return false
-    }
-    if (withinCooldown) {
-      LogCollector.log(TAG, "engine start retrying after the tracked child exited during cooldown")
-    }
-    return try {
-      // 只停止持有句柄的本壳子进程；未归属监听器绝不通过名称匹配清理。
-      if (!killExistingEngine()) {
-        lastAvailability = EngineProbe.classifyPreSpawnPort(EngineProbe.portReachable(250))
-        if (lastAvailability == EngineProbe.EngineAvailability.PORT_FOREIGN)
-          lastStartRefusalCode = REFUSAL_PORT_FOREIGN
-        lastStartRefusal = "旧引擎停止后 3080 仍被占用；本次拒绝 spawn，避免覆盖未知监听器"
-        LogCollector.log(TAG, "engine start refused: listener remained after owned-child cleanup")
-        return false
-      }
-      // 0.13.1 W5：坏键迁移必须在引擎读 settings 前完成。
-      repairSettingsSeed()
-      SnapshotUserData.retireReseededFactorySettings(File(homeDir, ".dsh"))?.let { backup ->
-        LogCollector.log(TAG, "resurrected blank factory settings quarantined before profile import: " + backup.name)
-      }
-      // 0.14.0 #214：退役行 disabled 残留自愈（前置于引擎读 profile；幂等一次性，见函数注释）。
-      repairProfilePatch()
-      // 0.13.1 W3/W4：共享目录 README 每次启动刷新（此前只在迁移路径调用，正常启动不落盘）。
-      // 注意：本行**只覆盖「引擎真的启动」这一条路径**——startEngine 有两个早退会整段跳过它
-      // （快照刷新中 / 引擎已在跑）。故 provisionPublicRepo 另由 MainActivity 的 onCreate/onResume
-      // 触发，那里才是「授权之后能自愈」的入口（0.14.1 用户反馈）。
-      provisionPublicRepo(PublicRepoProvision.TRIGGER_ENGINE_START)
-      // Runs before the engine reads Python user-site state and before spawn.
-      migratePythonPackages("engine-start")
-      applyRuntimePatches()
-      // --no-open: the engine must never try to open a desktop browser on Android
-      // (the WebView IS the UI). Without it, rc.2's spawn xdg-open on a missing
-      // binary stalls engine serve on some emulators (MuMu root observed);
-      // the flag is the official engine CLI switch (see bin.js docs).
-      val args = arrayOf(
-        nodeBin.absolutePath, "--expose-internals", dshBin.absolutePath, "web", "--port", port.toString(), "--no-open",
-      )
-      // TOCTOU guard: cleanup is not proof that the port stayed free during runtime preparation.
-      val preSpawnAvailability = EngineProbe.classifyPreSpawnPort(EngineProbe.portReachable(300))
-      if (preSpawnAvailability != EngineProbe.EngineAvailability.DOWN) {
-        lastAvailability = preSpawnAvailability
-        lastStartRefusalCode = REFUSAL_PORT_FOREIGN
-        lastStartRefusal = "最终 spawn 前复查发现 3080 已被占用；按外部监听处理，本次只拒绝一次且不重试"
-        LogCollector.log(TAG, "engine start refused at final pre-spawn recheck (PORT_FOREIGN)")
-        return false
-      }
-      // 纯 Linux 客体启动：boot-mode.json 显式开启后，引擎必须起在 PRoot/Debian 里。
-      // 该模式下缺件直接拒绝启动而不是静默回退 Termux——否则「纯 Linux」会被假绿掩盖。
-      val guestLaunch = guestBootLaunch(port)
-      if (guestLaunch is LinuxGuestBoot.Result.Refused) {
-        lastStartRefusalCode = guestLaunch.code
-        lastStartRefusal = guestLaunch.detail
-        LogCollector.log(TAG, "guest boot refused: " + guestLaunch.code + " " + guestLaunch.detail)
-        return false
-      }
-      val started = if (guestLaunch is LinuxGuestBoot.Result.Ready) {
-        startGuestWithLaunch(guestLaunch.launch)
-      } else {
-        startWithArgs(args, shellEnv())
-      }
-      engineProcess = started
-      // If a listener won the final check/start race, Node exits on EADDRINUSE. Reclassify once and
-      // leave subsequent watchdog attempts at the foreign-port refusal path (no kill/retry storm).
-      try { Thread.sleep(200) } catch (_: InterruptedException) { Thread.currentThread().interrupt() }
-      if (!started.isAlive && EngineProbe.portReachable(250)) {
-        engineProcess = null
-        lastAvailability = EngineProbe.EngineAvailability.PORT_FOREIGN
-        lastStartRefusalCode = REFUSAL_PORT_FOREIGN
-        lastStartRefusal = "3080 在最终复查与引擎 bind 之间被其他进程抢占；已停止本次启动且不会清理外部进程"
-        LogCollector.log(TAG, "engine spawn lost EADDRINUSE race; classified PORT_FOREIGN, no retry")
-        return false
-      }
-      // The cooldown is written only after a real start: failure paths don't consume the window (retry is immediate).
-      EngineManager.lastStartAttemptAt = now
-      LogCollector.log(TAG, "engine started")
-      true
-    } catch (t: Throwable) {
-      lastStartRefusalCode = startupExceptionCode(t)
-      Log.e(TAG, "engine start failed", t)
-      LogCollector.log(TAG, "engine start FAILED: " + (t.message ?: t.javaClass.simpleName))
-      // 0.13.1 W3：失败现场镜像到共享目录（此前 engine.log 只在私有域，外界拿不到）。
-      mirrorDiagnosticsToShared("engine-spawn-failed")
-      false
-    } finally {
-      STARTING.set(false)
-    }
+    // 纯 Linux 运行时：引擎一律在 PRoot/Debian 客体里启动，不存在 Termux 回退分支。
+    return startGuestEngine(port)
   }
 
   /**
    * 客体启动：确保内置实例就位（缺则解包），再按 PRoot 命令起引擎。
-   * 这里不复用 Termux 的快照指纹/运行时探针——那套判据只对 Bionic 树成立。
+   * 不再有 Termux 快照闸门——那套判据只对已经不存在的 Bionic 树成立。
    */
   private fun startGuestEngine(port: Int): Boolean {
     val files = context.filesDir
@@ -1689,6 +1488,11 @@ class EngineManager(private val context: Context, private val pickToken: String?
       // 否则 subprocess-local 会退回 Android/宿主路径。
       "SHELL" to "/bin/bash",
       "TERM" to "xterm-256color",
+      // 与旧 Termux 路径保持同一组资源策略：堆上限、线程池与 pnpm store 都在 shell 侧钉死，
+      // 只是路径改成客体可见的 $HOME 下（home 目录已 bind 进 PRoot）。
+      "NODE_OPTIONS" to heapOptionFrom(engineHeapMb(deviceTotalRamMb())),
+      "UV_THREADPOOL_SIZE" to uvThreadPoolSize(Runtime.getRuntime().availableProcessors()).toString(),
+      "npm_config_store_dir" to pnpmStoreDir(homeDir),
       "DSH_APP_VERSION" to BuildConfig.VERSION_NAME,
       "DSH_APP_VERSION_CODE" to BuildConfig.VERSION_CODE.toString(),
       "DSH_FILES_DIR" to context.filesDir.absolutePath,
@@ -1707,44 +1511,6 @@ class EngineManager(private val context: Context, private val pickToken: String?
     if (!log.isFile) {
       runCatching { process.destroyForcibly() }
       throw java.io.IOException("guest engine spawn did not create a fresh engine.log")
-    }
-    return process
-  }
-
-  private fun startWithArgs(args: Array<String>, env: Map<String, String>): Process {
-    val preload = EngineTransport.preparePreload(context)
-    val privateArgs = listOf(args.first(), "--require", preload.absolutePath) + args.drop(1)
-    val log = File(context.filesDir, "engine.log")
-    rotateEngineLog(log)
-    // Rotation must isolate the active path; otherwise an old token could survive a failed rename.
-    if (log.exists()) throw java.io.IOException("could not isolate engine.log generation before spawn")
-    // Mark the generation before ProcessBuilder creates the fresh redirect target. token extraction
-    // also checks creation time, so a stale file with a refreshed mtime cannot impersonate this run.
-    runCatching { EngineAuth.markGenerationStart(System.currentTimeMillis()) }
-    LogCollector.markBootStart(context, engineHeapMb(deviceTotalRamMb()))
-    watchEngineListen()
-    fun build(argv: List<String>): ProcessBuilder =
-      ProcessBuilder(argv).also { b ->
-        b.environment().putAll(env)
-        // Working directory = the app workspace root (0.13.7fx-1). An Android app process starts
-        // in `/`, and the engine takes process.cwd() as the default Session cwd and as the
-        // file-reference root for a Session without a workspace — so `@` listed /acct, /apex, …
-        // instead of anything the user owns. The workspace root is where the app keeps its
-        // workspaces (and the shell write-fence root), so ungrouped Sessions stay inside it.
-        workspaceRootDir()?.let { b.directory(it) }
-        b.redirectErrorStream(true)
-        b.redirectOutput(log)
-      }
-    val process = try {
-      build(privateArgs).start()
-    } catch (e: java.io.IOException) {
-      if (e.message?.contains("Permission denied") != true) throw e
-      Log.w(TAG, "direct exec denied, falling back to linker64: " + e.message)
-      build(listOf("/system/bin/linker64") + privateArgs).start()
-    }
-    if (!log.isFile) {
-      runCatching { process.destroyForcibly() }
-      throw java.io.IOException("engine spawn did not create a fresh engine.log")
     }
     return process
   }
@@ -2422,107 +2188,6 @@ class EngineManager(private val context: Context, private val pickToken: String?
    * TERMUX_* injected explicitly — the snapshot is self-sufficient, no Termux app needed). Idempotent:
    * safe to call repeatedly (ensurePrivateDshData and the TMPDIR mkdirs are both idempotent).
    */
-  fun shellEnv(): Map<String, String> {
-    // The runtime manager reads this atomically updated file for each guest
-    // process, so changing Wi-Fi/VPN networks does not require restarting DSH.
-    LinuxDnsServers.refresh(context.applicationContext)
-    val preload = File(usrDir, "lib/libtermux-exec-ld-preload.so")
-    // Cert paths hardcoded at Termux package build time (/data/data/com.termux/...) break after the
-    // PREFIX relocation; relocate-snapshot.py doesn't rewrite ELF, so env vars cover the functional
-    // paths — curl/wget/git https CA validation depends on them (v0.12.3-FX-2).
-    val cert = File(usrDir, "etc/tls/cert.pem").takeIf { it.exists() }
-    val certEnv = if (cert != null) {
-      mapOf(
-        "SSL_CERT_FILE" to cert.absolutePath,
-        "CURL_CA_BUNDLE" to cert.absolutePath,
-        "GIT_SSL_CAINFO" to cert.absolutePath,
-        // 快照 node 编译期硬编码 OpenSSL 配置路径 /data/data/com.termux/...（app 域不可读）：
-        // 不注入则任何 node/npm 子进程启动即 OpenSSL configuration error 退出（agent 工具调用
-        // npm/node 全部失败，引擎本体侥幸存活）。与 UndoGate/AdbState 同一修复（坑 #5 统一到
-        // 引擎级 env，覆盖 agent 所有工具子进程，2026-08-24 真机实测实锤）。
-        "OPENSSL_CONF" to File(usrDir, "etc/tls/openssl.cnf").absolutePath,
-      )
-    } else emptyMap()
-    return mapOf(
-      "PATH" to (usrDir.absolutePath + "/bin:/system/bin"),
-      "LD_LIBRARY_PATH" to (usrDir.absolutePath + "/lib"),
-      "HOME" to homeDir.absolutePath,
-      // 0.14.2 D13：侧边栏「新建终端」的默认 shell。上游 subprocess-local 的
-      // terminalEnvironment() 取 process.env.SHELL ?? os.userInfo().shell，而快照的 NSS 把
-      // userInfo().shell 解析成 **Termux 编译期前缀**（实测 /data/data/com.termux/files/usr/bin/bash，
-      // 本应用域不可达）→ 终端创建直接失败：
-      //   subprocess-local: command "/data/data/com.termux/files/usr/bin/bash" is not an executable file
-      // 壳侧是唯一能注入引擎 env 的一方，故在此显式钉住快照内 bash（与 PATH 同源）。
-      // 不改上游（铁律：上游零改动）；SHELL 全仓仅这一个消费点（subprocess-local:258）。
-      "SHELL" to File(usrDir, "bin/bash").absolutePath,
-      // DSH_HOME always stays in the private domain (FUSE forbids symlinks, so the public domain
-      // can't maintain the profiles/node_modules flat fallback); all runtime user data lives in private
-      // files/home/.dsh, and public Documents/dshdata is only the export repo.
-      "DSH_HOME" to ensurePrivateDshData().absolutePath,
-      // 0.14.1 块K ③（反馈三）：从 shell 执行 `dsh plugin add` 必失败 —— ERR_PNPM_UNEXPECTED_STORE。
-      // 现象：node_modules 链自 `/data/user/0/…/.local/share/pnpm/store/v10`，pnpm 却想用
-      // `/data/data/…/.local/share/pnpm/store/v10`；两路径 **inode 相同**（用户实测 719892）
-      // —— 同一目录的两种写法（`/data/data` 与 `/data/user/0` 在本机实测同 inode）。
-      //
-      // 真因：pnpm 的 store 位置由它自己按 CWD/HOME 推导，而 shell 的 CWD（`files/home`）与
-      // 记录进 node_modules 元数据时的写法可能不同 → 两条写法指向同一目录却字符串不等，
-      // pnpm 判定「store 变了」直接拒绝安装（引擎内安装走同一 HOME，故不受影响）。
-      //
-      // 修法（用户建议二选一中的「显式设置 pnpm store-dir」）：**显式钉住** store 目录，
-      // 且与 HOME 同源派生（见 [pnpmStoreDir]）——pnpm 不再自己猜，两条路径必然同一字符串。
-      "npm_config_store_dir" to pnpmStoreDir(homeDir),
-      // 0.13.8 #183：引擎子进程读取键盘广播 nonce 的路径基（manage 插件 --es auth 随广播携带）
-      "DSH_FILES_DIR" to context.filesDir.absolutePath,
-      // PRoot, its static guest loader and dependencies are PackageManager-
-      // extracted native libraries. Android permits execution from this
-      // directory while denying direct execve of ELFs in writable filesDir.
-      "DSH_LINUX_NATIVE_LIBRARY_DIR" to context.applicationInfo.nativeLibraryDir,
-      // os.tmpdir() falls back to the baked-in Termux tmp on Android
-      // (unwritable from the app domain); keep spill inside filesDir.
-      "TMPDIR" to File(homeDir, "tmp").apply { mkdirs() }.absolutePath,
-      // Host-side Termux commands use termux-exec for app-private Bionic tools.
-      // PRoot and its guest loader use PackageManager-installed native files.
-      "LD_PRELOAD" to preload.absolutePath,
-      "TERMUX_EXEC__SYSTEM_LINKER_EXEC__MODE" to "force",
-      "TERMUX_EXEC__EXECVE_CALL__INTERCEPT" to "1",
-      "TERMUX__ROOTFS" to usrDir.parentFile.absolutePath,
-      "TERMUX__PREFIX" to usrDir.absolutePath,
-      "TERMUX_APP__DATA_DIR" to context.filesDir.parentFile.absolutePath,
-      "TERMUX_APP__LEGACY_DATA_DIR" to "/data/data/${BuildConfig.APPLICATION_ID}",
-      "TERMUX_VERSION" to BuildConfig.TERMUX_VERSION,
-      // 版本口径单一来源（2026-09-10 用户定例）：壳侧 UI/桥/诊断都读 BuildConfig.VERSION_NAME，
-      // 引擎侧插件（如 android-linux-env 导出的环境配方）一律读这两个环境变量，
-      // 不许再出现「界面显示 0.13.x 而插件里写 0.13.0」这类内部口径分裂。
-      "DSH_APP_VERSION" to BuildConfig.VERSION_NAME,
-      "DSH_APP_VERSION_CODE" to BuildConfig.VERSION_CODE.toString(),
-      // Directory-picker endpoint auth token (validated by the web-compat plugin via x-dsh-pick-token).
-      "DSH_PICK_TOKEN" to (pickToken ?: ""),
-      // 0.14.0：内置 adb 退役——DSH_ADB_* 授权快照不再注入（引擎侧特权面改由 Shizuku 承载，
-      // 就绪事实经控制队列 caps.shizuku 实时上报，不再有启动期快照与活体两套口径）。
-      // Vision backend (Qwen-VL) API key: read from a private file rather than hardcoded in source.
-      "DASHSCOPE_API_KEY" to (File(context.filesDir, "dashscope-key.txt").takeIf { it.exists() }?.readText()?.trim() ?: ""),
-      // DeepSeek 官方 provider（dsh-llm-deepseek，provider=deepseek-official）：同模式私有文件注入。
-      "DEEPSEEK_API_KEY" to (File(context.filesDir, "deepseek-key.txt").takeIf { it.exists() }?.readText()?.trim() ?: ""),
-      // node 预热（0.13.0 启动提速 D3）：v8 模块编译缓存——引擎/工具子进程首启自动生成、
-      // 二次冷启动命中，直接缩短 node 冷启 require 树编译时间（K20 Pro 实测每次冷启都慢、
-      // 0.13.0 之前全快；缓存目录持久在 home/.dsh 下，随用户数据保留不随快照）。
-      "NODE_COMPILE_CACHE" to File(ensurePrivateDshData(), ".node-compile-cache").apply { mkdirs() }.absolutePath,
-      // C1（P-AC-03 / §7.2）：libuv 线程池默认 4——fs/crypto/zlib/dns 全挤在这 4 条线程上。
-      // 显式取 min(8, cores)（见 uvThreadPoolSize）：零产品语义改动，引擎与所有工具子进程
-      // 经 shellEnv() 一并继承。判据：子进程回读 process.env.UV_THREADPOOL_SIZE = min(8, cores)。
-      "UV_THREADPOOL_SIZE" to uvThreadPoolSize(Runtime.getRuntime().availableProcessors()).toString(),
-      // 引擎 V8 老生代上限（0.14.8 堆下限）：**此前无人管理**——不设标志时 V8 只按物理内存推导，
-      // 小内存设备上推出来的上限可能小到引擎 boot 期就 OOM（社区反馈「JavaScript 堆太小导致启动失败」）。
-      // 这里显式给出自适应值（见 engineHeapMb）：设备总内存的一半、下限 512MB、上限 4096MB。
-      // 上限取 1024 会让「一半内存」分支在所有真实设备上被截断（0.14.8 缺陷），见下方自然标志档。
-      // 用 NODE_OPTIONS 而不是 argv，是因为 argv 会**覆盖** NODE_OPTIONS，二者不能同时表达同一件事；
-      // 而 NODE_OPTIONS 还顺带覆盖所有经 shellEnv() 派生的子进程（工具子进程 / 控制台 / UndoGate）。
-      // 实测口径：--max-old-space-size=N ⇒ heap_size_limit = N + 96MB；引擎最小可用堆约 70MB。
-      // 读不到设备内存时退回下限，保证「任何设备都够启动」而不是编造一个值。
-      "NODE_OPTIONS" to heapOptionFrom(engineHeapMb(deviceTotalRamMb())),
-    ) + certEnv + PythonPackages.environment(context.filesDir, usrDir) + relocatedTermuxEnv(usrDir)
-  }
-
   /** Move user-installed packages away from usr, which is replaced as a whole on refresh. */
   internal fun migratePythonPackages(trigger: String) {
     val result = try {

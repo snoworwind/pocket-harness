@@ -427,7 +427,7 @@ class GuideAndConsoleBatch6Test {
     assertFalse("调用线程不得创建进程", start.contains("ProcessBuilder"))
     val worker = session.substringAfter("private fun startProcess")
     assertTrue("文件系统、环境与进程启动都归 worker 执行", worker.contains("EngineManager(context") &&
-      worker.contains("shellEnv()") && worker.contains("build(argv).start()"))
+      worker.contains("LinuxGuestBoot.command(") && worker.contains("ProcessBuilder(spec.argv)"))
     assertTrue("状态锁必须覆盖代次检查与回调投递", session.contains(
       "private fun notifyIfCurrent(gen: Int, callback: () -> Unit): Boolean = synchronized(stateLock)",
     ))

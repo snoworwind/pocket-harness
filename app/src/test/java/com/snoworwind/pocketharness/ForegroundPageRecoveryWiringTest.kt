@@ -69,9 +69,11 @@ class ForegroundPageRecoveryWiringTest {
     val manager = source("EngineManager.kt")
     val refresh = between(manager, "fun refreshSnapshot(", "private fun refreshSnapshotInternal(")
     assertTrue(ordered(refresh, "snapshotFingerprintProblem()", "refreshSnapshotInternal(onProgress"))
+    // 纯 Linux 档：spawn 分支只剩客体启动，快照闸门与快照参数组装都已删除。
     val spawn = between(manager, "fun startEngine(", "private fun ")
-    assertTrue(spawn.contains("snapshotFingerprintProblem()"))
-    assertTrue(ordered(spawn, "SnapshotUserData.retireReseededFactorySettings(", "val args = arrayOf("))
+    assertFalse(spawn.contains("snapshotFingerprintProblem()"))
+    assertTrue(spawn.contains("return startGuestEngine(port)"))
+    assertFalse(spawn.contains("val args = arrayOf("))
     val internalRefresh = between(manager, "private fun refreshSnapshotInternal(", "fun recoverInterruptedRefresh()")
     assertTrue(ordered(internalRefresh, "SnapshotUserData.prepareStagedSnapshot(", "SnapshotTransaction.writeMarker("))
     val flow = source("EngineStartFlow.kt")

@@ -97,9 +97,10 @@ class SnapshotFingerprintPolicyTest {
     assertTrue(refresh.contains("refreshSnapshotInternal(onProgress"))
     assertTrue(refresh.indexOf("snapshotFingerprintProblem()") < refresh.indexOf("refreshSnapshotInternal(onProgress"))
     assertTrue(refresh.contains("lastRefreshFailureCode = problem.failureCode"))
+    // 纯 Linux 档：startEngine 不再过快照指纹闸门，直接委托客体启动。
     val spawn = manager.substringAfter("fun startEngine(").substringBefore("private fun ")
-    assertTrue(spawn.contains("snapshotFingerprintProblem()"))
-    assertTrue(spawn.indexOf("snapshotFingerprintProblem()") < spawn.indexOf("snapshotRefreshing.get()"))
+    assertTrue(spawn.contains("startGuestEngine"))
+    assertFalse(spawn.contains("snapshotFingerprintProblem()"))
     val presentation = source("MainActivity.kt").substringAfter("internal fun showWeb()").substringBefore("internal fun reloadEnginePage()")
     assertTrue(presentation.contains("engineManager.snapshotFingerprintProblem() != null"))
   }

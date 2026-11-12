@@ -80,6 +80,17 @@ class LinuxGuestBootTest {
   }
 
   @Test
+  fun buildsAGuestBashCommandForTheConsole() {
+    val paths = fixture()
+    val ready = LinuxGuestBoot.command(paths, listOf("/bin/bash", "-i")) as LinuxGuestBoot.Result.Ready
+    val argv = ready.launch.argv
+    assertTrue(argv.contains("/bin/bash"))
+    assertTrue(argv.contains("-i"))
+    assertTrue(argv.any { it.startsWith("PATH=/usr/local/sbin:") })
+    assertTrue(argv.any { it.startsWith("HOME=/root") })
+  }
+
+  @Test
   fun bootModeFollowsInstallationUnlessExplicitlyPinned() {
     val directory = temporary.newFolder("linux-environment")
     assertEquals(LinuxGuestBoot.MODE_TERMUX, LinuxGuestBoot.mode(directory, runtimeInstalled = false))

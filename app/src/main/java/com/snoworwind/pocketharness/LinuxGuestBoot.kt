@@ -93,6 +93,7 @@ internal object LinuxGuestBoot {
       instance.rootfs to "linux-instance-incomplete",
       instance.node to "linux-instance-incomplete",
       File(instance.engine, ENGINE_ENTRY) to "linux-guest-engine-missing",
+      File(instance.engine, "@deepseek-ai/dsh/node_modules/$ADDON_PACKAGE/bin/glibc/system.node") to "linux-guest-addon-missing",
     )) {
       if (!file.exists()) return Result.Refused(code, "缺少 ${file.absolutePath}")
     }

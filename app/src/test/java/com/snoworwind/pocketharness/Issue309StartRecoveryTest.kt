@@ -136,25 +136,15 @@ class Issue309StartRecoveryTest {
    */
   @Test
   fun `gate B judge reads the engine log which gate A never produces`() {
-    val flow = code("EngineStartFlow.kt")
-    val selfHeal = between(flow, "private fun maybeSelfHealDamagedRuntimeTree(", "private fun reportRecoveryRejectionIfAny(")
-    assertTrue(
-      "闸门 B 的判据必须是 engine.log 尾部 + 链接失败签名（这正是它被互锁的原因）",
-      selfHeal.contains("readEngineLogTail") && selfHeal.contains("snapshotLinkFailure"),
-    )
-    // 独立评审指出：旧断言取 gateA 的切片止于 `lastStartRefusalCode = null`，而 spawn 在其后，
-    // 所以 contains("startWithArgs(") **恒为假**——它守不住任何东西。改成真正有判别力的判据：
-    // 「拒启分支在 return false 之前不得出现任何 spawn 调用」（切片改为整个 gate-A if 块）。
+    // 纯 Linux 档：startEngine 只做「清结论 -> 客体启动」，不再有快照闸门互锁。
     val manager = code("EngineManager.kt")
-    val gateA = between(manager, "if (!liveRuntimeComplete()) {", "lastStartRefusalConfirmed = confirmed")
-    assertFalse(
-      "闸门 A 拒启路径直到取证为止不得 spawn（否则互锁的成因就变了）",
-      gateA.contains("startWithArgs("),
-    )
-    // 且整段拒启必须 return false（不得放行到后面的 spawn 段）。
-    val refusalTail = between(manager, "lastStartRefusalEvidence = liveRuntimeEvidence(missing, confirmed)", "val now = System.currentTimeMillis()")
-    assertTrue("拒启必须 return false", refusalTail.contains("return false"))
-    assertTrue("闸门 A 必须在 return 之前给出结构化原因码", gateA.contains("REFUSAL_LIVE_RUNTIME_INCOMPLETE"))
+    val start = between(manager, "fun startEngine(port: Int = 3080, force: Boolean = false): Boolean {", "private fun startGuestEngine(")
+    assertTrue("startEngine 必须委托客体启动", start.contains("return startGuestEngine(port)"))
+    assertFalse("startEngine 自身不得再 spawn（spawn 只在 startGuestEngine 里）", start.contains("startWithArgs("))
+    val guest = between(manager, "private fun startGuestEngine(port: Int): Boolean {", "internal fun startupExceptionCode(")
+    assertTrue("实例安装失败必须给结构化原因码", guest.contains("lastStartRefusalCode = installed.code"))
+    assertTrue("客体拒绝必须给结构化原因码", guest.contains("lastStartRefusalCode = resolved.code"))
+    assertTrue("拒启必须 return false", guest.contains("return false"))
   }
 
   /**
@@ -306,31 +296,13 @@ class Issue309StartRecoveryTest {
   /** 取证必须在**删指纹之前**产生，否则重抽取会抹掉现场（issue #309 建议 3 的取证要求）。 */
   @Test
   fun `evidence is captured before the fingerprint can be deleted`() {
-    // 独立评审指出旧写法是一条**空断言**：它拿 branch 里 writeBootFail 的下标去比
-    // maybeRecoverFromIncompleteLiveRuntime，而这两句本身一个在前一个在后（写死顺序），
-    // 且全程没碰 liveRuntimeEvidence 与 invalidateSnapshotFreshness ⇒ 守不住任何东西。
-    // 改成断言真正的性质，三段各对应一个可被改坏的实现细节：
+    // 删掉快照后不再有指纹可删：判据改为「客体启动路径不得触碰旧快照恢复机制」。
     val manager = code("EngineManager.kt")
-    val gateA = between(manager, "if (!liveRuntimeComplete()) {", "return false")
-    // ① 闸门 A 里必须**先探测一次**，且日志与判据共用这一次结果（不得各算一遍）。
-    assertTrue("拒启时必须取证", gateA.contains("RuntimeTree.missingEntries("))
-    assertTrue(
-      "缺失项必须只探测一次（missing 变量），不得日志与判据各算一遍",
-      gateA.contains("val missing = RuntimeTree.missingEntries(") &&
-        gateA.contains("RuntimeTree.confirmedDamage(missing)") &&
-        gateA.contains("liveRuntimeEvidence(missing, confirmed)"),
-    )
-    // ② 判据必须来自同一次探测的 confirmed，而不是重新算一遍。
-    assertTrue("判据必须复用 confirmed", gateA.contains("lastStartRefusalConfirmed = confirmed"))
-    // ③ 闸门 A 的整段（到 return false 为止）不得出现删指纹——删指纹只能发生在恢复函数里，
-    //    于是「取证先于删除」由**函数边界**保证，而不是靠注释声称。
-    assertFalse("闸门 A 内不得删指纹（取证必须发生在删除之前）", gateA.contains("invalidateSnapshotFreshness"))
-    val flow = code("EngineStartFlow.kt")
-    val fn = between(flow, "internal fun maybeRecoverFromIncompleteLiveRuntime(", "private fun clearRuntimeTreeDamageMarker(")
-    assertTrue(
-      "删指纹必须发生在恢复函数内（即闸门 A 的取证之后）",
-      fn.contains("invalidateSnapshotFreshness()"),
-    )
+    val guest = between(manager, "private fun startGuestEngine(port: Int): Boolean {", "internal fun startupExceptionCode(")
+    assertFalse("客体启动不得删快照指纹", guest.contains("invalidateSnapshotFreshness"))
+    assertFalse("客体启动不得再走快照恢复", guest.contains("maybeRecoverFromIncompleteLiveRuntime"))
+    assertTrue("安装失败必须在解包之后立刻停", guest.contains("linux instance install failed"))
+    assertTrue("缺失实例由壳侧解包（不依赖引擎）", guest.contains("LinuxInstanceInstaller.install("))
   }
 
   /**
@@ -344,14 +316,12 @@ class Issue309StartRecoveryTest {
   @Test
   fun `stale refusal facts are cleared on every startEngine entry`() {
     val manager = code("EngineManager.kt")
-    val entry = between(manager, "fun startEngine(port: Int = 3080, force: Boolean = false): Boolean {", "snapshotFingerprintProblem()")
+    val entry = between(manager, "fun startEngine(port: Int = 3080, force: Boolean = false): Boolean {", "return startGuestEngine(port)")
     assertTrue("入口必须先清原因码", entry.contains("lastStartRefusalCode = null"))
     assertTrue("入口必须同时清确诊项", entry.contains("lastStartRefusalConfirmed = emptyList()"))
-    val beforeFirstReturn = manager.substringAfter("fun startEngine(port: Int = 3080, force: Boolean = false): Boolean {").substringBefore("return false")
-    assertTrue(
-      "清码必须早于第一条 return false（否则残留码仍会被当成本次结论）",
-      beforeFirstReturn.contains("lastStartRefusalCode = null"),
-    )
+    val spawnAt = manager.indexOf("return startGuestEngine(port)")
+    val clearAt = manager.indexOf("lastStartRefusalCode = null")
+    assertTrue("清码之后才允许进入客体启动", clearAt in 0 until spawnAt)
   }
 
   /**

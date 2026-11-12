@@ -214,22 +214,15 @@ class W3ShellContractTest {
 
   @Test
   fun engineHeapIsNotExpressedThroughArgv() {
-    // argv 会**覆盖** NODE_OPTIONS（实测：argv 2048 + env 512 ⇒ 2240），二者表达同一件事必冲突。
-    // 引擎 argv 只保留 --expose-internals 与该 CLI 自身的参数；堆一律走 env 单一来源。
-    val code = codeOnly(source("EngineManager.kt"))
-    assertFalse(
-      "引擎 argv 不得出现 max-old-space-size（否则与 NODE_OPTIONS 双重来源，行为取决于谁覆盖谁）",
-      code.contains("--max-old-space-size=") && code.contains("\"nodeBin.absolutePath, \"--max-old-space-size="),
+    // 堆只走 env 单一来源（NODE_OPTIONS）；客体 argv 里不得再出现堆标志。
+    val guest = codeOnly(source("LinuxGuestBoot.kt"))
+    assertTrue("客体 argv 必须保留 --expose-internals（引擎 CLI 既有语义）", guest.contains("--expose-internals"))
+    assertFalse("客体 argv 不得出现堆标志（堆只走 NODE_OPTIONS）", guest.contains("max-old-space-size"))
+    val manager = codeOnly(source("EngineManager.kt"))
+    assertTrue(
+      "客体 env 必须注入 NODE_OPTIONS 作为堆的唯一来源",
+      manager.contains("\"NODE_OPTIONS\" to heapOptionFrom(engineHeapMb(deviceTotalRamMb()))"),
     )
-    // 判据按**结构**而不是整行字面量：字面量断言会被无意义的换行/引号差异打破，
-    // 而这里真正要守的是「引擎 argv 里的 node 与 bin.js 相邻且带 --expose-internals」。
-    val argvStart = code.indexOf("val args = arrayOf(")
-    assertTrue("引擎 argv 必须仍在（锚点存在）", argvStart > 0)
-    val argvBody = code.substring(argvStart, minOf(argvStart + 260, code.length))
-    assertTrue("argv 首个元素必须是快照 node", argvBody.contains("nodeBin.absolutePath"))
-    assertTrue("argv 必须保留 --expose-internals（引擎 CLI 既有语义）", argvBody.contains("--expose-internals"))
-    assertTrue("argv 必须指向 bin.js 与 web 子命令", argvBody.contains("dshBin.absolutePath") && argvBody.contains("web"))
-    assertFalse("argv 内不得出现堆标志（堆只走 NODE_OPTIONS 单一来源）", argvBody.contains("max-old-space-size"))
   }
 
   // ── 0.14.1 块K ③（反馈三）：pnpm store 路径别名 ──────────────────────────────
@@ -242,9 +235,8 @@ class W3ShellContractTest {
     // 判据（注入这一半）：SHELL 必须指向快照内 bash，且与 PATH 同源（usrDir），
     // 不得是 Termux 编译期前缀。
     assertTrue(
-      "D13：shellEnv() 必须注入 SHELL=快照内 bash，否则上游 subprocess-local 回退到 " +
-        "os.userInfo().shell（快照 NSS 解析出 /data/data/com.termux/... 编译期前缀）→ 新建终端必失败",
-      code.contains("\"SHELL\" to File(usrDir, \"bin/bash\").absolutePath"),
+      "D13：客体引擎必须注入 SHELL=/bin/bash（Debian 的 bash），否则上游会回退到宿主解析出的 shell",
+      code.contains("\"SHELL\" to \"/bin/bash\""),
     )
     // 反证：不得写成 Termux 编译期路径（本应用域不可达）。
     assertFalse(
@@ -259,24 +251,13 @@ class W3ShellContractTest {
   }
 
   @Test
-  fun shellEnvInjectsTheRelocatedTermuxPrefixPaths() {
+  fun guestEnvNeverInjectsTermuxPrefixes() {
+    // 纯 Linux 档：宿主不再注入任何 TERMUX__*/termux-exec 变量；路径与库全部由客体自己决定。
     val code = codeOnly(source("EngineManager.kt"))
-    // 0.15.1：侧栏终端的 PREFIX/TERMINFO/FPATH 必须经 shellEnv() 注入，引擎与所有子进程继承。
-    // 否则 zsh 的 ZLE 拿不到 cub1（退格变空格）、add-zsh-hook 无法 autoload（启动三行报错）。
-    assertTrue(
-      "shellEnv() 必须把重定位后的 PREFIX/TERMINFO/FPATH 一并注入",
-      code.contains("+ relocatedTermuxEnv(usrDir)"),
-    )
-    // 反证：不得把 Termux 编译期前缀写死成注入值（那正是缺陷形态）。
-    assertFalse(
-      "不得把 /data/data/com.termux/files/usr 写成注入路径",
-      code.contains("env[\"TERMINFO\"] = \"/data/data/com.termux"),
-    )
-    // 反证：三个变量必须由同一纯函数按真实目录存在性给出，不得各自散落在 shellEnv 里。
-    assertFalse(
-      "PREFIX/TERMINFO 不得绕过 relocatedTermuxEnv 各自硬编码",
-      code.contains("\"TERMINFO\" to \"/"),
-    )
+    for (banned in listOf("TERMUX__PREFIX", "TERMUX__ROOTFS", "TERMUX_EXEC__", "LD_PRELOAD")) {
+      assertFalse("不得再注入 Termux 时代的环境变量：" + banned, code.contains(banned))
+    }
+    assertTrue("客体 env 必须显式钉住 Debian 的 PATH/SHELL", code.contains("\"SHELL\" to \"/bin/bash\""))
   }
 
   @Test
@@ -298,7 +279,7 @@ class W3ShellContractTest {
     // 判据（注入这一半）：shellEnv() 必须真的把它注入引擎/控制台子进程 env。
     val code = codeOnly(source("EngineManager.kt"))
     assertTrue(
-      "③：shellEnv() 必须注入 npm_config_store_dir，否则 pnpm 仍按 CWD/HOME 自推、在 /data/data ↔ /data/user/0 两种写法间判「store 变了」",
+      "③：客体引擎 env 必须注入 npm_config_store_dir，否则 pnpm 仍按 CWD/HOME 自推",
       code.contains("\"npm_config_store_dir\" to pnpmStoreDir(homeDir)"),
     )
   }
@@ -412,34 +393,4 @@ class W3ShellContractTest {
     assertTrue("系统持久化授权本身必须保留（真源）", code.contains("takePersistableUriPermission"))
   }
 
-  @Test
-  fun pythonUserPackagesAreConfiguredAndMigratedBeforeSnapshotCleanup() {
-    val manager = codeOnly(source("EngineManager.kt"))
-    val shellEnv = memberBody(manager, "fun shellEnv(): Map<String, String>")
-    assertTrue(
-      "pip 的 user-site 环境必须进入所有 shellEnv 子进程",
-      shellEnv.contains("PythonPackages.environment(context.filesDir, usrDir)"),
-    )
-
-    val refresh = memberBody(manager, "private fun refreshSnapshotInternal(")
-    val beforeSwap = refresh.indexOf("migratePythonPackages(\"before-swap\")")
-    val swap = refresh.indexOf("SnapshotTransaction.swap(")
-    val rescue = refresh.indexOf("migratePythonPackages(\"after-swap-rescue\")")
-    val finish = refresh.indexOf("SnapshotTransaction.finish(filesDir)")
-    assertTrue("旧 usr 用户包必须在 swap 前迁移", beforeSwap in 0 until swap)
-    assertTrue("previous 用户包必须在 finish 清理前救援", rescue in swap until finish)
-
-    val recovery = memberBody(manager, "fun recoverInterruptedRefresh()")
-    assertTrue(
-      "启动恢复必须在 previous 残渣回收前救援旧包",
-      recovery.indexOf("migratePythonPackages(\"startup-recovery\")") in 0 until
-        recovery.indexOf("SnapshotTransaction.reclaimResidue(filesDir)"),
-    )
-    val start = memberBody(manager, "fun startEngine(port: Int = 3080, force: Boolean = false): Boolean")
-    assertTrue(
-      "引擎启动前必须再幂等迁移，以覆盖正常启动入口",
-      start.indexOf("migratePythonPackages(\"engine-start\")") in 0 until
-        start.indexOf("startWithArgs(args, shellEnv())"),
-    )
-  }
 }

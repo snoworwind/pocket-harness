@@ -72,10 +72,14 @@ class Issue342StartupDiagnosticTest {
   }
 
   @Test fun `all foreign port branches record structured cause and clear stale cause`() {
-    val start = source("EngineManager.kt").substringAfter("fun startEngine(").substringBefore("fun settingsDocumentPath")
-    assertEquals(4, Regex("lastStartRefusalCode = REFUSAL_PORT_FOREIGN").findAll(start).count())
-    assertTrue(start.indexOf("lastStartRefusal = null") < start.indexOf("snapshotFingerprintProblem()"))
-    assertTrue(start.indexOf("lastStartRefusalCode = null") < start.indexOf("snapshotFingerprintProblem()"))
+    // 纯 Linux 档只剩一个 spawn 分支（客体启动）；旧快照分支的 4 处已随 Termux 一起删除。
+    val start = source("EngineManager.kt").substringAfter("private fun startGuestEngine(").substringBefore("internal fun startupExceptionCode")
+    assertEquals(1, Regex("lastStartRefusalCode = REFUSAL_PORT_FOREIGN").findAll(start).count())
+    val manager = source("EngineManager.kt")
+    val entry = manager.substringAfter("fun startEngine(").substringBefore("return startGuestEngine(port)")
+    assertTrue(entry.contains("lastStartRefusal = null"))
+    assertTrue(entry.contains("lastStartRefusalCode = null"))
+    assertTrue(entry.indexOf("lastStartRefusalCode = null") < manager.indexOf("return startGuestEngine(port)"))
   }
 
   @Test fun `private write diagnosis requires syscall denial plus private directory evidence`() {
