@@ -137,8 +137,12 @@ for alternative in $(sudo chroot "$ROOTFS" /bin/sh -c 'if [ -d /etc/alternatives
   sudo chroot "$ROOTFS" update-alternatives --auto "$alternative" >/dev/null 2>&1 || true
 done
 sudo chroot "$ROOTFS" /bin/bash -ec '/lib/ld-linux-aarch64.so.1 --version; /usr/bin/apt-get --version'
-python3 scripts/source-build/verify-guest-tools.py --rootfs "$ROOTFS" \
+# QEMU user-mode probes run with the caller's uid. CI runners are uid 1001, which has no
+# account inside the Debian rootfs, so ssh/passwd-aware tools fail with "No user exists for
+# uid 1001". Run the probes as root (matching the local container) and hand the report back.
+sudo python3 scripts/source-build/verify-guest-tools.py --rootfs "$ROOTFS" \
   --report "$WORK/provenance/guest-tools-report.json" --qemu /usr/bin/qemu-aarch64-static
+sudo chown -R "$(id -u):$(id -g)" "$WORK/provenance"
 cleanup_mounts
 trap - EXIT
 
