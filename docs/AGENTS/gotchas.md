@@ -3866,3 +3866,15 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
       不接受“跑起来再说”。
     复验：`libpocketharness_proot.so`/loader 在 Android 16 上通过 `--version` 与 shell tracee；
     客体 `node`/`bash`/`zsh` 全部使用 Debian 路径；`pty.node` 在客体 Node 中真实拉起 `/bin/bash`。
+
+686. **Android 引擎树直接搬进 Debian 会带一堆坏链接和错误 ABI 的原生件（2026-11-12，实验分支）**
+    现象：把快照里的 `usr/lib/node_modules` 原样拷进客体时 `copytree` 直接失败，报一批
+    `No such file or directory`；这些是 pnpm 指向 **已被平台过滤删掉** 的 linux-x64/arm64 可选包
+    的悬空符号链接。即使拷贝成功，`node-pty`、`canvas`、`koffi` 等仍是 Android/darwin/win32 变体。
+    真因：引擎树是按 Android 目标组装的，pnpm 的链接拓扑里保留了“本该存在但被裁掉”的条目；
+    客体要的是 `process.platform === 'linux'` 的那套原生件。
+    修法：`package-guest-engine.py` 单遍复制（用 `os.symlink` 原样保留悬空链接，不 dereference），
+    按目录名裁掉非 linux-arm64 变体，再用自编译的 `node-pty`（glibc）和
+    `node-addon-system-linux-arm64` 覆盖；收据记录裁剪清单与产物摘要。
+    复验：真实快照树装配出 `engine-glibc.tar.xz` 79 MB，在 Debian 13 aarch64 客体 Node 中执行
+    `@deepseek-ai/dsh/lib/bin.js --version` 输出 `0.2.2-rc.1`；自证含悬空链接保留与缺入口负控。

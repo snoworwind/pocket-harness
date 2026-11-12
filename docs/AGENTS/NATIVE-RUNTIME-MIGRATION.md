@@ -89,6 +89,12 @@ Debian 13 aarch64 的 Node v24.22.0 里 `require()` 成功并导出 `tryLock`，
 - P2 的验收只覆盖“壳能在没有 Termux Node 的情况下解包、校验并启动客体 Node”，
   addon 全部可用属于 P3；两层证据分开记录。
 
+## 客体引擎树（2026-11-12 实测）
+
+`package-guest-engine.py` 已能从 Android 引擎树装配出客体树：保留 JS、裁掉非 linux-arm64 原生变体、
+覆盖自编译的 `node-pty` 与 `node-addon-system`。真实装配结果 **79 MB**（对照 APK 内 Termux 快照
+215 MB），在 Debian 13 aarch64 客体里 `dsh --version` 输出 `0.2.2-rc.1`。
+
 ## 客体引擎依赖清单（2026-11-12 实测）
 
 “DSH 跑在真正的 Linux 上”需要的不只是 Node，还包括 Node 侧原生模块与 shell：
