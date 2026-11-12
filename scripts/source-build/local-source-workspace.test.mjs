@@ -284,7 +284,9 @@ test('actual local runner routes cwd and build environment into isolation and ke
   for (const file of ['run-local-source-chain.mjs', 'local-source-workspace.mjs', 'record-project-components.mjs']) copyFileSync(join(import.meta.dirname, file), join(scriptDir, file))
   writeFileSync(join(source, '.github/workflows/build-apk-source.yml'), [
     'jobs:', '  build-abi:', '    steps:',
-    '      - name: Checkout pinned fixture source', '        shell: bash', '        run: |',
+    '      - name: Checkout pinned fixture source', '        shell: bash',
+    '        env:', '          FIXTURE_KEYRING: ${{ github.workspace }}/keys/file', '        run: |',
+    '          test "$FIXTURE_KEYRING" = "$PWD/keys/file"',
     '          test "$PWD" = "$GITHUB_WORKSPACE"',
     '          test "$DSH_APK_DIR" = "$GITHUB_WORKSPACE"',
     '          test -d "$RUNNER_TEMP"',
