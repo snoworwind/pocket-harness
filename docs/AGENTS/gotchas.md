@@ -3761,3 +3761,15 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
     回归用例按引擎子集规则校验两个 schema，禁止属性级 `required`。
     复验：`node --test vendor/dsh-linux-runtime/test/manager.test.mjs` 37 项全过。
     设备复验仍需重出 APK（运行时插件随安装从内置包解包）。
+
+675. **引擎重启后注入的 Linux 运行时插件不再激活，状态会被同步成「未启用」（2026-11-12，实验分支）**
+    现象：装好并启用的 Linux 环境在应用重启后 `enabled/injectionActivated` 变 false，
+    `linux_bash` 消失；只能整包 reinstall 才回来。
+    真因：宿主 `linuxPluginHost` 只在当前进程内 `ctx.plugin()` 激活插件，重启后插件在盘上
+    但未被注入；bootstrap 的 `load()` 直接调用 `synchronizeInjectionState()`，把宿主「未激活」
+    当成用户「已关闭」，覆盖了持久化的启用意图。
+    修法：`load()` 在同步前先 `reactivateInstalledRuntime()`——已安装且持久化启用、但宿主未激活时，
+    用持久化的 `pluginDirectory` + `pinnedManifest` 重新 `install({enable:true})` 并解析 manager；
+    失败则记录 `linux-runtime-reactivate-failed` 并让随后的同步按宿主视图禁用。
+    复验：新增 3 条用例（成功重激活保持 enabled、失败留错误码并禁用、未启用时不动），
+    `plugins/dsh-linux-bootstrap/test/*.test.mjs` 15 项全过。设备复验仍需重出 APK。
