@@ -9,7 +9,7 @@ import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
 import { join, resolve } from 'node:path'
 import { committedWorkflow, sourceCommit } from './local-source-workspace.mjs'
-import { planSteps, selectPlanned } from './run-local-source-chain.mjs'
+import { planSteps, selectPlanned, resolveStepEnvironment } from './run-local-source-chain.mjs'
 
 const ROOT = resolve(import.meta.dirname, '..', '..')
 const SCRIPT = join(import.meta.dirname, 'run-local-source-chain.mjs')
@@ -108,4 +108,18 @@ test('真实 CLI：--dry-run --from apk / --only apk 的输出都含最终复验
       assert.ok(result.stdout.includes(name), `${args.join(' ')} 输出缺少：${name}\n${result.stdout}`)
     }
   }
+})
+
+
+test('step env carries Linux source inputs into the isolated workspace', () => {
+  const step = planned.find(item => item.name === 'Build source-owned offline ARM64 Linux assets')
+  const base = { GITHUB_WORKSPACE: '/isolated/build', SOURCE_REF: 'refs/heads/codex/linux-runtime-experiment' }
+  const env = resolveStepEnvironment(step.env, base)
+  assert.equal(env.DEBIAN_KEYRING, '/isolated/build/.deploy-tmp/linux-keyring/debian-archive-keyring.gpg')
+  assert.equal(env.NDK_ROOT, '/isolated/build/.deploy-tmp/source-build/ndk/android-ndk-r30')
+  assert.equal(resolveStepEnvironment({ SOURCE_REF: '${{ github.ref }}' }, base).SOURCE_REF, base.SOURCE_REF)
+  assert.equal(resolveStepEnvironment({ DSH_INJECTED_SNAPSHOT: "${{ steps.injected-cache.outputs.cache-hit == 'true' && format('x', env.DSH_ABI) || '' }}" }, base).DSH_INJECTED_SNAPSHOT, '')
+  assert.throws(() => resolveStepEnvironment({ UNKNOWN: '${{ secrets.KEY }}' }, base), /Unsupported/)
+  assert.equal(base.NDK_ROOT, undefined, 'step overrides must not leak into later steps')
+  assert.equal(resolveStepEnvironment({ LITERAL: '$(touch /tmp/not-executed)' }, base).LITERAL, '$(touch /tmp/not-executed)')
 })

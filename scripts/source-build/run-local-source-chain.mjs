@@ -55,7 +55,7 @@ export const STAGES = [
 ]
 const SKIP_STEP = /^(Set up job|Checkout project source|Prepare build tools|Run actions\/setup-|Install archive and signature tools|Upload APK and provenance|Post )/
 
-/** 极简 YAML 步骤解析：只取 steps[].name/.run/.shell/.uses（够用且不引依赖）。
+/** 极简 YAML 步骤解析：只取 steps[].name/.run/.shell/.uses/.env（够用且不引依赖）。
  *
  * 只处理两种 `run` 写法：行内（`- run: cmd`）与块标量（`run: |` + 缩进块）。块标量的内容缩进
  * **由第一行内容动态确定**（不写死 10 空格——workflow 一旦调整层级，写死就会静默少读脚本）。
@@ -83,6 +83,7 @@ export function parseWorkflowSteps(workflowText) {
   const lines = text.split('\n')
   const steps = []
   let current = null
+  let inEnv = false
   let runIndent = null // 正在收集的 run 块的内容缩进；null = 不在块里
   const assign = (key, rest) => {
     const value = rest.trim()
@@ -101,8 +102,9 @@ export function parseWorkflowSteps(workflowText) {
     const itemStart = /^ {6}- (name|uses|run|shell):(.*)$/.exec(line)
     if (itemStart) {
       pushStep()
-      current = { name: null, run: null, shell: null, uses: null }
+      current = { name: null, run: null, shell: null, uses: null, env: {} }
       runIndent = null
+      inEnv = false
       assign(itemStart[1], itemStart[2])
       continue
     }
@@ -114,6 +116,12 @@ export function parseWorkflowSteps(workflowText) {
         continue
       }
       runIndent = null // 缩进回退 = 块结束，落到下面按普通键处理
+    }
+    if (/^ {8}env:\s*$/.test(line) && current) { inEnv = true; continue }
+    if (inEnv && current) {
+      const entry = /^ {10}([A-Za-z_][A-Za-z0-9_]*):\s*(.*)$/.exec(line)
+      if (entry) { current.env[entry[1]] = entry[2]; continue }
+      if (line.trim()) inEnv = false
     }
     const kv = /^ {8}(name|uses|run|shell):(.*)$/.exec(line)
     if (kv && current) assign(kv[1], kv[2])
@@ -162,10 +170,26 @@ export function planSteps(workflowText) {
       stage: matched?.key ?? inheritedStage ?? 'misc',
       stageSource: matched ? 'named' : (inheritedStage ? 'inherited' : 'pre-stage'),
       shell: step.shell,
+      env: step.env,
       run: run.trimEnd(),
     })
   }
   return planned
+}
+
+/** Resolve the supported local subset; cache expressions never claim a local cache hit. */
+export function resolveStepEnvironment(declarations = {}, base = {}) {
+  const result = { ...base }
+  for (const [key, raw] of Object.entries(declarations)) {
+    let value = raw
+    if ((value.startsWith("'") && value.endsWith("'")) || (value.startsWith('"') && value.endsWith('"'))) value = value.slice(1, -1)
+    if (key === 'DSH_INJECTED_SNAPSHOT' && value.includes('steps.injected-cache.outputs.cache-hit')) value = ''
+    value = value.replaceAll('${{ github.workspace }}', base.GITHUB_WORKSPACE ?? '')
+      .replaceAll('${{ github.ref }}', base.SOURCE_REF ?? '')
+    if (value.includes('${{')) throw new Error(`Unsupported local workflow env expression: ${key}`)
+    result[key] = value
+  }
+  return result
 }
 
 /** 阶段过滤（纯函数）：与 CLI 的 --from/--to/--only/--from-step 同一份实现。 */
@@ -353,7 +377,7 @@ function main() {
     const shellArgs = item.shell === 'bash'
       ? ['--noprofile', '--norc', '-eo', 'pipefail', '-c', item.run]
       : ['-e', '-c', item.run]
-    const res = spawnSync('bash', shellArgs, { cwd: buildRoot, env: baseEnv, stdio: 'inherit' })
+    const res = spawnSync('bash', shellArgs, { cwd: buildRoot, env: resolveStepEnvironment(item.env, baseEnv), stdio: 'inherit' })
     applyStepEnvironment()
     const seconds = ((Date.now() - started) / 1000).toFixed(1)
     if (res.status !== 0) {

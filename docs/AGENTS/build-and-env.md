@@ -428,3 +428,5 @@ engine 的 checkout/upstream/overlay/patches/build/deploy 步骤集中到 `scrip
 
 用户授权的 ARM64 本地 Linux 实验构建使用 `node scripts/source-build/run-local-source-chain.mjs --experimental-linux`，
 只接受 `codex/linux-runtime-experiment`，在 GitHub Actions 中不可启用。产物使用临时签名，仅供 Android 16 AVD 测试；不得合并 main 或作为正式发布产物。
+
+本地运行器解析工作流步骤 env，并将 github.workspace/ref 映射到隔离来源目录和真实分支；未知表达式拒绝，不执行 shell 字符串。本地没有 Actions 注入缓存时 DSH_INJECTED_SNAPSHOT 为空。

@@ -3714,3 +3714,10 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
     真因：本地不执行 Actions cache/reusable workflow，但逐步运行器仍执行云端缓存缺失阻断。
     修法：仅非 Actions 环境跳过该缓存缺失阻断，下一步仍从固定源码构建引擎；云端缺失仍红。
     复验：工作流真实 shell 在本地返回成功、Actions 返回失败；不伪造缓存、Git 身份或来源收据。
+
+670. **本地来源运行器不能丢失工作流步骤 env（2026-11-12）**
+    现象：底座完成后 Linux 资产步骤因 DEBIAN_KEYRING 缺失退出，尽管前序已生成 keyring/NDK。
+    真因：运行器只解析 name/run/shell/uses，忽略步骤 env；CI 自动注入的路径在本地为空。
+    修法：解析步骤 env，按隔离 GITHUB_WORKSPACE 与真实 SOURCE_REF 解析路径/ref；不向后续步骤
+    泄漏覆盖，不执行环境值中的 shell 文本，未知 Actions 表达式失败关闭。本地注入缓存保持未命中。
+    复验：Linux 下运行器及隔离续跑 22 项全过，包含正确路径、未知表达式拒绝、缓存未命中及字面值负控。
