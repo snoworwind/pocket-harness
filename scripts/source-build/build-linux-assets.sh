@@ -15,9 +15,10 @@ SOURCE_PROOF_INPUTS=(
   scripts/source-build/build-linux-assets.sh scripts/source-build/retry-curl.sh scripts/source-build/linux-inputs.json
   scripts/source-build/linux-backend-packages.json scripts/source-build/linux-source-manifest.json
   scripts/snapshot-config/preinstall.json scripts/lib/shell.mjs
-  scripts/source-build/prepare-termux-bootstrap.py scripts/source-build/prepare-termux-signed-repo.py
-  scripts/source-build/termux_signed_packages.py
-  scripts/source-build/prepare-proot-backend.py scripts/source-build/ensure-no-rootfs-mounts.py \
+  scripts/source-build/build-proot-source.py scripts/source-build/proot-source
+  scripts/source-build/inventory-native-runtime.py scripts/source-build/proot_source_provenance.py
+  scripts/source-build/prepare-proot-source-backend.py scripts/source-build/test_proot_source_build.py
+  scripts/source-build/test_proot_source_backend.py scripts/source-build/ensure-no-rootfs-mounts.py \
   scripts/source-build/linux-debian-snapshot-wget.py scripts/source-build/test_linux_debian_snapshot_wget.py
   scripts/source-build/linux-assets-workflow.test.mjs
   scripts/source-build/package-linux-assets.py scripts/source-build/check-linux-sources.mjs
@@ -59,17 +60,27 @@ NODE_SHA=$(node -p 'require("./scripts/source-build/linux-inputs.json").nodeSha2
 DEBIAN_SNAPSHOT=$(node -p 'require("./scripts/source-build/linux-inputs.json").debianSnapshot')
 DEBIAN_SHA=$(node -p 'require("./scripts/source-build/linux-inputs.json").debianInReleaseSha256')
 : "${DEBIAN_KEYRING:?DEBIAN_KEYRING must identify the pinned Debian archive keyring}"
-: "${TERMUX_WEBROOT:?TERMUX_WEBROOT must identify the authenticated Termux package mirror}"
-: "${TERMUX_PROVENANCE:?TERMUX_PROVENANCE must identify Termux package provenance}"
-: "${TERMUX_BOOTSTRAP_USR:?TERMUX_BOOTSTRAP_USR must identify the official Termux bootstrap keyring}"
+: "${NDK_ROOT:?NDK_ROOT must identify the pinned Android NDK r30}"
 test -s "$DEBIAN_KEYRING"
-test -d "$TERMUX_BOOTSTRAP_USR/share/termux-keyring"
-test -d "$TERMUX_BOOTSTRAP_USR/share/LICENSES"
-test ! -L "$TERMUX_BOOTSTRAP_USR/share/LICENSES"
+# Source builds consume archives, never Termux binary packages or bootstrap keys.
+# Reject a redirected provenance parent before clearing only our own generated records.
+[[ "$(realpath -m "$WORK/provenance")" == "$WORK/provenance" ]] || exit 1
+rm -f -- "$WORK/provenance/proot-backend-inputs.json" "$WORK/provenance/proot-source-build-arm64.json"
+rm -rf -- "$WORK/provenance/proot-source-archives"
+PROOT_SOURCES="$WORK/input/proot-sources"
+mkdir -p "$PROOT_SOURCES"
+while IFS=$'\t' read -r name url sha; do
+  archive="$PROOT_SOURCES/${url##*/}"
+  if ! printf '%s  %s\n' "$sha" "$archive" | sha256sum --check --status 2>/dev/null; then
+    bash scripts/source-build/retry-curl.sh --fail --location --retry 8 --retry-max-time 600 "$url" -o "$archive"
+  fi
+  printf '%s  %s\n' "$sha" "$archive" | sha256sum --check --strict
+done < <(node -e 'const x=require("./scripts/source-build/linux-backend-packages.json"); for(const n of ["proot","libtalloc","libandroid-shmem"]) {const r=x.packageSources[n]; console.log([n,r.sourceUrl,r.sourceSha256].join("\t"));}')
+source_build=$(mktemp -d "$WORK/proot-source-build.XXXXXX")
+python3 scripts/source-build/build-proot-source.py "$PROOT_SOURCES" "$NDK_ROOT" "$source_build" --abi arm64
+python3 scripts/source-build/prepare-proot-source-backend.py \
+  "$source_build" "$PROOT_SOURCES" "$WORK/backend" "$WORK/native-libs" "$WORK/provenance" --abi arm64
 NATIVE_LIBS="$WORK/native-libs/arm64-v8a"
-python3 scripts/source-build/prepare-proot-backend.py \
-  "$TERMUX_WEBROOT" "$TERMUX_PROVENANCE" scripts/source-build/linux-inputs.json "$TERMUX_BOOTSTRAP_USR" \
-  "$WORK/backend" "$WORK/native-libs"
 aarch64-linux-gnu-readelf -h "$NATIVE_LIBS/libpocketharness_proot.so" | grep 'Machine:.*AArch64'
 aarch64-linux-gnu-readelf -l "$NATIVE_LIBS/libpocketharness_proot.so" | grep '/system/bin/linker64'
 aarch64-linux-gnu-readelf -h "$NATIVE_LIBS/libpocketharness_proot_loader.so" | grep 'Machine:.*AArch64'
@@ -170,12 +181,13 @@ python3 scripts/source-build/package-linux-assets.py "$WORK" "$EPOCH"
 qemu-aarch64-static -L "$ROOTFS" "$WORK/node-stage/bin/node" --version | grep -Fx "v$NODE_VERSION"
 cp "$WORK/input/debian-InRelease" "$WORK/provenance/"
 cp scripts/source-build/linux-inputs.json scripts/source-build/linux-source-manifest.json "$WORK/provenance/"
-cp "$WORK/proot-backend-inputs.json" "$WORK/provenance/"
 mkdir -p "$WORK/provenance/linux-native-licenses"
 cp -a "$WORK/backend/share/licenses/." "$WORK/provenance/linux-native-licenses/"
 install -D -m644 vendor/linux-proot/compat/LICENSE \
   "$WORK/provenance/linux-native-licenses/pocket-harness-termfold-compat/LICENSE"
 printf '%s\n' "$(git rev-parse HEAD)" > "$WORK/provenance/project-source-commit.txt"
 tar --sort=name --mtime="@$EPOCH" --owner=0 --group=0 --numeric-owner \
-  -cJf "$WORK/provenance/linux-component-source.tar.xz" "${SOURCE_PROOF_INPUTS[@]}"
+  -cJf "$WORK/provenance/linux-component-source.tar.xz" "${SOURCE_PROOF_INPUTS[@]}" \
+  .deploy-tmp/linux-build/provenance/proot-source-archives \
+  .deploy-tmp/linux-build/provenance/proot-source-build-arm64.json
 echo "Built verified ARM64 Linux assets: $STAGE"

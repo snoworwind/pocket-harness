@@ -6,35 +6,20 @@ import { dirname, resolve } from 'node:path'
 const workspacePrefix = '${{ github.workspace }}'
 const readWorkflow = name => readFileSync(new URL(`../../.github/workflows/${name}`, import.meta.url), 'utf8')
 
-function linuxTermuxPaths(workflowName) {
-  const source = readWorkflow(workflowName)
-  const value = key => {
-    const match = source.match(new RegExp(`^\\s+${key}: (.+)$`, 'm'))
-    assert.ok(match, `${workflowName} must declare ${key}`)
-    assert.ok(match[1].startsWith(workspacePrefix), `${workflowName} ${key} must stay in the workspace`)
-    return resolve(match[1].replace(workspacePrefix, '/workspace'))
-  }
-  return { webroot: value('TERMUX_WEBROOT'), provenance: value('TERMUX_PROVENANCE') }
+function checkSourceBackend(source) {
+  assert.match(source, /NDK_ROOT:/)
+  const build = readFileSync(new URL('./build-linux-assets.sh', import.meta.url), 'utf8')
+  assert.ok(build.indexOf('build-proot-source.py "$PROOT_SOURCES"') < build.indexOf('prepare-proot-source-backend.py \\'))
+  assert.doesNotMatch(source.slice(source.indexOf('name: Build source-owned offline ARM64 Linux assets')), /TERMUX_WEBROOT:|TERMUX_PROVENANCE:|TERMUX_BOOTSTRAP:/)
 }
 
-function expectedProvenance(webroot) {
-  return resolve(dirname(webroot), 'termux-packages-provenance.json')
-}
-
-test('both Linux asset workflows consume provenance beside the generated Termux webroot', () => {
-  const producer = readFileSync(new URL('./prepare-termux-signed-repo.py', import.meta.url), 'utf8')
-  assert.match(producer, /webroot\.parent \/ "termux-packages-provenance\.json"/)
-  for (const workflow of ['build-linux-assets.yml', 'build-apk-source.yml']) {
-    const paths = linuxTermuxPaths(workflow)
-    assert.equal(paths.provenance, expectedProvenance(paths.webroot), `${workflow} provenance path must match the producer`)
-  }
+test('both asset consumers build PRoot from pinned source with NDK', () => {
+  for (const name of ['build-linux-assets.yml', 'build-apk-source.yml']) checkSourceBackend(readWorkflow(name))
+  assert.doesNotMatch(readWorkflow('build-linux-assets.yml'), /prepare-termux-signed-repo.py --/)
 })
 
-test('negative control: provenance nested inside the webroot is rejected', () => {
-  const { webroot, provenance } = linuxTermuxPaths('build-linux-assets.yml')
-  const stalePath = resolve(webroot, 'termux-packages-provenance.json')
-  assert.notEqual(stalePath, expectedProvenance(webroot))
-  assert.notEqual(provenance, stalePath)
+test('negative control rejects missing source toolchain', () => {
+  assert.throws(() => checkSourceBackend(readWorkflow('build-linux-assets.yml').replaceAll('NDK_ROOT:', 'REMOVED:')), assert.AssertionError)
 })
 
 function checkLinuxAssetDownloads(source) {
@@ -73,11 +58,11 @@ function checkLinuxAssetWorkflowDownloads(source) {
   assert.ok(npmCi.every(line => line.includes('--fetch-retries=8 --fetch-retry-factor=2 --fetch-retry-mintimeout=1000 --fetch-retry-maxtimeout=30000 --fetch-timeout=300000')),
     'each standalone Linux plugin dependency install must use the bounded registry retry policy')
   assert.equal((source.match(/--retry 8 --retry-max-time 600/g) ?? []).length, 3,
-    'bootstrap ZIP and both Debian signing-key downloads need the extended bounded retry window')
+    'NDK ZIP and both Debian signing-key downloads need the extended bounded retry window')
   assert.equal((source.match(/bash scripts\/source-build\/retry-curl\.sh/g) ?? []).length, 3,
     'all fixed Linux asset workflow downloads must retry known curl transport errors')
-  assert.match(source, /printf '%s  %s\\n' "\$BOOTSTRAP_SHA256" \.deploy-tmp\/linux-termux\/bootstrap-aarch64\.zip \| sha256sum --check --strict/,
-    'the Termux bootstrap retry must remain protected by its pinned digest')
+  assert.match(source, /sha1sum --check --strict/,
+    'the official NDK archive must retain its pinned digest check')
   assert.match(source, /printf '%s  %s\\n%s  %s\\n' "\$archive_sha" "\$keydir\/archive-key-13\.asc" "\$release_sha" "\$keydir\/release-13\.asc" \| sha256sum --check --strict/,
     'the Debian key retries must remain protected by both pinned digests')
 }
@@ -90,9 +75,9 @@ test('negative controls reject short standalone asset retries and removed digest
   const source = readWorkflow('build-linux-assets.yml').replaceAll('\r\n', '\n')
   for (const bad of [
     source.replace('--fetch-retries=8 --fetch-retry-factor=2', '--fetch-retries=2 --fetch-retry-factor=2'),
-    source.replace('bash scripts/source-build/retry-curl.sh --fail --location --retry 8 --retry-max-time 600 "$BOOTSTRAP_URL"', 'curl --fail --location --retry 3 "$BOOTSTRAP_URL"'),
+    source.replace('--retry 8 --retry-max-time 600', '--retry 3'),
     source.replace('bash scripts/source-build/retry-curl.sh --fail --location --retry 8 --retry-max-time 600 https://ftp-master.debian.org/keys/archive-key-13.asc', 'curl --fail --location --retry 3 https://ftp-master.debian.org/keys/archive-key-13.asc'),
-    source.replace('printf \'%s  %s\\n\' "$BOOTSTRAP_SHA256" .deploy-tmp/linux-termux/bootstrap-aarch64.zip | sha256sum --check --strict', '# bootstrap digest omitted'),
+    source.replace('sha1sum --check --strict', '# NDK digest omitted'),
     source.replace('printf \'%s  %s\\n%s  %s\\n\' "$archive_sha" "$keydir/archive-key-13.asc" "$release_sha" "$keydir/release-13.asc" | sha256sum --check --strict', '# signing key digests omitted'),
   ]) assert.throws(() => checkLinuxAssetWorkflowDownloads(bad), assert.AssertionError)
 })

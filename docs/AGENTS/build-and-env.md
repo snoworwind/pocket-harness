@@ -423,3 +423,5 @@ engine 的 checkout/upstream/overlay/patches/build/deploy 步骤集中到 `scrip
 来源链在本轮 APK 的注入后快照归一化步骤中生成 `native-runtime-inventory.json`，并将其传递到
 独立验证与最终签名 artifact；PR Gate 执行 `inventory-native-runtime.py --self-test` 和 Python
 自动发现回归。该报告是盘点，不代表宿主程序已经从可写目录迁出或完成设备验收。
+
+实验分支 Linux 资产链使用 NDK_ROOT 指向固定官方 NDK r30，通过 build-proot-source.py 和 prepare-proot-source-backend.py 自编译后端，不再读取 Termux 后端包。主运行时构建不受此切换覆盖。来源协议、归档与许可证见 [PRoot 源码构建](PROOT-SOURCE-BUILD.md)。

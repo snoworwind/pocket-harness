@@ -2034,6 +2034,9 @@ node scripts/verify-client-plugin-fail-recovery.mjs --self-test   # 客户端插
 覆盖全域（脚本里定义，构建产物与第三方目录除外）：`app/src/**/*.kt` 与 `AndroidManifest.xml`、`plugins/*/{src,test}/**`、三个子仓 src/lib、`scripts/{check-,verify-,build-,inject-}*` 与 `scripts/patches/**`、`scripts/snapshot-config/**`。
 
 <!-- COVERAGE
+scripts/source-build/proot_source_provenance.py
+scripts/source-build/prepare-proot-source-backend.py
+scripts/source-build/test_proot_source_backend.py
 scripts/source-build/inventory-native-runtime.py
 scripts/source-build/test_native_runtime_inventory.py
 scripts/source-build/native-runtime-inventory-workflow.test.mjs
