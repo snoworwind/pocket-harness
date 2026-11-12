@@ -7,7 +7,7 @@
  * loads and activates it.
  *
  * It owns the runtime lifecycle (install, reinstall, uninstall, health) and the
- * Agent-facing `linux_bash` tool. Termux PRoot, the Debian minimal rootfs and the
+ * Agent-facing `linux_bash` tool. Source-built Android PRoot, the Debian rootfs and the
  * shared glibc Node.js package are assembled from pinned inputs and embedded as
  * checksum-verified APK assets, then managed by the bootstrap plugin.
  */
@@ -58,7 +58,7 @@ export function registerLinuxBash(ctx, manager, options = {}) {
   if (!tools || typeof tools.register !== 'function') return () => {};
 
   const parameterSchema = {
-    command: { type: 'string', required: true, description: 'Shell command to run as /bin/bash -lc inside the Linux environment.' },
+    command: { type: 'string', required: true, description: 'Shell command to run as /bin/bash -c inside the Linux environment.' },
     cwd: { type: 'string', description: 'Absolute working directory. A guest path such as /root or a shared host directory.' },
     timeoutMs: { type: 'number', description: 'Command timeout in milliseconds.' },
   };
