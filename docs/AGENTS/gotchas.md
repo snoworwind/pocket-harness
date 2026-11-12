@@ -3850,3 +3850,19 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
     稳定拒绝码，不回退。
     复验：`LinuxGuestBootTest` 5 项（未安装/缺 addon/坏记录/argv 形状/模式判定）通过。
     设备复验待本轮来源 APK；引擎在客体里的插件兼容（P3）仍可能失败，日志会落在同一 `engine.log`。
+
+685. **“以 .so 存在”会踩到按自身文件名/路径推导资源的程序，必须逐项验证或改源码重编（2026-11-12，实验分支）**
+    现象：宿主可执行程序改成 `lib*.so` 放进 `nativeLibraryDir` 后，部分程序会按自身文件名或
+    `$ORIGIN` 推导资源/加载器路径；客体侧还有 `node` 这类按 `process.execPath` 找 ICU 的程序。
+    真因：改名只改了文件系统名字，程序内部假设没变；Android 又禁止执行 app 私有目录 ELF，
+    所以宿主侧只能“改名 + 显式传路径”，不能靠名字自发现。
+    修法/边界：
+    - PRoot 的 loader 一律用 `PROOT_LOADER` 显式传绝对路径（编译期也钉了
+      `PROOT_UNBUNDLE_LOADER`），不依赖 proot 自己找；
+    - 客体程序保持**真实路径与真实文件名**（node 在 `.../bin/node`，bash 在 `/bin/bash`），
+      不把客体 ELF 改成 `.so`；只有宿主侧 NativeLibrary 才用 `lib*.so`；
+    - 新增的宿主原生件必须跑 `--version`/真实 tracee 烟测，并检查 `DT_NEEDED`/`RPATH` 无自引用；
+    - 若某个程序确实把自身文件名写死（或读 `/proc/self/exe` 推导前缀），**改源码重新编译**，
+      不接受“跑起来再说”。
+    复验：`libpocketharness_proot.so`/loader 在 Android 16 上通过 `--version` 与 shell tracee；
+    客体 `node`/`bash`/`zsh` 全部使用 Debian 路径；`pty.node` 在客体 Node 中真实拉起 `/bin/bash`。

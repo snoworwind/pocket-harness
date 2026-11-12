@@ -36,6 +36,7 @@ native = import_module('inventory-native-runtime')
 ADDON_SOURCE = Path('native/system/packages/entry/src/flock.c')
 EXPECTED_MACHINE = {'arm64': 183, 'x86_64': 62}
 ALLOWED_NEEDED = {'libc.so.6', 'libm.so.6', 'libdl.so.2', 'libpthread.so.0', 'ld-linux-aarch64.so.1'}
+CPP_NEEDED = ALLOWED_NEEDED | {'libstdc++.so.6', 'libgcc_s.so.1'}
 
 
 def sha256_file(path):
@@ -60,7 +61,7 @@ def read_headers(path):
     return dict(path=str(Path(path).resolve()), nodeApiH=sha256_file(header))
 
 
-def verify_addon(path, abi='arm64'):
+def verify_addon(path, abi='arm64', allowed=None):
     """Reject anything that is not a shared linux/<abi> Node-API addon."""
     data = Path(path).read_bytes()
     meta = native.elf_metadata(data)
@@ -70,7 +71,8 @@ def verify_addon(path, abi='arm64'):
         raise ValueError(f'addon machine {meta["machine"]} does not match {abi}')
     if meta.get('interpreter'):
         raise ValueError('addon unexpectedly declares a program interpreter')
-    unexpected = [name for name in meta.get('needed', []) if name not in ALLOWED_NEEDED]
+    allowed = ALLOWED_NEEDED if allowed is None else allowed
+    unexpected = [name for name in meta.get('needed', []) if name not in allowed]
     if unexpected:
         raise ValueError(f'addon links unexpected libraries: {", ".join(unexpected)}')
     return dict(

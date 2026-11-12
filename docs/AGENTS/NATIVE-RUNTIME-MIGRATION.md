@@ -89,6 +89,21 @@ Debian 13 aarch64 的 Node v24.22.0 里 `require()` 成功并导出 `tryLock`，
 - P2 的验收只覆盖“壳能在没有 Termux Node 的情况下解包、校验并启动客体 Node”，
   addon 全部可用属于 P3；两层证据分开记录。
 
+## 客体引擎依赖清单（2026-11-12 实测）
+
+“DSH 跑在真正的 Linux 上”需要的不只是 Node，还包括 Node 侧原生模块与 shell：
+
+| 组件 | 客体形态 | 状态 |
+| --- | --- | --- |
+| `@deepseek-ai/node-addon-system`（flock） | glibc/aarch64 `system.node` | 已交叉编译，客体 Node 中 `require()` 通过 |
+| `node-pty` 1.2.0-beta.15 | glibc/aarch64 `pty.node` + `lib/` | 已用 `build-guest-node-pty.py` 交叉编译；客体里 `pty.spawn('/bin/bash')` 输出 `PTY_OK` |
+| `node-addon-require-builtin` | 纯 JS（无原生二进制） | npm 包内只有 `lib/index.js`，降级路径可用 |
+| bash / zsh / 其余工具 | Debian 13 包 | 55/55 探针通过，`aarch64-unknown-linux-gnu` |
+| SQLite | Node 内置 `node:sqlite` | 无需 addon |
+
+宿主侧可执行件（PRoot/loader/talloc/shmem）保持 `lib*.so` + `nativeLibraryDir`；客体程序保持
+真实路径与真实文件名，不改成 `.so`（见坑位 685）。
+
 ## 参考实现与复用边界
 
 查阅日期：2026-11-12。以下链接指向当时仓库默认分支，尚未冻结参考 commit；
