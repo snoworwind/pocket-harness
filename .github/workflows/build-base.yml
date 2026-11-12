@@ -24,6 +24,8 @@ concurrency:
 jobs:
   resolve:
     runs-on: ubuntu-24.04
+    env:
+      DSH_LINUX_EXPERIMENT: ${{ inputs.linux_experiment && '1' || '0' }}
     outputs:
       key: ${{ steps.plan.outputs.key }}
       reused: ${{ steps.reuse.outputs.reused }}
@@ -111,6 +113,8 @@ jobs:
     needs: resolve
     if: needs.resolve.outputs.reused != 'true' && (github.ref == 'refs/heads/main' || inputs.linux_experiment)
     runs-on: ubuntu-24.04
+    env:
+      DSH_LINUX_EXPERIMENT: ${{ inputs.linux_experiment && '1' || '0' }}
     timeout-minutes: 90
     strategy:
       fail-fast: false

@@ -27,10 +27,18 @@ for (const name of ['GIT_DIR', 'GIT_COMMON_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FIL
 const git = (root, ...args) => execFileSync('git', ['-C', root, ...args], { env: gitEnvironment, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }).trim()
 const fail = message => { throw new Error('engine-base: ' + message) }
 
+/** The explicit Linux experiment dispatch is the only non-main ref allowed to produce a base. */
+export const LINUX_EXPERIMENT_REF = 'refs/heads/codex/linux-runtime-experiment'
+
+export function experimentalDispatch(env = process.env) {
+  return env.GITHUB_ACTIONS === 'true' && env.DSH_LINUX_EXPERIMENT === '1' && env.GITHUB_REF === LINUX_EXPERIMENT_REF
+}
+
 export function requireMain(root, env = process.env) {
   const commit = git(root, 'rev-parse', 'HEAD')
   if (env.GITHUB_ACTIONS === 'true') {
-    if (env.GITHUB_REF !== 'refs/heads/main' || env.GITHUB_SHA !== commit || env.GITHUB_EVENT_NAME === 'pull_request') fail('base publication requires the main workflow commit')
+    if (env.GITHUB_SHA !== commit || env.GITHUB_EVENT_NAME === 'pull_request') fail('base publication requires the signed main workflow commit')
+    if (!experimentalDispatch(env) && env.GITHUB_REF !== 'refs/heads/main') fail('base publication requires the main workflow commit')
   } else if (git(root, 'symbolic-ref', '--quiet', 'HEAD') !== 'refs/heads/main') fail('local base production requires attached main')
   return commit
 }
@@ -72,7 +80,8 @@ export function makePlan(root, runtime, env = process.env) {
   const sourceCommit = requireMain(root, env)
   git(root, 'diff', '--exit-code', 'HEAD', '--', ...COMPONENTS.engine)
   if (git(root, 'ls-files', '--others', '--exclude-standard', '--', ...COMPONENTS.engine)) fail('uncommitted engine inputs')
-  return { schema: 1, component: 'engine', sourceCommit, sourceRef: 'refs/heads/main', buildRun: env.GITHUB_RUN_ID || `local-${new Date().toISOString()}`, toolchain: runtime, ...committedInputs(root, runtime) }
+  const sourceRef = experimentalDispatch(env) ? LINUX_EXPERIMENT_REF : 'refs/heads/main'
+  return { schema: 1, component: 'engine', sourceCommit, sourceRef, buildRun: env.GITHUB_RUN_ID || `local-${new Date().toISOString()}`, toolchain: runtime, ...committedInputs(root, runtime) }
 }
 
 export function verifyTrusted(root, lock, artifact) {
