@@ -130,6 +130,12 @@ sudo mount --bind /dev "$ROOTFS/dev"
 sudo mount -t proc proc "$ROOTFS/proc"
 sudo chroot "$ROOTFS" /debootstrap/debootstrap --second-stage
 test "$(sudo chroot "$ROOTFS" dpkg --print-architecture)" = arm64
+# A foreign bootstrap leaves some alternatives unselected (awk/vim/nc point at
+# /etc/alternatives entries that exist but have no target), so probes would report
+# missing commands in an otherwise complete rootfs.
+for alternative in $(sudo chroot "$ROOTFS" /bin/sh -c 'if [ -d /etc/alternatives ]; then ls /etc/alternatives; fi'); do
+  sudo chroot "$ROOTFS" update-alternatives --auto "$alternative" >/dev/null 2>&1 || true
+done
 sudo chroot "$ROOTFS" /bin/bash -ec '/lib/ld-linux-aarch64.so.1 --version; /usr/bin/apt-get --version'
 python3 scripts/source-build/verify-guest-tools.py --rootfs "$ROOTFS" \
   --report "$WORK/provenance/guest-tools-report.json" --qemu /usr/bin/qemu-aarch64-static

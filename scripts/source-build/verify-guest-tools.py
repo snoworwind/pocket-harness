@@ -50,20 +50,67 @@ def load_manifest(path=MANIFEST):
     return data
 
 
-def locate(rootfs, command):
+def resolve_in_rootfs(rootfs, path, limit=32):
+    """Resolve an absolute guest path without letting host symlinks escape the rootfs.
+
+    A rootfs is not a chroot here: `/usr/bin/awk -> /etc/alternatives/awk` must resolve
+    against the guest tree, never against the build host's `/etc`.
+    """
     rootfs = Path(rootfs)
+    seen = set()
+    current = path
+    for _ in range(limit):
+        if current in seen:
+            raise ValueError(f'symlink loop in guest path {path}')
+        seen.add(current)
+        host = rootfs / current.lstrip('/')
+        if not host.is_symlink():
+            return current, host
+        target = os.readlink(host)
+        current = target if target.startswith('/') else os.path.normpath(os.path.join(os.path.dirname(current), target))
+    raise ValueError(f'guest path {path} exceeds the symlink limit')
+
+
+def locate(rootfs, command):
     for directory in SEARCH_PATH.split(':'):
-        candidate = rootfs / directory.lstrip('/') / command
-        if candidate.is_file() and os.access(candidate, os.X_OK):
-            return '/' + str(candidate.relative_to(rootfs))
-    return None
+        candidate = f"{directory.rstrip('/')}/{command}"
+        try:
+            resolved, host = resolve_in_rootfs(rootfs, candidate)
+        except ValueError:
+            continue
+        if host.is_file() and os.access(host, os.X_OK):
+            return resolved, host
+    return None, None
+
+
+def guest_argv(rootfs, qemu, resolved, host, args):
+    """Run a guest binary, or a shebang script through its guest interpreter."""
+    head = host.open('rb').read(2)
+    if head != b'#!':
+        return [qemu, '-L', str(rootfs), '-E', f'PATH={SEARCH_PATH}', str(host), *args]
+    interpreter_line = host.open('rb').readline()[2:].decode('utf-8', 'replace').strip()
+    parts = interpreter_line.split()
+    if not parts:
+        raise ValueError(f'{resolved}: empty shebang')
+    interpreter = parts[0]
+    interpreter_args = parts[1:]
+    if os.path.basename(interpreter) == 'env' and interpreter_args:
+        interpreter = interpreter_args[0]
+        interpreter_args = interpreter_args[1:]
+    _, interpreter_host = resolve_in_rootfs(rootfs, interpreter)
+    if not interpreter_host.is_file():
+        raise ValueError(f'{resolved}: shebang interpreter {interpreter} is missing')
+    return [qemu, '-L', str(rootfs), '-E', f'PATH={SEARCH_PATH}', str(interpreter_host), *interpreter_args, str(host), *args]
 
 
 def probe(rootfs, qemu, entry, timeout=60):
-    path = locate(rootfs, entry['command'])
+    path, host = locate(rootfs, entry['command'])
     if path is None:
         return dict(status='missing', detail=f"{entry['command']} is not installed")
-    command = [qemu, '-L', str(rootfs), '-E', f"PATH={SEARCH_PATH}", str(Path(rootfs) / path.lstrip('/')), *entry.get('args', [])]
+    try:
+        command = guest_argv(rootfs, qemu, path, host, entry.get('args', []))
+    except ValueError as error:
+        return dict(status='error', path=path, detail=str(error))
     try:
         result = subprocess.run(command, capture_output=True, text=True, timeout=timeout)
     except (OSError, subprocess.TimeoutExpired) as error:
@@ -73,7 +120,9 @@ def probe(rootfs, qemu, entry, timeout=60):
     if result.returncode not in allowed:
         return dict(status='error', path=path, exitCode=result.returncode,
                     detail=(result.stderr or result.stdout or '').strip()[:300])
-    if not output:
+    # Usage probes (for example `nc -h`) may keep their text on a tty and print nothing
+    # when redirected; those entries opt in explicitly instead of weakening the default check.
+    if not output and entry.get('allowEmptyOutput') is not True:
         return dict(status='error', path=path, exitCode=result.returncode, detail='probe produced no output')
     return dict(status='ok', path=path, exitCode=result.returncode, version=output[0][:200])
 
@@ -113,12 +162,12 @@ def self_test():
     with tempfile.TemporaryDirectory() as temporary:
         root = Path(temporary)
         (root / 'bin').mkdir()
-        for command in ('bash', 'ls'):
+        for command in ('bash', 'ls', 'sh'):
             target = root / 'bin' / command
             target.write_text('#!/bin/sh\nexit 0\n')
             target.chmod(0o755)
-        checks.append(('locate finds an installed command', locate(root, 'bash') == '/bin/bash'))
-        checks.append(('locate reports a missing command', locate(root, 'definitely-missing') is None))
+        checks.append(('locate finds an installed command', locate(root, 'bash')[0] == '/bin/bash'))
+        checks.append(('locate reports a missing command', locate(root, 'definitely-missing')[0] is None))
 
         try:
             load_manifest()
