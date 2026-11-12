@@ -55,6 +55,35 @@ PRoot 二进制包。当前仍有明确缺口：Linux 底座仅 ARM64；Debian r
 仍使用有记录的预编译发行版输入，尚未完成全部客体源码构建；Linux 是已启动引擎内的
 可选插件而非壳直接引导的主运行时，主 Node/bash 仍来自 Termux。以上不能标为已完成。
 
+## P2/P3 输入审计：客体 boot 需要哪些原生 addon（2026-11-12）
+
+结论先行：**当前快照的 `node_modules` 不是按客体 ABI 组装的，直接拿它进 Debian/glibc 起
+DSH 会在原生 addon 处失败。** 因此 P2 不能只写“Kotlin 起来跑 PRoot + 同一个引擎树”，
+必须同时决定引擎树的组装目标。
+
+已核实的事实与证据：
+
+1. 引擎包在**构建宿主机平台**（linux-x64）上做平台过滤，`native/system/packages/linux-arm64`
+   等可选依赖被判为 `Unsupported platform` 丢弃。以 `17d7ed22` 的完整来源链日志计，
+   `Unsupported platform` 命中 361 行，其中 `linux-arm64` 一类即客体需要的预编译件。
+   证据：`.deploy-tmp/native-runtime-p0/local-apk-source-chain-17d7ed22.log`
+   （`grep -c 'Unsupported platform'` 与 `grep 'linux-arm64'`）。
+2. Android 运行时侧观察到的 addon 行为是“**Bionic 降级**”而不是通用实现：
+   `node-addon-require-builtin` 找不到 binding 回退 `require()`；
+   `node-addon-system` 无 android-arm64 flock binding，被 stub 成立即成功。
+   这两条出现在设备 `engine.log`，说明 addon 是按平台挑 binding 的，换到 glibc 会走不同分支。
+3. 因此 P2 的“壳直接引导 Linux”若沿用现有快照树，最可能的结果是：PRoot 与 Node 起得来，
+   引擎在加载 addon 或 `better-sqlite3` 一类原生模块时失败——这属于 P3 的范围，不能当作
+   P2 验收通过。
+
+对后续实现的要求（写入判断依据，不是承诺）：
+
+- 客体引擎树需要**按 linux-arm64 目标单独组装**：保留该平台的可选依赖，或从源码为
+  glibc/aarch64 重建这些 addon，并记录与 Android 树分开的来源与摘要。
+- 同一份 APK 内可出现两套 addon 目录，但必须按 boot 模式显式选择，禁止“谁先找到用谁”。
+- P2 的验收只覆盖“壳能在没有 Termux Node 的情况下解包、校验并启动客体 Node”，
+  addon 全部可用属于 P3；两层证据分开记录。
+
 ## 参考实现与复用边界
 
 查阅日期：2026-11-12。以下链接指向当时仓库默认分支，尚未冻结参考 commit；

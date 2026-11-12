@@ -4,6 +4,7 @@
 
 | 时间 | 版本 | 更新内容 | 更新者 |
 | 2026-11-12 | **0.15.2 正式发布：侧栏原生终端（ARM64 + x86_64）** | PR [#272](https://github.com/snoworwind/pocket-harness/pull/272) 引入 libvterm（MIT）+ JNI + 原生 `TerminalView` 宿主 + `termView*` 桥 + 来源链预编译 `.so`，右侧栏新增 `terminal-native` tab 并替换上游 Web 终端入口；返工修复引导卡主题/横屏（#307）、OMZ 彩色提示符 RGB→ARGB（#308），补充 Linux 缓存自证与构建缓存（#300/#306）及 apt/步骤顺序可靠性修复（#310/#311/#313）。来源 run [43071819331](https://github.com/snoworwind/pocket-harness/actions/runs/43071819331)，Release `hardening-source-da3726a8826b-43071819331-1` 已公开并设为 Latest；真机验证终端核心路径、引导卡浅色/横屏与目录蓝色。模型侧 bash/terminal 工具未改。 | DSH Agent |
+| 2026-11-12 | **Linux 实验：`linux_bash` 定向设备验证通过** | 来源提交 `186c7d55` 的 ARM64 来源 APK 在 Android 16 ARM64 AVD 干净安装；模型 4 次真实 `linux_bash` 调用成功，应用重启后自动恢复同一 runtime 实例，回读文件 908 字节/SHA-256 一致；Kotlin 1461 项与定向回归 0 失败。单 AVD 定向实验，未覆盖真机、横屏、x86_64 与更新/卸载。 | Codex |
 | 2026-11-12 | **Linux 实验：重启后自动重激活运行时插件** | `load()` 先按持久化状态重激活已安装插件，失败留错误码；新增 3 条用例。 | Codex |
 | 2026-11-12 | **Linux 实验：修复 `linux_bash` 未注册** | 原生工具注册改用编译态 JSON Schema，注册失败不再静默；补引擎子集回归用例。APK 待重出并复验。 | Codex |
 | 2026-11-12 | **Linux 实验：设备验证发现工具面缺口** | Android 16 ARM64 AVD 上 Linux 环境安装成功、PRoot health 探针通过；记录 `linux_bash` 未进模型工具面、重启丢失激活态两项待决缺口。 | Codex |
