@@ -54,53 +54,69 @@ internal object LinuxGuestBoot {
   )
 
   /** 读取/落地内置实例；未安装时由调用方决定是否解包。 */
-  fun resolve(paths: Paths): Result {
+  fun resolve(paths: Paths): Result = build(
+    paths = paths,
+    command = listOf(
+      // require-builtin 的降级路径需要 V8 内部绑定；Termux 侧同样带这个开关。
+      "NODE", "--expose-internals", "$GUEST_ENGINE_ROOT/$ENGINE_ENTRY", "web",
+      "--port", paths.port.toString(), "--no-open",
+    ),
+  )
+
+  /**
+   * 在同一个客体实例里执行任意命令（控制台、终端、Undo CLI 共用）。
+   * [command] 是客体命令（如 `/bin/bash -i`），不是宿主路径。
+   */
+  fun command(
+    paths: Paths,
+    command: List<String>,
+    cwd: File? = null,
+    guestEnv: Map<String, String> = emptyMap(),
+  ): Result = build(paths, command, cwd, guestEnv)
+
+  private fun build(
+    paths: Paths,
+    command: List<String>,
+    cwd: File? = null,
+    guestEnv: Map<String, String> = emptyMap(),
+  ): Result {
     val instance = when (val opened = LinuxInstanceInstaller.open(paths.filesDir)) {
       is LinuxInstanceInstaller.Result.Ready -> opened.instance
       is LinuxInstanceInstaller.Result.Failed -> return Result.Refused(opened.code, opened.detail)
     }
+    if (command.isEmpty()) return Result.Refused("linux-guest-command-empty", "客体命令为空")
     val proot = File(paths.nativeLibraryDir, "libpocketharness_proot.so")
     val loader = File(paths.nativeLibraryDir, "libpocketharness_proot_loader.so")
-    val engineEntry = File(instance.engine, ENGINE_ENTRY)
-    val addon = File(instance.engine, "@deepseek-ai/dsh/node_modules/$ADDON_PACKAGE/bin/glibc/system.node")
     for ((file, code) in listOf(
       proot to "linux-guest-native-missing",
       loader to "linux-guest-native-missing",
       instance.rootfs to "linux-instance-incomplete",
       instance.node to "linux-instance-incomplete",
-      engineEntry to "linux-guest-engine-missing",
-      addon to "linux-guest-addon-missing",
+      File(instance.engine, ENGINE_ENTRY) to "linux-guest-engine-missing",
     )) {
       if (!file.exists()) return Result.Refused(code, "缺少 ${file.absolutePath}")
     }
     val prootTmp = File(instance.root, "proot-tmp").apply { mkdirs() }
     val shm = File(instance.root, "dev-shm").apply { mkdirs() }
+    val working = (cwd ?: paths.homeDir).takeIf { it.isDirectory } ?: paths.homeDir
+    val resolved = command.map { if (it == "NODE") instance.node.absolutePath else it }
 
-    val binds = mutableListOf(
+    val argv = mutableListOf(
+      proot.absolutePath, "-r", instance.rootfs.absolutePath, "-0",
+      "-w", working.absolutePath, "--sysvipc", "--kill-on-exit",
       "-b", "/dev/null", "-b", "/dev/zero", "-b", "/dev/random", "-b", "/dev/urandom",
       "-b", "${shm.absolutePath}:/dev/shm",
       "-b", "${instance.node.absolutePath}:${instance.node.absolutePath}",
       "-b", "${instance.engine.absolutePath}:$GUEST_ENGINE_ROOT",
       "-b", "${paths.homeDir.absolutePath}:${paths.homeDir.absolutePath}",
+      "/usr/bin/env", "-i",
+      "HOME=/root",
+      "PATH=$GUEST_PATH",
+      "TMPDIR=/tmp",
+      "LANG=C.UTF-8",
     )
-
-    val argv = mutableListOf(
-      proot.absolutePath, "-r", instance.rootfs.absolutePath, "-0",
-      "-w", paths.homeDir.absolutePath, "--sysvipc", "--kill-on-exit",
-    )
-    argv.addAll(binds)
-    argv.addAll(
-      listOf(
-        "/usr/bin/env", "-i",
-        "HOME=/root",
-        "PATH=$GUEST_PATH",
-        "TMPDIR=/tmp",
-        "LANG=C.UTF-8",
-        // require-builtin 的降级路径需要 V8 内部绑定；Termux 侧同样带这个开关。
-        instance.node.absolutePath, "--expose-internals", "$GUEST_ENGINE_ROOT/$ENGINE_ENTRY", "web",
-        "--port", paths.port.toString(), "--no-open",
-      ),
-    )
+    for ((key, value) in guestEnv) argv.add("$key=$value")
+    argv.addAll(resolved)
 
     val env = mapOf(
       "PROOT_LOADER" to loader.absolutePath,
@@ -109,7 +125,7 @@ internal object LinuxGuestBoot {
       "PROOT_NO_SECCOMP" to "1",
       "LD_LIBRARY_PATH" to paths.nativeLibraryDir.absolutePath,
     )
-    return Result.Ready(Launch(argv = argv, env = env, workingDirectory = paths.homeDir))
+    return Result.Ready(Launch(argv = argv, env = env, workingDirectory = working))
   }
 
   /** 实例是否已就绪（不解包，只读结构）。 */

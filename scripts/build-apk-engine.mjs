@@ -44,6 +44,7 @@ export function assembleApk(options, runner = spawnSync) {
     linuxNativeLibraryDir,
     terminalNativeLibraryDir,
     clean = false,
+    bundleSnapshot = true,
     log = console.log,
     fingerprintGate = join(SCRIPT_DIR, 'check-snapshot-fingerprint.mjs'),
   } = options
@@ -71,10 +72,15 @@ export function assembleApk(options, runner = spawnSync) {
   if (clean) {
     rmSync(intermediates, { recursive: true, force: true })
   }
-  copyFileSync(sourceSnapshot, assetSnapshot)
+  // 纯 Linux 档：快照只作为构建期中间物（硬清单/profile 派生），不随 APK 出货。
   const sha = createHash('sha256').update(readFileSync(sourceSnapshot)).digest('hex')
-  writeFileSync(fingerprint, sha, 'ascii')
-  log(`snapshot.sha256 = ${sha}`)
+  if (bundleSnapshot) {
+    copyFileSync(sourceSnapshot, assetSnapshot)
+    writeFileSync(fingerprint, sha, 'ascii')
+    log(`snapshot.sha256 = ${sha}`)
+  } else {
+    log(`snapshot sha256 = ${sha}（不打包快照：bundleSnapshot=false）`)
+  }
 
   // Generate exact product ownership only from the final injected archive. The
   // separately packaged manifest binds itself to this tar hash, avoiding a hash cycle.
@@ -82,7 +88,7 @@ export function assembleApk(options, runner = spawnSync) {
   execute(process.execPath, [join(SCRIPT_DIR, 'build-hard-manifest.mjs'), '--snapshot', sourceSnapshot, '--out', hardManifest],
     { cwd: SCRIPT_DIR }, runner)
 
-  execute(process.execPath, [fingerprintGate, '--require'], { cwd: SCRIPT_DIR }, runner)
+  if (bundleSnapshot) execute(process.execPath, [fingerprintGate, '--require'], { cwd: SCRIPT_DIR }, runner)
 
   const gradle = gradleCommand ?? (process.platform === 'win32' ? 'gradlew.bat' : './gradlew')
   const gradleArgs = [':app:assembleRelease', '--no-daemon', `-PversionNameSuffix=${suffix}`]
