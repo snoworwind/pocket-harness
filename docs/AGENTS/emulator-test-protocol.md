@@ -155,6 +155,18 @@ adb -s <serial> logcat -d -s dsh-browser:V AndroidRuntime:E System.err:W
 - 参数约定各不相同：`verify-webview-015`/`verify-browser-host` 用 **positional** ws；`verify-vdisplay-viewer` 用 `--ws`；`verify-state-sync` **不要传 --ws**（会禁用 target 重解析）。传错不报错，只是连到旧 target。
 - `verify-vdisplay-viewer` / `verify-vdisplay-float` 需要 Shizuku 已注册：未注册时 `vdisplayCreate` 一步就 FAIL——这是**前置不满足**（先按 §3 把 Shizuku 配起来），不是缺陷，别当回归报。
 
+### 原生侧栏终端（2026-11-12）
+
+目前没有独立 CDP 套件；按 ADB 用户层验收（操作记录 + 截图），并配合 Kotlin 单测（`TerminalColorsTest` 等）：
+
+- 打开：开始页引导卡点 bash/zsh → 原生终端出现，提示符可输入；
+- 颜色：`ls` 目录蓝色、OMZ 主题彩色提示符可见；
+- 滚动：上滑回看、下滑回底，惯性方向正确；
+- 退出：返回后 overlay 关闭，主会话输入可用；侧栏收起/展开终端跟随，不残留；
+- 切换：两个 tab/分栏互切不重复提示符、不空白；
+- 引导卡：浅色/深色模式颜色一致；横屏窄侧栏文字不竖排、可滑动看到更多入口。
+- 若未执行上述项，Release 记录按 §4 写明未验收范围与原因。
+
 ## 6. 证据与判据（每次验收必须产出）
 
 落盘目录：`.deploy-tmp/<round>/`（已在 `.gitignore` 内），命名：

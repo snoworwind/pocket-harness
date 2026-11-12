@@ -1,5 +1,8 @@
 # 构建拆分与复用（2026-10-19）
 
+> **历史文档（2026-10-19）**：`base-lock.json`/`trusted` 流程已由 #293 的内容键 + manifest 自证取代；现行拓扑见 [BUILD-STAGES-DESIGN.md](BUILD-STAGES-DESIGN.md)。以下保留作当时设计记录，不是当前实现。
+
+
 > 状态：**已复核，按阶段执行**。本文件先固定组件边界、信任根、策略边界与验收判据；具体工作流按 §8 分 PR 落地。
 > 关联：`docs/AGENTS/build-and-env.md`、`docs/AGENTS/SECURITY-HARDENING.md`、`docs/AGENTS/RUNTIME-PATCHES.md`、`AGENTS.md` §4.9。
 > 目标：把可分离的构建拆成组件，按输入哈希复用；只重建真正变化的组件；发布候选与日常使用同一套组件锁/复用；最终 APK 与项目层仍从源码重建，不设 no-cache 例外。

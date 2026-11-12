@@ -3666,3 +3666,33 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
     ④ 留白值未变化时不写；根断开时统一 `teardown`。
     复验：新增三条离线回归（jsdom）——深层重绘后全文档 `querySelectorAll` 调用数为 0；留白未变时
     写变量次数为 0；无关新增不触发扫描而新终端根仍能挂上键条。设备层帧率/输入延迟未做量化。
+
+665. **原生终端退出后焦点/IME 留在已销毁视图，页面输入失效（0.15.2 实修）**
+    现象：从原生终端返回后，主会话或再次进入终端都不能打字。
+    真因：`TerminalViewHost.close` 销毁 `TerminalView` 时，IME 仍绑定该视图，WebView 没有拿回焦点。
+    修法：`closeOnUi` 销毁视图后 `dshWebView.requestFocus()`；Activity 返回路径额外 `hideSoftInputFromWindow` 并派发 `dsh-term-suspended`，页面在用户点回终端前不自动重开。
+    复验：真机返回后主会话输入恢复正常；终端重新聚焦后可继续输入。
+
+666. **共享存储 `cp` 大文件会静默损坏，APK 安装报「解析包时出现问题」（0.15.2 实修）**
+    现象：源 APK 签名/解压均通过，拷到 `/storage/emulated/0/Download` 后 sha256 不同，`unzip -t` 报损坏；差异从约 142 MB 处开始。
+    真因：本机 FUSE 路径上 `cp` 的 `copy_file_range` 不能保证逐字节一致；`dd` 的显式读/写循环正常。
+    修法：交付大文件用 `dd if=... of=... bs=1M conv=fsync`，拷完必须比对 sha256 并跑 `unzip -t` 再交给安装器；不要只看文件大小。
+    复验：重拷后 sha256 与源一致、`unzip -t` 通过，安装器正常解析。
+
+667. **JNI 的 `0x00RRGGBB` 被当 ARGB 用，OMZ 彩色提示符整段不可见（0.15.2 实修）**
+    现象：OMZ 已加载、Git/Tab 补全正常，但彩色文字消失；目录颜色修复后可见。
+    真因：libvterm 经 JNI 输出 RGB（alpha 位为 0），Kotlin 直接赋给 `Paint.color` 时透明度变成 0。
+    修法：绘制前对非 `DEFAULT_COLOR` 的值 `or 0xFF000000`，DEFAULT 哨兵保持原样供主题色回退；`TerminalColorsTest` 覆盖 RGB/默认值。
+    复验：真机目录显示蓝色，彩色提示符恢复。
+
+668. **Linux assets 的 Restore 排在 apt 安装之后，缓存命中也会先跑 apt（2026-11-12 实修）**
+    现象：Linux 缓存已命中，arm64 仍进入 `Install Linux asset cross-build tools`；runner DNS 抖动时该步可挂 40 分钟以上，reference 已完成而 primary 仍卡着。
+    真因：`Install`/`Prepare` 的 `cache-hit != true` 条件在 `Restore Linux ARM64 assets` 之前求值，输出尚不存在，条件永远为真。
+    修法：#313 把 Restore 移到最前；apt update/install 加 5 次有界重试（#310/#311）。
+    复验：命中缓存时 Install/Prepare/Build 全部 skipped，只走 restore + attest。
+
+669. **Linux/injected 缓存跨 commit 复用触发 provenance 判红（2026-11-12 实修）**
+    现象：`Build runtime snapshot` 报 `Linux assets were not built from the exact APK source commit`。
+    真因：Linux 产物 provenance 绑定 APK project commit；缓存 key 不含 commit 时跨 commit 命中，marker 仍是旧值。
+    修法：Linux 缓存用 pinned 输入内容键；命中后 `attest-linux-cache.mjs` 校验 release manifest/摘要与 provenance 输入逐字节一致，再把 `project-source-commit.txt` 改写为当前 commit 并写 `reused-from-commit.txt`/`reuse-attestation.json`。injected 快照 key 只按源快照 sha + 插件/补丁/脚本输入（下游绑 Harness source manifest，不绑 project commit）。
+    复验：同 commit 重跑命中并过 attestation；跨 commit 在输入一致时复用、输入变化时 miss。
