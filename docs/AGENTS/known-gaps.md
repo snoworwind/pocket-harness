@@ -205,11 +205,13 @@ PRoot 包且仅 ARM64；来源构建尚需实际产出盘点报告，不能称�
 
 - 首个真机链路缺陷已修：首装时原生 PRoot 探测的 cwd 不存在会误报 `ENOENT`，见坑位 673；
   修复后 Linux 环境可安装，health 探针在 PRoot 里跑通共享 glibc Node（`v24.22.0`）。
-- **`linux_bash` 未出现在模型工具面**：安装/重装后状态为 `enabled=true`、`injectionActivated=true`，
-  但同一引擎内的旧会话与新会话都只看到 `bash`（Termux）。`registerLinuxBash` 在
-  `ctx.tools` 缺失时静默返回空 disposer，动态注入的子 scope 很可能没有 tools 服务；
-  尚未定位是作用域还是工具目录快照时机，未修。
-- **重启后激活态丢失**：引擎重启后 bootstrap 的 `synchronizeInjectionState` 把
-  `enabled/injectionActivated` 置 false，`linux_bash` 消失；要恢复只能整包重装（reinstall），
-  而 `install` 在已安装时会因“已安装”直接报错且不写 `lastError`，路由层只回 `linux-operation-failed`。
-  这两个行为都需要产品级决定（是否启动自动重激活、错误是否需要可读回执）。
+- **`linux_bash` 工具面修复待新 APK 复验**：安装/重装后状态为 `enabled=true`、
+  `injectionActivated=true`，旧 APK 的新旧会话均只看到 Termux `bash`。已确认根因是
+  `tools.register()` 要求编译态 JSON Schema，属性级 `required: true` 被拒且异常被吞；
+  `aaa80f18` 已修正输入/输出 schema 并记录注册异常，回归覆盖引擎 schema 子集规则，见坑位 674。
+  尚未用包含此提交的来源 APK 验证模型实际调用。
+- **重启恢复修复待新 APK 复验**：旧实现只在当前进程动态注入 runtime，重启后同步逻辑将
+  宿主未激活误作用户禁用。`a86830dd` 已按持久化的启用态、插件目录与 pinned manifest
+  重激活，覆盖成功、失败与用户未启用三条回归，见坑位 675；尚未完成新 APK 重启验证。
+- **重复安装的错误回执仍待改善**：`install` 在已安装时直接报错且不写 `lastError`，
+  路由层只回 `linux-operation-failed`；上述重激活修复不覆盖此错误回执。

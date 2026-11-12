@@ -3773,3 +3773,12 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
     失败则记录 `linux-runtime-reactivate-failed` 并让随后的同步按宿主视图禁用。
     复验：新增 3 条用例（成功重激活保持 enabled、失败留错误码并禁用、未启用时不动），
     `plugins/dsh-linux-bootstrap/test/*.test.mjs` 15 项全过。设备复验仍需重出 APK。
+
+676. **重启恢复修复未同步 Linux 来源清单，来源链在打包前拒绝（2026-11-12，实验分支）**
+    现象：`07d6774f` 本地来源链在 `Build source-owned offline ARM64 Linux assets` 报
+    `additional Linux source file set differs from reviewed import: plugins/dsh-linux-bootstrap`。
+    真因：新增 `test/reactivate.test.mjs` 与修改 `src/index.js` 后只更新了 vendored 漂移表，
+    未更新独立的 `linux-source-manifest.json`；该门禁同时约束完整文件集合与源码摘要。
+    修法：在全局与 additionalSources 两份文件映射登记新测试和当前入口摘要，并登记本地修改原因；
+    保持文件集合、摘要与符号链接拒绝规则。复验：`check-linux-sources.mjs --self-test`
+    覆盖正控、等长投毒、未登记输入与符号链接负控；来源 APK 与设备复验另行记录。
