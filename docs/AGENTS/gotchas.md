@@ -3736,3 +3736,15 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
     修法：每一步在隔离 RUNNER_TEMP 中新建专用目录及输出文件，不与跨步 GITHUB_ENV 混用。
     本地仍不伪造 Actions 缓存命中，文件值也不会被当作 shell 命令执行。
     复验：真实 CLI 夹具验证文件存在且可写，隔离与续跑回归覆盖该执行路径；已有候选从指纹阶段续跑。
+
+673. **首次安装 Linux 环境时，原生 PRoot 探测会因 cwd 不存在而误报 ENOENT（2026-11-12，实验分支）**
+    现象：Android 16 上首次安装 Linux 环境返回 `linux-host-exec-assets-unavailable`，
+    `lastError` 为 `APK native PRoot probe failed: spawn .../lib/arm64/libpocketharness_proot.so ENOENT`；
+    同一文件用应用 UID 手工执行 `--version` 正常打印源码构建版本，包内字节也与构建收据一致。
+    真因：`_installLocked` 先做原生后端探测、后建目录，而探测的 cwd 是 `dataDir`
+    （`files/linux-environment/runtime`）。首装时该目录尚不存在，Node `spawn` 在 cwd 缺失时
+    以命令路径报 ENOENT，把「目录没建」伪装成「APK 原生程序不存在」。
+    修法：`_ensureDirectories()` 提到探测之前；新增「dataDir 不存在」用例断言探测时 cwd 已存在。
+    既有测试都先用 `makeAndroidNativeLibraries` 隐式建出 dataDir，因此长期未覆盖首装路径。
+    复验：`node --test vendor/dsh-linux-runtime/test/manager.test.mjs` 36 项全过（含新用例）。
+    设备复验需重出 APK：运行时会从内置插件包重新解包，直接改设备上的 `manager.js` 会在重启时被覆盖。

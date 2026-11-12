@@ -775,6 +775,48 @@ test('Android install rejects an unlaunchable APK-native PRoot before downloadin
   }
 });
 
+test('Android install creates the manager data directory before probing native PRoot', async () => {
+  // A fresh install has no `files/linux-environment/runtime` yet. The probe
+  // spawns with that path as cwd, and a missing cwd surfaces as a misleading
+  // `spawn <apk native proot> ENOENT`, so the directory must exist first.
+  const dataDir = tempDir();
+  assert.equal(existsSync(dataDir), false);
+  const nativeLibraryDir = path.join(tempDir(), 'native-libs');
+  await mkdir(nativeLibraryDir, { recursive: true });
+  for (const name of ['libpocketharness_proot.so', 'libpocketharness_proot_loader.so', 'libtalloc.so', 'libandroid-shmem.so']) {
+    await writeFile(path.join(nativeLibraryDir, name), 'test native executable');
+    await chmod(path.join(nativeLibraryDir, name), 0o755);
+  }
+  const fixture = makeManifest();
+  const keys = ['DSH_FILES_DIR', 'DSH_LINUX_NATIVE_LIBRARY_DIR', 'ANDROID_ROOT'];
+  const previous = Object.fromEntries(keys.map(key => [key, process.env[key]]));
+  process.env.DSH_FILES_DIR = dataDir;
+  process.env.DSH_LINUX_NATIVE_LIBRARY_DIR = nativeLibraryDir;
+  process.env.ANDROID_ROOT = '/system';
+  const probeCwds = [];
+  try {
+    const { manager, runner } = makeManager(fixture, {
+      dataDir,
+      allowedHostPaths: [path.join(dataDir, 'workspaces')],
+      runnerOptions: {
+        onRun: spec => {
+          if (spec.args?.length === 1 && spec.args[0] === '--version') probeCwds.push({ cwd: spec.cwd, existed: existsSync(spec.cwd) });
+        },
+      },
+    });
+    await manager.install(fixture.manifest);
+    assert.equal(probeCwds.length >= 1, true);
+    assert.equal(probeCwds[0].cwd, dataDir);
+    assert.equal(probeCwds.every(entry => entry.existed), true);
+    assert.equal(runner.calls.length > 0, true);
+  } finally {
+    for (const [key, value] of Object.entries(previous)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+});
+
 test('Android install accepts Termux PRoot banner when it reports the pinned version', async () => {
   const dataDir = tempDir();
   const fixture = makeManifest();
