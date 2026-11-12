@@ -3923,3 +3923,21 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
     真因：`env -i` 隔离只清环境不清 argv 顺序；PRoot 不自带 /proc、/dev/pts 与 link(2) 兼容；种子解包按文件覆盖写入。
     修法：`LinuxGuestBoot.withEnvironment` 把变量插到 `env -i` 之后并拒绝 `LD_*`/`PROOT_*`/`TERMUX*` 跨越边界；PRoot argv 增加 `--link2symlink`、`/proc`、`/sys`、`/dev/pts`、`/dev/ptmx` 与 rootfs canonical 自镜像；home 种子改 `LinuxFileTree.mergeHomeSeed`（只补缺失，出厂 `AGENTS.md` 除外）。
     复验：Kotlin 1490 项 0 失败；`LinuxGuestBootTest`/`LinuxFileTreeTest` 覆盖边界变量、bind 与不覆盖负例。
+
+692. **来源链改成“客人组件由包管理器提供”后，仍有两类必须自编译：宿主 PRoot/compat 与 harness 自带的平台包（2026-11-13，实验分支）**
+    现象：云端 `build-linux-assets` 依次在 guest-tool 探针、rootfs 校验、客体引擎树装配三处失败：
+    `ssh: No user exists for uid 1001`、`NEEDS-FIX PRoot compatibility preload missing`、
+    `guest platform closure missing; assemble before Android platform pruning`。
+    真因：
+    - QEMU user-mode 探针以调用者 uid 运行；CI runner 是 uid 1001，Debian rootfs 里没有该账号，
+      `ssh -V` 之类会先查 passwd；
+    - `libpocket-linux-compat.so`（`vendor/linux-proot/compat/termfold_compat.c`）是 PRoot 客体的
+      `ld.so.preload` 依赖，必须交叉编译并装进 rootfs，之前随“删自编译 addon”一并误删；
+    - `@deepseek-ai/node-addon-system-linux-arm64` 是 harness 仓库内的 `file:` 工作区包（源码
+      `native/system/packages/linux-arm64` + `entry/src/flock.ts`），npm 上不存在该 glibc 预编译件；
+      node-pty 才是 npm 自带 `prebuilds/linux-arm64`。
+    修法：探针用 `sudo python3 verify-guest-tools.py` 并把 provenance chown 回调用者；
+    恢复 compat 预加载库的交叉编译与 `install -D` 到 `/opt/pocket-harness`；
+    `build-linux-assets.sh` 恢复 Node headers 下载并用 `build-guest-addons.py` 编译该平台包，
+    `build-snapshot-013.mjs` 把产物作为 `--addon` 传给 `package-guest-engine.py`。
+    复验：Python 相关单测与 `linux-assets-workflow.test.mjs` 通过；云端 Linux 资产构建成功。
