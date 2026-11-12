@@ -104,6 +104,7 @@
       </intent-filter>
     </receiver>
 
+    <activity android:name=".LinuxBackupActivity" android:exported="false" />
     <activity
       android:name=".MainActivity"
       android:enableOnBackInvokedCallback="true"

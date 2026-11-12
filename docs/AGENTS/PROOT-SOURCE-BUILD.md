@@ -90,7 +90,8 @@ loader 静态入口、talloc/shmem SONAME、无 RPATH/RUNPATH、无可写可执�
 [run 43145766367](https://github.com/snoworwind/pocket-harness/actions/runs/43145766367)
 完成后端源码编译、组装、Debian rootfs/Node 资产和原生库校验；下载后的 schema 2 收据也通过本地复核。
 这包含发行版/官方预编译的 guest 工具和 Node，不代表所有客体程序已自编译。
-主运行时仍未切换；新 APK/Android 16 运行验收尚未完成。
+该轮未切主运行时；当前源码已切换，最新来源 APK/Android 16 验收状态见
+[实验账本](NATIVE-RUNTIME-MIGRATION.md)。
 
 补齐源码归档后的实验提交 `a764c83e` 再次全链成功：
 [run 43147536575](https://github.com/snoworwind/pocket-harness/actions/runs/43147536575)。

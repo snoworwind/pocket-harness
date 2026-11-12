@@ -180,6 +180,7 @@ object SnapshotExtractor {
     } catch (_: Exception) {
       destCanon
     }
+    val hardlinks = mutableListOf<Pair<File, String>>()
     var done = 0L
     var entries = 0
     var entry: TarArchiveEntry? = tar.nextEntry
@@ -208,6 +209,11 @@ object SnapshotExtractor {
       }
       when {
         entry.isDirectory -> target.mkdirs()
+        entry.isLink -> {
+          val source = java.nio.file.Paths.get(entry.linkName)
+          if (source.isAbsolute || source.any { it.toString() == ".." }) throw IOException("unsafe hardlink")
+          hardlinks.add(target to entry.linkName)
+        }
         entry.isSymbolicLink -> {
           target.parentFile?.mkdirs()
           val linkPath = java.nio.file.Paths.get(entry.linkName)
@@ -256,6 +262,23 @@ object SnapshotExtractor {
       }
       if (done % (1024 * 1024) < entry.size) onProgress(done, totalBytes)
       entry = tar.nextEntry
+    }
+    while (hardlinks.isNotEmpty()) {
+      var resolved = 0
+      val iterator = hardlinks.iterator()
+      while (iterator.hasNext()) {
+        val (target, name) = iterator.next()
+        val source = File(dest, name)
+        val sourcePath = source.canonicalPath
+        if (!sourcePath.startsWith(destCanon + File.separator) || java.nio.file.Files.isSymbolicLink(source.toPath())) throw IOException("escaping hardlink")
+        if (!source.isFile) continue
+        target.parentFile?.mkdirs()
+        if (!target.canonicalPath.startsWith(destCanon + File.separator)) throw IOException("escaping hardlink destination")
+        java.nio.file.Files.deleteIfExists(target.toPath())
+        java.nio.file.Files.createLink(target.toPath(), source.toPath())
+        iterator.remove(); resolved++
+      }
+      if (resolved == 0) throw IOException("missing or cyclic hardlink target")
     }
   }
 

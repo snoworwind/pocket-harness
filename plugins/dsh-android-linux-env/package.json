@@ -6,7 +6,8 @@
   "main": "lib/index.js",
   "exports": {
     ".": "./lib/index.js",
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./client": "./lib/client.js"
   },
   "files": [
     "lib"
@@ -14,8 +15,8 @@
   "license": "MIT",
   "private": true,
   "scripts": {
-    "build": "tsc -p .",
-    "test": "npm run build && node --test test/env-recipe-schema.test.mjs test/recipe-live.test.mjs test/toolchain-single-table.test.mjs test/runtime-cache-allowlist.test.mjs test/runtime-cache-route.test.mjs test/linux-environment.test.mjs test/linux-host-asset-io.test.mjs test/offline-install-integration.test.mjs"
+    "build": "tsc -p . && node build-client.mjs",
+    "test": "npm run build && node --test test/env-recipe-schema.test.mjs test/recipe-live.test.mjs test/toolchain-single-table.test.mjs test/runtime-cache-allowlist.test.mjs test/runtime-cache-route.test.mjs test/linux-environment.test.mjs test/linux-host-asset-io.test.mjs test/offline-install-integration.test.mjs test/guest-self-check.test.mjs"
   },
   "dependencies": {
     "@dsh-android/dsh-android-bridge": "file:../dsh-android-bridge",
@@ -25,17 +26,36 @@
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "4.1.0",
-    "@deepseek-ai/dsh-tools": "0.2.2-rc.1"
+    "@deepseek-ai/dsh-tools": "0.2.2-rc.1",
+    "@deepseek-ai/dsh-client-ui-settings": "0.2.2-rc.1",
+    "react": ">=18"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "4.1.0",
     "@deepseek-ai/dsh-tools": "0.2.2-rc.1",
     "@types/node": "^24.0.0",
     "@types/tar-stream": "3.1.4",
-    "typescript": "^5.5.0"
+    "typescript": "^5.5.0",
+    "esbuild": "0.25.12"
   },
   "repository": {
     "type": "git",
     "url": "https://github.com/snoworwind/pocket-harness.git"
+  },
+  "dsh": {
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-settings"
+      ],
+      "platform": "web"
+    }
+  },
+  "peerDependenciesMeta": {
+    "@deepseek-ai/dsh-client-ui-settings": {
+      "optional": true
+    },
+    "react": {
+      "optional": true
+    }
   }
 }

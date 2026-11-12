@@ -14,6 +14,7 @@
  */
 import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
+import { cachedGuestSelfCheck } from './guest-self-check.js'
 import { Context } from '@deepseek-ai/cordis'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import {
@@ -91,7 +92,7 @@ export function liveFacts(ctx: Context, session?: unknown) {
   }
   const workspace = typeof e.DSH_WORKSPACE === 'string' && e.DSH_WORKSPACE !== '' ? e.DSH_WORKSPACE : process.cwd()
   return {
-    prefix: e.TERMUX__PREFIX ?? e.PREFIX ?? '',
+    prefix: e.DSH_BUNDLED_LINUX === '1' ? '/usr' : e.TERMUX__PREFIX ?? e.PREFIX ?? '',
     home: e.HOME ?? '',
     writeMode: writeMode ?? 'workspace-write',
     writeModeSource,
@@ -127,7 +128,7 @@ function toolchainStatus(adbTier: string | undefined, ctx: Context, session?: un
     ? [...REQUIRED_TOOLCHAIN]
     : REQUIRED_TOOLCHAIN.filter((pkg) => missingBinaries.includes(TOOLCHAIN_REPRESENTATIVE[pkg]))
   const toolchainState = missing.length === 0 ? 'full' : missingBinaries.includes('bash') ? 'unusable' : 'partial'
-  const dpkg = join(prefix, 'var', 'lib', 'dpkg', 'status')
+  const dpkg = process.env.DSH_BUNDLED_LINUX === '1' ? '/var/lib/dpkg/status' : join(prefix, 'var', 'lib', 'dpkg', 'status')
   const pkgCount = existsSync(dpkg) ? (readFileSync(dpkg, 'utf8').match(/^Package: /gm)?.length ?? 0) : 0
   return {
     prefix,
@@ -202,7 +203,7 @@ function recipeExport(ctx: Context, session?: unknown): Record<string, unknown> 
 function tools(ctx: Context, svc: { status(): { tier: string } } | undefined) {
   const statusTool = defineTool({
     name: 'android_toolchain_status',
-    description: '工具链状态：Termux/Bionic Bash 清单、dpkg、ADB 档位；不含 Debian/glibc Linux。',
+    description: '工具链状态：当前 Debian/glibc Bash、开发工具、dpkg 与 Android 授权档位。',
     parameters: {},
     output: {
       schema: {
@@ -217,23 +218,24 @@ function tools(ctx: Context, svc: { status(): { tier: string } } | undefined) {
           dpkgPackages: { type: 'number' },
           dpkgInitialized: { type: 'boolean' },
           adbTier: { type: 'string' },
+          runtimeSelfCheck: { type: 'object', additionalProperties: true },
         },
       },
       render: (_args, v: Record<string, unknown>) => [
         // 0.13.8 #172：adbTier 是部署默认档位视图（非通道能力门）——文案如实标注，防模型误读为未授权
-        { type: 'text',         text: `Termux/Bionic 工具链 ${String(v.prefix)}：${String(v.toolchainState ?? 'unknown')}（缺失 ${((v.missing as string[] | undefined) ?? []).join(', ') || '无'}）/ dpkg ${String(v.dpkgPackages)} 包 / ADB 档位视图 ${String(v.adbTier)}（部署默认，非通道门；通道就绪以 android_privilege_status 为准）\n` + JSON.stringify(v.tools ?? {}) },
+        { type: 'text',         text: `Debian/glibc 工具链 ${String(v.prefix)}：${String(v.toolchainState ?? 'unknown')}（缺失 ${((v.missing as string[] | undefined) ?? []).join(', ') || '无'}）/ dpkg ${String(v.dpkgPackages)} 包 / ADB 档位视图 ${String(v.adbTier)}（部署默认，非通道门；通道就绪以 android_privilege_status 为准）\n` + JSON.stringify(v.tools ?? {}) },
       ],
     },
     // ST-16：每次调用实时 resolve 会话档位（exec.agent.session），不吃启动快照
     execute: async (_args: Record<string, never>, exec: { agent?: { session?: unknown } }) =>
-      toolchainStatus(svc?.status().tier, ctx, exec?.agent?.session) as never,
+      ({ ...toolchainStatus(svc?.status().tier, ctx, exec?.agent?.session), ...(process.env.DSH_BUNDLED_LINUX === '1' ? { runtimeSelfCheck: await cachedGuestSelfCheck() } : {}) }) as never,
   })
 
   const recipeTool = defineTool({
     name: 'android_env_recipe',
     description:
-      '导出 Termux/Bionic 环境配方（env 白名单、dpkg、共享目录、patch；无密钥）。' +
-      '不含 Debian/glibc Linux 环境。',
+      '导出当前 Debian/glibc 环境配方（env 白名单、dpkg、共享目录、patch；无密钥）。' +
+      'Linux 主运行时随 APK 更新。',
     parameters: {},
     output: {
       schema: {
@@ -343,34 +345,17 @@ function cacheExecutePayload(plan: CleanupPlan): Record<string, unknown> {
 }
 
 export function apply(ctx: Context, _config: Record<string, unknown> = {}) {
+  const primaryStatus = async () => {
+    const root = process.env.DSH_FILES_DIR
+    const instance = root ? (() => { try { return JSON.parse(readFileSync(join(root, 'linux/instance.json'), 'utf8')) as Record<string, unknown> } catch { return null } })() : null
+    const selfCheck = await cachedGuestSelfCheck()
+    return { installed: Boolean(instance), enabled: true, injectionActivated: true, version: process.env.DSH_APP_VERSION ?? 'unknown', mobileVersion: process.env.DSH_APP_VERSION ?? 'unknown', autoUpdate: false, runtime: { id: 'bundled-debian', label: 'APK 内置 Debian 主运行时', state: selfCheck.ok ? 'healthy' : 'check-required' }, instance: instance ?? undefined, selfCheck }
+  }
+  const nativeManagement = () => { throw new Error('主 Linux 运行时由 APK 管理；请在应用管理中心导出备份或确认重置，不支持下载式安装或卸载。') }
+  const primaryBootstrap: LinuxBootstrap = { status: primaryStatus, checkForUpdates: primaryStatus, install: nativeManagement, reinstall: nativeManagement, uninstall: nativeManagement, setAutoUpdateEnabled: nativeManagement }
   // 授权档位权威 = bridge 服务（androidPrivilege，patch 顺序 bridge 先于本插件）
   const svc = (ctx as unknown as { androidPrivilege?: { status(): { tier: string } } }).androidPrivilege
-  // 实验性内部 Linux 插件（bootstrap + runtime）：包随机放在内置（hard）插件目录，但**默认不启用**
-  // ——存在不等于启用。宿主只提供激活/卸载与只读在场查询；是否启用、何时安装一律由外部 bootstrap
-  // 服务与用户显式确认决定，本插件不下载、不解包、不替用户启用。
-  const pluginHost = createLinuxPluginHost({
-    root: process.env.DSH_FILES_DIR ? join(process.env.DSH_FILES_DIR, 'linux-environment', 'plugins') : undefined,
-    activate: (plugin, config) => cordisScope(ctx.plugin(plugin as Parameters<Context['plugin']>[0], config)),
-  })
-  if (typeof ctx.provide === 'function') {
-    ctx.provide('linuxPluginHost', pluginHost)
-    const filesDir = process.env.DSH_FILES_DIR
-    const appVersion = process.env.DSH_APP_VERSION
-    if (filesDir && appVersion && process.env.TERMUX__PREFIX) {
-      ctx.provide('linuxBootstrapConfig', createLinuxBootstrapConfig({ filesDir, appVersion }))
-    }
-    ctx.effect(() => () => pluginHost.uninstall())
-  }
-  if (typeof ctx.inject === 'function') {
-    // 版本变化检查只在内部 bootstrap 插件**已启用**（服务在场）后发生一次，且还需应用版本变化与
-    // 用户开启自动更新；服务缺席（未启用）不重试、不轮询。
-    ctx.inject(['linuxBootstrap'], scope => {
-      const bootstrap = serviceOf<LinuxBootstrap>(scope, 'linuxBootstrap')
-      if (bootstrap) void checkLinuxEnvironmentAfterMobileChange(bootstrap).catch(() => {
-        ctx.logger?.('dsh-android-linux-env')?.warn?.('Linux 环境版本变化检查失败，请通过设置页重试。')
-      })
-    })
-  }
+  // 主运行时只展示壳侧实例；不再提供动态插件安装器或第二套 Linux 底座。
   for (const t of tools(ctx, svc)) ctx.tools.register(t)
   // register() 在运行期返回 disposer（上游 webserver 契约；file-open 同一形态）。声明为
   // `() => void` 才能走 ctx.effect——热重载/卸载必须回收路由，不留重复 handler。
@@ -384,10 +369,10 @@ export function apply(ctx: Context, _config: Record<string, unknown> = {}) {
       webServer: wsvc,
       effect: register => ctx.effect(register),
       auth: authOptions,
-      bootstrap: () => serviceOf<LinuxBootstrap>(ctx, 'linuxBootstrap'),
+      bootstrap: () => primaryBootstrap,
     })
     for (const [path, builder] of [
-      ['/api/android/env/status', () => toolchainStatus(svc?.status().tier, ctx)],
+      ['/api/android/env/status', async () => ({ ...toolchainStatus(svc?.status().tier, ctx), ...(process.env.DSH_BUNDLED_LINUX === '1' ? { runtimeSelfCheck: await cachedGuestSelfCheck() } : {}) })],
       ['/api/android/env/recipe', () => recipeExport(ctx)],
     ] as const) {
       wsvc.register({
@@ -408,7 +393,7 @@ export function apply(ctx: Context, _config: Record<string, unknown> = {}) {
             res.end(JSON.stringify({ ok: false, error: 'GET only' }))
             return
           }
-          const body = JSON.stringify(builder())
+          const body = JSON.stringify(await builder())
           res.writeHead(200, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' })
           res.end(body)
         },

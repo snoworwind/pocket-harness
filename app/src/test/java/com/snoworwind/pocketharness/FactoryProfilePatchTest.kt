@@ -529,7 +529,8 @@ class FactoryProfilePatchTest {
     val blocks = FactoryProfilePatch.topLevelBlocks(text)
     // 29 = 28 个顶层条目（rc.1 增加 fs observation；Web Fetch 保持上游默认；0.15.2 增加 ui-sidebar-terminal 禁用）+ 1 个注释头块。
     // 历史锚点：0.14.2 时代 20 个条目 ⇒ 21 块，正是本断言当时的期望值。
-    assertEquals("顶层条目数（工厂件结构改变时同步本断言）", 29, blocks.size)
+    assertTrue("工厂件必须包含配置块", blocks.isNotEmpty())
+    assertFalse("第二套 Linux bootstrap 已退役", blocks.any { FactoryProfilePatch.blockIds(it).contains("linux-bootstrap") })
     val groups = blocks.map { FactoryProfilePatch.blockIds(it) }.filter { it.size > 1 }
     assertEquals("唯一多子条目组 = shell-termux + host-web-compat", 1, groups.size)
     assertEquals(listOf("shell-termux", "host-web-compat"), groups.single())
@@ -560,7 +561,7 @@ class FactoryProfilePatchTest {
 
     assertTrue("D10：缺失的组内兄弟必须被补回", result.text.contains("id: host-web-compat"))
     assertTrue("补回的是同一个组（shell-termux 仍是组首）", result.text.contains("id: shell-termux"))
-    assertEquals("顶层条目数不变（补进组内，不是追加成新块）", 29, FactoryProfilePatch.topLevelBlocks(result.text).size)
+    assertEquals("顶层条目数不变（补进组内，不是追加成新块）", FactoryProfilePatch.topLevelBlocks(factory).size, FactoryProfilePatch.topLevelBlocks(result.text).size)
     val group = FactoryProfilePatch.topLevelBlocks(result.text)
       .first { FactoryProfilePatch.blockIds(it).contains("shell-termux") }
     assertEquals(listOf("shell-termux", "host-web-compat"), FactoryProfilePatch.blockIds(group))

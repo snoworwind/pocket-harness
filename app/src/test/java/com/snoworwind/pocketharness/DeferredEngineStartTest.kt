@@ -39,12 +39,8 @@ class DeferredEngineStartTest {
 
   /** 造一份正在进行中的事务 journal（与 EngineManager 写 journal 用的是同一原语）。 */
   private fun writeInFlightTransaction(startedAt: Long) {
-    SnapshotTransaction.writeMarker(
-      files,
-      SnapshotTransaction.Marker(
-        SnapshotTransaction.Phase.STAGED, "fp-under-test", startedAt, purpose = SnapshotTransaction.Purpose.FACTORY,
-      ),
-    )
+    LinuxUpgradeTransaction.atomicWrite(File(files, LinuxUpgradeTransaction.JOURNAL),
+      org.json.JSONObject().put("schemaVersion", 1).put("phase", "prepare").put("startedAt", startedAt).toString())
   }
 
   // ── ① 行为层：跨进程真源（journal 文件）驱动的有界等待 ────────────────────────
@@ -56,18 +52,18 @@ class DeferredEngineStartTest {
   @Test
   fun transactionJournalOnDiskIsTheWaitCriterion() {
     writeInFlightTransaction(1_000L)
-    assertTrue("前置：journal 必须在场", SnapshotTransaction.readMarker(files) != null)
+    assertTrue("前置：journal 必须在场", LinuxUpgradeTransaction.readMarker(files) != null)
 
     var clock = 0L
     var polls = 0
-    val settled = awaitSnapshotTransactionSettled(
+    val settled = awaitLinuxPreparationSettled(
       budgetMs = 5_000L, pollStepMs = 1_000L,
       now = { clock }, sleep = { clock += it },
       transactionActive = {
         polls++
         // 第 3 拍时事务收口（清 journal）：等待必须立刻结束，不得走满预算。
-        if (polls >= 3) SnapshotTransaction.clearMarker(files)
-        SnapshotTransaction.readMarker(files) != null
+        if (polls >= 3) File(files, LinuxUpgradeTransaction.JOURNAL).delete()
+        LinuxUpgradeTransaction.readMarker(files) != null
       },
       current = { true },
     )
@@ -81,7 +77,7 @@ class DeferredEngineStartTest {
   fun anEndlessTransactionIsBoundedByTheBudget() {
     var clock = 0L
     var polls = 0
-    val settled = awaitSnapshotTransactionSettled(
+    val settled = awaitLinuxPreparationSettled(
       budgetMs = 5_000L, pollStepMs = 1_000L,
       now = { clock }, sleep = { clock += it },
       transactionActive = { polls++; true },
@@ -97,7 +93,7 @@ class DeferredEngineStartTest {
   fun anObsoleteGenerationStopsImmediately() {
     var clock = 0L
     var polls = 0
-    val settled = awaitSnapshotTransactionSettled(
+    val settled = awaitLinuxPreparationSettled(
       budgetMs = 60_000L, pollStepMs = 1_000L,
       now = { clock }, sleep = { clock += it },
       transactionActive = { polls++; true },
@@ -112,10 +108,10 @@ class DeferredEngineStartTest {
   fun anAbsentTransactionSettlesWithoutWaiting() {
     var clock = 0L
     var polls = 0
-    val settled = awaitSnapshotTransactionSettled(
+    val settled = awaitLinuxPreparationSettled(
       budgetMs = 60_000L, pollStepMs = 1_000L,
       now = { clock }, sleep = { clock += it },
-      transactionActive = { polls++; SnapshotTransaction.readMarker(files) != null },
+      transactionActive = { polls++; LinuxUpgradeTransaction.readMarker(files) != null },
       current = { true },
     )
     assertTrue("无事务必须立即放行", settled)
@@ -131,25 +127,25 @@ class DeferredEngineStartTest {
   @Test
   fun theProductionBudgetCoversTheMeasuredRefreshWindow() {
     assertTrue(
-      "预算必须覆盖实测上限 12 分钟（现值 " + SNAPSHOT_TRANSACTION_WAIT_BUDGET_MS + "ms）",
-      SNAPSHOT_TRANSACTION_WAIT_BUDGET_MS > 12 * 60_000L,
+      "预算必须覆盖实测上限 12 分钟（现值 " + LINUX_PREPARATION_WAIT_BUDGET_MS + "ms）",
+      LINUX_PREPARATION_WAIT_BUDGET_MS > 12 * 60_000L,
     )
-    assertTrue("预算必须有界", SNAPSHOT_TRANSACTION_WAIT_BUDGET_MS <= 30 * 60_000L)
-    assertTrue("轮询步进必须为正（否则退化为忙等）", SNAPSHOT_TRANSACTION_WAIT_POLL_STEP_MS > 0L)
+    assertTrue("预算必须有界", LINUX_PREPARATION_WAIT_BUDGET_MS <= 30 * 60_000L)
+    assertTrue("轮询步进必须为正（否则退化为忙等）", LINUX_PREPARATION_WAIT_POLL_STEP_MS > 0L)
   }
 
   /** 账龄取的是 journal 自述的 startedAt（跨进程），不是内存时间戳；缺起始时间时**不猜**（0）。 */
   @Test
   fun transactionAccountedAgeComesFromTheJournalAndNeverGoesNegative() {
-    val marker = SnapshotTransaction.Marker(SnapshotTransaction.Phase.SWAPPING, "fp", 10_000L)
-    assertEquals(5_000L, snapshotTransactionAccountedAgeMs(marker, 15_000L))
-    assertEquals("时钟回拨不得产出负账龄", 0L, snapshotTransactionAccountedAgeMs(marker, 1_000L))
-    assertEquals("无 journal ⇒ 0（不猜）", 0L, snapshotTransactionAccountedAgeMs(null, 15_000L))
-    assertEquals("journal 缺起始时间 ⇒ 0（不猜）", 0L, snapshotTransactionAccountedAgeMs(marker.copy(startedAt = 0L), 15_000L))
+    val marker = LinuxUpgradeTransaction.Marker("upgrade", 10_000L)
+    assertEquals(5_000L, linuxPreparationAccountedAgeMs(marker, 15_000L))
+    assertEquals("时钟回拨不得产出负账龄", 0L, linuxPreparationAccountedAgeMs(marker, 1_000L))
+    assertEquals("无 journal ⇒ 0（不猜）", 0L, linuxPreparationAccountedAgeMs(null, 15_000L))
+    assertEquals("journal 缺起始时间 ⇒ 0（不猜）", 0L, linuxPreparationAccountedAgeMs(marker.copy(startedAt = 0L), 15_000L))
     // 真文件对账：写一份 journal 再读回来，账龄必须等于「自述起始时间」到 now 的差。
     writeInFlightTransaction(1_000L)
-    val onDisk = SnapshotTransaction.readMarker(files)
-    assertEquals(60_000L, snapshotTransactionAccountedAgeMs(onDisk, 61_000L))
+    val onDisk = LinuxUpgradeTransaction.readMarker(files)
+    assertEquals(60_000L, linuxPreparationAccountedAgeMs(onDisk, 61_000L))
   }
 
   // ── ② 文案层：如实中间态，不得宣称就绪（D3 判据 C3） ──────────────────────────
@@ -161,7 +157,7 @@ class DeferredEngineStartTest {
   @Test
   fun theWaitTextNeverClaimsReadinessAndStatesTheRealPhase() {
     for (age in listOf(null, 0L, 60_000L, 12 * 60_000L)) {
-      val text = snapshotTransactionWaitText("SWAPPING", age)
+      val text = linuxPreparationWaitText("SWAPPING", age)
       assertTrue("文案不得为空（age=" + age + "）", text.isNotBlank())
       assertTrue("必须说明运行时正在解压（age=" + age + "）：" + text, text.contains("正在解压"))
       assertTrue("必须说明旧引擎仍在运行（age=" + age + "）", text.contains("旧引擎仍在运行"))
@@ -176,9 +172,9 @@ class DeferredEngineStartTest {
   /** 账龄必须如实进文案：未知就说未知，不给假数字（编造百分比是既有 UX 缺陷的同族形态）。 */
   @Test
   fun theWaitTextRendersTheAccountedAgeHonestly() {
-    assertTrue("未知时长必须如实标注", snapshotTransactionWaitText("STAGED", null).contains("未知时长"))
-    assertTrue("13 分钟必须渲染成 13 分钟", snapshotTransactionWaitText("STAGED", 13 * 60_000L).contains("13 分钟"))
-    assertFalse("不得凭空给出未提供的时长", snapshotTransactionWaitText("STAGED", null).contains("分钟"))
+    assertTrue("未知时长必须如实标注", linuxPreparationWaitText("STAGED", null).contains("未知时长"))
+    assertTrue("13 分钟必须渲染成 13 分钟", linuxPreparationWaitText("STAGED", 13 * 60_000L).contains("13 分钟"))
+    assertFalse("不得凭空给出未提供的时长", linuxPreparationWaitText("STAGED", null).contains("分钟"))
   }
 
   // ── ③ 接线层：调用点不得回退成静默丢弃（撤掉修复即红） ────────────────────────
@@ -204,7 +200,7 @@ class DeferredEngineStartTest {
    * **本文件的核心反证**：`start()` 里不得再出现裸的 `flowOwnership.begin() ?: return`。
    *
    * 那一行就是缺陷本体（抢不到 = 直接返回，零痕迹）。修复后必须：拿到 null 时走
-   * [deferEngineStartWhileSnapshotTransactionBusy] 那条如实处置路径。
+   * [deferEngineStartWhileLinuxPreparationBusy] 那条如实处置路径。
    */
   @Test
   fun theSilentDropInStartIsGone() {
@@ -217,7 +213,7 @@ class DeferredEngineStartTest {
     assertTrue("start() 必须显式分支处理 begin() 返回 null", start.contains("val token = flowOwnership.begin()"))
     assertTrue(
       "begin() 拿不到所有权时必须走如实处置（留痕 + 有界等待）",
-      start.contains("deferEngineStartWhileSnapshotTransactionBusy()"),
+      start.contains("deferEngineStartWhileLinuxPreparationBusy()"),
     )
     assertTrue(
       "destroyed 与非 destroyed 必须分开处置（前者不启动，后者等待）",
@@ -243,7 +239,7 @@ class DeferredEngineStartTest {
       assertTrue("必须落 boot-fail stage=" + stage, flow.contains("\"" + stage + "\""))
     }
     // 反证：不得只留一句 LogCollector.log 就算完（那正是「零回执」的形态）。
-    val defer = flow.substringAfter("private fun deferEngineStartWhileSnapshotTransactionBusy()")
+    val defer = flow.substringAfter("private fun deferEngineStartWhileLinuxPreparationBusy()")
       .substringBefore("private val deferredStartRunnable")
     assertTrue("处置路径必须写 boot-fail", defer.contains("LogCollector.writeBootFail("))
   }
@@ -252,16 +248,16 @@ class DeferredEngineStartTest {
   @Test
   fun theHostSideWaitReadsTheCrossProcessJournal() {
     val flow = codeOnly(source("EngineStartFlow.kt"))
-    val defer = flow.substringAfter("private fun deferEngineStartWhileSnapshotTransactionBusy()")
+    val defer = flow.substringAfter("private fun deferEngineStartWhileLinuxPreparationBusy()")
       .substringBefore("private val deferredStartRunnable")
-    assertTrue("必须读事务 journal（跨进程真源）", defer.contains("SnapshotTransaction.readMarker(activity.filesDir)"))
+    assertTrue("必须读事务 journal（跨进程真源）", defer.contains("LinuxUpgradeTransaction.readMarker(activity.filesDir)"))
     val safe = flow.substringAfter("private fun performSafeModeRestart()")
       .substringBefore("private fun applySafeModeRestartHint(")
     assertTrue(
       "安全模式重启必须**在停旧引擎之前**判事务（先停会让用户白等 8-12 分钟没有引擎）",
-      safe.indexOf("SnapshotTransaction.readMarker(activity.filesDir)") in 0 until safe.indexOf("engine.stopOwnedEngine()"),
+      safe.indexOf("LinuxUpgradeTransaction.readMarker(activity.filesDir)") in 0 until safe.indexOf("engine.stopOwnedEngine()"),
     )
-    assertTrue("事务在场时必须走等待路径，不得直接继续", safe.contains("awaitSnapshotTransactionThenRestartSafeMode()"))
+    assertTrue("事务在场时必须走等待路径，不得直接继续", safe.contains("awaitLinuxPreparationThenRestartSafeMode()"))
     // 续跑必须同时满足「事务收口」与「所有权空出来」，否则又撞回 L700（等于把丢弃换成忙等）。
     val runnable = flow.substringAfter("private val deferredStartRunnable")
       .substringBefore("private fun canRunEngineWork")
@@ -279,7 +275,7 @@ class DeferredEngineStartTest {
       .filter { flow.contains("SafeModeRestartDecision." + it) }
     assertEquals("判定取值域仍是 4 个（本 PR 不得扩枚举）", 4, decisions.size)
     assertEquals(4, SafeModeRestartDecision.entries.size)
-    assertTrue("事务等待文案必须是独立函数", flow.contains("internal fun snapshotTransactionWaitText("))
+    assertTrue("事务等待文案必须是独立函数", flow.contains("internal fun linuxPreparationWaitText("))
     assertFalse(
       "事务等待文案不得进入 safeModeRestartHint 的取值域",
       Regex("safeModeRestartHint\\([^)]*\\).contains\\(").containsMatchIn(flow),
@@ -294,27 +290,28 @@ class DeferredEngineStartTest {
    * 把事务在飞记成失败。修复后：**推迟**与**失败**必须是两个可区分的字段。
    */
   @Test
-  fun anInFlightTransactionIsNotRecordedAsThisCallerFailure() {
-    val code = codeOnly(source("EngineManager.kt"))
-    val internalRefresh = code.substringAfter("private fun refreshSnapshotInternal(")
-      .substringBefore("private fun liveRuntimeEvidence(")
-    val gate = internalRefresh.substringAfter("if (!beginSnapshotTransaction())")
-      .substringBefore("val fingerprint = bundledFingerprint()")
-    assertFalse(
-      "被让行不得冒充失败（不得挂一个属于本次的异常到 lastRefreshFailure）",
-      gate.contains("lastRefreshFailure = IllegalStateException") ||
-        gate.contains("lastRefreshFailure = SnapshotFsException"),
-    )
-    assertTrue("被让行必须把失败面显式清成 null（不得留下上一次的异常）", gate.contains("lastRefreshFailure = null"))
-    assertTrue("被让行必须标记为「推迟」而不是失败", gate.contains("lastRefreshDeferred = true"))
-    assertTrue(
-      "推迟的判据是 beginSnapshotTransaction() 的返回值（事务互斥）",
-      internalRefresh.contains("if (!beginSnapshotTransaction())"),
-    )
-    // 推迟不得喂失败账本：否则纯并发争用会把「同快照连续失败达阈」喂出来，降级闸门永久跳过刷新。
-    val wrapper = code.substringAfter("fun refreshSnapshot(")
-      .substringBefore("private fun refreshSnapshotInternal(")
-    assertTrue("推迟时不得写失败账本", wrapper.contains("lastRefreshDeferred"))
-    assertTrue("推迟只允许走日志，不得写 afterFailure", Regex("else if \\(lastRefreshDeferred\\)[\\s\\S]{0,400}?Log\\.i").containsMatchIn(wrapper))
+  fun concurrentLinuxPreparationWaitsAndDoesNotRecordASpuriousFailure() {
+    LinuxInstallerFixture().use { f ->
+      f.install()
+      val entered = java.util.concurrent.CountDownLatch(1)
+      val release = java.util.concurrent.CountDownLatch(1)
+      val trials = java.util.concurrent.atomic.AtomicInteger()
+      val first = java.util.concurrent.atomic.AtomicReference<LinuxInstanceInstaller.Result>()
+      val second = java.util.concurrent.atomic.AtomicReference<LinuxInstanceInstaller.Result>()
+      f.trial = { _, _ -> trials.incrementAndGet(); entered.countDown(); check(release.await(5, java.util.concurrent.TimeUnit.SECONDS)) }
+      val next = f.source("two")
+      val a = Thread { first.set(LinuxInstanceInstaller.ensure(next, f.files)) }
+      val b = Thread { second.set(LinuxInstanceInstaller.ensure(next, f.files)) }
+      a.start()
+      try {
+        assertTrue(entered.await(5, java.util.concurrent.TimeUnit.SECONDS))
+        b.start()
+        assertTrue(LinuxInstanceInstaller.preparing)
+      } finally { release.countDown(); a.join(5_000); if (b.state != Thread.State.NEW) b.join(5_000) }
+      assertTrue(first.get() is LinuxInstanceInstaller.Result.Ready)
+      assertTrue(second.get() is LinuxInstanceInstaller.Result.Ready)
+      assertEquals(1, trials.get())
+    }
   }
+
 }

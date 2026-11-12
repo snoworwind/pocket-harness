@@ -72,14 +72,16 @@ class Issue342StartupDiagnosticTest {
   }
 
   @Test fun `all foreign port branches record structured cause and clear stale cause`() {
-    // 纯 Linux 档只剩一个 spawn 分支（客体启动）；旧快照分支的 4 处已随 Termux 一起删除。
+    // 纯 Linux 档有两个归属失败分支：无法停止旧引擎、以及与外部端口冲突时未 spawn。
+    // 旧快照分支的其余处已随 Termux 一起删除。
     val start = source("EngineManager.kt").substringAfter("private fun startGuestEngine(").substringBefore("internal fun startupExceptionCode")
-    assertEquals(1, Regex("lastStartRefusalCode = REFUSAL_PORT_FOREIGN").findAll(start).count())
+    assertEquals(2, Regex("lastStartRefusalCode = REFUSAL_PORT_FOREIGN").findAll(start).count())
+    assertEquals(2, Regex("lastStartRefusalCode = REFUSAL_PORT_FOREIGN\\s*\\n\\s*lastStartRefusal = \"").findAll(start).count())
     val manager = source("EngineManager.kt")
-    val entry = manager.substringAfter("fun startEngine(").substringBefore("return startGuestEngine(port)")
+    val entry = manager.substringAfter("fun startEngine(").substringBefore("return startGuestEngine(port, force)")
     assertTrue(entry.contains("lastStartRefusal = null"))
     assertTrue(entry.contains("lastStartRefusalCode = null"))
-    assertTrue(entry.indexOf("lastStartRefusalCode = null") < manager.indexOf("return startGuestEngine(port)"))
+    assertTrue(entry.indexOf("lastStartRefusalCode = null") < manager.indexOf("return startGuestEngine(port, force)"))
   }
 
   @Test fun `private write diagnosis requires syscall denial plus private directory evidence`() {

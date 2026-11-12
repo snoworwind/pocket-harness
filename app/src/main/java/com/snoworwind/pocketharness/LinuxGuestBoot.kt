@@ -10,12 +10,7 @@ import java.io.File
  * 所有判定都基于真实文件存在性与 JSON 结构，缺一项就给出稳定拒绝码，绝不半启动。
  */
 internal object LinuxGuestBoot {
-  const val PREFERENCE_FILE = "boot-mode.json"
-  const val MODE_TERMUX = "termux"
-  const val MODE_LINUX = "linux"
-
-  private const val ACTIVE_SCHEMA = 1
-  private const val GUEST_PATH = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+  private const val GUEST_PATH = "/opt/node/bin:/root/.local/bin:/root/.local/share/pnpm:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
   private const val ADDON_PACKAGE = "@deepseek-ai/node-addon-system-linux-arm64"
   /** 客体里的引擎树挂载点；引擎 JS 与 addon 都从这棵宿主树 bind 进去。 */
   const val GUEST_ENGINE_ROOT = "/opt/dsh"
@@ -26,24 +21,6 @@ internal object LinuxGuestBoot {
   sealed class Result {
     data class Ready(val launch: Launch) : Result()
     data class Refused(val code: String, val detail: String) : Result()
-  }
-
-  /**
-   * 启动模式：boot-mode.json 显式写 `termux`/`linux` 时以它为准；文件缺失时按实例是否就绪决定，
-   * 文件损坏按 Termux 处理，避免坏文件让应用起不来。
-   */
-  fun mode(linuxEnvironment: File, runtimeInstalled: Boolean): String {
-    val file = File(linuxEnvironment, PREFERENCE_FILE)
-    if (!file.isFile) return if (runtimeInstalled) MODE_LINUX else MODE_TERMUX
-    return try {
-      when (JSONObject(file.readText()).optString("mode")) {
-        MODE_TERMUX -> MODE_TERMUX
-        MODE_LINUX -> MODE_LINUX
-        else -> if (runtimeInstalled) MODE_LINUX else MODE_TERMUX
-      }
-    } catch (_: Exception) {
-      MODE_TERMUX
-    }
   }
 
   data class Paths(
@@ -74,13 +51,32 @@ internal object LinuxGuestBoot {
     guestEnv: Map<String, String> = emptyMap(),
   ): Result = build(paths, command, cwd, guestEnv)
 
+  internal fun candidate(paths: Paths, instance: LinuxInstanceInstaller.Instance, command: List<String>, guestEnv: Map<String, String> = emptyMap()): Result =
+    build(paths, command, guestEnv = guestEnv, candidate = instance)
+
+  /** env -i isolates the guest: values must appear after it, rather than only in the host ProcessBuilder. */
+  internal fun withEnvironment(launch: Launch, values: Map<String, String>): Launch {
+    validateGuestEnvironment(values)
+    val at = launch.argv.indexOf("LANG=C.UTF-8") + 1
+    require(at > 0)
+    return launch.copy(argv = launch.argv.take(at) + values.map { (key, value) -> "$key=$value" } + launch.argv.drop(at))
+  }
+
+  private fun validateGuestEnvironment(values: Map<String, String>) {
+    require(values.keys.all { it.matches(Regex("[A-Za-z_][A-Za-z0-9_]*")) &&
+      it !in setOf("LD_LIBRARY_PATH", "LD_PRELOAD") && !it.startsWith("PROOT_") && !it.startsWith("TERMUX") }) {
+      "host loader environment cannot cross the guest boundary"
+    }
+  }
+
   private fun build(
     paths: Paths,
     command: List<String>,
     cwd: File? = null,
     guestEnv: Map<String, String> = emptyMap(),
+    candidate: LinuxInstanceInstaller.Instance? = null,
   ): Result {
-    val instance = when (val opened = LinuxInstanceInstaller.open(paths.filesDir)) {
+    val instance = candidate ?: when (val opened = LinuxInstanceInstaller.open(paths.filesDir)) {
       is LinuxInstanceInstaller.Result.Ready -> opened.instance
       is LinuxInstanceInstaller.Result.Failed -> return Result.Refused(opened.code, opened.detail)
     }
@@ -101,26 +97,49 @@ internal object LinuxGuestBoot {
     val shm = File(instance.root, "dev-shm").apply { mkdirs() }
     // cwd 用宿主 home 的同路径（已 bind 进 PRoot），客体侧等价于 $HOME。
     val working = (cwd ?: paths.homeDir).takeIf { it.isDirectory } ?: paths.homeDir
-    val resolved = command.map { if (it == "NODE") instance.node.absolutePath else it }
+    val resolved = command.map { if (it == "NODE") "/opt/node/bin/node" else it }
 
     val argv = mutableListOf(
-      proot.absolutePath, "-r", instance.rootfs.absolutePath, "-0",
+      proot.absolutePath, "-r", instance.rootfs.canonicalPath, "-0", "--link2symlink",
       "-w", working.absolutePath, "--sysvipc", "--kill-on-exit",
+      "-b", "/proc:/proc", "-b", "/sys:/sys",
+      "-b", "${instance.rootfs.canonicalPath}:${instance.rootfs.canonicalPath}", "-b", "/dev/pts:/dev/pts", "-b", "/dev/ptmx:/dev/ptmx",
       "-b", "/dev/null", "-b", "/dev/zero", "-b", "/dev/random", "-b", "/dev/urandom",
       "-b", "${shm.absolutePath}:/dev/shm",
-      "-b", "${instance.node.absolutePath}:${instance.node.absolutePath}",
+      "-b", "${instance.node.parentFile!!.parentFile!!.canonicalPath}:${instance.node.parentFile!!.parentFile!!.canonicalPath}",
+      "-b", "${instance.node.parentFile!!.parentFile!!.absolutePath}:/opt/node",
       "-b", "${instance.engine.absolutePath}:$GUEST_ENGINE_ROOT",
       "-b", "${paths.homeDir.absolutePath}:${paths.homeDir.absolutePath}",
       // 用户数据落在宿主 home，挂到客体 /root：覆盖安装替换 rootfs 时 $HOME 内容不会丢。
       "-b", "${paths.homeDir.absolutePath}:/root",
-      // 引擎资产、急救 CLI 等宿主私有文件按原路径可见，避免再造一套路径映射。
-      "-b", "${paths.filesDir.absolutePath}:${paths.filesDir.absolutePath}",
       "/usr/bin/env", "-i",
       "HOME=/root",
       "PATH=$GUEST_PATH",
       "TMPDIR=/tmp",
       "LANG=C.UTF-8",
+      "DSH_BUNDLED_LINUX=1",
+      "SHELL=/bin/bash",
+      "npm_config_prefix=/root/.local",
+      "NPM_CONFIG_PREFIX=/root/.local",
+      "COREPACK_HOME=/root/.local/share/corepack",
+      "PNPM_HOME=/root/.local/share/pnpm",
+      "NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt",
+      "PYTHON=/usr/bin/python3",
+      "npm_config_python=/usr/bin/python3",
+      "CC=/usr/bin/gcc",
+      "CXX=/usr/bin/g++",
+      "MAKE=/usr/bin/make",
+      "PKG_CONFIG=/usr/bin/pkg-config",
     )
+    val isolatedEnv = argv.indexOf("/usr/bin/env")
+    val bridge = File(paths.filesDir, "audit").apply { mkdirs() }
+    val selected = listOf(bridge, File(paths.filesDir, "undo-emergency.mjs"), File(paths.filesDir, "adb-keyboard-nonce"),
+      File(paths.filesDir, "linux/instance.json"), File(paths.filesDir, ".linux-legacy-migration.json"),
+      File(paths.filesDir, "linux-trial-result.json"))
+    val binds = selected.filter { it.exists() && !java.nio.file.Files.isSymbolicLink(it.toPath()) }
+      .flatMap { listOf("-b", "${it.canonicalPath}:${it.canonicalPath}") }
+    argv.addAll(isolatedEnv, binds)
+    validateGuestEnvironment(guestEnv)
     for ((key, value) in guestEnv) argv.add("$key=$value")
     argv.addAll(resolved)
 

@@ -71,10 +71,10 @@ flowchart TD
 
 ### 阶段 0：首次部署（装机后第一次启动，一次性）
 
-- 快照准入由SnapshotFingerprintPolicy严格64hex决定；fresh需node与durable commit一致，当前锚点见§6 K03。
+- 实例准入由内置 Linux 实例清单与受管树摘要决定：rootfs 只在无实例时铺底，受管 node/engine 缺件才修复，当前锚点见§6 K03。
 - shared ownership prelude已结算后先恢复事务再probe/strictSHA/fresh；不新鲜暂存解压→用户配置stage过滤→factory交换→提交指纹，pending不提前读事务。
-- 交换内还要合并用户面：`SnapshotTransaction.kt:748#expect=fun%20mergeProfiles`；`mergeTree`（:1096#expect=private%20fun%20mergeTree）按 staged 补齐缺失的共享农场符号链接，live 已有项（含悬空链接）与 live-only 用户项保留，live 目录链接不递归穿越；链接接缝必须递归透传。已摘除插件的存量迁移在 `SnapshotTransaction.kt:668#expect=private%20fun%20reconcileRemovedProfilePlugins`；残渣按年龄回收 `SnapshotTransaction.kt:303#expect=fun%20reclaimResidue`；
-  **0.14.2-fx-2 缺陷 I（apk #271）在交换前新增了两道闸门**：`SnapshotTransaction.kt:443#expect=private%20fun%20requireDeletableResidue`（可写性预检，点名非应用属主残留）与 `SnapshotTransaction.kt:349#expect=fun%20clearFailedResidue`（无年龄门槛地清上一轮 `*.failed-*`）；`SnapshotFs.kt:177`（`move`）自保——目标非空先 `SnapshotFs.kt:83`（`deletePathStrict`）删净、删不净即抛（`snapshot-delete-residue` / `snapshot-move-blocked`）；
+- 首次部署解包内置实例并只补缺失的用户文件：home 种子不覆盖已有 profile/凭据（`LinuxFileTree.kt:44#expect=fun%20mergeHomeSeed`）；旧 Termux 布局先做一次性备份再改写 profile 内的旧路径（`LinuxLegacyMigration.kt:16#expect=fun%20prepare`）；
+  受管组件更新走 prepare→probe→upgrade→done 事务，中断按 journal 回滚且 rootfs 不参与（`LinuxUpgradeTransaction.kt:115#expect=fun%20apply`）；
 - 覆盖现存工厂配置时，`preserveOverwrittenUserFile` 先逐块比较内容；变化文件先复制、校验、同步并发布 `.pre-*` 备份，任何读取/复制/校验/发布失败都会中止事务，所需副本计入空间预算。`writeTextAtomic` 仅通过同目录替换移动发布 `package.json` / `cordis.patch.yml`，替换失败保留旧字节证据，不直接截断目标。残留回收只认 `usr.failed-<时间戳>`、`profiles.failed-<时间戳>` 等明确写点，不按任意包含 `.failed-` 的名称删除。
 - **0.14.2-fx-2 缺陷 D（安全模式）**：启动失败页主按钮变「安全模式启动」→ `GuidePageRenderer.kt` 的 `enterSafeMode()`；Kotlin `SafeMode.kt`、离线 `scripts/dsh-undo-emergency.mjs`、vendor `dsh-undo-savepoint/lib/core.mjs` 共用 `safe-mode.json` / 主备份命名契约与内容寻址副本。默认 web 新状态用平铺 `undo-snapshots/auto` 与 Kotlin 共享；Safe Mode 单独识别唯一既有 scoped marker 并绑定其原目录，平铺与 scoped 同时有 marker（损坏也算）则 fail closed。显式 custom autoDir 与非 web profile 不参与解析，普通 snapshot 布局不变。副本在所选 auto 的 sibling `safe-mode-recovery/`。vendor 实现由 `scripts/patches/data/undo-safe-transaction-snippet.mjs` 生成，S2 门禁要求 CAS + resolver 契约。Marker 绑定 profile；Kotlin exit 兼容恢复 vendor 写入的 home/package 备份。Safe Mode ON 同时筛选 rc2 `package.json` 的 profile bundles：只保留权威 HardManifest 给出的 exact `{name,version,patchSha256}` 工厂元组，摘要按 `DSHBNDL1`、声明顺序和路径/内容长度帧计算；缺少活跃 bundle 身份即拒绝修改。完整 package bytes 进入 primary 与 SHA 寻址恢复副本，OFF 原字节还原。退出先将全部必需 live bytes 读入并校验，任一来源主副本均失效就不写 live 文件；成功时写回已校验的同一组内存字节。S2 patch gate 的 S5 判据同时要求 bundle selector/hash 实现，避免旧 S4 core 被误判为已更新。控制台命令解析在 `SafeConsole.kt`（纯函数，命中即不落 bash，接线 `ConsoleActivity.kt`）。
   安全模式的 insert 过滤、移除回执与条目读取使用同一列零非空行边界，保留组后的顶层注释；设备侧验收仍未完成。
@@ -128,7 +128,7 @@ sequenceDiagram
 - 看门狗持续探活/退避/熔断（`WatchdogV2.kt:109`）；日志采集与轮转（`LogCollector`）；
 - 应用内更新已移除：启动页和设置页没有检查/下载/安装入口，原生桥不再暴露更新动作，旧在线快照调试 Intent 也已删除。APK 覆盖安装后的内嵌快照部署与历史事务恢复仍由启动链负责。见坑 317。
 - 公共下载页：`webpages/tools/build.mjs` 只从 GitHub 官方 MANIFEST 注入哈希，内联 JSON 转义 HTML raw-text 结束符；页面镜像探测只信可读 CORS 状态并对具体 APK 做 HEAD，无法判定时保留手动选择。源码位于 `webpages/src/assets/app.js` 与 `webpages/src/assets/release.js`。
-- 残渣回收与标记恢复（`SnapshotTransaction.kt:303#expect=fun%20reclaimResidue` / `EngineManager.kt:242#expect=applyRecovery`）。
+- 升级事务恢复与受管组件修复（`LinuxUpgradeTransaction.kt:81#expect=fun%20recover` / `EngineManager.kt:97#expect=internal%20fun%20recoverLinuxUpgrade`）。
 
 ### 横向：构建与验收链
 
@@ -146,7 +146,7 @@ Linux 发现补充（P04，坑 373）：bootstrap `index.js` 串行发现 → `g
 |---|---|---|---|---|---|---|---|---|
 | K01 | 启动与引导面 | 点开 App 到引擎页面可见的进程入口、引导页与 WebView 宿主 | LAUNCHER 图标、VIEW/SEND 来件 | 引导与启动 | 引擎进程与快照面、鉴权探活、诊断落盘 | 系统启动器与分享面板、BootReceiver、悬浮球跳转 | MainActivity.kt,EngineStartFlow.kt,GuidePageRenderer.kt,ForegroundPageRecoveryPolicy.kt | 高 |
 | K02 | 引擎生命周期与保活 | 起 node 引擎、Activity独立观察启动准备窗、5s 探活、看门狗重启熔断与日志落盘 | EngineStartFlow.start及生命周期结束后排队启动前台服务、EngineService先前台提升后初始化及5s tick | 引导与启动 | K01,K03 | MainActivity、BootReceiver、EngineStartFlow | EngineManager.kt,EngineService.kt,WatchdogV2.kt,LogCollector.kt | 高 |
-| K03 | 快照事务与更新链 | 内嵌快照暂存交换事务与回滚（插件故障走**清单式外科拔除**，不整份回滚），兼历史在线事务恢复与清单合并 | 启动流判指纹不新鲜 / APK 覆盖安装 / WebView 导出 | 快照与更新 | 引导启动流、引擎探活、构建快照资产 | EngineStartFlow.runFlow、EngineService 看门狗、引导页按钮、MainActivity 的 WebView 回调 | SnapshotTransaction.kt,SnapshotFs.kt,SnapshotRefreshPolicy.kt,PublicRepoProvision.kt,PluginMounts.kt,SnapshotUserData.kt,SnapshotFingerprintPolicy.kt,ProfilePackageManifest.kt | 高 |
+| K03 | Linux 实例铺底与升级事务 | 内置 rootfs/node/engine 首装解包；受管组件以 journal 事务替换并支持中断回滚；旧 Termux 布局迁移与旧树回收 | 首次启动 / APK 覆盖安装 / 管理中心重置 | Linux 实例 | 引导启动流、引擎探活、构建 Linux 资产 | EngineStartFlow.runFlow、EngineService 看门狗、引导页按钮、管理中心重置入口 | LinuxInstanceInstaller.kt,LinuxUpgradeTransaction.kt,LinuxFileTree.kt,LinuxLegacyMigration.kt,LinuxCandidateProbe.kt,SnapshotFileMode.kt,PluginMounts.kt,SnapshotUserData.kt,ProfilePackageManifest.kt | 高 |
 | K04 | 桥与控制协议面 | 顶层同步 facade 与 nonce dispatcher、引擎鉴权与控制队列承载 | 页面调 androidBridge；EngineService 起控制承载 | 稳态控制 | 引导与启动（EngineService/MainActivity）、无障碍与虚拟屏宿主、快照与更新（UndoGate） | MainActivity 注册并注入 MainFrameBridge；EngineService.onCreate 起 ControlCarrier；看门狗 tick 调 UndoGate | app/src/main/java/com/snoworwind/pocketharness/MainFrameBridge.kt,app/src/main/java/com/snoworwind/pocketharness/AndroidBridge.kt,app/src/main/java/com/snoworwind/pocketharness/ControlPoller.kt,app/src/main/java/com/snoworwind/pocketharness/EngineAuth.kt,app/src/main/java/com/snoworwind/pocketharness/ControlProtocolV2.kt | 高 |
 | K05 | 无障碍控制面 | 按需取语义树、节点 lease/代际回收，并对设备执行点击输入滚动截屏 | 控制队列取活 + 无障碍服务回调 | 稳态控制 | K04 控制协议、K06 特权执行 | ControlCarrier 控制队列取活、onServiceConnected、ADB 键盘逐次回执 | DeviceControlService.kt,AccessibilityNodeRecycler.kt,GlobalActionCatalog.kt,AdbKeyboardEdit.kt,AdbKeyboardService.kt,AdbKeyboardReceiver.kt | 高 |
 | K06 | 特权执行、屏幕范围与本地文件面 | Shizuku 特权 shell 通道、屏幕范围门与本地文件出入口 | 引擎 sh* op / 设置页范围写面 / 外部分享与打开 intent | 稳态控制 | 控制队列承载、引擎 bridge 插件、虚拟屏注册表、无障碍控制面 | 引擎 androidPrivilege 服务面与页面桥 | ShellOps.kt,ScreenScope.kt,ShizukuTransport.kt,ShizukuBindState.kt,ShizukuUserService.kt,ShizukuProbe.kt,ShizukuSupport.kt,ProcIo.kt,FileIncoming.kt,PathOpen.kt,ExternalLinks.kt,ConfigTransfer.kt,RootGrant.kt,RootAccess.kt,OwnershipRepairCore.kt,OwnershipRepair.kt,RootRepairMain.kt,RootExecutionFence.kt,RootMaintenanceLease.kt,RootOwnershipJobs.kt,LeaseClearProbe.kt | 高 |
@@ -196,7 +196,7 @@ Linux 发现补充（P04，坑 373）：bootstrap `index.js` 串行发现 → `g
 | 高 | K02 | 启动诊断必须在文件与 logcat 出口脱敏 | `app/src/main/java/com/snoworwind/pocketharness/LogCollector.kt:465-481`、`:528-537`、`:753-766`、`EngineStartFlow.kt:335-341` | 页面 URL、诊断 detail 与异常消息可能携带 launch token；调用方另打 logcat 会绕过集中出口 | **源码已修（2026-10-15）**：boot-diag 与 boot-fail 文件写入统一脱敏；客户端失败的 detail 与 logcat 共用先脱敏再截断的副本，原文仅供恢复编排。完整 Kotlin 主源码编译通过；未运行测试或设备验收；`EngineAuth.redact` 当前覆盖 URL query token，见坑 319、320 |
 | 高 | K03 | 自动回滚目标取自**崩溃那次启动自己建的**快照（快照在建/挂载阶段就写，早于健康判定），于是「回滚成功」而状态没变好；跨版本还会把上一次安装的配置写回 | `app/src/main/java/com/snoworwind/pocketharness/UndoGate.kt:240`、`:194`、`vendor/dsh-undo-savepoint/lib/core.mjs:1180`（快照创建点；0.4.9 起实现由 index.js 拆到 core.mjs，原 index.js:2198 锚点已随追版失效） | 坏插件仍被挂载、引擎仍起不来而 `undo-gate.log` 报 `executed ok`；升级后若新版本从未健康启动，回滚会把新版本的补丁/挂载项静默删掉（新 APK + 旧配置） | 已修（2026-09-21：known-good 由壳侧探活健康定义 + 安装指纹护栏；设备验收 PASS=9） |
 | 高 | K03 | 整份配置回滚会**静默吞掉用户在最后一次健康启动之后装的插件**（挂载清单是一整份文件） | `app/src/main/java/com/snoworwind/pocketharness/PluginMounts.kt:41`、`UndoGate.kt:279` | 用一个坏插件换掉用户全部插件的装配状态 | **已改（2026-09-21 用户拍板）**：清单式——硬清单随版本并集（强制保留）+ 软清单记「当前清单被证明可用」；能点名则**只拔那一块**（其余条目与注释逐字节不动），点不出名且清单变过则拒绝回滚 |
-| 高 | K03 | 刷新失败路径不判 `rollback` 返回值即清 marker；残留 `previous` 会被下次失败路径当回滚源 | `app/src/main/java/com/snoworwind/pocketharness/EngineManager.kt:196-198` | 回滚结果被掩盖，坏树可能被「回滚」成更坏状态 | 未修（D-3 实效性缺口） |
+| 高 | K03 | 升级事务恢复必须幂等：未完成升级回滚到旧组件，已提交升级只回收备份，任何情况下 rootfs 与用户数据不参与交换 | `app/src/main/java/com/snoworwind/pocketharness/LinuxUpgradeTransaction.kt:81#expect=fun%20recover` | 半切换的 node/engine 会被当成可运行实例 | 已修（中断矩阵逐检查点覆盖） |
 | 高 | P01 | `sh -c "屏幕命令"` 后接重定向/位置参数曾绕过屏幕范围门 | `plugins/dsh-android-bridge/src/screen-scope.ts`、`app/src/main/java/com/snoworwind/pocketharness/ShellOps.kt` | 旧解析要求 `-c` 载荷直到段尾；尾随内容会使载荷不展开 | 已修：按 shell 规则只解析 `-c` 后第一个参数，后续重定向/位置参数不再隐藏命令体 |
 | 高 | P03 | 浏览器契约的 approval/confirm/full-access 曾只有声明，没有工具执行闸 | `plugins/dsh-android-browser/src/contract.ts`、`src/index.ts`、`src/tools.ts` | 导航/输入无逐项审批、身份切换无二次确认、截图未受会话完全访问档约束 | **源码已修（[PR #98](https://github.com/snoworwind/pocket-harness/pull/98) 待 CI）**：统一 pre-execute 审批 + 单调 guard；截图只认当前会话显式 danger-full-access；未构建 APK、未做设备验证 |
 | 高 | B02 | Kotlin 单测数量门禁可被**整类删除**绕过（A 判据只看现存类，B 判据对缺席类直接 continue） | `scripts/check-kotlin-test-count.mjs:129`、`scripts/check-kotlin-test-count.mjs:153` | 「防防线删失」被部分架空 | 未修 |
@@ -231,10 +231,10 @@ Linux 发现补充（P04，坑 373）：bootstrap `index.js` 串行发现 → `g
 - [K02] 5. 【已确认的代码事实，误杀未证实】`killExistingEngine` 的 pkill 比注释宽：注释称「pnpm/脚本子进程不含 bin.js web 特征，不会被误杀」（:1314-1316），实际命令是 `pkill -f "bin.js"`（:1318），没有 web 约束；同 uid 下任何命令行含 `bin.js` 的进程（例如 agent 工具里跑 `node xxx/bin.js`）都会被每次启动/重启杀掉。另 `.waitFor()` 无超时，同步阻塞调用线程（含看门狗线程）。
 - [K02] 已修（2026-10-31）：本仓现行环境与桥协议说明不再声称 `shellEnv()` 注入 `DSH_ADB_*`；旧无线 ADB 状态字段只为兼容与诊断保留。
 - [K02] 已修（2026-10-31）：架构表将 BOOT_COMPLETED 自启动归给 `BootReceiver`，并移除 LogCollector/EngineService 的易漂移行数。
-- [K03] 1. `app/src/main/java/com/snoworwind/pocketharness/EngineManager.kt:196-198` —— 刷新失败 catch 里 `SnapshotTransaction.rollback(...)` 的返回值未判、紧接着无条件 `clearMarker`，与 `SnapshotTransaction.recover` 的 D-3 处理（`SnapshotTransaction.kt:1294#expect=fun%20recover`「回滚失败不得无条件清 marker」）自相矛盾，也与 `EngineManager.applyRecovery`（`:607#expect=private%20fun%20applyRecovery` 把失败明细写进 `pendingRecoveryFailure`）不对称。触发：swap 中途抛异常且回滚有任一条目失败（例如删不净的 live 子树），marker 被清、失败条目无人上报。后果链：下一次刷新若在写 SWAPPING 之前就抛异常（空间断言拒绝 §7.2-F-4、或 stage 派生的任何异常），catch 会走 `rollback(marker=STAGED)`，而 `collectDisplacedNames`（`SnapshotTransaction.kt:1633#expect=private%20fun%20collectDisplacedNames`）会把残留的 `.snapshot-previous` 当成回滚源逐条覆盖回 live —— 即旧的工厂树被静默“复活”盖在新树上；此后 `hasResidue && snapshotFresh()` 的回收门也可能把仍需的残渣删掉。建议按 `recover` 的口径改：`if (!result.ok) { 保留 marker + 上报告警 } else clearMarker()`。
-- [K03] 2. `app/src/main/java/com/snoworwind/pocketharness/SnapshotTransaction.kt:547#expect=spaceCheck` —— 空间断言覆盖面窄于审查 §7.2-F-4 / B12 的原始发现：断言跑在解压完成之后（stage 已付过 2.5 GB 量级空间），解压阶段本身仍无任何 StatFs 前置检查（`EngineManager.extractSnapshotTo` :871 直调解压），所以「解压中途 ENOSPC → 报运行时更新失败」的原症状还在；且 required 只由 live profiles 体积推导（`backupBytes + 25% + 64MB`），当 live profiles 明显小于 staged（回滚补偿删剩 / 半合并的现场，正是「失败→留残渣→空间紧→更易失败」的自我强化回路）时，`mergeTree` 补入文件的新分配不在预算内，`SnapshotFs.sizeOf`(:89) 还会把不可读条目按 0 静默低估。后果：断言放行后仍在合并中途 ENOSPC。另有一致性问题：`InsufficientSpaceException` 的可照做文案只进 `lastRefreshFailure`/boot-fail.log，用户界面拿到的是通用「运行时更新失败」（EngineStartFlow.kt:497），B12 要的「专门文案」只实现了一半。
+- [K03] 1. 已随 Termux 快照移除：整树交换、指纹与 online 更新入口不再存在；现行只做受管组件事务替换，rootfs 不参与，恢复入口为 `EngineManager.kt:97#expect=internal%20fun%20recoverLinuxUpgrade`。
+- [K03] 2. 已随 Termux 快照移除：空间断言与解压期 StatFs 属于旧全树交换；现行首装解包按组件校验后复用已完成组件，中断不重解 rootfs（`LinuxInstanceInstaller.kt` 的 stage 复用判据）。
 - [K03] 3. 在线更新指纹错配已由共享事务与 `.online-snapshot` 身份绑定修复：freshness 同时要求当前内嵌 SHA 等于记录的 base SHA、committed fingerprint 等于 archive SHA；在线探活确认前保留 journal/source，冷启对未确认 SWAPPED 回滚。本分支已删除在线下载和新事务入口；仅保留历史状态恢复。既有恢复用例保留，本轮未执行测试或设备验收。
-- [K03] 4. 在线更新两步 rename、无冷启journal及删除旧回退源的失败链已由共享 `SnapshotTransaction` journal/stage/previous 替换：STAGED解压中断丢弃、SWAPPING中断回滚、SWAPPED未健康确认时冷启回滚；旧 `usr-old` 不作归属证明，也不会被新路径递归删除。覆盖失败与重入负例已加，Gradle/设备证据待验证。
+- [K03] 4. 已由 Linux 升级事务替代：`LinuxUpgradeTransaction.apply` 以 journal+stage+previous 完成 prepare/probe/upgrade/done，中断回滚，rootfs 不在允许组件集内；矩阵测试见 `SnapshotTransactionTest.kt`。
 - [K03] 5. 【已修，2026-10-28；改前缺陷与影响留档】`SnapshotExtractor.extractEntries` 原先在条目开始与完成时各累加一次 `entry.size`，使 `maxTotalBytes` 约在真实上限一半处触发且进度约翻倍。现在只在条目开始按归档声明大小累计一次；新增两条各 600,000 字节、总量限制 1,500,000 字节的回归，证明旧逻辑会在第二条前误拒，而修复后解压完成且进度恰为 1,200,000 字节。`SnapshotExtractorTest.countsEachEntryOnceForTheTotalLimitAndProgress`。
 - [K04] 1. 【已修·本轮，见 §3.1】 （已证实，机制层）`jsString` 的 U+2028/U+2029「修复」编译成恒等替换：`AndroidBridge.kt:455-457` 源码是 `.replace(<裸 U+2028 字符>, "<单个反斜杠>u2028")`，第二个实参在 Kotlin 里是同一个字符（`\uXXXX` 是转义，不是六个字符）——编译产物 `app/build/tmp/kotlin-classes/debug/com/snoworwind/pocketharness/AndroidBridgeKt.class` 常量池里只有裸 U+2028/U+2029 两条字符串常量（`\x01\x00\x03 E2 80 A8`），没有 `\u2028` 转义串，两个实参去重成同一条 ⇒ 该行不做任何转义。为什么单测还是绿的（现场反证）：JVM 单测类路径显式引入了另一份实现 `org.json:json:20240303`（`app/build.gradle.kts:133-134` 注释自陈「本地单测用真实 org.json，android.jar 桩在 JVM 里抛 Stub!」）；`BrowserHostNavigationPolicyTest.kt:129-141` 在恒等替换下仍判绿（`app/build/tmp/kotlin-classes/debugUnitTest/.../BrowserHostNavigationPolicyTest.class` 的常量池含断言用 `\u20` 字面量，`app/build/test-results/testDebugUnitTest/TEST-…BrowserHostNavigationPolicyTest.xml` 现场读到 tests=9 failures=0），只可能是这份 jar 的 `quote` 自己转义了 U+2028/U+2029（其 `JSONObject.class` 内含写 `\u` 的字符串字面量，与该区间转义实现相符）。设备运行时用的是 Android 框架 `org.json`，与单测类路径不是同一实现 ⇒ 这条绿的判据测不到设备行为，是假保证。设备侧是否真需要该转义（审查 §3.1-C3 / F-3 断言 `JSONObject.quote` 不转义该区间）本轮无本机复算手段，未证实。
 - [K04] 2. （历史缺陷，G-7 已修）旧审计曾把真实结果塞进 args、固定写 `result:"ok"`，且范围拒绝早退不落账；当前 `ShellOps.kt` 在拒绝路径显式写 `denied`，执行结果由 `ControlAudit.RESULT_OK/RESULT_FAILED` 传入。当前额外约束是 `ControlAudit.appendTo()` 的有界追加与超限原子滚动，详见 K06。
@@ -300,7 +300,7 @@ Linux 发现补充（P04，坑 373）：bootstrap `index.js` 串行发现 → `g
 - [K11] 1. 已确认：判据的产出者与消费者分属两条链。唯一产出结果的执行点是 `.github/workflows/pr-gate.yml:140`（CI 跑 gradle），而数量门禁只在打包/发布链里（`scripts/build-apk.mjs:201#expect=%2F%2F%20review%20C6%EF%BC%9A%E9%80%82%E9%85%8D%E5%B1%82%E5%A5%91%E7%BA%A6%EF%BC%88%E4%B8%8A%E6%B8%B8%20bundle%20%E8%A1%8C%E5%BC%95%E7%94%A8%20%2F%20%E6%B3%A8%E5%85%A5%E5%8C%85%20lib%20%E4%BA%A7%E7%89%A9%20%2F%20%E5%AE%A2%E6%88%B7%E7%AB%AF%E6%A7%BD%E4%BD%8D%20%2F%20%E7%89%88%E6%9C%AC%E9%92%89%E5%8F%B0%E8%B4%A6%EF%BC%89%E3%80%82`、`scripts/build-apk-013.ps1:145`，均 `--allow-missing`；`scripts/check-release-gates.mjs:104` 登记 `ci: false`），CI 里的 `check-release-gates.mjs`（`.github/workflows/pr-gate.yml:91`）不带 `--run`，只断接线不跑门禁。且两条构建链自己只跑 `:app:assembleDebug`（`scripts/build-apk.mjs:357#expect=%2F%2F%20%E5%89%8D%E7%BD%AE%E4%BA%8E%E6%9C%AC%E6%AD%A5%E7%9A%84%E6%8F%92%E4%BB%B6%20npm%20build%20%E5%B7%B2%E4%BA%A7%E5%87%BA%20plugins%2F%2A%2Flib%EF%BC%8C%E9%97%A8%E7%A6%81%E7%9C%9F%E8%B7%91%E5%90%84%E6%8F%92%E4%BB%B6%20apply%28%29%20%E9%87%87%E9%9B%86%E5%B7%A5%E5%85%B7%E5%AE%9A%E4%B9%89%E3%80%82`、`scripts/build-apk-013.ps1:388`），从不跑 `:app:testDebugUnitTest`。影响：CI 里删掉一个测试类（gradle exit 仍 0）全绿，本地链则只能读到上一次手动跑留下的 XML——改了测试源码就判陈旧。两半防线各自成立，但没有一条链同时具备「产出 + 判据」。
 - [K11] 2. 已确认：`app/build.gradle.kts:91` 的 `unitTests.isReturnDefaultValues = true` 把 android.* 打桩成 0/null/false。本目录已有两条针对性反桩判据（`app/src/test/java/com/snoworwind/pocketharness/CallSiteContractTest.kt:294` 禁 `Color.argb`、`app/src/test/java/com/snoworwind/pocketharness/OverlayHaloInvariantTest.kt:92` 要求四态色互不相同），说明风险真实；将来任何新增的 android.graphics/Log 断言会静默恒真。已确认配置在场；未证实本目录还存在其它被桩恒真的断言（49 文件逐个读过，除 `app/src/test/java/com/snoworwind/pocketharness/NotifyCenterChannelTest.kt:33` 的常量同义反复外未发现）。
 - [K11] 3. 已确认：`app/src/test/java/com/snoworwind/pocketharness/SnapshotUserDataTest.kt:84` 在宿主不允许建符号链接时 `assumeTrue(..., false)` → 整例被 JUnit 假设失败跳过；而 `scripts/check-kotlin-test-count.mjs:143-147` 只对 failures/errors 判红，不判 skipped，基线仍按 5 例计。现场件：`app/build/test-results/testDebugUnitTest/` 下该类的 XML `skipped="1"`，即当前 456 例里实际执行 455 例（总数与基线比对完全一致，这个 skip 不会被任何判据点出来）。
-- [K11] 4. 已确认（自述）：`app/src/test/java/com/snoworwind/pocketharness/SnapshotTransactionTest.kt:319` 的回滚兜底用例自认「删掉兜底本用例仍然全绿」——「live 删不净仍能放回」这一分支在 JVM 上不可能被触发，判据没有牙，真证据只在设备（16384 覆盖安装实测）。影响：这条 P0 恢复路径的单测给不出保护，回归只能靠设备门禁。
+- [K11] 4. 已迁移：旧快照事务测试类现为 Linux 升级事务中断矩阵（每个 journal 检查点模拟进程死亡并断言组件一致、rootfs 与用户数据不变），不再依赖设备才能覆盖回滚分支。
 - [K11] 5. 已确认（自述）：`app/src/test/java/com/snoworwind/pocketharness/WatchdogMarkerConsumeTest.kt:45-61` 的 `consumeAll` 与 `app/src/test/java/com/snoworwind/pocketharness/BootPageConsoleRouteTest.kt:114-122` 的 `extractRuntimeForTest` 都是在测试里复刻生产算法，断言跑的是复刻件；守真实实现的只有同文件里的源码文本断言（`app/src/test/java/com/snoworwind/pocketharness/WatchdogMarkerConsumeTest.kt:159`）。生产循环改了而文本形态未变 → 复刻件照样全绿。
 - [K11] | 测试文件 | 被测块（K01..K10 或写「横切」） | 守什么不变量（≤25 字） | 关键断言坐标 | 假绿风险（无 / 具体原因） |
 - [K11] |---|---|---|---|---|
@@ -344,7 +344,7 @@ Linux 发现补充（P04，坑 373）：bootstrap `index.js` 串行发现 → `g
 - [K11] | app/src/test/java/com/snoworwind/pocketharness/SnapshotRefreshStageTest.kt | 横切 | 坏归档清 stage、live 保留、重复 repair 校验失败停在 swap 前 | app/src/test/java/com/snoworwind/pocketharness/SnapshotRefreshStageTest.kt:12,app/src/test/java/com/snoworwind/pocketharness/SnapshotRefreshStageTest.kt:38 | 低：真实调用 EngineManager 共用的预交换 helper，验证文件状态与失败结果；Android assets/Context 整合仍不在 JVM 用例内 |
 - [K11] | app/src/test/java/com/snoworwind/pocketharness/SnapshotFileModeTest.kt | 横切 | 仅 ELF/shebang 视为可直接执行 | app/src/test/java/com/snoworwind/pocketharness/SnapshotFileModeTest.kt:7,app/src/test/java/com/snoworwind/pocketharness/SnapshotFileModeTest.kt:10 | 低：全目录唯一单例用例，纯字节判定，无分支遗漏风险但覆盖极薄 |
 - [K11] | app/src/test/java/com/snoworwind/pocketharness/SnapshotRecoveryNoticeTest.kt | 横切 | 恢复失败通知与未收敛事务阻断启动判据 | app/src/test/java/com/snoworwind/pocketharness/SnapshotRecoveryNoticeTest.kt | 全量fresh `:app:testDebugUnitTest --rerun-tasks`通过；含本轮factory/online未收敛闭锁正反例。
-- [K11] | app/src/test/java/com/snoworwind/pocketharness/SnapshotTransactionTest.kt | 横切 | 工厂/在线互斥准入负例、在线usr-only交换/冷启回滚、已提交前滚、缺源拒绝回滚、旧marker兼容与未知purpose/非法phase fail closed、SWAPPING首个rename前冷杀安全收敛 | app/src/test/java/com/snoworwind/pocketharness/SnapshotTransactionTest.kt | 全量fresh `:app:testDebugUnitTest --rerun-tasks`通过；新增准入互斥/残渣、在线冷启与fail-closed负例。JVM跳过symlink恢复场景，既有回滚兜底仍需设备证据。
+- [K11] | app/src/test/java/com/snoworwind/pocketharness/SnapshotTransactionTest.kt | K03 | journal 检查点中断后的组件一致性与 rootfs/用户数据保留 | app/src/test/java/com/snoworwind/pocketharness/SnapshotTransactionTest.kt:1#expect=package%20com.snoworwind.pocketharness | 无：每个中断点都断言 node/engine 要么全旧要么全新，rootfs 与 home 用户文件按字节保留。
 - [K11] | app/src/test/java/com/snoworwind/pocketharness/SnapshotUserDataTest.kt | 横切 | 旧备份只补缺、绝不覆盖较新内容 | app/src/test/java/com/snoworwind/pocketharness/SnapshotUserDataTest.kt:14,app/src/test/java/com/snoworwind/pocketharness/SnapshotUserDataTest.kt:84 | 有：`:84` symlink 建不出来时 `assumeTrue(false)` → 该例被 skip；基线仍计 5 例、门禁不判 skipped，当前结果正含这 1 例 skipped |
 - [K11] | app/src/test/java/com/snoworwind/pocketharness/ProfilePackageManifestTest.kt | 横切 | user pin/未知字段优先，工厂新增 dependency/bundle 补齐，损坏 JSON 拒绝及空 user 基座 | app/src/test/java/com/snoworwind/pocketharness/ProfilePackageManifestTest.kt:8,app/src/test/java/com/snoworwind/pocketharness/ProfilePackageManifestTest.kt:23 | 已执行：随 SnapshotTransaction 聚焦集统一通过；merge 为纯 JVM 函数，解析失败返回 null 由调用方保留现场 |
 - [K11] | app/src/test/java/com/snoworwind/pocketharness/UndoGateDecisionTest.kt | 横切 | 五态闸门与两阶段观察窗边界 | app/src/test/java/com/snoworwind/pocketharness/UndoGateDecisionTest.kt:20,app/src/test/java/com/snoworwind/pocketharness/UndoGateDecisionTest.kt:61 | 无（纯决策函数，边界值两侧都钉） |
@@ -437,11 +437,11 @@ Linux 发现补充（P04，坑 373）：bootstrap `index.js` 串行发现 → `g
 | 从 | 到 | 关系 | 证据 |
 |---|---|---|---|
 | K01 | 引擎进程与快照面 | EngineStartFlow 在工作线程调 refreshSnapshot/startEngine/engineProcessAlive，Activity 侧只传 Activity 与 pickToken | app/src/main/java/com/snoworwind/pocketharness/EngineStartFlow.kt:408 |
-| K01 | Python 用户包持久化 | 共享 `shellEnv()` 仅在检测到唯一 Python 次版本且 user-site 目录可创建时设置 `PIP_USER` / `PYTHONUSERBASE`；`refreshSnapshot` swap 前搬离旧 `usr`、swap 后在 `finish()` 清理 previous 前救援，冷启恢复先于残渣回收，startEngine prelude 再幂等复核 | app/src/main/java/com/snoworwind/pocketharness/PythonPackages.kt:1#expect=package%20com.snoworwind.pocketharness |
-| K01 | 快照事务（跨进程真源） | 0.14.8 P1：启动请求与安全模式重启都不得在刷新窗口内被静默丢弃。判据 = 事务 journal（`SnapshotTransaction.readMarker(filesDir)`，跨进程）而不是本 Activity 实例的内存态所有权；`start()`/`restart()` 的 destroyed 与 running 必须分开处置，安全模式重启在**停旧引擎之前**先判事务 | app/src/main/java/com/snoworwind/pocketharness/EngineStartFlow.kt:659；app/src/main/java/com/snoworwind/pocketharness/EngineManager.kt:211 |
+| K01 | 用户包与 home 持久化 | 用户 apt/pip/npm 全局包分别落在 rootfs 与 `$HOME/.local`；受管组件更新只替换 node/engine，home 种子只补缺失文件，旧 `usr` 中用户全局 npm 包在修复前搬进 home | app/src/main/java/com/snoworwind/pocketharness/LinuxLegacyMigration.kt:86#expect=fun%20preserveNodeGlobals |
+| K01 | 升级事务（跨进程真源） | 启动请求与安全模式重启不得在实例准备/升级窗口内被静默丢弃。判据 = Linux 升级 journal（跨进程），而不是本 Activity 的内存态所有权；安全模式重启在**停旧引擎之前**先判该 journal | app/src/main/java/com/snoworwind/pocketharness/EngineManager.kt:97#expect=internal%20fun%20recoverLinuxUpgrade |
 
-K01 journal 发布：`SnapshotTransaction.writeMarker` 拒绝目标或临时路径为非普通文件，写入并同步临时文件后才替换，失败不得直接截断旧 journal；模拟器三层验收仍未完成。
-| K01 | 引擎鉴权与探活 | HTTP 探活成功后注入首屏 cookie 并设置 `engineHttpReady`；`showWeb` 才发起首次导航，原生引导页保持到首个引擎文档 `onPageCommitVisible`，之后切入 WebView | app/src/main/java/com/snoworwind/pocketharness/MainActivity.kt:308；app/src/main/java/com/snoworwind/pocketharness/MainActivity.kt:1148#expect=bootstrapScript, app/src/main/java/com/snoworwind/pocketharness/EngineStartFlow.kt:781#expect=activity.runOnUiThread |
+K01 journal 发布：`LinuxUpgradeTransaction.atomicWrite` 写同目录临时文件并 fsync 后替换，失败不得截断旧 journal；恢复是幂等的，未完成升级回滚、已提交升级只清备份。
+| K01 | 引擎鉴权与探活 | HTTP 探活成功后注入首屏 cookie 并设置 `engineHttpReady`；`showWeb` 才发起首次导航，原生引导页保持到首个引擎文档 `onPageCommitVisible`，之后切入 WebView | app/src/main/java/com/snoworwind/pocketharness/MainActivity.kt:308；app/src/main/java/com/snoworwind/pocketharness/MainActivity.kt:1148#expect=bootstrapScript, app/src/main/java/com/snoworwind/pocketharness/EngineStartFlow.kt:772#expect=prepareLinuxInstance |
 | K01 | 前台服务与看门狗 | startEngineService 挂载前台服务，回撤阈值取 WatchdogV2.effectiveFailureCount | app/src/main/java/com/snoworwind/pocketharness/EngineStartFlow.kt:670 |
 | K01 | 诊断落盘 | 启动分段、引导页 stall、HTTP/TLS/渲染进程错误全部经 LogCollector 写壳侧自有文件 | app/src/main/java/com/snoworwind/pocketharness/MainActivity.kt:1133#expect=%2F%2F%20Foreground%20crashes%20and%20foreground%20eviction%20also%20recreate%20once%2C%20without%20engine%20restart. |
 | K01 | 沉浸式与开发者日志真源 | onCreate/onWindowFocusChanged 读 ImmersiveMode，onResume 读 DevLogControl（单一真源，壳侧不再持第二份） | app/src/main/java/com/snoworwind/pocketharness/WebUiChrome.kt:19 |
@@ -451,27 +451,27 @@ K01 journal 发布：`SnapshotTransaction.writeMarker` 拒绝目标或临时路�
 | K01 | 无障碍控制面 | webViewRef 进程级持有主 WebView，控制服务拿到 null 即回页面不在场 | app/src/main/java/com/snoworwind/pocketharness/MainActivity.kt:139 |
 | K01 | 引擎侧页面契约 | onConsoleMessage 消费 dsh-boot-ready 与 dsh-boot-stall 两个前缀，判据由页面侧 readyWatch 发布 | app/src/main/java/com/snoworwind/pocketharness/MainActivity.kt:675#expect=%2F**%20%E9%A6%96%E5%90%AF%E5%90%91%E5%AF%BC%E5%B7%B2%E7%A7%BB%E9%99%A4%EF%BC%88%E5%86%B3%E7%AD%96%202026-08-23%EF%BC%89%EF%BC%9A%E5%88%9D%E5%A7%8B%E9%A1%B5%EF%BC%88GuideChrome%20%E8%BF%90%E8%A1%8C%E6%97%B6%E7%8A%B6%E6%80%81%2F%E8%A7%A3%E5%8E%8B%E8%BF%9B%E5%BA%A6%2F%E5%B4%A9%E6%BA%83%2F%E6%97%A5%E5%BF%97%EF%BC%89 |
 | K01 | 来件与选择器 | onCreate 投递 VIEW/SEND 来件，桥回调接 DirectoryPickerController/MediaPickController/FileIncoming | app/src/main/java/com/snoworwind/pocketharness/MainActivity.kt:268 |
-| K01 | 快照与更新面 | 启动前部署 APK 内嵌快照，历史中断恢复走 SnapshotTransaction，自动回撤走 UndoGate | app/src/main/java/com/snoworwind/pocketharness/EngineStartFlow.kt:294 |
+| K01 | 实例与更新面 | 启动前准备 APK 内置 Linux 实例，中断的升级事务先恢复再启动；撤销走 UndoGate | app/src/main/java/com/snoworwind/pocketharness/EngineStartFlow.kt:772#expect=prepareLinuxInstance |
 | K01 | 内置控制台 | 引导页进入 ConsoleActivity；onStart 只将启动任务提交给专用 worker，文件检查、shellEnv 构造与 ProcessBuilder.start 在后台执行；状态/输出回主线程前复查 Activity 生命周期 | app/src/main/java/com/snoworwind/pocketharness/ConsoleActivity.kt:154 |
 | K01 | 系统外部角色 | BootReceiver 接 ACTION_BOOT_COMPLETED 决定是否自启前台服务，分享面板经 VIEW/SEND 进本 Activity | app/src/main/java/com/snoworwind/pocketharness/BootReceiver.kt:24 |
-| K02 | K01 | 启动全程用可见引导页承载文案；只有引擎 HTTP 就绪且首个页面文档提交后才切 WebUI | EngineStartFlow.kt:738-780、MainActivity.kt:308-371、MainActivity.kt:1150#expect=%2F%2F%20%E6%96%B0%E6%96%87%E6%A1%A3%EF%BC%9A%E4%B8%8A%E4%B8%80%E6%96%87%E6%A1%A3%E7%9A%84%E5%B1%82%E6%A0%88%E4%BF%A1%E5%8F%B7%E4%BD%9C%E5%BA%9F%EF%BC%88%E9%A1%B5%E9%9D%A2%E6%8F%92%E4%BB%B6%E5%9C%A8%E6%96%B0%E6%96%87%E6%A1%A3%E9%87%8C%E9%87%8D%E6%96%B0%E6%8E%A8%EF%BC%89%E3%80%82 |
-| K02 | K03 | 刷新期禁启动、事务恢复、update-pending 健康 3 拍才删 usr-old 三处握手；刷新窗口内的启动请求**不得静默丢弃**（0.14.8 P1）：`start()`/`restart()` 拿不到世代所有权时按 destroyed/running 分开处置，running 走 boot-fail 留痕 + 有界等待后自动续跑；安全模式重启在停旧引擎前先判事务 journal | EngineStartFlow.kt:659、1417；EngineManager.kt:601#expect=endSnapshotTransaction%28%29 |
-| K02 | UndoGate | 看门狗 UNDO、启动超时与客户端插件树失败共用闸门：可点名时外科拔除非 Hard 插件；整份回撤只用当前 snapshot fingerprint 下的壳侧 HEALTHY known-good ID；被拒后复位锁存以继续引擎重试 | EngineService.kt:207-293、EngineStartFlow.kt:345-390、UndoGate.kt:278-434 |
+| K02 | K01 | 启动全程用可见引导页承载文案；只有引擎 HTTP 就绪且首个页面文档提交后才切 WebUI | MainActivity.kt:308-371、MainActivity.kt:1150#expect=%2F%2F%20%E6%96%B0%E6%96%87%E6%A1%A3%EF%BC%9A%E4%B8%8A%E4%B8%80%E6%96%87%E6%A1%A3%E7%9A%84%E5%B1%82%E6%A0%88%E4%BF%A1%E5%8F%B7%E4%BD%9C%E5%BA%9F%EF%BC%88%E9%A1%B5%E9%9D%A2%E6%8F%92%E4%BB%B6%E5%9C%A8%E6%96%B0%E6%96%87%E6%A1%A3%E9%87%8C%E9%87%8D%E6%96%B0%E6%8E%A8%EF%BC%89%E3%80%82 |
+| K02 | K03 | 实例准备/升级窗口内启动请求不得静默丢弃：`start()`/`restart()` 拿不到世代所有权时按 destroyed/running 分开处置；安全模式重启在停旧引擎前先判升级 journal | EngineManager.kt:97#expect=internal%20fun%20recoverLinuxUpgrade |
+| K02 | UndoGate | 看门狗 UNDO、启动超时与客户端插件树失败共用闸门：可点名时外科拔除非 Hard 插件；整份回撤只用当前 snapshot fingerprint 下的壳侧 HEALTHY known-good ID；被拒后复位锁存以继续引擎重试 | EngineService.kt:186#expect=recoverLinuxUpgrade%28%29 |
 | K02 | 通知链 NotifyStore/NotifyCenter | 每拍按字节偏移消费 .task-done.ndjson，双读不双发 | WatchdogV2.kt:258-309、NotifyCenter.kt:188 |
 | K02 | 控制载体 ControlCarrier | 随前台引擎服务起停，a11y 关着也承载 browser*/vd* | EngineService.kt:43 |
 | K02 | ConsoleSession | 复用 usrDir 与 shellEnv 起交互 shell，不起第二个引擎；start/restart 按 generation 接受进程，过期创建立即销毁；destroy 使代次失效并关启动 worker；reader 规范化 CRLF 并把输出交给独立批处理器 | ConsoleSession.kt:63-81,142-211；ConsoleOutputBatcher.kt:8-20 |
 | K02 | 门禁 check-boot-budget | files/boot-segments.log 是该门禁的唯一产物 | LogCollector.kt:395-424 |
 | K02 | 页面失败诊断与恢复 | onClientPluginTreeFailed 的文件 detail 和直接 logcat 共用脱敏后截断的 diagnosticLine；原文保留于恢复字段，供后续回撤编排 | EngineStartFlow.kt:330-341、LogCollector.kt:528-537 |
 | K03 | 引导与启动 | refreshSnapshot 的进度/失败文案与恢复前置由启动流拉起，刷新期 snapshotRefreshing 闸门禁止拉引擎 | app/src/main/java/com/snoworwind/pocketharness/EngineStartFlow.kt:427 |
-| K03 | 引擎探活与看门狗 | 每 5 秒一拍 onEngineProbe 驱动 .update-pending 的 usr-old 确认或回退 | app/src/main/java/com/snoworwind/pocketharness/EngineService.kt:348 |
+| K03 | 引擎探活与看门狗 | 每 5 秒一拍 onEngineProbe 记录客体健康；启动前先恢复未完成的升级事务 | app/src/main/java/com/snoworwind/pocketharness/EngineService.kt:337#expect=watchdog%20tick%20failed |
 | K03 | 引擎总管 EngineManager | 事务/残渣/空间的调用方，也是 usr、home、.snapshot-fingerprint 的持有者；启动前 profile 自愈调用 `SnapshotFs.replaceWithVerifiedBackup` 校验 live 字节、唯一同步备份后原子发布，失败不落幂等标记并在下次启动重试 | EngineManager.kt:99、SnapshotFs.kt:226 |
-| K03 | 构建与发布 | 内嵌 assets/snapshot.tar.xz 与 snapshot.sha256 是首次解压与刷新两条路径的唯一输入，指纹翻转是刷新触发条件 | app/src/main/java/com/snoworwind/pocketharness/EngineManager.kt:68 |
+| K03 | 构建与发布 | APK 只内嵌 assets/linux 四件套与 manifest；客体引擎树必须在平台死重剔除之前装配，资产摘要进入实例清单 | scripts/build-snapshot-013.mjs:1#expect=%2F%2F%20build-snapshot-013.mjs |
 | K03 | 插件注入层 | profiles 的 package.json 与 cordis.patch.yml 决定引擎实际挂载集，工厂 disabled 语义以 FactoryProfilePatch 为权威 | app/src/main/java/com/snoworwind/pocketharness/FactoryProfilePatch.kt:79 |
 
 | K03 | 交互面 MainActivity | DownloadSaver 由 WebView 下载/外链回调拉起，回执经 window.__dshExportResult 回灌页面 | app/src/main/java/com/snoworwind/pocketharness/MainActivity.kt:89 |
 | K03 | EngineAuth | DownloadSaver 下载引擎同源 URL 时附加鉴权并做一次 401 自愈重试 | app/src/main/java/com/snoworwind/pocketharness/DownloadSaver.kt:101 |
-| K03 | 开发选项与诊断 | boot-fail.log、update-status.txt 与 diagnostics 镜像目录是本块失败终态的落盘点 | app/src/main/java/com/snoworwind/pocketharness/EngineManager.kt:193 |
-| K03 | 公共导出目录供给 | Documents/dshdata 的创建与**结果记账**（`status|trigger|epochMs|detail` 落在私有目录）；触发点经 onCreate/onResume 与「引擎是否在跑」解耦，且除 OK 外每轮都重试——旧实现只从 startEngine()/shellEnv() 进入，引擎活着早退就永远不再供给（0.14.1 用户反馈：Documents 下一直没有 dshdata）。存储 chip 的判据取该结果，只有 OK 才显示「已就绪」；授权路线按 SDK 分流（API<30 无 All Files Access，改请求运行时 READ/WRITE） | app/src/main/java/com/snoworwind/pocketharness/PublicRepoProvision.kt:1、MainActivity.kt:356、EngineManager.kt:1001#expect=provisionPublicRepo%28PublicRepoProvision.TRIGGER_ENGINE_START%29 |
+| K03 | 开发选项与诊断 | boot-fail.log、engine.log 与 diagnostics 镜像目录是本块失败终态的落盘点 | app/src/main/java/com/snoworwind/pocketharness/LogCollector.kt:568#expect=fun%20writeBootFail |
+| K03 | 公共导出目录供给 | Documents/dshdata 的创建与**结果记账**（`status|trigger|epochMs|detail` 落在私有目录）；触发点经 onCreate/onResume 与「引擎是否在跑」解耦，且除 OK 外每轮都重试——旧实现只从 startEngine() 的宿主环境进入，引擎活着早退就永远不再供给（0.14.1 用户反馈：Documents 下一直没有 dshdata）。存储 chip 的判据取该结果，只有 OK 才显示「已就绪」；授权路线按 SDK 分流（API<30 无 All Files Access，改请求运行时 READ/WRITE） | app/src/main/java/com/snoworwind/pocketharness/PublicRepoProvision.kt:1、MainActivity.kt:356、EngineManager.kt:380#expect=internal%20fun%20provisionPublicRepo |
 | K04 | 引导与启动 | MainActivity/EngineService 是桥与控制承载的唯一安装与起停点（EngineAuth.initContext 必须先于装桥） | app/src/main/java/com/snoworwind/pocketharness/MainActivity.kt:162 |
 | K04 | 交互面 | 主 WebView 仅 addJavascriptInterface MainFrameBridge；可信顶层同步 facade 经 invoke 认证后分派 AndroidBridge/BackGateBridge，页面类型面保持原 ABI | app/src/main/java/com/snoworwind/pocketharness/MainFrameBridge.kt:36 |
 | K04 | 无障碍控制面 | ControlCarrier.handle 的兜底分支把语义/输入类 op 交给 DeviceControlService，a11y 缺席时返回结构化拒绝 | app/src/main/java/com/snoworwind/pocketharness/ControlCarrier.kt:110 |
@@ -615,7 +615,7 @@ K01 journal 发布：`SnapshotTransaction.writeMarker` 拒绝目标或临时路�
 | 2. 引擎反复被重启或长时间不重启 | K02 | `cat files/boot-segments.log` 看 t_boot_start / t_listen 世代与失败密度；`grep dsh-watchdog`（logcat 或 `Documents/dshdata/log/dsh-日期.log`，需开发者日志开）；熔断态 grep `watchdog circuit open`，半死态 grep `DEGRADED_HTTP` 与 `DEGRADED_HTTP 连续`。 |
 | 3. 端口被占 / 双引擎 | K02 | grep `killExistingEngine: port 3080 still occupied`；设备侧 `adb shell "ps -A | grep -E 'linker|node'"`（进程名是 linker64 不是 node，坑 31）。 |
 | 4. 页面白屏但端口在 | K02 | `adb forward tcp:23080 tcp:3080` 后 `curl -i http://127.0.0.1:23080/`（200/401 都算活）；grep `DEGRADED_LOG` 与 `plugin tree failed to load`（后者只判不重启）。 |
-| 5. 诊断包找不到 | K02 | `mirrorDiagnosticsToShared` 无 All Files Access 时回落私有目录，界面按实际路径回填（EngineStartFlow.kt:724）；`adb shell run-as com.snoworwind.pocketharness ls files/diagnostics`。 |
+| 5. 诊断包找不到 | K02 | `mirrorDiagnosticsToShared` 无 All Files Access 时回落私有目录，界面按实际路径回填（`mirrorDiagnosticsToShared` 回落私有目录）；`adb shell run-as com.snoworwind.pocketharness ls files/diagnostics`。 |
 | 1. 启动长期停在「正在更新运行时」或每次开机都重解压：`adb -s <serial> shell run-as com.snoworwind.pocketharness ls -la files/ | grep -E "snapshot|usr-old|update"`；`... cat files/.snapshot-transaction`（看 `phase=` 与 `moved=` 条目）；logcat grep `dsh-engine|dsh-snap`，失败真因在 `files/boot-fail.log` 的 `dsh-boot-fail stage=snapshot-refresh-failed` 行（`error=` / `cause=`），镜像副本在 `Documents/dshdata/diagnostics/snapshot-refresh-failed-*`。 | K03 | （待补） |
 | 2. 报「运行时更新失败（诊断已保存）」但看不到原因：`grep -E "存储空间不足|Directory not empty|InsufficientSpace" files/boot-fail.log`；空间类真因只落在 cause 里（UI 文案是通用的），`df /data` 对账；`Directory not empty` 类看 `~/.failed-<ts>` 残渣是否在场。 | K03 | （待补） |
 | 3. 插件列表在、点开不可用（0.14.0 实报形态）：`grep -n "disabled: true" files/home/.dsh/profiles/web/cordis.patch.yml`；查 `files/.profile-patch-repair-<版本名>` 标记是否已写（没写=上次启动修复失败，下轮重试）；对照 `files/home/.dsh/profiles/web/?` 的 node_modules 是否半合并（1/10 形态）。 | K03 | （待补） |
@@ -688,7 +688,7 @@ K01 journal 发布：`SnapshotTransaction.writeMarker` 拒绝目标或临时路�
 | DSH 原生布局、设置、输入区或菜单显示异常 | S01 | 先确认引擎与客户端包都来自本次固定版本；再核对插件只注入 Android inset/IME 与 add-on 样式，不再有退役的 mobile chrome、composer、settings-tree 样式或控件。不要用旧 data-dsh-frame/topbar 锚点判定 UI。 |
 | 设置、菜单或输入区与 DSH 原版不一致 | S01 | 对比同版本 DSH Web UI 并检查宿主实际装载的插件树；设置分类、弹出菜单、输入区均由 DSH 原生组件渲染。只有系统安全区或 IME 偏移异常时，检查 data-dsh-android-frame 与 --dsh-android-* inset。 |
 | 点工具行文件链接弹「无法打开该文件」或点击无反应 | S01 | 会话身份/端点：CDP 读 `document.documentElement.getAttribute('data-dsh-session-id')`；页面 console 的 `[dsh-open-path]` 警告与底部提示条；端点返回体里的 `error` 取值 `session-unknown` / `not-found-in-session` / `not-found`（`dsh-host-web-compat/lib/index.js:895-940`）。 |
-| 目录选择器连弹多次或选完无反应 | S01 | poll 一次性投递与 token：`adb logcat` 看 SAF 与 `dsh-log`；grep `takePoll`（同一 requestId 只投一次）、`x-dsh-pick-token`；返回 `403 forbidden` 即 `DSH_PICK_TOKEN` 与页面 `getPickToken()` 不一致（`EngineManager.kt:1500#expect=%22DSH_PICK_TOKEN%22%20to%20%28pickToken%20%3F%3A%20%22%22%29`）。 |
+| 目录选择器连弹多次或选完无反应 | S01 | poll 一次性投递与 token：`adb logcat` 看 SAF 与 `dsh-log`；grep `takePoll`（同一 requestId 只投一次）、`x-dsh-pick-token`；返回 `403 forbidden` 即 `DSH_PICK_TOKEN` 与页面 `getPickToken()` 不一致（`EngineManager.kt:660#expect=%22DSH_PICK_TOKEN%22%20to%20%28pickToken%20%3F%3A%20%22%22%29`）。 |
 | 返回键直接退出应用或层数不降 | S01 | `adb logcat -d | grep dsh-back`（`BackGate.TAG`）；CDP 读 `window.__dshBackDepth` / `__dshBackKinds`；层判据 grep `RIGHT_FULLSCREEN_SELECTOR`（`data-sidebar-right-open` 是权威 open 信号）、`data-sidebar-right-expand`。 |
 | 打包刚起步就红在「补丁自洽不一致」：跑 `node scripts/check-patch-mirror.mjs`（现行只判 registry↔IMPLS id 双向闭合，见 `:56-72`）；跨树镜像比对已于 2026-10-15 按用户决定移除，不会再因对端漂移判红。 | B01 | （待补） |
 | 设备装上后引擎起不来、日志 `Cannot find module` / `ERR_MODULE_NOT_FOUND`：注入丢件，跑 `node scripts/check-inject-completeness.mjs .deploy-tmp\build-\13-「abi」\snap-final2.tar.xz`，并在构建日志 grep `[fill]` `[prune]` `[add]`（inject-all.py:336-358）。 | B01 | （待补） |
@@ -1518,7 +1518,7 @@ vendored bootstrap 与注入集的关系（0.15.0）：`plugins/dsh-linux-bootst
   - settings 面：读必须 `.find((d) => d.ns === 'llm-pi-ai')`（坑 48，`plugins/dsh-model-capability/src/settings-config.ts:50`、`plugins/dsh-model-capability/src/index.ts:417/429`）；写是 `settings.mutate('llm-pi-ai', [{ op: 'set', path: ['providers', route, 'models'] }], descriptor.revision)` + `SETTINGS_CONFLICT` 单次重试（`plugins/dsh-model-capability/src/settings-writer.ts:239`）。
   - 目录快照 `plugins/dsh-model-capability/lib/catalog-snapshot.json`（由 `scripts/build-snapshot-013.mjs:456` 按本次 ABI 引擎树生成，原先由 check-patch-mirror 的镜像面豁免该文件；镜像层已于 2026-10-15 移除，该豁免概念随之失效）→ `lookupCatalog`。
   - 装配集：`scripts/profile-web.cordis.patch.yml` 三条 `insert`（android-linux-env / android-file-open / model-capability）+ `scripts/plugin-dirs.json`。
-  - 运行时缓存读写的路径面：`$DSH_HOME`（壳侧注入点 `EngineManager.kt:1499#expect=%22DSH_HOME%22%20to%20ensurePrivateDshData%28%29.absolutePath`）、`$DSH_FILES_DIR`（`EngineManager.kt:1498#expect=%22DSH_FILES_DIR%22%20to%20context.filesDir.absolutePath`）、当前代 `engine.log`（壳侧 `EngineAuth.tokenFromLog` 的唯一输入）。
+  - 运行时缓存读写的路径面：`$DSH_HOME` / `$DSH_FILES_DIR`（壳体在客体命令的 `env -i` 之后注入，`EngineManager.kt:659#expect=%22DSH_HOME%22%20to%20ensurePrivateDshData%28%29.absolutePath`、`EngineManager.kt:658#expect=%22DSH_FILES_DIR%22%20to%20context.filesDir.absolutePath`）、当前代 `engine.log`（壳侧 `EngineAuth.tokenFromLog` 的唯一输入）。
 - **关键坐标**：
   - `plugins/dsh-android-file-open/src/index.ts:238` — `enqueueSession`：路径断言 + 队列落盘 + 自有临时项记账（POST 的验收判定）
   - `plugins/dsh-android-file-open/src/index.ts:431` — `safeResolveInside`：两侧 realpath 后的工作区包含判定（H3 + 前缀混用修复）；content 须校验并读取同一 FD（坑 369）；clean 仅允许顶层普通叶文件，不跟随链接、不递归，排除队列元数据（坑 370）。
@@ -2087,7 +2087,7 @@ glob:scripts/patches/tests/fixtures/dsh-client-ui-sidebar-right-mobile-0.2.0-rc.
 app/src/main/java/com/snoworwind/pocketharness/RootMaintenanceLease.kt
 app/src/main/java/com/snoworwind/pocketharness/BrowserHostProfile.kt
 app/src/main/java/com/snoworwind/pocketharness/ForegroundPageRecoveryPolicy.kt
-app/src/main/java/com/snoworwind/pocketharness/SnapshotFingerprintPolicy.kt
+app/src/main/java/com/snoworwind/pocketharness/LinuxUpgradeTransaction.kt
 app/src/main/java/com/snoworwind/pocketharness/ProfilePackageManifest.kt
 app/src/main/java/com/snoworwind/pocketharness/LinuxAssetIO.kt
 app/src/main/java/com/snoworwind/pocketharness/LinuxAssetPrepare.kt
@@ -2123,7 +2123,7 @@ app/src/main/java/com/snoworwind/pocketharness/GuideManagementController.kt
 app/src/main/java/com/snoworwind/pocketharness/PluginManagementRepository.kt
 app/src/main/java/com/snoworwind/pocketharness/PluginManagementPage.kt
 app/src/main/java/com/snoworwind/pocketharness/SnapshotRecoveryNotice.kt
-app/src/main/java/com/snoworwind/pocketharness/RuntimeTree.kt
+app/src/main/java/com/snoworwind/pocketharness/LinuxFileTree.kt
 app/src/main/java/com/snoworwind/pocketharness/GuidePageRenderer.kt
 app/src/main/java/com/snoworwind/pocketharness/SafeMode.kt
 app/src/main/java/com/snoworwind/pocketharness/SafeConsole.kt
@@ -2136,7 +2136,7 @@ app/src/main/java/com/snoworwind/pocketharness/BootReceiver.kt
 app/src/main/java/com/snoworwind/pocketharness/ShimmerTextView.kt
 app/src/main/java/com/snoworwind/pocketharness/DsUi.kt
 app/src/main/java/com/snoworwind/pocketharness/EngineManager.kt
-app/src/main/java/com/snoworwind/pocketharness/PythonPackages.kt
+app/src/main/java/com/snoworwind/pocketharness/LinuxLegacyMigration.kt
 app/src/main/java/com/snoworwind/pocketharness/ReverseMigration.kt
 app/src/main/java/com/snoworwind/pocketharness/SnapshotRefreshStage.kt
 app/src/main/java/com/snoworwind/pocketharness/EngineService.kt
@@ -2144,9 +2144,11 @@ app/src/main/java/com/snoworwind/pocketharness/EngineProbe.kt
 app/src/main/java/com/snoworwind/pocketharness/LiveProbe.kt
 app/src/main/java/com/snoworwind/pocketharness/WatchdogV2.kt
 app/src/main/java/com/snoworwind/pocketharness/LogCollector.kt
-app/src/main/java/com/snoworwind/pocketharness/SnapshotTransaction.kt
+app/src/main/java/com/snoworwind/pocketharness/LinuxCandidateProbe.kt
 app/src/main/java/com/snoworwind/pocketharness/SnapshotFs.kt
-app/src/main/java/com/snoworwind/pocketharness/SnapshotRefreshPolicy.kt
+app/src/main/java/com/snoworwind/pocketharness/LinuxDataBackup.kt
+app/src/main/java/com/snoworwind/pocketharness/LinuxBackupActivity.kt
+plugins/dsh-android-linux-env/src/guest-self-check.ts
 app/src/main/java/com/snoworwind/pocketharness/PublicRepoProvision.kt
 app/src/main/java/com/snoworwind/pocketharness/SnapshotExtractor.kt
 app/src/main/java/com/snoworwind/pocketharness/SnapshotUserData.kt

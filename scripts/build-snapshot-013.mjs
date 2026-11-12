@@ -1072,6 +1072,20 @@ if (ABI === 'arm64') {
   writeFileSync(join(OUT_DIR, 'engine-glibc.sha256'),
     createHash('sha256').update(readFileSync(engineArchive)).digest('hex'))
   log(`客体引擎树就绪：${engineArchive}`)
+  // Home is a separate factory seed; only the guest-platform Canvas binding is included.
+  const canvasVersion = PREINSTALL.canvas.version
+  const canvasName = '@napi-rs/canvas-linux-arm64-gnu'
+  const canvasTgz = join(OUT_DIR, 'canvas-linux-arm64-gnu.tgz')
+  const response = await fetch(`https://registry.npmjs.org/${canvasName}/-/canvas-linux-arm64-gnu-${canvasVersion}.tgz`, { signal: AbortSignal.timeout(180000) })
+  if (!response.ok) throw new Error(`guest canvas fetch failed: ${response.status}`)
+  const canvasBytes = Buffer.from(await response.arrayBuffer())
+  verifyPinnedNpm(canvasBytes, canvasName, canvasVersion, PREINSTALL.npmIntegrity)
+  writeFileSync(canvasTgz, canvasBytes)
+  const homeStage = join(OUT_DIR, 'home-seed')
+  rmSync(homeStage, { recursive: true, force: true })
+  execFileSync(PYTHON, [join(ROOT, 'scripts/source-build/prepare-guest-home.py'), join(STAGE, 'root/home'), homeStage, canvasTgz], { stdio: 'inherit' })
+  wsl(`tar --sort=name --mtime=@${SOURCE_DATE_EPOCH} --owner=0 --group=0 --numeric-owner -cJf "${wslPath(join(OUT_DIR, 'home-seed.tar.xz'))}" -C "${wslPath(homeStage)}" home`)
+
 } else {
   log(`跳过客体引擎树（ABI=${ABI}；本分支客体资产仅 ARM64）`)
 }

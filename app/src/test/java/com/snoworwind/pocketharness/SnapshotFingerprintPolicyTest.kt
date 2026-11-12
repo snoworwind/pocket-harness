@@ -1,107 +1,48 @@
 package com.snoworwind.pocketharness
 
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNull
-import org.junit.Assert.assertTrue
+import java.io.File
+import org.json.JSONObject
+import org.junit.Assert.*
 import org.junit.Test
 
+/** The old fingerprint baseline now tests authenticated Linux archive and extracted-byte identities. */
 class SnapshotFingerprintPolicyTest {
-  private val sha = "0123456789abcdef".repeat(4)
-  private fun source(name: String): String = listOf(
-    java.io.File("src/main/java/com/snoworwind/pocketharness", name),
-    java.io.File("app/src/main/java/com/snoworwind/pocketharness", name),
-  ).first { it.isFile }.readText()
-
-  @Test fun missingShaNeverMakesAnExistingRuntimeFresh() {
-    for (raw in listOf(null, "", "  \n")) {
-      val bundled = SnapshotFingerprintPolicy.read(raw)
-      assertEquals("snapshot-bundled-sha-missing", bundled.failureCode)
-      assertNull(bundled.fingerprint)
-      assertFalse(SnapshotFingerprintPolicy.fresh(true, bundled, sha))
-      assertFalse(SnapshotFingerprintPolicy.fresh(true, bundled, ""))
-    }
+  private fun changed(source: LinuxInstanceInstaller.Source, update: (JSONObject) -> Unit) = source.copy(open = { path ->
+    if (path == "linux/manifest.json") source.open(path).use { JSONObject(it.bufferedReader().readText()).also(update).toString().byteInputStream() } else source.open(path)
+  })
+  @Test fun missingArchiveDigestIsRejectedBeforeInstallation() = LinuxInstallerFixture().use { f ->
+    val source = changed(f.source()) { it.remove("rootfsSha256") }
+    assertTrue(LinuxInstanceInstaller.ensure(source, f.files) is LinuxInstanceInstaller.Result.Failed)
+    assertFalse(File(f.files, "linux").exists())
   }
-
-  @Test fun malformedShaCannotBecomeTheTransactionFingerprint() {
-    for (raw in listOf("not-a-hash", "g".repeat(64), sha.dropLast(1), sha + "  snapshot.tar.xz", sha + "\n" + sha)) {
-      val bundled = SnapshotFingerprintPolicy.read(raw)
-      assertEquals("snapshot-bundled-sha-invalid", bundled.failureCode)
-      assertNull(bundled.fingerprint)
-      assertFalse(SnapshotFingerprintPolicy.fresh(true, bundled, raw))
-    }
+  @Test fun invalidDigestSyntaxIsRejectedBeforeInstallation() = LinuxInstallerFixture().use { f ->
+    assertTrue(LinuxInstanceInstaller.ensure(changed(f.source()) { it.put("nodeSha256", "invalid") }, f.files) is LinuxInstanceInstaller.Result.Failed)
+    assertFalse(File(f.files, "linux").exists())
   }
-
-  @Test fun validShaNeedsBothNodeAndTheMatchingDurableCommit() {
-    val bundled = SnapshotFingerprintPolicy.read("  " + sha.uppercase() + "\n")
-    assertNull(bundled.failureCode)
-    assertEquals(sha, bundled.fingerprint)
-    assertTrue(SnapshotFingerprintPolicy.fresh(true, bundled, sha))
-    assertTrue(SnapshotFingerprintPolicy.fresh(true, bundled, sha.uppercase() + "\n"))
-    assertFalse(SnapshotFingerprintPolicy.fresh(false, bundled, sha))
-    assertFalse(SnapshotFingerprintPolicy.fresh(true, bundled, null))
-    assertFalse(SnapshotFingerprintPolicy.fresh(true, bundled, "f".repeat(64)))
+  @Test fun aPoisonedArchiveIsRejectedBeforeItsBytesAreDecoded() = LinuxInstallerFixture().use { f ->
+    f.install(); val original = f.source("two")
+    val poisoned = original.copy(open = { if (it == "linux/node.tar.xz") "not-xz".byteInputStream() else original.open(it) })
+    val result = LinuxInstanceInstaller.ensure(poisoned, f.files)
+    assertTrue((result as LinuxInstanceInstaller.Result.Failed).detail.contains("archive digest mismatch"))
+    assertEquals("node-one", File(f.files, "linux/node/bin/node").readText())
   }
-
-  @Test fun failedFingerprintCommitPublicationPreservesThePreviousCommitPoint() {
-    val files = java.nio.file.Files.createTempDirectory("snapshot-fingerprint-commit-").toFile()
-    try {
-      val marker = java.io.File(files, ".snapshot-fingerprint").apply { writeText("old-fingerprint") }
-      val failure = try {
-        SnapshotTransaction.writeTextAtomic(
-          target = marker,
-          text = "new-fingerprint",
-          label = "snapshot fingerprint",
-          publish = { _, _ -> false },
-          validate = {},
-        )
-        null
-      } catch (t: SnapshotFsException) {
-        t
-      }
-      assertEquals("snapshot-atomic-write", failure?.code)
-      assertEquals("old-fingerprint", marker.readText())
-      val evidence = files.listFiles()!!.filter { it.name.startsWith(".pre-.snapshot-fingerprint-") }
-      assertEquals(1, evidence.size)
-      assertEquals("old-fingerprint", evidence.single().readText())
-
-      val manager = source("EngineManager.kt")
-      val commit = manager.substringAfter("private fun writeFingerprint(").substringBefore("private fun writeOnlineSnapshotIdentity(")
-      assertTrue("生产快照指纹必须走失败保全写入器", commit.contains("SnapshotTransaction.writeTextAtomic("))
-      assertFalse("发布失败不能先删旧指纹", commit.contains("deletePath(target)"))
-      assertFalse("发布失败不能直写截断旧指纹", commit.contains("target.writeText("))
-    } finally {
-      SnapshotFs.deletePath(files)
-    }
+  @Test fun validArchiveWithWrongExtractedIdentityCannotCommit() = LinuxInstallerFixture().use { f ->
+    f.install(); val source = changed(f.source("two")) { it.put("engineTreeSha256", "0".repeat(64)) }
+    val result = LinuxInstanceInstaller.ensure(source, f.files)
+    assertTrue((result as LinuxInstanceInstaller.Result.Failed).detail.contains("extracted tree digest mismatch"))
+    assertEquals("engine-one", File(f.files, "linux/engine/@deepseek-ai/dsh/lib/bin.js").readText())
   }
-
-  @Test fun onlineSnapshotStaysFreshOnlyForTheSameEmbeddedBaseAndCommittedArchive() {
-    val archive = "fedcba9876543210".repeat(4)
-    assertTrue(SnapshotFingerprintPolicy.onlineFresh(true, sha, archive, sha, archive))
-    assertTrue(SnapshotFingerprintPolicy.onlineFresh(true, sha.uppercase(), archive.uppercase(), sha, archive))
-    assertFalse(SnapshotFingerprintPolicy.onlineFresh(false, sha, archive, sha, archive))
-    assertFalse(SnapshotFingerprintPolicy.onlineFresh(true, "f".repeat(64), archive, sha, archive))
-    assertFalse(SnapshotFingerprintPolicy.onlineFresh(true, sha, "0".repeat(64), sha, archive))
-    assertFalse(SnapshotFingerprintPolicy.onlineFresh(true, sha, archive, "bad", archive))
+  @Test fun editingBothDiskAndLocalManifestCannotOverrideTheApkIdentity() = LinuxInstallerFixture().use { f ->
+    f.install(); File(f.files, "linux/node/bin/node").writeText("user-poison")
+    val record = File(f.files, "linux/instance.json")
+    record.writeText(JSONObject(record.readText()).put("nodeTreeSha256", LinuxFileTree.digest(File(f.files, "linux/node"))).toString())
+    assertTrue(LinuxInstanceInstaller.ensure(f.source(), f.files) is LinuxInstanceInstaller.Result.Ready)
+    assertEquals("node-one", File(f.files, "linux/node/bin/node").readText())
   }
-
-  @Test fun invalidBundledMetadataHasNoLegacyFreshnessOrDegradedStartupBypass() {
-    val manager = source("EngineManager.kt")
-    assertTrue(manager.contains("fun snapshotFresh(): Boolean {"))
-    assertTrue(manager.contains("SnapshotFingerprintPolicy.fresh(nodeBin.exists(), bundledSnapshotFingerprint, committed)"))
-    assertTrue(manager.contains("SnapshotFingerprintPolicy.onlineFresh("))
-    assertTrue(manager.contains("fun shouldDegradeRefresh(): Boolean = bundledSnapshotFingerprint.fingerprint != null"))
-    assertFalse(manager.contains("if (fp.isEmpty()) return true"))
-    val refresh = manager.substringAfter("fun refreshSnapshot(").substringBefore("private fun refreshSnapshotInternal(")
-    assertTrue(refresh.contains("snapshotFingerprintProblem()"))
-    assertTrue(refresh.contains("refreshSnapshotInternal(onProgress"))
-    assertTrue(refresh.indexOf("snapshotFingerprintProblem()") < refresh.indexOf("refreshSnapshotInternal(onProgress"))
-    assertTrue(refresh.contains("lastRefreshFailureCode = problem.failureCode"))
-    // 纯 Linux 档：startEngine 不再过快照指纹闸门，直接委托客体启动。
-    val spawn = manager.substringAfter("fun startEngine(").substringBefore("private fun ")
-    assertTrue(spawn.contains("startGuestEngine"))
-    assertFalse(spawn.contains("snapshotFingerprintProblem()"))
-    val presentation = source("MainActivity.kt").substringAfter("internal fun showWeb()").substringBefore("internal fun reloadEnginePage()")
-    assertTrue(presentation.contains("engineManager.snapshotFingerprintProblem() != null"))
+  @Test fun badHomeSeedCannotOverwriteExistingUserFiles() = LinuxInstallerFixture().use { f ->
+    f.install(); val git = File(f.files, "home/.gitconfig").apply { writeText("user-git") }
+    val source = changed(f.source("two")) { it.put("homeSha256", "0".repeat(64)) }
+    assertTrue(LinuxInstanceInstaller.ensure(source, f.files) is LinuxInstanceInstaller.Result.Failed)
+    assertEquals("user-git", git.readText())
   }
 }

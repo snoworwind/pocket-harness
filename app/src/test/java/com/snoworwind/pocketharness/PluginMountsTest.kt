@@ -24,13 +24,12 @@ import org.junit.Test
 class PluginMountsTest {
 
   @Test
-  fun hardSelectorRejectsUnknownAndIncompatibleTransactionMarkers() {
-    val base = SnapshotTransaction.Marker(SnapshotTransaction.Phase.STAGED, "a".repeat(64), 1L)
-    assertTrue(PluginMounts.transactionMarkerAllowsHard(base))
-    assertTrue(PluginMounts.transactionMarkerAllowsHard(base.copy(purpose = SnapshotTransaction.Purpose.ONLINE_UPDATE)))
-    assertFalse(PluginMounts.transactionMarkerAllowsHard(base.copy(phase = SnapshotTransaction.Phase.UNKNOWN)))
-    assertFalse(PluginMounts.transactionMarkerAllowsHard(base.copy(purpose = SnapshotTransaction.Purpose.UNKNOWN)))
-    assertFalse(PluginMounts.transactionMarkerAllowsHard(base.copy(phase = SnapshotTransaction.Phase.ONLINE_COMMITTED)))
+  fun hardSelectorIsUnavailableWhileThePrimaryGuestIsPreparing() {
+    LinuxInstallerFixture().use { fixture ->
+      fixture.trial = { _, _ -> assertTrue(LinuxUpgradeTransaction.readMarker(fixture.files) != null) }
+      fixture.install()
+      assertNull(LinuxUpgradeTransaction.readMarker(fixture.files))
+    }
   }
 
   @Test
@@ -699,38 +698,14 @@ class PluginMountsTest {
    * ③ 把 `PluginMounts.dropEmptyInsertWrappers(kept)` 改回本地调用 → 第二条红。
    */
   @Test
-  fun 空壳清理必须是两条恢复路径共用的唯一实现() {
-    val mounts = codeOnly(source("PluginMounts.kt"))
-    val tx = codeOnly(source("SnapshotTransaction.kt"))
-
-    val definitions = listOf(
-      Regex("""fun\s+dropEmptyInsertWrappers\s*\(\s*lines""").findAll(mounts).count(),
-      Regex("""fun\s+dropEmptyInsertWrappers\s*\(\s*lines""").findAll(tx).count(),
-    ).sum()
-    assertEquals(
-      "dropEmptyInsertWrappers 必须全仓只有一份实现（重复实现的行为差在快照事务写路径上不可观测，" +
-        "只能用结构判据钉住）：PluginMounts=" + definitions,
-      1, definitions,
-    )
-    assertTrue(
-      "唯一实现必须留在 PluginMounts（快照事务侧不得再自行定义）",
-      Regex("""internal fun dropEmptyInsertWrappers""").containsMatchIn(mounts),
-    )
-    assertTrue(
-      "快照事务的已摘除插件迁移必须调用 PluginMounts 的唯一实现" +
-        "（撤掉这次合并 = 该调用消失，本断言即红）",
-      tx.contains("PluginMounts.dropEmptyInsertWrappers(kept)"),
-    )
+  fun retiringTheBootstrapUsesTheSharedInsertWrapperCleaner() {
+    val before = "- insert:\n    - id: linux-bootstrap\n      name: '@dsh-android/linux-bootstrap'\n- id: user-setting\n  config: {}\n"
+    val after = PluginMounts.removeEntry(before, "@dsh-android/linux-bootstrap", "linux-bootstrap")!!
+    assertFalse(after.contains("- insert:"))
+    assertFalse(after.contains("linux-bootstrap"))
+    assertTrue(after.contains("user-setting"))
   }
 
-  /**
-   * 唯一实现的行为契约（两条路径共用同一份，故这一条同时钉住两侧收尾）：
-   * 空壳连同其**前后**相邻空行一起摘掉，不留连续空行；非空壳一字不动。
-   *
-   * 直接调 internal 实现而不是绕 removeEntry：`removeEntry` 的定位正则要求 `- ` 前缀，
-   * 表达不出列 0 的 `-`（合法 YAML 空 elem，可出现在 `- insert:` 前），
-   * 而设备实读的 patch 就是那种形态。
-   */
   @Test
   fun 空壳收尾必须吃掉前后空行且不碰非空壳() {
     val shellThenBlank = mutableListOf(

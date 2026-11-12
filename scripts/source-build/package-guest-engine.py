@@ -136,25 +136,38 @@ def write_archive(root, archive, epoch=None):
             tar.add(path, arcname=str(Path('.') / path.relative_to(root)), recursive=False, filter=scrub)
 
 
+def assert_guest_components(tree):
+    tree = Path(tree)
+    ptys = list(tree.glob('@deepseek-ai/dsh/node_modules/.pnpm/node-pty@*/node_modules/node-pty/prebuilds/linux-arm64/pty.node'))
+    addon = tree / '@deepseek-ai/dsh/node_modules' / ADDON_PACKAGE / 'bin/glibc/system.node'
+    if len(ptys) != 1 or not ptys[0].is_file() or not addon.is_file():
+        raise ValueError('guest platform closure missing; assemble before Android platform pruning (node-pty linux-arm64 and system glibc required)')
+    return dict(nodePty=sha256_file(ptys[0]), systemAddon=sha256_file(addon))
+
+
 def assemble(tree, node_pty, addon, out, epoch=None):
     tree = Path(tree).resolve()
     if not (tree / '@deepseek-ai/dsh/lib/bin.js').is_file():
         raise ValueError('engine tree is missing @deepseek-ai/dsh/lib/bin.js')
+    if node_pty is None and addon is None:
+        assert_guest_components(tree)
     out = Path(out).resolve()
     if out.exists():
         shutil.rmtree(out)
     removed = copy_engine_tree(tree, out)
     pty = install_node_pty(out, node_pty)
     system = install_system_addon(out, addon)
+    closure = assert_guest_components(out)
     receipt = dict(
         schemaVersion=1,
         target=dict(os='linux', cpu='arm64', libc='glibc'),
         files=count_files(out),
+        guestClosure=closure,
         pruned=removed,
         nodePty=pty,
         systemAddon=system,
         addon=dict(path=ADDON_PACKAGE, sha256=system['system']),
-        scope='JavaScript packages are host-independent; native prebuilds are replaced for glibc/aarch64',
+        scope='JavaScript packages are host-independent; npm glibc/aarch64 components must survive pre-pruning assembly',
     )
     (out.parent / 'engine-glibc.json').write_text(json.dumps(receipt, indent=2) + '\n')
     archive = out.parent / 'engine-glibc.tar.xz'
@@ -194,6 +207,17 @@ def self_test():
         expect('archive produced and hashed', receipt['archive']['size'] > 0 and len(receipt['archive']['sha256']) == 64)
         expect('dangling pnpm link preserved', (root / 'out/@deepseek-ai/dsh/lib/dangling-link').is_symlink())
 
+        addon_target = tree / '@deepseek-ai/dsh/node_modules' / ADDON_PACKAGE / 'bin/glibc'
+        addon_target.mkdir(parents=True)
+        (addon_target / 'system.node').write_bytes(b'npm-glibc-addon')
+        default = assemble(tree, None, None, root / 'out-npm')
+        expect('package manager closure retained', bool(default['guestClosure']))
+        (pty_dir / 'linux-arm64/pty.node').unlink()
+        try:
+            assemble(tree, None, None, root / 'out-pruned')
+            expect('already-pruned source tree rejected', False)
+        except ValueError:
+            expect('already-pruned source tree rejected', True)
         (tree / '@deepseek-ai/dsh/lib/bin.js').unlink()
         try:
             assemble(tree, pty, addon, root / 'out2')

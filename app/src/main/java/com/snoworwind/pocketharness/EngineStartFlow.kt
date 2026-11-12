@@ -660,8 +660,8 @@ internal class EngineStartFlow(private val activity: MainActivity) {
     val token = flowOwnership.begin()
     if (token == null) {
       // 抢不到所有权有两种原因，**必须分开**（定位报告 §2.3）：destroyed 是生命周期终结，
-      // 保持「不启动」；running 是「另一次启动/快照刷新正在跑」，丢弃它才是缺陷。
-      deferEngineStartWhileSnapshotTransactionBusy()
+      // 保持「不启动」；running 是「另一次启动/Linux 准备正在跑」，丢弃它才是缺陷。
+      deferEngineStartWhileLinuxPreparationBusy()
       return
     }
     val generation = token.generation
@@ -701,21 +701,8 @@ internal class EngineStartFlow(private val activity: MainActivity) {
       var engineAlreadyRunning = startupRecoverThenProbe(
         recover = {
           requireCurrentEngineFlow(generation)
-          activity.engineManager.recoverInterruptedRefresh()
+          activity.engineManager.recoverLinuxUpgrade()
           requireCurrentEngineFlow(generation)
-          // 恢复期拒绝必须同时留下诊断证据与用户提示：写结构化码、一次性标记和诊断包；
-          // 本轮若仍未收敛，下面直接显示引导页 Error 并阻断探活/启动。恢复后进入引擎页时，
-          // MainActivity 也可消费保留的标记，在 DOM 中交付后续提示。
-          // 恢复失败时必须阻断探活与启动；事务现场未收敛前不能把当前 live 树当成健康运行时。
-          reportRecoveryRejectionIfAny(activity, activity.engineManager.pendingRecoveryFailure) { isCurrentEngineFlow(generation) }
-          if (activity.engineManager.snapshotRecoveryBlocksRuntime()) {
-            activity.runOnUiThread {
-              if (!isCurrentEngineFlow(generation)) return@runOnUiThread
-              activity.applyGuidePhase(GuidePhase.Error, "运行时恢复未完成", "事务现场已保留；请打开控制台查看恢复失败原因。修复前不会探活或启动运行时。")
-              activity.showGuide()
-            }
-            throw java.util.concurrent.CancellationException("snapshot recovery has not converged")
-          }
         },
         // Health `running` intentionally includes arbitrary 401s for watchdog semantics; startup
         // early-exit needs ownership proof and must not treat an unrelated local listener as ours.
@@ -728,16 +715,6 @@ internal class EngineStartFlow(private val activity: MainActivity) {
         },
       )
       requireCurrentEngineFlow(generation)
-      activity.engineManager.snapshotFingerprintProblem()?.let { problem ->
-        requireCurrentEngineFlow(generation)
-        LogCollector.writeBootFail(activity, problem.failureCode.orEmpty(), problem.detail.orEmpty())
-        activity.runOnUiThread {
-          if (!isCurrentEngineFlow(generation)) return@runOnUiThread
-          activity.applyGuidePhase(GuidePhase.Error, "安装包运行时指纹不可用", problem.detail)
-          activity.showGuide()
-        }
-        return@Thread
-      }
       if (engineAlreadyRunning && startupAvailability == EngineProbe.EngineAvailability.OUR_PROCESS) {
         // A tracked child proves ownership, not HTTP readiness. Keep the native guide up while
         // waiting for the already-running process to serve its first response.
@@ -788,120 +765,30 @@ internal class EngineStartFlow(private val activity: MainActivity) {
         activity.applyGuidePhase(GuidePhase.Starting, "正在启动引擎…")
         activity.showGuide()
       }
-      // 中断事务已由启动前置（startupRecoverThenProbe）恢复——此处只做新鲜度判定。
-      if (!isCurrentEngineFlow(generation)) return@Thread
-      if (!activity.engineManager.snapshotFresh()) {
-        if (!isCurrentEngineFlow(generation)) return@Thread
-        // 0.14.1 D2（issue #240 建议 2）：**降级闸门**。同一份快照上刷新已连续失败达阈、
-        // 且 live 运行时完整时，不再自动重跑那一次注定失败的刷新——以可用态启动，并显式留档。
-        //
-        // 为什么判据是 live 完整性而不是失败次数：refresh 失败的常见真因是快照缺失/解压不全，
-        // 那种情况下「放行」等于拉起一棵不完整的运行时（以「引擎能起但插件缺」的形态静默劣化），
-        // 比拦在引导页更坏。issue 现场的真正特征是 live 完整可用、缺的只是提交文件。
-        // 出口：换快照（App 升级 → fingerprint 变 → 账本自然失配）或用户手动点「重试」
-        // （GuidePageRenderer 的 onStartEngine 会 clearRefreshLedger，见那里）。
-        if (activity.engineManager.shouldDegradeRefresh()) {
-          requireCurrentEngineFlow(generation)
-          LogCollector.writeBootFail(
-            activity, "snapshot-refresh-degraded",
-            "自动刷新连续失败达阈且 live 运行时完整：跳过本次自动刷新，以现有运行时启动"
-              + "（手动点「重试」可强制再刷一次；升级到新快照后本闸门自然失效）",
-          )
-          activity.runOnUiThread {
-            if (!isCurrentEngineFlow(generation)) return@runOnUiThread
-            activity.applyGuidePhase(GuidePhase.Starting, "运行时更新未完成，正以现有运行时启动…")
-            activity.guideRenderer.progressText.visibility = View.GONE
-          }
-        } else {
-          if (!isCurrentEngineFlow(generation)) return@Thread
-          activity.runOnUiThread {
-            if (!isCurrentEngineFlow(generation)) return@runOnUiThread
-            activity.applyGuidePhase(GuidePhase.Extracting, "正在解压运行时")
-            activity.guideRenderer.progressText.visibility = View.VISIBLE
-            activity.guideRenderer.progressText.text = "准备写入内嵌环境…"
-          }
-          // 0.14.2 FX1-A：轮换改由**时间**驱动。旧实现在 onProgress 里 tick++，而回调频率 = 解压进度
-          // 回调频率（SnapshotExtractor 每 1MB 一次，2.5GB 约 2500 次、间隔数十毫秒），
-          // 于是文案以毫秒级频率换句 -> 用户现场「一直在闪」。
-          // 本次刷新开始前复位一次，使第一句立刻可见、时间窗从此刻起算。
-          activity.guideRenderer.resetRuntimeStageRotation()
-          requireCurrentEngineFlow(generation)
-          val ok = activity.engineManager.refreshSnapshot(
-            onProgress = { _, _ ->
-              activity.runOnUiThread {
-                if (!isCurrentEngineFlow(generation)) return@runOnUiThread
-                // 0.14.2 P2：**不再印任何数字**。旧实现用编造的 700MB 当分母拼
-                // 「已写入 1157 MB / 约 700 MB（99%）」（分子大于分母还报 99%）——真因是分母凭空
-                // 造的，而真实解压是增量的（含磁盘上已有数据）。现在只推进阶段车轱辘话，
-                // 进度条恒为不确定态。回调里的 done/total 仍然收下（接口未变），但不再渲染。
-                if (activity.guideRenderer.lastGuidePhase != GuidePhase.Extracting) {
-                  activity.applyGuidePhase(GuidePhase.Extracting, "正在解压运行时")
-                }
-                // 时间戳取自单调时钟：回调频率再高，闸门也只按 1.3s 的窗放行（同一窗内只刷可见性）。
-                activity.guideRenderer.showRuntimeStage(SystemClock.elapsedRealtime())
-              }
-            },
-            onStage = { stage ->
-              activity.runOnUiThread {
-                if (!isCurrentEngineFlow(generation)) return@runOnUiThread
-                activity.applyGuidePhase(GuidePhase.Extracting, "正在更新运行时")
-                // stage 是 EngineManager 的阶段句（「正在解压运行时…」「正在恢复用户数据…」等），
-                // 本身就是无数字的车轱辘话，直接沿用——不为它另造一套文案，避免两份口径漂移。
-                activity.guideRenderer.progressText.visibility = View.VISIBLE
-                activity.guideRenderer.progressText.text = stage
-              }
-            },
-          )
-          requireCurrentEngineFlow(generation)
-          if (!ok) {
-            // 任务 19：失败终态落盘（快照解压失败是「启动起不来」的已知成因之一）。
-            // 【0.14.1 升级路径 P0】必须带上**真因**：`refreshSnapshot` 只回布尔值，真因挂在
-            // `EngineManager.lastRefreshFailure`。旧实现此处不传 error → boot-fail.log 只有
-            // `error=none(boolean-failure-path)`，排障者拿不到 `Directory not empty` 那条真因。
-            // issue #271 ④：再带上**稳定错误码**（由 SnapshotFsException.code 归类，如
-            // snapshot-delete-residue / snapshot-move-blocked / snapshot-foreign-owner）。
-            // 有了码，boot-fail.log 的一行就说清「是哪一类失败」，不必翻栈。
-            val refreshCause = activity.engineManager.lastRefreshFailure
-            val refreshCode = activity.engineManager.lastRefreshFailureCode ?: "snapshot-refresh-failed"
-            activity.engineManager.lastStartRefusalCode = refreshCause?.let {
-              activity.engineManager.startupExceptionCode(it)
-            } ?: EngineManager.REFUSAL_RUNTIME_UNAVAILABLE
-            LogCollector.writeBootFail(
-              activity, refreshCode,
-              "内嵌运行时快照解压/写入失败（refreshSnapshot 返回 false，code=" + refreshCode + "）"
-                + (refreshCause?.let { " cause=" + it.javaClass.name + ": " + (it.message ?: "无消息") } ?: ""),
-              refreshCause,
-            )
-            activity.runOnUiThread {
-              if (!isCurrentEngineFlow(generation)) return@runOnUiThread
-              // 0.13.1 W3：解压失败此前零落盘（engine.log 尚不存在、仅 logcat），镜像现场到共享目录。
-              // review C5：文案按**实际落点**回填（共享不可写时回落私有目录，不再写死 Documents 路径）。
-              val dir = activity.engineManager.mirrorDiagnosticsToShared("snapshot-refresh-failed")
-              // S1-5：**诊断包路径不进标题**。旧实现把 `diagnosticsLocationHint(dir)`
-              // （「诊断包已存至 /storage/emulated/0/Documents/dshdata/diagnostics/...」）拼进
-              // 18sp 的标题里，在窄屏上把标题撑成三行，而真正该一眼看到的是「失败了」。
-              // 现在标题只说事实，路径挪到 13sp 的副文案里（可换行，且不抢视觉重心）。
-              activity.applyGuidePhase(
-                GuidePhase.Error,
-                "运行时更新失败",
-                // 缺陷 D（fx-2）：这两个显式 hint 会**覆盖** defaultHint，所以安全模式引导
-                // 必须在这里也带上——否则「运行时更新失败」屏的按钮已改成安全模式入口，
-                // 文案却还在让人「重试」，两者对不上。
-                startupFailureHint(activity, activity.engineManager.lastStartRefusalCode) + "\n" +
-                  diagnosticsLocationHint(dir) + "。可复制该路径或打开控制台查看 engine.log。" +
-                  activity.getString(R.string.ds_safe_hint_short),
-              )
-              activity.showGuide()
-            }
-            return@Thread
-          }
-          activity.runOnUiThread {
-            if (!isCurrentEngineFlow(generation)) return@runOnUiThread
-            activity.applyGuidePhase(GuidePhase.Starting, "正在启动引擎…")
-          }
+      // 内置 Linux 实例是唯一的启动准备入口，不读取旧快照指纹。
+      activity.runOnUiThread {
+        if (isCurrentEngineFlow(generation)) activity.guideRenderer.resetRuntimeStageRotation()
+      }
+      val prepared = activity.engineManager.prepareLinuxInstance { stage ->
+        activity.runOnUiThread {
+          if (!isCurrentEngineFlow(generation)) return@runOnUiThread
+          activity.applyGuidePhase(GuidePhase.Extracting, "正在准备 Linux 环境")
+          activity.guideRenderer.showRuntimeStage(SystemClock.elapsedRealtime())
+          activity.guideRenderer.progressText.text = stage
         }
       }
-      if (!isCurrentEngineFlow(generation)) return@Thread
+      requireCurrentEngineFlow(generation)
+      if (prepared is LinuxInstanceInstaller.Result.Failed) {
+        activity.engineManager.lastStartRefusalCode = prepared.code
+        activity.engineManager.lastStartRefusal = prepared.detail
+        LogCollector.writeBootFail(activity, "linux-prepare-failed", prepared.code + ": " + prepared.detail)
+        activity.runOnUiThread {
+          if (!isCurrentEngineFlow(generation)) return@runOnUiThread
+          activity.applyGuidePhase(GuidePhase.Error, "Linux 环境准备失败", prepared.detail)
+          activity.showGuide()
+        }
+        return@Thread
+      }
       // 急救 CLI 随 App 版本部署（内容比对幂等）：下探失败时自动回撤的前置依赖。
       activity.engineManager.deployUndoCli()
       requireCurrentEngineFlow(generation)
@@ -924,29 +811,6 @@ internal class EngineStartFlow(private val activity: MainActivity) {
             + (refusalCode?.let { "；confirmed=" + activity.engineManager.lastStartRefusalConfirmed.joinToString(",") } ?: "")
             + (refusal?.let { "；refusal=" + it } ?: ""),
         )
-        // issue #309：解开闸门 A / 闸门 B 的互锁。
-        //
-        // 互锁形态（源码级确证）：闸门 A（liveRuntimeComplete，spawn 之前）拒启 ⇒ 不 spawn
-        // ⇒ engine.log 永不产生 ⇒ 闸门 B（maybeSelfHealDamagedRuntimeTree 读 engine.log 尾部
-        // 找 CANNOT LINK）判据恒为假 ⇒ 自愈不可达。且 refreshSnapshot 全仓只有冷启动一个调用点，
-        // 拒启路径为零；UI 的「重试」只清账本不删指纹（指纹新鲜时是 no-op）——自动与手动路径都为零，
-        // 用户实测 36 次 / 47 分钟无任何恢复动作。
-        //
-        // 修法：拒启原因确为「live 树残缺」**且缺的是确诊项**时，删指纹 + 清账本，让下一次冷启动
-        // 的 `if (!snapshotFresh())` 走完整重抽取。三处克制：
-        //   ① 只在确诊项缺失时触发——REQUIRED_LIBS 成员可能是**传递依赖**误报（issue #309 明确
-        //      告诫「不要贸然补全该表」，否则互锁会从「可人工救」升级为「只能清应用数据」），
-        //      因此它们只记录、不触发；
-        //   ② 复用 runtimeTreeHealedThisRun（每次 app 运行一次），不新增预算变量，
-        //      因此不会引入「重抽取 → 再失败 → 再重抽取」死循环；
-        //   ③ 不改闸门 A 的判据本身——带病的树仍然不被 spawn，安全性不变。
-        // 预算用尽或缺的都是低置信度条目时如实停在错误页并留档，不假装已修复。
-        if (refusalCode == EngineManager.REFUSAL_LIVE_RUNTIME_INCOMPLETE) {
-          maybeRecoverFromIncompleteLiveRuntime(
-            activity,
-            confirmedMissing = activity.engineManager.lastStartRefusalConfirmed,
-          ) { isCurrentEngineFlow(generation) }
-        }
         activity.runOnUiThread {
           if (!isCurrentEngineFlow(generation)) return@runOnUiThread
           activity.applyGuidePhase(GuidePhase.Error, "引擎启动失败", startupFailureHint(activity, refusalCode))
@@ -1049,7 +913,6 @@ internal class EngineStartFlow(private val activity: MainActivity) {
         // 必须在**当拍**读 engine.log：`rotateEngineLog` 每次 spawn 都把 engine.log 截断重写，
         // 而真机上引擎每 4-10 秒就被拉起一次 ⇒ 等下一拍再读，现场已经被下一次启动冲掉。
         requireCurrentEngineFlow(generation)
-        maybeSelfHealDamagedRuntimeTree(activity) { isCurrentEngineFlow(generation) }
         // 0.13.1 W3：进程死亡现场镜像到共享目录（含退出码），用户可直接取包反馈。
         // review C5：文案按实际落点回填（共享不可写时回落私有目录）。
         requireCurrentEngineFlow(generation)
@@ -1071,7 +934,6 @@ internal class EngineStartFlow(private val activity: MainActivity) {
       }
       if (booted) {
         // task-79：启动成功 ⇒ 清掉「运行时树损坏」标记（若不成功，标记留着供诊断与后续决策）。
-        clearRuntimeTreeDamageMarker(activity) { isCurrentEngineFlow(generation) }
         requireCurrentEngineFlow(generation)
         startEngineService()
         applyShizukuKeepAlive(generation)
@@ -1128,42 +990,42 @@ internal class EngineStartFlow(private val activity: MainActivity) {
    *
    * `begin()` 返回 null 有两种原因，且语义相反，**必须分开**：
    *  - `destroyed`：Activity 已销毁 / 进程整体关停 —— 保持「不启动」（原来那个 return 是对的）；
-   *  - `running`：**另一次启动流或快照刷新正在跑**（刷新期间 `running` 恒为 true，
+   *  - `running`：**另一次启动流或Linux 准备正在跑**（刷新期间 `running` 恒为 true，
    *    `finish(token)` 只在启动线程的 finally 里执行；见 EngineStartFlow.kt:1117）——
    *    此时静默 return 就是缺陷本体：不 spawn、不改相位、不落盘，用户与排障者都看不到痕迹。
    *
    * 处置：① 一定留一行**进 boot-fail.log** 的落痕。不走 `LogCollector.log` 就完事：它的 sink 受
    * `DevLogPrefs` 门控且默认关闭，`dsh-day.log` 恒 absent，等于没留痕（报告 §4 可观测性缺口）；
-   * ② 有快照事务在场时起一个**有界等待者**（[deferredStartRunnable]），等事务收口**且**所有权
+   * ② 有Linux 事务在场时起一个**有界等待者**（[deferredStartRunnable]），等事务收口**且**所有权
    * 空出来再自动续跑一次 [start]。
    *
    * 判据用**跨进程真源** journal 文件而不是 `flowOwnership.running`：后者只是本 Activity 实例的
    * 内存态（MainActivity 未声明 launchMode，新实例会绕过它），journal 才是「刷新真的在跑」的事实。
    */
-  private fun deferEngineStartWhileSnapshotTransactionBusy() {
+  private fun deferEngineStartWhileLinuxPreparationBusy() {
     if (flowOwnership.destroyed) return // 生命周期终结：保持不启动，不等待、不留痕。
     if (!canRunEngineWork()) return
     engineMonitorHandler.removeCallbacks(deferredStartRunnable)
-    val marker = SnapshotTransaction.readMarker(activity.filesDir)
+    val marker = LinuxUpgradeTransaction.readMarker(activity.filesDir)
     LogCollector.log("dsh-shell", "engine start deferred: another start flow or a snapshot refresh owns the generation")
     if (marker == null) {
-      // 所有权被占、但没有任何快照事务在场：这次丢弃没有客观依据可等（典型是同一实例里上一次
+      // 所有权被占、但没有任何Linux 事务在场：这次丢弃没有客观依据可等（典型是同一实例里上一次
       // 启动流的收尾还没跑完）。如实记账，不制造一个注定空等的等待者。
       LogCollector.writeBootFail(
         activity, "engine-start-deferred-no-transaction",
-        "启动请求未获世代所有权（另一次启动流仍在占用），且无快照事务在场：本次请求未被受理，未拉起引擎；"
+        "启动请求未获世代所有权（另一次启动流仍在占用），且无Linux 事务在场：本次请求未被受理，未拉起引擎；"
           + "下一次入口（点按钮 / 回前台探活）会重试。",
       )
       return
     }
     LogCollector.writeBootFail(
       activity, "engine-start-deferred",
-      "启动请求撞上正在进行的快照刷新，已转为有界等待（**非**静默丢弃）：事务 phase="
-        + (marker.phase.name) + "，帐龄(自述)="
-        + snapshotTransactionAccountedAgeMs(marker, System.currentTimeMillis()) / 1_000 + "s，预算 "
-        + SNAPSHOT_TRANSACTION_WAIT_BUDGET_MS / 60_000 + " 分钟；事务收口后自动续跑一次启动。",
+      "启动请求撞上正在进行的Linux 准备，已转为有界等待（**非**静默丢弃）：事务 phase="
+        + (marker.phase) + "，帐龄(自述)="
+        + linuxPreparationAccountedAgeMs(marker, System.currentTimeMillis()) / 1_000 + "s，预算 "
+        + LINUX_PREPARATION_WAIT_BUDGET_MS / 60_000 + " 分钟；事务收口后自动续跑一次启动。",
     )
-    engineMonitorHandler.postDelayed(deferredStartRunnable, SNAPSHOT_TRANSACTION_WAIT_POLL_STEP_MS)
+    engineMonitorHandler.postDelayed(deferredStartRunnable, LINUX_PREPARATION_WAIT_POLL_STEP_MS)
   }
 
   /**
@@ -1173,32 +1035,32 @@ internal class EngineStartFlow(private val activity: MainActivity) {
    * 事务收口后它还要跑完 spawn/轮询那一段才 `finish(token)`。只等事务会在所有权还没空出来时
    * 续跑一次，又撞回 L700 —— 那只是把静默丢弃换成忙等。
    *
-   * 有界性：累计等待到 [SNAPSHOT_TRANSACTION_WAIT_BUDGET_MS] 即落一条如实 timeout 痕迹后收手
+   * 有界性：累计等待到 [LINUX_PREPARATION_WAIT_BUDGET_MS] 即落一条如实 timeout 痕迹后收手
    * （**不判失败**、不显示成故障：事务仍在跑时用户看到的是同一句「正在以安全模式重启运行时…」）。
    */
   private val deferredStartRunnable = object : Runnable {
     private var waitedMs = 0L
     override fun run() {
       if (!canRunEngineWork()) { waitedMs = 0L; return }
-      val transactionBusy = SnapshotTransaction.readMarker(activity.filesDir) != null
+      val transactionBusy = LinuxUpgradeTransaction.readMarker(activity.filesDir) != null
       if (!transactionBusy && !flowOwnership.running) {
         waitedMs = 0L
         LogCollector.log("dsh-shell", "deferred engine start resuming: snapshot transaction settled and ownership is free")
         start()
         return
       }
-      if (waitedMs >= SNAPSHOT_TRANSACTION_WAIT_BUDGET_MS) {
+      if (waitedMs >= LINUX_PREPARATION_WAIT_BUDGET_MS) {
         waitedMs = 0L
         LogCollector.writeBootFail(
           activity, "engine-start-deferred-timeout",
-          "启动请求在 " + SNAPSHOT_TRANSACTION_WAIT_BUDGET_MS / 60_000 + " 分钟等待预算内仍未取得世代所有权"
-            + "（快照事务在场=" + transactionBusy + "）：本次启动请求未执行，也未拉起引擎；"
+          "启动请求在 " + LINUX_PREPARATION_WAIT_BUDGET_MS / 60_000 + " 分钟等待预算内仍未取得世代所有权"
+            + "（Linux 事务在场=" + transactionBusy + "）：本次启动请求未执行，也未拉起引擎；"
             + "事务仍在解压时可稍后重试或改用重启应用。",
         )
         return
       }
-      waitedMs += SNAPSHOT_TRANSACTION_WAIT_POLL_STEP_MS
-      engineMonitorHandler.postDelayed(this, SNAPSHOT_TRANSACTION_WAIT_POLL_STEP_MS)
+      waitedMs += LINUX_PREPARATION_WAIT_POLL_STEP_MS
+      engineMonitorHandler.postDelayed(this, LINUX_PREPARATION_WAIT_POLL_STEP_MS)
     }
   }
 
@@ -1306,20 +1168,20 @@ internal class EngineStartFlow(private val activity: MainActivity) {
   private fun performSafeModeRestart() {
     if (!canRunEngineWork()) return
     val engine = activity.engineManager
-    // P1（定位报告 §2.3/§7）：**动任何东西之前**先看快照事务是否正在进行（跨进程真源
+    // P1（定位报告 §2.3/§7）：**动任何东西之前**先看Linux 事务是否正在进行（跨进程真源
     // = 事务 journal 文件，比本 Activity 实例的内存态客观——MainActivity 未声明 launchMode，
     // 新实例会绕过 flowOwnership）。事务在场时先停旧引擎会把用户从「能跑但插件错」推到
     // 「8-12 分钟没有引擎」，正是社区现象「点了安全模式、引擎没起来」。故此处**一步都不动**，
     // 只如实回执 + 有界等待事务收口，收口后再走同一条「先停旧、再起新」。
-    if (SnapshotTransaction.readMarker(activity.filesDir) != null) {
-      awaitSnapshotTransactionThenRestartSafeMode()
+    if (LinuxUpgradeTransaction.readMarker(activity.filesDir) != null) {
+      awaitLinuxPreparationThenRestartSafeMode()
       return
     }
-    val liveComplete = engine.liveRuntimeComplete()
-    val snapshotFresh = engine.snapshotFresh()
+    val liveComplete = engine.linuxInstanceReady()
+    val runtimePrepared = engine.linuxInstanceReady()
     // 归属权在「停」之前只能由 stopOwnedEngine 的真实返回值回答（它内含探活 + 句柄判定），
     // 故这里先按 live/快照面判一次；归属失败在下一次判定中收口（见下方 stopOk）。
-    val preDecision = safeModeRestartDecision(liveComplete, snapshotFresh, ownedStopOk = true)
+    val preDecision = safeModeRestartDecision(liveComplete, runtimePrepared, ownedStopOk = true)
     if (!safeModeRestartCanProceed(preDecision)) {
       // live 树残缺：停掉旧进程只会把用户从「能跑但插件错」推到「跑不了」，故**一步都不动**。
       LogCollector.writeBootFail(
@@ -1341,7 +1203,7 @@ internal class EngineStartFlow(private val activity: MainActivity) {
     }
     if (!stopped) {
       // 端口未被归属到本壳（或停止失败）：**绝不**继续 spawn，否则等于盲目重启一个不属于我们的监听器。
-      val decision = safeModeRestartDecision(liveComplete, snapshotFresh, ownedStopOk = false)
+      val decision = safeModeRestartDecision(liveComplete, runtimePrepared, ownedStopOk = false)
       LogCollector.writeBootFail(
         activity, "safe-mode-restart-not-owned",
         "安全模式重启被拒（decision=" + decision + "）：3080 未被归属到本壳或旧引擎停止失败，" +
@@ -1353,7 +1215,6 @@ internal class EngineStartFlow(private val activity: MainActivity) {
     // 归零既有账本：用户显式要求「以 safe 状态运行」，就该真的发起一次启动尝试，
     // 而不是被上一次失败的降级闸门挡住（与手动重试同口径）。
     engineRetryCount = 0
-    engine.clearRefreshLedger()
     // P2（定位报告 §4/§7）：**成功/进入面**留痕。既有四个失败 stage（refused / not-owned /
     // stop-failed / failed）都在失败分支上，成功面此前只写 LogCollector.log——而采集器默认关
     // （DevLogPrefs 默认 false），dsh-day.log 恒 absent ⇒ 安全模式重启的成功面在诊断包里
@@ -1370,30 +1231,30 @@ internal class EngineStartFlow(private val activity: MainActivity) {
   }
 
   /**
-   * P1：快照事务进行中的安全模式重启——**不丢弃、不谎报成功、不先停旧引擎**。
+   * P1：Linux 事务进行中的安全模式重启——**不丢弃、不谎报成功、不先停旧引擎**。
    *
    * 为什么不能先停：定位报告 §3 的 M2 与 §2.4 说明，刷新一旦开始就必然跑完（解压路径不响应
    * 线程中断），实测 8-12 分钟。先停旧引擎会让用户在这段时间里**完全没有引擎**——界面上就是
    * 社区反馈的那一幕「点了安全模式，引擎没起来」。故这里等事务收口**之后**才走
    * [performSafeModeRestart] 的既有「先停旧、再起新」。
    *
-   * 有界性（见 [awaitSnapshotTransactionSettled]）：16 分钟硬预算 + 1s 步进。预算依据 =
+   * 有界性（见 [awaitLinuxPreparationSettled]）：16 分钟硬预算 + 1s 步进。预算依据 =
    * 报告 §3 的全量重解压实测上限 12 分钟（8-12 分钟区间），留 4 分钟余量覆盖换树 + 收尾
    * （提交点是「先写指纹、后清 marker」，Lead 实测该窗口本身约 25s）。超预算**不当失败**：
    * 事务仍在跑时如实落一条 timeout 痕迹并复用同一相位文案，让用户知道还在等而不是坏了。
    */
-  private fun awaitSnapshotTransactionThenRestartSafeMode() {
+  private fun awaitLinuxPreparationThenRestartSafeMode() {
     val engine = activity.engineManager
-    val liveComplete = engine.liveRuntimeComplete()
-    val snapshotFresh = engine.snapshotFresh()
+    val liveComplete = engine.linuxInstanceReady()
+    val runtimePrepared = engine.linuxInstanceReady()
     // 只读的预判：live 树残缺时**一步都不动**（与既有的 [safeModeRestartCanProceed] 同源），
     // 停滞在这里等一个注定会被拒的重启毫无意义——如实回执比空等更负责。
-    val preDecision = safeModeRestartDecision(liveComplete, snapshotFresh, ownedStopOk = true)
+    val preDecision = safeModeRestartDecision(liveComplete, runtimePrepared, ownedStopOk = true)
     // 事务自述的相与账龄（纯读，不猜）：用户可见文案与 boot-fail 记录**同一份**，避免两处口径漂移。
-    val marker = SnapshotTransaction.readMarker(activity.filesDir)
-    val waitText = snapshotTransactionWaitText(
-      marker?.phase?.name ?: "unknown",
-      snapshotTransactionAccountedAgeMs(marker, System.currentTimeMillis()),
+    val marker = LinuxUpgradeTransaction.readMarker(activity.filesDir)
+    val waitText = linuxPreparationWaitText(
+      marker?.phase ?: "unknown",
+      linuxPreparationAccountedAgeMs(marker, System.currentTimeMillis()),
     )
     // 如实相位：此刻**旧引擎仍在跑**（我们还没停），事务也在跑。不得出现「已就绪」。
     activity.runOnUiThread {
@@ -1405,14 +1266,14 @@ internal class EngineStartFlow(private val activity: MainActivity) {
       waitText + "（安全模式重启已推迟，非静默丢弃；decision=" + preDecision
         + "）事务收口后自动继续「先停旧引擎、再以安全模式清单重建」",
     )
-    val settled = awaitSnapshotTransactionSettled(
-      transactionActive = { SnapshotTransaction.readMarker(activity.filesDir) != null },
+    val settled = awaitLinuxPreparationSettled(
+      transactionActive = { LinuxUpgradeTransaction.readMarker(activity.filesDir) != null },
       current = { canRunEngineWork() },
     )
     if (!settled) {
       LogCollector.writeBootFail(
         activity, "snapshot-transaction-wait-failed",
-        "快照事务在 " + SNAPSHOT_TRANSACTION_WAIT_BUDGET_MS / 60_000 + " 分钟预算内仍未收口（或已换代/销毁）："
+        "Linux 事务在 " + LINUX_PREPARATION_WAIT_BUDGET_MS / 60_000 + " 分钟预算内仍未收口（或已换代/销毁）："
           + "安全模式重启本次未执行，安全模式的插件改动本次不生效；事务仍在解压时不建议重复操作，"
           + "可稍后重试或改用重启应用。",
       )
@@ -1427,7 +1288,7 @@ internal class EngineStartFlow(private val activity: MainActivity) {
    * 安全模式重启的如实回执（相位 + 文案），保证「停旧起新」窗口不被显示成已就绪。
    *
    * @param extraHint 附加的如实说明（可为 null）。P1 的事务等待路径用它承载
-   *   [snapshotTransactionWaitText]——那一段回答的是「为什么在等、还要等多久」，与
+   *   [linuxPreparationWaitText]——那一段回答的是「为什么在等、还要等多久」，与
    *   [safeModeRestartDecision] 的判定面是两个维度，故**不并进** [safeModeRestartHint] 的取值域。
    */
   private fun applySafeModeRestartHint(decision: SafeModeRestartDecision, extraHint: String? = null) {
@@ -1455,7 +1316,7 @@ internal class EngineStartFlow(private val activity: MainActivity) {
     if (token == null) {
       // 同 start()：running（另一次启动/刷新在跑）不得静默丢弃，如实留痕 + 有界等待续跑。
       engineRestarting.set(false)
-      deferEngineStartWhileSnapshotTransactionBusy()
+      deferEngineStartWhileLinuxPreparationBusy()
       return false
     }
     val generation = token.generation
@@ -1584,228 +1445,6 @@ internal fun startupRecoverThenProbe(recover: () -> Unit, probeRunning: () -> Bo
 // EngineService 看门狗的 RESTART 拍（`EngineService.kt:319` 直接调 startEngine），两者可能
 // 同时读到 false。后果本来无害（删指纹/清账本都幂等），但注释宣称「每次运行最多一次」，
 // 那就让它**真的**只有一次：用 CAS 把「花掉预算」变成单次操作。
-private val runtimeTreeHealedThisRun = java.util.concurrent.atomic.AtomicBoolean(false)
-
-/**
- * task-79（Bug A）：引擎**因动态链接失败而死**时，判定运行时树损坏并触发一次受控重抽取。
- *
- * 真机现场：`CANNOT LINK EXECUTABLE ... library "libz.so.1" not found` ⇒ 引擎每次拉起都在链接期死，
- * 而旧判据只看 3 个条目 ⇒ 判「运行时完整」⇒ `shouldDegradeRefresh` 放行降级启动 ⇒ 永远拉起同一棵坏树。
- *
- * 自愈动作（**只在预算内**）：
- *  ① 落壳侧标记 `.runtime-tree-damaged`（含时间戳）——engine.log 每次 spawn 被截断，不能当账本；
- *  ② 删 `.snapshot-fingerprint` ⇒ `snapshotFresh()` 立即为 false ⇒ 下次刷新走**完整重抽取**；
- *  ③ 清刷新失败账本 ⇒ 避免降级闸门在新局面下误判（不清则「连续失败达阈 + live 残缺」的旧账会打架）；
- *  ④ 如实写日志：说清做了什么、以及**不承诺一次成功**。
- *
- * 预算外（本次运行已自愈过一次）：**什么都不做**，直接让既有错误页呈现（可读、带诊断包），
- * 避免「重抽取 → 再失败 → 再重抽取」的死循环把用户永远挡在加载中。
- *
- * @param activity 宿主（用其 filesDir 与 engineManager）。
- */
-private fun maybeSelfHealDamagedRuntimeTree(activity: MainActivity, current: () -> Boolean) {
-  if (!current()) return
-  // 当拍读：engine.log 由 redirectOutput 每次 spawn 截断重写，晚一拍就读不到现场了。
-  val tail = try { PluginMounts.readEngineLogTail(activity, 4_096) } catch (_: Throwable) { "" }
-  if (!current() || !RuntimeTree.snapshotLinkFailure(tail)) return
-  LogCollector.log("dsh-engine-start", "engine died from a dynamic-link failure; runtime tree is damaged")
-  // CAS 即判定：抢输的那一拍直接认预算已花，不再重复删指纹/重抽取（避免重抽取死循环）。
-  if (!runtimeTreeHealedThisRun.compareAndSet(false, true)) {
-    // 预算用尽：不再删指纹/重抽取，停在可读错误页（既有 UI 已展示诊断包路径）。
-    LogCollector.log("dsh-engine-start", "runtime tree damage: self-heal budget already spent this run; not re-extracting (avoid a re-extract loop)")
-    return
-  }
-  try {
-    if (!current()) return
-    // ① 壳侧标记（不被引擎截断），供后续启动与诊断读取。
-    java.io.File(activity.filesDir, RuntimeTree.DAMAGE_MARKER)
-      .writeText(System.currentTimeMillis().toString() + (0x0A).toChar())
-    // ② 删指纹 ⇒ 下次刷新走完整重抽取。
-    val fp = java.io.File(activity.filesDir, ".snapshot-fingerprint")
-    if (!current()) return
-    if (fp.exists() && current()) fp.delete()
-    // ③ 清账本（避免降级闸门在新局面下与新判据打架）。
-    if (!current()) return
-    activity.engineManager.clearRefreshLedger()
-    LogCollector.log("dsh-engine-start", "runtime tree damage: fingerprint cleared, refresh ledger reset; next start will re-extract the runtime")
-  } catch (t: Throwable) {
-    Log.w("dsh-engine-start", "runtime tree self-heal failed: " + t.javaClass.simpleName + ": " + (t.message ?: ""))
-  }
-}
-
-/**
- * 0.14.2-fx-2 缺口：把「恢复期拒绝回滚」落成**可见面**所需的全部壳侧事实。
- *
- * 为什么必须有人调它：`applyRecovery` 的 ROLLBACK_FAILED 只写 logcat 与
- * `pendingRecoveryFailure`，没有任何面向 UI 的通道 ⇒ 数据被保护了但用户完全不知情。
- *
- * 做三件事（与 refreshSnapshot 失败**同族**的落盘面，但可见面不同）：
- *   ① `LogCollector.writeBootFail(code)` —— 结构化码，排障者 grep 这个码即可归类；
- *   ② 一次性标记文件 —— 供引擎 WebUI 就绪后**注入 DOM 提示**（可见面，见 MainActivity）；
- *   ③ 诊断包镜像 —— 用户可取包反馈。
- *
- * **恢复拒绝会阻断探活与启动**：启动流在发现未收敛事务后保留现场、显示持久的引导页 Error，
- * 并抛出 CancellationException 结束本轮；不能继续到 `applyGuidePhase(Starting, ...)` 或 `showWeb()`。
- * 这样用户可直接看到恢复入口提示，诊断码、一次性标记和诊断包仍用于后续排查与恢复。
- */
-private fun reportRecoveryRejectionIfAny(activity: MainActivity, detail: String?, current: () -> Boolean) {
-  if (!current()) return
-  val notice = SnapshotRecoveryNotice.forRejection(detail) ?: return
-  // ① 结构化落盘。
-  LogCollector.writeBootFail(
-    activity,
-    notice.code,
-    "快照恢复期拒绝回滚（code=" + notice.code + "）：" + (detail ?: ""),
-  )
-  // ② 一次性标记（注入成功后由 MainActivity consume）。
-  if (!current()) return
-  SnapshotRecoveryNotice.markPending(activity.filesDir, detail)
-  // ③ 诊断包镜像（不切界面相位，理由见上方注释）。
-  if (!current()) return
-  activity.engineManager.mirrorDiagnosticsToShared(notice.code)
-}
-
-/**
- * issue #309：live 运行时树残缺时**唯一**的自动恢复动作（与闸门 B 共用同一份预算）。
- *
- * 为什么需要它：闸门 A 在 spawn 之前就拒启，因此 engine.log 根本不会产生，闸门 B 的判据
- * （读 engine.log 尾部的 CANNOT LINK / library not found）**结构性不可达**；而 refreshSnapshot
- * 全仓只有冷启动一个调用点，拒启分支为零、UI 的「重试」在指纹新鲜时是 no-op。结果是「live 树
- * 缺一条 soname 链」这种可自愈状态会把用户永久挡在错误页（issue 实测 36 次 / 47 分钟零恢复）。
- *
- * **两道闸门**（判定全在 RuntimeTree.allowStartRecovery，本函数只执行其结论，不自己发明条件）：
- *   ① 预算——复用 runtimeTreeHealedThisRun（每次 app 运行一次），不新增预算变量，
- *      因此不会引入「重抽取 → 再失败 → 再重抽取」死循环；
- *   ② 证据分级——confirmedMissing 为空时**自动路径**不动作。低置信度条目（REQUIRED_LIBS 成员）
- *      可能是传递依赖造成的假阴性，issue #309 明确告诫「不要贸然补全该表」；自动放宽等于把
- *      「可人工救」升级成「每次启动白付一次 8-12 分钟全量抽取并抹掉现场」。
- *      **唯一例外是用户显式动作**（userForced，错误页的错误态按钮）：自动路径的克制不能变成
- *      「用户连点一下都不行」——issue 现场用户只能靠壳侧终端手工补库，本 issue 的核心诉求
- *      正是「给闸门 A 加出口」。预算仍照旧约束他：一次之后仍失败就停手。
- *
- *      **如实声明其边界**（独立评审 C1/C2：不声明就等于又造一个「承诺不存在的动作」）：
- *      手动点击**不保证**产生动作，两种情况下它是**静默空操作**——
- *        · 本次运行已花过预算（自动路径先花掉了那一次）⇒ 日志写 budget already spent；
- *        · 根本没有 live 树残缺拒启（`lastStartRefusalCode` 不是该码）⇒ 调用方压根不进来。
- *      另外 userForced **不是**「强制启动」：它只放行证据分级去删指纹，spawn 仍由闸门 A 把关，
- *      即带病的树在重抽取完成前依然起不来（这是安全属性，不是缺陷）。
- *
- * 动作（与闸门 B 的自愈同形，避免两套口径）——顺序**不可换**：
- *   ① 写壳侧损坏标记（不被引擎截断，供后续启动与诊断读取）；
- *   ② 删 .snapshot-fingerprint（EngineManager.invalidateSnapshotFreshness）⇒
- *      下一次冷启动的 `if (!snapshotFresh())` 走完整重抽取；
- *   ③ 清刷新失败账本 ⇒ 避免降级闸门在新局面下用旧账打架；
- *   ④ 写一份**快照前**诊断镜像 ⇒ 拒启取证已在 boot-fail.log，这里补一份可整包取走的现场。
- *
- * **不做什么**（写清以免被当成漏做）：不改闸门 A 的判据，带病的树仍然不被 spawn；不在本函数内
- * 直接调 refreshSnapshot（那会把 2.5GB 解压塞进拒启分支的调用栈，且与冷启动路径争同一次刷新）；
- * 不承诺一次修好——预算用尽或证据不足时如实停在错误页，由用户手动「重试」再走一轮。
- * 与 #240 的降级闸门不冲突：下一次冷启动时 live 仍不完整 ⇒ shouldDegradeRefresh() 返回 false ⇒
- * 不会绕过这次刷新（删除指纹正是为了让那条路径真正走到 refreshSnapshot）。
- *
- * @param activity 宿主（用其 filesDir 与 engineManager）。
- * @param confirmedMissing 闸门 A 的**确诊缺失项**（EngineManager.lastStartRefusalConfirmed）。
- * @param userForced 真 = 用户在错误页显式要求重做运行时（放行证据分级，不放行预算）。
- * @param current 世代校验，恢复途中若已换代则立刻停手。
- */
-internal fun maybeRecoverFromIncompleteLiveRuntime(
-  activity: MainActivity,
-  confirmedMissing: List<String>,
-  userForced: Boolean = false,
-  current: () -> Boolean,
-) {
-  if (!current()) return
-  if (!RuntimeTree.allowStartRecovery(confirmedMissing, runtimeTreeHealedThisRun.get(), userForced)) {
-    val reason = if (confirmedMissing.isEmpty() && !userForced) {
-      "no confirmed missing entry (only low-confidence probes fired, so the automatic path stays put)"
-    } else {
-      "self-heal budget already spent this run"
-    }
-    LogCollector.log("dsh-engine-start", "live runtime incomplete (gate A): " + reason + "; staying at the readable error page")
-    return
-  }
-  // 上面是纯判定（便于单测）；**这里是权威**：CAS 抢输说明另一条线程刚花掉了那一次，
-  // 立刻收手，不得重复恢复。
-  if (!runtimeTreeHealedThisRun.compareAndSet(false, true)) {
-    LogCollector.log("dsh-engine-start", "live runtime incomplete (gate A): lost the one-shot budget race; staying at the readable error page")
-    return
-  }
-  val evidence = confirmedMissing.joinToString(", ")
-  LogCollector.log(
-    "dsh-engine-start",
-    "live runtime incomplete (gate A): clearing fingerprint so the next start re-extracts the runtime; confirmed=" + evidence,
-  )
-  // 每一步各自容错，且**任何一步失败都要留下可归因的落盘记录**：
-  // 旧写法把整段包在一个 try 里，标记写盘一抛（独立评审 D6）就连一条 boot-fail 都没有，
-  // 只剩一句 Log.w——这正是本 issue 反复出现的「失败现场不存在」的同形复发。
-  val stepFailure = runCatching {
-    java.io.File(activity.filesDir, RuntimeTree.DAMAGE_MARKER)
-      .writeText(System.currentTimeMillis().toString() + (0x0A).toChar())
-  }.exceptionOrNull()
-  if (stepFailure != null) {
-    Log.w("dsh-engine-start", "could not write runtime-tree damage marker", stepFailure)
-  }
-  if (!current()) return
-  // 删指纹：即使上面的标记没写成，这一步仍是恢复动作的承重墙，必须继续尝试。
-  val invalidated = activity.engineManager.invalidateSnapshotFreshness()
-  if (!current()) return
-  activity.engineManager.clearRefreshLedger()
-  if (!current()) return
-  // 独立评审 6(b)：删指纹**没成**时把预算**退回去**。
-  //
-  // 为什么必须退：预算的语义是「一次运行内最多重做一次运行时」，用来防止重抽取死循环；
-  // 而 invalidation 失败意味着**根本没安排重做**（没有触发重抽取的载体）。此时若照样烧掉预算，
-  // 自动路径与用户手动点击在本次运行内**双双失效**，用户被钉在错误页——比本 issue 修之前更糟
-  // （修之前只是拒绝，现在变成「拒绝且连出口都烧了」）。退回是安全的：什么都没做，
-  // 也就没有任何循环可防。
-  if (!invalidated) runtimeTreeHealedThisRun.set(false)
-  // 落盘文案必须**如实**反映真做成了什么：删不掉指纹时不能写「下次启动将走完整重抽取」，
-  // 否则复现的是本 issue 第 5 条指出的同形缺陷（文案承诺一个并不存在的动作）。
-  LogCollector.writeBootFail(
-    activity,
-    if (invalidated) "live-runtime-incomplete-recovery" else "live-runtime-incomplete-recovery-blocked",
-    "闸门 A 拒启（live 运行时树残缺，确诊项：" + evidence + "）：" +
-      if (invalidated) {
-        "已删指纹并清刷新账本，下次启动将走完整重抽取；本次不 spawn"
-      } else {
-        "指纹删不掉（存储异常），无法安排重抽取；本次不 spawn"
-      } + (stepFailure?.let { "；损坏标记写入失败=" + it.javaClass.simpleName } ?: ""),
-  )
-  if (!current()) return
-  // 取证镜像放最后：它是最贵的一步（六代 engine.log + 有界 logcat 抽取），
-  // 而且必须在**结果已定**之后取，否则镜像里的 start_refusal_* 还是上一次拒启的值
-  // （独立评审 C7）。best-effort：失败不影响上面的结论。
-  activity.engineManager.mirrorDiagnosticsToShared("live-runtime-incomplete")
-}
-
-/**
- * 启动**成功**时清掉损坏标记（Lead 裁决第 4 条：启动成功即清标记）。
- *
- * 为什么要清：标记的语义是「上次我们判定树坏了」。若树其实已经修好（重抽取成功），
- * 标记留着会让后续诊断误判、也可能让将来新增的读取方做出错误决策。
- * 只删文件，不改预算变量——预算按「每次 app 运行」计，不因成功而重置（同一次运行内不重复自愈）。
- */
-private fun clearRuntimeTreeDamageMarker(activity: MainActivity, current: () -> Boolean) {
-  if (!current()) return
-  try {
-    val marker = java.io.File(activity.filesDir, RuntimeTree.DAMAGE_MARKER)
-    if (marker.exists() && current()) {
-      marker.delete()
-      LogCollector.log("dsh-engine-start", "runtime tree damage marker cleared after a successful boot")
-    }
-  } catch (t: Throwable) {
-    Log.w("dsh-engine-start", "could not clear damage marker: " + t.javaClass.simpleName)
-  }
-}
-
-// ── FX-212.2：启动轮询预算与引导页倒计时文案的同一真源 ────────────────────────
-//
-// 缺陷形态（F-212.2 / E-9）：预算从 30s 提到 90s 时只改了轮询常量，文案仍写死 `60 - s`
-// （s = 剩余秒）——首帧显示「已等待 -30s」，此后每一帧恒偏 30s；把 60 改成 90 而仍留两处
-// 独立常量的做法同样判未修复。这里把预算、步进、上报节拍、文案全部收进同一组符号：
-// [EngineBootClock] 的两个读数互补（waited + remaining = budget），文案只由它派生。
-
-/** 冷启动轮询预算（毫秒）——轮询与文案的**唯一**来源。 */
 internal const val ENGINE_BOOT_BUDGET_MS = 90_000L
 
 /** 轮询步进（毫秒）。 */
@@ -1930,7 +1569,7 @@ internal fun safeModeRestartHint(decision: SafeModeRestartDecision): String = wh
 }
 
 /**
- * 快照事务等待的**如实相位文案**（P1；纯函数，JVM 可反证）。
+ * Linux 事务等待的**如实相位文案**（P1；纯函数，JVM 可反证）。
  *
  * 【为什么它**不在** [safeModeRestartHint] 的取值域内】[safeModeRestartHint] 是
  * [SafeModeRestartDecision] 四值枚举的穷尽 when，语义是「这一步该不该去停旧进程并重新拉起」
@@ -1945,16 +1584,16 @@ internal fun safeModeRestartHint(decision: SafeModeRestartDecision): String = wh
  * @param phase 事务 journal 自述的相（如 STAGED / SWAPPING）
  * @param accountedAgeMs 事务自述开始时间至今的时长；null = journal 没有可用的起始时间
  */
-internal fun snapshotTransactionWaitText(phase: String, accountedAgeMs: Long?): String =
-  "运行时正在解压（快照事务进行中，phase=" + phase + "，已进行约 " +
+internal fun linuxPreparationWaitText(phase: String, accountedAgeMs: Long?): String =
+  "运行时正在解压（Linux 事务进行中，phase=" + phase + "，已进行约 " +
     (accountedAgeMs?.let { (it / 60_000).coerceAtLeast(0L).toString() + " 分钟" } ?: "未知时长") +
     "）：本壳托管的旧引擎仍在运行，事务收口后会自动停止旧引擎并以安全模式清单重建，请保持应用在前台。"
 
 /** 事务自述账龄（毫秒）；journal 没有可用起始时间时返回 0（**不猜**，也不写负值）。 */
-internal fun snapshotTransactionAccountedAgeMs(marker: SnapshotTransaction.Marker?, nowMs: Long): Long =
+internal fun linuxPreparationAccountedAgeMs(marker: LinuxUpgradeTransaction.Marker?, nowMs: Long): Long =
   marker?.startedAt?.takeIf { it > 0L }?.let { (nowMs - it).coerceAtLeast(0L) } ?: 0L
 
-// ── P1（0.14.8）：快照事务窗口内的**有界等待**（定位报告 §2.3/§7）────────────────────
+// ── P1（0.14.8）：Linux 事务窗口内的**有界等待**（定位报告 §2.3/§7）────────────────────
 //
 // 缺陷形态：刷新期间 `flowOwnership.running` 恒为 true（finish 只在启动线程 finally 里跑），
 // 于是 EngineStartFlow.start() 的 `flowOwnership.begin() ?: return` 把请求**静默丢弃**——
@@ -1962,19 +1601,19 @@ internal fun snapshotTransactionAccountedAgeMs(marker: SnapshotTransaction.Marke
 // 正是撞在这堵墙上，用户看到的就是「点了安全模式，引擎没起来」。
 
 /**
- * 等待快照事务**收口**（journal 消失）；true = 已收口，false = 预算内未收口或已换代/销毁。
+ * 等待Linux 事务**收口**（journal 消失）；true = 已收口，false = 预算内未收口或已换代/销毁。
  *
  * 写法与 [awaitEngineHttpReady] 同源：注入式 clock + 硬预算，使「有界」可被 JVM 逐条反证
  * （这条等待最危险的形态是变成无限等——它跑在启动线程上，一旦不受预算约束就会永久挂住）。
  *
- * - 判据 [transactionActive] = `SnapshotTransaction.readMarker(filesDir) != null`：**跨进程真源**。
+ * - 判据 [transactionActive] = `LinuxPreparation.readMarker(filesDir) != null`：**跨进程真源**。
  *   比 `flowOwnership.running` 客观——后者只是本 Activity 实例的内存态，而 MainActivity 未声明
  *   `launchMode`，新实例会绕过它（报告 §2.3 的适用边界）。
  * - [current]：世代/生命周期校验，false 立即收手，不对废弃世代做动作。
  * - 预算用尽 ⇒ 返回 false，**由调用方如实回执**；不得静默（那只是把丢弃挪了个位置）。
  *
  * 预算依据（不给魔数）：报告 §3 的一次全量重解压实测为 **8-12 分钟**，
- * [SNAPSHOT_TRANSACTION_WAIT_BUDGET_MS] 取 16 分钟 = 12 分钟上限 + 4 分钟余量，余量覆盖换树
+ * [LINUX_PREPARATION_WAIT_BUDGET_MS] 取 16 分钟 = 12 分钟上限 + 4 分钟余量，余量覆盖换树
  * 与收尾——提交点是「先写指纹、后清 marker」，Lead 实测该窗口本身约 25s，而事务随时可能从
  * STAGED 推进到 SWAPPING。超预算不算失败：用户看到的是同一条如实中间态文案（不显示成故障），
  * 另在 boot-fail.log 落一条 timeout 痕迹。
@@ -1985,9 +1624,9 @@ internal fun snapshotTransactionAccountedAgeMs(marker: SnapshotTransaction.Marke
  * @param transactionActive 事务是否仍在进行（journal 在场）
  * @param current 世代/生命周期校验
  */
-internal fun awaitSnapshotTransactionSettled(
-  budgetMs: Long = SNAPSHOT_TRANSACTION_WAIT_BUDGET_MS,
-  pollStepMs: Long = SNAPSHOT_TRANSACTION_WAIT_POLL_STEP_MS,
+internal fun awaitLinuxPreparationSettled(
+  budgetMs: Long = LINUX_PREPARATION_WAIT_BUDGET_MS,
+  pollStepMs: Long = LINUX_PREPARATION_WAIT_POLL_STEP_MS,
   now: () -> Long = { System.currentTimeMillis() },
   sleep: (Long) -> Unit = { ms -> if (ms > 0L) Thread.sleep(ms) },
   transactionActive: () -> Boolean,
@@ -2002,11 +1641,11 @@ internal fun awaitSnapshotTransactionSettled(
   }
 }
 
-/** 快照事务等待预算：16 分钟（依据见 [awaitSnapshotTransactionSettled] 的注释）。 */
-internal const val SNAPSHOT_TRANSACTION_WAIT_BUDGET_MS = 16 * 60_000L
+/** Linux 事务等待预算：16 分钟（依据见 [awaitLinuxPreparationSettled] 的注释）。 */
+internal const val LINUX_PREPARATION_WAIT_BUDGET_MS = 16 * 60_000L
 
-/** 快照事务等待步进（毫秒）。 */
-internal const val SNAPSHOT_TRANSACTION_WAIT_POLL_STEP_MS = 1_000L
+/** Linux 事务等待步进（毫秒）。 */
+internal const val LINUX_PREPARATION_WAIT_POLL_STEP_MS = 1_000L
 
 // ── DEVICE-FINDING-4：引擎强制重启后的**有界就绪等待**（纯判据，JVM 可反证）─────────
 

@@ -5,13 +5,10 @@
 不要求 VM/QEMU 运行时，不把低 targetSdk 当作绕过限制的前提。
 本分支可提交实验结果，不执行合并或正式发布。后续 PR 如有，只用于审阅与 CI，不自动合并。
 
-补充构建原则：随包交付的所有可执行程序及必要原生依赖以固定源码自行构建，保留可修改的
-补丁、完整编译参数、来源和测试证据；先落实 PRoot/loader/talloc/shmem，再覆盖解释器、
-Linux 用户空间与开发工具。预编译 NDK/编译器或发行版种子可作为有记录的构建引导工具，
-不能将它们提供的运行时二进制直接混入最终出货闭包并称为已自行编译。
-Linux 工具采用固定发行版源码包及对应构建配方或固定上游源码构建；不能只锁 `.deb`
-摘要而省略 `.dsc`、源码归档、发行版补丁、构建依赖和产物身份。独立编译并不自动修复
-上游缺陷，源码补丁和兼容性证据必须分别登记。
+组件来源按用户最终决定分为两层：宿主 PRoot/loader/talloc/libandroid-shmem 从固定源码
+自编译并保留来源、补丁和工具链证据；客体统一使用 Debian apt 与 npm 的固定包，
+不再要求客体组件自编译。发行版与 npm 预编译件如实登记，不称作本仓源码编译产物。
+具体边界见下文“组件来源原则”。
 
 目标结构：Android 壳直接启动 APK 安装到 `nativeLibraryDir` 的 PRoot/loader 及宿主依赖，
 引擎、Node、shell、包管理器和开发工具统一运行在 Debian/glibc rootfs。
@@ -26,17 +23,21 @@ termux-exec 环境钩子。可审阅并借鉴开源 Android PRoot 补丁，但�
 
 ## 当前交付状态
 
-本轮开始实施完整迁移，按可独立回退的提交拆分。当前首批实现是最终 APK 的原生载荷盘点，
-没有切换 Node/bash 启动路径，没有新增工具，也没有提升 targetSdk。
+当前源码已将主引擎启动切换到 PRoot/Debian，并内置 rootfs、Node、引擎和 home 种子。
+`38f8a9a2` 的来源构建已按用户要求停止，先修复启动与升级问题。修复已完成：
+启动闸门改为 Linux 实例判据、缺件只修受管组件且 rootfs 保留、显式重置与原生数据导出、baseId 与
+asset/磁盘摘要校验、journal 升级事务与隔离子客体试运行、home 只补缺失、旧 Termux 布局迁移与回收、
+PRoot 的 /proc·PTY·link2symlink·canonical bind、`env -i` 后注入变量、包管理器 PATH/前缀/CA 统一、
+旧快照代码与 Linux 设置页下载安装入口下线。Kotlin 1490 项与本地门禁通过；修复后的来源 APK 与设备验收尚未执行。
 下列未完成项仍属本次迁移范围，不作为已交付或已验收功能。
 
 | 阶段 | 交付物与完成判据 | 状态 |
 | --- | --- | --- |
 | P0 实际载荷盘点 | 扫 APK 原生目录和当前快照，支持独立 Linux rootfs/Node 目录；自证、负控；来源链携带报告 | 扫描器、自测与来源接线已实现；`186c7d55` ARM64 来源 APK 报告已生成，628 ELF/511 脚本，仍为 inventory-only |
-| P1 独立 Linux 来源底座 | 固定 Debian snapshot/源码包闭包、双 ABI；源码构建 Android PRoot/loader，不再依赖 Termux bootstrap/包仓 | PRoot/loader/talloc/shmem 双 ABI 已实际自编译并过 ELF 门禁，已接入 Linux 资产和 APK 来源校验协议，完整 Linux 资产与 ARM64 来源 APK 已构建；AVD 首装、模型调用及重启恢复定向通过，其余待实现，见 [构建详档](PROOT-SOURCE-BUILD.md) |
-| P2 壳直接引导 Linux | Kotlin 解包/校验/事务准备 rootfs；不能先起 Termux Node 才安装 Linux；宿主与客体 env 分开 | 已实现 `LinuxGuestBoot`（实例解析、PRoot argv/env、缺件拒绝、模式选择）与 5 项单测；设备复验待来源 APK |
-| P3 引擎/工具统一迁入 Linux | DSH 与原生 addon 使用 Linux ABI；PTY、PTC、Undo、控制台、文件路径和插件桥统一客体启动合同，替代 shell-termux | 待实现 |
-| P4 常用工具补齐 | 下表工具/helper/依赖均从固定源码构建后预装；用户可在客体安装依赖与编译，必须验证新产物实际可运行 | `guest-tools.json` 基线（76 包/55 条探针）已跑通：Debian 13 aarch64 根文件系统 1.2 GB，55/55 命令在客体解释器下返回版本；宿主 addon `flock` 交叉编译并在客体 Node 中 `require()` 成功 |
+| P1 独立 Linux 来源底座 | 固定 Debian snapshot 包闭包，当前客体仅 ARM64；源码构建 Android PRoot/loader，不再依赖 Termux bootstrap/包仓 | PRoot/loader/talloc/shmem 双 ABI 已实际自编译并过 ELF 门禁，已接入 Linux 资产和 APK 来源校验协议，完整 Linux 资产与 ARM64 来源 APK 已构建；AVD 首装、模型调用及重启恢复定向通过，其余待实现，见 [构建详档](PROOT-SOURCE-BUILD.md) |
+| P2 壳直接引导 Linux | Kotlin 解包/校验/事务准备 rootfs；不能先起 Termux Node 才安装 Linux；宿主与客体 env 分开 | 已实现 `LinuxGuestBoot` 与 `LinuxInstanceInstaller`，壳首装直接解包并启动客体；rootfs 只铺底，更新仅替换受管 Node/引擎、补 home 种子并迁移；新来源 APK 设备复验待执行 |
+| P3 引擎/工具统一迁入 Linux | DSH 与原生 addon 使用 Linux ABI；PTY、PTC、Undo、控制台、文件路径和插件桥统一客体启动合同，替代 shell-termux | 源码已切客体启动合同，已删除 Termux 引擎启动分支；npm 提供客体原生依赖，完整 APK 与设备行为待验 |
+| P4 常用工具补齐 | 下表工具/helper/依赖通过 Debian apt/npm 固定包预装；用户可在客体安装依赖与编译，必须验证新产物实际可运行 | `guest-tools.json` 基线（76 包/55 条探针）已跑通：Debian 13 aarch64 根文件系统 1.2 GB，55/55 命令在客体解释器下返回版本；宿主 addon `flock` 交叉编译并在客体 Node 中 `require()` 成功 |
 | P5 收口与平台验证 | 移除 Termux runtime/钩子/来源依赖；隔离旧数据并验证迁移，不原地覆盖用户树；双构建与设备证据 | 待实现 |
 | P6 targetSdk 验证 | 保持当前高 target 验证，不回退到 28；后续提升 SDK 单独验证平台行为 | 待实现 |
 
@@ -50,10 +51,10 @@ ELF 已迁出快照，P1 的 AVD 探针通过也不替代 P2/P3 主启动链迁�
 现有可复用代码：`build-linux-assets.sh` 已构建 Debian 13 rootfs 与 Linux Node；
 `prepare-proot-source-backend.py` 已从本仓固定源码构建回执组装 APK 内 PRoot/loader；`LinuxAssetIO` 提供宿主解包原语；
 `vendor/dsh-linux-runtime` 有客体启动与安装事务逻辑。
-当前 Android 宿主 PRoot/loader/talloc/shmem 已改用固定源码自行构建，不再消费 Termux
-PRoot 二进制包。当前仍有明确缺口：Linux 底座仅 ARM64；Debian rootfs 与 Linux Node
-仍使用有记录的预编译发行版输入，尚未完成全部客体源码构建；Linux 是已启动引擎内的
-可选插件而非壳直接引导的主运行时，主 Node/bash 仍来自 Termux。以上不能标为已完成。
+当前 Android 宿主 PRoot/loader/talloc/shmem 从固定源码自行构建，不再消费 Termux
+PRoot 二进制包；客体 Debian rootfs、Linux Node 和原生 npm 包使用有记录的包管理器输入。
+Linux 已成为主引擎启动路径。旧快照刷新、RuntimeTree/PythonPackages 与 UI 入口仍待在
+新 APK 验证后单独清理；不能仅凭源码切换宣称设备迁移完成。
 
 ## P2/P3 输入审计：客体 boot 需要哪些原生 addon（2026-11-12）
 
@@ -99,8 +100,9 @@ Debian 13 aarch64 的 Node v24.22.0 里 `require()` 成功并导出 `tryLock`，
 ## 客体引擎树（2026-11-12 实测）
 
 `package-guest-engine.py` 已能从 Android 引擎树装配出客体树：保留 JS、裁掉非 linux-arm64 原生变体、
-覆盖自编译的 `node-pty` 与 `node-addon-system`。真实装配结果 **79 MB**（对照 APK 内 Termux 快照
-215 MB），在 Debian 13 aarch64 客体里 `dsh --version` 输出 `0.2.2-rc.1`。
+保留 npm 提供的 `node-pty` linux-arm64 prebuild 与 `node-addon-system-linux-arm64`。
+客体树必须在平台死重剔除之前装配。早期自编译件装配曾在 Debian 客体输出
+`0.2.2-rc.1`；该历史烟测不替代当前 npm 组件 APK 的验证。
 
 ## 客体引擎依赖清单（2026-11-12 实测）
 
@@ -108,8 +110,8 @@ Debian 13 aarch64 的 Node v24.22.0 里 `require()` 成功并导出 `tryLock`，
 
 | 组件 | 客体形态 | 状态 |
 | --- | --- | --- |
-| `@deepseek-ai/node-addon-system`（flock） | glibc/aarch64 `system.node` | 已交叉编译，客体 Node 中 `require()` 通过 |
-| `node-pty` 1.2.0-beta.15 | glibc/aarch64 `pty.node` + `lib/` | 已用 `build-guest-node-pty.py` 交叉编译；客体里 `pty.spawn('/bin/bash')` 输出 `PTY_OK` |
+| `@deepseek-ai/node-addon-system`（flock） | glibc/aarch64 `system.node` | 当前链使用 npm 平台包；早期自编译烟测不作为当前包证据 |
+| `node-pty` 1.2.0-beta.15 | glibc/aarch64 `pty.node` + `lib/` | 当前链保留 npm linux-arm64 prebuild；自编译脚本仅为离线工具 |
 | `node-addon-require-builtin` | 纯 JS（无原生二进制） | npm 包内只有 `lib/index.js`，降级路径可用 |
 | bash / zsh / 其余工具 | Debian 13 包 | 55/55 探针通过，`aarch64-unknown-linux-gnu` |
 | SQLite | Node 内置 `node:sqlite` | 无需 addon |

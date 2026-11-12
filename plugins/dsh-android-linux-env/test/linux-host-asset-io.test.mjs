@@ -591,7 +591,7 @@ test('independent extractor rejects traversal, links, duplicates and invalid XZ'
  }finally{await rm(filesDir,{recursive:true,force:true})}
 })
 
-test('confirmed HTTP mutations satisfy the real bootstrap contract',async()=>{
+test('HTTP lifecycle deep links remain retired even with explicit confirmation',async()=>{
  const filesDir=await tempFilesDir()
  try{
   const asset=await stageBundle(filesDir)
@@ -604,11 +604,11 @@ test('confirmed HTTP mutations satisfy the real bootstrap contract',async()=>{
    await routes.get('/api/android/linux-environment/'+action).handler(req,res)
    return res
   }
-  for(const action of ['install','reinstall','uninstall'])assert.equal((await call(action,false)).code,400)
+  for(const action of ['install','reinstall','uninstall'])assert.equal((await call(action,false)).code,410)
   assert.equal(pluginHost.activations.length,0)
-  for(const action of ['install','reinstall','uninstall'])assert.equal((await call(action,true)).code,200,action)
+  for(const action of ['install','reinstall','uninstall'])assert.equal((await call(action,true)).code,410,action)
   assert.equal((await service.status()).installed,false)
-  assert.equal(pluginHost.activations.length,2)
+  assert.equal(pluginHost.activations.length,0)
  }finally{await rm(filesDir,{recursive:true,force:true})}
 })
 

@@ -163,6 +163,8 @@ sudo chmod 644 "$STAGE/debian-minimal-aarch64.tar.xz"
 NODE_ARCHIVE="$WORK/input/node-v$NODE_VERSION-linux-arm64.tar.xz"
 bash scripts/source-build/retry-curl.sh --fail --location --retry 8 --retry-max-time 600 "https://nodejs.org/dist/v$NODE_VERSION/node-v$NODE_VERSION-linux-arm64.tar.xz" -o "$NODE_ARCHIVE"
 printf '%s  %s\n' "$NODE_SHA" "$NODE_ARCHIVE" | sha256sum --check --strict
+PNPM_VERSION=$(node -p 'require("./scripts/source-build/linux-inputs.json").pnpm.version')
+bash scripts/source-build/retry-curl.sh --fail --location --retry 8 --retry-max-time 600 "https://registry.npmjs.org/pnpm/-/pnpm-$PNPM_VERSION.tgz" -o "$WORK/input/pnpm.tgz"
 python3 scripts/source-build/package-linux-assets.py "$WORK" "$EPOCH"
 qemu-aarch64-static -L "$ROOTFS" "$WORK/node-stage/bin/node" --version | grep -Fx "v$NODE_VERSION"
 cp "$WORK/input/debian-InRelease" "$WORK/provenance/"

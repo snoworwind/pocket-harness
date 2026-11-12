@@ -406,6 +406,7 @@ try {
   const linuxHomeSrc = join(ROOT, '.deploy-tmp', 'snapshot-013', ABI, 'home-seed.tar.xz')
   const nodeTag = `node-glibc-v${JSON.parse(readFileSync(join(ROOT, 'scripts/source-build/linux-inputs.json'), 'utf8')).node}-linux-arm64.tar.xz`
   const bundledLinux = ABI === 'arm64' && existsSync(linuxEngineSrc) && existsSync(join(linuxAssetSrc, 'debian-minimal-aarch64.tar.xz')) && existsSync(join(linuxAssetSrc, nodeTag))
+  if (!bundledLinux) throw new Error('Linux experiment requires ARM64 guest assets; x86_64 Termux fallback is unsupported')
   if (bundledLinux) {
     const target = join(apkDir, 'app', 'src', 'main', 'assets', 'linux')
     rmSync(target, { recursive: true, force: true })
@@ -414,14 +415,9 @@ try {
     copyFileSync(join(linuxAssetSrc, nodeTag), join(target, 'node.tar.xz'))
     copyFileSync(linuxEngineSrc, join(target, 'engine.tar.xz'))
     copyFileSync(linuxHomeSrc, join(target, 'home.tar.xz'))
-    const digest = (p) => createHash('sha256').update(readFileSync(p)).digest('hex')
-    writeFileSync(join(target, 'manifest.json'), JSON.stringify({
-      schemaVersion: 1,
-      rootfsSha256: digest(join(target, 'rootfs.tar.xz')),
-      nodeSha256: digest(join(target, 'node.tar.xz')),
-      engineSha256: digest(join(target, 'engine.tar.xz')),
-      homeSha256: digest(join(target, 'home.tar.xz')),
-    }, null, 2) + '\n')
+    execFileSync(process.platform === 'win32' ? 'python' : 'python3', [
+      join(ROOT, 'scripts/source-build/linux-instance-manifest.py'), target,
+    ], { stdio: 'inherit' })
     log('内置 Linux 资产就位（rootfs/node/engine）')
   }
   const name = `pocket-harness-v${VER}${SUFFIX}-${ABI}.apk`

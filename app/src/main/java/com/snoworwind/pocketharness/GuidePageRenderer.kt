@@ -320,7 +320,6 @@ internal class GuidePageRenderer(private val activity: MainActivity) {
               HintSource.PHASE, sticky = unproven,
             )
             activity.engineFlow.engineRetryCount = 0
-            activity.engineManager.clearRefreshLedger()
             activity.startEngineFlow()
           } else {
             pushHint(
@@ -351,7 +350,6 @@ internal class GuidePageRenderer(private val activity: MainActivity) {
             activity.engineFlow.engineRetryCount = 0 // 手动重试归零自动重试计数
             // 0.14.1 D2：同时清空**跨进程**的快照刷新失败账本。用户显式点「重试」就是要求
             // 「再试一次刷新」；不清账的话降级闸门会让他永远拿不到那次刷新，按钮就成了摆设。
-            activity.engineManager.clearRefreshLedger()
             activity.startEngineFlow()
           }
           }
@@ -532,19 +530,6 @@ internal class GuidePageRenderer(private val activity: MainActivity) {
     // 如实声明（独立评审 C1/C2）：这一次点击**可能什么都不做**——本次运行已花过预算时它是
     // 静默空操作（日志会写 budget already spent）。另外它不是「强制启动」：只放行证据分级去删
     // 指纹，spawn 仍归闸门 A 把关，重抽取完成前带病的树照样起不来（安全属性，非缺陷）。
-    if (engine.lastStartRefusalCode == EngineManager.REFUSAL_LIVE_RUNTIME_INCOMPLETE) {
-      // **必须离开 UI 线程**（独立评审 C6）：恢复动作里含诊断镜像（拷贝六代 engine.log，
-      // 单代有界 2MB）与一次有界 logcat 抽取，**可能阻塞到 10s 级**。本方法运行在
-      // `runOnUiThread` 上，原地调用就是一条真实的 ANR 路径。自动路径本来就跑在启动流的
-      // worker 线程上，这里对齐同一执行上下文；世代校验由 lambda 负责，换代即停手。
-      Thread {
-        maybeRecoverFromIncompleteLiveRuntime(
-          activity,
-          confirmedMissing = engine.lastStartRefusalConfirmed,
-          userForced = true,
-        ) { !activity.isDestroyed && !activity.isFinishing }
-      }.start()
-    }
     // 回执看一小会儿，然后真的以 safe 状态重启（见方法注释：为什么留延时、为什么用 View 的 postDelayed）。
     chrome.root.postDelayed({
       if (activity.isDestroyed || activity.isFinishing || lastGuidePhase != GuidePhase.Error ||

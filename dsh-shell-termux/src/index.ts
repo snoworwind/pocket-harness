@@ -147,7 +147,6 @@ export class TermuxBashExecutor extends LocalBashExecutor {
   private readonly bashPath: string
   private readonly prefix: string
   private readonly home: string
-  private readonly termuxVersion: string
   private readonly extraPath: readonly string[]
   private readonly writeMode: SandboxMode
   private readonly workspaceRoot?: string
@@ -165,7 +164,6 @@ export class TermuxBashExecutor extends LocalBashExecutor {
     this.bashPath = entry.bashPath
     this.prefix = entry.prefix
     this.home = entry.home
-    this.termuxVersion = entry.termuxVersion ?? '0.118.3'
     this.extraPath = entry.extraPath ?? []
     const mode = entry.writeMode ?? 'workspace-write'
     if (!['workspace-write', 'danger-full-access', 'read-only'].includes(mode)) {
@@ -181,14 +179,11 @@ export class TermuxBashExecutor extends LocalBashExecutor {
     return this.writeMode
   }
 
-  /** Stamp Termux's environment and diagnostic permission mode. These values do not constrain bash. */
-  private termuxEnv(mode = this.writeMode): Record<string, string> {
+  /** Debian guest environment and diagnostic permission mode. These values do not constrain bash. */
+  private guestEnv(mode = this.writeMode): Record<string, string> {
     return {
-      PATH: [...this.extraPath, `${this.prefix}/bin`, '/system/bin'].join(':'),
-      LD_LIBRARY_PATH: `${this.prefix}/lib`,
+      PATH: [...this.extraPath, '/opt/node/bin', '/usr/local/bin', '/usr/bin', '/bin', '/usr/sbin', '/sbin'].join(':'),
       HOME: this.home,
-      PREFIX: this.prefix,
-      TERMUX_VERSION: this.termuxVersion,
       SHELL: this.bashPath,
       DSH_WRITE_MODE: mode,
       ...this.workspaceRoot ? { DSH_WORKSPACE: this.workspaceRoot } : {},
@@ -199,10 +194,10 @@ export class TermuxBashExecutor extends LocalBashExecutor {
   /** Labels stay controlled for diagnostics; the real fail-closed check is in execute(). */
   private static readonly FENCE_KEYS = ['DSH_WRITE_MODE', 'DSH_WORKSPACE', 'DSH_SHARED_DIRS'] as const
 
-  /** Stamp the controlled Termux environment onto every request. */
+  /** Stamp the guest environment onto every request. */
   override resolve(request: ShellExecRequest): ShellExecSpec {
     const mode = modeFromPolicy(request, this.writeMode)
-    const fence = this.termuxEnv(mode ?? this.writeMode)
+    const fence = this.guestEnv(mode ?? this.writeMode)
     const user = { ...request.env }
     for (const k of TermuxBashExecutor.FENCE_KEYS) delete user[k]
     const spec = super.resolve({ ...request, env: { ...fence, ...user } })
@@ -309,7 +304,7 @@ export class TermuxBashExecutor extends LocalBashExecutor {
         stderr: { maxBytes: 4096, spill: { maxBytes: 0 } },
       },
       graceMs: PROBE_GRACE_MS,
-      env: { ...this.termuxEnv() },
+      env: { ...this.guestEnv() },
     }
     const handle = this.ctx.subprocess.spawn(spawnSpec)
     const outcome = await handle.done

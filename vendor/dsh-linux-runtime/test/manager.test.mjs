@@ -1077,20 +1077,11 @@ function assertEngineSchema(schema, path = 'schema') {
   if (schema.oneOf !== undefined) schema.oneOf.forEach((child, index) => assertEngineSchema(child, `${path}.oneOf[${index}]`))
 }
 
-test('linux_bash registers schemas the engine schema subset accepts', async () => {
-  const { registerLinuxBash } = await import('../lib/index.js')
+test('offline runtime helpers cannot register the retired linux_bash tool', async () => {
+  const exports = await import('../lib/index.js')
+  assert.equal(exports.registerLinuxBash, undefined)
   const registered = []
-  const ctx = { tools: { register: definition => { registered.push(definition); return () => {} } } }
-  const dispose = registerLinuxBash(ctx, { execute: async () => ({ stdout: '', stderr: '', exitCode: 0 }) })
-  assert.equal(typeof dispose, 'function')
-  assert.equal(registered.length, 1)
-  const [definition] = registered
-  assert.equal(definition.name, 'linux_bash')
-  assertEngineSchema(definition.parameters, 'parameters')
-  assertEngineSchema(definition.output.schema, 'output.schema')
-  assert.deepEqual(definition.output.schema.required, ['stdout', 'stderr'])
-  assert.deepEqual(definition.parameters.required, ['command'])
-  for (const child of Object.values(definition.output.schema.properties)) {
-    assert.equal('required' in child, false, 'per-property required annotations are authoring-only')
-  }
+  const manager = { dispose: async () => {} }
+  applyRuntime({ tools: { register: definition => { registered.push(definition) } }, provide() {} }, { manager })
+  assert.deepEqual(registered, [])
 })

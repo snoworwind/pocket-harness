@@ -3907,3 +3907,19 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
     - **顺序**：客体引擎树必须在“平台死重剔除”之前装配，否则被剔掉的正是客体要用的 linux 包。
     - 自编译脚本（`build-guest-addons.py`/`build-guest-node-pty.py`）保留为离线工具，不接链。
     复验：链脚本语法、Python 回归、门禁通过；下一次来源 APK 出包后按 AVD 清单验收。
+
+690. **删除 APK 快照后必须同时移除页面启动闸门，缺件修复不得重铺用户 rootfs（2026-11-12，实验分支）**
+    现象：新包缺少旧 snapshot.sha256，启动流程与 showWeb 仍读旧指纹，会挡在引导页；
+    实例 node/engine 缺件又会触发 install 整体替换 files/linux，连用户 apt 软件一起丢失。
+    真因：仅替换 EngineManager 的 spawn，遗漏外层启动判据；结构缺件与从未安装共用恢复分支。
+    修法：冷启动只准备内置 Linux 实例，失败带稳定码与明细进入错误页；Web 呈现用实例判据。
+    ensure 只有实例目录不存在时才首装；存量 rootfs/清单损坏保留现场，受管组件缺件仅补组件。
+    显式重置由管理中心确认删除 Linux 软件，未确认或仍有客体进程拒绝执行，home 保留。
+    复验：Kotlin 1478 项、0 失败；数量门禁通过；缺件、坏清单、未知 schema 的用户包保留反证通过。
+    来源 APK 与设备验收尚未执行；升级事务、摘要与旧机制清理仍是后续同轮必做项。
+
+691. **客体执行的三处硬边界：`env -i` 之后才注入、PRoot 必须带 /proc·PTY·link2symlink、home 种子不能覆盖用户文件（2026-11-12/13，实验分支）**
+    现象：引擎变量只加在宿主 ProcessBuilder，进客体被 `env -i` 清空；客体里 `ps`/PTY/`npm install` 行为异常；升级时工厂 home 种子覆盖用户 profile 与凭据。
+    真因：`env -i` 隔离只清环境不清 argv 顺序；PRoot 不自带 /proc、/dev/pts 与 link(2) 兼容；种子解包按文件覆盖写入。
+    修法：`LinuxGuestBoot.withEnvironment` 把变量插到 `env -i` 之后并拒绝 `LD_*`/`PROOT_*`/`TERMUX*` 跨越边界；PRoot argv 增加 `--link2symlink`、`/proc`、`/sys`、`/dev/pts`、`/dev/ptmx` 与 rootfs canonical 自镜像；home 种子改 `LinuxFileTree.mergeHomeSeed`（只补缺失，出厂 `AGENTS.md` 除外）。
+    复验：Kotlin 1490 项 0 失败；`LinuxGuestBootTest`/`LinuxFileTreeTest` 覆盖边界变量、bind 与不覆盖负例。

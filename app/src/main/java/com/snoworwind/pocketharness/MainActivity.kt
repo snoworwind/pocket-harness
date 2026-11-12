@@ -307,7 +307,7 @@ class MainActivity : ComponentActivity() {
   /** 恢复 WebUI（委托 GuidePageRenderer）。 */
   internal fun showWeb() {
     if (userClosedEngine || EngineService.userShutdown || isFinishing || isDestroyed || !webViewReady) return
-    if (engineManager.snapshotFingerprintProblem() != null) return
+    if (!engineManager.linuxInstanceReady()) return
     // 插件装配失败 latch（CONTRACT §4）：latch 期内**不得**把坏页面推回前台。
     //
     // 为什么必须挡在这里（而不是复用 enginePageFailed）：latch 说明「页面装不上插件」这件事

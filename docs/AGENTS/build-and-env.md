@@ -421,7 +421,7 @@ engine 的 checkout/upstream/overlay/patches/build/deploy 步骤集中到 `scrip
 
 实施状态、工具范围和参考项目复核见 [原生迁移账本](NATIVE-RUNTIME-MIGRATION.md)。
 实验分支 PRoot/loader/talloc/shmem 的离线 NDK 源码构建入口及真实编译边界见
-[PRoot 源码构建](PROOT-SOURCE-BUILD.md)；尚未接入现有 APK 组装协议。
+[PRoot 源码构建](PROOT-SOURCE-BUILD.md)；已接入实验分支 Linux 资产与 APK 组装协议。
 来源链在本轮 APK 的注入后快照归一化步骤中生成 `native-runtime-inventory.json`，并将其传递到
 独立验证与最终签名 artifact；PR Gate 执行 `inventory-native-runtime.py --self-test` 和 Python
 自动发现回归。该报告是盘点，不代表宿主程序已经从可写目录迁出或完成设备验收。

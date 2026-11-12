@@ -195,12 +195,14 @@ Engine base 复用的实现与阶段证据保留在 [ENGINE-BASE-2026-10-19.md](
 ## 原生宿主可执行载荷迁移
 
 实验分支目标为免 Root、无 Termux 的完整 Linux/glibc 用户空间，允许 PRoot；用户明确禁止
-合并 main。已增加 APK/快照与独立 Linux rootfs/Node 目录盘点，尚未切换现有
-Node/bash/Undo/PTY/PTC 执行路径，也未补齐全部常用工具。现有 Linux 底座仍依赖 Termux
-PRoot 包且仅 ARM64；来源构建尚需实际产出盘点报告，不能称已脱离 Termux。阶段与判据见
-[原生迁移账本](NATIVE-RUNTIME-MIGRATION.md)。
-实验性的独立 PRoot/loader/talloc/shmem 源码构建已完成双 ABI 编译和同机独立目录字节比对，
-实验分支已接入 Linux 资产链及源码许可协议，完整 Linux 资产构建通过，新 APK/设备运行仍未验证；见 [构建边界](PROOT-SOURCE-BUILD.md)。
+合并 main 和发布。当前源码已将主引擎、控制台、终端、Python/Undo 命令切到客体合同，
+宿主 PRoot/loader/talloc/shmem 自编译，客体组件使用 Debian apt/npm 固定包。
+`38f8a9a2` 的完整本地来源链已按用户要求停止，修复后尚未重新出包；最终 APK 无快照、首装客体启动、
+重启不重铺 rootfs 及 apt 用户包持久化仍未验收。旧快照刷新/事务/运行时树自愈与 Python 快照迁移代码
+已从主源码删除，测试改为 Linux 实例与升级事务矩阵；`linux-inputs.json` 的旧客体编译 pin 已移除。
+阶段与判据见
+[原生迁移账本](NATIVE-RUNTIME-MIGRATION.md)；宿主构建边界见
+[PRoot 源码构建](PROOT-SOURCE-BUILD.md)。
 
 ### 实验分支设备验证缺口（2026-11-12，Android 16 API 36 ARM64 AVD）
 

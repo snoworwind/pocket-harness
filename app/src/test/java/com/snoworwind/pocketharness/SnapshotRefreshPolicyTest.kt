@@ -1,109 +1,62 @@
 package com.snoworwind.pocketharness
 
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNull
-import org.junit.Assert.assertTrue
+import java.io.File
+import org.json.JSONObject
+import org.junit.Assert.*
 import org.junit.Test
 
-/**
- * D2（0.14.1）快照刷新失败账本与降级判据的行为回归。
- *
- * 缺陷（详档 §1.3）：冷启动 `if (!snapshotFresh()) refreshSnapshot(...)`，失败即停在引导页且
- * **没有任何跨进程记账**——`EngineStartFlow.engineRetryCount` 是 #118 的**引擎启动**重试计数，
- * 进程一死即清零，管不到快照刷新。于是同一份快照上的失败形态是「每次冷启动都重跑一次注定失败的
- * 全量刷新、每次同样失败」，用户被无限拦在引导页。
- *
- * 判据必须落在 **live 树完整性**上而不是失败次数：refresh 失败的常见真因是快照缺失/解压不全，
- * 那时「放行」等于拉起一棵不完整的运行时（以「引擎能起但插件缺」的形态静默劣化），比拦住更坏。
- *
- * 纯 JVM（无 Robolectric）。
- */
+/** Former refresh policy baseline now covers frozen-rootfs upgrade and resumable-install behavior. */
 class SnapshotRefreshPolicyTest {
-
-  private val fp = "snap-abc123"
-
-  // ── 账本编解码 ────────────────────────────────────────────────
-
-  @Test
-  fun theLedgerRoundTripsAndIsHumanReadable() {
-    val encoded = SnapshotRefreshPolicy.encode(fp, 3)
-    assertEquals("snap-abc123\t3", encoded)
-    assertEquals(fp to 3, SnapshotRefreshPolicy.parse(encoded))
+  @Test fun identicalAssetsNeverRepeatTheTrialOrUnpack() = LinuxInstallerFixture().use { f ->
+    f.install(); f.reads.clear(); var trials = 0; f.trial = { _, _ -> trials++ }
+    assertTrue(LinuxInstanceInstaller.ensure(f.source(), f.files) is LinuxInstanceInstaller.Result.Ready)
+    assertEquals(0, trials); assertEquals(0, f.reads["linux/rootfs.tar.xz"] ?: 0)
   }
-
-  /** 畸形账本一律 null：**不得**把「读不懂」当成「已失败多次」而误放行。 */
-  @Test
-  fun aMalformedLedgerIsNotTreatedAsFailures() {
-    for (bad in listOf(null, "", "   ", "no-tab", "\t3", "fp\t", "fp\tx", "fp\t-1", "\t")) {
-      assertNull("畸形账本必须判为不可用：$bad", SnapshotRefreshPolicy.parse(bad))
-      assertFalse(
-        "账本不可用时绝不能降级：$bad",
-        SnapshotRefreshPolicy.shouldDegrade(bad, fp, liveComplete = true),
-      )
+  @Test fun candidateTrialRunsBeforeLiveNodeIsReplaced() = LinuxInstallerFixture().use { f ->
+    f.install(); f.trial = { candidate, _ ->
+      assertEquals("node-one", File(f.files, "linux/node/bin/node").readText())
+      assertEquals("node-two", candidate.node.readText())
     }
+    assertTrue(LinuxInstanceInstaller.ensure(f.source("two"), f.files) is LinuxInstanceInstaller.Result.Ready)
   }
-
-  // ── 计数累积与清零 ────────────────────────────────────────────
-
-  @Test
-  fun failuresAccumulateOnTheSameFingerprint() {
-    var raw = SnapshotRefreshPolicy.afterFailure(null, fp)
-    assertEquals(fp to 1, SnapshotRefreshPolicy.parse(raw))
-    raw = SnapshotRefreshPolicy.afterFailure(raw, fp)
-    raw = SnapshotRefreshPolicy.afterFailure(raw, fp)
-    assertEquals("同一份快照上必须累积", fp to 3, SnapshotRefreshPolicy.parse(raw))
+  @Test fun compatibleNewBaseArchiveDoesNotReplaceInstalledAptData() = LinuxInstallerFixture().use { f ->
+    f.install(); File(f.files, "linux/rootfs/user-apt").writeText("keep")
+    val source = f.source("two")
+    val changed = source.copy(open = { path -> if (path == "linux/manifest.json") source.open(path).use { JSONObject(it.bufferedReader().readText()).put("rootfsSha256", "a".repeat(64)).toString().byteInputStream() } else source.open(path) })
+    assertTrue(LinuxInstanceInstaller.ensure(changed, f.files) is LinuxInstanceInstaller.Result.Ready)
+    assertEquals("keep", File(f.files, "linux/rootfs/user-apt").readText())
   }
-
-  /** 换快照（App 升级）即视为新问题：计数必须清零重来，否则一次失败会跨版本继承。 */
-  @Test
-  fun aNewFingerprintResetsTheCount() {
-    var raw = SnapshotRefreshPolicy.afterFailure(null, fp)
-    raw = SnapshotRefreshPolicy.afterFailure(raw, fp)
-    raw = SnapshotRefreshPolicy.afterFailure(raw, "snap-new-999")
-    assertEquals("换快照后必须从 1 重新计", "snap-new-999" to 1, SnapshotRefreshPolicy.parse(raw))
+  @Test fun authenticatedAbsoluteGuestSymlinksSurviveActualExtraction() = LinuxInstallerFixture().use { f ->
+    f.install(); assertEquals("/proc/mounts", java.nio.file.Files.readSymbolicLink(File(f.files, "linux/rootfs/etc/mtab").toPath()).toString())
   }
-
-  // ── 降级判据（三个条件缺一不可）────────────────────────────────
-
-  @Test
-  fun degradationRequiresTheThresholdOnTheSameFingerprint() {
-    val two = SnapshotRefreshPolicy.afterFailure(SnapshotRefreshPolicy.afterFailure(null, fp), fp)
-    assertFalse("两次还不够", SnapshotRefreshPolicy.shouldDegrade(two, fp, liveComplete = true))
-    val three = SnapshotRefreshPolicy.afterFailure(two, fp)
-    assertTrue("达阈且 live 完整 → 降级", SnapshotRefreshPolicy.shouldDegrade(three, fp, liveComplete = true))
-    assertFalse(
-      "账本指纹与当前内嵌快照不一致（换了快照）→ 不得降级，必须真刷一次",
-      SnapshotRefreshPolicy.shouldDegrade(three, "snap-other", liveComplete = true),
-    )
+  @Test fun firstInstallCanResumeAfterProcessDeathWithoutReextractingRootfs() = LinuxInstallerFixture().use { f ->
+    f.trial = { _, _ -> throw AssertionError("process death") }
+    try { LinuxInstanceInstaller.ensure(f.source(), f.files); fail() } catch (_: AssertionError) {}
+    assertTrue(File(f.files, ".linux-stage/.rootfs.ready").isFile)
+    f.trial = { _, _ -> }; f.reads.clear()
+    assertTrue(LinuxInstanceInstaller.ensure(f.source(), f.files) is LinuxInstanceInstaller.Result.Ready)
+    assertEquals(0, f.reads["linux/rootfs.tar.xz"] ?: 0)
   }
-
-  /** 核心反证：**live 不完整时无论失败多少次都不许降级**（否则会拉起缺件的运行时）。 */
-  @Test
-  fun anIncompleteLiveTreeNeverDegradesNoMatterHowManyFailures() {
-    var raw: String? = null
-    repeat(10) { raw = SnapshotRefreshPolicy.afterFailure(raw, fp) }
-    assertFalse(
-      "live 不完整时放行 = 拉起一棵缺件的运行时（幽灵缺陷形态），比拦在引导页更坏",
-      SnapshotRefreshPolicy.shouldDegrade(raw, fp, liveComplete = false),
-    )
-    assertTrue("同一份账本在 live 完整时才降级（证明上面那条不是因为账本本身没达阈）",
-      SnapshotRefreshPolicy.shouldDegrade(raw, fp, liveComplete = true))
+  @Test fun aCorruptCompletedStageIsReextractedRatherThanTrusted() = LinuxInstallerFixture().use { f ->
+    f.trial = { _, _ -> throw AssertionError("process death") }
+    try { LinuxInstanceInstaller.ensure(f.source(), f.files) } catch (_: AssertionError) {}
+    File(f.files, ".linux-stage/rootfs/usr/bin/bash").writeText("poison")
+    f.trial = { _, _ -> }; f.reads.clear()
+    assertTrue(LinuxInstanceInstaller.ensure(f.source(), f.files) is LinuxInstanceInstaller.Result.Ready)
+    assertTrue((f.reads["linux/rootfs.tar.xz"] ?: 0) > 0)
   }
-
-  @Test
-  fun anEmptyFingerprintNeverDegrades() {
-    var raw: String? = null
-    repeat(5) { raw = SnapshotRefreshPolicy.afterFailure(raw, fp) }
-    assertFalse("取不到内嵌指纹（旧构建）时无判据可用，不得降级", SnapshotRefreshPolicy.shouldDegrade(raw, "  ", liveComplete = true))
+  @Test fun longPreparationDoesNotConsumeTheHttpReadinessBudget() = LinuxInstallerFixture().use { f ->
+    var clock = 0L; val progress = mutableListOf<String>()
+    f.trial = { _, _ -> clock += 12 * 60_000L }
+    assertTrue(LinuxInstanceInstaller.ensure(f.source(), f.files) { progress += it } is LinuxInstanceInstaller.Result.Ready)
+    val start = clock
+    assertTrue(awaitEngineHttpReady(processAlive = { true }, probe = { clock - start >= 2_000 }, current = { true }, now = { clock }, sleep = { clock += it }))
+    assertTrue(progress.isNotEmpty()); assertTrue(clock - start < ENGINE_BOOT_BUDGET_MS)
   }
-
-  @Test
-  fun theThresholdIsConfigurableButNeverBelowOne() {
-    assertTrue(SnapshotRefreshPolicy.shouldDegrade(SnapshotRefreshPolicy.encode(fp, 1), fp, true, threshold = 1))
-    assertFalse(
-      "阈值为 0/负值时按 1 处理（不得出现「0 次失败就降级」）",
-      SnapshotRefreshPolicy.shouldDegrade(SnapshotRefreshPolicy.encode(fp, 0), fp, true, threshold = 0),
-    )
+  @Test fun newHomeSchemaFilesAreAddedWithoutReplacingExistingProfiles() = LinuxInstallerFixture().use { f ->
+    f.install(); File(f.files, "home/.dsh/profiles/web/package.json").writeText("user-profile")
+    assertTrue(LinuxInstanceInstaller.ensure(f.source("two", mapOf("home/.dsh/new-schema-file" to "added")), f.files) is LinuxInstanceInstaller.Result.Ready)
+    assertEquals("user-profile", File(f.files, "home/.dsh/profiles/web/package.json").readText())
+    assertEquals("added", File(f.files, "home/.dsh/new-schema-file").readText())
   }
 }

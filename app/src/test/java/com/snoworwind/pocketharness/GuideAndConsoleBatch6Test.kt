@@ -274,7 +274,7 @@ class GuideAndConsoleBatch6Test {
       "引擎启动失败的标题同样",
       flow.contains("\"引擎启动失败（\" + diagnosticsLocationHint(dir) + \"）\""),
     )
-    assertTrue("标题只说事实", flow.contains("GuidePhase.Error,\n                \"运行时更新失败\",") || flow.contains("\"运行时更新失败\","))
+    assertTrue("标题只说事实", flow.contains("\"Linux 环境准备失败\""))
     assertTrue("路径挪到副文案", flow.contains("diagnosticsLocationHint(dir) + \"。可复制该路径或打开控制台查看 engine.log。\""))
   }
 

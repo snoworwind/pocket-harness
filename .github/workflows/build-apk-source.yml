@@ -726,7 +726,7 @@ jobs:
             .deploy-tmp/linux-build/assets
             .deploy-tmp/linux-build/provenance
             .deploy-tmp/linux-build/native-libs
-          key: linux-assets-${{ runner.os }}-${{ hashFiles('scripts/source-build/linux-inputs.json', 'scripts/source-build/linux-source-manifest.json', 'scripts/source-build/build-linux-assets.sh', 'scripts/source-build/package-linux-assets.py', 'scripts/source-build/build-proot-source.py', 'scripts/source-build/proot-source/**', 'scripts/source-build/proot_source_provenance.py', 'scripts/source-build/prepare-proot-source-backend.py', 'scripts/source-build/inventory-native-runtime.py', 'scripts/source-build/linux-backend-packages.json', 'scripts/source-build/ensure-no-rootfs-mounts.py') }}
+          key: linux-assets-${{ runner.os }}-${{ hashFiles('scripts/source-build/guest-tools.json', 'scripts/source-build/verify-guest-tools.py', 'scripts/source-build/linux-debian-snapshot-wget.py', 'vendor/linux-proot/scripts/prepare-rootfs.sh', 'vendor/linux-proot/compat/**', 'scripts/source-build/linux-inputs.json', 'scripts/source-build/linux-source-manifest.json', 'scripts/source-build/build-linux-assets.sh', 'scripts/source-build/package-linux-assets.py', 'scripts/source-build/build-proot-source.py', 'scripts/source-build/proot-source/**', 'scripts/source-build/proot_source_provenance.py', 'scripts/source-build/prepare-proot-source-backend.py', 'scripts/source-build/inventory-native-runtime.py', 'scripts/source-build/linux-backend-packages.json', 'scripts/source-build/ensure-no-rootfs-mounts.py') }}
 
       - name: Build source-owned offline ARM64 Linux assets
         if: env.DSH_ABI == 'arm64' && steps.linux-assets.outputs.cache-hit != 'true'
@@ -746,7 +746,7 @@ jobs:
             .deploy-tmp/linux-build/assets
             .deploy-tmp/linux-build/provenance
             .deploy-tmp/linux-build/native-libs
-          key: linux-assets-${{ runner.os }}-${{ hashFiles('scripts/source-build/linux-inputs.json', 'scripts/source-build/linux-source-manifest.json', 'scripts/source-build/build-linux-assets.sh', 'scripts/source-build/package-linux-assets.py', 'scripts/source-build/build-proot-source.py', 'scripts/source-build/proot-source/**', 'scripts/source-build/proot_source_provenance.py', 'scripts/source-build/prepare-proot-source-backend.py', 'scripts/source-build/inventory-native-runtime.py', 'scripts/source-build/linux-backend-packages.json', 'scripts/source-build/ensure-no-rootfs-mounts.py') }}
+          key: linux-assets-${{ runner.os }}-${{ hashFiles('scripts/source-build/guest-tools.json', 'scripts/source-build/verify-guest-tools.py', 'scripts/source-build/linux-debian-snapshot-wget.py', 'vendor/linux-proot/scripts/prepare-rootfs.sh', 'vendor/linux-proot/compat/**', 'scripts/source-build/linux-inputs.json', 'scripts/source-build/linux-source-manifest.json', 'scripts/source-build/build-linux-assets.sh', 'scripts/source-build/package-linux-assets.py', 'scripts/source-build/build-proot-source.py', 'scripts/source-build/proot-source/**', 'scripts/source-build/proot_source_provenance.py', 'scripts/source-build/prepare-proot-source-backend.py', 'scripts/source-build/inventory-native-runtime.py', 'scripts/source-build/linux-backend-packages.json', 'scripts/source-build/ensure-no-rootfs-mounts.py') }}
 
       - name: Attest reused Linux assets for this commit
         if: env.DSH_ABI == 'arm64' && steps.linux-assets.outputs.cache-hit == 'true'
