@@ -81,3 +81,21 @@ test('negative controls reject short standalone asset retries and removed digest
     source.replace('printf \'%s  %s\\n%s  %s\\n\' "$archive_sha" "$keydir/archive-key-13.asc" "$release_sha" "$keydir/release-13.asc" | sha256sum --check --strict', '# signing key digests omitted'),
   ]) assert.throws(() => checkLinuxAssetWorkflowDownloads(bad), assert.AssertionError)
 })
+
+function checkSourceArchiveInputs(source) {
+  const inputs = source.split('SOURCE_PROOF_INPUTS=(')[1].split('\n)')[0].split(/\s+/)
+  for (const required of ['LICENSE', 'LICENSES',
+    'scripts/source-build/test_native_runtime_inventory.py',
+    'scripts/source-build/proot_source_provenance.py',
+    'scripts/source-build/prepare-proot-source-backend.py']) {
+    assert.ok(inputs.includes(required), `source archive must retain ${required}`)
+  }
+}
+
+test('source archive retains adapter license and build/test dependency inputs', () => {
+  const source = readFileSync(new URL('./build-linux-assets.sh', import.meta.url), 'utf8')
+  checkSourceArchiveInputs(source)
+  for (const required of [' LICENSE LICENSES ', 'scripts/source-build/test_native_runtime_inventory.py']) {
+    assert.throws(() => checkSourceArchiveInputs(source.replace(required, ' ')), assert.AssertionError)
+  }
+})
