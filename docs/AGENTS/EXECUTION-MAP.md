@@ -2073,6 +2073,7 @@ scripts/source-build/read-apk-snapshot.py
 vendor/dsh-undo-savepoint/test/import-plaintext.test.mjs
 plugins/dsh-linux-bootstrap/test/github-limits.test.mjs
 plugins/dsh-linux-bootstrap/test/client-http.test.mjs
+plugins/dsh-linux-bootstrap/test/reactivate.test.mjs
 scripts/source-build/linux-plugin-dependencies.test.mjs
 plugins/dsh-linux-bootstrap/test/github-limits-negative-control.mjs
 app/src/main/java/com/snoworwind/pocketharness/EngineTransport.kt
