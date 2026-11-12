@@ -1685,6 +1685,10 @@ class EngineManager(private val context: Context, private val pickToken: String?
     LogCollector.markBootStart(context, engineHeapMb(deviceTotalRamMb()))
     watchEngineListen()
     val guestEnv = mapOf(
+      // 引擎的终端工具按 SHELL 拉起用户 shell：这里必须是客体 Debian 的 bash，
+      // 否则 subprocess-local 会退回 Android/宿主路径。
+      "SHELL" to "/bin/bash",
+      "TERM" to "xterm-256color",
       "DSH_APP_VERSION" to BuildConfig.VERSION_NAME,
       "DSH_APP_VERSION_CODE" to BuildConfig.VERSION_CODE.toString(),
       "DSH_FILES_DIR" to context.filesDir.absolutePath,

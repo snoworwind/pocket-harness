@@ -109,6 +109,8 @@ internal object LinuxGuestBoot {
       "-b", "${instance.node.absolutePath}:${instance.node.absolutePath}",
       "-b", "${instance.engine.absolutePath}:$GUEST_ENGINE_ROOT",
       "-b", "${paths.homeDir.absolutePath}:${paths.homeDir.absolutePath}",
+      // 引擎资产、急救 CLI 等宿主私有文件按原路径可见，避免再造一套路径映射。
+      "-b", "${paths.filesDir.absolutePath}:${paths.filesDir.absolutePath}",
       "/usr/bin/env", "-i",
       "HOME=/root",
       "PATH=$GUEST_PATH",
