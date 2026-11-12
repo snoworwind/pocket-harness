@@ -403,6 +403,7 @@ try {
   // 替代 Termux 快照；x86_64 QA 档没有客体资产，仍走旧快照。
   const linuxAssetSrc = join(ROOT, '.deploy-tmp', 'linux-build', 'assets')
   const linuxEngineSrc = join(ROOT, '.deploy-tmp', 'snapshot-013', ABI, 'engine-glibc.tar.xz')
+  const linuxHomeSrc = join(ROOT, '.deploy-tmp', 'snapshot-013', ABI, 'home-seed.tar.xz')
   const nodeTag = `node-glibc-v${JSON.parse(readFileSync(join(ROOT, 'scripts/source-build/linux-inputs.json'), 'utf8')).node}-linux-arm64.tar.xz`
   const bundledLinux = ABI === 'arm64' && existsSync(linuxEngineSrc) && existsSync(join(linuxAssetSrc, 'debian-minimal-aarch64.tar.xz')) && existsSync(join(linuxAssetSrc, nodeTag))
   if (bundledLinux) {
@@ -412,12 +413,14 @@ try {
     copyFileSync(join(linuxAssetSrc, 'debian-minimal-aarch64.tar.xz'), join(target, 'rootfs.tar.xz'))
     copyFileSync(join(linuxAssetSrc, nodeTag), join(target, 'node.tar.xz'))
     copyFileSync(linuxEngineSrc, join(target, 'engine.tar.xz'))
+    copyFileSync(linuxHomeSrc, join(target, 'home.tar.xz'))
     const digest = (p) => createHash('sha256').update(readFileSync(p)).digest('hex')
     writeFileSync(join(target, 'manifest.json'), JSON.stringify({
       schemaVersion: 1,
       rootfsSha256: digest(join(target, 'rootfs.tar.xz')),
       nodeSha256: digest(join(target, 'node.tar.xz')),
       engineSha256: digest(join(target, 'engine.tar.xz')),
+      homeSha256: digest(join(target, 'home.tar.xz')),
     }, null, 2) + '\n')
     log('内置 Linux 资产就位（rootfs/node/engine）')
   }

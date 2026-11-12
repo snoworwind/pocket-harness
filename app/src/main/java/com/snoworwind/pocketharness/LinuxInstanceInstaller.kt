@@ -101,6 +101,22 @@ internal object LinuxInstanceInstaller {
           )
         }
       }
+      // 用户态种子：home/.dsh 初始 profile 等原本随 Termux 快照解压；首启一次性落地，
+      // 之后用户数据只增不改，重复安装不再覆盖。
+      val homeMarker = File(filesDir, ".linux-home-seeded")
+      if (!homeMarker.exists()) {
+        onProgress("解包初始用户数据…")
+        assets.open("$ASSET_ROOT/home.tar.xz").use { stream ->
+          SnapshotExtractor.extract(
+            input = stream,
+            totalBytes = 0,
+            dest = filesDir,
+            onProgress = { _, _ -> },
+            runtimeRoot = filesDir,
+          )
+        }
+        homeMarker.writeText(record.optString("homeSha256"))
+      }
       File(stage, MANIFEST_NAME).writeText(record.toString(2) + "\n")
       SnapshotFs.deletePath(root)
       if (!stage.renameTo(root)) throw IOException("无法把 Linux 实例暂存目录替换到位")

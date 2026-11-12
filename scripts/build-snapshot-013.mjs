@@ -1243,6 +1243,19 @@ if (ABI === 'arm64') {
     console.error(`客体引擎树装配失败：${result.stderr || result.stdout}`)
     process.exit(1)
   }
+  // 用户态种子（home/.dsh 初始 profile、硬插件清单、AGENTS.md、gitconfig）原本随 Termux
+  // 快照解压；快照不再出货后必须单独作为内置资产落地。
+  const homeSeed = join(OUT_DIR, 'home-seed.tar.xz')
+  const homeTar = spawnSync('bash', ['-c',
+    `cd ${JSON.stringify(join(STAGE, 'root'))} && tar -c --mtime=@${SOURCE_DATE_EPOCH} home/.dsh home/.gitconfig 2>/dev/null | xz -T${XZ_THREADS} -6 > ${JSON.stringify(homeSeed)}`],
+  { encoding: 'utf8' })
+  if (homeTar.status !== 0) {
+    console.error(`home 种子打包失败：${homeTar.stderr || ''}`)
+    process.exit(1)
+  }
+  writeFileSync(join(OUT_DIR, 'home-seed.sha256'),
+    createHash('sha256').update(readFileSync(homeSeed)).digest('hex'))
+  log(`home 种子就绪：${homeSeed}`)
   const engineArchive = join(OUT_DIR, 'engine-glibc.tar.xz')
   const engineSha = createHash('sha256').update(readFileSync(engineArchive)).digest('hex')
   writeFileSync(join(OUT_DIR, 'engine-glibc.sha256'), engineSha)
