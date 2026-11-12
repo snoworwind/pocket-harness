@@ -76,6 +76,11 @@ DSH 会在原生 addon 处失败。** 因此 P2 不能只写“Kotlin 起来跑 
    引擎在加载 addon 或 `better-sqlite3` 一类原生模块时失败——这属于 P3 的范围，不能当作
    P2 验收通过。
 
+选项 B 的首个可验证产物（2026-11-12）：`scripts/source-build/build-guest-addons.py` 已能从固定
+harness 源码交叉编译 `@deepseek-ai/node-addon-system` 的 `flock`（glibc/aarch64），产物在
+Debian 13 aarch64 的 Node v24.22.0 里 `require()` 成功并导出 `tryLock`，收据记录源码、头文件、
+编译器摘要与 ELF 事实。尚未接入 Linux 资产打包，`landlock-run`（musl）与其余 addon 未完成。
+
 对后续实现的要求（写入判断依据，不是承诺）：
 
 - 客体引擎树需要**按 linux-arm64 目标单独组装**：保留该平台的可选依赖，或从源码为

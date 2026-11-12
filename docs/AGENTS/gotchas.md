@@ -3821,3 +3821,18 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
     修法：在全局与 additionalSources 两份文件映射登记新测试和当前入口摘要，并登记本地修改原因；
     保持文件集合、摘要与符号链接拒绝规则。复验：`check-linux-sources.mjs --self-test`
     覆盖正控、等长投毒、未登记输入与符号链接负控；来源 APK 与设备复验另行记录。
+683. **客体原生 addon 不是“改个路径就能用”：装载树是按构建机平台裁掉的（2026-11-12，实验分支）**
+    现象：审计 P2/P3 时发现，即便 PRoot 能在 Debian 里跑起 glibc Node，引擎树里也没有客体
+    ABI 的原生 addon——`node-addon-system`、`require-builtin` 在 Android 上走的是降级分支。
+    真因：引擎包在 linux-x64 构建机上按 `os/cpu` 过滤可选依赖，`native/system/packages/linux-arm64`
+    被判 `Unsupported platform` 丢弃；`17d7ed22` 完整来源链日志里这类告警 361 行。裁剪发生在
+    打包阶段，和运行期 ABI 选择无关。
+    修法（选项 B，进行中）：`build-guest-addons.py` 从固定 harness 源码交叉编译客体 addon，
+    校验 ELF（AARCH64、DYN、无 PT_INTERP、NEEDED 仅 libc/ld）、记录编译器与头文件摘要并出收据；
+    已产出 `flock` 的 `system.node`（71 KB，仅 `libc.so.6`），并在 Debian 13 aarch64/glibc
+    Node v24.22.0（qemu-user，`--jitless`）里 `require()` 成功、导出 `tryLock`。
+    边界：静态 musl 的 `landlock-run` 需要 musl 交叉工具链，收据里登记为 deferred；
+    产物尚未接入 Linux 资产/快照打包，也没有设备证据；`node-addon-require-builtin` 与 SQLite
+    相关 addon 的源码获取/重建方式未定，不能算已补齐。
+    证据：`.deploy-tmp/native-runtime-p0/guest-addons/`（`system.node`、`guest-addons.json`、
+    `load-proof.log`）；自证 `python3 scripts/source-build/build-guest-addons.py --self-test`。
