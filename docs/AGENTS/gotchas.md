@@ -3696,3 +3696,9 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
     真因：Linux 产物 provenance 绑定 APK project commit；缓存 key 不含 commit 时跨 commit 命中，marker 仍是旧值。
     修法：Linux 缓存用 pinned 输入内容键；命中后 `attest-linux-cache.mjs` 校验 release manifest/摘要与 provenance 输入逐字节一致，再把 `project-source-commit.txt` 改写为当前 commit 并写 `reused-from-commit.txt`/`reuse-attestation.json`。injected 快照 key 只按源快照 sha + 插件/补丁/脚本输入（下游绑 Harness source manifest，不绑 project commit）。
     复验：同 commit 重跑命中并过 attestation；跨 commit 在输入一致时复用、输入变化时 miss。
+
+670. **原生终端网格沿用引擎默认 80×24，长输入写到屏幕外、退格擦掉提示符（2026-11-12 实修）**
+    现象：手机竖屏侧栏终端里 `stty size` 恒为 `24 80`、`echo $COLUMNS` 为 80，但屏幕一行只放得下约 40 列。输入到行尾后尾部「消失」，退格把提示符本身擦掉；应用 `stty cols N` 后长行折行仍会错位、重绘内容散落到相邻行。
+    真因：`TerminalViewHost.openOnUi` 把页面传来的 `info.cols/rows`（PTY 自己的旧值，引擎默认 80×24）直接交给 `TerminalView.open()` 建网格；而 `onSizeChanged` 只在「新网格 != 当前网格」时回报 resize，视图先被 1×1 初始布局触发一次、open 又用 80×24 覆盖，之后若尺寸不再变化就再也不会把真实列数推给 PTY。页面侧的 `__dshTermResize → model.resize` 因此从未收到真实尺寸。
+    修法：`TerminalView.open()` 在视图已布局时以 `terminalGridFor(width,height,cellW,cellH)` 为准（页面值只作兜底）并在 `nativeCreate` 后无条件回报一次；新增 `syncGrid(force)`；`TerminalViewHost` 在 open 后、bounds 应用后、可见性恢复时各补一次同步（复用时强制）。`terminalGridFor` 是纯函数，JVM 单测锁定推导与最小值/非法度量边界。
+    复验：`TerminalGridTest` 覆盖 1320×2400/33×55 → 40×43、未布局/过小返回 null、NaN/Infinity/0/负值拒绝、不足一格向下取整；设备层待来源链出 APK 后按横竖屏、系统字体大小、键盘弹出/收起四种情况看 `stty size` 是否跟随可见网格。

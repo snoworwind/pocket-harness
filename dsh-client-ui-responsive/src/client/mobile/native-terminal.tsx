@@ -243,7 +243,8 @@ function NativeTerminalBody(props: any): ReactNode {
     }
   }, [])
 
-  // 终端信息就绪后创建原生视图（cols/rows 取自 Host 的真实网格）。
+  // 终端信息就绪后创建原生视图。cols/rows 只是「视图尚未布局」时的兜底：
+  // 壳侧 open()/syncGrid() 会优先用视图自身布局算出的网格，并把结果回推 PTY。
   useEffect(() => {
     const info = state?.info
     if (info === undefined) return
