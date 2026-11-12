@@ -27,6 +27,39 @@ internal const val TERMINAL_DEFAULT_COLOR = 0xFFFFFFFF.toInt()
 internal fun terminalArgb(rgb: Int): Int =
   if (rgb == TERMINAL_DEFAULT_COLOR) rgb else rgb or 0xFF000000.toInt()
 
+/** 终端网格（列 × 行）。 */
+internal data class TerminalGrid(val cols: Int, val rows: Int)
+
+internal const val MIN_TERMINAL_COLS = 2
+internal const val MIN_TERMINAL_ROWS = 1
+
+/**
+ * 由视图像素尺寸与单元格尺寸推导终端网格。
+ *
+ * 这是「PTY 尺寸以视图为准」的唯一判据：只要视图已经完成布局，页面传来的
+ * cols/rows 就不可信——那是 PTY 自己的旧值，常见是引擎默认的 80×24。
+ * 之前 open() 直接用这个旧值建网格，随后 onSizeChanged 又只在「尺寸相对上一次
+ * 发生变化」时才回报，于是 PTY 永远停在 80×24，而屏幕上只显示得下约 40 列：
+ * zle 按 80 列算光标，长输入尾部写到屏幕外、退格把提示符擦掉。
+ *
+ * 尺寸尚未布局（宽或高为 0）、连最小网格都放不下（初始 1×1 布局）或单元格
+ * 尺寸非法时返回 null，调用方回退到传入值。
+ */
+internal fun terminalGridFor(
+  widthPx: Int,
+  heightPx: Int,
+  cellWidth: Float,
+  cellHeight: Float,
+): TerminalGrid? {
+  if (widthPx <= 0 || heightPx <= 0) return null
+  if (!cellWidth.isFinite() || !cellHeight.isFinite()) return null
+  if (cellWidth <= 0f || cellHeight <= 0f) return null
+  val cols = (widthPx / cellWidth).toInt()
+  val rows = (heightPx / cellHeight).toInt()
+  if (cols < MIN_TERMINAL_COLS || rows < MIN_TERMINAL_ROWS) return null
+  return TerminalGrid(cols = cols, rows = rows)
+}
+
 internal class TerminalView(context: Context) : View(context) {
 
   /** 用户输入（已编码为终端字节）。 */
@@ -92,12 +125,36 @@ internal class TerminalView(context: Context) : View(context) {
     if (fg != null) defaultFg = fg
     if (bg != null) defaultBg = bg
     setBackgroundColor(defaultBg)
-    cols = max(2, initialCols)
-    rows = max(1, initialRows)
+    measureCell()
+    // 视图若已有真实布局尺寸，就以视图为准；页面传来的 cols/rows 只是
+    // 「还没布局」时的兜底（它们是 PTY 的旧值，可能是 80×24）。
+    val measured = terminalGridFor(width, height, cellWidth, cellHeight)
+    cols = measured?.cols ?: max(MIN_TERMINAL_COLS, initialCols)
+    rows = measured?.rows ?: max(MIN_TERMINAL_ROWS, initialRows)
     handle = TerminalNative.nativeCreate(cols, rows)
     cells = null
     scrollLine = null
     scrollOffset = 0
+    // 打开后无条件回报一次：重挂/复用时视图可能早已布局完毕，
+    // 没有后续 onSizeChanged，只靠它会让 PTY 永远收不到真实尺寸。
+    onResized?.invoke(cols, rows)
+    invalidate()
+  }
+
+  /**
+   * 以当前布局尺寸重算网格并同步 PTY。
+   * @param force 即使网格没变也回报一次（重挂、页面刚连上、可见性恢复时补推）。
+   */
+  fun syncGrid(force: Boolean) {
+    if (handle == 0L) return
+    measureCell()
+    val measured = terminalGridFor(width, height, cellWidth, cellHeight) ?: return
+    if (!force && measured.cols == cols && measured.rows == rows) return
+    cols = measured.cols
+    rows = measured.rows
+    cells = null
+    TerminalNative.nativeResize(handle, cols, rows)
+    onResized?.invoke(cols, rows)
     invalidate()
   }
 
@@ -122,11 +179,11 @@ internal class TerminalView(context: Context) : View(context) {
   override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
     super.onSizeChanged(w, h, oldw, oldh)
     if (w <= 0 || h <= 0) return
-    val newCols = max(2, (w / cellWidth).toInt())
-    val newRows = max(1, (h / cellHeight).toInt())
-    if (newCols == cols && newRows == rows) return
-    cols = newCols
-    rows = newRows
+    measureCell()
+    val measured = terminalGridFor(w, h, cellWidth, cellHeight) ?: return
+    if (measured.cols == cols && measured.rows == rows) return
+    cols = measured.cols
+    rows = measured.rows
     cells = null
     if (handle != 0L) {
       TerminalNative.nativeResize(handle, cols, rows)

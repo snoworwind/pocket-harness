@@ -4,6 +4,7 @@
 
 ## 当前入口
 
+- **原生侧栏终端：选区/复制、双指缩放未实现（2026-11-12）**：当前只有逐行拖动 + 惯性滚动；OMZ 彩色提示符、引导卡浅色/横屏与终端核心路径已在 0.15.2 真机验证，但完整 §2.1 CDP/ADB 矩阵未执行，Release 说明按未验收层记录。模型侧 bash/terminal 工具未改。
 - **route-auth 扫描器未识别 JavaScript 正则字面量（2026-11-03，静态审查待复现）**：`scripts/check-api-route-auth.mjs::stripSourceComments()` 先识别注释、再识别引号字符串，但不识别正则字面量。正则中的引号可能使扫描器进入字符串分支并把后续注释留在输出；鉴权调用形态随后通过 `includes` 查找，理论上可能把注释里的 guard 计作实际调用。源码注释当前称此边界“只会误判红”，但这项结论尚无正则字面量反例支撑。尚未运行针对性夹具，故标为**潜在假绿、未复现**，不得宣称已证实绕过或门禁可靠。下一步单独补 lexer 处理与注释 guard 负控，运行 `node scripts/check-api-route-auth.mjs --self-test` 和一条受控负控，并复核真实扫描输入面；修复前保留门禁现状、不把 #1396 helper 直接复制进来。
 - **无障碍节点回收尚缺发布设备证据（2026-11-05，上游 #1361/#1510/#1521/#1522）**：节点 lease、快照代际回收、API<33 守卫与在途 teardown 排空已在当前实现分支加入，JVM/静态/CI 证据见[吸收计划 §30](UPSTREAM-ABSORPTION-PLAN-2026-10-20.md#30-2026-11-05-无障碍节点生命周期回收审计-上游-1361-1510-1521-1522)。本轮未做 APK/CDP/ADB 设备验证；进入正式 Release 时默认补最终 APK 三层验证，若明确豁免，Release 记录必须列出未执行层、原因与剩余风险，且不得记为通过。
 - **2026-10-24 R3 复审二轮登记的残余面（坑 546/548 复审发现，未修复）**：① LogSanitizer 的分块边界处理只覆盖 PEM 类——`readEngineLog` 按 256KB 切 chunk，`sk-` 密钥/Authorization 头/环境变量导出行被切在边界时「带标记的半段」被打码、另一半段不匹配任何规则，明文落共享存储日文件；修复需要跨 tick 的 carry-over 状态（保留尾部残行拼入下一 chunk）而非逐 chunk 正则，属设计级改动，登记待独立 PR。② check-gate-skips 的「全白名单一致」断言硬编码同一份 7 项清单自镜像比对——新增支持 `--require` 的门禁若忘传严格档，该断言不可见（漏检方向）；根治需从 check-release-gates 的实际传参行解析清单再做差集。③（坑 549 复审追加）凭据键值掩码的 JSON **转义**形态（`\"password\":\"x\"`，`String(d.arguments)` 一类 JSON 序列化后再掩的文本）键与冒号间被反斜杠隔开，桥侧 maskCredentialShapes 与壳侧 LogSanitizer 的键值规则都不掩——桥侧只影响瞬态 .live.ndjson 显示路径（audit.ndjson 掩解析后的原始值已覆盖；厂商密钥/Bearer 形态仍被各自规则掩住），壳侧日志行同族形态同理；根治需在两处规则统一支持 `\\?` 前缀容错或改为解析后掩码。见 [R3 修复账本](SECURITY-REMEDIATION-2026-10-24-R3.md) 复审二轮段与全量复审轮段。
@@ -203,14 +204,14 @@ PRoot 包且仅 ARM64；来源构建尚需实际产出盘点报告，不能称�
 
 ### 实验分支设备验证缺口（2026-11-12，Android 16 API 36 ARM64 AVD）
 
-- 首个真机链路缺陷已修：首装时原生 PRoot 探测的 cwd 不存在会误报 `ENOENT`，见坑位 673；
+- 首个真机链路缺陷已修：首装时原生 PRoot 探测的 cwd 不存在会误报 `ENOENT`，见坑位 679；
   修复后 Linux 环境可安装，health 探针在 PRoot 里跑通共享 glibc Node（`v24.22.0`）。
 - **工具注册与重启恢复定向验证已通过**：来源提交 `186c7d55` 的 ARM64 APK
   （SHA-256 `61d7eef579933e4e5937c5b8e3594f1cf3f7ab5ea9f6c000e23f5d5da2b386e0`）
   在 Android 16 API 36 ARM64 AVD（host GPU）卸载旧版后安装，Linux 首装健康。
   实际模型会话记录 4 次成功的 `linux_bash` 调用；首次生成并回读 Debian 13/glibc 2.41/
   Node v24.22.0 报告，应用重启后自动恢复同一 runtime 实例，回读文件的 908 字节与
-  SHA-256 均保持一致。schema 与恢复修复原因见坑位 674、675；命令、原始日志、截图与
+  SHA-256 均保持一致。schema 与恢复修复原因见坑位 680、681；命令、原始日志、截图与
   独立文件核验见 `.deploy-tmp/native-runtime-p0/resume-validation.md`。
   这是单台 AVD 的定向实验验证；未覆盖 ARM64 真机、横屏、x86_64、更新/重装/卸载、
   apt/dpkg、原生扩展与编译产物执行，不能据此称完整 Linux 迁移或正式发布验收完成。

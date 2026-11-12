@@ -5,6 +5,8 @@
 > grep 用法：`grep -n "<文件名>.kt" docs/AGENTS/modules.md`。行号随版本漂移，以函数名为准。
 > 与 docs/AGENTS/ARCHITECTURE.md 冲突时以 ARCHITECTURE.md 为准。
 
+原生侧栏终端（2026-11-12）：`TerminalNative.kt`（libvterm JNI 绑定、`loadError`/`available`、screen/scrollback/cursor externals）、`TerminalView.kt`（Canvas 渲染、SGR/宽字符、IME、拖动/惯性滚动、`terminalArgb` 的 RGB→ARGB 边界、`terminalGridFor` 网格推导与 `syncGrid` 尺寸回推）、`TerminalViewHost.kt`（Activity 根布局 overlay、`onUi` 线程封送、owner 复用、bounds/visible/output/focus/close）、`TerminalStageBounds.kt`（stage 矩形纯函数）。客户端 `dsh-client-ui-responsive/src/client/mobile/native-terminal.tsx` 注册右侧栏 tab、引导卡（主题变量 + shell 选择）、可见性节拍与收尾。来源链 `scripts/source-build/attest-linux-cache.mjs` 负责 Linux 缓存复用的自证。
+
 ## 4. 目录与源文件作用（关键函数带代码位置；文件行数随版本变化，以函数名为准）
 
 > **维护者文档（权威登记处，0.13.5 起迁入 docs/AGENTS/）**：`docs/AGENTS/ARCHITECTURE.md`（.kt 模块地图 + 依赖方向 + assets 结构 + manifest 组件）/ `docs/AGENTS/BRIDGE-API.md`（桥协议 + 通道 + 增量节）/ `docs/AGENTS/ANDROID-API-USAGE.md`（android.* 按域分组 + API 等级守卫点）/ `docs/AGENTS/DEPENDENCIES.md`（gradle 依赖 + 升级策略）/ `docs/AGENTS/RUNTIME-PATCHES.md`（assets/patched 文件登记 + 构建期 patches 分工）。本节保留速查职能，与五文档冲突时以文档（源码 grep 实证）为准。

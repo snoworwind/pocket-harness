@@ -11,6 +11,7 @@
 | Termux基线 | 见下方生成区的 BuildConfig.TERMUX_VERSION 源声明。 |
 | 签名 | 发布 APK 通过 `POCKET_SIGNING_KEYSTORE_BASE64` / `POCKET_SIGNING_KEYSTORE_PASSWORD` Secret 使用独立 PKCS12 密钥；明文私钥不入库，最终 APK 必须匹配 `keystore/pocket-harness-cert-sha256.txt`。 |
 | lint | checkReleaseBuilds=false / abortOnError=false，不等于功能或安全门禁通过。 |
+| 原生终端 VT | libvterm `934bc2f`（vendored，MIT；见 `THIRD_PARTY_NOTICES.md`，APK 内含 `assets/licenses/libvterm.txt`）。 |
 
 ## 2. Gradle依赖
 

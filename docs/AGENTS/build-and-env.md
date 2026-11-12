@@ -397,13 +397,15 @@ engine 的 checkout/upstream/overlay/patches/build/deploy 步骤集中到 `scrip
 
 `gen-model-catalog.mjs` 读取厂商条目声明的 `id`，不能把 pi-ai 1.1 的 `chat:<id>` 索引当成模型 id。构建后用真实生成目录跑插件测试；最小夹具不能代替这一层。根因及负控见 `gotchas.md` 坑 450。
 
-## Engine base 复用（2026-10-19）
+## Engine base 复用（2026-11-12 现状）
 
-`build-base.yml` 只跑 engine：`engine-base.mjs plan` 固定 key、`build-engine.sh` 构建、双 replica 各自 `capture`，`compare` 对实际输出树逐文件比对后才发 `base-lock.candidate.json` 并写 cache。`build-apk-source.yml` 用同一 key 恢复；命中则 `materialize`，未命中且锁可信时失败关闭，无锁时才从源码构建。`base-lock.json` 是仓内信任根；base 不含 APK、签名密钥或项目插件产物。
+`build-base.yml` 现在是 `build-apk-source.yml` 通过 `workflow_call` 调用的 base 阶段（也可单独 `workflow_dispatch` 预热）：`resolve` 用 `engine-base.mjs plan` 算内容 key；稳定缓存 `base-engine-<key>` 命中时 `reuse-self` 校验 manifest（独立双副本证明、replica 列表、payload 逐文件哈希）；未命中才在 `build` 的两个 replica 构建，`compare` 比对后发布稳定 key（带 sha 的键只作辅助）。`build-apk-source.yml` 的 `base` job 恢复稳定键并由 `materialize-self` 解包；`base-lock.json` 已不再被消费链读取，人工 lock 层由自证取代。base 不含 APK、签名密钥或项目插件产物。
 
 两条 workflow 的 cache `path` 必须逐字相同：`build-base.yml` 保存 `.deploy-tmp/base-cache`，来源链也必须从该路径 restore 并执行 `materialize`。Actions cache version 包含缓存路径和压缩工具；cache key 相同但路径不同仍会 miss。回归由 `node scripts/source-build/engine-base.mjs --self-test` 与 `node --test scripts/source-build/engine-base-workflow.test.mjs` 覆盖，后者含跨 workflow 路径错配负控。
 
-实跑状态：PR #51、#61、#62、#63、#64 已合并；main `4e14d68` 上 build-base run 39357008785 的独立双构建、完整 tree compare、cache 保存成功，锁 key 为 `engine-v1-941e395d…7a28`。真实候选在 Linux gate 容器通过 `materialize` 与 345 packages / 2435 links 检查。run 39360009635 的两路 replica 均实际 cache hit 且 `materialize` 通过；PR #64 用受树回执保护的 `harness-vendor-lock-reconciliation.json` 固定上游 Harness 来源身份，修复缓存源码没有嵌套 `.git` 时 Git 向上误读 Pocket Harness HEAD 的问题。main run 39361687578 又证明 Termux base 与离线 Linux 资产都能通过，但两个副本在 runtime snapshot 的 `pi-toolcall` 行为门禁因缺少 `partial-json` 同步失败，Release job 按依赖关系跳过，没有创建草稿。根因是 cache hit 跳过 `build-engine.sh` 后 snapshot builder 仍读取仓库原始 overlay；修复由 `restore-effective-engine-overlay.mjs` 对原始 overlay 哈希、源码注入清单与 vendor pin 回执逐项核验，再在 snapshot 前恢复有效 overlay；恢复前的 effective overlay 与 policy 均保留独立输入快照，连同回执显式进入 APK provenance，哈希可从交付证据复算。PR #65 的 overlay 恢复、PR #66 的安全目录回收、PR #67 的当前提交组件 provenance 刷新均已在 main 来源链 run 39374235296（提交 `9ebe0fc1589a070cb2ee12417f27d89236f7153a`）通过实测：primary/reference 完整构建成功，独立 APK payload 比对、隔离生产签名、证据 prepare 和 Draft + prerelease 创建均成功。下载后复核资产 SHA-256、APK 与 provenance ZIP 完整性、APK 内快照摘要、独立重建证明、上游 Harness pin、overlay restoration 哈希与签名证书 pin 均一致；本候选按用户要求未做设备验证，公开前仍须补 ARM64 真机三层验收。详见 [ENGINE-BASE-2026-10-19.md](ENGINE-BASE-2026-10-19.md)、[坑 459](gotchas.md)、[坑 460](gotchas.md)、[坑 461](gotchas.md)、[坑 462](gotchas.md) 与 [坑 463](gotchas.md)。
+历史实现与当时的实跑记录见 [ENGINE-BASE-2026-10-19.md](ENGINE-BASE-2026-10-19.md)；其中 `base-lock`、`trusted` 分支和运行号只描述 2026-10-19/20 的检查点，当前以本段与 [BUILD-STAGES-DESIGN.md](BUILD-STAGES-DESIGN.md) 为准。
+
+缓存与顺序（2026-11-12）：Linux assets 的 `Restore Linux ARM64 assets` 必须排在 `Install Linux asset cross-build tools` 之前，否则 `cache-hit` 在 Restore 之前求值、命中也会先跑 apt；apt update/install 有 5 次有界重试，避免 runner DNS 偶发失败直接判红。`injected snapshot` 与 Linux assets 使用内容键（不绑定 project commit）；Linux 命中后由 `attest-linux-cache.mjs` 校验 pinned 输入并把 provenance commit 标记改写为当前 commit。开发档 `fast=true` 只把 inject 压到 preset 1、Termux base 压到 `-6`，不跳过任何门禁/签名。发布草稿标题由 APK 文件名生成 `Pocket Harness vX.Y.Z (ARM64 + x86_64)`。
 
 引擎组件键按原始字节散列 `scripts/snapshot-config/engine-overlay.json`。该文件在 `.gitattributes` 标记 `-text`，避免 `core.autocrlf` 在检出时改变组件键；`node --test scripts/source-build/base-lock.test.mjs` 包含隔离检出正控及删除属性的受控负控。
 

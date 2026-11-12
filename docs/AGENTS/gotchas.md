@@ -3667,7 +3667,43 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
     复验：新增三条离线回归（jsdom）——深层重绘后全文档 `querySelectorAll` 调用数为 0；留白未变时
     写变量次数为 0；无关新增不触发扫描而新终端根仍能挂上键条。设备层帧率/输入延迟未做量化。
 
-665. **原生运行时不能按扩展名或执行位盘点，也不能把 PRoot 客体误改成 Android `.so`（2026-11-12，Linux 实验分支）**
+665. **原生终端退出后焦点/IME 留在已销毁视图，页面输入失效（0.15.2 实修）**
+    现象：从原生终端返回后，主会话或再次进入终端都不能打字。
+    真因：`TerminalViewHost.close` 销毁 `TerminalView` 时，IME 仍绑定该视图，WebView 没有拿回焦点。
+    修法：`closeOnUi` 销毁视图后 `dshWebView.requestFocus()`；Activity 返回路径额外 `hideSoftInputFromWindow` 并派发 `dsh-term-suspended`，页面在用户点回终端前不自动重开。
+    复验：真机返回后主会话输入恢复正常；终端重新聚焦后可继续输入。
+
+666. **共享存储 `cp` 大文件会静默损坏，APK 安装报「解析包时出现问题」（0.15.2 实修）**
+    现象：源 APK 签名/解压均通过，拷到 `/storage/emulated/0/Download` 后 sha256 不同，`unzip -t` 报损坏；差异从约 142 MB 处开始。
+    真因：本机 FUSE 路径上 `cp` 的 `copy_file_range` 不能保证逐字节一致；`dd` 的显式读/写循环正常。
+    修法：交付大文件用 `dd if=... of=... bs=1M conv=fsync`，拷完必须比对 sha256 并跑 `unzip -t` 再交给安装器；不要只看文件大小。
+    复验：重拷后 sha256 与源一致、`unzip -t` 通过，安装器正常解析。
+
+667. **JNI 的 `0x00RRGGBB` 被当 ARGB 用，OMZ 彩色提示符整段不可见（0.15.2 实修）**
+    现象：OMZ 已加载、Git/Tab 补全正常，但彩色文字消失；目录颜色修复后可见。
+    真因：libvterm 经 JNI 输出 RGB（alpha 位为 0），Kotlin 直接赋给 `Paint.color` 时透明度变成 0。
+    修法：绘制前对非 `DEFAULT_COLOR` 的值 `or 0xFF000000`，DEFAULT 哨兵保持原样供主题色回退；`TerminalColorsTest` 覆盖 RGB/默认值。
+    复验：真机目录显示蓝色，彩色提示符恢复。
+
+668. **Linux assets 的 Restore 排在 apt 安装之后，缓存命中也会先跑 apt（2026-11-12 实修）**
+    现象：Linux 缓存已命中，arm64 仍进入 `Install Linux asset cross-build tools`；runner DNS 抖动时该步可挂 40 分钟以上，reference 已完成而 primary 仍卡着。
+    真因：`Install`/`Prepare` 的 `cache-hit != true` 条件在 `Restore Linux ARM64 assets` 之前求值，输出尚不存在，条件永远为真。
+    修法：#313 把 Restore 移到最前；apt update/install 加 5 次有界重试（#310/#311）。
+    复验：命中缓存时 Install/Prepare/Build 全部 skipped，只走 restore + attest。
+
+669. **Linux/injected 缓存跨 commit 复用触发 provenance 判红（2026-11-12 实修）**
+    现象：`Build runtime snapshot` 报 `Linux assets were not built from the exact APK source commit`。
+    真因：Linux 产物 provenance 绑定 APK project commit；缓存 key 不含 commit 时跨 commit 命中，marker 仍是旧值。
+    修法：Linux 缓存用 pinned 输入内容键；命中后 `attest-linux-cache.mjs` 校验 release manifest/摘要与 provenance 输入逐字节一致，再把 `project-source-commit.txt` 改写为当前 commit 并写 `reused-from-commit.txt`/`reuse-attestation.json`。injected 快照 key 只按源快照 sha + 插件/补丁/脚本输入（下游绑 Harness source manifest，不绑 project commit）。
+    复验：同 commit 重跑命中并过 attestation；跨 commit 在输入一致时复用、输入变化时 miss。
+
+670. **原生终端网格沿用引擎默认 80×24，长输入写到屏幕外、退格擦掉提示符（2026-11-12 实修）**
+    现象：手机竖屏侧栏终端里 `stty size` 恒为 `24 80`、`echo $COLUMNS` 为 80，但屏幕一行只放得下约 40 列。输入到行尾后尾部「消失」，退格把提示符本身擦掉；应用 `stty cols N` 后长行折行仍会错位、重绘内容散落到相邻行。
+    真因：`TerminalViewHost.openOnUi` 把页面传来的 `info.cols/rows`（PTY 自己的旧值，引擎默认 80×24）直接交给 `TerminalView.open()` 建网格；而 `onSizeChanged` 只在「新网格 != 当前网格」时回报 resize，视图先被 1×1 初始布局触发一次、open 又用 80×24 覆盖，之后若尺寸不再变化就再也不会把真实列数推给 PTY。页面侧的 `__dshTermResize → model.resize` 因此从未收到真实尺寸。
+    修法：`TerminalView.open()` 在视图已布局时以 `terminalGridFor(width,height,cellW,cellH)` 为准（页面值只作兜底）并在 `nativeCreate` 后无条件回报一次；新增 `syncGrid(force)`；`TerminalViewHost` 在 open 后、bounds 应用后、可见性恢复时各补一次同步（复用时强制）。`terminalGridFor` 是纯函数，JVM 单测锁定推导与最小值/非法度量边界。
+    复验：`TerminalGridTest` 覆盖 1320×2400/33×55 → 40×43、未布局/过小返回 null、NaN/Infinity/0/负值拒绝、不足一格向下取整；设备层已用来源链 APK（run 43154506740，commit 0fd2f22）覆盖安装确认：竖屏 `stty size` 跟随可见网格（不再是固定 80），长输入折行与连续退格正常。横屏与系统字体大小走同一 `onSizeChanged`/Activity 重建路径，本次未单独截图取证。
+
+671. **原生运行时不能按扩展名或执行位盘点，也不能把 PRoot 客体误改成 Android `.so`（2026-11-12，Linux 实验分支）**
     现象：只看 `usr/bin` 会漏掉 Git helper、Python/Node 原生扩展；只看 `*.so` 会漏掉
     无后缀 ELF 与 `.node`；只看执行位会漏掉经 dlopen 加载的普通只读模块。
     真因：执行入口、动态加载与客体执行是不同链路，文件名和执行位均不能代表 ELF 载荷范围。
@@ -3680,7 +3716,7 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
     边界：不展开嵌套归档、不证明 ELF 已能在设备运行；高 targetSdk、用户编译产物和完整
     Linux 工具链仍须后续真实产物及平台证据，不以参考项目的说明代替。
 
-666. **把 PRoot 改成独立源码编译时，不能沿用 Termux 的隐式构建环境或用编译成功冒充运行修复（2026-11-12，实验分支）**
+672. **把 PRoot 改成独立源码编译时，不能沿用 Termux 的隐式构建环境或用编译成功冒充运行修复（2026-11-12，实验分支）**
     现象：官方 NDK r30 直接编译锁定源码，shmem 因 `_PATH_TMP` 未定义失败；PRoot 的
     ashmem_memfd 因 strcmp/memset 缺少声明被新 Clang 拒绝。talloc 默认 SONAME `.so.2`
     还会与 APK 安装命名冲突。
@@ -3694,7 +3730,7 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
     双 ABI 实际编译、另目录重建四件 ELF 摘要一致，命令和源码差异已落盘。完整边界见
     [PRoot 源码构建](PROOT-SOURCE-BUILD.md)；尚未接入 APK，未在设备运行，不称兼容性验收通过。
 
-667. **源码后端不能套用二进制包来源证明（2026-11-12，实验分支）**
+673. **源码后端不能套用二进制包来源证明（2026-11-12，实验分支）**
     现象：旧 Linux 资产链只识别 Termux 签名包字段，独立源码产物无法如实接入。
     真因：包仓验签与编译收据证明不同的输入，沿用旧字段会伪造来源。
     修法：增加 schema 2 来源协议，校验固定源码、配方、适配器和原生闭包身份；组装前复验
@@ -3702,27 +3738,27 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
     复验：ARM64 真实构建产物组装通过；受控修改配方、二进制、收据及冒充包来源均拒绝。
     完整资产构建、APK 和 Android 16 运行验证尚未完成，不能称设备兼容通过。
 
-668. **实验 APK 不能借用 main 身份绕过来源门禁（2026-11-12，实验分支）**
+674. **实验 APK 不能借用 main 身份绕过来源门禁（2026-11-12，实验分支）**
     现象：用户要求本地构建并安装实验 APK，但来源链默认拒绝 ARM64 实验分支。
     真因：原来源策略只有正式 main 和 x86 QA 例外，没有 ARM64 实验入口。
     修法：增加显式 `--experimental-linux`，仅授权当前 ARM64 实验分支的本地隔离来源构建；
     工作流门禁要求非 GitHub Actions，保留真实 Git ref。云端正式构建与发布规则不变。
     复验：本地来源身份与工作流测试覆盖显式授权、错分支、错 ABI、未授权及云端拒绝。
 
-669. **本地来源链不能要求只在 CI 产生的引擎缓存（2026-11-12）**
+675. **本地来源链不能要求只在 CI 产生的引擎缓存（2026-11-12）**
     现象：实验本地构建通过前置与回归后，停在 auto-built engine base unavailable。
     真因：本地不执行 Actions cache/reusable workflow，但逐步运行器仍执行云端缓存缺失阻断。
     修法：仅非 Actions 环境跳过该缓存缺失阻断，下一步仍从固定源码构建引擎；云端缺失仍红。
     复验：工作流真实 shell 在本地返回成功、Actions 返回失败；不伪造缓存、Git 身份或来源收据。
 
-670. **本地来源运行器不能丢失工作流步骤 env（2026-11-12）**
+676. **本地来源运行器不能丢失工作流步骤 env（2026-11-12）**
     现象：底座完成后 Linux 资产步骤因 DEBIAN_KEYRING 缺失退出，尽管前序已生成 keyring/NDK。
     真因：运行器只解析 name/run/shell/uses，忽略步骤 env；CI 自动注入的路径在本地为空。
     修法：解析步骤 env，按隔离 GITHUB_WORKSPACE 与真实 SOURCE_REF 解析路径/ref；不向后续步骤
     泄漏覆盖，不执行环境值中的 shell 文本，未知 Actions 表达式失败关闭。本地注入缓存保持未命中。
     复验：Linux 下运行器及隔离续跑 22 项全过，包含正确路径、未知表达式拒绝、缓存未命中及字面值负控。
 
-671. **PRoot loader 生成依赖 GNU awk，不能默认任意 awk 均兼容（2026-11-12）**
+677. **PRoot loader 生成依赖 GNU awk，不能默认任意 awk 均兼容（2026-11-12）**
     现象：本地自编译通过 talloc/shmem 后在 loader-info.awk 因 strtonum 未定义失败。
     真因：干净 Ubuntu 容器默认 mawk，云端预装 gawk，隐式工具差异未被配方声明。
     macOS BSD awk 还可因不识别 GNU 词边界而静默不匹配：受控符号表预期偏移 128，却成功输出 0。
@@ -3730,14 +3766,14 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
     将工具路径放入私有 awk 包装目录，并在收据记录版本/摘要。不修改第三方算法来掩盖环境差异。
     复验：GNU awk 正例、非 GNU 和缺失负控通过；原始失败编译日志保留于本地来源证据。
 
-672. **本地来源链需要逐步骤 GITHUB_OUTPUT 文件（2026-11-12）**
+678. **本地来源链需要逐步骤 GITHUB_OUTPUT 文件（2026-11-12）**
     现象：Kotlin 全量单测通过后，快照指纹步骤因 GITHUB_OUTPUT 未绑定退出。
     真因：GitHub runner 自动提供的步骤输出文件未被本地运行器模拟；脚本启用 set -u 后准确暴露缺失。
     修法：每一步在隔离 RUNNER_TEMP 中新建专用目录及输出文件，不与跨步 GITHUB_ENV 混用。
     本地仍不伪造 Actions 缓存命中，文件值也不会被当作 shell 命令执行。
     复验：真实 CLI 夹具验证文件存在且可写，隔离与续跑回归覆盖该执行路径；已有候选从指纹阶段续跑。
 
-673. **首次安装 Linux 环境时，原生 PRoot 探测会因 cwd 不存在而误报 ENOENT（2026-11-12，实验分支）**
+679. **首次安装 Linux 环境时，原生 PRoot 探测会因 cwd 不存在而误报 ENOENT（2026-11-12，实验分支）**
     现象：Android 16 上首次安装 Linux 环境返回 `linux-host-exec-assets-unavailable`，
     `lastError` 为 `APK native PRoot probe failed: spawn .../lib/arm64/libpocketharness_proot.so ENOENT`；
     同一文件用应用 UID 手工执行 `--version` 正常打印源码构建版本，包内字节也与构建收据一致。
@@ -3749,7 +3785,7 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
     复验：`node --test vendor/dsh-linux-runtime/test/manager.test.mjs` 36 项全过（含新用例）。
     设备复验需重出 APK：运行时会从内置插件包重新解包，直接改设备上的 `manager.js` 会在重启时被覆盖。
 
-674. **原生 `tools.register` 要编译态 JSON Schema，`defineTool` 的 `required: true` 写法会被拒并静默丢工具（2026-11-12，实验分支）**
+680. **原生 `tools.register` 要编译态 JSON Schema，`defineTool` 的 `required: true` 写法会被拒并静默丢工具（2026-11-12，实验分支）**
     现象：Linux 环境安装健康、状态 `enabled/injectionActivated=true`，但模型工具面里始终没有
     `linux_bash`（新旧会话都没有），模型只能用 Termux 的 `bash`。
     真因：`vendor/dsh-linux-runtime` 直接调 `ctx.tools.register()`，却沿用了 `defineTool` 的
@@ -3763,7 +3799,7 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
     后续来源 APK `186c7d55` 在 Android 16 ARM64 AVD 完成干净安装与真实模型调用，
     `linux_bash` 注册缺陷的定向复验通过；范围与证据见 `known-gaps.md` 的实验验证记录。
 
-675. **引擎重启后注入的 Linux 运行时插件不再激活，状态会被同步成「未启用」（2026-11-12，实验分支）**
+681. **引擎重启后注入的 Linux 运行时插件不再激活，状态会被同步成「未启用」（2026-11-12，实验分支）**
     现象：装好并启用的 Linux 环境在应用重启后 `enabled/injectionActivated` 变 false，
     `linux_bash` 消失；只能整包 reinstall 才回来。
     真因：宿主 `linuxPluginHost` 只在当前进程内 `ctx.plugin()` 激活插件，重启后插件在盘上
@@ -3777,7 +3813,7 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
     在 Android 16 ARM64 AVD 重启后保持启用与同一实例，模型再次调用 `linux_bash` 成功，
     报告文件摘要不变；范围与证据见 `known-gaps.md` 的实验验证记录。
 
-676. **重启恢复修复未同步 Linux 来源清单，来源链在打包前拒绝（2026-11-12，实验分支）**
+682. **重启恢复修复未同步 Linux 来源清单，来源链在打包前拒绝（2026-11-12，实验分支）**
     现象：`07d6774f` 本地来源链在 `Build source-owned offline ARM64 Linux assets` 报
     `additional Linux source file set differs from reviewed import: plugins/dsh-linux-bootstrap`。
     真因：新增 `test/reactivate.test.mjs` 与修改 `src/index.js` 后只更新了 vendored 漂移表，
