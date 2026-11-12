@@ -99,6 +99,7 @@ internal object LinuxGuestBoot {
     }
     val prootTmp = File(instance.root, "proot-tmp").apply { mkdirs() }
     val shm = File(instance.root, "dev-shm").apply { mkdirs() }
+    // cwd 用宿主 home 的同路径（已 bind 进 PRoot），客体侧等价于 $HOME。
     val working = (cwd ?: paths.homeDir).takeIf { it.isDirectory } ?: paths.homeDir
     val resolved = command.map { if (it == "NODE") instance.node.absolutePath else it }
 
@@ -110,6 +111,8 @@ internal object LinuxGuestBoot {
       "-b", "${instance.node.absolutePath}:${instance.node.absolutePath}",
       "-b", "${instance.engine.absolutePath}:$GUEST_ENGINE_ROOT",
       "-b", "${paths.homeDir.absolutePath}:${paths.homeDir.absolutePath}",
+      // 用户数据落在宿主 home，挂到客体 /root：覆盖安装替换 rootfs 时 $HOME 内容不会丢。
+      "-b", "${paths.homeDir.absolutePath}:/root",
       // 引擎资产、急救 CLI 等宿主私有文件按原路径可见，避免再造一套路径映射。
       "-b", "${paths.filesDir.absolutePath}:${paths.filesDir.absolutePath}",
       "/usr/bin/env", "-i",

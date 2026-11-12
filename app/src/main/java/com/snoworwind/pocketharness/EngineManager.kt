@@ -1340,9 +1340,9 @@ class EngineManager(private val context: Context, private val pickToken: String?
    */
   private fun startGuestEngine(port: Int): Boolean {
     val files = context.filesDir
-    if (!LinuxGuestBoot.installed(files)) {
-      LogCollector.log(TAG, "linux instance missing; unpacking bundled assets")
-      when (val installed = LinuxInstanceInstaller.install(context, files) { stage -> LogCollector.log(TAG, "linux install: $stage") }) {
+    run {
+      LogCollector.log(TAG, "ensuring bundled linux instance")
+      when (val installed = LinuxInstanceInstaller.ensure(context, files) { stage -> LogCollector.log(TAG, "linux install: $stage") }) {
         is LinuxInstanceInstaller.Result.Ready -> LogCollector.log(TAG, "linux instance ready: " + installed.instance.root.absolutePath)
         is LinuxInstanceInstaller.Result.Failed -> {
           lastStartRefusalCode = installed.code

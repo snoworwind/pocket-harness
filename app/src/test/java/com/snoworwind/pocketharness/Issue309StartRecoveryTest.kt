@@ -302,7 +302,7 @@ class Issue309StartRecoveryTest {
     assertFalse("客体启动不得删快照指纹", guest.contains("invalidateSnapshotFreshness"))
     assertFalse("客体启动不得再走快照恢复", guest.contains("maybeRecoverFromIncompleteLiveRuntime"))
     assertTrue("安装失败必须在解包之后立刻停", guest.contains("linux instance install failed"))
-    assertTrue("缺失实例由壳侧解包（不依赖引擎）", guest.contains("LinuxInstanceInstaller.install("))
+    assertTrue("缺失实例由壳侧解包（不依赖引擎）", guest.contains("LinuxInstanceInstaller.ensure("))
   }
 
   /**
