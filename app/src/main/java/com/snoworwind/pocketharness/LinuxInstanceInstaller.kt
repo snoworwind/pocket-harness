@@ -28,6 +28,13 @@ internal object LinuxInstanceInstaller {
 
   fun instanceRoot(filesDir: File): File = File(filesDir, DIR_NAME)
 
+  /** APK 是否内置了 Linux 资产（ARM64 产品包为真；x86_64 QA 包为假）。 */
+  fun bundled(context: Context): Boolean = try {
+    context.assets.open("$ASSET_ROOT/manifest.json").use { true }
+  } catch (_: Exception) {
+    false
+  }
+
   /** 已安装且清单自洽；只做结构检查，摘要由来源链与安装时的资产摘要共同保证。 */
   fun open(filesDir: File): Result {
     val root = instanceRoot(filesDir)

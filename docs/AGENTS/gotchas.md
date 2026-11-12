@@ -3885,3 +3885,12 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
     修法：linux-assets 输出固定目录 `guest-addons/system`（flock 包）与 `guest-addons/node-pty`；
     快照阶段在归档后用这两个目录调用装配器，产出 `engine-glibc.tar.xz` 与 sha256；x86_64 明确跳过。
     复验：两段脚本语法与门禁通过；真实树装配产物 79 MB 并已在 Debian 客体中启动（见坑位 686）。
+
+688. **客体启动必须自己先装实例，否则又回到“先起引擎才能装 Linux”的死结（2026-11-12，实验分支）**
+    现象：把 `startEngine` 切到客体后，首启没有 `files/linux`，如果只在已安装时才走客体，
+    首启就会退回 Termux 路径——等于没脱离。
+    真因：Linux 安装原本由引擎侧插件驱动；引擎又必须先启动，形成循环。
+    修法：APK 内置 `assets/linux/{rootfs,node,engine}.tar.xz`；`startEngine` 在检测到内置资产时
+    **总是**走客体路径，缺实例就先由壳侧 `LinuxInstanceInstaller` 解包，再 PRoot 启动。x86_64 QA 档
+    没有内置资产时才保留旧的 Termux 分支。Gradle 资产闸门改为“linux 资产或旧快照至少一个”。
+    复验：Kotlin 编译通过；后续需来源 APK + AVD 实机确认首启解包与引擎启动。

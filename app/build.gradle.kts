@@ -146,11 +146,14 @@ tasks.configureEach {
 tasks.whenTaskAdded {
   if (name == "mergeDebugAssets" || name == "mergeReleaseAssets") {
     doFirst {
+      // 纯 Linux 产品包只需要内置 Linux 实例资产；Termux 快照仅保留给未内置客体的
+      // x86_64 QA 档（来源链不为其产出 linux/* 资产）。
+      val linuxAssets = file("src/main/assets/linux/manifest.json")
       val snap = file("src/main/assets/snapshot.tar.xz")
-      if (!snap.exists()) {
+      if (!linuxAssets.exists() && !snap.exists()) {
         throw GradleException(
-          "缺少运行时快照 assets/snapshot.tar.xz —— " +
-          "请按 ARM64 来源链生成并放入 app/src/main/assets/snapshot.tar.xz（见 README.md）",
+          "缺少运行时资产：需要 assets/linux/manifest.json（内置 Linux 实例）或旧档 assets/snapshot.tar.xz —— " +
+          "请按来源链生成后放入 app/src/main/assets（见 README.md）",
         )
       }
     }

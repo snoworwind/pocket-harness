@@ -1329,6 +1329,8 @@ class EngineManager(private val context: Context, private val pickToken: String?
     lastStartRefusal = null
     lastStartRefusalCode = null
     lastStartRefusalConfirmed = emptyList()
+    // 纯 Linux 路径：装了内置实例就走客体，不再触碰 Termux 快照闸门。
+    if (LinuxInstanceInstaller.bundled(context)) return startGuestEngine(port)
     snapshotFingerprintProblem()?.let { problem ->
       lastStartRefusalCode = REFUSAL_RUNTIME_UNAVAILABLE
       lastStartRefusal = problem.failureCode + ": " + problem.detail
@@ -1528,6 +1530,65 @@ class EngineManager(private val context: Context, private val pickToken: String?
       // 0.13.1 W3：失败现场镜像到共享目录（此前 engine.log 只在私有域，外界拿不到）。
       mirrorDiagnosticsToShared("engine-spawn-failed")
       false
+    } finally {
+      STARTING.set(false)
+    }
+  }
+
+  /**
+   * 客体启动：确保内置实例就位（缺则解包），再按 PRoot 命令起引擎。
+   * 这里不复用 Termux 的快照指纹/运行时探针——那套判据只对 Bionic 树成立。
+   */
+  private fun startGuestEngine(port: Int): Boolean {
+    val files = context.filesDir
+    if (!LinuxGuestBoot.installed(files)) {
+      LogCollector.log(TAG, "linux instance missing; unpacking bundled assets")
+      when (val installed = LinuxInstanceInstaller.install(context, files) { stage -> LogCollector.log(TAG, "linux install: $stage") }) {
+        is LinuxInstanceInstaller.Result.Ready -> LogCollector.log(TAG, "linux instance ready: " + installed.instance.root.absolutePath)
+        is LinuxInstanceInstaller.Result.Failed -> {
+          lastStartRefusalCode = installed.code
+          lastStartRefusal = installed.detail
+          Log.e(TAG, "linux instance install failed: " + installed.code + " " + installed.detail)
+          return false
+        }
+      }
+    }
+    val launch = when (val resolved = guestBootLaunch(port)) {
+      is LinuxGuestBoot.Result.Ready -> resolved.launch
+      is LinuxGuestBoot.Result.Refused -> {
+        lastStartRefusalCode = resolved.code
+        lastStartRefusal = resolved.detail
+        Log.e(TAG, "guest boot refused: " + resolved.code + " " + resolved.detail)
+        return false
+      }
+      null -> {
+        lastStartRefusalCode = REFUSAL_RUNTIME_UNAVAILABLE
+        lastStartRefusal = "客体启动不可用（boot-mode 未指向 linux）"
+        return false
+      }
+    }
+    if (!STARTING.compareAndSet(false, true)) return true
+    val now = System.currentTimeMillis()
+    try {
+      val started = startGuestWithLaunch(launch)
+      engineProcess = started
+      try { Thread.sleep(200) } catch (_: InterruptedException) { Thread.currentThread().interrupt() }
+      if (!started.isAlive && EngineProbe.portReachable(250)) {
+        engineProcess = null
+        lastAvailability = EngineProbe.EngineAvailability.PORT_FOREIGN
+        lastStartRefusalCode = REFUSAL_PORT_FOREIGN
+        lastStartRefusal = "3080 在客体引擎启动时被其他进程抢占；已停止本次启动且不会清理外部进程"
+        LogCollector.log(TAG, "guest engine spawn lost EADDRINUSE race; classified PORT_FOREIGN")
+        return false
+      }
+      EngineManager.lastStartAttemptAt = now
+      LogCollector.log(TAG, "engine started (PRoot guest)")
+      return true
+    } catch (t: Throwable) {
+      lastStartRefusalCode = startupExceptionCode(t)
+      Log.e(TAG, "guest engine start failed", t)
+      LogCollector.log(TAG, "guest engine start FAILED: " + (t.message ?: t.javaClass.simpleName))
+      return false
     } finally {
       STARTING.set(false)
     }
