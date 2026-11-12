@@ -432,3 +432,5 @@ engine 的 checkout/upstream/overlay/patches/build/deploy 步骤集中到 `scrip
 本地运行器解析工作流步骤 env，并将 github.workspace/ref 映射到隔离来源目录和真实分支；未知表达式拒绝，不执行 shell 字符串。本地没有 Actions 注入缓存时 DSH_INJECTED_SNAPSHOT 为空。
 
 自编译 PRoot 需要 gawk；不要依赖宿主默认 awk。构建器在编译前检查 GNU awk，来源链显式安装该包，工具身份随收据保存。
+
+本地运行器为每一步在隔离 RUNNER_TEMP 中创建专用 GITHUB_OUTPUT；GITHUB_ENV 继续跨步累计受允许的键。

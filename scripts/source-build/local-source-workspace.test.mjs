@@ -291,6 +291,8 @@ test('actual local runner routes cwd and build environment into isolation and ke
     '          test "$DSH_APK_DIR" = "$GITHUB_WORKSPACE"',
     '          test -d "$RUNNER_TEMP"',
     '          test -f "$GITHUB_ENV"',
+    '          test -f "$GITHUB_OUTPUT"',
+    '          printf "digest=fixture\\n" >> "$GITHUB_OUTPUT"',
     '          printf "npm_config_cache=%s/cache\\n" "$RUNNER_TEMP" >> "$GITHUB_ENV"',
     '          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"',
     '          test "$DSH_SOURCE_REPOSITORY" = https://github.com/example/independent-shell',

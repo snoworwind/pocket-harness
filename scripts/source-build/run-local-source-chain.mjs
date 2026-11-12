@@ -27,7 +27,7 @@
 //
 // 环境：ANDROID_HOME 默认取 `.deploy-tmp/android-sdk`（缺失即判红并给出铺法）。
 import { execFileSync, spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -377,7 +377,11 @@ function main() {
     const shellArgs = item.shell === 'bash'
       ? ['--noprofile', '--norc', '-eo', 'pipefail', '-c', item.run]
       : ['-e', '-c', item.run]
-    const res = spawnSync('bash', shellArgs, { cwd: buildRoot, env: resolveStepEnvironment(item.env, baseEnv), stdio: 'inherit' })
+    const stepEnv = resolveStepEnvironment(item.env, baseEnv)
+    const outputDir = mkdtempSync(join(baseEnv.RUNNER_TEMP, 'step-output-'))
+    stepEnv.GITHUB_OUTPUT = join(outputDir, 'output')
+    writeFileSync(stepEnv.GITHUB_OUTPUT, '', { flag: 'wx' })
+    const res = spawnSync('bash', shellArgs, { cwd: buildRoot, env: stepEnv, stdio: 'inherit' })
     applyStepEnvironment()
     const seconds = ((Date.now() - started) / 1000).toFixed(1)
     if (res.status !== 0) {
