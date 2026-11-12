@@ -32,6 +32,7 @@ const REQUIRE = process.argv.includes("--require")
 let skipped = 0
 
 const KOTLIN_REL = "app/src/main/java/com/snoworwind/pocketharness/EngineManager.kt"
+const GUEST_REL = "app/src/main/java/com/snoworwind/pocketharness/LinuxGuestBoot.kt"
 const WRAPPER_REL = "scripts/build-snapshot-013.mjs"
 
 let failures = 0
@@ -43,7 +44,7 @@ const skip = (msg) => { skipped += 1; console.log("SKIP(#" + skipped + ")  " + m
  * 纯分析函数（可被自检直接喂合成样本）。返回 { findings: [...], values: {...} }。
  * findings 为空数组 = 全部判据通过。
  */
-export function analyze(kotlinSrc, wrapperSrc) {
+export function analyze(kotlinSrc, wrapperSrc, guestSrc = kotlinSrc) {
   const findings = []
   const values = { floor: null, cap: null, naturalFlag: null, clampLo: null, clampHi: null, divisor: null }
 
@@ -122,10 +123,11 @@ export function analyze(kotlinSrc, wrapperSrc) {
     findings.push("D: 启动器必须只在 NODE_OPTIONS 未设置时才填（显式值优先，否则覆盖 PTC/用户的 max-old-space-size）")
   }
 
-  // ── E：argv 不得出现堆标志 ───────────────────────────────────────────────
-  const argvM = /val args = arrayOf\(([\s\S]{0,400}?)\)/.exec(kotlinSrc)
-  if (!argvM) findings.push("E: 找不到引擎 argv（锚点失效，判据无法生效）")
-  else if (/max-old-space-size|max_old_space_size/.test(argvM[1])) {
+  // ── E：引擎 argv 不得出现堆标志（客体启动合同）────────────────────────────
+  if (!guestSrc.includes("--expose-internals")) {
+    findings.push("E: 找不到引擎 argv（客体启动合同锚点失效，判据无法生效）")
+  }
+  if (/max-old-space-size|max_old_space_size/.test(guestSrc)) {
     findings.push("E: 引擎 argv 出现堆标志（argv 覆盖 NODE_OPTIONS，堆来源必须唯一）")
   }
 
@@ -142,6 +144,9 @@ const GOOD_KOTLIN = [
   "  val args = arrayOf(nodeBin.absolutePath, \"--expose-internals\", dshBin.absolutePath)",
   "  \"NODE_OPTIONS\" to heapOptionFrom(engineHeapMb(deviceTotalRamMb())),",
 ].join("\n")
+const GOOD_GUEST = [
+  "  \"NODE\", \"--expose-internals\", \"$GUEST_ENGINE_ROOT/$ENGINE_ENTRY\", \"web\",",
+].join("\n")
 const GOOD_WRAPPER = [
   "  done < /proc/meminfo",
   "if [ -z \"$NODE_OPTIONS\" ]; then",
@@ -157,8 +162,8 @@ const GOOD_WRAPPER = [
 
 function selfTest() {
   let stFail = 0
-  const expect = (label, src, wrapperSrc, shouldFail) => {
-    const r = analyze(src, wrapperSrc)
+  const expect = (label, src, wrapperSrc, shouldFail, guestSrc = GOOD_GUEST) => {
+    const r = analyze(src, wrapperSrc, guestSrc)
     const got = r.findings.length > 0
     if (got !== shouldFail) {
       stFail += 1
@@ -179,7 +184,8 @@ function selfTest() {
   expect("负控 C1：启动器下限与壳侧不一致（512 vs 256）", GOOD_KOTLIN, GOOD_WRAPPER.replace(/-lt 512/, "-lt 256"), true)
   expect("负控 C2：启动器除数被改成 1024（只取 1/4）", GOOD_KOTLIN, GOOD_WRAPPER.replace("2048", "1024"), true)
   expect("负控 D1：启动器无条件覆盖 NODE_OPTIONS", GOOD_KOTLIN, GOOD_WRAPPER.replace('if [ -z "$NODE_OPTIONS" ]; then', "if true; then"), true)
-  expect("负控 E1：argv 混入堆标志", GOOD_KOTLIN.replace('"--expose-internals"', '"--expose-internals", "--max-old-space-size=256"'), GOOD_WRAPPER, true)
+  expect("负控 E1：argv 混入堆标志", GOOD_KOTLIN, GOOD_WRAPPER, true, GOOD_GUEST.replace('"--expose-internals"', '"--expose-internals", "--max-old-space-size=256"'))
+  expect("负控 E2：客体启动合同锚点失效（无 --expose-internals）", GOOD_KOTLIN, GOOD_WRAPPER, true, GOOD_GUEST.replace(' "--expose-internals",', ''))
   expect("负控 C3：壳侧上限被改坏（与启动器分叉）", GOOD_KOTLIN.replace("ENGINE_HEAP_CAP_MB: Int = 4096", "ENGINE_HEAP_CAP_MB: Int = 2048"), GOOD_WRAPPER, true)
   expect("负控 F1：双源一致但 cap=1024（复现 0.14.8 原缺陷）",
     GOOD_KOTLIN.replace("ENGINE_HEAP_CAP_MB: Int = 4096", "ENGINE_HEAP_CAP_MB: Int = 1024"),
@@ -192,7 +198,7 @@ function selfTest() {
     GOOD_WRAPPER.replace(/-gt 4096/, "-gt 1024").replace("=4096", "=1024"), true)
 
   if (stFail > 0) { console.log("CHECK-ENGINE-HEAP-FLOOR SELF-TEST FAILED（" + stFail + " 项）"); process.exit(1) }
-  console.log("CHECK-ENGINE-HEAP-FLOOR SELF-TEST PASSED（正样本 1 + 受控负控 11）")
+  console.log("CHECK-ENGINE-HEAP-FLOOR SELF-TEST PASSED（正样本 1 + 受控负控 12）")
   process.exit(0)
 }
 
@@ -201,18 +207,20 @@ if (SELF_TEST) selfTest()
 // ── 真实仓库检查 ─────────────────────────────────────────────────────────────
 const kPath = join(ROOT, KOTLIN_REL)
 const wPath = join(ROOT, WRAPPER_REL)
+const gPath = join(ROOT, GUEST_REL)
 // 缺件有两档语义：非严格档显式计数并跳过（本仓布局下这两件必然在场，正常不会走到），
 // 严格档（--require）判红——否则「输入被删」会表现成一次静默的绿。
 let missing = 0
 if (!existsSync(kPath)) { missing += 1; skip("缺 " + KOTLIN_REL + "（壳侧堆取值不可核对）") }
 if (!existsSync(wPath)) { missing += 1; skip("缺 " + WRAPPER_REL + "（启动器堆下限不可核对）") }
+if (!existsSync(gPath)) { missing += 1; skip("缺 " + GUEST_REL + "（客体 argv 不可核对）") }
 if (missing > 0) {
   if (REQUIRE) { console.log("CHECK-ENGINE-HEAP-FLOOR FAILED（--require 档不得 SKIP，缺件 " + missing + "）"); process.exit(1) }
   console.log("CHECK-ENGINE-HEAP-FLOOR PASSED（SKIP=" + skipped + "；缺件 " + missing + " 处，非严格档）")
   process.exit(0)
 }
 
-const { findings, values } = analyze(readFileSync(kPath, "utf8"), readFileSync(wPath, "utf8"))
+const { findings, values } = analyze(readFileSync(kPath, "utf8"), readFileSync(wPath, "utf8"), readFileSync(gPath, "utf8"))
 if (findings.length === 0) {
   pass("壳侧下限/上限 = " + values.floor + "/" + values.cap + "，启动器钳制 = " + values.clampLo + "/" + values.clampHi + "（逐值一致）")
   pass("启动器自适应除数为 " + values.divisor + "（MemTotal KB → 一半的 MB）")
