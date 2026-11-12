@@ -16,7 +16,8 @@ SOURCE_PROOF_INPUTS=(
   scripts/source-build/linux-backend-packages.json scripts/source-build/linux-source-manifest.json
   scripts/snapshot-config/preinstall.json scripts/lib/shell.mjs
   scripts/source-build/build-proot-source.py scripts/source-build/proot-source
-  scripts/source-build/inventory-native-runtime.py scripts/source-build/proot_source_provenance.py
+  scripts/source-build/inventory-native-runtime.py scripts/source-build/test_native_runtime_inventory.py
+  scripts/source-build/proot_source_provenance.py
   scripts/source-build/prepare-proot-source-backend.py scripts/source-build/test_proot_source_build.py
   scripts/source-build/test_proot_source_backend.py scripts/source-build/ensure-no-rootfs-mounts.py \
   scripts/source-build/linux-debian-snapshot-wget.py scripts/source-build/test_linux_debian_snapshot_wget.py
@@ -29,7 +30,7 @@ SOURCE_PROOF_INPUTS=(
   scripts/source-build/test_ensure_no_rootfs_mounts.py scripts/source-build/test_proot_compat.py
   scripts/source-build/test_package_linux_assets.py scripts/source-build/test_prepare_termux_bootstrap.py
   scripts/source-build/seed-dsh-profiles.mjs scripts/third-party-licenses.json
-  scripts/check-third-party.mjs scripts/check-third-party.test.mjs LICENSES docs/AGENTS/gpl-compliance.md
+  scripts/check-third-party.mjs scripts/check-third-party.test.mjs LICENSE LICENSES docs/AGENTS/gpl-compliance.md
   .github/workflows/build-linux-assets.yml
 )
 for source in "${SOURCE_PROOF_INPUTS[@]}"; do
