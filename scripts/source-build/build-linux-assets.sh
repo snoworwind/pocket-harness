@@ -155,8 +155,10 @@ python3 scripts/source-build/build-guest-addons.py \
   --cc aarch64-linux-gnu-gcc \
   --out "$WORK/guest-addons" | tee "$WORK/provenance/guest-addons-build.log"
 cp "$WORK/guest-addons/guest-addons.json" "$WORK/provenance/guest-addons.json"
-sudo install -D -m755 "$WORK/guest-addons/system.node" \
-  "$ROOTFS/opt/pocket-harness/addons/linux-arm64/system.node"
+sudo mkdir -p "$ROOTFS/opt/pocket-harness/addons"
+sudo cp -a "$WORK/guest-addons" \
+  "$ROOTFS/opt/pocket-harness/addons/@deepseek-ai/node-addon-system-linux-arm64"
+sudo chmod -R a+rX "$ROOTFS/opt/pocket-harness/addons"
 sudo rm -f "$ROOTFS/usr/bin/qemu-aarch64-static"
 sudo chroot "$ROOTFS" dpkg-query -W '-f=${binary:Package}\t${Version}\t${source:Package}\t${source:Version}\n' > "$WORK/provenance/debian-packages.tsv"
 mkdir -p "$WORK/provenance"

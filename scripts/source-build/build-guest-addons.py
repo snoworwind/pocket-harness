@@ -106,9 +106,16 @@ def build(harness, headers, cc, out, abi='arm64'):
     header_ids = read_headers(headers)
     out = Path(out).resolve()
     out.mkdir(parents=True, exist_ok=True)
-    target = out / 'system.node'
+    target = out / 'bin/glibc/system.node'
+    target.parent.mkdir(parents=True, exist_ok=True)
     command = compile_addon(identity['path'], source, headers, target, abi)
     facts = verify_addon(target, abi)
+    # The Android engine tree is pruned of the whole linux-arm64 package, and flock.ts
+    # resolves it via package.json; emit a bindable package, not a loose .node file.
+    package_json = harness / 'native/system/packages/linux-arm64/package.json'
+    if not package_json.is_file():
+        raise ValueError('pinned harness is missing the linux-arm64 package.json')
+    shutil.copyfile(package_json, out / 'package.json')
     receipt = dict(
         schemaVersion=1,
         abi=abi,
@@ -116,10 +123,12 @@ def build(harness, headers, cc, out, abi='arm64'):
         addon='@deepseek-ai/node-addon-system/flock',
         nodeApi=8,
         source=dict(path=str(ADDON_SOURCE), sha256=sha256_file(source)),
+        package=dict(name='@deepseek-ai/node-addon-system-linux-arm64',
+                     packageJsonSha256=sha256_file(package_json)),
         headers=header_ids,
         compiler=identity,
         command=command,
-        output=dict(path='system.node', **facts),
+        output=dict(path='bin/glibc/system.node', **facts),
         # Recorded, not silently omitted: the static-musl launcher needs a musl cross toolchain.
         deferred=[dict(addon='@deepseek-ai/node-addon-system/landlock-run',
                        reason='static musl aarch64 launcher requires a musl cross toolchain')],

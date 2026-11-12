@@ -1491,7 +1491,20 @@ class EngineManager(private val context: Context, private val pickToken: String?
         LogCollector.log(TAG, "engine start refused at final pre-spawn recheck (PORT_FOREIGN)")
         return false
       }
-      val started = startWithArgs(args, shellEnv())
+      // 纯 Linux 客体启动：boot-mode.json 显式开启后，引擎必须起在 PRoot/Debian 里。
+      // 该模式下缺件直接拒绝启动而不是静默回退 Termux——否则「纯 Linux」会被假绿掩盖。
+      val guestLaunch = guestBootLaunch(port)
+      if (guestLaunch is LinuxGuestBoot.Result.Refused) {
+        lastStartRefusalCode = guestLaunch.code
+        lastStartRefusal = guestLaunch.detail
+        LogCollector.log(TAG, "guest boot refused: " + guestLaunch.code + " " + guestLaunch.detail)
+        return false
+      }
+      val started = if (guestLaunch is LinuxGuestBoot.Result.Ready) {
+        startGuestWithLaunch(guestLaunch.launch)
+      } else {
+        startWithArgs(args, shellEnv())
+      }
       engineProcess = started
       // If a listener won the final check/start race, Node exits on EADDRINUSE. Reclassify once and
       // leave subsequent watchdog attempts at the foreign-port refusal path (no kill/retry storm).
@@ -1585,6 +1598,56 @@ class EngineManager(private val context: Context, private val pickToken: String?
    * binaries, but loading them through /system/bin/linker64 is the same
    * mechanism as native libraries (always permitted for app data).
    */
+  /** boot-mode.json 未开启时返回 null；开启后由 LinuxGuestBoot 决定可启动或拒绝。 */
+  private fun guestBootLaunch(port: Int): LinuxGuestBoot.Result? {
+    val linuxEnvironment = File(context.filesDir, "linux-environment")
+    if (LinuxGuestBoot.mode(linuxEnvironment, LinuxGuestBoot.runtimeInstalled(linuxEnvironment)) != LinuxGuestBoot.MODE_LINUX) return null
+    return LinuxGuestBoot.resolve(
+      LinuxGuestBoot.Paths(
+        runtimeRoot = File(linuxEnvironment, "runtime"),
+        nativeLibraryDir = File(context.applicationInfo.nativeLibraryDir),
+        engineUsr = usrDir,
+        engineBin = dshBin,
+        homeDir = homeDir,
+        port = port,
+      ),
+    )
+  }
+
+  /**
+   * 启动客体引擎。与 Termux 路径的区别：不注入 termux-exec 预载，不追加 `--require`，
+   * 只把 API key/版本等与平台无关的变量带进 PRoot；平台路径类变量一律用客体值。
+   */
+  private fun startGuestWithLaunch(launch: LinuxGuestBoot.Launch): Process {
+    val log = File(context.filesDir, "engine.log")
+    rotateEngineLog(log)
+    if (log.exists()) throw java.io.IOException("could not isolate engine.log generation before spawn")
+    runCatching { EngineAuth.markGenerationStart(System.currentTimeMillis()) }
+    LogCollector.markBootStart(context, engineHeapMb(deviceTotalRamMb()))
+    watchEngineListen()
+    val guestEnv = mapOf(
+      "DSH_APP_VERSION" to BuildConfig.VERSION_NAME,
+      "DSH_APP_VERSION_CODE" to BuildConfig.VERSION_CODE.toString(),
+      "DSH_FILES_DIR" to context.filesDir.absolutePath,
+      "DSH_HOME" to ensurePrivateDshData().absolutePath,
+      "DSH_PICK_TOKEN" to (pickToken ?: ""),
+      "DEEPSEEK_API_KEY" to (File(context.filesDir, "deepseek-key.txt").takeIf { it.exists() }?.readText()?.trim() ?: ""),
+      "DASHSCOPE_API_KEY" to (File(context.filesDir, "dashscope-key.txt").takeIf { it.exists() }?.readText()?.trim() ?: ""),
+    )
+    val process = ProcessBuilder(launch.argv).also { builder ->
+      builder.environment().putAll(launch.env)
+      builder.environment().putAll(guestEnv)
+      if (launch.workingDirectory.isDirectory) builder.directory(launch.workingDirectory)
+      builder.redirectErrorStream(true)
+      builder.redirectOutput(log)
+    }.start()
+    if (!log.isFile) {
+      runCatching { process.destroyForcibly() }
+      throw java.io.IOException("guest engine spawn did not create a fresh engine.log")
+    }
+    return process
+  }
+
   private fun startWithArgs(args: Array<String>, env: Map<String, String>): Process {
     val preload = EngineTransport.preparePreload(context)
     val privateArgs = listOf(args.first(), "--require", preload.absolutePath) + args.drop(1)

@@ -3836,3 +3836,17 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
     相关 addon 的源码获取/重建方式未定，不能算已补齐。
     证据：`.deploy-tmp/native-runtime-p0/guest-addons/`（`system.node`、`guest-addons.json`、
     `load-proof.log`）；自证 `python3 scripts/source-build/build-guest-addons.py --self-test`。
+
+684. **客体引擎不能沿用 Termux 的 env 与预载，缺件必须拒绝而不是静默回退（2026-11-12，实验分支）**
+    现象：装好 Linux 环境后应用仍从 `files/usr/bin/node` 起引擎；把引擎搬进 PRoot 时若沿用
+    `shellEnv()`，`LD_PRELOAD`（termux-exec）、`TERMUX__*` 与 `--require` 预载全部指向 Bionic 树。
+    真因：宿主（Bionic/Android）与客体（glibc/Debian）是两套 ABI、路径与加载器；同一份 env
+    不可能同时成立。缺 addon 或实例时静默回退 Termux 又会让“纯 Linux”变成假绿。
+    修法：`LinuxGuestBoot` 只从 `active.json` 推导实例、客体 Node、引擎入口与 rootfs 内
+    `@deepseek-ai/node-addon-system-linux-arm64`，构造 PRoot argv（`-r/-0/--sysvipc/--kill-on-exit`
+    + bind 列表）与最小 env（`PROOT_LOADER/PROOT_TMP_DIR/PROOT_NO_SECCOMP/LD_LIBRARY_PATH`）；
+    API key、版本等平台无关变量由壳侧单独注入。装了实例即默认客体启动，`boot-mode.json`
+    可显式固定 `termux`/`linux`，文件损坏按 Termux 处理；客体模式缺件直接 `return false` 并给出
+    稳定拒绝码，不回退。
+    复验：`LinuxGuestBootTest` 5 项（未安装/缺 addon/坏记录/argv 形状/模式判定）通过。
+    设备复验待本轮来源 APK；引擎在客体里的插件兼容（P3）仍可能失败，日志会落在同一 `engine.log`。

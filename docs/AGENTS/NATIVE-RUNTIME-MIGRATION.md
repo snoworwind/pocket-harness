@@ -34,9 +34,9 @@ termux-exec 环境钩子。可审阅并借鉴开源 Android PRoot 补丁，但�
 | --- | --- | --- |
 | P0 实际载荷盘点 | 扫 APK 原生目录和当前快照，支持独立 Linux rootfs/Node 目录；自证、负控；来源链携带报告 | 扫描器、自测与来源接线已实现；`186c7d55` ARM64 来源 APK 报告已生成，628 ELF/511 脚本，仍为 inventory-only |
 | P1 独立 Linux 来源底座 | 固定 Debian snapshot/源码包闭包、双 ABI；源码构建 Android PRoot/loader，不再依赖 Termux bootstrap/包仓 | PRoot/loader/talloc/shmem 双 ABI 已实际自编译并过 ELF 门禁，已接入 Linux 资产和 APK 来源校验协议，完整 Linux 资产与 ARM64 来源 APK 已构建；AVD 首装、模型调用及重启恢复定向通过，其余待实现，见 [构建详档](PROOT-SOURCE-BUILD.md) |
-| P2 壳直接引导 Linux | Kotlin 解包/校验/事务准备 rootfs；不能先起 Termux Node 才安装 Linux；宿主与客体 env 分开 | 待实现 |
+| P2 壳直接引导 Linux | Kotlin 解包/校验/事务准备 rootfs；不能先起 Termux Node 才安装 Linux；宿主与客体 env 分开 | 已实现 `LinuxGuestBoot`（实例解析、PRoot argv/env、缺件拒绝、模式选择）与 5 项单测；设备复验待来源 APK |
 | P3 引擎/工具统一迁入 Linux | DSH 与原生 addon 使用 Linux ABI；PTY、PTC、Undo、控制台、文件路径和插件桥统一客体启动合同，替代 shell-termux | 待实现 |
-| P4 常用工具补齐 | 下表工具/helper/依赖均从固定源码构建后预装；用户可在客体安装依赖与编译，必须验证新产物实际可运行 | 待实现 |
+| P4 常用工具补齐 | 下表工具/helper/依赖均从固定源码构建后预装；用户可在客体安装依赖与编译，必须验证新产物实际可运行 | `guest-tools.json` 基线（76 包/55 条探针）已跑通：Debian 13 aarch64 根文件系统 1.2 GB，55/55 命令在客体解释器下返回版本；宿主 addon `flock` 交叉编译并在客体 Node 中 `require()` 成功 |
 | P5 收口与平台验证 | 移除 Termux runtime/钩子/来源依赖；隔离旧数据并验证迁移，不原地覆盖用户树；双构建与设备证据 | 待实现 |
 | P6 targetSdk 验证 | 保持当前高 target 验证，不回退到 28；后续提升 SDK 单独验证平台行为 | 待实现 |
 

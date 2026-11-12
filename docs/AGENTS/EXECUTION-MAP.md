@@ -688,7 +688,7 @@ K01 journal 发布：`SnapshotTransaction.writeMarker` 拒绝目标或临时路�
 | DSH 原生布局、设置、输入区或菜单显示异常 | S01 | 先确认引擎与客户端包都来自本次固定版本；再核对插件只注入 Android inset/IME 与 add-on 样式，不再有退役的 mobile chrome、composer、settings-tree 样式或控件。不要用旧 data-dsh-frame/topbar 锚点判定 UI。 |
 | 设置、菜单或输入区与 DSH 原版不一致 | S01 | 对比同版本 DSH Web UI 并检查宿主实际装载的插件树；设置分类、弹出菜单、输入区均由 DSH 原生组件渲染。只有系统安全区或 IME 偏移异常时，检查 data-dsh-android-frame 与 --dsh-android-* inset。 |
 | 点工具行文件链接弹「无法打开该文件」或点击无反应 | S01 | 会话身份/端点：CDP 读 `document.documentElement.getAttribute('data-dsh-session-id')`；页面 console 的 `[dsh-open-path]` 警告与底部提示条；端点返回体里的 `error` 取值 `session-unknown` / `not-found-in-session` / `not-found`（`dsh-host-web-compat/lib/index.js:895-940`）。 |
-| 目录选择器连弹多次或选完无反应 | S01 | poll 一次性投递与 token：`adb logcat` 看 SAF 与 `dsh-log`；grep `takePoll`（同一 requestId 只投一次）、`x-dsh-pick-token`；返回 `403 forbidden` 即 `DSH_PICK_TOKEN` 与页面 `getPickToken()` 不一致（`EngineManager.kt:2373#expect=%22DSH_PICK_TOKEN%22%20to%20%28pickToken%20%3F%3A%20%22%22%29`）。 |
+| 目录选择器连弹多次或选完无反应 | S01 | poll 一次性投递与 token：`adb logcat` 看 SAF 与 `dsh-log`；grep `takePoll`（同一 requestId 只投一次）、`x-dsh-pick-token`；返回 `403 forbidden` 即 `DSH_PICK_TOKEN` 与页面 `getPickToken()` 不一致（`EngineManager.kt:2436#expect=%22DSH_PICK_TOKEN%22%20to%20%28pickToken%20%3F%3A%20%22%22%29`）。 |
 | 返回键直接退出应用或层数不降 | S01 | `adb logcat -d | grep dsh-back`（`BackGate.TAG`）；CDP 读 `window.__dshBackDepth` / `__dshBackKinds`；层判据 grep `RIGHT_FULLSCREEN_SELECTOR`（`data-sidebar-right-open` 是权威 open 信号）、`data-sidebar-right-expand`。 |
 | 打包刚起步就红在「补丁自洽不一致」：跑 `node scripts/check-patch-mirror.mjs`（现行只判 registry↔IMPLS id 双向闭合，见 `:56-72`）；跨树镜像比对已于 2026-10-15 按用户决定移除，不会再因对端漂移判红。 | B01 | （待补） |
 | 设备装上后引擎起不来、日志 `Cannot find module` / `ERR_MODULE_NOT_FOUND`：注入丢件，跑 `node scripts/check-inject-completeness.mjs .deploy-tmp\build-\13-「abi」\snap-final2.tar.xz`，并在构建日志 grep `[fill]` `[prune]` `[add]`（inject-all.py:336-358）。 | B01 | （待补） |
@@ -1518,7 +1518,7 @@ vendored bootstrap 与注入集的关系（0.15.0）：`plugins/dsh-linux-bootst
   - settings 面：读必须 `.find((d) => d.ns === 'llm-pi-ai')`（坑 48，`plugins/dsh-model-capability/src/settings-config.ts:50`、`plugins/dsh-model-capability/src/index.ts:417/429`）；写是 `settings.mutate('llm-pi-ai', [{ op: 'set', path: ['providers', route, 'models'] }], descriptor.revision)` + `SETTINGS_CONFLICT` 单次重试（`plugins/dsh-model-capability/src/settings-writer.ts:239`）。
   - 目录快照 `plugins/dsh-model-capability/lib/catalog-snapshot.json`（由 `scripts/build-snapshot-013.mjs:456` 按本次 ABI 引擎树生成，原先由 check-patch-mirror 的镜像面豁免该文件；镜像层已于 2026-10-15 移除，该豁免概念随之失效）→ `lookupCatalog`。
   - 装配集：`scripts/profile-web.cordis.patch.yml` 三条 `insert`（android-linux-env / android-file-open / model-capability）+ `scripts/plugin-dirs.json`。
-  - 运行时缓存读写的路径面：`$DSH_HOME`（壳侧注入点 `EngineManager.kt:2335#expect=%22DSH_HOME%22%20to%20ensurePrivateDshData%28%29.absolutePath`）、`$DSH_FILES_DIR`（`EngineManager.kt:2349#expect=%22DSH_FILES_DIR%22%20to%20context.filesDir.absolutePath`）、当前代 `engine.log`（壳侧 `EngineAuth.tokenFromLog` 的唯一输入）。
+  - 运行时缓存读写的路径面：`$DSH_HOME`（壳侧注入点 `EngineManager.kt:2398#expect=%22DSH_HOME%22%20to%20ensurePrivateDshData%28%29.absolutePath`）、`$DSH_FILES_DIR`（`EngineManager.kt:2412#expect=%22DSH_FILES_DIR%22%20to%20context.filesDir.absolutePath`）、当前代 `engine.log`（壳侧 `EngineAuth.tokenFromLog` 的唯一输入）。
 - **关键坐标**：
   - `plugins/dsh-android-file-open/src/index.ts:238` — `enqueueSession`：路径断言 + 队列落盘 + 自有临时项记账（POST 的验收判定）
   - `plugins/dsh-android-file-open/src/index.ts:431` — `safeResolveInside`：两侧 realpath 后的工作区包含判定（H3 + 前缀混用修复）；content 须校验并读取同一 FD（坑 369）；clean 仅允许顶层普通叶文件，不跟随链接、不递归，排除队列元数据（坑 370）。
@@ -2076,6 +2076,8 @@ plugins/dsh-linux-bootstrap/test/client-http.test.mjs
 plugins/dsh-linux-bootstrap/test/reactivate.test.mjs
 scripts/source-build/linux-plugin-dependencies.test.mjs
 plugins/dsh-linux-bootstrap/test/github-limits-negative-control.mjs
+app/src/main/java/com/snoworwind/pocketharness/LinuxGuestBoot.kt
+app/src/test/java/com/snoworwind/pocketharness/LinuxGuestBootTest.kt
 app/src/main/java/com/snoworwind/pocketharness/EngineTransport.kt
 app/src/androidTest/java/com/snoworwind/pocketharness/EngineTransportInstrumentedTest.kt
 glob:scripts/patches/tests/fixtures/dsh-client-ui-sidebar-right-0.2.0-rc.2/**
