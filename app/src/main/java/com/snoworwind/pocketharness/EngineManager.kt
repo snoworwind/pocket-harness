@@ -663,8 +663,12 @@ class EngineManager(private val context: Context, private val pickToken: String?
     )
     val privateLaunch = LinuxGuestBoot.withPrivateTransport(launch, EngineTransport.preparePreload(context))
     val guestLaunch = LinuxGuestBoot.withEnvironment(privateLaunch, guestEnv)
+    // PROOT_* switches are read by the host PRoot process, so they go into the spawn environment
+    // rather than the guest env. Only the two reviewed diagnostics keys are accepted (issue #322).
+    val prootEnv = LinuxGuestBoot.prootEnvOverrides(File(homeDir, ".dsh/proot-env"))
     val process = ProcessBuilder(guestLaunch.argv).also { builder ->
       builder.environment().putAll(guestLaunch.env)
+      builder.environment().putAll(prootEnv)
       if (launch.workingDirectory.isDirectory) builder.directory(launch.workingDirectory)
       builder.redirectErrorStream(true)
       builder.redirectOutput(log)
