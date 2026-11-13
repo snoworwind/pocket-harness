@@ -3769,7 +3769,7 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
      现象：新增 Linux phase/engine enum 后，干净 Linux 资产 CI 的 TypeScript 编译拒绝 execute，返回字段被推断为 string。
      真因：异步回调的对象返回值没有显式契约，动态 operation 也只被运行期 includes 校验，类型仍为 string；schema 推导却要求 phase/engine 字面量联合。
      修法：导出 LinuxEnvironmentStatus，execute 显式返回 Promise<该契约>；operation 用枚举数组 find 收窄，不用宽泛 string 或强制绕过类型检查。状态与系统指引回归继续覆盖 unavailable/failed/ready。
-     复验：干净依赖安装后的 Linux CI 及完整门禁结果随 PR #333 收口；设备层不在此处宣称通过。
+     复验：旧提交在干净 CI 报 TS2322；修复后干净隔离容器的构建与 91 项插件回归、Linux 资产 CI 均通过。完整结果见 PR #333 检查页；这不代表设备验收。
 
 722. **安装中的 Linux 不得因旧健康快照返回 ready=true（2026-11-14）**
      现象与真因：reinstall 保留上一实例的 healthy 状态供展示，若 ready 只看该状态与 injectionActivated，会同时返回 phase=installing 和 ready=true，误导模型在管理事务期间继续调用 Linux。

@@ -14,7 +14,7 @@ Termux 引擎、快照启动链不变。可下载 payload 由本仓源码构建�
 
 下载发布约定见 `docs/AGENTS/build-and-env.md` 的“可下载 Linux 插件来源链”。对应自动发布工作流与校验 helper 已落代码，尚未触发真实公开发布；草稿阶段匿名安装仍不可用，不得记下载链 PASS。
 
-定向验证（macOS，源码工作区）：Linux 插件 91/91，runtime manager 40/40，PRoot source builder self-test 12/12（含编译执行的 EFAULT 限次重试正反控），backend receipt 4/4，第三方许可 13/13，Linux workflow/base-lock 12/12。发布准备 13 项中 11 通过、2 个 Linux 专属用例在 macOS 跳过；rootfs/原生完整回归的 Linux 专属用例交由 Linux 门禁，未把 skip 当通过。工具 wire 新基线 18718 B，初始可见 3068 B。完整门禁结果待收口。
+定向验证（macOS，源码工作区）：Linux 插件 91/91，runtime manager 40/40，PRoot source builder self-test 12/12（含编译执行的 EFAULT 限次重试正反控），backend receipt 4/4，第三方许可 13/13，Linux workflow/base-lock 12/12。发布准备 13 项中 11 通过、2 个 Linux 专属用例在 macOS 跳过；rootfs/原生完整回归的 Linux 专属用例交由 Linux 门禁，未把 skip 当通过。工具 wire 新基线 18718 B，初始可见 3068 B。完整门禁以 [PR #333 的最终检查](https://github.com/snoworwind/pocket-harness/pull/333/checks)为准，未完成检查不计通过。
 
 DeepSeek 评审处置：发布 URL 由正式来源 Release 的 published 事件闭合；草稿白名单/上传同步包含 payload；restore 增加 restoredThisLoad 守卫且强制只用 retained archive；IO 再核 signed manifest 成员、手动限制 CDN 重定向并预检空间；/dev 清理扩展至所有非目录非链接；NDK 两条 workflow 共享摘要缓存，每次仍验 738633529 字节、SHA-256 与 Google 元数据 SHA-1；常驻状态工具增加 enum/ready/engine 与系统指引；阈值来自 manifest（当前树无 Kotlin 同名判定）；健康检查合为一次客体启动，使用实际共享 Node 绝对路径；删除 seccomp 导致 182 的错误归因；loader 限次重试已有编译执行反证。最终 APK/CDP/ADB 与 SGT-AL10 任务仍未执行。
 
