@@ -69,6 +69,11 @@ PROOT_POCKET_RESUME_SILENT_CHILD=1
 
 判读：若开 (1) 后 fork 子进程的 pid 从未出现在 `proot-wait:` 行里，说明内核没有投递 initial stop；此时开 (2) 若 fork/管道恢复，则确认为「缺 initial stop」这一类，可把 (2) 的依据补上后考虑改为默认。两个开关都只改 PRoot 源码（构建期定点补丁，provenance 记录前后摘要），不改 Termux 包。
 
+同一批补丁还给 loader 的 `FATAL()` 加了落点诊断：任何 182 都会先往 stderr 写一行
+`[proot-loader] site=<行号> status=<errno>`（`FATAL_STATUS`），再按原语义退出 182。
+这样设备上再遇到 2%-10% 的 182 时，能直接区分是 open(2) 还是 mmap(2) 失败、错误码是什么，
+不用再靠排除法。写 stderr 是尽力而为（guest 无可用 stderr 时只是没有这一行），不改变退出码。
+
 另一个排查边界：PRoot 源码 `src/loader/loader.c` 的 `FATAL()` 会以 **182** 退出。
 182 本身不能唯一证明 seccomp 加速器故障，应结合 loader 映射、系统页大小和实际 syscall
 日志判根因；当前已有运行时的 `PROOT_NO_SECCOMP=1` 配置不因这次编译被改写。
