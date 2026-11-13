@@ -21,6 +21,22 @@ class LinuxGuestBootTest {
     return file
   }
 
+  @Test fun x86GuestUsesTheX64Addon() {
+    val paths = fixture()
+    val root = File(paths.filesDir, "linux")
+    val record = org.json.JSONObject(File(root, "instance.json").readText()).put("guestArchitecture", "x86_64")
+    val old = File(root, "engine/@deepseek-ai/dsh/node_modules/@deepseek-ai/node-addon-system-linux-arm64")
+    val target = File(root, "engine/@deepseek-ai/dsh/node_modules/@deepseek-ai/node-addon-system-linux-x64")
+    assertTrue(old.renameTo(target))
+    record.put("engineTreeSha256", LinuxFileTree.digest(File(root, "engine")))
+    File(root, "instance.json").writeText(record.toString())
+    assertTrue(LinuxGuestBoot.resolve(paths) is LinuxGuestBoot.Result.Ready)
+    File(target, "bin/glibc/system.node").delete()
+    record.put("engineTreeSha256", LinuxFileTree.digest(File(root, "engine")))
+    File(root, "instance.json").writeText(record.toString())
+    assertEquals("linux-guest-addon-missing", (LinuxGuestBoot.resolve(paths) as LinuxGuestBoot.Result.Refused).code)
+  }
+
   private fun fixture(): LinuxGuestBoot.Paths {
     val files = temporary.newFolder("files")
     val native = temporary.newFolder("lib")

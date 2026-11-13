@@ -4,14 +4,13 @@ import org.json.JSONObject
 import java.io.File
 
 /**
- * 纯 Linux 客体启动（实验）：用已安装的 PRoot/Debian 实例运行 DSH 引擎，而不是 Termux 快照。
+ * 纯 Linux 客体启动：用已安装的 PRoot/Debian 实例运行 DSH 引擎，而不是 Termux 快照。
  *
  * 这里只负责“能不能起、按什么 argv/env 起”，不碰进程管理；调用方负责 spawn 与回退。
  * 所有判定都基于真实文件存在性与 JSON 结构，缺一项就给出稳定拒绝码，绝不半启动。
  */
 internal object LinuxGuestBoot {
   private const val GUEST_PATH = "/opt/node/bin:/root/.local/bin:/root/.local/share/pnpm:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
-  private const val ADDON_PACKAGE = "@deepseek-ai/node-addon-system-linux-arm64"
   /** 客体里的引擎树挂载点；引擎 JS 与 addon 都从这棵宿主树 bind 进去。 */
   const val GUEST_ENGINE_ROOT = "/opt/dsh"
   const val ENGINE_ENTRY = "@deepseek-ai/dsh/lib/bin.js"
@@ -81,6 +80,11 @@ internal object LinuxGuestBoot {
       is LinuxInstanceInstaller.Result.Failed -> return Result.Refused(opened.code, opened.detail)
     }
     if (command.isEmpty()) return Result.Refused("linux-guest-command-empty", "客体命令为空")
+    val addonPackage = when (instance.architecture) {
+      "arm64" -> "@deepseek-ai/node-addon-system-linux-arm64"
+      "x86_64" -> "@deepseek-ai/node-addon-system-linux-x64"
+      else -> return Result.Refused("linux-guest-architecture-unsupported", "不支持的客体架构：${instance.architecture}")
+    }
     val proot = File(paths.nativeLibraryDir, "libpocketharness_proot.so")
     val loader = File(paths.nativeLibraryDir, "libpocketharness_proot_loader.so")
     for ((file, code) in listOf(
@@ -89,7 +93,7 @@ internal object LinuxGuestBoot {
       instance.rootfs to "linux-instance-incomplete",
       instance.node to "linux-instance-incomplete",
       File(instance.engine, ENGINE_ENTRY) to "linux-guest-engine-missing",
-      File(instance.engine, "@deepseek-ai/dsh/node_modules/$ADDON_PACKAGE/bin/glibc/system.node") to "linux-guest-addon-missing",
+      File(instance.engine, "@deepseek-ai/dsh/node_modules/$addonPackage/bin/glibc/system.node") to "linux-guest-addon-missing",
     )) {
       if (!file.exists()) return Result.Refused(code, "缺少 ${file.absolutePath}")
     }

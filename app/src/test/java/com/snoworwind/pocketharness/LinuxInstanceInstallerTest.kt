@@ -13,6 +13,17 @@ import java.io.File
  * node/engine 是应用管理的运行时，可以随 APK 更新。
  */
 class LinuxInstanceInstallerTest {
+  @Test fun x86ManifestIsAcceptedAndArchitectureReachesTrial() = LinuxInstallerFixture().use { f ->
+    var architecture: String? = null
+    f.trial = { instance, _ -> architecture = instance.architecture }
+    val source = f.source(mutateRecord = {
+      it.put("guestArchitecture", "x86_64").put("baseId", "debian-13-x86_64-glibc-2")
+    })
+    val result = LinuxInstanceInstaller.ensure(source, f.files)
+    assertTrue(result is LinuxInstanceInstaller.Result.Ready)
+    assertEquals("x86_64", architecture)
+  }
+
   @Test
   fun rootfsIsNeverReplacedByAnAppUpdate() {
     val plan = LinuxInstanceInstaller.planUpdate("a", "b", "c", "d")
@@ -74,7 +85,7 @@ internal class LinuxInstallerFixture : java.io.Closeable {
   val reads = mutableMapOf<String, Int>()
   var trial: (LinuxInstanceInstaller.Instance, org.json.JSONObject) -> Unit = { _, _ -> }
 
-  fun source(version: String = "one", extraHome: Map<String, String> = emptyMap()): LinuxInstanceInstaller.Source {
+  fun source(version: String = "one", extraHome: Map<String, String> = emptyMap(), mutateRecord: (org.json.JSONObject) -> Unit = {}): LinuxInstanceInstaller.Source {
     val payloads = linkedMapOf(
       "rootfs" to linkedMapOf("etc/os-release" to "ID=debian\nVERSION_ID=\"13\"\n", "usr/bin/bash" to "#!/bin/bash\n"),
       "node" to linkedMapOf("bin/node" to "node-$version", "lib/node_modules/npm/package.json" to "{}"),
@@ -116,6 +127,7 @@ internal class LinuxInstallerFixture : java.io.Closeable {
       record.put(name + "TreeSha256", LinuxFileTree.digest(tree))
       record.put(name + "UnpackedBytes", entries.values.sumOf { it.toByteArray().size.toLong() })
     }
+    mutateRecord(record)
     assets["linux/manifest.json"] = record.toString().toByteArray()
     return LinuxInstanceInstaller.Source(
       open = { path -> reads[path] = (reads[path] ?: 0) + 1; (assets[path] ?: error("missing fixture asset: $path")).inputStream() },
@@ -129,4 +141,28 @@ internal class LinuxInstallerFixture : java.io.Closeable {
   }
 
   override fun close() { SnapshotFs.deletePath(temporary) }
+
+  @Test
+  fun corruptRootfsTreeDigestIsDiscardedAndRetryable() = LinuxInstallerFixture().use { f ->
+    val corrupt = f.source(mutateRecord = { it.put("rootfsTreeSha256", "0".repeat(64)) })
+    val result = LinuxInstanceInstaller.ensure(corrupt, f.files)
+    assertTrue(result is LinuxInstanceInstaller.Result.Failed)
+    assertEquals("linux-rootfs-corrupt", (result as LinuxInstanceInstaller.Result.Failed).code)
+    assertFalse("损坏的暂存 rootfs 必须删除，避免下次复用", File(f.files, ".linux-stage/rootfs").exists())
+    val retry = LinuxInstanceInstaller.ensure(f.source(), f.files)
+    assertTrue(retry is LinuxInstanceInstaller.Result.Ready)
+  }
+
+  @Test
+  fun tamperedStagedRootfsIsReextractedEvenWithAReadyMarker() = LinuxInstallerFixture().use { f ->
+    val corrupt = f.source(mutateRecord = { it.put("rootfsTreeSha256", "0".repeat(64)) })
+    assertTrue(LinuxInstanceInstaller.ensure(corrupt, f.files) is LinuxInstanceInstaller.Result.Failed)
+    // Simulate a stale/forged ready marker with a plausible tree: retry must verify, not trust it.
+    val stage = File(f.files, ".linux-stage/rootfs").apply { mkdirs() }
+    File(stage, "usr/bin/extra").apply { parentFile!!.mkdirs(); writeText("stale") }
+    File(f.files, ".linux-stage/.rootfs.ready").writeText("0".repeat(64))
+    assertTrue(LinuxInstanceInstaller.ensure(f.source(), f.files) is LinuxInstanceInstaller.Result.Ready)
+    assertFalse(File(f.files, "linux/rootfs/usr/bin/extra").exists())
+  }
+
 }
