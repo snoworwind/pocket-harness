@@ -25,6 +25,8 @@ import {
   RETAINED_ARCHIVE,
   UNPACKED_DIR,
   createHostAssetIO,
+  fetchLinuxAsset,
+  requireLinuxDownloadSpace,
   createLinuxBootstrapConfig,
   linuxEnvironmentRoot,
   publishHardLink,
@@ -651,7 +653,7 @@ test('reinstall survives an engine restart by persisting the approved manifest d
     await second.ready
     await second.reinstall({ confirmed: true, activate: true })
     assert.equal((await second.status()).installed, true)
-    assert.equal(secondHost.activations.length, 1)
+    assert.equal(secondHost.activations.length, 2, 'cold-start restore plus explicit reinstall')
   } finally { await rm(filesDir, { recursive: true, force: true }) }
 })
 
@@ -693,4 +695,84 @@ test('uninstall survives an engine restart by reactivating the persisted plugin 
     assert.equal(uninstalls, 1, 'manager must remove its runtime data')
     assert.equal((await second.status()).installed, false)
   } finally { await rm(filesDir, { recursive: true, force: true }) }
+})
+
+for (const mode of ['valid', 'digest', 'short', 'overflow']) {
+  test(`downloadable Linux asset verifies bytes before publication: ${mode}`, async () => {
+    const filesDir = await tempFilesDir()
+    const original = globalThis.fetch
+    const bytes = Buffer.from('verified runtime archive')
+    const asset = { url: `${REPO}/releases/download/${TAG}/linux-runtime-plugin.tar.xz`,
+      size: bytes.length, sha256: sha256(bytes) }
+    const body = mode === 'digest' ? Buffer.alloc(bytes.length) : mode === 'short' ? bytes.subarray(1) :
+      mode === 'overflow' ? Buffer.concat([bytes, bytes]) : bytes
+    globalThis.fetch = async () => new Response(body)
+    try {
+      const bundleDirectory = join(filesDir, 'bundle')
+      await mkdir(bundleDirectory)
+      const body = Buffer.from(JSON.stringify({ plugins: { runtime: asset }, runtimes: [] }))
+      await writeFile(join(bundleDirectory, MANIFEST_NAME), body)
+      await writeFile(join(bundleDirectory, 'linux-runtime-manifest.sha256'), sha256(body))
+      const io = createHostAssetIO({ filesDir, bundleDirectory })
+      if (mode === 'valid') {
+        const archive = await io.downloadAsset(asset)
+        assert.deepEqual(await readFile(archive), bytes)
+      } else {
+        await assert.rejects(io.downloadAsset(asset), /size|SHA-256/)
+        assert.equal(existsSync(retainedArchiveFor(filesDir, asset.sha256)), false)
+      }
+    } finally { globalThis.fetch = original; await rm(filesDir, { recursive: true, force: true }) }
+  })
+}
+
+for (const mode of ['disabled', 'removed', 'activation-failed', 'late-host', 'missing-archive']) {
+  test(`cold-start Linux recovery preserves Termux and respects opt-in: ${mode}`, async () => {
+    const filesDir = await tempFilesDir()
+    try {
+      const asset = await stageBundle(filesDir)
+      const manifest = makeManifest({ asset })
+      const first = makeBootstrap({ filesDir, manifest })
+      await installConfirmed(first.service)
+      const stateFile = join(filesDir, 'linux-environment', 'linux-bootstrap-state.json')
+      if (mode === 'disabled') {
+        const state = JSON.parse(await readFile(stateFile, 'utf8'))
+        state.enabled = false
+        state.injectionActivated = false
+        await writeFile(stateFile, JSON.stringify(state))
+      }
+      if (mode === 'missing-archive') await rm(retainedArchiveFor(filesDir, asset.sha256))
+      const host = makePluginHost()
+      host.isInjected = async () => ({ injected: mode !== 'removed', active: false })
+      if (mode === 'activation-failed') host.install = async () => { throw new Error('controlled activation failure') }
+      const second = makeBootstrap({ filesDir, manifest, pluginHost: host }).service
+      await second.ready // A failed Linux plugin never rejects the host startup.
+      const status = await second.status()
+      assert.equal(status.installed, true, 'installed data must not be destroyed')
+      assert.equal(status.injectionActivated, mode === 'late-host')
+      assert.equal(host.activations.length, mode === 'late-host' ? 1 : 0)
+      if (['activation-failed', 'missing-archive'].includes(mode)) assert.equal(status.lastErrorCode, 'linux-restore-failed')
+    } finally { await rm(filesDir, { recursive: true, force: true }) }
+  })
+}
+
+test('download redirects allow the GitHub CDN and reject other origins before fetching', async () => {
+  const original = globalThis.fetch
+  const calls = []
+  const initial = new URL(`${REPO}/releases/download/${TAG}/linux-runtime-plugin.tar.xz`)
+  try {
+    globalThis.fetch = async (url, options) => {
+      calls.push(String(url)); assert.equal(options.redirect, 'manual')
+      return calls.length === 1 ? new Response(null, { status: 302, headers: { location: 'https://release-assets.githubusercontent.com/file?token=test' } }) : new Response('ok')
+    }
+    assert.equal(await (await fetchLinuxAsset(initial, new AbortController().signal)).text(), 'ok')
+    calls.length = 0
+    globalThis.fetch = async url => { calls.push(String(url)); return new Response(null, { status: 302, headers: { location: 'https://untrusted.example/file' } }) }
+    await assert.rejects(fetchLinuxAsset(initial, new AbortController().signal), /重定向/)
+    assert.equal(calls.length, 1)
+  } finally { globalThis.fetch = original }
+})
+
+test('download space preflight fails readably before writing bytes', async () => {
+  await assert.rejects(requireLinuxDownloadSpace('/fixture', 100, async () => ({ bavail: 1, bsize: 4096 })), error => error.code === 'linux-insufficient-space')
+  await requireLinuxDownloadSpace('/fixture', 100, async () => ({ bavail: 1024 * 1024, bsize: 4096 }))
 })

@@ -16,6 +16,7 @@ OPTIONAL_EVIDENCE_BY_ABI = {
     'x86_64': frozenset((
         '.deploy-tmp/source-build/linux-bundle-injection.json',
         '.deploy-tmp/linux-build/provenance/**',
+        '.deploy-tmp/linux-build/assets/**',
     )),
 }
 
@@ -107,6 +108,17 @@ def prepare(source_root, output, env):
                 if path != apk:
                     archive.write(path, f'{abi}/{path.relative_to(source).as_posix()}')
 
+    # Keep downloadable runtime archives as first-class release assets, not buried in evidence ZIP.
+    linux_assets = artifacts['arm64'][0] / '.deploy-tmp/linux-build/assets'
+    for path in sorted(linux_assets.iterdir()):
+        if not path.is_file() or path.is_symlink():
+            raise ValueError('Linux release payload must be a regular file')
+        destination = output / path.name
+        if destination.exists():
+            raise ValueError('Linux release payload filename collides with another asset')
+        shutil.copyfile(path, destination)
+        assets.append(destination)
+
     notes = output / 'notes.md'
     notes.write_text(f'''Dual-ABI source build for main.
 
@@ -128,4 +140,9 @@ with SHA256SUMS.txt.
 
 
 if __name__ == '__main__':
+    if sys.argv[1:] == ['--self-test']:
+        import unittest
+        suite = unittest.defaultTestLoader.discover(str(Path(__file__).parent), pattern='test_prepare_source_release.py')
+        result = unittest.TextTestRunner(verbosity=2).run(suite)
+        raise SystemExit(0 if result.testsRun and result.wasSuccessful() else 1)
     prepare(sys.argv[1], sys.argv[2], os.environ)

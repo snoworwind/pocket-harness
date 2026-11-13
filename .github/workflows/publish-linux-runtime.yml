@@ -1,0 +1,87 @@
+name: publish-linux-runtime
+on:
+  release:
+    types: [published]
+permissions:
+  contents: read
+concurrency:
+  group: linux-runtime-${{ github.event.release.tag_name }}
+  cancel-in-progress: false
+jobs:
+  verify:
+    if: startsWith(github.event.release.tag_name, 'hardening-source-') && !github.event.release.prerelease
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Verify published source runtime payloads
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          SOURCE_TAG: ${{ github.event.release.tag_name }}
+          SOURCE_COMMIT: ${{ github.event.release.target_commitish }}
+        run: |
+          set -euo pipefail
+          gh release download "$SOURCE_TAG" --dir linux-input --pattern '*.tar.xz' --pattern linux-release.json --pattern linux-runtime-manifest.sha256
+          python3 scripts/source-build/prepare-linux-runtime-release.py --self-test
+          python3 scripts/source-build/prepare-linux-runtime-release.py linux-input linux-verified "$GH_REPO" "$SOURCE_COMMIT"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: verified-linux-runtime
+          path: linux-verified/*
+          if-no-files-found: error
+  publish:
+    needs: verify
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: verified-linux-runtime
+          path: linux-verified
+      - name: Publish immutable versioned runtime assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          SOURCE_COMMIT: ${{ github.event.release.target_commitish }}
+        run: |
+          set -euo pipefail
+          cd linux-verified
+          python3 - <<'PY'
+          import json, os, pathlib, re
+          value = json.loads(pathlib.Path('target.json').read_text())
+          if not re.fullmatch(r'v\d+\.\d+\.\d+', value['tag']) or not re.fullmatch(r'[a-f0-9]{40}', value['commit']) or value['repository'] != os.environ['GH_REPO'] or value['commit'] != os.environ['SOURCE_COMMIT']:
+              raise SystemExit('invalid release identity')
+          root = pathlib.Path('.')
+          names = []
+          for row in (root / 'SHA256SUMS.txt').read_text().splitlines():
+              match = re.fullmatch(r'[a-f0-9]{64}  ([A-Za-z0-9._-]+)', row)
+              if not match:
+                  raise SystemExit('invalid runtime checksum row')
+              names.append(match[1])
+          if len(names) != 7 or len(set(names)) != 7 or {p.name for p in root.iterdir()} != set(names) | {'target.json', 'SHA256SUMS.txt'} or any(p.is_symlink() or not p.is_file() for p in root.iterdir()):
+              raise SystemExit('unexpected or missing runtime publication asset')
+          pathlib.Path('tag.txt').write_text(value['tag'])
+          pathlib.Path('commit.txt').write_text(value['commit'])
+          PY
+          sha256sum --check --strict SHA256SUMS.txt
+          tag=$(cat tag.txt)
+          commit=$(cat commit.txt)
+          # Existing tags/releases are immutable: never replace payloads or move refs.
+          if gh api "repos/$GH_REPO/git/ref/tags/$tag" >existing-ref.json 2>ref-error.txt; then
+            echo "Version tag already exists; refusing to reuse $tag" >&2
+            exit 1
+          elif ! grep -q 'HTTP 404' ref-error.txt; then
+            cat ref-error.txt >&2
+            exit 1
+          fi
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "Versioned release already exists; refusing to overwrite $tag" >&2
+            exit 1
+          fi
+          gh release create "$tag" ./*.tar.xz linux-release.json linux-runtime-manifest.sha256 SHA256SUMS.txt \
+            --target "$commit" --draft --latest=false --title "Pocket Harness Linux runtime $tag" \
+            --notes "Optional Linux runtime assets built with the corresponding Pocket Harness source release. Termux remains the main environment."
+          gh release edit "$tag" --draft=false --latest=false

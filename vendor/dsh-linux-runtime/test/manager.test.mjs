@@ -6,7 +6,7 @@ import { readFileSync, realpathSync } from 'node:fs';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 
-import { createManager, ExecutionGate, GUEST_PATH_PREFIXES, isGuestPath, spawnCommand } from '../modules/manager.js';
+import { createManager, ExecutionGate, GUEST_PATH_PREFIXES, isGuestPath, spawnCommand, glibcSatisfies, LINUX_EXEC_PROBE, readProotSwitches } from '../modules/manager.js';
 import { apply as applyRuntime } from '../lib/index.js';
 import { validateManifest, validateAsset, selectRuntime } from '../modules/manifest.js';
 
@@ -137,7 +137,7 @@ function makeIo(fixture, { onExtract } = {}) {
  * cancels it — that is what the cutover gate has to do before it replaces an
  * active rootfs.
  */
-function makeRunner({ instant, prootVersionResult = { stdout: 'PRoot v5.1.107.102\n', stderr: '', exitCode: 0 }, healthProbeResult = { stdout: 'v24.22.0', stderr: '', exitCode: 0 }, commandResult = { stdout: 'ok', stderr: '', exitCode: 0 }, onHealthProbe, onRun } = {}) {
+function makeRunner({ instant, glibcProbeResult = { stdout: 'proot warning: cannot bind /dev/pts\nglibc 2.41\n', stderr: '', exitCode: 0 }, prootVersionResult = { stdout: 'PRoot v5.1.107.102\n', stderr: '', exitCode: 0 }, healthProbeResult = { stdout: 'glibc 2.41\nOK\nNESTED\ny\nPTY_OK\nv24.22.0\n', stderr: '', exitCode: 0 }, commandResult = { stdout: 'ok', stderr: '', exitCode: 0 }, onHealthProbe, onRun } = {}) {
   const calls = [];
   const isInstant =
     instant ?? ((spec) => !String(spec.args?.at(-1) ?? '').includes('sleep'));
@@ -165,9 +165,13 @@ function makeRunner({ instant, prootVersionResult = { stdout: 'PRoot v5.1.107.10
           );
           if (isInstant(spec)) {
             const versionProbe = spec.args?.length === 1 && spec.args?.[0] === '--version';
-            const healthProbe = spec.args?.at(-1) === 'node --version';
+            const healthProbe = String(spec.args?.at(-1)).includes('POCKET_LINUX_PREFLIGHT');
             if (healthProbe) onHealthProbe?.(spec);
-            settle(versionProbe ? prootVersionResult : healthProbe ? healthProbeResult : commandResult);
+            const command = spec.args?.at(-1);
+            const extra = command === '/usr/bin/getconf GNU_LIBC_VERSION'
+              ? glibcProbeResult
+              : command === LINUX_EXEC_PROBE ? { stdout: 'OK\nNESTED\ny\nPTY_OK\n', stderr: '', exitCode: 0 } : commandResult;
+            settle(versionProbe ? prootVersionResult : healthProbe ? healthProbeResult : extra);
           }
         }),
         cancel: () => {
@@ -295,9 +299,9 @@ test('install stages, proves health, then activates the runtime', async () => {
   assert.equal(status.runtimeId, 'debian-minimal');
   assert.equal(status.version, '0.6.2');
   assert.equal(activeDuringProbe, false, 'the new runtime is not active until the smoke probe succeeds');
-  const smokeProbe = runner.calls.find(({ spec }) => spec.args?.at(-1) === 'node --version');
+  const smokeProbe = runner.calls.find(({ spec }) => String(spec.args?.at(-1)).includes('POCKET_LINUX_PREFLIGHT'));
   assert.ok(smokeProbe, 'installation must execute the guest Node smoke probe');
-  assert.deepEqual(smokeProbe.spec.args.slice(-3), ['/bin/bash', '-c', 'node --version'],
+  assert.deepEqual(smokeProbe.spec.args.slice(-3), ['/bin/bash', '-c', smokeProbe.spec.args.at(-1)],
     'the controlled guest PATH must not be overwritten by Debian /etc/profile');
   assert.ok(smokeProbe.spec.args.includes(`PATH=${manager.status().paths.node}/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin`));
 
@@ -341,10 +345,10 @@ test('a runtime that fails the launch smoke probe cannot replace the active inst
   });
 
   await assert.rejects(() => second.manager.install(secondFixture.manifest), error => {
-    assert.match(error.message, /PRoot guest smoke probe failed \(exit 127\)/);
+    assert.match(error.message, /Linux glibc\/Node\/exec\/PTY preflight failed: exit=127/);
     assert.ok(error.message.includes(`hostCwd=${JSON.stringify(dataDir)}`));
     assert.match(error.message, /guestCwd="\/"/);
-    assert.match(error.message, /guestCommand=\["\/bin\/bash","-c","node --version"\]/);
+    assert.match(error.message, /POCKET_LINUX_PREFLIGHT/);
     assert.match(error.message, /"PATH":"[^\"]*\/shared\/node\/[^\"]*\/bin:/);
     assert.match(error.message, /stdout="profile diagnostic"/);
     assert.match(error.message, /stderr="node: command not found"/);
@@ -369,7 +373,7 @@ test('a silent PRoot exit 182 diagnostic records empty streams and the selected 
       runnerOptions: { healthProbeResult: { stdout: '', stderr: '', exitCode: 182 } },
     });
     await assert.rejects(manager.install(fixture.manifest), error => {
-      assert.match(error.message, /PRoot guest smoke probe failed \(exit 182\)/);
+      assert.match(error.message, /preflight failed: exit=182/);
       assert.match(error.message, /"PROOT_NO_SECCOMP":"1"/);
       assert.match(error.message, /stdout=""/);
       assert.match(error.message, /stderr=""/);
@@ -650,10 +654,10 @@ test('Android PRoot uses APK-native assets, hides host procfs, and binds current
       assert.equal(spec.env.TERMUX_EXEC__EXECVE_CALL__INTERCEPT, undefined);
       assert.equal(spec.env.PROOT_NO_SECCOMP, '1', 'Android must bypass the unreliable PRoot seccomp accelerator');
     }
-    const smokeProbe = runner.calls.find(({ spec }) => spec.args?.at(-1) === 'node --version');
+    const smokeProbe = runner.calls.find(({ spec }) => String(spec.args?.at(-1)).includes('POCKET_LINUX_PREFLIGHT'));
     assert.ok(smokeProbe);
     assert.equal(smokeProbe.spec.env.PROOT_NO_SECCOMP, '1');
-    assert.deepEqual(smokeProbe.spec.args.slice(-3), ['/bin/bash', '-c', 'node --version']);
+    assert.deepEqual(smokeProbe.spec.args.slice(-3), ['/bin/bash', '-c', smokeProbe.spec.args.at(-1)]);
 
     runner.calls.length = 0;
     await manager.execute({ command: 'echo guest' });
@@ -849,7 +853,7 @@ test('rootfs preparation fails closed when the PRoot compatibility preload is mi
     assert.match(error.message, /opt\/pocket-harness\/libpocket-linux-compat\.so/);
     return true;
   });
-  assert.equal(runner.calls.some(({ spec }) => spec.args?.at(-1) === 'node --version'), false);
+  assert.equal(runner.calls.some(({ spec }) => String(spec.args?.at(-1)).includes('POCKET_LINUX_PREFLIGHT')), false);
 });
 
 test('rootfs preparation creates Debian-omitted /dev/shm for the app-private PRoot bind', async () => {
@@ -1004,4 +1008,56 @@ test('manifest validation rejects unsafe assets and unsupported selections', () 
 
   assert.throws(() => selectRuntime(fixture.manifest, 'debian-minimal', 'x64'), /not present in the manifest/);
   assert.throws(() => validateAsset({ url: fixture.manifest.runtimes[0].rootfsAsset.url, sha256: 'a'.repeat(64), size: 0, unpackedSize: 1 }), /size/);
+});
+
+test('glibc probe accepts warning lines and the last complete version only', () => {
+  assert.equal(glibcSatisfies('proot warning: /dev/pts\nglibc 2.41\n', '2.36'), true);
+  assert.equal(glibcSatisfies('glibc 2.41\nwarning\n2.35', '2.36'), false);
+  for (const text of ['warning 2.41', 'glibc 2.41 trailing', '', '2.3']) assert.equal(glibcSatisfies(text, '2.36'), false);
+});
+
+test('glibc failure retains the active runtime and reports exit plus loader diagnostics', async () => {
+  const dataDir = tempDir();
+  const good = makeManifest();
+  await makeManager(good, { dataDir }).manager.install(good.manifest);
+  const before = await readFile(path.join(dataDir, 'active.json'), 'utf8');
+  const bad = makeManifest({ version: '1.0.0' });
+  const { manager } = makeManager(bad, { dataDir, runnerOptions: {
+    healthProbeResult: { stdout: '', stderr: '[proot-loader] site=198 status=14', exitCode: 182 },
+  } });
+  await assert.rejects(manager.install(bad.manifest), /preflight failed: exit=182.*proot-loader/);
+  assert.equal(await readFile(path.join(dataDir, 'active.json'), 'utf8'), before);
+});
+
+test('proot switch file accepts only the two exact boolean keys, never shell syntax or symlinks', async () => {
+  const root = tempDir();
+  const home = path.join(root, 'home', '.dsh');
+  await mkdir(home, { recursive: true });
+  const file = path.join(home, 'proot-env');
+  await writeFile(file, 'PROOT_POCKET_TRACE_WAIT=1\nPROOT_POCKET_RESUME_SILENT_CHILD=0\nLD_PRELOAD=evil\nPROOT_POCKET_TRACE_WAIT=$(touch bad)\n');
+  assert.deepEqual(readProotSwitches(root), { PROOT_POCKET_TRACE_WAIT: '1', PROOT_POCKET_RESUME_SILENT_CHILD: '0' });
+  await rm(file);
+  await symlink(path.join(root, 'outside'), file);
+  assert.deepEqual(readProotSwitches(root), {});
+});
+
+test('the validated manifest owns the glibc minimum', async () => {
+  const fixture = makeManifest();
+  fixture.manifest.runtimes[0].minimumGlibc = '9.0';
+  const { manager } = makeManager(fixture, { dataDir: tempDir() });
+  await assert.rejects(manager.install(fixture.manifest), /preflight failed: exit=0/);
+  assert.equal(manager.status().installed, false);
+});
+
+test('cold-start verification executes the real guest probe without downloads and retains data on failure', async () => {
+  const fixture = makeManifest(), dataDir = tempDir();
+  await makeManager(fixture, { dataDir }).manager.install(fixture.manifest);
+  const resumed = makeManager(fixture, { dataDir });
+  await resumed.manager.verify(fixture.manifest);
+  assert.equal(resumed.io.stats.downloads.length, 0);
+  assert.equal(resumed.runner.calls.filter(({ spec }) => String(spec.args.at(-1)).includes('POCKET_LINUX_PREFLIGHT')).length, 1);
+  const failed = makeManager(fixture, { dataDir, runnerOptions: { healthProbeResult: { exitCode: 182, stdout: '', stderr: '[proot-loader] status=14' } } });
+  await assert.rejects(failed.manager.verify(fixture.manifest), /preflight failed: exit=182/);
+  assert.equal(failed.manager.status().installed, true);
+  assert.equal(failed.io.stats.downloads.length, 0);
 });

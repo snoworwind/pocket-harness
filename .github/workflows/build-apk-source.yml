@@ -587,22 +587,29 @@ jobs:
           archive.parent.rmdir()
           PY
 
+      - name: Restore verified NDK archive cache
+        id: ndk-cache
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: .deploy-tmp/source-build/android-ndk-r30-linux.zip
+          key: ndk-r30-linux-753611f410d002cfcd3f3dc2ef49aad532089d3180b436c060a90bf0fcb64df2
       - name: Cross-compile node-pty Android binding from pinned source
         shell: bash
         run: |
           set -euo pipefail
           ndk_archive=.deploy-tmp/source-build/android-ndk-r30-linux.zip
           ndk_sha1='5107f898313790e449e87eee2183d9a20602dee9'
-          # 已存在且钉死的哈希对得上就跳过下载：本地复跑省 704 MB（CI 每轮全新目录，无操作）。
-          # 跳过不等于放行——下面那条 sha1sum --check 无论下载与否都照跑。
-          if ! printf '%s  %s\n' "$ndk_sha1" "$ndk_archive" | sha1sum --check --status 2>/dev/null; then
+          # Shared across source workflows; every cache hit still checks size, SHA-256 and official SHA-1.
+          if ! python3 scripts/source-build/verify-ndk-archive.py "$ndk_archive"; then
             bash scripts/source-build/retry-curl.sh --fail --location --retry 8 --retry-max-time 600 \
               https://dl.google.com/android/repository/android-ndk-r30-linux.zip \
               --output "$ndk_archive"
           fi
+          python3 scripts/source-build/verify-ndk-archive.py "$ndk_archive"
           printf '%s  %s\n' "$ndk_sha1" "$ndk_archive" | sha1sum --check -
           printf '%s\n' '5107f898313790e449e87eee2183d9a20602dee9' \
             > .deploy-tmp/source-build/ndk-archive-sha1.txt
+          node -p 'require("./scripts/source-build/linux-inputs.json").ndkSha256' > .deploy-tmp/source-build/ndk-archive-sha256.txt
           # 同上：`unzip` 无 -o，目录已在时会走交互式覆盖确认，非交互环境读到 EOF 即判死。
           rm -rf .deploy-tmp/source-build/ndk/android-ndk-r30
           unzip -q "$ndk_archive" -d .deploy-tmp/source-build/ndk
@@ -643,6 +650,12 @@ jobs:
           fs.writeFileSync(path, JSON.stringify(policy, null, 2) + '\n')
           NODE
 
+      - name: Save verified NDK archive cache
+        if: steps.ndk-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: .deploy-tmp/source-build/android-ndk-r30-linux.zip
+          key: ndk-r30-linux-753611f410d002cfcd3f3dc2ef49aad532089d3180b436c060a90bf0fcb64df2
       - name: Cross-compile native terminal (libvterm) from source
         shell: bash
         run: |
@@ -678,7 +691,7 @@ jobs:
             .deploy-tmp/linux-build/assets
             .deploy-tmp/linux-build/provenance
             .deploy-tmp/linux-build/native-libs
-          key: linux-assets-${{ runner.os }}-${{ hashFiles('scripts/source-build/linux-inputs.json', 'scripts/source-build/linux-source-manifest.json', 'scripts/source-build/build-linux-assets.sh', 'scripts/source-build/package-linux-assets.py', 'scripts/source-build/prepare-proot-backend.py', 'scripts/source-build/ensure-no-rootfs-mounts.py') }}
+          key: linux-assets-${{ runner.os }}-${{ hashFiles('scripts/source-build/linux-inputs.json', 'scripts/source-build/linux-source-manifest.json', 'scripts/source-build/build-linux-assets.sh', 'scripts/source-build/package-linux-assets.py', 'scripts/source-build/prepare-proot-backend.py', 'scripts/source-build/build-proot-source.py', 'scripts/source-build/proot_source_provenance.py', 'scripts/source-build/prepare-proot-source-backend.py', 'scripts/source-build/proot-source/**', 'scripts/source-build/inventory-native-runtime.py', 'scripts/source-build/ensure-no-rootfs-mounts.py') }}
 
       - name: Install Linux asset cross-build tools
         if: env.DSH_ABI == 'arm64' && steps.linux-assets.outputs.cache-hit != 'true'
@@ -694,7 +707,7 @@ jobs:
             return 1
           }
           retry sudo apt-get update
-          retry sudo apt-get install -y gcc-aarch64-linux-gnu debootstrap debian-archive-keyring qemu-user-static binfmt-support xz-utils
+          retry sudo apt-get install -y gcc-aarch64-linux-gnu debootstrap debian-archive-keyring qemu-user-static binfmt-support xz-utils gawk
           sudo update-binfmts --enable qemu-aarch64
 
       - name: Prepare pinned Debian archive trust keys for Linux assets
@@ -742,7 +755,7 @@ jobs:
             .deploy-tmp/linux-build/assets
             .deploy-tmp/linux-build/provenance
             .deploy-tmp/linux-build/native-libs
-          key: linux-assets-${{ runner.os }}-${{ hashFiles('scripts/source-build/linux-inputs.json', 'scripts/source-build/linux-source-manifest.json', 'scripts/source-build/build-linux-assets.sh', 'scripts/source-build/package-linux-assets.py', 'scripts/source-build/prepare-proot-backend.py', 'scripts/source-build/ensure-no-rootfs-mounts.py') }}
+          key: linux-assets-${{ runner.os }}-${{ hashFiles('scripts/source-build/linux-inputs.json', 'scripts/source-build/linux-source-manifest.json', 'scripts/source-build/build-linux-assets.sh', 'scripts/source-build/package-linux-assets.py', 'scripts/source-build/prepare-proot-backend.py', 'scripts/source-build/build-proot-source.py', 'scripts/source-build/proot_source_provenance.py', 'scripts/source-build/prepare-proot-source-backend.py', 'scripts/source-build/proot-source/**', 'scripts/source-build/inventory-native-runtime.py', 'scripts/source-build/ensure-no-rootfs-mounts.py') }}
 
       - name: Attest reused Linux assets for this commit
         if: env.DSH_ABI == 'arm64' && steps.linux-assets.outputs.cache-hit == 'true'
@@ -1080,6 +1093,7 @@ jobs:
             .deploy-tmp/source-build/signing-certificate-sha256.txt
             .deploy-tmp/source-build/package-manager-versions.txt
             .deploy-tmp/source-build/linux-bundle-injection.json
+            .deploy-tmp/linux-build/assets/**
             .deploy-tmp/linux-build/provenance/**
             .deploy-tmp/source-build/pnpm-deploy-build-policy.json
             .deploy-tmp/source-build/pnpm-deploy-runtime-closure.json
@@ -1087,6 +1101,7 @@ jobs:
             .deploy-tmp/source-build/android-native-runtime-packages.json
             .deploy-tmp/source-build/node-pty-android-build.json
             .deploy-tmp/source-build/ndk-archive-sha1.txt
+            .deploy-tmp/source-build/ndk-archive-sha256.txt
             .deploy-tmp/source-build/post-snapshot-native-runtime-check.json
             .deploy-tmp/source-build/harness-web-preview-exclusion.json
             .deploy-tmp/source-build/post-snapshot-runtime-dependency-check.json
@@ -1161,6 +1176,7 @@ jobs:
             .deploy-tmp/source-build/signing-certificate-sha256.txt
             .deploy-tmp/source-build/package-manager-versions.txt
             .deploy-tmp/source-build/linux-bundle-injection.json
+            .deploy-tmp/linux-build/assets/**
             .deploy-tmp/linux-build/provenance/**
             .deploy-tmp/source-build/pnpm-deploy-build-policy.json
             .deploy-tmp/source-build/pnpm-deploy-runtime-closure.json
@@ -1168,6 +1184,7 @@ jobs:
             .deploy-tmp/source-build/android-native-runtime-packages.json
             .deploy-tmp/source-build/node-pty-android-build.json
             .deploy-tmp/source-build/ndk-archive-sha1.txt
+            .deploy-tmp/source-build/ndk-archive-sha256.txt
             .deploy-tmp/source-build/post-snapshot-native-runtime-check.json
             .deploy-tmp/source-build/harness-web-preview-exclusion.json
             .deploy-tmp/source-build/post-snapshot-runtime-dependency-check.json
@@ -1268,6 +1285,7 @@ jobs:
             .deploy-tmp/source-build/signing-certificate-sha256.txt
             .deploy-tmp/source-build/package-manager-versions.txt
             .deploy-tmp/source-build/linux-bundle-injection.json
+            .deploy-tmp/linux-build/assets/**
             .deploy-tmp/linux-build/provenance/**
             .deploy-tmp/source-build/pnpm-deploy-build-policy.json
             .deploy-tmp/source-build/pnpm-deploy-runtime-closure.json
@@ -1275,6 +1293,7 @@ jobs:
             .deploy-tmp/source-build/android-native-runtime-packages.json
             .deploy-tmp/source-build/node-pty-android-build.json
             .deploy-tmp/source-build/ndk-archive-sha1.txt
+            .deploy-tmp/source-build/ndk-archive-sha256.txt
             .deploy-tmp/source-build/post-snapshot-native-runtime-check.json
             .deploy-tmp/source-build/harness-web-preview-exclusion.json
             .deploy-tmp/source-build/post-snapshot-runtime-dependency-check.json

@@ -72,6 +72,7 @@ class PackageLinuxAssetsTest(unittest.TestCase):
             self.skipTest('asset archive reproducibility test requires GNU tar; Linux CI runs it')
         manifest = self.run_package()
         self.assertEqual(manifest['version'], self.inputs['runtimeVersion'])
+        self.assertEqual(manifest['runtimes'][0]['minimumGlibc'], self.inputs['minimumGlibc'])
         self.assertEqual(manifest['runtimes'][0]['architecture'], 'arm64')
         for asset in [*manifest['plugins'].values(), *[manifest['runtimes'][0][key] for key in ['backendAsset', 'rootfsAsset', 'nodeAsset']]]:
             archive = self.work / 'assets' / asset['url'].rsplit('/', 1)[1]

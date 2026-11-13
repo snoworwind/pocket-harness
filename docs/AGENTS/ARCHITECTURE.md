@@ -193,3 +193,5 @@ AI tool → androidPrivilege.gateFor(session)  ← danger-full-access required
 [ACCESSIBILITY-API.md](ACCESSIBILITY-API.md) 和 [adb-chain.md](adb-chain.md)。
 
 Kotlin、AIDL 与安装身份现统一为 com.snoworwind.pocketharness；Shizuku 协议 v5 使旧 descriptor 缓存服务失效。组件升级边界见 NAMESPACE-MIGRATION-2026-10-19.md。
+
+0.15.3 Linux 可选环境：Termux 仍承载引擎。Linux 的生命周期在插件层，APK 保留可信 manifest 与 PRoot native 闭包；下载、验包和冷启动恢复由 linux-env/bootstrap/runtime 分层承担。模型环境契约由 linux-tool-contract 注册 systemPrompt section，Linux 失败不改变主环境。下载发布拓扑与信任边界见 `build-and-env.md` 的“可下载 Linux 插件来源链”。

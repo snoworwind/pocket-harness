@@ -2,20 +2,22 @@
 
 The **experimental**, opt-in entry point for the DSH Mobile Linux environment. It
 is deliberately small: it discovers releases, verifies the runtime package before
-staging it, and exposes status/actions to the mobile settings client. Its version
-is independent of the DSH Mobile app version.
+staging it, and exposes status/actions to the mobile settings client. Pocket Harness pins its version
+to the corresponding app release.
 
 In this repository the bootstrap is built into the APK's internal plugin set.
-Its release manifest and five ARM64 runtime assets are embedded in the Termux
-snapshot; the host verifies the manifest sidecar and each asset hash before
-staging. Network release discovery is not used by the Pocket Harness adapter.
+Since Pocket Harness 0.15.3 only its approved manifest and sidecar are embedded
+in the Termux snapshot. Runtime payloads are downloaded on explicit install from
+our versioned GitHub Release, with manifest membership, size and SHA-256 verified.
+Cold-start activation uses a retained verified archive and never downloads.
+Network release discovery is not used by the Pocket Harness adapter.
 The runtime remains opt-in: the settings entry is available, but installation
 and activation require explicit user actions.
 
 Both plugins in this system are **our own experimental internal plugins**:
 
-* They ship in the built-in (hard) plugin directory, but they are **not enabled
-  by default** — presence is not activation.
+* Bootstrap ships in the built-in plugin directory; runtime is downloaded on
+  explicit installation. Runtime is **not enabled by default** — presence is not activation.
 * Installing a new DSH Mobile APK or publishing a new Linux release never enables
   a plugin, and never re-enables one the user turned off.
 * The Linux environment only becomes usable after the user explicitly enables the

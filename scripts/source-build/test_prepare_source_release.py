@@ -1,5 +1,6 @@
 import importlib.util
 import json
+import hashlib
 from pathlib import Path
 import tempfile
 import unittest
@@ -36,6 +37,16 @@ class ReleasePreparationTest(unittest.TestCase):
             self.put(abi, 'scripts/patches/tests/fixtures/test-0.2.2-rc.1/probe.js', 'fixture')
             if abi == 'arm64':
                 self.put(abi, '.deploy-tmp/linux-build/provenance/linux-assets.json', '{}')
+                names = ['linux-bootstrap-plugin.tar.xz', 'linux-runtime-plugin.tar.xz', 'proot-backend-aarch64.tar.xz', 'debian-minimal-aarch64.tar.xz', 'node-glibc-v24.22.0-linux-arm64.tar.xz']
+                descriptors = []
+                for name in names:
+                    body = 'verified archive fixture'
+                    self.put(abi, '.deploy-tmp/linux-build/assets/' + name, body)
+                    descriptors.append(dict(url='https://github.com/fixture/fork/releases/download/v1/' + name, size=len(body), sha256=hashlib.sha256(body.encode()).hexdigest()))
+                manifest = dict(plugins=dict(bootstrap=descriptors[0], runtime=descriptors[1]), runtimes=[dict(backendAsset=descriptors[2], rootfsAsset=descriptors[3], nodeAsset=descriptors[4])])
+                body = json.dumps(manifest)
+                self.put(abi, '.deploy-tmp/linux-build/assets/linux-release.json', body)
+                self.put(abi, '.deploy-tmp/linux-build/assets/linux-runtime-manifest.sha256', hashlib.sha256(body.encode()).hexdigest())
         self.apks = {}
         self.base = '.deploy-tmp/source-build/'
         for abi in module.ABIS:
@@ -61,6 +72,7 @@ class ReleasePreparationTest(unittest.TestCase):
 
     def test_unchanged_apks_and_hidden_evidence_for_both_abis(self):
         self.run_prepare()
+        self.assertEqual((self.output / 'linux-runtime-plugin.tar.xz').read_text(), 'verified archive fixture')
         self.assertTrue((self.root / 'arm64/.deploy-tmp/source-build/linux-bundle-injection.json').is_file())
         self.assertFalse((self.root / 'x86_64/.deploy-tmp/source-build/linux-bundle-injection.json').exists())
         self.assertFalse((self.root / 'x86_64/.deploy-tmp/linux-build/provenance').exists())

@@ -224,7 +224,10 @@ test('offline production host + bootstrap + runtime install, execute, reinstall 
   const nativeRunner = async spec => {
     calls.push(spec)
     const versionProbe = spec.args?.length === 1 && spec.args[0] === '--version'
-    const guestProbe = spec.args?.at(-1) === 'node --version'
+    const guestProbe = String(spec.args?.at(-1)).includes('POCKET_LINUX_PREFLIGHT')
+    const command = spec.args?.at(-1)
+    if (command === '/usr/bin/getconf GNU_LIBC_VERSION') return { exitCode: 0, stdout: 'warning\nglibc 2.41\n', stderr: '' }
+    if (guestProbe) return { exitCode: 0, stdout: 'glibc 2.41\nOK\nNESTED\ny\nPTY_OK\nv24.22.0\n', stderr: '' }
     return { exitCode: 0, stdout: versionProbe ? 'PRoot v5.1.107.98\n' : guestProbe ? 'v24.22.0\n' : 'native-fixture-ok\n', stderr: '' }
   }
   const host = createLinuxPluginHost({ root: join(filesDir, 'linux-environment', 'plugins'), activate: (plugin, options) => cordisScope(ctx.plugin(plugin, options)) })
@@ -241,12 +244,19 @@ test('offline production host + bootstrap + runtime install, execute, reinstall 
     assert.equal((await tools.get('linux_bash').execute({ command: 'echo usable' })).stdout, 'native-fixture-ok\n')
     await service.reinstall({ confirmed: true, activate: true })
     assert.equal(ctx.get('linuxRuntimeManager').status().healthy, true)
+    await host.uninstall()
+    const probesBeforeRestore = calls.filter(spec => String(spec.args.at(-1)).includes('POCKET_LINUX_PREFLIGHT')).length
+    const restored = createBootstrap({ ...config, pluginHost: host, runtimePluginConfig: { ...config.runtimePluginConfig, runCommand: nativeRunner } })
+    await restored.ready
+    assert.equal((await restored.status()).injectionActivated, true)
+    assert.equal(calls.filter(spec => String(spec.args.at(-1)).includes('POCKET_LINUX_PREFLIGHT')).length, probesBeforeRestore + 1)
+    assert.equal(tools.has('linux_bash'), true)
     const ownedManager = ctx.get('linuxRuntimeManager')
-    await service.uninstall({ confirmed: true })
+    await restored.uninstall({ confirmed: true })
     assert.equal(ownedManager.disposed, true, 'real Cordis teardown awaits the owned runtime manager')
     assert.equal(tools.has('linux_bash'), false)
     assert.equal(network, 0)
-    assert.ok(calls.some(spec => spec.args.at(-1) === 'node --version'))
+    assert.ok(calls.some(spec => String(spec.args.at(-1)).includes('POCKET_LINUX_PREFLIGHT')))
   } finally {
     globalThis.fetch = originalFetch
     await host.uninstall()

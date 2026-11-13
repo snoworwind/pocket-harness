@@ -1,10 +1,10 @@
 /**
- * Host archive adapter. Assets are copied from the signed APK's Termux snapshot into
- * host staging; bootstrap independently hashes the retained archive before extraction.
+ * Host archive adapter. The signed APK pins the manifest; explicit installation
+ * downloads approved payloads into staging. Bootstrap independently verifies them.
  * Mutable host unpacked trees and cache markers are never used as executable payload.
  */
 import { constants as fsConstants, createReadStream, createWriteStream } from 'node:fs'
-import { chmod, copyFile, link, lstat, mkdir, readFile, readdir, realpath, rename, rm, symlink } from 'node:fs/promises'
+import { chmod, copyFile, link, lstat, mkdir, readFile, readdir, realpath, rename, rm, statfs, symlink } from 'node:fs/promises'
 import { Readable, Transform } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 import xz from 'xz-decompress'
@@ -248,12 +248,38 @@ async function extractVerifiedArchive(archivePath: string, destination: string, 
   }
 }
 
-/** Bootstrap 的两个 IO 适配器：宿主归档读取与独立解码。 */
+/** Bootstrap 的两个 IO 适配器：批准归档的下载/复用与独立解码。 */
 export interface HostAssetIO {
-  /** 交回宿主已暂存的归档路径；宿主没准备好就抛错（**不下载**）。 */
+  /** 交回已验证归档；显式安装可下载 APK 清单批准的资产，冷启动只读 retained archive。 */
   downloadAsset(asset: { sha256?: unknown }, options?: { destination?: string }): Promise<string>
   /** 从 bootstrap 已验证的归档副本解码到新 staging；不使用宿主解包树。 */
   extractArchive(archivePath: string, destination: string, options?: { kind?: string }): Promise<void>
+}
+
+export async function requireLinuxDownloadSpace(directory: string, bytes: number,
+  probe: typeof statfs = statfs): Promise<void> {
+  const space = await probe(directory)
+  if (space.bavail * space.bsize < bytes * 2 + 64 * 1024 * 1024) {
+    throw new LinuxHostAssetError('linux-insufficient-space', '存储空间不足，请释放空间后重试安装 Linux。')
+  }
+}
+
+/** GitHub release downloads may redirect only to its asset CDN, never arbitrary origins. */
+export async function fetchLinuxAsset(initial: URL, signal: AbortSignal): Promise<Response> {
+  let url = initial
+  for (let hop = 0; hop <= 3; hop++) {
+    if (url.protocol !== 'https:' || url.username || url.password || url.port ||
+      !['github.com', 'release-assets.githubusercontent.com'].includes(url.hostname)) {
+      throw new LinuxHostAssetError(CODE_ASSET_SPEC_INVALID, 'Linux 下载重定向不在允许的 GitHub 资产域名中')
+    }
+    const response = await fetch(url, { redirect: 'manual', signal })
+    if (![301, 302, 303, 307, 308].includes(response.status)) return response
+    await response.body?.cancel()
+    const location = response.headers.get('location')
+    if (!location) throw new Error('Linux asset redirect has no Location')
+    url = new URL(location, url)
+  }
+  throw new Error('Linux asset redirect limit exceeded')
 }
 
 /**
@@ -281,21 +307,61 @@ export function createHostAssetIO(options: { filesDir: string; bundleDirectory?:
         if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
       }
       if (typeof asset.url !== 'string' || typeof asset.size !== 'number' || !Number.isSafeInteger(asset.size) || asset.size < 0) {
-        throw new LinuxHostAssetError(CODE_ASSET_SPEC_INVALID, '内置 Linux 资产规格无效')
+        throw new LinuxHostAssetError(CODE_ASSET_SPEC_INVALID, 'Linux 资产规格无效')
       }
       let assetUrl: URL
-      try { assetUrl = new URL(asset.url) } catch { throw new LinuxHostAssetError(CODE_ASSET_SPEC_INVALID, '内置 Linux 资产 URL 无效') }
+      try { assetUrl = new URL(asset.url) } catch { throw new LinuxHostAssetError(CODE_ASSET_SPEC_INVALID, 'Linux 资产 URL 无效') }
       const name = basename(assetUrl.pathname)
       if (assetUrl.protocol !== 'https:' || assetUrl.hostname !== 'github.com' || assetUrl.username || assetUrl.password || assetUrl.port
         || (!BUNDLED_ASSET_NAMES.has(name) && !NODE_ASSET_NAME.test(name))
         || !/^\/snoworwind\/pocket-harness\/releases\/download\/v\d+\.\d+\.\d+\//.test(assetUrl.pathname)
         || assetUrl.pathname.split('/').at(-1) !== name || assetUrl.search || assetUrl.hash) {
-        throw new LinuxHostAssetError(CODE_ASSET_SPEC_INVALID, 'Linux 资产不在固定的 ARM64 离线包清单内')
+        throw new LinuxHostAssetError(CODE_ASSET_SPEC_INVALID, 'Linux 资产不在固定的 ARM64 下载命名空间内')
       }
-      if (!bundleDirectory) throw new LinuxHostAssetError(CODE_ASSET_NOT_PREPARED, 'APK 内置 Linux 资产目录不可用')
+      // The signed APK pins the manifest; payloads are fetched only on explicit install.
+      if (!bundleDirectory) throw new LinuxHostAssetError(CODE_ASSET_NOT_PREPARED, 'Linux 清单目录不可用')
       const source = join(resolve(bundleDirectory), name)
       let sourceInfo
-      try { sourceInfo = await lstat(source) } catch { throw new LinuxHostAssetError(CODE_ASSET_NOT_PREPARED, `APK 未包含 Linux 资产：${name}`) }
+      try { sourceInfo = await lstat(source) } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+      }
+      if (!sourceInfo) {
+        const stagingParent = dirname(archive)
+        await ensureDirectory(join(filesDir, LINUX_ENV_DIR))
+        await ensureDirectory(join(filesDir, LINUX_ENV_DIR, STAGING_DIR))
+        await ensureDirectory(stagingParent)
+        const temp = `${archive}.tmp-${randomUUID()}`
+        const controller = new AbortController()
+        const timer = setTimeout(() => controller.abort(), 15 * 60 * 1000)
+        try {
+          const trusted = (await readBundledManifest(bundleDirectory)).manifest
+          const candidates = [trusted.plugins?.bootstrap, trusted.plugins?.runtime,
+            ...(trusted.runtimes ?? []).flatMap((runtime: Record<string, unknown>) => [runtime.backendAsset, runtime.rootfsAsset, runtime.nodeAsset])]
+          if (!candidates.some(candidate => candidate?.url === asset.url && candidate?.sha256 === asset.sha256 && candidate?.size === asset.size)) {
+            throw new LinuxHostAssetError(CODE_ASSET_SPEC_INVALID, 'Linux 资产不在 APK 批准的清单中')
+          }
+          await requireLinuxDownloadSpace(stagingParent, asset.size)
+          const response = await fetchLinuxAsset(assetUrl, controller.signal)
+          if (!response.ok || !response.body) throw new Error(`Linux asset download failed: HTTP ${response.status}`)
+          let size = 0
+          const hash = createHash('sha256')
+          const expectedSize = asset.size
+          const verifier = new Transform({ transform(chunk, _encoding, callback) {
+            size += chunk.length
+            if (size > expectedSize) { callback(new Error('Linux asset exceeds declared size')); return }
+            hash.update(chunk)
+            callback(null, chunk)
+          } })
+          await pipeline(Readable.fromWeb(response.body as never), verifier, createWriteStream(temp, { flags: 'wx', mode: 0o600 }), { signal: controller.signal })
+          if (size !== expectedSize || hash.digest('hex') !== asset.sha256) throw new Error('Linux asset size or SHA-256 mismatch')
+          await rename(temp, archive)
+          return archive
+        } finally {
+          clearTimeout(timer)
+          controller.abort()
+          await rm(temp, { force: true }).catch(() => {})
+        }
+      }
       if (!sourceInfo.isFile() || sourceInfo.isSymbolicLink() || sourceInfo.size !== asset.size) {
         throw new LinuxHostAssetError(CODE_HOST_TREE_UNSAFE, `APK 内 Linux 资产类型或体积不符：${name}`)
       }

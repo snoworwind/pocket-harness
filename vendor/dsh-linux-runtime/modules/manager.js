@@ -7,6 +7,30 @@ import path from 'node:path';
 import { selectRuntime } from './manifest.js';
 import { assertOfficialAssetUrl, isAllowedAssetOrigin } from './asset-installer.js';
 
+/** Warnings from PRoot may surround getconf output; only a complete version line counts. */
+export function glibcSatisfies(output, minimum) {
+  const parse = value => /^(?:glibc )?(\d+)\.(\d+)$/.exec(value.trim());
+  const versions = String(output).split(/\r?\n/).map(parse).filter(Boolean);
+  const actual = versions.at(-1);
+  const required = parse(minimum);
+  if (!actual || !required) return false;
+  return Number(actual[1]) > Number(required[1]) ||
+    (Number(actual[1]) === Number(required[1]) && Number(actual[2]) >= Number(required[2]));
+}
+
+export const LINUX_EXEC_PROBE = `set -e -o pipefail
+/bin/true; echo OK
+ls / >/dev/null
+. /etc/os-release; test "$ID" = debian
+bash -c 'bash -c "echo NESTED"'
+# head closes the pipe deliberately; SIGPIPE from yes is expected.
+set +o pipefail
+yes | head -1
+set -o pipefail
+node -e 'const {spawnSync}=require("node:child_process"); const r=spawnSync("/bin/bash",["-c","printf NODE_FORK | cat"],{encoding:"utf8"}); if(r.status!==0||r.stdout!=="NODE_FORK") process.exit(1)'
+script -q -e -c '/bin/true; printf "PTY_OK\\n"' /dev/null
+`;
+
 const ACTIVE_SCHEMA_VERSION = 1;
 const METADATA_SCHEMA_VERSION = 1;
 const DEFAULT_GUEST_PATH = '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin';
@@ -483,8 +507,23 @@ function androidNativeProot() {
   return androidNativeFile(ANDROID_NATIVE_PROOT);
 }
 
+export function readProotSwitches(filesDir = process.env.DSH_FILES_DIR) {
+  if (!filesDir) return {};
+  const file = path.join(filesDir, 'home', '.dsh', 'proot-env');
+  try {
+    const info = lstatSync(file);
+    if (!info.isFile() || info.isSymbolicLink() || info.size > 4096) return {};
+    const switches = {};
+    for (const line of readFileSync(file, 'utf8').split(/\r?\n/)) {
+      const match = /^(PROOT_POCKET_TRACE_WAIT|PROOT_POCKET_RESUME_SILENT_CHILD)=(0|1)$/.exec(line.trim());
+      if (match) switches[match[1]] = match[2];
+    }
+    return switches;
+  } catch { return {}; }
+}
+
 function prootExecutionEnvironment(backend, instanceRoot) {
-  const environment = cleanHostEnvironment();
+  const environment = { ...cleanHostEnvironment(), ...readProotSwitches() };
   const androidHost = isAndroidRuntimeHost();
   const nativeLibraryDir = androidHost
     ? path.dirname(androidNativeProot())
@@ -494,9 +533,9 @@ function prootExecutionEnvironment(backend, instanceRoot) {
     ? path.join(nativeLibraryDir, ANDROID_NATIVE_PROOT_LOADER)
     : path.join(backend, 'libexec', 'proot', 'loader');
   environment.PROOT_TMP_DIR = path.join(instanceRoot, 'proot-tmp');
-  // The target Android 16 / 6.6.98 ROM intermittently exits 182 in PRoot's
-  // seccomp accelerator before the guest emits anything. Use one consistent
-  // execution mode for install probes and linux_bash on Android.
+  // Preserve the reviewed Android execution mode for probes and user commands.
+  // Exit 182 is a loader failure, not evidence of a seccomp accelerator fault;
+  // loader site/status and mmap arguments are required to diagnose it.
   if (androidHost) environment.PROOT_NO_SECCOMP = '1';
   else delete environment.PROOT_NO_SECCOMP;
   return environment;
@@ -521,7 +560,7 @@ function prootArguments(paths, cwdInfo, resolverFile, guestCommand) {
     '--sysvipc',
     '--kill-on-exit',
   ];
-  for (const device of ['/dev/null', '/dev/zero', '/dev/random', '/dev/urandom']) {
+  for (const device of ['/dev/null', '/dev/zero', '/dev/random', '/dev/urandom', '/dev/ptmx', '/dev/pts']) {
     if (existsSync(device)) args.push('-b', device);
   }
   args.push(
@@ -549,7 +588,7 @@ function guestPath(paths) {
   return `${path.join(paths.node, 'bin')}:${DEFAULT_GUEST_PATH}`;
 }
 
-function smokeProbeDiagnostics({ result, health, environment, hostCwd }) {
+function smokeProbeDiagnostics({ result, health, environment, hostCwd, command = 'node --version' }) {
   const limit = value => {
     const text = String(value ?? '');
     return text.length > 4096 ? `${text.slice(0, 4096)} [truncated]` : text;
@@ -571,7 +610,7 @@ function smokeProbeDiagnostics({ result, health, environment, hostCwd }) {
   return [
     `hostCwd=${JSON.stringify(hostCwd)}`,
     'guestCwd="/"',
-    'guestCommand=["/bin/bash","-c","node --version"]',
+    `guestCommand=${JSON.stringify(['/bin/bash', '-c', command])}`,
     `env=${JSON.stringify({ guest: guestEnv, proot: prootEnv })}`,
     `stdout=${JSON.stringify(limit(result.stdout))}`,
     `stderr=${JSON.stringify(limit(result.stderr))}`,
@@ -780,7 +819,7 @@ export class LinuxRuntimeManager {
     };
   }
 
-  async _probeRuntime(health, expectedProotVersion) {
+  async _probeRuntime(health, expectedProotVersion, minimumGlibc) {
     await fs.mkdir(health.paths.shm, { recursive: true });
     await fs.mkdir(health.paths.prootTmp, { recursive: true });
     const environment = prootExecutionEnvironment(health.paths.backend, health.paths.instance);
@@ -804,21 +843,19 @@ export class LinuxRuntimeManager {
     const resolverFile = await this._writeResolverFile(health.paths.instance);
     try {
       const cwdInfo = { guestCwd: '/', hostPaths: [] };
-      const args = prootArguments(health.paths, cwdInfo, resolverFile, ['/bin/bash', '-c', 'node --version']);
-      const probeSpec = prootSpawnSpec(
-        health.paths.proot,
-        args,
-        this.dataDir,
-        environment,
-      );
-      probeSpec.timeout = 10_000;
-      const result = normaliseCommandResult(await this._runManaged(probeSpec));
-      if (result.timedOut || result.exitCode !== 0 || !/^v\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(result.stdout.trim())) {
-        const reason = result.timedOut
-          ? 'PRoot guest smoke probe timed out'
-          : `PRoot guest smoke probe failed (exit ${result.exitCode ?? 'unknown'})`;
-        const diagnostics = smokeProbeDiagnostics({ result, health, environment, hostCwd: this.dataDir });
-        throw new Error(`${reason}; ${diagnostics}`);
+      // The bound Node location is authoritative; /opt/node belongs to the old engine-in-Linux layout.
+      const node = "'" + path.join(health.paths.node, 'bin/node').replaceAll("'", "'\\''") + "'";
+      const command = '# POCKET_LINUX_PREFLIGHT\nset -e\n/usr/bin/getconf GNU_LIBC_VERSION\n' +
+        LINUX_EXEC_PROBE.replace('node -e', `${node} -e`) + `\n${node} --version`;
+      const spec = prootSpawnSpec(health.paths.proot,
+        prootArguments(health.paths, cwdInfo, resolverFile, ['/bin/bash', '-c', command]), this.dataDir, environment);
+      spec.timeout = 60_000;
+      const result = normaliseCommandResult(await this._runManaged(spec));
+      const lines = result.stdout.split(/\r?\n/).map(line => line.trim());
+      const complete = ['OK', 'NESTED', 'y', 'PTY_OK'].every(marker => lines.includes(marker)) &&
+        lines.some(line => /^v\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(line));
+      if (result.timedOut || result.exitCode !== 0 || !complete || !glibcSatisfies(result.stdout, minimumGlibc)) {
+        throw new Error(`Linux glibc/Node/exec/PTY preflight failed: exit=${result.exitCode ?? 'unknown'} timeout=${result.timedOut}; ${smokeProbeDiagnostics({ result, health, environment, hostCwd: this.dataDir, command })}`);
       }
     } finally {
       await fs.rm(resolverFile, { force: true });
@@ -1160,7 +1197,7 @@ export class LinuxRuntimeManager {
       finalPublished = true;
       const health = this._healthForRecord(record);
       if (!health.healthy) throw new Error(`staged runtime is unhealthy: ${health.reason}`);
-      await this._probeRuntime(health, selection.runtime.prootVersion);
+      await this._probeRuntime(health, selection.runtime.prootVersion, selection.runtime.minimumGlibc);
       await this._stopChildren();
       await this._writeActive(record);
       committedRecord = record;
@@ -1226,6 +1263,20 @@ export class LinuxRuntimeManager {
         `APK native PRoot probe failed (${reason}): ${(result.stderr || result.stdout).trim().slice(0, 500)}`,
       );
     }
+  }
+
+  /** Revalidate an installed runtime after an engine restart, without downloads or activation changes. */
+  async verify(manifest, runtimeId = 'debian-minimal') {
+    return this._exclusive(async () => {
+      if (this.disposed) throw new Error('Linux runtime manager is disposed');
+      const selection = selectRuntime(manifest, runtimeId, this.arch);
+      const current = this.status();
+      if (!current.healthy || current.runtimeId !== runtimeId || current.version !== selection.manifest.version) {
+        throw new Error('Installed Linux runtime does not match the approved manifest');
+      }
+      await this._probeRuntime(current, selection.runtime.prootVersion, selection.runtime.minimumGlibc);
+      return this.status();
+    });
   }
 
   async reinstall(manifest, runtimeId = 'debian-minimal') {

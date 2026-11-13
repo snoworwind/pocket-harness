@@ -1,3 +1,4 @@
+import { LINUX_PHASES, LINUX_TOOL_GUIDANCE, type LinuxEnvironmentStatus } from './linux-tool-contract.js'
 /**
  * dsh-android-linux-env — 工具链与环境设置面板（PRD F1.3/F1.0/F1.5，M3.2）
  *
@@ -202,7 +203,7 @@ function recipeExport(ctx: Context, session?: unknown): Record<string, unknown> 
 function tools(ctx: Context, svc: { status(): { tier: string } } | undefined) {
   const statusTool = defineTool({
     name: 'android_toolchain_status',
-    description: '工具链状态：Termux/Bionic Bash 清单、dpkg、ADB 档位；不含 Debian/glibc Linux。',
+    description: 'Termux/Bionic 工具链、dpkg、ADB 档位。',
     parameters: {},
     output: {
       schema: {
@@ -232,8 +233,7 @@ function tools(ctx: Context, svc: { status(): { tier: string } } | undefined) {
   const recipeTool = defineTool({
     name: 'android_env_recipe',
     description:
-      '导出 Termux/Bionic 环境配方（env 白名单、dpkg、共享目录、patch；无密钥）。' +
-      '不含 Debian/glibc Linux 环境。',
+      '导出 Termux/Bionic 配方：env 白名单、dpkg、共享目录、patch；无密钥。',
     parameters: {},
     output: {
       schema: {
@@ -266,7 +266,37 @@ function tools(ctx: Context, svc: { status(): { tier: string } } | undefined) {
       recipeExport(ctx, exec?.agent?.session) as never,
   })
 
-  return [statusTool, recipeTool]
+  const linuxStatusTool = defineTool({
+    name: 'linux_environment_status',
+    description: 'Check optional Debian/glibc readiness before linux_bash; bash remains Termux.',
+    parameters: {},
+    output: {
+      schema: { type: 'object', additionalProperties: false, properties: {
+        phase: { type: 'string', enum: [...LINUX_PHASES], required: true },
+        ready: { type: 'boolean', required: true },
+        engine: { type: 'string', enum: ['termux'], required: true },
+        reason: { type: 'string', required: true },
+      } },
+      render: (_args, value: { phase: string; reason: string; ready: boolean; engine: string }) => [{ type: 'text', text: `${value.phase}: ${value.reason}` }],
+    },
+    execute: async (): Promise<LinuxEnvironmentStatus> => {
+      try {
+        const bootstrap = serviceOf<LinuxBootstrap>(ctx, 'linuxBootstrap')
+        if (!bootstrap) return { phase: 'unavailable', ready: false, engine: 'termux', reason: 'Linux bootstrap 尚未启用；Termux bash 可继续使用。' }
+        const status = await bootstrap.status()
+        const operation = LINUX_PHASES.find(phase => phase === status.operation) ?? 'busy'
+        const runtime = typeof status.runtime === 'object' ? status.runtime as { healthy?: boolean; reason?: string } | null : null
+        return {
+          ready: status.installed === true && !status.busy && status.enabled !== false && status.injectionActivated === true && runtime?.healthy === true && !status.error && !status.lastError,
+          engine: 'termux',
+          phase: status.busy ? operation : status.error || status.lastError ? 'failed' :
+            !status.installed ? 'absent' : status.enabled === false || !status.injectionActivated ? 'inactive' : runtime?.healthy ? 'ready' : 'unhealthy',
+          reason: status.error ?? status.lastError ?? runtime?.reason ?? 'Termux bash 为主环境。',
+        }
+      } catch { return { phase: 'failed', ready: false, engine: 'termux', reason: '无法读取 Linux 状态；Termux bash 可继续使用。' } }
+    },
+  })
+  return [statusTool, recipeTool, linuxStatusTool]
 }
 
 // ── 块 E：运行时缓存清理的宿主半（用户平面，零新增模型可见工具） ──────────────────────
@@ -372,6 +402,10 @@ export function apply(ctx: Context, _config: Record<string, unknown> = {}) {
     })
   }
   for (const t of tools(ctx, svc)) ctx.tools.register(t)
+  if (typeof ctx.inject === 'function') ctx.inject(['systemPrompt'], scope => {
+    const prompt = serviceOf<{ section(section: { name: string; order: number; text: string }): () => void }>(scope, 'systemPrompt')
+    if (prompt) scope.effect(() => prompt.section({ name: 'pocket-linux-environment', order: 45, text: LINUX_TOOL_GUIDANCE }))
+  })
   // register() 在运行期返回 disposer（上游 webserver 契约；file-open 同一形态）。声明为
   // `() => void` 才能走 ctx.effect——热重载/卸载必须回收路由，不留重复 handler。
   const wsvc = (ctx as unknown as { webServer?: { register(r: unknown): () => void } }).webServer

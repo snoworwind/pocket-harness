@@ -303,3 +303,5 @@ Linux 资产独立解包器按 plugin/runtime kind 区分链接政策，文件�
 管理插件 ime-component.ts 统一键盘 IME/广播完整组件名，并规范化 ComponentName 做精确匹配；applicationId 为 com.snoworwind.pocketharness，类命名空间也为 com.snoworwind.pocketharness。
 
 namespace 迁移覆盖 main/java、test/java、androidTest/java、main/aidl 的 com/snoworwind/pocketharness 目录；ShizukuUserServiceBridge 的协议版本提升至 5，职责与 transaction 编号不变。详见 NAMESPACE-MIGRATION-2026-10-19.md。
+
+Linux 可选插件的启动恢复与下载边界见 `release/v0.15.3/plugin-migration.md`：linux-env 提供常驻 `linux_environment_status`，bootstrap 在 load 时先恢复已明确启用的 runtime，manager 安装前执行 getconf/Node/PTY/fork 验证。LogShare 封闭白名单新增 `linux-trial-failed.log`，不遍历整个 Linux 状态目录。

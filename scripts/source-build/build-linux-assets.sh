@@ -7,6 +7,11 @@ node scripts/check-vendored-linux-bootstrap.mjs
 node scripts/source-build/check-linux-sources.mjs
 python3 scripts/source-build/linux-debian-snapshot-wget.py --self-test
 SOURCE_PROOF_INPUTS=(
+  scripts/source-build/build-proot-source.py scripts/source-build/proot_source_provenance.py
+  scripts/source-build/verify-ndk-archive.py
+  scripts/source-build/prepare-proot-source-backend.py scripts/source-build/proot-source
+  scripts/source-build/inventory-native-runtime.py scripts/source-build/test_proot_source_build.py
+  scripts/source-build/test_native_runtime_inventory.py
   vendor/linux-proot vendor/dsh-linux-runtime
   plugins/dsh-linux-bootstrap/README.md plugins/dsh-linux-bootstrap/build-client.mjs
   plugins/dsh-linux-bootstrap/build.mjs plugins/dsh-linux-bootstrap/client
@@ -67,9 +72,13 @@ test -d "$TERMUX_BOOTSTRAP_USR/share/termux-keyring"
 test -d "$TERMUX_BOOTSTRAP_USR/share/LICENSES"
 test ! -L "$TERMUX_BOOTSTRAP_USR/share/LICENSES"
 NATIVE_LIBS="$WORK/native-libs/arm64-v8a"
-python3 scripts/source-build/prepare-proot-backend.py \
-  "$TERMUX_WEBROOT" "$TERMUX_PROVENANCE" scripts/source-build/linux-inputs.json "$TERMUX_BOOTSTRAP_USR" \
-  "$WORK/backend" "$WORK/native-libs"
+PROOT_SOURCES="$WORK/input/proot-source"
+PROOT_BUILD="$WORK/proot-source-build"
+NDK_ROOT="${POCKET_NDK_ROOT:-$ROOT/.deploy-tmp/source-build/ndk/android-ndk-r30}"
+python3 scripts/source-build/build-proot-source.py --download-sources "$PROOT_SOURCES"
+python3 scripts/source-build/build-proot-source.py "$PROOT_SOURCES" "$NDK_ROOT" "$PROOT_BUILD" --abi arm64
+python3 scripts/source-build/prepare-proot-source-backend.py \
+  "$PROOT_BUILD" "$PROOT_SOURCES" "$WORK/backend" "$WORK/native-libs" "$WORK/provenance"
 aarch64-linux-gnu-readelf -h "$NATIVE_LIBS/libpocketharness_proot.so" | grep 'Machine:.*AArch64'
 aarch64-linux-gnu-readelf -l "$NATIVE_LIBS/libpocketharness_proot.so" | grep '/system/bin/linker64'
 aarch64-linux-gnu-readelf -h "$NATIVE_LIBS/libpocketharness_proot_loader.so" | grep 'Machine:.*AArch64'
@@ -101,7 +110,7 @@ REAL_WGET=$(command -v wget)
 [[ "$REAL_WGET" == /* && -x "$REAL_WGET" ]] || { echo 'Cannot resolve the real wget executable' >&2; exit 1; }
 sudo env "PATH=$DEBOOTSTRAP_BIN:$PATH" "DEBOOTSTRAP_REAL_WGET=$REAL_WGET" debootstrap --arch=arm64 --foreign --variant=minbase --components=main \
   --keyring="$DEBIAN_KEYRING" \
-  --include=apt,bash,ca-certificates,debian-archive-keyring,libstdc++6 trixie "$ROOTFS" "$DEBIAN_SNAPSHOT"
+  --include=apt,bash,ca-certificates,debian-archive-keyring,libstdc++6,util-linux trixie "$ROOTFS" "$DEBIAN_SNAPSHOT"
 sudo install -m755 /usr/bin/qemu-aarch64-static "$ROOTFS/usr/bin/qemu-aarch64-static"
 sudo mkdir -p "$ROOTFS/dev" "$ROOTFS/proc"
 cleanup_mounts() {
@@ -159,7 +168,8 @@ if grep -RniE 'Acquire::(http|https)::Proxy|proxy=' "$ROOTFS/etc/apt/apt.conf.d"
   echo 'Rootfs verification found host-specific apt proxy configuration' >&2
   exit 1
 fi
-sudo tar --sort=name --mtime="@$EPOCH" --owner=0 --group=0 --numeric-owner --exclude='./dev/*' --exclude='./proc/*' \
+sudo find "$ROOTFS/dev" -xdev -mindepth 1 ! -type d ! -type l -delete
+sudo tar --sort=name --mtime="@$EPOCH" --owner=0 --group=0 --numeric-owner --exclude='./dev/pts/*' --exclude='./dev/shm/*' --exclude='./proc/*' \
   -cJf "$STAGE/debian-minimal-aarch64.tar.xz" -C "$ROOTFS" .
 sudo chmod 644 "$STAGE/debian-minimal-aarch64.tar.xz"
 
@@ -170,7 +180,7 @@ python3 scripts/source-build/package-linux-assets.py "$WORK" "$EPOCH"
 qemu-aarch64-static -L "$ROOTFS" "$WORK/node-stage/bin/node" --version | grep -Fx "v$NODE_VERSION"
 cp "$WORK/input/debian-InRelease" "$WORK/provenance/"
 cp scripts/source-build/linux-inputs.json scripts/source-build/linux-source-manifest.json "$WORK/provenance/"
-cp "$WORK/proot-backend-inputs.json" "$WORK/provenance/"
+python3 scripts/source-build/proot_source_provenance.py "$WORK/provenance"
 mkdir -p "$WORK/provenance/linux-native-licenses"
 cp -a "$WORK/backend/share/licenses/." "$WORK/provenance/linux-native-licenses/"
 install -D -m644 vendor/linux-proot/compat/LICENSE \

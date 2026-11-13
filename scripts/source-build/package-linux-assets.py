@@ -83,8 +83,8 @@ def package_assets(work, epoch):
         repository = urlparse(url).path.strip('/').removesuffix('.git')
     if not re.fullmatch(r'[\w.-]+/[\w.-]+', repository):
         raise ValueError('invalid source repository')
-    # URLs are stable, opaque identifiers. The host serves these bytes locally;
-    # the offline adapter never performs a GitHub request (the repo is private).
+    # A versioned runtime Release is created after the source Release is published.
+    # Draft source assets stay private and cannot serve anonymous installs.
     base = f'https://github.com/{repository}/releases/download/v{inputs["runtimeVersion"]}'
 
     def describe(name):
@@ -99,7 +99,7 @@ def package_assets(work, epoch):
     manifest = dict(schemaVersion=1, version=inputs['runtimeVersion'], minMobileVersion=inputs['minimumAppVersion'],
                     plugins=dict(bootstrap=describe('linux-bootstrap-plugin.tar.xz'), runtime=describe('linux-runtime-plugin.tar.xz')),
                     runtimes=[dict(id='debian-minimal', label='Debian 13 ARM64', architecture='arm64', backend='proot',
-                    prootVersion=inputs['prootVersion'], backendAsset=describe('proot-backend-aarch64.tar.xz'),
+                    minimumGlibc=inputs['minimumGlibc'], prootVersion=inputs['prootVersion'], backendAsset=describe('proot-backend-aarch64.tar.xz'),
                                    rootfsAsset=describe('debian-minimal-aarch64.tar.xz'),
                                    nodeAsset=describe(f'node-glibc-v{inputs["node"]}-linux-arm64.tar.xz'))])
     body = (json.dumps(manifest, ensure_ascii=False, indent=2) + '\n').encode()

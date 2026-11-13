@@ -9,7 +9,7 @@ import { compareVersions, parseVersion } from './version.js'
 export const name = 'dsh-linux-bootstrap'
 export const inject = ['linuxPluginHost', 'linuxBootstrapConfig']
 export const DEFAULT_RUNTIME_ID = 'debian-minimal'
-export const BOOTSTRAP_VERSION = '0.6.2'
+export const BOOTSTRAP_VERSION = '0.15.3'
 export const STATE_FILE_NAME = 'linux-bootstrap-state.json'
 const SOURCE_MANIFEST_SHA256 = Symbol('source-manifest-sha256')
 const isManager = (value) => value && typeof value.install === 'function' && typeof value.uninstall === 'function'
@@ -60,6 +60,8 @@ function initialState(autoUpdate) {
 
 function publicError(state) {
   if (!state.lastError) return null
+  if (state.lastErrorCode === 'linux-restore-failed') return 'Linux 启动恢复失败，未联网下载。请在设置中显式重装 Linux；Termux 可继续使用。'
+  if (state.lastErrorCode === 'linux-insufficient-space') return '存储空间不足，请释放空间后重试安装 Linux。'
   if (state.lastErrorCode === 'linux-rootfs-prepare-failed') return 'Linux 根文件系统准备失败。请查看应用私有目录 files/linux-environment/linux-bootstrap-state.json 中的 lastError。'
   if (state.lastErrorCode) return 'Linux 环境操作失败。详细原因保存在应用私有目录 files/linux-environment/linux-bootstrap-state.json 中。'
   return state.lastError
@@ -88,7 +90,6 @@ function availableRuntimes(state) {
 
 function statusShape(state, mobileVersion, operation, packageVersion) {
   return Object.freeze({
-    experimental: true,
     experimental: true,
     enabledByDefault: false,
     sandboxed: false,
@@ -216,6 +217,7 @@ export function createMobileBootstrap(options = {}) {
   let operation = 'idle'
   let manager = initialManager ?? null
   let installedPlugin = false
+  let restoredThisLoad = false
   let lastStatus
   let ready
   let tail = Promise.resolve()
@@ -324,6 +326,7 @@ export function createMobileBootstrap(options = {}) {
     if (!state.installedLinuxVersion) return
     const host = await hostInjection()
     if (!host) return
+    if (restoredThisLoad && host.injected && !host.active) return
     state.enabled = host.injected && host.active
     state.injectionActivated = state.enabled
     await save()
@@ -423,6 +426,8 @@ export function createMobileBootstrap(options = {}) {
         }
       }
       state.lastError = safeError(error)
+      // Probe failures contain only controlled commands and bounded diagnostic output.
+      await writeFile(path.join(root, '..', 'linux-trial-failed.log'), state.lastError.slice(-16384), { mode: 0o600 }).catch(() => {})
       state.lastErrorCode = typeof error?.code === 'string' && /^linux-[a-z0-9-]+$/.test(error.code)
         ? error.code
         : 'linux-install-failed'
@@ -468,6 +473,8 @@ export function createMobileBootstrap(options = {}) {
       return emit()
     } catch (error) {
       state.lastError = safeError(error)
+      // Probe failures contain only controlled commands and bounded diagnostic output.
+      await writeFile(path.join(root, '..', 'linux-trial-failed.log'), state.lastError.slice(-16384), { mode: 0o600 }).catch(() => {})
       state.lastErrorCode = typeof error?.code === 'string' && /^linux-[a-z0-9-]+$/.test(error.code)
         ? error.code
         : 'linux-check-failed'
@@ -486,6 +493,44 @@ export function createMobileBootstrap(options = {}) {
     }
   }
 
+  // Persisted opt-in survives an engine restart; absence on disk remains a removal.
+  async function restoreActivation() {
+    if (!state.installedLinuxVersion || !state.enabled || !state.injectionActivated) return
+    const injected = await hostInjection()
+    if (!injected?.injected) return
+    operation = 'restoring'
+    try {
+      const manifest = validateManifestShape(state.pinnedManifest)
+      await requireApprovedManifest(manifest, state.pinnedManifestSha256)
+      ensureMobileCompatible(manifest, mobileVersion)
+      const verified = await installVerifiedPluginBundle({
+        asset: manifest.plugins.runtime, destinationRoot: pluginRoot, hostStagingRoot,
+        requireStagedBundle: true,
+        downloadAsset: async () => { throw new Error('Cold-start restore cannot download; explicitly reinstall Linux') },
+        extractArchive, fetchImpl,
+        kind: 'plugin', packageName: RUNTIME_PACKAGE_NAME, entry: RUNTIME_ENTRY,
+      })
+      if (verified.path !== state.pluginDirectory) throw new Error('Installed runtime directory differs from verified bundle')
+      const config = pluginConfig(manifest, state.runtimeId)
+      const result = await pluginHost.install({ directory: state.pluginDirectory, entry: RUNTIME_ENTRY, config, enable: true })
+      manager = await resolveManager({ hostResult: result, directory: state.pluginDirectory, config })
+      if (typeof manager.verify === 'function') await manager.verify(publicManifest(manifest), state.runtimeId)
+      state.runtime = typeof manager.status === 'function' ? await manager.status() : null
+      installedPlugin = true
+      restoredThisLoad = true
+      state.lastError = null
+      state.lastErrorCode = null
+    } catch (error) {
+      state.lastError = safeError(error)
+      state.lastErrorCode = 'linux-restore-failed'
+      // Dispose a partial activation without affecting Termux or deleting installed data.
+      await pluginHost.uninstall().catch(() => {})
+    } finally {
+      operation = 'idle'
+      await save()
+    }
+  }
+
   async function load() {
     await mkdir(root, { recursive: true })
     await mkdir(cacheRoot, { recursive: true })
@@ -497,6 +542,7 @@ export function createMobileBootstrap(options = {}) {
       await save()
     }
     await updateMobileVersion()
+    await restoreActivation()
     await synchronizeInjectionState()
   }
 
