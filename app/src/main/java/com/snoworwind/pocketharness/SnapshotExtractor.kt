@@ -275,11 +275,42 @@ object SnapshotExtractor {
         target.parentFile?.mkdirs()
         if (!target.canonicalPath.startsWith(destCanon + File.separator)) throw IOException("escaping hardlink destination")
         java.nio.file.Files.deleteIfExists(target.toPath())
-        java.nio.file.Files.createLink(target.toPath(), source.toPath())
+        linkOrCopy(target, source)
         iterator.remove(); resolved++
       }
       if (resolved == 0) throw IOException("missing or cyclic hardlink target")
     }
+  }
+
+
+  /**
+   * Materialize a tar hard link, falling back to an exact byte copy when the platform
+   * refuses to create links. Android SELinux denies `link` inside app data (measured on
+   * API 36 with the Debian rootfs perl hard links: `avc: denied { link }`), and the
+   * exception message exposes only the two paths, without a portable errno. The archive
+   * and extracted-tree digests already authenticated the bytes, so a copy preserves the
+   * product contract; re-running extraction on another platform still links when allowed.
+   */
+  internal fun linkOrCopy(
+    target: File,
+    source: File,
+    linker: (java.nio.file.Path, java.nio.file.Path) -> Unit = { to, from -> java.nio.file.Files.createLink(to, from) },
+  ) {
+    try {
+      linker(target.toPath(), source.toPath())
+      return
+    } catch (unsupported: UnsupportedOperationException) {
+      // Fall through to the copy path.
+    } catch (error: IOException) {
+      // Fall through to the copy path; a genuine copy failure is reported below.
+    }
+    target.parentFile?.mkdirs()
+    java.nio.file.Files.deleteIfExists(target.toPath())
+    source.inputStream().use { input -> target.outputStream().use { output -> input.copyTo(output, 64 * 1024) } }
+    target.setReadable(false, false)
+    target.setReadable(true, true)
+    target.setWritable(true, true)
+    target.setExecutable(source.canExecute(), true)
   }
 
   /**
