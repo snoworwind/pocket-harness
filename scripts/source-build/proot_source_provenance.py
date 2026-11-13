@@ -10,7 +10,13 @@ HERE = Path(__file__).resolve().parent
 spec = importlib.util.spec_from_file_location('pocket_proot_builder', HERE / 'build-proot-source.py')
 builder = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(builder)
-PATCH_PATHS = {'libtalloc/wscript', 'libandroid-shmem/shmem.c', 'proot/src/extension/ashmem_memfd/ashmem_memfd.c'}
+PATCH_PATHS = {
+    'libtalloc/wscript',
+    'libandroid-shmem/shmem.c',
+    'proot/src/extension/ashmem_memfd/ashmem_memfd.c',
+    'proot/src/tracee/event.c',
+    'proot/src/tracee/tracee.c',
+}
 
 
 def verify_receipt(receipt):

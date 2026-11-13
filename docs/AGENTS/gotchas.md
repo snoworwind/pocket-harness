@@ -4117,3 +4117,8 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
      真因：`ls -Z` 显示 root 创建的四条链接标签是 `u:object_r:app_data_file:s0`，没有进程的 MLS 类别（应用自建的带 `:c155,c256,c512,c768`）。SELinux 的类别不匹配让 untrusted_app 读链接即被拒；链接目标本身没问题，所以换个名字就"能工作"，极易误判成 PRoot 不支持 `/dev/fd`。
      修法：应用数据目录下的功能性文件必须由**应用身份**创建（应用内 bash、或正式的解包/装配路径）；root adb 只用于读取和清障（`rm`），不要用来"补"功能文件。反证时先用 `ls -lZ` 比对标签再下结论。
      复验：root adb 删除四条链接后，在应用终端里 `ln -s /proc/self/fd /dev/fd` 等重建，进程替换、`diff <( )`、`> /dev/stdout` 全部通过（.deploy-tmp/term-apt-20261113/ui-10-procsubst-ok.png）；正式 rootfs 由 CI 构建、应用进程解包，标签天然正确。
+715. **fork 挂死的判据是「子进程首次 ptrace stop 有没有送达」，只能在 PRoot 源码里取证（2026-11-13，issue #322）**
+     现象：鸿蒙 Linux ABI 兼容层上 `bash -c '/bin/true; echo OK'` 挂死；父进程在 `wait4`，子进程内核态 `S`、wchan 是 `pdebug_handle_hmsign`，`proot -v 3` 里子进程一条 syscall 都没有。普通 Android AVD 上同样的命令 100 次全过。
+     真因：Termux proot 5.1.107.102 的 `attach_child()` 只在 `sigstop == SIGSTOP_PENDING && !running` 时恢复子进程；内核若压根不投递 initial stop，该分支不成立，子进程永远停在停机状态。这是兼容层缺事件，不是 PRoot 逻辑写错，所以应用层重试/超时都不解决问题。
+     修法：在 PRoot 源码加两个**默认关闭**的开关（构建期定点补丁，见 PROOT-SOURCE-BUILD.md）：`PROOT_POCKET_TRACE_WAIT=1` 打印每个 `waitpid` 状态；`PROOT_POCKET_RESUME_SILENT_CHILD=1` 对「已登记但从未报 stop」的子进程显式 `PTRACE_CONT`。后者是候选修复，正常内核不开启，行为不变。
+     复验：补丁锚点在固定摘要源归档上唯一命中；改后的 `event.c` / `tracee.c` 在 Linux GCC + talloc 2.5.0 头文件下 `-fsyntax-only` 通过；`test_proot_source_build` / `test_proot_source_backend` 15 项通过（含 `PATCH_PATHS` 闭合校验）。真机效果仍需鸿蒙设备开开关复验，未验证前不改默认。

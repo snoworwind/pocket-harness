@@ -191,7 +191,76 @@ def patch_sources(sources):
     changes['proot/src/extension/ashmem_memfd/ashmem_memfd.c'] = replace_once(
         sources['proot'] / 'src/extension/ashmem_memfd/ashmem_memfd.c',
         '#include <stdlib.h>\n', '#include <stdlib.h>\n#include <string.h>\n')
+    patch_issue_322_diagnostics(sources, changes)
     return changes
+
+
+def patch_issue_322_diagnostics(sources, changes):
+    """Source-level diagnosis/workaround for the fork hang and loader exits (#322).
+
+    Both changes are opt-in through the environment so that a kernel which reports the
+    initial ptrace stop (every device seen so far) keeps the stock PRoot behaviour.
+    """
+    event = sources['proot'] / 'src/tracee/event.c'
+    event_before = native.sha256_file(event)
+    replace_once(event, '#include <inttypes.h>   /* PRI*, */\n',
+        '#include <inttypes.h>   /* PRI*, */\n#include <stdio.h>      /* fprintf(3), */\n')
+    replace_once(event, 'int event_loop()\n{\n',
+        '''/**
+ * Log every status waitpid(2) reports when PROOT_POCKET_TRACE_WAIT is set.
+ * Issue #322: decides whether a child's initial ptrace stop is ever delivered.
+ */
+static bool pocket_trace_wait(void)
+{
+\tstatic int enabled = -1;
+
+\tif (enabled < 0)
+\t\tenabled = getenv("PROOT_POCKET_TRACE_WAIT") != NULL;
+\treturn enabled != 0;
+}
+
+int event_loop()
+{
+''')
+    replace_once(event,
+        '\t\t/* Get information about this tracee. */\n',
+        '''\t\tif (pocket_trace_wait())
+\t\t\tfprintf(stderr,
+\t\t\t\t"proot-wait: pid=%d status=0x%x stopped=%d sig=%d event=%d\\n",
+\t\t\t\t(int) pid, (unsigned) tracee_status,
+\t\t\t\tWIFSTOPPED(tracee_status) ? 1 : 0,
+\t\t\t\tWIFSTOPPED(tracee_status) ? WSTOPSIG(tracee_status) : 0,
+\t\t\t\t(tracee_status >> 16) & 0xff);
+
+\t\t/* Get information about this tracee. */\n''')
+    changes['proot/src/tracee/event.c'] = dict(
+        beforeSha256=event_before, afterSha256=native.sha256_file(event))
+
+    tracee = sources['proot'] / 'src/tracee/tracee.c'
+    tracee_before = native.sha256_file(tracee)
+    replace_once(tracee,
+        '\tVERBOSE(child, 1, "vpid %" PRIu64 ": pid %d", child->vpid, child->pid);\n\n\treturn 0;\n}\n',
+        '''\t/* Issue #322: the HarmonyOS Linux ABI compatibility layer does not report the
+\t * initial stop of a forked child, so the child waits inside the kernel while its
+\t * parent waits in wait(2).  Resuming it explicitly lets the child run, at the
+\t * cost of handling its initial stop separately once it arrives.  Opt-in only:
+\t * kernels that do report the stop keep the stock ordering.  */
+\tif (child->sigstop == SIGSTOP_IGNORED && !child->running
+\t    && getenv("PROOT_POCKET_RESUME_SILENT_CHILD") != NULL) {
+\t\tif (ptrace(PTRACE_CONT, child->pid, NULL, 0) < 0)
+\t\t\tVERBOSE(parent, 1, "vpid %" PRIu64 ": cannot resume child %d: %s",
+\t\t\t\tparent->vpid, child->pid, strerror(errno));
+\t\telse
+\t\t\tchild->running = true;
+\t}
+
+\tVERBOSE(child, 1, "vpid %" PRIu64 ": pid %d", child->vpid, child->pid);
+
+\treturn 0;
+}
+''')
+    changes['proot/src/tracee/tracee.c'] = dict(
+        beforeSha256=tracee_before, afterSha256=native.sha256_file(tracee))
 
 
 def check_bundle(directory, abi):
