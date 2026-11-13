@@ -3948,3 +3948,21 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
     修法：存在快照时保留原归一化与盘点；否则必须读取 Linux manifest，生成明确标为
     `linux-guest` 的 manifest SHA-256、载荷摘要和 APK 资产/原生库清单；缺 manifest 直接失败。
     复验：工作流证据测试使用合成 ZIP 执行内联 Python，覆盖 Linux 身份与缺 manifest 负控；云端结果另行记录。
+
+694. **Linux 产品 CI 不得先构建 Termux 再从中拆客体载荷（2026-11-13，实验分支）**
+    现象：Linux APK 已不发 snapshot，但来源工作流仍下载 bootstrap/滚动 deb、编 Android node-pty，
+    构建并二次注入完整 Termux 快照，门禁与 provenance 也继续假定旧载荷。
+    真因：迁移只改最终 APK 资产，构建输入、插件工厂件与验收入口没有同时迁移。
+    修法：独立 Linux payload/APK 入口从固定源码 deploy 树直接装配 engine/home；目录模式复用插件
+    完整性检查，独立重放来源包与补丁；最终 APK 校验四件套摘要、宿主原生库字节与三签。
+    Linux 资产生产不再构建退役 bootstrap/runtime 插件，换用精确 Linux product 缓存键。
+    PR Gate 移除旧快照产出/指纹/发布接线；草稿与生产签名入口关闭。迁移表见 `LINUX-CI.md`。
+    复验：Linux CI 自检与受控负控、合成 APK 缺件/篡改/旧 snapshot/错 ABI 反例、工厂 profile
+    客体路径/秘密反例及独立比较签名边界测试通过；真实云端运行结果后续追加，不代表设备验收。
+
+695. **macOS 临时目录别名会让来源证明 CLI 空跑（2026-11-13）**
+    现象：来源证明模块的实际 CLI 篡改负控退出 0，而直接函数调用能拒绝篡改。
+    真因：argv 使用 `/var/...`，ESM URL 已解析成 `/private/var/...`；入口 guard 按字符串比较，
+    因路径不同跳过整个 CLI，连证明文件也未写。
+    修法：对 argv 与模块路径都 realpath 后比较；保留实际 CLI 篡改与输入报告不覆盖反例。
+    复验：`record-project-components.test.mjs` 实际 CLI 负控在 macOS 通过；不是忽略该测试。

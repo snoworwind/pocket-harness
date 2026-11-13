@@ -6,18 +6,12 @@ on:
       - 'vendor/linux-proot/**'
       - 'vendor/dsh-linux-runtime/**'
       - 'plugins/dsh-android-linux-env/**'
-      - 'plugins/dsh-linux-bootstrap/**'
       - 'plugins/dsh-android-bridge/**'
       - 'dsh-shell-termux/**'
       - 'scripts/source-build/*linux*'
-      - 'scripts/source-build/prepare-termux-bootstrap.py'
       - 'scripts/source-build/*proot*'
       - 'scripts/source-build/proot-source/**'
       - 'scripts/source-build/inventory-native-runtime.py'
-      - 'scripts/source-build/termux_signed_packages.py'
-      - 'scripts/source-build/prepare-termux-signed-repo.py'
-      - 'scripts/source-build/test_prepare_termux_bootstrap.py'
-      - 'scripts/source-build/test_prepare_termux_signed_repo.py'
       - 'scripts/source-build/test_prepare_rootfs_proot.py'
       - 'scripts/source-build/ensure-no-rootfs-mounts.py'
       - 'scripts/source-build/test_ensure_no_rootfs_mounts.py'
@@ -30,7 +24,6 @@ on:
       - 'scripts/third-party-licenses.json'
       - 'scripts/check-third-party.mjs'
       - 'scripts/check-third-party.test.mjs'
-      - 'scripts/check-vendored-linux-bootstrap.mjs'
       - 'LICENSES/**'
       - 'docs/AGENTS/gpl-compliance.md'
       - '.github/workflows/build-apk-source.yml'
@@ -63,7 +56,6 @@ jobs:
         run: |
           node scripts/source-build/check-linux-sources.mjs --self-test
           node --test scripts/source-build/check-linux-sources.test.mjs
-          node scripts/check-vendored-linux-bootstrap.mjs --self-test
           node scripts/source-build/check-linux-native-libraries.mjs --self-test
           python3 scripts/source-build/linux-debian-snapshot-wget.py --self-test
           python3 scripts/source-build/verify-linux-native-apk.py --self-test
@@ -75,11 +67,8 @@ jobs:
           aarch64-linux-gnu-readelf -h "$RUNNER_TEMP/libpocket-linux-compat.so" | grep 'Machine:.*AArch64'
       - name: Runtime manager and manifest regressions
         run: node --test vendor/dsh-linux-runtime/test/*.test.mjs
-      - name: Internal Linux plugin build and regression checks
+      - name: Linux environment plugin build and regression checks
         run: |
-          npm ci --prefix plugins/dsh-linux-bootstrap --no-audit --no-fund --fetch-retries=8 --fetch-retry-factor=2 --fetch-retry-mintimeout=1000 --fetch-retry-maxtimeout=30000 --fetch-timeout=300000
-          npm run build --prefix plugins/dsh-linux-bootstrap
-          node --test plugins/dsh-linux-bootstrap/test/*.test.mjs
           # These file: dependencies publish TypeScript declarations through ignored lib/ outputs.
           # Build them from the checked-in source before compiling linux-env on a clean runner.
           npm ci --prefix dsh-shell-termux --no-audit --no-fund --fetch-retries=8 --fetch-retry-factor=2 --fetch-retry-mintimeout=1000 --fetch-retry-maxtimeout=30000 --fetch-timeout=300000
@@ -91,7 +80,7 @@ jobs:
       - name: PRoot backend, rootfs and compatibility regressions
         run: |
           python3 scripts/source-build/prepare-proot-source-backend.py --self-test
-          python3 -m unittest scripts.source-build.test_prepare_proot_backend scripts.source-build.test_prepare_rootfs_proot scripts.source-build.test_ensure_no_rootfs_mounts scripts.source-build.test_proot_compat scripts.source-build.test_prepare_termux_bootstrap scripts.source-build.test_prepare_termux_signed_repo scripts.source-build.test_package_linux_assets scripts.source-build.test_linux_debian_snapshot_wget -v
+          python3 -m unittest scripts.source-build.test_prepare_proot_backend scripts.source-build.test_prepare_rootfs_proot scripts.source-build.test_ensure_no_rootfs_mounts scripts.source-build.test_proot_compat scripts.source-build.test_package_linux_assets scripts.source-build.test_linux_debian_snapshot_wget -v
       - name: Third-party notice generator regressions
         run: |
           node --test scripts/check-third-party.test.mjs

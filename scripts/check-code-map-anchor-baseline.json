@@ -41,9 +41,9 @@
     "app/src/main/java/com/snoworwind/pocketharness/OverlayService.kt:274": 1,
     "dsh-host-web-compat/scripts/smoke-injections.mjs:50": 3,
     "dsh-host-web-compat/lib/index.js:783": 3,
-    "scripts/build-apk-013.ps1:166": 3,
+    "scripts/build-apk-013.ps1:166": 2,
     "plugins/dsh-android-vdisplay/test/tools-callable.test.mjs:122": 3,
-    "scripts/build-apk-013.ps1:141": 3,
+    "scripts/build-apk-013.ps1:141": 2,
     "GuidePageRenderer.kt:363": 1,
     "EngineStartFlow.kt:96": 1,
     "MainActivity.kt:424": 1,
@@ -121,11 +121,9 @@
     "NotifyDecisionQueue.kt:310": 2,
     "OverlayService.kt:683": 3,
     "NotifyCenter.kt:145": 2,
-    ".github/workflows/pr-gate.yml:140": 1,
     "scripts/build-apk-013.ps1:145": 2,
     "scripts/check-release-gates.mjs:104": 1,
-    ".github/workflows/pr-gate.yml:91": 1,
-    "scripts/build-apk-013.ps1:388": 2,
+    "scripts/build-apk-013.ps1:388": 1,
     "app/build.gradle.kts:91": 1,
     "app/src/test/java/com/snoworwind/pocketharness/CallSiteContractTest.kt:294": 2,
     "app/src/test/java/com/snoworwind/pocketharness/OverlayHaloInvariantTest.kt:92": 2,
@@ -265,19 +263,17 @@
     "plugins/dsh-model-capability/src/index.ts:181": 2,
     "plugins/dsh-android-linux-env/src/runtime-cache.ts:59": 2,
     "dsh-client-ui-responsive/src/client/mobile/native-browser-presentation.ts:44": 1,
-    "AGENTS.md:30": 3,
-    "scripts/build-apk-013.ps1:206": 2,
-    "0.13.7-CERTIFICATION.md:11": 2,
-    "scripts/make-snapshot.sh:8": 2,
-    "build-release.ps1:89": 2,
-    "check-inject-completeness.mjs:2": 2,
-    "inject-snapshot.py:106": 2,
-    "build-release.ps1:109": 2,
+    "AGENTS.md:30": 1,
+    "scripts/build-apk-013.ps1:206": 1,
+    "0.13.7-CERTIFICATION.md:11": 1,
+    "scripts/make-snapshot.sh:8": 1,
+    "build-release.ps1:89": 1,
+    "check-inject-completeness.mjs:2": 1,
+    "inject-snapshot.py:106": 1,
+    "build-release.ps1:109": 1,
     "scripts/check-release-gates.mjs:246": 6,
-    ".github/workflows/pr-gate.yml:64": 2,
     "scripts/check-snapshot-builder-output.mjs:156": 2,
     "scripts/check-plugin-tests.mjs:33": 3,
-    ".github/workflows/pr-gate.yml:41": 3,
     "scripts/check-runtime-assets.mjs:96": 3,
     "VdisplayController.kt:753": 2,
     "BrowserHost.kt:384": 3,
@@ -395,9 +391,8 @@
     "scripts/check-release-gates.mjs:28": 3,
     "scripts/build-snapshot-013.mjs:933": 1,
     "scripts/plugin-dirs.json:1": 1,
-    "scripts/build-release.ps1:56": 2,
+    "scripts/build-release.ps1:56": 1,
     "scripts/check-release-gates.mjs:191": 1,
-    "scripts/source-build/check-dsh-source-snapshot.mjs:25": 1,
     "scripts/check-release-gates.mjs:135": 1,
     "scripts/check-boot-budget.mjs:671": 1,
     "scripts/check-runtime-assets.mjs:126": 1,
@@ -416,10 +411,10 @@
     "tools.ts:225": 2,
     "facts.ts:104": 1,
     "dsh-host-web-compat/lib/index.js:895": 1,
-    "inject-all.py:336": 2,
-    "build-snapshot-013.mjs:366": 2,
-    "build-apk-013.ps1:229": 2,
-    "build-snapshot-013.mjs:315": 2,
+    "inject-all.py:336": 1,
+    "build-snapshot-013.mjs:366": 1,
+    "build-apk-013.ps1:229": 1,
+    "build-snapshot-013.mjs:315": 1,
     "scripts/check-boot-budget.mjs:681": 3,
     "BrowserHost.kt:1661": 3,
     "ShizukuProbe.kt:77": 2,
@@ -661,53 +656,16 @@
     "plugins/dsh-android-linux-env/src/runtime-cache.ts:492": 1,
     "plugins/dsh-model-capability/src/index.ts:134": 1,
     "FileIncoming.kt:342": 1,
-    "check-release-gates.mjs:136": 1,
-    "build-snapshot-013.mjs:31": 1,
-    "build-apk-013.ps1:37": 1,
-    "check-build-chain-abort.mjs:53": 1,
-    "build-snapshot-013.mjs:40": 1,
-    "scripts/lib/shell.mjs:31": 2,
-    "check-inject-completeness.mjs:37": 1,
-    "check-patch-mounts.mjs:28": 1,
-    "build-snapshot-013.mjs:294": 1,
-    "build-apk-013.ps1:211": 1,
-    "build-snapshot-013.mjs:300": 1,
-    "inject-all.py:174": 1,
-    "build-snapshot-013.mjs:982": 1,
-    "inject-all.py:304": 1,
-    "inject-all.py:32": 1,
-    "check-inject-completeness.mjs:28": 1,
-    "inject-all.py:273": 1,
-    "check-snapshot-builder-output.mjs:139": 1,
-    "check-release-gates.mjs:28": 1,
-    "scripts/build-apk-013.ps1:182": 1,
-    "scripts/build-apk-013.ps1:283": 1,
-    "scripts/build-apk-engine.mjs:33": 1,
-    "scripts/build-apk-engine.test.mjs:121": 1,
-    "scripts/patches/data/registry-scan-c4.mjs:11": 1,
-    "scripts/patches/data/client-index-loader-barrier.mjs:3": 1,
-    "scripts/patches/data/undo-safe-transaction-snippet.mjs:1": 1,
-    "scripts/build-apk-013.ps1:427": 2,
-    "scripts/build-snapshot-013.mjs:31": 1,
-    "scripts/build-snapshot-013.mjs:297": 1,
-    "scripts/build-snapshot-013.mjs:985": 1,
-    "scripts/inject-all.py:321": 1,
-    "check-inject-completeness.mjs:98": 1,
-    "build-snapshot-013.mjs:1029": 1,
-    "check-snapshot-asset.ps1:26": 1,
+    "scripts/build-apk-013.ps1:427": 1,
     "scripts/build-release.ps1:60": 2,
     "scripts/build-apk-013.ps1:174": 1,
     "scripts/check-release-gates.mjs:164": 1,
     "scripts/check-gate-skips.mjs:62": 2,
-    ".github/workflows/pr-gate.yml:40": 1,
     "scripts/check-release-gates.mjs:212": 1,
-    ".github/workflows/pr-gate.yml:11": 1,
-    ".github/workflows/pr-gate.yml:113": 1,
     "scripts/build-snapshot-013.mjs:169": 1,
     "scripts/check-browser-syntax-floor.mjs:658": 1,
     "scripts/check-release-gates.mjs:152": 1,
     "scripts/check-gate-skips.mjs:40": 1,
-    ".github/workflows/pr-gate.yml:82": 1,
     "scripts/check-contract.mjs:165": 1,
     "scripts/check-browser-syntax-floor.mjs:535": 1,
     "docs/AGENTS/emulator-test-protocol.md:39": 1,
@@ -743,30 +701,6 @@
     "docs/AGENTS/gotchas.md:103": 1
   },
   "sourceLines": {
-    ".github/workflows/pr-gate.yml:11": [
-      "# release/build workflows are dispatched explicitly rather than by push."
-    ],
-    ".github/workflows/pr-gate.yml:113": [
-      "exit 1"
-    ],
-    ".github/workflows/pr-gate.yml:140": [
-      "# so a later edit cannot silently reintroduce the per-push cost or drop the coverage."
-    ],
-    ".github/workflows/pr-gate.yml:40": [
-      "full: ${{ steps.classify.outputs.full }}"
-    ],
-    ".github/workflows/pr-gate.yml:41": [
-      "steps:"
-    ],
-    ".github/workflows/pr-gate.yml:64": [
-      "- uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4"
-    ],
-    ".github/workflows/pr-gate.yml:82": [
-      "--include='*.txt' --include='*.patch' --include='*.svg' || rc=$?"
-    ],
-    ".github/workflows/pr-gate.yml:91": [
-      "- name: 敏感信息扫描"
-    ],
     "0.13.7-CERTIFICATION.md:11": [
       "| 统一补丁（vendor） | 通过 | 双 ABI 均 `apply-patches: ALL OK（13/13，mode=check）`（新增 undo-E8；attachment-formats 已退役） |"
     ],
@@ -774,7 +708,7 @@
       ""
     ],
     "ARCHITECTURE.md:15": [
-      "插件授权增量见 `BRIDGE-API.md`：固定动画设置 API 与私有 SurfaceFlinger 查询分离，公共调用不能声明 `internal` 权限。"
+      "`NotifySuppressQueue` 在现有 `dsh-notify` 私有 preferences 内保存 v1 有界延后日志，`NotifyStore.start` 恢复并重启 tick。延后成功必须先同步提交；失败不消费来源偏移。补投后同步结算，借助完整条目哈希和系统活动通知回执缩小崩溃重复窗口，不承诺跨 Android 通知与 preferences 的原子 exactly-once。容量、TTL、会话覆盖语义不变，不迁移模型、HOME 或用户插件目录。"
     ],
     "AdbKeyboardReceiver.kt:23": [
       "* `onReceive` 调用栈上从接收器实例取得；它不属于 `Intent`。旧实现反射 `Intent` 上的同名方法，"
@@ -2036,14 +1970,8 @@
     "browser-tab.tsx:54": [
       "return width >= 240 && width <= 3840 && height >= 240 && height <= 3840 ? { width, height } : undefined"
     ],
-    "build-apk-013.ps1:211": [
-      "node (Join-Path $Root \"scripts\\check-kotlin-test-count.mjs\") --allow-missing 2>&1"
-    ],
     "build-apk-013.ps1:229": [
       "Write-Host \"== pi-ai 目录 diff（$($ov.catalogDiff.baseline) -> $pinVer，信息性）==\""
-    ],
-    "build-apk-013.ps1:37": [
-      "# 注入集产物重建（0.14.2 P1 实锤，task-54 F-1）：本地链此前**没有任何构建步**，直接让 inject-all.py"
     ],
     "build-release.ps1:109": [
       "$snapSrc = Join-Path $root \"dsh-mobile-apk\\snapshot\""
@@ -2051,59 +1979,14 @@
     "build-release.ps1:89": [
       "# Release output is regenerated as a unit. Old APKs must not survive into this version's"
     ],
-    "build-snapshot-013.mjs:1029": [
-      "wsl(`rm -rf \"${wslPath(globalDir)}\"`)"
-    ],
-    "build-snapshot-013.mjs:294": [
-      "console.error(`[引擎 overlay 失败——快照不可发布] ${e?.stack ?? String(e)}`)"
-    ],
-    "build-snapshot-013.mjs:300": [
-      "if (!existsSync(join(overlayPkgDir(name), 'package.json'))) {"
-    ],
-    "build-snapshot-013.mjs:31": [
-      "// D: 慢 9~97 倍（写 2000 个小文件：D: 3.0 s vs UNC 28.7 s；读 0.36 s vs 34.8 s）。"
-    ],
     "build-snapshot-013.mjs:315": [
       "const enginePatches = registry.patches.filter((p) => p.scope === 'engine')"
     ],
     "build-snapshot-013.mjs:366": [
       "console.error('[引擎树补丁行为回归失败] arkweb-resource-protocol-H1: ' + arkWebOut.slice(-1000))"
     ],
-    "build-snapshot-013.mjs:40": [
-      "const inner = `cd ${wslPath(ROOT)} && node scripts/build-snapshot-013.mjs ${ABI}`"
-    ],
-    "build-snapshot-013.mjs:982": [
-      "// ── 8a. 快照瘦身（2026-08-23 体积审计）：node-pty 非 Android prebuilds + 全树 sourcemap ──"
-    ],
-    "check-build-chain-abort.mjs:53": [
-      "// ── A. 唯一自增点：Deny-Abi helper ─────────────────────────────────────────"
-    ],
     "check-inject-completeness.mjs:2": [
       "// check-inject-completeness.mjs — 注入面成员完整性门禁（0.0.13 → 0.13.8-b P0 修复；坑 63 的活体复现防线）。"
-    ],
-    "check-inject-completeness.mjs:28": [
-      ""
-    ],
-    "check-inject-completeness.mjs:37": [
-      "const failures = []"
-    ],
-    "check-inject-completeness.mjs:98": [
-      "const rel = e.slice(pkgBase.length + 1)"
-    ],
-    "check-patch-mounts.mjs:28": [
-      "const TOP_ITEM = /^-(?:\\s|$)/"
-    ],
-    "check-release-gates.mjs:136": [
-      "{ script: 'check-boot-budget.mjs', ciApk: true, ciCoord: true, needsSnapshot: false },"
-    ],
-    "check-release-gates.mjs:28": [
-      "* 本迭代要求的门禁集合（唯一声明处）。"
-    ],
-    "check-snapshot-asset.ps1:26": [
-      "$h2 = (Get-FileHash $SnapshotPath -Algorithm SHA256).Hash.ToLower()"
-    ],
-    "check-snapshot-builder-output.mjs:139": [
-      "try { slim = JSON.parse(readFileSync(SLIM, 'utf8')) } catch (e) {"
     ],
     "contract.ts:138": [
       "{ name: BROWSER_TOOLS.open, params: '{url:string, viewport?:string, identity?:string}', returns: '{ok,url,title,loadState}', permission: 'approval' },"
@@ -2142,13 +2025,13 @@
       ""
     ],
     "docs/AGENTS/ARCHITECTURE.md:15": [
-      "插件授权增量见 `BRIDGE-API.md`：固定动画设置 API 与私有 SurfaceFlinger 查询分离，公共调用不能声明 `internal` 权限。"
+      "`NotifySuppressQueue` 在现有 `dsh-notify` 私有 preferences 内保存 v1 有界延后日志，`NotifyStore.start` 恢复并重启 tick。延后成功必须先同步提交；失败不消费来源偏移。补投后同步结算，借助完整条目哈希和系统活动通知回执缩小崩溃重复窗口，不承诺跨 Android 通知与 preferences 的原子 exactly-once。容量、TTL、会话覆盖语义不变，不迁移模型、HOME 或用户插件目录。"
     ],
     "docs/AGENTS/ARCHITECTURE.md:27": [
-      "| ConfigTransfer.kt | legacy 配置导入导出未挂载；同文件 DirectoryPickerController 的 SAF 注册仍在用；活动配置读写归 EngineManager→SnapshotUserData | MainActivity（仅选择器） |"
+      "| GuideChrome.kt | 引导页控件句柄束（GuideChrome/GuideCallbacks 数据类，DsUi 消费方） | GuidePageRenderer、MainActivity、WatchdogV2、EngineService |"
     ],
     "docs/AGENTS/ARCHITECTURE.md:29": [
-      "| WebUiChrome.kt | 窗口 UI chrome：沉浸式/剪贴板/常亮/主题推送（真源统一走 ShellState） | MainActivity |"
+      "| ConfigTransfer.kt | legacy 配置导入导出未挂载；同文件 DirectoryPickerController 的 SAF 注册仍在用；活动配置读写归 EngineManager→SnapshotUserData | MainActivity（仅选择器） |"
     ],
     "docs/AGENTS/emulator-test-protocol.md:29": [
       ""
@@ -2503,18 +2386,6 @@
       "virtualDisplayIds: registry.ids,",
       "})"
     ],
-    "inject-all.py:174": [
-      "if not _is_runtime_dep(name, spec):"
-    ],
-    "inject-all.py:273": [
-      ""
-    ],
-    "inject-all.py:304": [
-      "print(f\"inject-all: preset={preset} | assembly profiles: {target_profiles} \""
-    ],
-    "inject-all.py:32": [
-      "PROFILES = (\"web\", \"headless\")"
-    ],
     "inject-all.py:336": [
       "def push(data, name, mtime):"
     ],
@@ -2812,26 +2683,14 @@
     "scripts/build-apk-013.ps1:174": [
       "# 插件单测门禁（0.14.1 §1.1b 决策 1 / §2.4 前置项 1）：脚本自 0.14.0 起存在却从未被任何路径调用，"
     ],
-    "scripts/build-apk-013.ps1:182": [
-      "# 【0.14.1 P0-a 修复】此前这里写死 --self-test，导致**真检被结构性绕开**：门禁对设备真产物会判红"
-    ],
     "scripts/build-apk-013.ps1:206": [
       "# 417 例契约断言此前只在本地手动跑过；且「只按退出码判」分不清「全绿」与「一个用例都没跑」"
-    ],
-    "scripts/build-apk-013.ps1:283": [
-      "if (-not (Test-Path (Join-Path $undo \"package.json\"))) { Deny-Abi $abi \"缺 undo 注入源 $undo（git clone lire1131/dsh-undo-savepoint）\"; continue }"
     ],
     "scripts/build-apk-013.ps1:388": [
       "node (Join-Path $Root \"scripts\\check-strip-noop.mjs\") (Join-Path $work \"snap-final2.tar.xz\") 2>&1"
     ],
     "scripts/build-apk-013.ps1:427": [
       "# 用本机 bash 跑同一条命令（路径本就是 POSIX，无需 /mnt/d 翻译）。"
-    ],
-    "scripts/build-apk-engine.mjs:33": [
-      "* gates, injection and artifact naming; this function owns assets, Gradle,"
-    ],
-    "scripts/build-apk-engine.test.mjs:121": [
-      "return { status: 0 }"
     ],
     "scripts/build-release.ps1:56": [
       "Write-Output \"== 发布门禁接线断言（唯一接线面聚合入口）==\""
@@ -2842,20 +2701,11 @@
     "scripts/build-snapshot-013.mjs:169": [
       "if (r.missing) throw new Error(`出厂 profile 清单缺席: ${r.profile}（${r.path}）——快照不可发布`)"
     ],
-    "scripts/build-snapshot-013.mjs:297": [
-      "// keepUnpublished 断言：登记表内包必须仍在树内（防未来误删）"
-    ],
-    "scripts/build-snapshot-013.mjs:31": [
-      "// D: 慢 9~97 倍（写 2000 个小文件：D: 3.0 s vs UNC 28.7 s；读 0.36 s vs 34.8 s）。"
-    ],
     "scripts/build-snapshot-013.mjs:456": [
       "if (existsSync(join(pluginDir, 'package.json'))) {"
     ],
     "scripts/build-snapshot-013.mjs:933": [
       "const trustedDir = join(U, 'etc', 'apt', 'trusted.gpg.d')"
-    ],
-    "scripts/build-snapshot-013.mjs:985": [
-      "// 清单外置 snapshot-config/slim.json（nodePtyPrebuilds / sourcemapDelete）。"
     ],
     "scripts/check-boot-budget.mjs:609": [
       "okOf(r, 'C1') === false, 'C1 ok=' + okOf(r, 'C1'))"
@@ -2891,7 +2741,7 @@
       "i = end < 0 ? text.length : end + 2"
     ],
     "scripts/check-inject-completeness.mjs:100": [
-      "if (rel === 'package.json' || rel.startsWith('lib/')) present.add(rel)"
+      "let checkedPkgs = 0"
     ],
     "scripts/check-kotlin-test-count.mjs:106": [
       "const head = readFileSync(full, 'utf8').slice(0, 2000)"
@@ -2956,29 +2806,11 @@
     "scripts/device-smoke.ps1:9": [
       "& (Join-Path $here \"t0-check.ps1\") -Serial $Serial"
     ],
-    "scripts/inject-all.py:321": [
-      "# P0（dev-incoming 实测 2026-09-12）：替换循环只命中「基座里已存在」的成员 → 包内**新增文件**"
-    ],
-    "scripts/lib/shell.mjs:31": [
-      "export const resolveTar = () => {"
-    ],
     "scripts/make-snapshot.sh:8": [
       "SNAP_PKG_ROOT=\"${DSH_SNAPSHOT_PKG_ROOT:-/data/user/0/com.snoworwind.pocketharness}\""
     ],
-    "scripts/patches/data/client-index-loader-barrier.mjs:3": [
-      "export function planClientIndexLoaderBarrier(source) {"
-    ],
-    "scripts/patches/data/registry-scan-c4.mjs:11": [
-      "export function planClientRegistryScan(source) {"
-    ],
-    "scripts/patches/data/undo-safe-transaction-snippet.mjs:1": [
-      "// dsh-mobile safe mode transaction (S2) with CAS recovery failover, web-store resolver and factory-bundle filter (S5)."
-    ],
     "scripts/plugin-dirs.json:1": [
       "{"
-    ],
-    "scripts/source-build/check-dsh-source-snapshot.mjs:25": [
-      "import { checkAndroidNativeRuntimePackages } from './check-android-native-runtime-packages.mjs'"
     ],
     "scripts/t0-check.ps1:14": [
       "if ($dump -match \"shell-termux[sS]{0,200}?disabled:s*true\") { Write-Output \"WARN: shell-termux appears disabled\"; $fail++ }"

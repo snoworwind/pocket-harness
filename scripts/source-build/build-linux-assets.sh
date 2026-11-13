@@ -3,15 +3,10 @@
 set -euo pipefail
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)
 cd "$ROOT"
-node scripts/check-vendored-linux-bootstrap.mjs
 node scripts/source-build/check-linux-sources.mjs
 python3 scripts/source-build/linux-debian-snapshot-wget.py --self-test
 SOURCE_PROOF_INPUTS=(
-  vendor/linux-proot vendor/dsh-linux-runtime
-  plugins/dsh-linux-bootstrap/README.md plugins/dsh-linux-bootstrap/build-client.mjs
-  plugins/dsh-linux-bootstrap/build.mjs plugins/dsh-linux-bootstrap/client
-  plugins/dsh-linux-bootstrap/package-lock.json plugins/dsh-linux-bootstrap/package.json
-  plugins/dsh-linux-bootstrap/src plugins/dsh-linux-bootstrap/test
+  vendor/linux-proot
   scripts/source-build/build-linux-assets.sh scripts/source-build/retry-curl.sh scripts/source-build/linux-inputs.json
   scripts/source-build/linux-backend-packages.json scripts/source-build/linux-source-manifest.json
   scripts/snapshot-config/preinstall.json scripts/lib/shell.mjs
@@ -23,13 +18,12 @@ SOURCE_PROOF_INPUTS=(
   scripts/source-build/test_proot_source_backend.py scripts/source-build/ensure-no-rootfs-mounts.py \
   scripts/source-build/linux-debian-snapshot-wget.py scripts/source-build/test_linux_debian_snapshot_wget.py
   scripts/source-build/linux-assets-workflow.test.mjs
-  scripts/source-build/package-linux-assets.py scripts/source-build/check-linux-sources.mjs
+  scripts/source-build/package-linux-product-assets.py scripts/source-build/check-linux-sources.mjs
   scripts/source-build/check-linux-sources.test.mjs scripts/source-build/check-linux-native-libraries.mjs
-  scripts/check-vendored-linux-bootstrap.mjs
-  scripts/source-build/verify-linux-native-apk.py scripts/source-build/test_prepare_termux_signed_repo.py
+  scripts/source-build/verify-linux-native-apk.py
   scripts/source-build/test_prepare_proot_backend.py scripts/source-build/test_prepare_rootfs_proot.py
   scripts/source-build/test_ensure_no_rootfs_mounts.py scripts/source-build/test_proot_compat.py
-  scripts/source-build/test_package_linux_assets.py scripts/source-build/test_prepare_termux_bootstrap.py
+  scripts/source-build/test_package_linux_assets.py
   scripts/source-build/seed-dsh-profiles.mjs scripts/third-party-licenses.json
   scripts/check-third-party.mjs scripts/check-third-party.test.mjs LICENSE LICENSES docs/AGENTS/gpl-compliance.md
   .github/workflows/build-linux-assets.yml
@@ -39,12 +33,6 @@ for source in "${SOURCE_PROOF_INPUTS[@]}"; do
 done
 SOURCE_PROOF_SYMLINK=$(find "${SOURCE_PROOF_INPUTS[@]}" -type l -print -quit)
 [[ -z "$SOURCE_PROOF_SYMLINK" ]] || { echo "Linux source proof input is a symlink: $SOURCE_PROOF_SYMLINK" >&2; exit 1; }
-(
-  cd plugins/dsh-linux-bootstrap
-  npm ci --no-audit --no-fund --fetch-retries=8 --fetch-retry-factor=2 \
-    --fetch-retry-mintimeout=1000 --fetch-retry-maxtimeout=30000 --fetch-timeout=300000
-  npm run build
-)
 WORK="$ROOT/.deploy-tmp/linux-build"
 [[ "$(realpath -m "$WORK")" == "$WORK" ]] || { echo 'Linux build root escapes workspace' >&2; exit 1; }
 mkdir -p "$WORK/assets" "$WORK/input" "$WORK/provenance"
@@ -207,7 +195,7 @@ bash scripts/source-build/retry-curl.sh --fail --location --retry 8 --retry-max-
 printf '%s  %s\n' "$NODE_SHA" "$NODE_ARCHIVE" | sha256sum --check --strict
 PNPM_VERSION=$(node -p 'require("./scripts/source-build/linux-inputs.json").pnpm.version')
 bash scripts/source-build/retry-curl.sh --fail --location --retry 8 --retry-max-time 600 "https://registry.npmjs.org/pnpm/-/pnpm-$PNPM_VERSION.tgz" -o "$WORK/input/pnpm.tgz"
-python3 scripts/source-build/package-linux-assets.py "$WORK" "$EPOCH"
+python3 scripts/source-build/package-linux-product-assets.py "$WORK" "$EPOCH"
 qemu-aarch64-static -L "$ROOTFS" "$WORK/node-stage/bin/node" --version | grep -Fx "v$NODE_VERSION"
 cp "$WORK/input/debian-InRelease" "$WORK/provenance/"
 cp scripts/source-build/linux-inputs.json scripts/source-build/linux-source-manifest.json "$WORK/provenance/"

@@ -43,15 +43,12 @@ export const STAGES = [
   { key: 'sources', label: '取固定来源（Harness / 组件 / 市场产物）', match: /^Checkout pinned/ },
   { key: 'harness', label: '从源码构建 Harness 并打包', match: /^Build and pack DeepSeek Harness/ },
   { key: 'plugins', label: '构建插件与市场补丁', match: /^Build project plugins|^Apply project patches/ },
-  // 注意：bootstrap 认证/取密钥那一步在文件里排得靠前（紧跟 harness 之后），但它属于 Termux 链
-  // ——归到 termux 阶段，`--from termux` 才不会再把它跳过（曾因此报「Termux 签名密钥不在场」）。
-  { key: 'termux', label: '组装并验签 Termux 基座', match: /^Authenticate official Termux bootstrap|^Add Node\.js to the clean Termux base|^Download this run's authenticated Termux package snapshot|^Cross-compile node-pty|^Assemble clean Termux base/ },
   { key: 'linux-assets', label: '构建签名校验的离线 ARM64 Linux 资产', match: /^Install Linux asset cross-build tools|^Prepare pinned Debian archive trust keys|^Build source-owned offline ARM64 Linux assets/ },
-  { key: 'snapshot', label: '构建运行时快照', match: /^Build runtime snapshot/ },
+  { key: 'snapshot', label: '装配 Linux 运行时载荷', match: /^Assemble Linux engine and factory home/ },
   // Kotlin 单测门禁是 APK 步的**前置输入**（build-apk.mjs 的 check-kotlin-test-count 会读它产出的
   // 结果目录）。不归 snapshot：`--to snapshot` 不应顺带跑十几分钟单测；归 apk 使 `--only apk`
   // 自带它所需的测试结果。
-  { key: 'apk', label: '门禁 + 注入 + 打包 Android APK', match: /^单元测试门禁前置|^Build ABI APK/ },
+  { key: 'apk', label: '门禁 + 注入 + 打包 Android APK', match: /^单元测试门禁前置|^Build Linux ARM64 APK/ },
 ]
 const SKIP_STEP = /^(Set up job|Checkout project source|Prepare build tools|Run actions\/setup-|Install archive and signature tools|Upload APK and provenance|Post )/
 
@@ -149,19 +146,6 @@ export function planSteps(workflowText) {
   for (const step of parseWorkflowSteps(workflowText)) {
     if (SKIP_STEP.test(step.name ?? '')) continue
     let run = step.run
-    if (!run && step.name === "Download this run's authenticated Termux package snapshot") {
-      run = [
-        'set -euo pipefail',
-        'node scripts/source-build/reset-local-termux-stage.mjs',
-        'mkdir -p .deploy-tmp/source-build/termux-package-artifact',
-        'python3 scripts/source-build/prepare-termux-signed-repo.py \\',
-        '  .deploy-tmp/source-build/bootstrap-extracted/usr \\',
-        '  .deploy-tmp/source-build/termux-package-input-source/termux-webroot \\',
-        '  scripts/snapshot-config/preinstall.json \\',
-        '  --abi "$DSH_ABI"',
-        'COPYFILE_DISABLE=1 tar --create --file=.deploy-tmp/source-build/termux-package-artifact/termux-package-inputs.tar --directory=.deploy-tmp/source-build/termux-package-input-source termux-webroot termux-packages-provenance.json',
-      ].join('\n')
-    }
     if (!run) continue
     const matched = STAGES.find((stage) => stage.match.test(step.name ?? ''))
     if (matched) inheritedStage = matched.key

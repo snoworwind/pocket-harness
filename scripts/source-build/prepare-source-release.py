@@ -39,7 +39,7 @@ def validate_abi(source, abi, sha, repo, server):
 
     # The upload list is the authority for required evidence. Hidden files must survive transfer.
     workflow = (Path(__file__).resolve().parents[2] / '.github/workflows/build-apk-source.yml').read_text(encoding='utf-8')
-    upload = workflow.split('      - name: Upload APK and provenance\n', 1)[1]
+    upload = workflow.split('      - name: Upload intermediate APK and provenance\n', 1)[1]
     paths = upload.split('          path: |\n', 1)[1].split('          if-no-files-found:', 1)[0]
     for pattern in (line.strip() for line in paths.splitlines() if line.strip()):
         matches = glob.glob(str(source / pattern), recursive=True)

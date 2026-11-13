@@ -6,11 +6,6 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { spawnSync } from 'node:child_process'
 const read = name => readFileSync(new URL('../../.github/workflows/' + name, import.meta.url), 'utf8').replaceAll('\r\n', '\n')
-const entry = read('build-apk.yml')
-const expected = "name: build-apk\non:\n  workflow_dispatch:\n    inputs:\n      draft_release:\n        description: '源码构建成功后创建 ARM64 与 x86_64 预发布草稿（不会公开）'\n        type: boolean\n        default: false\npermissions:\n  contents: read\njobs:\n  source-build:\n    if: ${{ !inputs.draft_release }}\n    uses: ./.github/workflows/build-apk-source.yml\n  source-draft:\n    if: ${{ inputs.draft_release }}\n    permissions:\n      contents: write\n    uses: ./.github/workflows/release-source-draft.yml"
-const check = text => assert.equal(text.split('\n').filter(line => line.trim() && !line.trimStart().startsWith('#')).join('\n').trim(), expected.replace(/(    uses: [^\n]+)/g, '$1\n    secrets: inherit'))
-test('cloud entry routes both modes exclusively through same-commit source workflows', () => check(entry))
-
 const engine = () => readFileSync(new URL('./build-engine.sh', import.meta.url), 'utf8').replaceAll('\r\n', '\n').split('\n').map(line => '          ' + line).join('\n')
 function checkEngineBuild(source) {
   assert.match(source, /packageManager!=="pnpm@11\.28\.5"/)
@@ -107,157 +102,6 @@ test('negative control: profile seeding rejects reading the no-longer-exported t
   assert.throws(() => checkProfileSeeder(stale), assert.AssertionError)
 })
 
-test('source workflow rejects tags, PR refs and feature branches before checkout or secrets', { skip: process.platform !== 'linux' }, () => {
-  const source = read('build-apk-source.yml')
-  const start = source.indexOf('      - name: Require the maintained source branch')
-  const end = source.indexOf('      - name: Checkout project source', start)
-  assert.ok(start > 0 && end > start)
-  const block = source.slice(start, end)
-  assert.match(block, /SOURCE_REF: \$\{\{ github.ref \}\}/)
-  const run = block.split('        run: |\n')[1].split('\n').map(line => line.replace(/^ {10}/, '')).join('\n')
-  for (const ref of ['refs/heads/main', 'refs/heads/codex/candidate', 'refs/heads/codex/x86-source-chain', 'refs/tags/main', 'refs/pull/1/merge', '']) {
-    const result = spawnSync('/bin/bash', ['-e', '-c', run], { env: { ...process.env, SOURCE_REF: ref, DSH_ABI: 'arm64', DSH_LOCAL_X86_QA: '' } })
-    assert.equal(result.status, ref === 'refs/heads/main' ? 0 : 1)
-  }
-  const x86 = spawnSync('/bin/bash', ['-e', '-c', run], { env: {
-    ...process.env, SOURCE_REF: 'refs/heads/codex/x86-source-chain', DSH_ABI: 'x86_64', DSH_LOCAL_X86_QA: '1',
-  } })
-  assert.equal(x86.status, 0, x86.stderr)
-  const x86WrongBranch = spawnSync('/bin/bash', ['-e', '-c', run], { env: {
-    ...process.env, SOURCE_REF: 'refs/heads/codex/candidate', DSH_ABI: 'x86_64', DSH_LOCAL_X86_QA: '1',
-  } })
-  assert.equal(x86WrongBranch.status, 1)
-  for (const [actions, enabled, ref, abi, experiment, expected] of [
-    ['', '1', 'refs/heads/codex/linux-runtime-experiment', 'arm64', '', 0],
-    ['true', '1', 'refs/heads/codex/linux-runtime-experiment', 'arm64', '', 1],
-    ['', '', 'refs/heads/codex/linux-runtime-experiment', 'arm64', '', 1],
-    ['', '1', 'refs/heads/codex/candidate', 'arm64', '', 1],
-    ['', '1', 'refs/heads/codex/linux-runtime-experiment', 'x86_64', '', 1],
-    // 云端显式分发：只对实验分支 + ARM64 + 显式开关放行，默认关闭。
-    ['true', '', 'refs/heads/codex/linux-runtime-experiment', 'arm64', 'true', 0],
-    ['true', '', 'refs/heads/codex/candidate', 'arm64', 'true', 1],
-    ['true', '', 'refs/heads/codex/linux-runtime-experiment', 'x86_64', 'true', 1],
-    ['true', '', 'refs/heads/main', 'arm64', 'false', 0],
-  ]) {
-    const result = spawnSync('/bin/bash', ['-e', '-c', run], { env: {
-      ...process.env, GITHUB_ACTIONS: actions, DSH_LOCAL_LINUX_QA: enabled,
-      SOURCE_REF: ref, DSH_ABI: abi, DSH_LOCAL_X86_QA: '', LINUX_EXPERIMENT: experiment,
-    } })
-    assert.equal(result.status, expected, `${actions}/${enabled}/${ref}/${abi}/${experiment}`)
-  }
-
-})
-
-test('both wrapper modes fail the contract if signing secrets are not passed', () => {
-  for (const name of ['build-apk-source.yml', 'release-source-draft.yml']) {
-    assert.throws(() => check(entry.replace(`uses: ./.github/workflows/${name}\n    secrets: inherit`, `uses: ./.github/workflows/${name}`)), assert.AssertionError)
-  }
-  const draft = read('release-source-draft.yml').split('  build:')[1].split('  prepare:')[0]
-  assert.match(draft, /secrets: inherit/)
-})
-test('negative control: additional legacy job is rejected', () => {
-  assert.throws(() => check(entry + '\n  legacy:\n    runs-on: ubuntu-latest\n'), assert.AssertionError)
-})
-test('negative control: opt-in source path is rejected', () => {
-  assert.throws(() => check(entry.replace('  source-build:', '  source-build:\n    if: ${{ inputs.source_audit }}')), assert.AssertionError)
-})
-test('source workflow uploads explicitly listed hidden provenance with APK', () => {
-  const source = read('build-apk-source.yml')
-  assert.match(source, /^  workflow_call:/m)
-  const upload = source.slice(source.indexOf('      - name: Upload APK and provenance'))
-  assert.match(upload, /^          include-hidden-files: true$/m)
-  assert.match(upload, /^          if-no-files-found: error$/m)
-  assert.match(upload, /^            \.deploy-tmp\/source-build\/project-component-provenance.json$/m)
-  assert.match(upload, /^            \.deploy-tmp\/source-build\/apk-sha256.txt$/m)
-  assert.match(upload, /^            \.deploy-tmp\/source-build\/linux-bundle-injection.json$/m)
-  assert.match(upload, /^            \.deploy-tmp\/source-build\/independent-rebuild-verification.json$/m)
-  assert.match(upload, /^            \.deploy-tmp\/linux-build\/provenance\/\*\*$/m)
-  assert.match(upload, /^            \.deploy-tmp\/source-build\/effective-engine-overlay-restoration\.json$/m)
-  assert.doesNotMatch(upload, /^            \.deploy-tmp\/\*\*$/m)
-})
-
-function checkTermuxPackageSnapshotFlow(source) {
-  const preflight = source.split('  termux-package-inputs:')[1]?.split('\n  build-abi:')[0]
-  const build = source.split('  build-abi:')[1]?.split('\n  verify-abi:')[0]
-  assert.ok(preflight && build, 'source workflow must have separate Termux input and ABI build jobs')
-  assert.match(source, /options: \[arm64, x86_64\]/)
-  assert.match(source, /DSH_ABI: \$\{\{ inputs\.abi \|\| 'arm64' \}\}/)
-  assert.equal((source.match(/unsupported ABI: \$DSH_ABI/g) ?? []).length, 2,
-    'both the preflight and builder must fail before work when an unsupported ABI is supplied')
-  assert.match(preflight, /python3 scripts\/source-build\/prepare-termux-signed-repo\.py/)
-  assert.match(preflight, /bash scripts\/source-build\/retry-curl\.sh --fail --location --retry 8 --retry-max-time 600 "\$bootstrap_url" -o "\$bootstrap_archive"/,
-    'the pinned bootstrap download must tolerate longer transient GitHub Release 5xx incidents')
-  assert.equal((preflight.match(/prepare-termux-signed-repo\.py/g) ?? []).length, 1,
-    'the rolling Termux repository must be resolved exactly once per workflow run')
-  assert.match(preflight, /tar --create --file=\.deploy-tmp\/termux-package-inputs\.tar/)
-  assert.match(preflight, /--directory="\$artifact_root" termux-webroot termux-packages-provenance\.json/)
-  const artifactName = /^\s*name: (termux-package-inputs-\$\{\{ inputs\.abi \|\| 'arm64' \}\}-\$\{\{ github\.run_id \}\})$/m
-  assert.match(preflight, artifactName)
-  assert.doesNotMatch(preflight, /^\s*name:.*github\.run_attempt/m,
-    'artifact identity must survive failed-job reruns that reuse a successful producer job')
-  assert.match(preflight, /^\s*overwrite: true$/m,
-    'a full workflow rerun must be able to replace the prior run-scoped artifact')
-  assert.match(preflight, /path: \.deploy-tmp\/termux-package-inputs\.tar/)
-  assert.match(preflight, /compression-level: 0/)
-  assert.match(readFileSync(new URL('./prepare-termux-signed-repo.py', import.meta.url), 'utf8'),
-    /webroot\.parent \/ "termux-packages-provenance\.json"/)
-  assert.match(build, /needs: \[termux-package-inputs, base\]/)
-  assert.match(build, /bash scripts\/source-build\/retry-curl\.sh --fail --location --retry 8 --retry-max-time 600 "\$bootstrap_url" --output "\$bootstrap_archive"/,
-    'the cached build bootstrap download must use the same bounded transient-error retry window')
-  assert.match(build, artifactName)
-  assert.doesNotMatch(build, /^\s*name:.*github\.run_attempt/m,
-    'consumers must not request an artifact name that changes between attempts')
-  assert.equal(preflight.match(artifactName)?.[1], build.match(artifactName)?.[1],
-    'producer and consumers must use an identical attempt-independent artifact identity')
-  assert.match(build, /path: \.deploy-tmp\/source-build\/termux-package-artifact/)
-  assert.match(build, /tarfile\.open\(archive, mode='r:'\)/)
-  assert.match(build, /bundle\.extractall\(destination, members=members, filter='data'\)/)
-  assert.match(build, /expected_roots = \{'termux-webroot', 'termux-packages-provenance\.json'\}/)
-  assert.match(build, /not \(member\.isfile\(\) or member\.isdir\(\)\)/)
-  assert.match(build, /'\.\.' in relative\.parts/)
-  assert.match(build, /member\.name == normalized_name \+ '\/'/)
-  assert.match(build, /cursor\.is_symlink\(\)/)
-  assert.equal((build.match(/prepare-termux-signed-repo\.py/g) ?? []).length, 0,
-    'build replicas must consume the shared snapshot instead of independently resolving stable')
-  assert.match(build, /Download this run's authenticated Termux package snapshot/)
-  const assemble = build.indexOf('Assemble clean Termux base with the source-built Android binding')
-  const reclaim = build.indexOf('node scripts/source-build/reclaim-build-disk.mjs --root "$GITHUB_WORKSPACE"')
-  const assembleEnd = build.indexOf('\n      - name:', assemble)
-  const assembleBlock = build.slice(assemble, assembleEnd)
-  assert.ok(assemble > 0 && assembleEnd > assemble && reclaim > assembleEnd,
-    'ABI-specific base provenance must be copied after assembly and before disk reclamation')
-  assert.ok(assembleBlock.includes('cp "$base_root/base-usr.tar.xz.provenance.json"'))
-  assert.ok(assembleBlock.includes('.deploy-tmp/source-build/termux-base-provenance.json'))
-  assert.match(build, /\.deploy-tmp\/source-build\/termux-base-provenance\.json/)
-  assert.equal((source.match(/\.deploy-tmp\/source-build\/termux-base-provenance\.json/g) ?? []).length, 4,
-    'primary, verified, and signed artifacts must upload this ABI-specific provenance')
-  assert.doesNotMatch(build, /\.deploy-tmp\/(?:arm64|x64)-base\/base-usr\.tar\.xz\.provenance\.json/)
-}
-test('both replicas for either ABI consume one authenticated Termux package snapshot per workflow run', () => {
-  checkTermuxPackageSnapshotFlow(read('build-apk-source.yml'))
-})
-test('negative controls reject independent repo fetches, missing dependency, or retry-unsafe artifact contracts', () => {
-  const source = read('build-apk-source.yml')
-  for (const bad of [
-    source.replace('    needs: [termux-package-inputs, base]\n', ''),
-    source.replace('bash scripts/source-build/retry-curl.sh --fail --location --retry 8 --retry-max-time 600 "$bootstrap_url" -o "$bootstrap_archive"',
-      'curl --fail --location --retry 3 "$bootstrap_url" -o "$bootstrap_archive"'),
-    source.replace('bash scripts/source-build/retry-curl.sh --fail --location --retry 8 --retry-max-time 600 "$bootstrap_url" --output "$bootstrap_archive"',
-      'curl --fail --location --retry 3 "$bootstrap_url" --output "$bootstrap_archive"'),
-    source.replace("          name: termux-package-inputs-${{ inputs.abi || 'arm64' }}-${{ github.run_id }}\n          path: .deploy-tmp/source-build",
-      '          name: termux-package-inputs-stale-run\n          path: .deploy-tmp/source-build'),
-    source.replace('          overwrite: true\n', ''),
-    source.replace("          name: termux-package-inputs-${{ inputs.abi || 'arm64' }}-${{ github.run_id }}\n          path: .deploy-tmp/termux-package-inputs.tar",
-      "          name: termux-package-inputs-${{ inputs.abi || 'arm64' }}-${{ github.run_id }}-${{ github.run_attempt }}\n          path: .deploy-tmp/termux-package-inputs.tar"),
-    source.replace('          path: .deploy-tmp/termux-package-inputs.tar',
-      '          path: .deploy-tmp/termux-package-artifact/'),
-    source.replace("bundle.extractall(destination, members=members, filter='data')",
-      'bundle.extractall(destination, members=members)'),
-    source.replace('      - name: Download this run\'s authenticated Termux package snapshot\n        uses:',
-      '      - name: Download this run\'s authenticated Termux package snapshot\n        run: python3 scripts/source-build/prepare-termux-signed-repo.py\n        uses:'),
-  ]) assert.throws(() => checkTermuxPackageSnapshotFlow(bad), assert.AssertionError)
-})
-
 function checkSetupJavaRetries(block, prefix) {
   assert.equal((block.match(/uses: actions\/setup-java@cf277c60eb25467037889841efdb72551f06f6c3/g) ?? []).length, 3,
     `${prefix} must retry the pinned setup-java action three times`)
@@ -273,10 +117,8 @@ function checkSetupJavaRetries(block, prefix) {
 
 function checkTransientBuildStartup(source) {
   const build = source.split('  build-abi:')[1]?.split('\n  verify-abi:')[0]
-  const sign = source.split('  sign-abi:')[1]
-  assert.ok(build && sign, 'builder and signer setup jobs must both be present')
+  assert.ok(build, 'Linux builder setup must be present')
   checkSetupJavaRetries(build, 'setup_java')
-  checkSetupJavaRetries(sign, 'signer_setup_java')
 
   const warmupStart = build.indexOf('      - name: Warm pinned Gradle distribution with bounded transient retries')
   const warmupEnd = build.indexOf('\n      - name:', warmupStart + 1)
@@ -296,9 +138,9 @@ function checkTransientBuildStartup(source) {
   assert.doesNotMatch('Server returned HTTP response code: 404 for URL: https://example.invalid/gradle.zip', retryPattern,
     'permanent HTTP failures must not be retried as transient network errors')
 
-  assert.equal((source.match(/--retry 8 --retry-max-time 600/g) ?? []).length, 5,
-    'all five fixed downloads in the APK source workflow must use the longer bounded retry window')
-  assert.equal((source.match(/bash scripts\/source-build\/retry-curl\.sh/g) ?? []).length, 5,
+  assert.equal((source.match(/--retry 8 --retry-max-time 600/g) ?? []).length, 3,
+    'all three fixed downloads in the APK source workflow must use the longer bounded retry window')
+  assert.equal((source.match(/bash scripts\/source-build\/retry-curl\.sh/g) ?? []).length, 3,
     'all fixed APK source downloads must retry known curl transport errors')
   assert.match(source, /npm install -g corepack@0\.36\.0[\s\S]*?--fetch-retries=8 --fetch-retry-factor=2 --fetch-retry-mintimeout=1000[\s\S]*?--fetch-retry-maxtimeout=30000 --fetch-timeout=300000/)
   assert.match(source, /printf '%s  %s\\n' "\$ndk_sha1" "\$ndk_archive" \| sha1sum --check -/)
@@ -335,7 +177,6 @@ test('negative controls reject missing startup retries, unpinned Java, and missi
   for (const bad of [
     source.replace('java-version: \'17.0.20+8\'', 'java-version: \'17\''),
     source.replace('id: setup_java_attempt_3', '# third setup-java id omitted'),
-    source.replace('id: signer_setup_java_attempt_3', '# third signer setup-java id omitted'),
     source.replace('for attempt in $(seq 1 5)', 'for attempt in $(seq 1 1)'),
     source.replace("grep -Eiq 'HTTP response code: (408|425|429|5[0-9]{2})|SocketTimeoutException|timed out|UnknownHostException|Temporary failure in name resolution|Connection reset|No route to host'", "grep -Eiq 'HTTP response code: (408|425|429|5[0-9]{2})'"),
     source.replace('--retry 8 --retry-max-time 600', '--retry 3'),
@@ -390,43 +231,6 @@ test('Gradle warmup retries the observed 504, stops on permanent errors, and has
   assert.match(exhausted.output, /remained unavailable after 5 attempts/)
 })
 
-function checkCachedEffectiveOverlay(source) {
-  const positive = source.indexOf('node scripts/source-build/restore-effective-engine-overlay.mjs --self-test')
-  const negative = source.indexOf('node scripts/source-build/restore-effective-engine-overlay.mjs --self-test-negative')
-  const install = source.indexOf('node scripts/source-build/restore-effective-engine-overlay.mjs', negative + 1)
-  const addNodeStep = source.indexOf('      - name: Add Node.js to the clean Termux base')
-  const runtimeStep = source.indexOf('      - name: Build runtime snapshot from verified inputs')
-  const endAddNodeStep = source.indexOf("      - name: Download this run's authenticated Termux package snapshot", addNodeStep)
-  assert.ok(positive > 0 && negative > positive, 'source-only overlay restore requires a positive self-test and controlled negative')
-  assert.ok(addNodeStep > 0 && install > addNodeStep && install < endAddNodeStep && endAddNodeStep < runtimeStep,
-    'authenticated effective overlay must be installed before the snapshot builder reads it')
-  const addNodeBlock = source.slice(addNodeStep, endAddNodeStep)
-  const block = source.slice(install, endAddNodeStep)
-  for (const path of [
-    '.deploy-tmp/source-build/engine-overlay.original.json',
-    '.deploy-tmp/source-build/effective-engine-overlay.restore-input.json',
-    '.deploy-tmp/source-build/effective-engine-overlay-policy.restore-input.json',
-    '.deploy-tmp/source-build/source-build-policy.json',
-    'scripts/snapshot-config/engine-overlay.json',
-    '.deploy-tmp/source-build/effective-engine-overlay-restoration.json',
-  ]) assert.ok(block.includes(path), 'effective-overlay restore is missing input/output: ' + path)
-  assert.equal((source.match(/^            \.deploy-tmp\/source-build\/effective-engine-overlay-restoration\.json$/gm) ?? []).length, 4,
-    'the restore command and all three APK artifact stages must name the restoration receipt')
-  for (const path of [
-    '.deploy-tmp/source-build/effective-engine-overlay.restore-input.json',
-    '.deploy-tmp/source-build/effective-engine-overlay-policy.restore-input.json',
-  ]) {
-    const escaped = path.replaceAll('.', '\\.')
-    assert.equal((source.match(new RegExp('^            ' + escaped + '$', 'gm')) ?? []).length, 3,
-      'the immutable restore input must be copied, validated, and uploaded in all three APK artifact stages: ' + path)
-  }
-  assert.match(addNodeBlock, /if \[\[ ! -e \.deploy-tmp\/source-build\/effective-engine-overlay\.restore-input\.json \]\]/)
-  assert.match(addNodeBlock, /if \[\[ ! -e \.deploy-tmp\/source-build\/effective-engine-overlay-policy\.restore-input\.json \]\]/)
-  assert.match(addNodeBlock, /restore input must be a regular file/)
-}
-test('trusted cache restores its source-built runtime overlay and preserves immutable inputs on rerun', () => {
-  checkCachedEffectiveOverlay(read('build-apk-source.yml'))
-})
 function checkCachedProjectComponentInputs(source, base) {
   const materialize = source.indexOf('      - name: Materialize trusted engine base')
   const freeze = source.indexOf('      - name: Freeze current project component inputs for trusted cache hit')
@@ -457,57 +261,6 @@ test('negative controls reject missing or unconditional cached project provenanc
     assert.throws(() => checkCachedProjectComponentInputs(bad, base), assert.AssertionError)
   }
 })
-test('negative controls reject missing overlay self-test, negative control, installer, or receipt upload', () => {
-  const source = read('build-apk-source.yml')
-  const installPattern = /          node scripts\/source-build\/restore-effective-engine-overlay\.mjs \\\n[\s\S]*?            \.deploy-tmp\/source-build\/effective-engine-overlay-restoration\.json\n/
-  for (const bad of [
-    source.replace('          node scripts/source-build/restore-effective-engine-overlay.mjs --self-test\n', ''),
-    source.replace('          node scripts/source-build/restore-effective-engine-overlay.mjs --self-test-negative\n', ''),
-    source.replace(installPattern, ''),
-    source.replace(/^            \.deploy-tmp\/source-build\/effective-engine-overlay-restoration\.json\n/gm, ''),
-  ]) assert.throws(() => checkCachedEffectiveOverlay(bad), assert.AssertionError)
-})
-
-function checkCachedHarnessProvenance(source) {
-  const start = source.indexOf("          const harness = JSON.parse(fs.readFileSync('.deploy-tmp/source-build/harness-vendor-lock-reconciliation.json'")
-  const end = source.indexOf('          NODE', start)
-  assert.ok(start > 0 && end > start, 'source workflow must read the immutable Harness source receipt')
-  const block = source.slice(start, end)
-  assert.match(block, /scripts\/contract\.json/)
-  assert.match(block, /harness\.harnessSourceCommit !== expectedHarnessCommit/)
-  assert.match(block, /deepseekHarnessCommit: harness\.harnessSourceCommit/)
-  assert.doesNotMatch(block, /git.*rev-parse/)
-}
-test('cached Harness provenance uses the pinned receipt instead of the parent repository Git HEAD', () => {
-  checkCachedHarnessProvenance(read('build-apk-source.yml'))
-})
-test('negative control: parent repository Git HEAD cannot replace the pinned Harness receipt', () => {
-  const source = read('build-apk-source.yml')
-  assert.throws(() => checkCachedHarnessProvenance(source.replace(
-    "          const harness = JSON.parse(fs.readFileSync('.deploy-tmp/source-build/harness-vendor-lock-reconciliation.json', 'utf8'))",
-    "          const harness = { harnessSourceCommit: require('child_process').execFileSync('git', ['-C', '.deploy-tmp/deepseek-harness', 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim() }",
-  )), assert.AssertionError)
-})
-
-test('independent builders and verifier never receive production secrets; only the final signer does', () => {
-  const source = read('build-apk-source.yml')
-  const build = source.split('  build-abi:')[1].split('  verify-abi:')[0]
-  const verify = source.split('  verify-abi:')[1].split('  sign-abi:')[0]
-  const sign = source.split('  sign-abi:')[1]
-  // 参考副本是否运行由 reference 输入控制（开发迭代可只跑 primary）；JSON 表达式必须保留两条 ABI 语义。
-  assert.match(build, /replica: \$\{\{ fromJSON\(inputs\.reference != false && '\["primary","reference"\]' \|\| '\["primary"\]'\) \}\}/)
-  assert.match(source, /reference:[^\n]*\n\s*description: Also run the independent reference replica/)
-  assert.match(verify, /if: inputs\.reference != false/)
-  assert.match(build, /keytool -genkeypair/)
-  assert.doesNotMatch(build + verify, /secrets\./)
-  assert.match(verify, /needs: build-abi/)
-  assert.match(verify, /compare-independent-builds\.mjs/)
-  assert.match(sign, /needs: verify-abi/)
-  assert.match(sign, /secrets\.POCKET_SIGNING_KEYSTORE_PASSWORD/)
-  assert.match(sign, /sign-source-artifacts\.mjs/)
-  assert.doesNotMatch(sign, /npm |gradlew|build-apk\.mjs/)
-})
-
 test('source build overrides the checked-in Windows npm cache before any npm install', () => {
   const source = read('build-apk-source.yml')
   const setup = source.indexOf('      - name: Isolate npm cache from checked-in developer settings')
@@ -516,69 +269,6 @@ test('source build overrides the checked-in Windows npm cache before any npm ins
   assert.ok(firstInstall === -1 || setup < firstInstall)
   assert.match(source.slice(setup, source.indexOf('\n      - name:', setup + 1)), /npm_config_cache=\$RUNNER_TEMP\/dsh-npm-cache/)
 })
-
-const reclaimInvocation = 'node scripts/source-build/reclaim-build-disk.mjs --root "$GITHUB_WORKSPACE"'
-function assertReclaimPlacement(source) {
-  const selfTest = source.indexOf('node scripts/source-build/reclaim-build-disk.mjs --self-test')
-  const snapshotStep = source.indexOf('      - name: Build runtime snapshot from verified inputs')
-  const reclaim = source.indexOf(reclaimInvocation)
-  const checker = source.indexOf('node scripts/source-build/check-dsh-source-snapshot.mjs "$snapshot_archive"')
-  const kotlinStep = source.indexOf('      - name: 单元测试门禁前置')
-  assert.ok(selfTest > 0)
-  assert.ok(snapshotStep > 0)
-  assert.ok(reclaim > snapshotStep)
-  assert.ok(checker > reclaim)
-  assert.ok(kotlinStep > checker)
-  assert.match(source.slice(snapshotStep, checker), /reclaim-build-disk\.mjs --root "\$GITHUB_WORKSPACE"/)
-}
-test('source workflow reclaims source-only trees before the APK gate and keeps the self-test', () => {
-  const source = read('build-apk-source.yml')
-  assertReclaimPlacement(source)
-})
-test('negative control: missing disk reclamation is rejected', () => {
-  const source = read('build-apk-source.yml')
-  assert.throws(() => assertReclaimPlacement(source.replace(reclaimInvocation, '')), assert.AssertionError)
-})
-
-test('draft workflow builds read-only and publishes only this run artifacts as a draft', () => {
-  const workflow = read('release-source-draft.yml')
-  assert.match(workflow, /SOURCE_REF: \$\{\{ github.ref \}\}/)
-  assert.match(workflow, /test "\$SOURCE_REF" = refs\/heads\/main/)
-  const build = workflow.split('  build:')[1].split('  prepare:')[0]
-  assert.match(build, /contents: read/)
-  assert.match(build, /uses: \.\/\.github\/workflows\/build-apk-source.yml/)
-  assert.match(build, /abi: \[arm64, x86_64\]/)
-  assert.match(build, /abi: \$\{\{ matrix\.abi \}\}/)
-  assert.match(build, /secrets: inherit/)
-  const prepare = workflow.split('  prepare:')[1].split('  draft:')[0]
-  assert.match(prepare, /name: pocket-harness-arm64-source-\$\{\{ github\.sha \}\}/)
-  assert.match(prepare, /path: source-artifacts\/arm64/)
-  assert.match(prepare, /name: pocket-harness-x86_64-source-\$\{\{ github\.sha \}\}/)
-  assert.match(prepare, /path: source-artifacts\/x86_64/)
-  assert.match(prepare, /prepare-source-release\.py source-artifacts release-assets/)
-  const draft = workflow.split('  draft:')[1]
-  assert.match(draft, /needs: prepare/)
-  assert.match(draft, /contents: write/)
-  assert.match(draft, /--target "\$SOURCE_SHA" --draft --prerelease/)
-  assert.match(draft, /exactly one source APK for each ABI/)
-  assert.match(draft, /version=\$\(ls \.\/\*\.apk/)
-  assert.match(draft, /--title "Pocket Harness \$\{version\} \(ARM64 \+ x86_64\)"/)
-  assert.doesNotMatch(draft, /actions\/checkout|build-apk\.mjs|npm |gradle /)
-  assert.doesNotMatch(workflow, /run-id:|repository:|workflow_run:|\n  push:/)
-})
-
-test('final injected snapshot is checked against profile identity before APK assembly', () => {
-  const source = readFileSync(new URL('../build-apk.mjs', import.meta.url), 'utf8')
-  const check = text => {
-    const injection = text.indexOf("snapIn = join(work, 'snap-final2.tar.xz')")
-    const call = text.indexOf("run(PYTHON, [gate('check-snapshot-profile-identity.py'), snapIn])")
-    const assembly = text.indexOf("run('node', [gate('check-inject-completeness.mjs'), snapIn])")
-    return injection >= 0 && call > injection && assembly > call
-  }
-  assert.equal(check(source), true)
-  assert.equal(check(source.replace("run(PYTHON, [gate('check-snapshot-profile-identity.py'), snapIn])", '')), false)
-})
-
 
 test('missing CI engine base still fails closed while local chain builds pinned source', () => {
   const source = read('build-apk-source.yml')

@@ -7,16 +7,27 @@ import { dirname, resolve } from 'node:path'
 
 const args = process.argv.slice(2)
 const value = (flag) => { const i = args.indexOf(flag); return i < 0 ? '' : args[i + 1] ?? '' }
-const snapshot = resolve(value('--snapshot'))
+const tree = value('--tree')
+const snapshot = resolve(tree || value('--snapshot'))
 const output = resolve(value('--out'))
-if (!value('--snapshot') || !value('--out')) { console.error('usage: build-hard-manifest.mjs --snapshot <final.tar.xz> --out <manifest.json>'); process.exit(2) }
-const py = String.raw`import json,sys,tarfile,hashlib,posixpath
+if ((!value('--snapshot') && !tree) || !value('--out')) { console.error('usage: build-hard-manifest.mjs --snapshot <final.tar.xz> --out <manifest.json>'); process.exit(2) }
+const py = String.raw`import json,sys,tarfile,hashlib,posixpath,os
+from pathlib import Path
+class DirectoryArchive:
+  def __init__(self, root): self.root=Path(root)
+  def __enter__(self): return self
+  def __exit__(self,*args): pass
+  def getmembers(self):
+    return [self.info(p) for p in self.root.rglob('*') if p.is_file()]
+  def info(self,p):
+    member=tarfile.TarInfo(p.relative_to(self.root).as_posix()); member.size=p.stat().st_size; return member
+  def extractfile(self,member): return (self.root/member.name).open('rb')
 archive,out=sys.argv[1:3]
 names=[]
 # Python's bundled tarfile reader is used here for Windows/portable compatibility; it scans
 # the compressed archive once (single-threaded xz) and only materializes required composition files.
 # Do not call extract() or seek the xz stream again; release timing can guide a later tar+xz path.
-with tarfile.open(archive,'r:xz') as tf:
+with (DirectoryArchive(archive) if os.path.isdir(archive) else tarfile.open(archive,'r:xz')) as tf:
   all_members={m.name.lstrip('./'):m for m in tf.getmembers()}
   members={path:m for path,m in all_members.items() if m.isfile()}
   yaml_targets=[
@@ -118,7 +129,7 @@ if (extracted.status !== 0) {
   process.exit(extracted.status ?? 1)
 }
 const result = JSON.parse(extracted.stdout)
-const fingerprint = createHash('sha256').update(readFileSync(snapshot)).digest('hex')
+const fingerprint = createHash('sha256').update(tree ? extracted.stdout : readFileSync(snapshot)).digest('hex')
 const manifest = { schema: 2, complete: true, fingerprint, entries: result.entries, profileEntries: result.profileEntries,
   factoryBundles: result.factoryBundles,
   names: [...new Set(result.entries.map((entry) => entry.name))].sort() }

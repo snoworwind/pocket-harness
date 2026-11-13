@@ -16,9 +16,9 @@ const SCRIPT = join(import.meta.dirname, 'run-local-source-chain.mjs')
 // 与生产脚本同源：用已提交的 workflow 字节，而不是测试进程当前工作树的可能改动。
 const planned = planSteps(committedWorkflow(ROOT, sourceCommit(ROOT)))
 const namesOf = (items) => items.map((item) => item.name)
-const BUILD = 'Build ABI APK'
+const BUILD = 'Build Linux ARM64 APK'
 const FINAL = [
-  'Snapshot semantic normalization digest',
+  'Verify final Linux payload identity',
   'Reverify final APK files before artifact upload',
 ]
 
@@ -36,24 +36,10 @@ test('planSteps：最终复验跟随 apk 阶段，而不是落入 misc', () => {
   }
   // 只有首个具名阶段之前的本地前置允许留在 misc；阶段开始后不得再有漏网步骤。
   assert.deepEqual(namesOf(planned.filter((item) => item.stage === 'misc')), [
-    'Require the maintained source branch',
+    'Require the explicit ARM64 Linux experiment',
     'Isolate npm cache from checked-in developer settings',
   ])
-  const termuxSnapshot = planned.find((item) => item.name === "Download this run's authenticated Termux package snapshot")
-  assert.ok(termuxSnapshot, 'the CI artifact step must be represented in the local single-builder plan')
-  assert.equal(termuxSnapshot.stage, 'termux')
-  assert.ok(termuxSnapshot.run.includes('node scripts/source-build/reset-local-termux-stage.mjs'),
-    'rerunning Termux package acquisition must clear only its fixed generated inputs and restore outputs')
-  assert.ok(termuxSnapshot.run.includes('mkdir -p .deploy-tmp/source-build/termux-package-artifact'),
-    'local source chain must prepare the artifact directory consumed by the safe restore step')
-  assert.ok(termuxSnapshot.run.includes('.deploy-tmp/source-build/termux-package-input-source/termux-webroot'),
-    'local package generation must stay outside the final restore destination')
-  assert.ok(termuxSnapshot.run.includes('tar --create --file=.deploy-tmp/source-build/termux-package-artifact/termux-package-inputs.tar'),
-    'local source chain must produce the archive consumed by the safe restore step')
-  assert.ok(termuxSnapshot.run.includes('--directory=.deploy-tmp/source-build/termux-package-input-source termux-webroot termux-packages-provenance.json'),
-    'local archive must contain only the authenticated webroot and provenance file')
-  assert.match(termuxSnapshot.run, /prepare-termux-signed-repo\.py/,
-    'local source chain must prepare one authenticated snapshot when there is no cross-job artifact')
+  assert.ok(!planned.some(item => /Termux|injected snapshot/.test(item.name)))
   // Kotlin 单测门禁是 APK 步的前置输入；--to snapshot 不应顺带跑它，--only apk 必须带上它。
   assert.equal(planned.find((item) => item.name.startsWith('单元测试门禁前置'))?.stage, 'apk')
 })
@@ -64,7 +50,7 @@ test('--from apk 与 --only apk 的选择都包含 Build ABI APK 和最终复验
     for (const name of [BUILD, ...FINAL]) {
       assert.ok(selected.includes(name), `${JSON.stringify(options)} 漏选：${name}`)
     }
-    assert.ok(!selected.includes('Build runtime snapshot from verified inputs'), 'apk 阶段不应重跑快照构建')
+    assert.ok(!selected.includes('Assemble Linux engine and factory home from verified source'), 'apk 阶段不应重跑快照构建')
   }
   // --to snapshot 停在快照阶段，不能顺带跑 APK 前才会用到的单测门禁。
   const toSnapshot = namesOf(selectPlanned(planned, { to: 'snapshot' }))
@@ -78,14 +64,6 @@ test('--from apk 与 --only apk 的选择都包含 Build ABI APK 和最终复验
   assert.deepEqual(namesOf(selectPlanned(planned, { fromStep: last })), [FINAL[1]])
 })
 
-test('x86_64 QA dry-run omits the ARM64-only Linux asset build and keeps the ABI APK', () => {
-  const result = spawnSync(process.execPath, [SCRIPT, '--abi', 'x86_64', '--dry-run'], { encoding: 'utf8', timeout: 15000 })
-  assert.equal(result.status, 0, result.stderr || result.stdout)
-  assert.ok(result.stdout.includes('Build ABI APK'))
-  assert.ok(!result.stdout.includes('Linux asset cross-build tools'))
-  assert.ok(!result.stdout.includes('Build source-owned offline ARM64 Linux assets'))
-})
-
 test('负控：旧规则（未映射即 misc）会漏掉最终复验并判红', () => {
   // 旧规则的唯一差异就是「继承」不存在：所有 inherited 步骤回退成 misc。
   // 这里不复制阶段映射，只消费生产计划给出的 stageSource。
@@ -97,7 +75,7 @@ test('负控：旧规则（未映射即 misc）会漏掉最终复验并判红', 
     for (const name of [BUILD, ...FINAL]) {
       assert.ok(legacySelected.includes(name), `旧规会漏选：${name}`)
     }
-  }, /旧规会漏选：Snapshot semantic normalization digest/)
+  }, /旧规会漏选：Verify final Linux payload identity/)
 })
 
 test('真实 CLI：--dry-run --from apk / --only apk 的输出都含最终复验', () => {

@@ -6,14 +6,14 @@ on:
       abi:
         description: Android APK ABI
         type: choice
-        options: [arm64, x86_64]
+        options: [arm64]
         default: arm64
       reference:
         description: Also run the independent reference replica (release provenance; disable for dev iteration)
         type: boolean
         default: true
       fast:
-        description: Faster compression for dev builds (larger snapshot, same content)
+        description: Faster compression for dev builds (larger Linux archives, same content)
         type: boolean
         default: false
       linux_experiment:
@@ -47,93 +47,6 @@ permissions:
   contents: read
 
 jobs:
-  termux-package-inputs:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 60
-    env:
-      DSH_ABI: ${{ inputs.abi || 'arm64' }}
-    steps:
-      - name: Require the maintained source branch
-        env:
-          SOURCE_REF: ${{ github.ref }}
-          LINUX_EXPERIMENT: ${{ inputs.linux_experiment }}
-        shell: bash
-        run: |
-          if [[ "$DSH_ABI" != arm64 && "$DSH_ABI" != x86_64 ]]; then
-            echo "::error::unsupported ABI: $DSH_ABI"
-            exit 1
-          fi
-          if [[ "$SOURCE_REF" == refs/heads/main ]]; then exit 0; fi
-          if [[ "${LINUX_EXPERIMENT:-false}" == true && "$DSH_ABI" == arm64 && "$SOURCE_REF" == refs/heads/codex/linux-runtime-experiment ]]; then exit 0; fi
-          if [[ "${GITHUB_ACTIONS:-}" != true && "${DSH_LOCAL_LINUX_QA:-}" == 1 && "$DSH_ABI" == arm64 && "$SOURCE_REF" == refs/heads/codex/linux-runtime-experiment ]]; then exit 0; fi
-          if [[ "${DSH_ABI:-arm64}" == x86_64 && "${DSH_LOCAL_X86_QA:-}" == 1 && "$SOURCE_REF" == refs/heads/codex/x86-* ]]; then exit 0; fi
-          echo "::error::source builds require main"
-          exit 1
-
-      - name: Checkout project source without Git LFS runtime archives
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        with:
-          persist-credentials: false
-          fetch-depth: 1
-          lfs: false
-
-      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
-        with:
-          python-version: '3.12.15'
-
-      - name: Install Termux signature verification tools
-        run: |
-          sudo apt-get update -y
-          sudo apt-get install -y gnupg
-
-      - name: Authenticate the pinned Termux bootstrap and prepare this run's package snapshot
-        shell: bash
-        run: |
-          set -euo pipefail
-          bootstrap_root=.deploy-tmp/termux-package-bootstrap
-          artifact_root=.deploy-tmp/termux-package-artifact
-          mkdir -p "$bootstrap_root" "$artifact_root"
-          bootstrap_pin=$(python3 scripts/source-build/prepare-termux-bootstrap.py --print-pin "$DSH_ABI")
-          bootstrap_url=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["url"])' <<< "$bootstrap_pin")
-          bootstrap_sha256=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["sha256"])' <<< "$bootstrap_pin")
-          bootstrap_archive="$bootstrap_root/bootstrap-$DSH_ABI.zip"
-          bash scripts/source-build/retry-curl.sh --fail --location --retry 8 --retry-max-time 600 "$bootstrap_url" -o "$bootstrap_archive"
-          printf '%s  %s\n' "$bootstrap_sha256" "$bootstrap_archive" | sha256sum --check --strict
-          python3 scripts/source-build/prepare-termux-bootstrap.py --extract-bootstrap-only --abi "$DSH_ABI" \
-            "$bootstrap_archive" "$bootstrap_root/bootstrap-extracted/usr"
-          python3 - <<'PY'
-          import json
-          from pathlib import Path
-          source = json.loads(Path('scripts/snapshot-config/preinstall.json').read_text(encoding='utf-8'))
-          if 'nodejs-lts' not in source['targets']:
-              source['targets'].append('nodejs-lts')
-          source['requiredTargets'] = ['nodejs-lts']
-          target = Path('.deploy-tmp/termux-package-bootstrap/preinstall.json')
-          target.write_text(json.dumps(source, indent=2) + '\n', encoding='utf-8')
-          PY
-          python3 scripts/source-build/prepare-termux-signed-repo.py \
-            "$bootstrap_root/bootstrap-extracted/usr" \
-            "$artifact_root/termux-webroot" \
-            "$bootstrap_root/preinstall.json" \
-            --abi "$DSH_ABI"
-
-          # Debian epoch versions put ':' in valid package filenames, but the
-          # Actions artifact service rejects that character in archived paths.
-          # Keep the authenticated repository byte-for-byte inside one tar file.
-          COPYFILE_DISABLE=1 tar --create --file=.deploy-tmp/termux-package-inputs.tar \
-            --directory="$artifact_root" termux-webroot termux-packages-provenance.json
-
-      - name: Upload the authenticated Termux package snapshot for this workflow run
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: termux-package-inputs-${{ inputs.abi || 'arm64' }}-${{ github.run_id }}
-          path: .deploy-tmp/termux-package-inputs.tar
-          include-hidden-files: true
-          if-no-files-found: error
-          compression-level: 0
-          retention-days: 7
-          overwrite: true
-
   base:
     # 自动构建/复用 engine base：内容键命中即复用，未命中由 build-base 双副本构建并发布。
     uses: ./.github/workflows/build-base.yml
@@ -143,7 +56,7 @@ jobs:
       linux_experiment: ${{ inputs.linux_experiment }}
 
   build-abi:
-    needs: [termux-package-inputs, base]
+    needs: base
     strategy:
       fail-fast: false
       matrix:
@@ -152,28 +65,20 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 180
     env:
+      DSH_LINUX_XZ_PRESET: ${{ inputs.fast && '1' || '6' }}
       DSH_APK_DIR: ${{ github.workspace }}
       DSH_ABI: ${{ inputs.abi || 'arm64' }}
-      DSH_INJECT_PRESET: ${{ inputs.fast && '1' || '9' }}
-      DSH_TERMUX_XZ_PRESET: ${{ inputs.fast && '6' || '9e' }}
       DSH_LINUX_EXPERIMENT: ${{ inputs.linux_experiment && '1' || '0' }}
     steps:
-      - name: Require the maintained source branch
+      - name: Require the explicit ARM64 Linux experiment
         env:
           SOURCE_REF: ${{ github.ref }}
           LINUX_EXPERIMENT: ${{ inputs.linux_experiment }}
         shell: bash
         run: |
-          if [[ "$DSH_ABI" != arm64 && "$DSH_ABI" != x86_64 ]]; then
-            echo "::error::unsupported ABI: $DSH_ABI"
-            exit 1
-          fi
-          if [[ "$SOURCE_REF" == refs/heads/main ]]; then exit 0; fi
-          if [[ "${LINUX_EXPERIMENT:-false}" == true && "$DSH_ABI" == arm64 && "$SOURCE_REF" == refs/heads/codex/linux-runtime-experiment ]]; then exit 0; fi
-          if [[ "${GITHUB_ACTIONS:-}" != true && "${DSH_LOCAL_LINUX_QA:-}" == 1 && "$DSH_ABI" == arm64 && "$SOURCE_REF" == refs/heads/codex/linux-runtime-experiment ]]; then exit 0; fi
-          if [[ "${DSH_ABI:-arm64}" == x86_64 && "${DSH_LOCAL_X86_QA:-}" == 1 && "$SOURCE_REF" == refs/heads/codex/x86-* ]]; then exit 0; fi
-          echo "::error::source builds require main"
-          exit 1
+          test "$DSH_ABI" = arm64
+          test "$SOURCE_REF" = refs/heads/codex/linux-runtime-experiment
+          test "$LINUX_EXPERIMENT" = true
 
       - name: Checkout project source without Git LFS runtime archives
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -416,29 +321,6 @@ jobs:
         shell: bash
         run: bash scripts/source-build/build-engine.sh
 
-      - name: Authenticate official Termux bootstrap and extract signing keys
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p .deploy-tmp/source-build
-          # Reuse only an authenticated cache hit; an interrupted curl may leave a partial ZIP.
-          bootstrap_pin=$(python3 scripts/source-build/prepare-termux-bootstrap.py --print-pin "$DSH_ABI")
-          bootstrap_url=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["url"])' <<< "$bootstrap_pin")
-          bootstrap_sha256=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["sha256"])' <<< "$bootstrap_pin")
-          bootstrap_archive=".deploy-tmp/source-build/bootstrap-$DSH_ABI.zip"
-          if ! printf '%s  %s\n' "$bootstrap_sha256" "$bootstrap_archive" | sha256sum --check --status 2>/dev/null; then
-            bash scripts/source-build/retry-curl.sh --fail --location --retry 8 --retry-max-time 600 "$bootstrap_url" --output "$bootstrap_archive"
-          fi
-          # 先清空解包目标：本步对**同一目录**重跑不安全——上一轮按 SYMLINKS.txt 建出的符号链接
-          # 会让这一轮的 safe_member 解析出界（报 `bootstrap path escaped staging root`）。
-          # CI 每轮全新目录所以从不暴露，本地复跑必踩；清掉即幂等。
-          rm -rf .deploy-tmp/source-build/bootstrap-extracted
-          python3 scripts/source-build/prepare-termux-bootstrap.py \
-            --extract-bootstrap-only \
-            --abi "$DSH_ABI" \
-            "$bootstrap_archive" \
-            .deploy-tmp/source-build/bootstrap-extracted/usr
-
       - name: Build project plugins from source
         shell: bash
         run: |
@@ -509,106 +391,7 @@ jobs:
           fs.writeFileSync('.deploy-tmp/source-build/marketplace-source-provenance.json', JSON.stringify(provenance, null, 2) + '\n')
           NODE
 
-      - name: Add Node.js to the clean Termux base
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p .deploy-tmp/source-build
-          git show "$GITHUB_SHA:scripts/snapshot-config/preinstall.json" > scripts/snapshot-config/preinstall.json
-          cp scripts/snapshot-config/preinstall.json .deploy-tmp/source-build/preinstall.original.json
-          test -s .deploy-tmp/source-build/engine-overlay.original.json
-          for path in \
-            .deploy-tmp/source-build/effective-engine-overlay.restore-input.json \
-            .deploy-tmp/source-build/effective-engine-overlay-policy.restore-input.json; do
-            if [[ -L "$path" || ( -e "$path" && ! -f "$path" ) ]]; then
-              echo "::error::restore input must be a regular file: $path"
-              exit 1
-            fi
-          done
-          if [[ ! -e .deploy-tmp/source-build/effective-engine-overlay.restore-input.json ]]; then
-            cp .deploy-tmp/source-build/effective-engine-overlay.json \
-              .deploy-tmp/source-build/effective-engine-overlay.restore-input.json
-          fi
-          if [[ ! -e .deploy-tmp/source-build/effective-engine-overlay-policy.restore-input.json ]]; then
-            cp .deploy-tmp/source-build/source-build-policy.json \
-              .deploy-tmp/source-build/effective-engine-overlay-policy.restore-input.json
-          fi
-          node scripts/source-build/restore-effective-engine-overlay.mjs \
-            .deploy-tmp/source-build/engine-overlay.original.json \
-            .deploy-tmp/source-build/effective-engine-overlay.restore-input.json \
-            .deploy-tmp/source-build/effective-engine-overlay-policy.restore-input.json \
-            scripts/snapshot-config/engine-overlay.json \
-            .deploy-tmp/source-build/effective-engine-overlay-restoration.json
-          node -e 'const fs=require("fs"); const p="scripts/snapshot-config/preinstall.json"; const x=JSON.parse(fs.readFileSync(p,"utf8")); if (!x.targets.includes("nodejs-lts")) x.targets.push("nodejs-lts"); x.requiredTargets=["nodejs-lts"]; fs.writeFileSync(p,JSON.stringify(x,null,2)+"\n")'
-          node <<'NODE'
-          const fs = require('fs')
-          const path = 'scripts/snapshot-config/engine-overlay.json'
-          const manifest = JSON.parse(fs.readFileSync(path, 'utf8'))
-          const omitted = manifest.keepUnpublished ?? []
-          manifest.keepUnpublished = []
-          fs.writeFileSync(path, JSON.stringify(manifest, null, 2) + '\n')
-          const policyPath = '.deploy-tmp/source-build/source-build-policy.json'
-          const policy = JSON.parse(fs.readFileSync(policyPath, 'utf8'))
-          policy.omittedLegacyKeepUnpublished = omitted
-          policy.omittedLegacyKeepUnpublishedReason = 'These packages are absent from the pinned Harness source commit and are unmounted legacy residue inherited only from the old LFS runtime base.'
-          fs.writeFileSync(policyPath, JSON.stringify(policy, null, 2) + '\n')
-          fs.writeFileSync('.deploy-tmp/source-build/effective-engine-overlay.json', JSON.stringify(manifest, null, 2) + '\n')
-          NODE
-
-      - name: Download this run's authenticated Termux package snapshot
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
-        with:
-          name: termux-package-inputs-${{ inputs.abi || 'arm64' }}-${{ github.run_id }}
-          path: .deploy-tmp/source-build/termux-package-artifact
-
-      - name: Safely restore the authenticated Termux package snapshot
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 - <<'PY'
-          import pathlib
-          import tarfile
-
-          archive = pathlib.Path('.deploy-tmp/source-build/termux-package-artifact/termux-package-inputs.tar')
-          destination = pathlib.Path('.deploy-tmp/source-build').resolve()
-          expected_roots = {'termux-webroot', 'termux-packages-provenance.json'}
-          seen = set()
-
-          with tarfile.open(archive, mode='r:') as bundle:
-              members = bundle.getmembers()
-              roots = {pathlib.PurePosixPath(member.name).parts[0]
-                       for member in members if pathlib.PurePosixPath(member.name).parts}
-              if roots != expected_roots:
-                  raise SystemExit(f'unexpected Termux snapshot archive roots: {sorted(roots)}')
-              for member in members:
-                  relative = pathlib.PurePosixPath(member.name)
-                  normalized_name = relative.as_posix()
-                  directory_name = member.isdir() and member.name == normalized_name + '/'
-                  if (relative.is_absolute() or not relative.parts or '..' in relative.parts
-                          or (member.name != normalized_name and not directory_name)):
-                      raise SystemExit(f'unsafe Termux snapshot archive path: {member.name!r}')
-                  if not (member.isfile() or member.isdir()):
-                      raise SystemExit(f'unsupported Termux snapshot archive entry: {member.name!r}')
-                  if normalized_name in seen:
-                      raise SystemExit(f'duplicate Termux snapshot archive path: {member.name!r}')
-                  seen.add(normalized_name)
-                  target = destination.joinpath(*relative.parts)
-                  if not target.resolve().is_relative_to(destination):
-                      raise SystemExit(f'Termux snapshot archive path escapes destination: {member.name!r}')
-                  cursor = destination
-                  for part in relative.parts[:-1]:
-                      cursor = cursor / part
-                      if cursor.is_symlink():
-                          raise SystemExit(f'Termux snapshot extraction crosses a symlink: {member.name!r}')
-                  if target.exists() or target.is_symlink():
-                      raise SystemExit(f'Termux snapshot destination already exists: {member.name!r}')
-              bundle.extractall(destination, members=members, filter='data')
-
-          archive.unlink()
-          archive.parent.rmdir()
-          PY
-
-      - name: Cross-compile node-pty Android binding from pinned source
+      - name: Prepare pinned Android NDK for host native libraries
         shell: bash
         run: |
           set -euo pipefail
@@ -627,42 +410,6 @@ jobs:
           # 同上：`unzip` 无 -o，目录已在时会走交互式覆盖确认，非交互环境读到 EOF 即判死。
           rm -rf .deploy-tmp/source-build/ndk/android-ndk-r30
           unzip -q "$ndk_archive" -d .deploy-tmp/source-build/ndk
-          node_deb=$(python3 - <<'PY'
-          import json, pathlib
-          report = json.loads(pathlib.Path('.deploy-tmp/source-build/termux-packages-provenance.json').read_text())
-          packages = [item for item in report['packages'] if item['package'] == 'nodejs-lts']
-          if len(packages) != 1:
-              raise SystemExit('signed Termux repository must contain exactly one nodejs-lts package')
-          print(pathlib.Path('.deploy-tmp/source-build/termux-webroot') / packages[0]['filename'])
-          PY
-          )
-          mkdir -p .deploy-tmp/source-build/node-deb-extracted
-          dpkg-deb --extract "$node_deb" .deploy-tmp/source-build/node-deb-extracted
-          node_header=$(find .deploy-tmp/source-build/node-deb-extracted -path '*/include/node/node_api.h' -print -quit)
-          test -n "$node_header"
-          node_headers=$(dirname "$node_header")
-          node scripts/source-build/build-node-pty-android.mjs \
-            .deploy-tmp/engine-deploy \
-            "$node_headers" \
-            .deploy-tmp/source-build/ndk/android-ndk-r30 \
-            .deploy-tmp/source-build/node-pty-android-build.json \
-            --abi "$DSH_ABI"
-          node scripts/source-build/check-android-native-runtime-packages.mjs \
-            .deploy-tmp/engine-deploy \
-            .deploy-tmp/source-build/android-native-runtime-packages.json \
-            "$DSH_ABI"
-          node <<'NODE'
-          const fs = require('node:fs')
-          const path = '.deploy-tmp/source-build/source-build-policy.json'
-          const policy = JSON.parse(fs.readFileSync(path, 'utf8'))
-          policy.nodePtyAndroidSourceBuild = {
-            report: '.deploy-tmp/source-build/node-pty-android-build.json',
-            source: 'node-pty@1.2.0-beta.15 pinned npm package with the Harness lockfile integrity and patch',
-            headers: 'nodejs-lts headers from the SHA256-authenticated Termux package in the signed repository',
-            toolchain: 'Google Android NDK r30, Linux archive SHA1 5107f898313790e449e87eee2183d9a20602dee9',
-          }
-          fs.writeFileSync(path, JSON.stringify(policy, null, 2) + '\n')
-          NODE
 
       - name: Cross-compile native terminal (libvterm) from source
         shell: bash
@@ -674,24 +421,8 @@ jobs:
             --abi "$DSH_ABI" \
             --report .deploy-tmp/source-build/terminal-native-build.json
 
-      - name: Assemble clean Termux base with the source-built Android binding
-        shell: bash
-        run: |
-          set -euo pipefail
-          base_name="$([ "$DSH_ABI" = arm64 ] && echo arm64-base || echo x64-base)"
-          base_root=".deploy-tmp/$base_name"
-          mkdir -p "$base_root"
-          python3 scripts/source-build/prepare-termux-bootstrap.py \
-            --abi "$DSH_ABI" \
-            ".deploy-tmp/source-build/bootstrap-$DSH_ABI.zip" \
-            .deploy-tmp/deepseek-harness \
-            .deploy-tmp/engine-deploy \
-            "$base_root/base-usr.tar.xz"
-          cp "$base_root/base-usr.tar.xz.provenance.json" \
-            .deploy-tmp/source-build/termux-base-provenance.json
-
       - name: Install Linux asset cross-build tools
-        if: env.DSH_ABI == 'arm64' && steps.linux-assets.outputs.cache-hit != 'true'
+        if: steps.linux-assets.outputs.cache-hit != 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -708,7 +439,7 @@ jobs:
           sudo update-binfmts --enable qemu-aarch64
 
       - name: Prepare pinned Debian archive trust keys for Linux assets
-        if: env.DSH_ABI == 'arm64' && steps.linux-assets.outputs.cache-hit != 'true'
+        if: steps.linux-assets.outputs.cache-hit != 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -742,10 +473,10 @@ jobs:
             .deploy-tmp/linux-build/provenance
             .deploy-tmp/linux-build/native-libs
             .deploy-tmp/linux-build/guest-addons
-          key: linux-assets-${{ runner.os }}-${{ hashFiles('scripts/source-build/guest-tools.json', 'scripts/source-build/verify-guest-tools.py', 'scripts/source-build/linux-debian-snapshot-wget.py', 'vendor/linux-proot/scripts/prepare-rootfs.sh', 'vendor/linux-proot/compat/**', 'scripts/source-build/linux-inputs.json', 'scripts/source-build/linux-source-manifest.json', 'scripts/source-build/build-linux-assets.sh', 'scripts/source-build/build-guest-addons.py', 'scripts/source-build/package-linux-assets.py', 'scripts/source-build/build-proot-source.py', 'scripts/source-build/proot-source/**', 'scripts/source-build/proot_source_provenance.py', 'scripts/source-build/prepare-proot-source-backend.py', 'scripts/source-build/inventory-native-runtime.py', 'scripts/source-build/linux-backend-packages.json', 'scripts/source-build/ensure-no-rootfs-mounts.py') }}
+          key: linux-product-assets-v1-${{ runner.os }}-${{ hashFiles('scripts/source-build/guest-tools.json', 'scripts/source-build/verify-guest-tools.py', 'scripts/source-build/linux-debian-snapshot-wget.py', 'vendor/linux-proot/scripts/prepare-rootfs.sh', 'vendor/linux-proot/compat/**', 'scripts/source-build/linux-inputs.json', 'scripts/source-build/linux-source-manifest.json', 'scripts/source-build/build-linux-assets.sh', 'scripts/source-build/build-guest-addons.py', 'scripts/source-build/package-linux-product-assets.py', 'scripts/source-build/build-proot-source.py', 'scripts/source-build/proot-source/**', 'scripts/source-build/proot_source_provenance.py', 'scripts/source-build/prepare-proot-source-backend.py', 'scripts/source-build/inventory-native-runtime.py', 'scripts/source-build/linux-backend-packages.json', 'scripts/source-build/ensure-no-rootfs-mounts.py') }}
 
       - name: Build source-owned offline ARM64 Linux assets
-        if: env.DSH_ABI == 'arm64' && steps.linux-assets.outputs.cache-hit != 'true'
+        if: steps.linux-assets.outputs.cache-hit != 'true'
         shell: bash
         env:
           DEBIAN_KEYRING: ${{ github.workspace }}/.deploy-tmp/linux-keyring/debian-archive-keyring.gpg
@@ -755,7 +486,7 @@ jobs:
           bash scripts/source-build/build-linux-assets.sh
 
       - name: Save Linux ARM64 assets
-        if: env.DSH_ABI == 'arm64' && steps.linux-assets.outputs.cache-hit != 'true'
+        if: steps.linux-assets.outputs.cache-hit != 'true'
         uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830
         with:
           path: |
@@ -763,15 +494,15 @@ jobs:
             .deploy-tmp/linux-build/provenance
             .deploy-tmp/linux-build/native-libs
             .deploy-tmp/linux-build/guest-addons
-          key: linux-assets-${{ runner.os }}-${{ hashFiles('scripts/source-build/guest-tools.json', 'scripts/source-build/verify-guest-tools.py', 'scripts/source-build/linux-debian-snapshot-wget.py', 'vendor/linux-proot/scripts/prepare-rootfs.sh', 'vendor/linux-proot/compat/**', 'scripts/source-build/linux-inputs.json', 'scripts/source-build/linux-source-manifest.json', 'scripts/source-build/build-linux-assets.sh', 'scripts/source-build/build-guest-addons.py', 'scripts/source-build/package-linux-assets.py', 'scripts/source-build/build-proot-source.py', 'scripts/source-build/proot-source/**', 'scripts/source-build/proot_source_provenance.py', 'scripts/source-build/prepare-proot-source-backend.py', 'scripts/source-build/inventory-native-runtime.py', 'scripts/source-build/linux-backend-packages.json', 'scripts/source-build/ensure-no-rootfs-mounts.py') }}
+          key: linux-product-assets-v1-${{ runner.os }}-${{ hashFiles('scripts/source-build/guest-tools.json', 'scripts/source-build/verify-guest-tools.py', 'scripts/source-build/linux-debian-snapshot-wget.py', 'vendor/linux-proot/scripts/prepare-rootfs.sh', 'vendor/linux-proot/compat/**', 'scripts/source-build/linux-inputs.json', 'scripts/source-build/linux-source-manifest.json', 'scripts/source-build/build-linux-assets.sh', 'scripts/source-build/build-guest-addons.py', 'scripts/source-build/package-linux-product-assets.py', 'scripts/source-build/build-proot-source.py', 'scripts/source-build/proot-source/**', 'scripts/source-build/proot_source_provenance.py', 'scripts/source-build/prepare-proot-source-backend.py', 'scripts/source-build/inventory-native-runtime.py', 'scripts/source-build/linux-backend-packages.json', 'scripts/source-build/ensure-no-rootfs-mounts.py') }}
 
       - name: Attest reused Linux assets for this commit
-        if: env.DSH_ABI == 'arm64' && steps.linux-assets.outputs.cache-hit == 'true'
+        if: steps.linux-assets.outputs.cache-hit == 'true'
         shell: bash
         run: |
           set -euo pipefail
-          node scripts/source-build/attest-linux-cache.mjs --self-test
-          node scripts/source-build/attest-linux-cache.mjs .deploy-tmp/linux-build "$GITHUB_SHA"
+          node scripts/source-build/attest-linux-product-cache.mjs --self-test
+          node scripts/source-build/attest-linux-product-cache.mjs .deploy-tmp/linux-build "$GITHUB_SHA"
 
       - name: Reclaim the ARM64 Linux rootfs after packaging
         if: env.DSH_ABI == 'arm64'
@@ -779,116 +510,19 @@ jobs:
         run: |
           set -euo pipefail
           # rootfs 是 debootstrap 的中间产物，打包进 assets 后不再需要；它由 root 拥有且体积大，
-          # arm64 作业在 snapshot 步骤前释放它，避免与 x86 不同步的 ENOSPC（x86 不构建 Linux assets）。
+          # Reclaim the extracted rootfs before assembling the engine and APK.
           sudo rm -rf .deploy-tmp/linux-build/rootfs
           df -h "$GITHUB_WORKSPACE" | tail -1
 
-      - name: Build runtime snapshot from verified inputs
+      - name: Assemble Linux engine and factory home from verified source
         shell: bash
-        run: |
-          set -euo pipefail
-          original=".deploy-tmp/source-build/preinstall.original.json"
-          test -f "$original"
-          restore_config() { cp "$original" scripts/snapshot-config/preinstall.json; }
-          server_pid=""
-          cleanup() {
-            restore_config
-            if [ -n "$server_pid" ]; then kill "$server_pid" 2>/dev/null || true; fi
-          }
-          trap cleanup EXIT
-          node -e 'const fs=require("fs"); const p="scripts/snapshot-config/preinstall.json"; const x=JSON.parse(fs.readFileSync(p,"utf8")); x.mirrors=["http://127.0.0.1:8787"]; fs.writeFileSync(p,JSON.stringify(x,null,2)+"\n")'
-          python3 -m http.server 8787 --bind 127.0.0.1 \
-            --directory .deploy-tmp/source-build/termux-webroot \
-            > .deploy-tmp/source-build/termux-http.log 2>&1 &
-          server_pid=$!
-          termux_arch="$([ "$DSH_ABI" = arm64 ] && echo aarch64 || echo x86_64)"
-          snapshot_root=".deploy-tmp/snapshot-013/$DSH_ABI"
-          snapshot_stage="$snapshot_root/stage/root"
-          for attempt in $(seq 1 30); do
-            if curl --silent --fail "http://127.0.0.1:8787/dists/stable/main/binary-$termux_arch/Packages.gz" >/dev/null; then break; fi
-            sleep 1
-          done
-          curl --silent --fail "http://127.0.0.1:8787/dists/stable/main/binary-$termux_arch/Packages.gz" >/dev/null
-          if node scripts/build-snapshot-013.mjs "$DSH_ABI"; then
-            :
-          else
-            node <<'NODE'
-          const fs = require('node:fs')
-          const path = require('node:path')
-          const esbuild = require('./plugins/dsh-android-bridge/node_modules/esbuild')
-          const root = `.deploy-tmp/snapshot-013/${process.env.DSH_ABI}/stage/root`
-          let failures = 0
-          function walk(dir, rel = '') {
-            for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-              const childRel = rel ? `${rel}/${entry.name}` : entry.name
-              const full = path.join(dir, entry.name)
-              if (entry.isDirectory()) walk(full, childRel)
-              else if (entry.isFile() && (/(^|\/)dsh-web-frontend\/dist\/.*\.js$/.test(childRel) || /(^|\/)lib\/client\.js$/.test(childRel))) {
-                try { esbuild.transformSync(fs.readFileSync(full, 'utf8'), { loader: 'js', logLevel: 'silent', target: 'chrome87' }) }
-                catch (error) {
-                  failures++
-                  console.error(`CHROME87 transform failed: ${childRel}`)
-                  for (const item of error.errors ?? []) console.error(item.text)
-                }
-              }
-            }
-          }
-          if (fs.existsSync(root)) walk(root)
-          if (!failures) console.error('CHROME87 diagnostic found no failing file in the retained stage tree')
-          NODE
-            exit 1
-          fi
-          # Build-time fixture capture only: exact cached source/raw overlay files, including PI/PTC companions.
-          # The full pre-omission overlay is required; never relabel old fixtures or guess output chunk/hash.
-          node scripts/probe-engine-anchors.mjs --fixtures --capture-only \
-            --overlay .deploy-tmp/source-build/engine-overlay.original.json \
-            --source-manifest .deploy-tmp/engine-overlay/source-build-manifest.json
-          # 引擎补丁的副本收敛：pnpm 布局下同一包在上层与 `.pnpm/**` store 各有一份物理文件，
-          # 而引擎树补丁只按登记表的顶层 target 写入 ⇒ store 副本保持原样；运行时按依赖查找
-          # 可能解析到 store 那份（设备实锤：node-addon-require-builtin 未打补丁 ⇒ 引擎 boot 硬崩；
-          # 同批 pi-toolcall-G2 亦然）。这里把已打补丁那份的字节写全，随后由快照检查器断言
-          # 「任何副本都不得缺 marker」，两道一起保证这类差异不再出厂。
-          node scripts/source-build/reconcile-engine-patch-copies.mjs \
-            "$snapshot_stage/usr/lib/node_modules/@deepseek-ai/dsh" \
-            .deploy-tmp/source-build/engine-patch-copy-reconciliation.json
-          node scripts/source-build/materialize-dsh-pnpm-packages.mjs \
-            "$snapshot_stage/usr/lib/node_modules/@deepseek-ai/dsh" \
-            .deploy-tmp/engine-overlay/source-build-manifest.json \
-            .deploy-tmp/source-build/pnpm-package-materialization.json
-          if [[ "$DSH_ABI" == arm64 ]]; then
-            node scripts/source-build/prepare-linux-snapshot-bundle.mjs --self-test \
-              .deploy-tmp/linux-build/assets .deploy-tmp/linux-build/provenance
-            node scripts/source-build/prepare-linux-snapshot-bundle.mjs \
-              .deploy-tmp/linux-build/assets .deploy-tmp/linux-build/provenance "$snapshot_stage"
-          fi
-          snapshot_archive="$GITHUB_WORKSPACE/$snapshot_root/snapshot.tar.xz"
-          snapshot_repacked="$GITHUB_WORKSPACE/$snapshot_root/snapshot.source-built.tar.xz"
-          (
-            cd "$snapshot_stage"
-            tar -c --mtime=@1704067200 usr home/.dsh home/.gitconfig 2>/dev/null \
-              | xz -T8 -6 > "$snapshot_repacked"
-          )
-          mv "$snapshot_repacked" "$snapshot_archive"
-          sha256sum "$snapshot_archive" | cut -d' ' -f1 > "$snapshot_root/snapshot.sha256"
-          node scripts/source-build/check-dsh-runtime-dependencies.mjs \
-            "$snapshot_stage/usr/lib/node_modules/@deepseek-ai/dsh" \
-            .deploy-tmp/source-build/post-snapshot-runtime-dependency-check.json
-          node scripts/source-build/check-android-native-runtime-packages.mjs \
-            "$snapshot_stage/usr/lib/node_modules/@deepseek-ai/dsh" \
-            .deploy-tmp/source-build/post-snapshot-native-runtime-check.json "$DSH_ABI"
-          # The standard runner has 14 GB of disk. Before the snapshot checker and
-          # APK gate extract another copy of the engine, reclaim source-only trees
-          # that are no longer inputs. Run 39113529859 reached 83 MB free and both
-          # replicas failed with ENOSPC; the staged snapshot, engine-overlay cache,
-          # source-build reports, and Linux provenance are deliberately retained.
-          node scripts/source-build/reclaim-build-disk.mjs --root "$GITHUB_WORKSPACE"
-          node scripts/source-build/check-dsh-source-snapshot.mjs "$snapshot_archive"
+        run: node scripts/source-build/build-linux-payload.mjs
 
       - name: 单元测试门禁前置（:app:testDebugUnitTest 全量）
         shell: bash
         run: |
           set -e
-          # 为什么必须在这里跑：APK 步调用的 scripts/build-apk.mjs 会执行聚合门禁集，其中之一是
+          # Linux APK assembly requires fresh Kotlin regression results;
           # check-kotlin-test-count.mjs，它**按设计**在没有 gradle 结果时判红——拒绝「一个用例都没跑」
           # 冒充通过（上游 0.14.2-fx-2 的 G.0 ⑤ 正是这条结构性脱节：CI 只跑 compileDebugKotlin、
           # 从不跑 Kotlin 单测也从不调该计数门禁，于是「测试类被删」时 CI 仍绿）。
@@ -899,195 +533,13 @@ jobs:
           chmod +x gradlew
           ./gradlew :app:testDebugUnitTest --no-daemon --console=plain
 
-      - name: Snapshot fingerprint for injected cache
-        id: snapshot-base
+      - name: Build Linux ARM64 APK
         shell: bash
-        run: |
-          set -euo pipefail
-          sha=$(sha256sum ".deploy-tmp/snapshot-013/$DSH_ABI/snapshot.tar.xz" | cut -d' ' -f1)
-          echo "sha=$sha" >> "$GITHUB_OUTPUT"
-          echo "source snapshot sha256=$sha"
+        run: node scripts/source-build/build-linux-apk.mjs
 
-      - name: Restore injected snapshot
-        id: injected-cache
-        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
-        with:
-          path: .deploy-tmp/build-${{ env.DSH_ABI }}/snap-final2.tar.xz
-          key: injected-${{ steps.snapshot-base.outputs.sha }}-${{ hashFiles('plugins/*/src/**', 'plugins/*/package.json', 'plugins/*/package-lock.json', 'dsh-client-ui-responsive/src/**', 'dsh-client-ui-responsive/package.json', 'dsh-client-ui-responsive/package-lock.json', 'dsh-shell-termux/**', 'vendor/**', 'scripts/patches/**', 'scripts/profile-web.cordis.patch.yml', 'scripts/inject-all.py', 'scripts/build-apk.mjs', 'scripts/check-browser-syntax-floor.mjs', 'scripts/snapshot-config/**') }}
-
-      - name: Build ABI APK
+      - name: Verify final Linux payload identity
         shell: bash
-        env:
-          DSH_INJECTED_SNAPSHOT: ${{ steps.injected-cache.outputs.cache-hit == 'true' && format('.deploy-tmp/build-{0}/snap-final2.tar.xz', env.DSH_ABI) || '' }}
-        run: |
-          set -euo pipefail
-          overlay_gate_backup=.deploy-tmp/source-build/check-engine-overlay.original.mjs
-          cp scripts/check-engine-overlay.mjs "$overlay_gate_backup"
-          restore_overlay() {
-            cp .deploy-tmp/source-build/engine-overlay.original.json scripts/snapshot-config/engine-overlay.json
-            cp "$overlay_gate_backup" scripts/check-engine-overlay.mjs
-          }
-          trap restore_overlay EXIT
-          node <<'NODE'
-          const fs = require('node:fs')
-          const crypto = require('node:crypto')
-          const policyPath = '.deploy-tmp/source-build/source-build-policy.json'
-          const policy = JSON.parse(fs.readFileSync(policyPath, 'utf8'))
-          const digest = (path) => crypto.createHash('sha256').update(fs.readFileSync(path)).digest('hex')
-          policy.sourceBuiltEngineOverlayGate = {
-            originalGate: 'scripts/check-engine-overlay.mjs',
-            originalGateSha256: digest('.deploy-tmp/source-build/check-engine-overlay.original.mjs'),
-            temporaryAdapter: 'scripts/source-build/check-dsh-source-snapshot-gate.mjs',
-            temporaryAdapterSha256: digest('scripts/source-build/check-dsh-source-snapshot-gate.mjs'),
-            checker: 'scripts/source-build/check-dsh-source-snapshot.mjs',
-            checkerSha256: digest('scripts/source-build/check-dsh-source-snapshot.mjs'),
-            reason: 'The standard gate models the older flattened npm overlay; this source audit uses the pinned 0.2.2-rc.1 pnpm deploy tree. The replacement validates the final snapshot against the pinned source package manifest, pnpm dependency links, and registered engine patch markers.'
-          }
-          fs.writeFileSync(policyPath, JSON.stringify(policy, null, 2) + '\n')
-          NODE
-          node scripts/source-build/restore-overlay-pins.mjs \
-            scripts/snapshot-config/engine-overlay.json \
-            .deploy-tmp/source-build/source-build-policy.json
-          cp scripts/source-build/check-dsh-source-snapshot-gate.mjs scripts/check-engine-overlay.mjs
-          node scripts/build-apk.mjs --abi "$DSH_ABI" --suffix -source
-          # 原生终端 .so 必须真的进包；缺失即失败，避免「装了包但没有原生内核」的假绿。
-          abi_dir=$([ "$DSH_ABI" = arm64 ] && echo arm64-v8a || echo x86_64)
-          apk_path=$(find out -type f -name "*${DSH_ABI}.apk" | head -1)
-          test -n "$apk_path"
-          python3 - "$apk_path" "$abi_dir" <<'APKCHECK'
-          import sys, zipfile
-          apk, abi = sys.argv[1], sys.argv[2]
-          want = f'lib/{abi}/libpocketharness_terminal.so'
-          with zipfile.ZipFile(apk) as z:
-              names = set(z.namelist())
-          if want not in names:
-              raise SystemExit(f'native terminal library missing from APK: {want}')
-          print(f'PASS native terminal library packaged: {want}')
-          APKCHECK
-          echo "构建步骤退出，记录产物来源；上传前统一验证三签与证书"
-          find out -type f -name '*.apk' -print -exec sha256sum {} \; > .deploy-tmp/source-build/apk-sha256.txt
-          echo "apk-sha256.txt 行数: $(wc -l < .deploy-tmp/source-build/apk-sha256.txt)"
-          if [ ! -s .deploy-tmp/source-build/apk-sha256.txt ]; then
-            echo "::error::未产出 APK 清单（.deploy-tmp/source-build/apk-sha256.txt 为空）"
-            exit 1
-          fi
-          find .deploy-tmp/engine-overlay -maxdepth 1 -type f -name '*.tgz' -print0 \
-            | sort -z | xargs -0 -r sha256sum \
-            > .deploy-tmp/source-build/engine-overlay-sha256.txt
-          find ".deploy-tmp/snapshot-013/$DSH_ABI/.debs" -maxdepth 1 -type f -name '*.tgz' -print0 \
-            | sort -z | xargs -0 -r sha256sum \
-            > .deploy-tmp/source-build/runtime-tarballs-sha256.txt
-          for d in plugins/dsh-android-bridge plugins/dsh-android-manage plugins/dsh-android-linux-env plugins/dsh-android-file-open plugins/dsh-model-capability plugins/dsh-android-browser plugins/dsh-android-vdisplay dsh-shell-termux dsh-client-ui-responsive vendor/dshmarketplace-plugin; do
-            sha256sum "$d/package.json" "$d/package-lock.json" 2>/dev/null || true
-          done > .deploy-tmp/source-build/plugin-lock-sha256.txt
-          printf '%s\n' "$GITHUB_SHA" > .deploy-tmp/source-build/project-source-commit.txt
-          node scripts/source-build/record-project-components.mjs outputs \
-            .deploy-tmp/source-build/project-component-provenance.json
-          node <<'NODE'
-          const fs = require('node:fs')
-          const crypto = require('node:crypto')
-          const project = JSON.parse(fs.readFileSync('.deploy-tmp/source-build/project-component-provenance.json', 'utf8'))
-          const harness = JSON.parse(fs.readFileSync('.deploy-tmp/source-build/harness-vendor-lock-reconciliation.json', 'utf8'))
-          const expectedHarnessCommit = JSON.parse(fs.readFileSync('scripts/contract.json', 'utf8')).upstream.commit
-          if (harness.harnessSourceCommit !== expectedHarnessCommit) {
-            throw new Error('Harness source provenance does not match the pinned upstream commit')
-          }
-          const out = { projectCommit: project.projectCommit, deepseekHarnessCommit: harness.harnessSourceCommit, components: project.components }
-          out.components['dshmarketplace-plugin'] = {
-            source: 'pinned npm publish artifact',
-            tarball: 'https://registry.npmjs.org/dshmarketplace-plugin/-/dshmarketplace-plugin-0.1.7.tgz',
-            tarballSha256: crypto.createHash('sha256').update(fs.readFileSync('.deploy-tmp/component-sources/dshmarketplace-plugin-0.1.7.tgz')).digest('hex'),
-          }
-          out.components['dsh-undo-savepoint'] = {
-            source: 'checked-in JavaScript source',
-            fileSha256: crypto.createHash('sha256').update(fs.readFileSync('vendor/dsh-undo-savepoint/lib/index.js')).digest('hex'),
-          }
-          fs.writeFileSync('.deploy-tmp/source-build/component-source-provenance.json', JSON.stringify(out, null, 2) + '\n')
-          NODE
-          sha256sum app/build.gradle.kts build.gradle.kts settings.gradle.kts \
-            > .deploy-tmp/source-build/android-build-inputs-sha256.txt
-          gradle_artifacts="${GRADLE_USER_HOME:-$HOME/.gradle}/caches/modules-2/files-2.1"
-          find "$gradle_artifacts" -type f \( -name '*.jar' -o -name '*.aar' \) -print0 \
-            | sort -z | xargs -0 -r sha256sum \
-            > .deploy-tmp/source-build/gradle-artifacts-sha256.txt
-          cat .deploy-tmp/source-build/apk-sha256.txt
-
-      - name: Save injected snapshot
-        # 共享 key：只让 primary 保存，避免 primary/reference 抢同一 cache key（ReserveCacheError）。
-        if: matrix.replica == 'primary' && steps.injected-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830
-        with:
-          path: .deploy-tmp/build-${{ env.DSH_ABI }}/snap-final2.tar.xz
-          key: injected-${{ steps.snapshot-base.outputs.sha }}-${{ hashFiles('plugins/*/src/**', 'plugins/*/package.json', 'plugins/*/package-lock.json', 'dsh-client-ui-responsive/src/**', 'dsh-client-ui-responsive/package.json', 'dsh-client-ui-responsive/package-lock.json', 'dsh-shell-termux/**', 'vendor/**', 'scripts/patches/**', 'scripts/profile-web.cordis.patch.yml', 'scripts/inject-all.py', 'scripts/build-apk.mjs', 'scripts/check-browser-syntax-floor.mjs', 'scripts/snapshot-config/**') }}
-
-      - name: Snapshot semantic normalization digest
-        shell: bash
-        run: |
-          set -euo pipefail
-          # 语义归一化摘要（坑 210）——**必须从产出的 APK 取快照**。
-          # 检查器（check-dsh-source-snapshot.mjs）看到的是注入**前**的快照，而 APK 装的是
-          # 注入**后**的（build-apk.mjs 的 snapIn，经 inject-all.py 生成）；两者条目数都不同
-          # （实测 42443 vs 42839）。把注入前那份的摘要公布出去，等于给外部复核方一个他们
-          # 复算不出来的值——而「可被外部独立复核」正是这条链的核心主张。这是坑 183
-          # （「发布链的快照输入必须是注入后产物」）的同型复发：**只有这一处跑在注入前**，
-          # 其余门禁（build-apk.mjs:304-320）全在 snapIn 上跑。
-          # 本步与复核方**做同一件事**：拿 APK → 取 assets/snapshot.tar.xz → 归一化 → 比摘要。
-          #
-          # 取**本轮刚产出**的那个 APK，不能取「字典序第一」。本地 out/ 会累积历次版本的产物
-          # （实测：v0.14.2-fx-2 排在 v0.14.3 之前），`find|sort|head -1` 于是挑中最旧那个 ⇒
-          # 公布的摘要描述的是**上一轮**的树，复核方拿本轮发货 APK 复算必然对不上——正是上面这段
-          # 「给外部一个他们复算不出来的值」所警告的情形，只是换了个触发方式（坑 227）。
-          # CI 每轮全新工作区、out/ 只有一个，故从不暴露；与坑 215-218 同族：工作区干净是 CI 的
-          # 隐含前提，不是链的语义。按 mtime 取最新（CI 侧无操作），并把选中的产物打出来留痕。
-          apk=$(find out -type f -name '*.apk' -printf '%T@ %p\n' | sort -rn | head -1 | cut -d' ' -f2-)
-          test -n "$apk"
-          echo "normalization source APK: $apk"
-          work=.deploy-tmp/source-build/normalization
-          rm -rf "$work"
-          mkdir -p "$work/tree"
-          if unzip -l "$apk" assets/snapshot.tar.xz >/dev/null 2>&1; then
-            unzip -p "$apk" assets/snapshot.tar.xz > "$work/snapshot.tar.xz"
-            tar -xJf "$work/snapshot.tar.xz" -C "$work/tree"
-            node scripts/source-build/normalize-snapshot.mjs "$work/tree" \
-              --out .deploy-tmp/source-build/snapshot-normalization.json
-            # Inventory the actual injected snapshot and the APK native payloads,
-            # including when the injected-snapshot cache was reused. Read-only.
-            python3 scripts/source-build/inventory-native-runtime.py "$work/tree" \
-              .deploy-tmp/source-build/native-runtime-inventory.json --abi "$DSH_ABI" --apk "$apk"
-          else
-            # The Linux-bundle APK ships assets/linux/* and deliberately no Termux snapshot.
-            # Publish the guest payload identity instead of a snapshot digest nobody can recompute.
-            unzip -p "$apk" assets/linux/manifest.json > "$work/linux-manifest.json"
-            python3 - "$work/linux-manifest.json" "$apk" \
-              .deploy-tmp/source-build/snapshot-normalization.json \
-              .deploy-tmp/source-build/native-runtime-inventory.json <<'PY'
-          import hashlib, json, sys, zipfile
-
-          manifest_path, apk_path, normalization_out, inventory_out = sys.argv[1:5]
-          manifest_bytes = open(manifest_path, 'rb').read()
-          manifest = json.loads(manifest_bytes)
-          normalization = {
-              'schemaVersion': 1,
-              'mode': 'linux-guest',
-              'bundledTermuxSnapshot': False,
-              'manifestSha256': hashlib.sha256(manifest_bytes).hexdigest(),
-              'assets': {key: value for key, value in manifest.items() if key.endswith('Sha256')},
-              'note': 'The APK ships assets/linux/* instead of a Termux snapshot; the instance manifest hashes are the normalized identity.',
-          }
-          open(normalization_out, 'w').write(json.dumps(normalization, ensure_ascii=False, indent=2) + '\n')
-          with zipfile.ZipFile(apk_path) as archive:
-              names = archive.namelist()
-          inventory = {
-              'schemaVersion': 1,
-              'mode': 'linux-guest',
-              'manifest': manifest,
-              'assets': sorted(name for name in names if name.startswith('assets/')),
-              'nativeLibraries': sorted(name for name in names if name.startswith('lib/')),
-          }
-          open(inventory_out, 'w').write(json.dumps(inventory, ensure_ascii=False, indent=2) + '\n')
-          PY
-          fi
-          rm -rf "$work"
+        run: python3 scripts/source-build/verify-linux-payload.py --apk-dir out --out .deploy-tmp/source-build/linux-payload-identity.json
 
       - name: Reverify final APK files before artifact upload
         shell: bash
@@ -1110,13 +562,9 @@ jobs:
           name: pocket-harness-${{ inputs.abi || 'arm64' }}-build-${{ matrix.replica }}-${{ github.sha }}
           path: |
             out/v*/*.apk
-            .deploy-tmp/source-build/termux-base-provenance.json
-            .deploy-tmp/source-build/termux-packages-provenance.json
             .deploy-tmp/engine-overlay/source-build-manifest.json
             .deploy-tmp/source-build/apk-sha256.txt
             .deploy-tmp/source-build/engine-overlay-sha256.txt
-            .deploy-tmp/source-build/runtime-tarballs-sha256.txt
-            .deploy-tmp/source-build/plugin-lock-sha256.txt
             .deploy-tmp/source-build/plugin-lock-resolution.json
             .deploy-tmp/source-build/marketplace-metadata-delta.json
             .deploy-tmp/source-build/project-source-commit.txt
@@ -1126,32 +574,25 @@ jobs:
             .deploy-tmp/source-build/marketplace-patch-adapter.json
             .deploy-tmp/source-build/source-build-policy.json
             .deploy-tmp/source-build/effective-engine-overlay.json
-            .deploy-tmp/source-build/effective-engine-overlay-restoration.json
-            .deploy-tmp/source-build/effective-engine-overlay.restore-input.json
-            .deploy-tmp/source-build/effective-engine-overlay-policy.restore-input.json
             .deploy-tmp/source-build/harness-vendor-overrides.json
             .deploy-tmp/source-build/harness-vendor-lock-reconciliation.json
             .deploy-tmp/source-build/harness-pnpm-lock.original.yaml
             .deploy-tmp/source-build/harness-build-script-exclusion.json
             .deploy-tmp/source-build/harness-root-package.json.original
             .deploy-tmp/source-build/android-build-inputs-sha256.txt
-            .deploy-tmp/source-build/gradle-artifacts-sha256.txt
             .deploy-tmp/source-build/signing-certificate-sha256.txt
             .deploy-tmp/source-build/package-manager-versions.txt
-            .deploy-tmp/source-build/linux-bundle-injection.json
             .deploy-tmp/linux-build/provenance/**
             .deploy-tmp/source-build/pnpm-deploy-build-policy.json
             .deploy-tmp/source-build/pnpm-deploy-runtime-closure.json
             .deploy-tmp/source-build/pnpm-deploy-runtime-closure.lock.yaml
             .deploy-tmp/source-build/android-native-runtime-packages.json
-            .deploy-tmp/source-build/node-pty-android-build.json
+            .deploy-tmp/source-build/terminal-native-build.json
             .deploy-tmp/source-build/ndk-archive-sha1.txt
-            .deploy-tmp/source-build/post-snapshot-native-runtime-check.json
             .deploy-tmp/source-build/harness-web-preview-exclusion.json
-            .deploy-tmp/source-build/post-snapshot-runtime-dependency-check.json
-            .deploy-tmp/source-build/source-engine-snapshot-check.json
-            .deploy-tmp/source-build/snapshot-normalization.json
-            .deploy-tmp/source-build/native-runtime-inventory.json
+            .deploy-tmp/source-build/linux-payload-identity.json
+            .deploy-tmp/source-build/linux-engine-check.json
+            .deploy-tmp/source-build/linux-payload-build.json
             .deploy-tmp/source-build/pnpm-package-materialization.json
             .deploy-tmp/source-build/engine-patch-copy-reconciliation.json
             scripts/patches/tests/fixtures/manifest.json
@@ -1183,22 +624,20 @@ jobs:
         with:
           name: pocket-harness-${{ inputs.abi || 'arm64' }}-build-reference-${{ github.sha }}
           path: .deploy-tmp/independent-reference
-      - name: Verify independent ABI builds from actual APK bytes
+      - name: Recheck downloaded Linux APK payload
+        run: python3 scripts/source-build/verify-linux-payload.py --apk-dir out --out .deploy-tmp/source-build/linux-payload-identity.json
+      - name: Verify independent Linux builds from actual APK bytes
         if: inputs.reference != false
-        run: node scripts/source-build/compare-independent-builds.mjs
+        run: python3 scripts/source-build/compare-linux-apks.py
       - name: Upload verified APK and provenance
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: pocket-harness-${{ inputs.abi || 'arm64' }}-verified-${{ github.sha }}
           path: |
             out/v*/*.apk
-            .deploy-tmp/source-build/termux-base-provenance.json
-            .deploy-tmp/source-build/termux-packages-provenance.json
             .deploy-tmp/engine-overlay/source-build-manifest.json
             .deploy-tmp/source-build/apk-sha256.txt
             .deploy-tmp/source-build/engine-overlay-sha256.txt
-            .deploy-tmp/source-build/runtime-tarballs-sha256.txt
-            .deploy-tmp/source-build/plugin-lock-sha256.txt
             .deploy-tmp/source-build/plugin-lock-resolution.json
             .deploy-tmp/source-build/marketplace-metadata-delta.json
             .deploy-tmp/source-build/project-source-commit.txt
@@ -1208,140 +647,25 @@ jobs:
             .deploy-tmp/source-build/marketplace-patch-adapter.json
             .deploy-tmp/source-build/source-build-policy.json
             .deploy-tmp/source-build/effective-engine-overlay.json
-            .deploy-tmp/source-build/effective-engine-overlay-restoration.json
-            .deploy-tmp/source-build/effective-engine-overlay.restore-input.json
-            .deploy-tmp/source-build/effective-engine-overlay-policy.restore-input.json
             .deploy-tmp/source-build/harness-vendor-overrides.json
             .deploy-tmp/source-build/harness-vendor-lock-reconciliation.json
             .deploy-tmp/source-build/harness-pnpm-lock.original.yaml
             .deploy-tmp/source-build/harness-build-script-exclusion.json
             .deploy-tmp/source-build/harness-root-package.json.original
             .deploy-tmp/source-build/android-build-inputs-sha256.txt
-            .deploy-tmp/source-build/gradle-artifacts-sha256.txt
             .deploy-tmp/source-build/signing-certificate-sha256.txt
             .deploy-tmp/source-build/package-manager-versions.txt
-            .deploy-tmp/source-build/linux-bundle-injection.json
             .deploy-tmp/linux-build/provenance/**
             .deploy-tmp/source-build/pnpm-deploy-build-policy.json
             .deploy-tmp/source-build/pnpm-deploy-runtime-closure.json
             .deploy-tmp/source-build/pnpm-deploy-runtime-closure.lock.yaml
             .deploy-tmp/source-build/android-native-runtime-packages.json
-            .deploy-tmp/source-build/node-pty-android-build.json
+            .deploy-tmp/source-build/terminal-native-build.json
             .deploy-tmp/source-build/ndk-archive-sha1.txt
-            .deploy-tmp/source-build/post-snapshot-native-runtime-check.json
             .deploy-tmp/source-build/harness-web-preview-exclusion.json
-            .deploy-tmp/source-build/post-snapshot-runtime-dependency-check.json
-            .deploy-tmp/source-build/source-engine-snapshot-check.json
-            .deploy-tmp/source-build/snapshot-normalization.json
-            .deploy-tmp/source-build/native-runtime-inventory.json
-            .deploy-tmp/source-build/independent-rebuild-verification.json
-            .deploy-tmp/source-build/pnpm-package-materialization.json
-            .deploy-tmp/source-build/engine-patch-copy-reconciliation.json
-            scripts/patches/tests/fixtures/manifest.json
-            scripts/patches/tests/fixtures/*-0.2.2-rc.1/**
-          if-no-files-found: error
-          # Only explicitly listed evidence files below .deploy-tmp are uploaded.
-          include-hidden-files: true
-          retention-days: 30
-
-  sign-abi:
-    needs: verify-abi
-    # 最终签名只在发布形态（reference 副本 + 独立比对产物齐全）下进行；开发迭代只到 verify-abi。
-    if: github.ref == 'refs/heads/main' && inputs.reference != false
-    runs-on: ubuntu-latest
-    env:
-      DSH_ABI: ${{ inputs.abi || 'arm64' }}
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-        with:
-          persist-credentials: false
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
-        with: { node-version: '24' }
-      - name: Set up pinned Temurin Java 17 for APK signature verification (attempt 1)
-        id: signer_setup_java_attempt_1
-        uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3
-        with:
-          distribution: temurin
-          java-version: '17.0.20+8'
-        continue-on-error: true
-      - name: Retry pinned Temurin Java 17 for APK signature verification (attempt 2)
-        id: signer_setup_java_attempt_2
-        if: steps.signer_setup_java_attempt_1.outcome == 'failure'
-        uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3
-        with:
-          distribution: temurin
-          java-version: '17.0.20+8'
-        continue-on-error: true
-      - name: Retry pinned Temurin Java 17 for APK signature verification (attempt 3)
-        id: signer_setup_java_attempt_3
-        if: steps.signer_setup_java_attempt_2.outcome == 'failure'
-        uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3
-        with:
-          distribution: temurin
-          java-version: '17.0.20+8'
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
-        with:
-          name: pocket-harness-${{ inputs.abi || 'arm64' }}-verified-${{ github.sha }}
-          path: .
-      - name: Sign final ABI source APK in an isolated job
-        env:
-          POCKET_SIGNING_KEYSTORE_BASE64: ${{ secrets.POCKET_SIGNING_KEYSTORE_BASE64 }}
-          POCKET_SIGNING_KEYSTORE_PASSWORD: ${{ secrets.POCKET_SIGNING_KEYSTORE_PASSWORD }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          signer=$(find "$ANDROID_HOME/build-tools" -mindepth 2 -maxdepth 2 -name apksigner -type f | sort -V | tail -n 1)
-          test -n "$signer"
-          export APKSIGNER="$signer"
-          node scripts/source-build/sign-source-artifacts.mjs
-      - name: Upload APK and provenance
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: pocket-harness-${{ inputs.abi || 'arm64' }}-source-${{ github.sha }}
-          path: |
-            out/v*/*.apk
-            .deploy-tmp/source-build/termux-base-provenance.json
-            .deploy-tmp/source-build/termux-packages-provenance.json
-            .deploy-tmp/engine-overlay/source-build-manifest.json
-            .deploy-tmp/source-build/apk-sha256.txt
-            .deploy-tmp/source-build/engine-overlay-sha256.txt
-            .deploy-tmp/source-build/runtime-tarballs-sha256.txt
-            .deploy-tmp/source-build/plugin-lock-sha256.txt
-            .deploy-tmp/source-build/plugin-lock-resolution.json
-            .deploy-tmp/source-build/marketplace-metadata-delta.json
-            .deploy-tmp/source-build/project-source-commit.txt
-            .deploy-tmp/source-build/component-source-provenance.json
-            .deploy-tmp/source-build/project-component-provenance.json
-            .deploy-tmp/source-build/marketplace-source-provenance.json
-            .deploy-tmp/source-build/marketplace-patch-adapter.json
-            .deploy-tmp/source-build/source-build-policy.json
-            .deploy-tmp/source-build/effective-engine-overlay.json
-            .deploy-tmp/source-build/effective-engine-overlay-restoration.json
-            .deploy-tmp/source-build/effective-engine-overlay.restore-input.json
-            .deploy-tmp/source-build/effective-engine-overlay-policy.restore-input.json
-            .deploy-tmp/source-build/harness-vendor-overrides.json
-            .deploy-tmp/source-build/harness-vendor-lock-reconciliation.json
-            .deploy-tmp/source-build/harness-pnpm-lock.original.yaml
-            .deploy-tmp/source-build/harness-build-script-exclusion.json
-            .deploy-tmp/source-build/harness-root-package.json.original
-            .deploy-tmp/source-build/android-build-inputs-sha256.txt
-            .deploy-tmp/source-build/gradle-artifacts-sha256.txt
-            .deploy-tmp/source-build/signing-certificate-sha256.txt
-            .deploy-tmp/source-build/package-manager-versions.txt
-            .deploy-tmp/source-build/linux-bundle-injection.json
-            .deploy-tmp/linux-build/provenance/**
-            .deploy-tmp/source-build/pnpm-deploy-build-policy.json
-            .deploy-tmp/source-build/pnpm-deploy-runtime-closure.json
-            .deploy-tmp/source-build/pnpm-deploy-runtime-closure.lock.yaml
-            .deploy-tmp/source-build/android-native-runtime-packages.json
-            .deploy-tmp/source-build/node-pty-android-build.json
-            .deploy-tmp/source-build/ndk-archive-sha1.txt
-            .deploy-tmp/source-build/post-snapshot-native-runtime-check.json
-            .deploy-tmp/source-build/harness-web-preview-exclusion.json
-            .deploy-tmp/source-build/post-snapshot-runtime-dependency-check.json
-            .deploy-tmp/source-build/source-engine-snapshot-check.json
-            .deploy-tmp/source-build/snapshot-normalization.json
-            .deploy-tmp/source-build/native-runtime-inventory.json
+            .deploy-tmp/source-build/linux-payload-identity.json
+            .deploy-tmp/source-build/linux-engine-check.json
+            .deploy-tmp/source-build/linux-payload-build.json
             .deploy-tmp/source-build/independent-rebuild-verification.json
             .deploy-tmp/source-build/pnpm-package-materialization.json
             .deploy-tmp/source-build/engine-patch-copy-reconciliation.json

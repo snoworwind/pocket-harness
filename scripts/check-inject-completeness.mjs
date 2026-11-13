@@ -29,7 +29,8 @@ import { fileURLToPath } from 'node:url'
 const HERE = dirname(fileURLToPath(import.meta.url))
 const ROOT = dirname(HERE)
 const argv = process.argv.slice(2)
-const tar = argv[0]
+const treeMode = argv[0] === '--tree'
+const tar = treeMode ? argv[1] : argv[0]
 const argOf = (n, d) => { const i = argv.indexOf('--' + n); return i >= 0 ? (argv[i + 1] ?? d) : d }
 const PROFILES = argOf('profiles', 'web,headless').split(',').map((s) => s.trim()).filter(Boolean)
 if (!tar || !existsSync(tar)) { console.error('用法: node scripts/check-inject-completeness.mjs <injected.tar.xz> [--profiles web,headless]'); process.exit(2) }
@@ -62,8 +63,18 @@ const sourceMembers = (dir) => {
   return out
 }
 
+function listTree(root, prefix = '') {
+  const entries = []
+  for (const entry of readdirSync(root, { withFileTypes: true })) {
+    const relative = prefix ? prefix + '/' + entry.name : entry.name
+    entries.push(relative)
+    if (entry.isDirectory()) entries.push(...listTree(join(root, entry.name), relative))
+  }
+  return entries
+}
+
 let listing = ''
-try { listing = execFileSync(TAR, ['-tf', tar], { encoding: 'utf8', maxBuffer: 512 * 1024 * 1024 }) } catch (e) {
+try { listing = treeMode ? listTree(tar).join('\n') : execFileSync(TAR, ['-tf', tar], { encoding: 'utf8', maxBuffer: 512 * 1024 * 1024 }) } catch (e) {
   console.error('CHECK-INJECT-COMPLETENESS FAILED：tar 不可读（' + e.message + '）')
   process.exit(2)
 }
@@ -72,7 +83,7 @@ console.log('tar 条目: ' + entries.size + '；装配 profile: ' + PROFILES.joi
 
 // 单次解压（重要：逐成员 tar -xO 会对 170MB xz 重解压 N 次，实测 >10min 超时）——
 // 只抽出需要的包 lib 树 + package.json，一次 -xf 完成，后续分析在本地文件上做。
-const scratch = mkdtempSync(join(tmpdir(), 'inj-complete-'))
+const scratch = treeMode ? tar : mkdtempSync(join(tmpdir(), 'inj-complete-'))
 const extractArgs = []
 for (const profile of PROFILES) {
   for (const dir of dirs) {
@@ -83,7 +94,7 @@ for (const profile of PROFILES) {
   }
 }
 try {
-  execFileSync(TAR, ['-xf', tar, '-C', scratch, '--', ...extractArgs], { stdio: ['ignore', 'ignore', 'ignore'], maxBuffer: 64 * 1024 * 1024 })
+  if (!treeMode) execFileSync(TAR, ['-xf', tar, '-C', scratch, '--', ...extractArgs], { stdio: ['ignore', 'ignore', 'ignore'], maxBuffer: 64 * 1024 * 1024 })
 } catch { /* 缺席成员按缺失处理（后续断言会报），不在此处中断 */ }
 
 let checkedPkgs = 0
@@ -192,7 +203,7 @@ for (const profile of PROFILES) {
       '悬空 ' + unresolvedBare.size + ' 条: [' + [...unresolvedBare].slice(0, 5).join(', ') + ']')
   }
 }
-rmSync(scratch, { recursive: true, force: true })
+if (!treeMode) rmSync(scratch, { recursive: true, force: true })
 check('至少核对到一个注入包', checkedPkgs > 0, 'checked=' + checkedPkgs)
 
 if (failures.length > 0) {

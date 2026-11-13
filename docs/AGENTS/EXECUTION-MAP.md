@@ -161,7 +161,7 @@ Linux 发现补充（P04，坑 373）：bootstrap `index.js` 串行发现 → `g
 | P04 | 文件打开、Linux 环境与模型能力插件 | 外部来件草稿、工具链与缓存清理、模型能力写回 | 壳侧 FileIncoming 投递 / 设置页 HTTP / cordis 装配 | 稳态控制 | 桥与鉴权、客户端注入层、shell-termux 工具链表、快照装配链 | 壳侧 FileIncoming.processIncomingIntent、设置页与开发者选项、cordis 装配 | plugins/dsh-android-file-open/src/index.ts,plugins/dsh-android-linux-env/src/runtime-cache.ts,plugins/dsh-model-capability/src/index.ts | 高 |
 | S01 | 引擎侧注入层（三个子仓） | DSH 原生 Web UI 拥有页面布局、响应式行为、设置、输入区、菜单与导航；客户端插件只接 Android inset/IME、主题/返回桥、原生能力槽位、文件与通知桥，以及隔离 BrowserHost | 客户端插件 apply() 装载；每个 index 响应经 tapIndex 注入 | 交互面 | K04（壳侧 androidBridge/dshBackBridge 桥面） | 引擎插件系统按 profile-web.cordis.patch.yml 的 insert 行拉起 | dsh-client-ui-responsive/src/client/index.ts,dsh-host-web-compat/lib/index.js,dsh-shell-termux/src/index.ts | 高 |
 
-| B01 | 构建链与快照注入 | 签名 Termux 包 → 按 ABI 构建 node-pty → 原生闭包门禁 → 快照 → APK；来源链按 ABI 执行独立双构建、比较与隔离签名；发布草稿并行覆盖 ARM64/x86_64，并统一打包两个 APK 与各自 provenance | GitHub Actions 来源构建或双 ABI 草稿；本地 `run-local-source-chain.mjs` | 构建与发布 | 门禁块,壳侧快照解压,插件源码与 vendor 固化面,可信上游签名/哈希 | 来源 workflow、双 ABI draft workflow、本地 source runner | scripts/build-apk-013.ps1,scripts/build-apk.mjs,scripts/build-apk-engine.mjs,scripts/build-apk-engine.test.mjs,scripts/build-release.ps1,scripts/check-apk-signatures.mjs,scripts/build-snapshot-013.mjs,scripts/inject-all.py,scripts/source-build/*,.github/workflows/build-apk.yml,.github/workflows/build-apk-source.yml,.github/workflows/release-source-draft.yml,webpages/tools/build.mjs,webpages/src/assets/app.js,webpages/src/assets/release.js,scripts/patches/data/undo-safe-transaction-snippet.mjs,scripts/patches/data/registry-scan-c4.mjs,scripts/patches/data/client-index-loader-barrier.mjs,scripts/patches/tests/client-index-loader-barrier.test.mjs,scripts/patches/tests/gateway-client-source-g1.test.mjs,scripts/patches/mimo-thinking-toggle-056.mjs,scripts/patches/tests/mimo-thinking-toggle-056.test.mjs,scripts/patches/data/permission-auto-review-default.mjs,scripts/patches/tests/permission-auto-review-default.test.mjs,scripts/patches/data/workspace-write-boundary-warning.mjs,scripts/patches/tests/workspace-write-boundary-warning.test.mjs | 高 |
+| B01 | Linux 来源构建与工厂载荷装配 | 固定引擎源码底座 → Linux engine/home → 四件套与清单 → APK；可选双副本比较，实验分支禁止发布 | GitHub Actions 显式 ARM64 Linux 实验 | 构建与发布 | 门禁块,壳侧快照解压,插件源码与 vendor 固化面,可信上游签名/哈希 | 来源 workflow、双 ABI draft workflow、本地 source runner | scripts/build-apk-013.ps1,scripts/build-apk.mjs,scripts/build-apk-engine.mjs,scripts/build-apk-engine.test.mjs,scripts/build-release.ps1,scripts/check-apk-signatures.mjs,scripts/build-snapshot-013.mjs,scripts/inject-all.py,scripts/source-build/*,.github/workflows/build-apk.yml,.github/workflows/build-apk-source.yml,.github/workflows/release-source-draft.yml,webpages/tools/build.mjs,webpages/src/assets/app.js,webpages/src/assets/release.js,scripts/patches/data/undo-safe-transaction-snippet.mjs,scripts/patches/data/registry-scan-c4.mjs,scripts/patches/data/client-index-loader-barrier.mjs,scripts/patches/tests/client-index-loader-barrier.test.mjs,scripts/patches/tests/gateway-client-source-g1.test.mjs,scripts/patches/mimo-thinking-toggle-056.mjs,scripts/patches/tests/mimo-thinking-toggle-056.test.mjs,scripts/patches/data/permission-auto-review-default.mjs,scripts/patches/tests/permission-auto-review-default.test.mjs,scripts/patches/data/workspace-write-boundary-warning.mjs,scripts/patches/tests/workspace-write-boundary-warning.test.mjs | 高 |
 | B02 | 静态门禁链与 CI | 33 个静态门禁脚本与三层接线的唯一声明处 | PR/CI、两条打包链、发布链 | 测试与门禁 | B01,B03 | 提交 PR、推 main、构建/发版 | scripts/check-release-gates.mjs,scripts/check-gate-skips.mjs,.github/workflows/pr-gate.yml,scripts/build-apk-013.ps1 | 高 |
 | B03 | 设备验收套件（CDP 与 adb 面） | 12 个 CDP/设备断言套件 + 5 个部署冒烟脚本的设备侧验收入口 | 人手动逐个执行 node scripts/verify-*.mjs 与 pwsh scripts/*.ps1 | 测试与门禁 | S-12 双 ABI 包装机、快照刷新完成、桥面 / 浏览器宿主 / 虚拟屏 / 注入层各块 | 人（PR 前设备层验收；探针自检由 CI 接线） | scripts/verify-webview-015.mjs,scripts/verify-webview-settings.test.mjs,scripts/verify-state-sync.mjs,scripts/verify-browser-host.mjs,scripts/verify-browser-panel.mjs,scripts/verify-vdisplay-viewer.mjs,scripts/verify-vdisplay-float.mjs,scripts/verify-engine-log-copy.mjs,scripts/verify-screen-scope-matrix.mjs,scripts/verify-adb-only-tree.mjs,scripts/verify-notify-consumption.mjs,scripts/verify-auto-undo.mjs,scripts/verify-client-plugin-fail-recovery.mjs,scripts/device-smoke.ps1,scripts/deploy-device.ps1,scripts/deploy-embedded.ps1,scripts/t0-check.ps1,scripts/e2e-phone-test.ps1 | 高 |
 
@@ -297,7 +297,7 @@ Linux 发现补充（P04，坑 373）：bootstrap `index.js` 串行发现 → `g
 - [K10] 已修（2026-10-31）：OverlayService KDoc 改为引用 `NotifyCenter.contentIntent`，不再指向过期行号。
 - [K10] 已修（2026-10-31）：引擎通知信道注释说明由壳侧按偏移消费、由引擎写入方负责轮转，不再声称壳侧截断文件。
 - [K10] 已退役：旧 `0.14.1-preview-NOTIFY-REALTIME-AND-STATE-SYNC.md` 不在当前仓库；现行通知契约见 `ARCHITECTURE.md`、`modules.md` 与 `BRIDGE-API.md`。
-- [K11] 1. 已确认：判据的产出者与消费者分属两条链。唯一产出结果的执行点是 `.github/workflows/pr-gate.yml:140`（CI 跑 gradle），而数量门禁只在打包/发布链里（`scripts/build-apk.mjs:201#expect=%2F%2F%20review%20C6%EF%BC%9A%E9%80%82%E9%85%8D%E5%B1%82%E5%A5%91%E7%BA%A6%EF%BC%88%E4%B8%8A%E6%B8%B8%20bundle%20%E8%A1%8C%E5%BC%95%E7%94%A8%20%2F%20%E6%B3%A8%E5%85%A5%E5%8C%85%20lib%20%E4%BA%A7%E7%89%A9%20%2F%20%E5%AE%A2%E6%88%B7%E7%AB%AF%E6%A7%BD%E4%BD%8D%20%2F%20%E7%89%88%E6%9C%AC%E9%92%89%E5%8F%B0%E8%B4%A6%EF%BC%89%E3%80%82`、`scripts/build-apk-013.ps1:145`，均 `--allow-missing`；`scripts/check-release-gates.mjs:104` 登记 `ci: false`），CI 里的 `check-release-gates.mjs`（`.github/workflows/pr-gate.yml:91`）不带 `--run`，只断接线不跑门禁。且两条构建链自己只跑 `:app:assembleDebug`（`scripts/build-apk.mjs:357#expect=%2F%2F%20%E5%89%8D%E7%BD%AE%E4%BA%8E%E6%9C%AC%E6%AD%A5%E7%9A%84%E6%8F%92%E4%BB%B6%20npm%20build%20%E5%B7%B2%E4%BA%A7%E5%87%BA%20plugins%2F%2A%2Flib%EF%BC%8C%E9%97%A8%E7%A6%81%E7%9C%9F%E8%B7%91%E5%90%84%E6%8F%92%E4%BB%B6%20apply%28%29%20%E9%87%87%E9%9B%86%E5%B7%A5%E5%85%B7%E5%AE%9A%E4%B9%89%E3%80%82`、`scripts/build-apk-013.ps1:388`），从不跑 `:app:testDebugUnitTest`。影响：CI 里删掉一个测试类（gradle exit 仍 0）全绿，本地链则只能读到上一次手动跑留下的 XML——改了测试源码就判陈旧。两半防线各自成立，但没有一条链同时具备「产出 + 判据」。
+- [K11] 1. 已确认：判据的产出者与消费者分属两条链。唯一产出结果的执行点是 `.github/workflows/pr-gate.yml:137#expect=%23%20so%20a%20later%20edit%20cannot%20silently%20reintroduce%20the%20per-push%20cost%20or%20drop%20the%20coverage.`（CI 跑 gradle），而数量门禁只在打包/发布链里（`scripts/build-apk.mjs:201#expect=%2F%2F%20review%20C6%EF%BC%9A%E9%80%82%E9%85%8D%E5%B1%82%E5%A5%91%E7%BA%A6%EF%BC%88%E4%B8%8A%E6%B8%B8%20bundle%20%E8%A1%8C%E5%BC%95%E7%94%A8%20%2F%20%E6%B3%A8%E5%85%A5%E5%8C%85%20lib%20%E4%BA%A7%E7%89%A9%20%2F%20%E5%AE%A2%E6%88%B7%E7%AB%AF%E6%A7%BD%E4%BD%8D%20%2F%20%E7%89%88%E6%9C%AC%E9%92%89%E5%8F%B0%E8%B4%A6%EF%BC%89%E3%80%82`、`scripts/build-apk-013.ps1:145`，均 `--allow-missing`；`scripts/check-release-gates.mjs:104` 登记 `ci: false`），CI 里的 `check-release-gates.mjs`（`.github/workflows/pr-gate.yml:90#expect=-%20name%3A%20%E6%95%8F%E6%84%9F%E4%BF%A1%E6%81%AF%E6%89%AB%E6%8F%8F`）不带 `--run`，只断接线不跑门禁。且两条构建链自己只跑 `:app:assembleDebug`（`scripts/build-apk.mjs:357#expect=%2F%2F%20%E5%89%8D%E7%BD%AE%E4%BA%8E%E6%9C%AC%E6%AD%A5%E7%9A%84%E6%8F%92%E4%BB%B6%20npm%20build%20%E5%B7%B2%E4%BA%A7%E5%87%BA%20plugins%2F%2A%2Flib%EF%BC%8C%E9%97%A8%E7%A6%81%E7%9C%9F%E8%B7%91%E5%90%84%E6%8F%92%E4%BB%B6%20apply%28%29%20%E9%87%87%E9%9B%86%E5%B7%A5%E5%85%B7%E5%AE%9A%E4%B9%89%E3%80%82`、`scripts/build-apk-013.ps1:388`），从不跑 `:app:testDebugUnitTest`。影响：CI 里删掉一个测试类（gradle exit 仍 0）全绿，本地链则只能读到上一次手动跑留下的 XML——改了测试源码就判陈旧。两半防线各自成立，但没有一条链同时具备「产出 + 判据」。
 - [K11] 2. 已确认：`app/build.gradle.kts:91` 的 `unitTests.isReturnDefaultValues = true` 把 android.* 打桩成 0/null/false。本目录已有两条针对性反桩判据（`app/src/test/java/com/snoworwind/pocketharness/CallSiteContractTest.kt:294` 禁 `Color.argb`、`app/src/test/java/com/snoworwind/pocketharness/OverlayHaloInvariantTest.kt:92` 要求四态色互不相同），说明风险真实；将来任何新增的 android.graphics/Log 断言会静默恒真。已确认配置在场；未证实本目录还存在其它被桩恒真的断言（49 文件逐个读过，除 `app/src/test/java/com/snoworwind/pocketharness/NotifyCenterChannelTest.kt:33` 的常量同义反复外未发现）。
 - [K11] 3. 已确认：`app/src/test/java/com/snoworwind/pocketharness/SnapshotUserDataTest.kt:84` 在宿主不允许建符号链接时 `assumeTrue(..., false)` → 整例被 JUnit 假设失败跳过；而 `scripts/check-kotlin-test-count.mjs:143-147` 只对 failures/errors 判红，不判 skipped，基线仍按 5 例计。现场件：`app/build/test-results/testDebugUnitTest/` 下该类的 XML `skipped="1"`，即当前 456 例里实际执行 455 例（总数与基线比对完全一致，这个 skip 不会被任何判据点出来）。
 - [K11] 4. 已迁移：旧快照事务测试类现为 Linux 升级事务中断矩阵（每个 journal 检查点模拟进程死亡并断言组件一致、rootfs 与用户数据不变），不再依赖设备才能覆盖回滚分支。
@@ -394,9 +394,9 @@ Linux 发现补充（P04，坑 373）：bootstrap `index.js` 串行发现 → `g
 - [B01] 已修（2026-10-31）：`AGENTS.md` 的 vendor 目录摘要已与本仓现存 marketplace 与 undo-savepoint 副本一致。
 - [B02] 1. 【已确认，源码可复现】Kotlin 单测数量门禁的「防净零抵消」可被整类删除绕过：A 判据只对现存源码测试类要求有结果（`scripts/check-kotlin-test-count.mjs:129`），B 判据对结果里缺席的类直接 `continue`（`:153`）→ 删掉整个测试文件（例如 29 例的 `SnapshotTransactionTest.kt`）再在别处补足总数即恒绿。影响：一整类防线被无声削掉，而该门禁不在 CI（`ci:false`），只在两条链以 `--allow-missing` 跑。
 - [B02] 2. 【已确认】发布链的「SKIP=0」存在盲区：聚合入口用 `/SKIP=(\d+)/` 统计（`scripts/check-release-gates.mjs:246`），而 `scripts/check-boot-budget.mjs` 真检缺席时打印的是 `SKIP(#1)(real-data)`（`:681`）并立刻 `selfTest()` 退出（`:684`）——该 SKIP 既不入合计、在 `--require` 档下也不判红；唯一能判红的 `--require-real` 零调用点（仅注释提到）。影响：无设备产物时发布链可打印 SKIP=0 全绿，冷启动预算真判据从未执行。
-- [B02] 3. 【已确认，apk 树结构性必红】`plugins/dsh-android-vdisplay/test/tools-callable.test.mjs:122`（另 `:144`/`:161`/`:174`）用 `../../../dsh-mobile-apk/app/src/main/java/com/snoworwind/pocketharness/VdisplayController.kt` 读壳侧源码——该相对路径只在协调仓布局成立；apk 自包含树里 4 个用例 `readFileSync` 抛错。而 `scripts/check-plugin-tests.mjs` 在 `GATES` 里 `ci:true`，apk 仓 `.github/workflows/pr-gate.yml:64` 会跑它。影响：apk 仓 CI 与 apk 自包含构建结构性变红（对应协调仓评审 S-11 第二项 / §4.4-V-M4，本轮工作树仍未修）。
+- [B02] 3. 【已确认，apk 树结构性必红】`plugins/dsh-android-vdisplay/test/tools-callable.test.mjs:122`（另 `:144`/`:161`/`:174`）用 `../../../dsh-mobile-apk/app/src/main/java/com/snoworwind/pocketharness/VdisplayController.kt` 读壳侧源码——该相对路径只在协调仓布局成立；apk 自包含树里 4 个用例 `readFileSync` 抛错。而 `scripts/check-plugin-tests.mjs` 在 `GATES` 里 `ci:true`，apk 仓 `.github/workflows/pr-gate.yml:41#expect=-%20uses%3A%20actions%2Fcheckout%4011d5960a326750d5838078e36cf38b85af677262%20%23%20v4` 会跑它。影响：apk 仓 CI 与 apk 自包含构建结构性变红（对应协调仓评审 S-11 第二项 / §4.4-V-M4，本轮工作树仍未修）。
 - [B02] 4. 【已确认】`scripts/check-snapshot-builder-output.mjs:156` 的「两树同版」用硬编码`<ROOT>/dsh-mobile-apk/scripts/build-snapshot-013.mjs` 且 `existsSync` 为假时静默跳过（无 SKIP 计数，`:157`）——apk 自包含树里这条判据根本不存在，而它正是「0.14.0 归档段被删、构建器 exit 0 不产 tar」事故的反回归防线。
-- [B02] 5. 【未证实，需跑一次才能定性】`scripts/check-plugin-tests.mjs:33` 对「没有 test 目录」的插件只 WARN（删测试即从判据里消失）；且本轮工作树里 `scripts/patches/tests/` 的 16 个补丁回归测试只有 3 个被 pr-gate 硬编码调用（`.github/workflows/pr-gate.yml:41-43`），第 4 个经 `scripts/check-runtime-assets.mjs:96` 的行为回归间接执行，其余 12 个仍无执行路径（评审 I-6 的同族结论，未本轮复测是否已改）。
+- [B02] 5. 【未证实，需跑一次才能定性】`scripts/check-plugin-tests.mjs:33` 对「没有 test 目录」的插件只 WARN（删测试即从判据里消失）；且本轮工作树里 `scripts/patches/tests/` 的 16 个补丁回归测试只有 3 个被 pr-gate 硬编码调用（`.github/workflows/pr-gate.yml:40#expect=steps%3A`），第 4 个经 `scripts/check-runtime-assets.mjs:96` 的行为回归间接执行，其余 12 个仍无执行路径（评审 I-6 的同族结论，未本轮复测是否已改）。
 - [B03] 1. 已证实：`scripts/verify-vdisplay-float.mjs:95-103` 的「非法档位必须被拒」是永久假通过 + 顺手改设备状态。链路：`setVdisplayScale(0.123)` → `VdisplayPrefs.setScale` 用 `coerceIn(0.4, 1.0)` 把值钳成 0.4 存盘（`VdisplayController.kt:753-756`）→ 返回的 `VdisplayPrefs.scale()` 是数值 0.4（`MainActivity.kt:795#expect=%2F**`），既不是 `true` 也不是 `{ok:true}` → 脚本走 `else` 分支打印 `PASS 非法档位被拒 → rejected`。而第 3 步之后没有任何还原（对比第 1、2 步都有还原），设备档位就停在 0.4（默认 0.75），后续所有 vdisplay 用例的几何随之变化。影响：断言假绿 + 跨轮设备状态漂移。
 - [B03] 2. 已证实：`scripts/verify-browser-panel.mjs:123-128` 用 `browserHostShow({..., newTab:true})` 声称建多页签，但 `showPayload`（`BrowserHost.kt:384-394`）只解析 `url` 与 `session`，`newTab` 是死参数（`newTab` 只在 `navigateOp` `BrowserHost.kt:1035` 被读）；脚本结尾（`:137-138` 打印 PASSED）也不调 `browserHostClose`，于是留下两个隔离页签常驻。影响：与可疑点 1 叠加——`/json/list` 变成多 target，而 `verify-state-sync.mjs:248-250` 与 `verify-webview-015.mjs:3-4` 的取值规则都是「取第一个 target」，取错即整批桥断言假红。同结论见 `coord:docs/COMPAT-REVIEW-0.14.0-2026-09-19.md:453`（M4）。
 - [B03] 3. 已证实：`scripts/verify-vdisplay-viewer.mjs:2` 与 `scripts/verify-vdisplay-float.mjs:4` 的头部都声称覆盖「多查看器仲裁」，脚本内却没有任何第二查看器断言（全文只有一个硬编码 `viewerId: 'files-sidebar'`，`:161`/`:173`）。真正的仲裁在 `VdisplayController.attachViewerSurface` 的 `ViewerArbitration.decide(...) == Verdict.OCCUPIED` → `viewer-target-occupied`（`VdisplayController.kt:483-492`），当前没有任何套件打到这条路径。
@@ -415,7 +415,7 @@ Linux 发现补充（P04，坑 373）：bootstrap `index.js` 串行发现 → `g
 - [B03] | `scripts/deploy-device.ps1` | 把已构建的插件包推进设备 profile 层 `node_modules`（termux 形态），然后重启 `dsh web` | adb push 到 `/data/local/tmp` → `run-as com.termux sh -c` 拷进 `~/.dsh/profiles/<Profile>/node_modules/@dsh-android/<pkg>` 并 `chmod -R a+rX` | `pwsh scripts/deploy-device.ps1 -Serial <s> [-Package <name>] [-Profile web]` | ① 最后一步 `..\web-restart.ps1` 不存在 → 重启静默失效（可疑点 5）；② 暂存目录是仓库根的 `.deploy-staging`（`:14`），与 `deploy-embedded.ps1` 共用同一路径（两者不可并跑）；③ `lib/index.js` 不存在直接 throw（`:11`），先跑 `scripts/build.mjs` | 插件已 `lib/` 构建；设备已装 Termux 形态 dsh 且 profile 目录存在 |
 - [B03] | `scripts/deploy-embedded.ps1` | 把插件推进内嵌形态：`/data/user/0/com.snoworwind.pocketharness/files/home/.dsh/profiles/web/node_modules/@dsh-android/<pkg>` | `adb push` → `run-as com.snoworwind.pocketharness sh -c` 拷贝 + `chmod` | `pwsh scripts/deploy-embedded.ps1 -Serial <s> -Package <name>`（仓根执行）；根目录取 `$PSScriptRoot` 的父目录，默认 serial 取环境变量 `ADB_SERIAL`（缺失即报错），无 `-Profile` 参数（写死 `web`，`:17`） | ① `-Package` 语义有缺陷：既当仓库相对目录又当设备包名（传 `plugins/dsh-android-bridge` 会在 `@dsh-android/` 下嵌出同形子路径 → 插件解析不到）——须传纯包名（协调仓 `coord:docs/0.14.0-preview-VERIFICATION-LOG.md:211,253` 已登记为 N-5 未修）；② 与 `deploy-device.ps1` 共用 `.deploy-staging`，不可并跑 | 内嵌形态应用已装且跑过一次（`files/home` 已解压）；`run-as` 可用 |
 - [B03] | `scripts/t0-check.ps1` | `--dump-config` 输出里 `shell-termux` / `bash-sandbox` / `permission` 三行在场，且 `shell-termux` 不得是 `disabled` | `adb shell run-as com.termux sh -c` 调设备内 node 跑 `--dump-config` 并 `cat` 结果 | `pwsh scripts/t0-check.ps1 -Serial <s>` | ① 禁用判定正则写错（可疑点 4）→ 对「被禁」假绿；② 只在 `shell-termux` 后 200 字符窗口内找 `disabled`，dump 排版一变即漏；③ `matrix()` 行匹配是纯子串，插件改名可能误命中 | 设备内 Termux 形态引擎在位（`/data/data/com.termux/files/usr/lib/node_modules/@deepseek-ai/dsh`） |
-- [B03] | `scripts/e2e-phone-test.ps1` | 旧 RPC 端到端：`session.create` → `session.prompt`（让模型跑 bash echo/uname）→ 轮询 `session.history` 最多 120s | 纯宿主侧 HTTP，不接 adb：要求操作者事先把宿主端口转发好 | 无参数；`$base` 写死 `http://127.0.0.1:3081`，请求体落到 `D:\coding\dsh-mobile\.deploy-tmp` | ① 点号 wire + 旧端口 3081，而现行文档口径是 `forward 23080→3080`（`docs/AGENTS/build-and-env.md:205#expect=forward%20tcp%3A23080%20tcp%3A3080`）且 `/api` 需 `EngineAuth` cookie（`历史 BRIDGE-API 副本（当前契约见§6 K04）`）→ 大概率直接被拒（未证实，本轮未实跑）；② 脚本内无 serial / pkg 参数，无法在多设备上选择；③ 轮询结束不判「有没有拿到回复」，只看最后一条事件类型 | 宿主转发在位 + 引擎 cookie；同目录 `scripts/dsh-agent-chat.ps1` 才是 0.13.3+ 的斜杠 wire 版本（它自己 `:4` 就写明本脚本是旧 wire 旧端口），新验收优先用它 |
+- [B03] | `scripts/e2e-phone-test.ps1` | 旧 RPC 端到端：`session.create` → `session.prompt`（让模型跑 bash echo/uname）→ 轮询 `session.history` 最多 120s | 纯宿主侧 HTTP，不接 adb：要求操作者事先把宿主端口转发好 | 无参数；`$base` 写死 `http://127.0.0.1:3081`，请求体落到 `D:\coding\dsh-mobile\.deploy-tmp` | ① 点号 wire + 旧端口 3081，而现行文档口径是 `forward 23080→3080`（`docs/AGENTS/build-and-env.md:207#expect=forward%20tcp%3A23080%20tcp%3A3080`）且 `/api` 需 `EngineAuth` cookie（`历史 BRIDGE-API 副本（当前契约见§6 K04）`）→ 大概率直接被拒（未证实，本轮未实跑）；② 脚本内无 serial / pkg 参数，无法在多设备上选择；③ 轮询结束不判「有没有拿到回复」，只看最后一条事件类型 | 宿主转发在位 + 引擎 cookie；同目录 `scripts/dsh-agent-chat.ps1` 才是 0.13.3+ 的斜杠 wire 版本（它自己 `:4` 就写明本脚本是旧 wire 旧端口），新验收优先用它 |
 - [B03] *CDP 与 adb 的能力边界对照
 - [B03] | 套件 | 走 CDP 的断言（DOM / devtools） | 走 adb 的断言（含系统读） | 有 adb 用户级操作（input / screencap / uiautomator / logcat）？ |
 - [B03] |---|---|---|---|
@@ -465,7 +465,7 @@ K01 journal 发布：`LinuxUpgradeTransaction.atomicWrite` 写同目录临时文
 | K03 | 引导与启动 | refreshSnapshot 的进度/失败文案与恢复前置由启动流拉起，刷新期 snapshotRefreshing 闸门禁止拉引擎 | app/src/main/java/com/snoworwind/pocketharness/EngineStartFlow.kt:427 |
 | K03 | 引擎探活与看门狗 | 每 5 秒一拍 onEngineProbe 记录客体健康；启动前先恢复未完成的升级事务 | app/src/main/java/com/snoworwind/pocketharness/EngineService.kt:337#expect=watchdog%20tick%20failed |
 | K03 | 引擎总管 EngineManager | 事务/残渣/空间的调用方，也是 usr、home、.snapshot-fingerprint 的持有者；启动前 profile 自愈调用 `SnapshotFs.replaceWithVerifiedBackup` 校验 live 字节、唯一同步备份后原子发布，失败不落幂等标记并在下次启动重试 | EngineManager.kt:99、SnapshotFs.kt:226 |
-| K03 | 构建与发布 | APK 只内嵌 assets/linux 四件套与 manifest；客体引擎树必须在平台死重剔除之前装配，资产摘要进入实例清单 | scripts/build-snapshot-013.mjs:1#expect=%2F%2F%20build-snapshot-013.mjs |
+| K03 | 构建与发布 | APK 内嵌 Linux 四件套与 manifest；从固定源码 deploy 树直接装配客体 engine/home | scripts/source-build/build-linux-payload.mjs:1#expect=%23!/usr/bin/env%20node |
 | K03 | 插件注入层 | profiles 的 package.json 与 cordis.patch.yml 决定引擎实际挂载集，工厂 disabled 语义以 FactoryProfilePatch 为权威 | app/src/main/java/com/snoworwind/pocketharness/FactoryProfilePatch.kt:79 |
 
 | K03 | 交互面 MainActivity | DownloadSaver 由 WebView 下载/外链回调拉起，回执经 window.__dshExportResult 回灌页面 | app/src/main/java/com/snoworwind/pocketharness/MainActivity.kt:89 |
@@ -583,8 +583,8 @@ K01 journal 发布：`LinuxUpgradeTransaction.atomicWrite` 写同目录临时文
 | B01 | 树内副本即权威 | 2026-10-15 起不再做跨树逐字节比对；补丁面由本仓 registry↔IMPLS 自洽判据守 | `scripts/check-patch-mirror.mjs:53#expect=const%20regPath` |
 | B01 | 发布链 build-release.ps1 | 复用同一门禁集与指纹对账，输入走设备侧 make-snapshot.sh 产出的 snapshot/snapshot-*.tar.xz | scripts/build-release.ps1:56-61,89-114,147 |
 | B01 | CI 与云端构建链 | 云端 build-apk.mjs 与本地链门禁集差集必须为 0。0.14.5：原先并列的 apk 仓独立快照 workflow `build-snapshot.yml`（走 inject-snapshot.py 三包注入、无引擎 overlay/补丁/语法降级）已删除，快照构建入口收敛为单一链 | scripts/check-release-gates.mjs:191-212 |
-| B01 | 来源审计 ARM64 构建 | 官方 `1f81c047` / 0.2.1-rc.3 源码构建 CLI/Web/第一方包；Android 构建阶段设置 official client profile/title 并核验 bundle；Cordis 按目标源码、不回退旧版本；bootstrap/InRelease/deb 认证、native 来源审计与 overlay pin 恢复。PTC 与 MiMo 多文件 exact verifier 及全部 pnpm 同包副本同步；最终 snapshot 检查复用同一判据。依赖闭包门禁还递归检查已启用 telemetry 消费者的第三方精确版本，并与 `engine-overlay.json` 的 nested SDK pins 对账。v0.14.9 来源链已正式运行，完整设备三层验收仍未完成，见升级记录。 | .github/workflows/build-apk-source.yml:239#expect=./gradlew%20--version,scripts/patches/registry.json:214#expect=%E9%A6%96%E9%A1%B5%20HTML,scripts/patches/apply-patches.mjs:234#expect=planMimoThinking,scripts/source-build/reconcile-engine-patch-copies.mjs:79#expect=const%20entries,scripts/source-build/check-dsh-source-snapshot.mjs:25 |
-| B01 | 来源草稿资产边界 | 写权限任务先拒绝额外/缺失/链接/非普通资产，要求哈希清单与实际上传集合一一对应，再核验字节，最后调用 gh 创建草稿；真实 shell 负控见坑 371 | .github/workflows/release-source-draft.yml:94#expect=root%20%3D%20pathlib.Path%28%27.%27%29,scripts/source-build/test_prepare_source_release.py:96#expect=self.put%28abi%2C%20path%2C%20original%29 |
+| B01 | Linux 来源审计 ARM64 构建 | 固定 Harness 源码底座、独立重放补丁、工厂目录装配及四件套 manifest；不经过 Termux 包或快照链 | scripts/source-build/build-linux-payload.mjs:1#expect=%23!/usr/bin/env%20node |
+| B01 | 实验分支发布边界 | 草稿工作流只读并恒失败，不接构建或生产 signer | .github/workflows/release-source-draft.yml:14#expect=exit%201 |
 | B02 | B01 | 门禁集由两条编排器逐项调用；聚合入口断言本地链与云端链门禁集差集为 0，并锁发布链必须走 --run | scripts/check-release-gates.mjs:135 |
 | B02 | B03 | 冷启动预算的真数据只能来自设备产物，--require-real 由设备验收承担，构建机与 CI 只计 SKIP | scripts/check-boot-budget.mjs:671 |
 | B02 | K03 | 快照指纹、剥离后置断言、运行时补丁资产三门禁共同守内嵌 assets/snapshot.tar.xz 与 assets/patched 同源 | scripts/check-runtime-assets.mjs:126 |
@@ -1604,160 +1604,43 @@ flowchart TD
 
 ### 构建、门禁与设备验收
 
-#### B01 构建链与快照注入
+#### B01 Linux 来源构建与工厂载荷装配
 
-- **Auto Review 新会话默认与执行边界**：`scripts/profile-web.cordis.patch.yml` 完整配置 permission presets 并设置 `defaultPreset: auto`，同时装载固定版 `dsh-experimental-auto-review`；engine scope 补丁由 `scripts/patches/data/permission-auto-review-default.mjs` 修改权限服务、reviewer 与设置客户端。冷启动恢复时，若持久化 Auto 会话缺少 sandbox/approval 事实，权限服务按 Auto 固定规格补齐；reviewer 注册前，按持久化或有效 Auto 身份命中的 `tools/pre-execute` 先行拒绝，注册后会重钉全部现存会话。新会话创建时 Auto 是默认档。注册 reviewer 后每个原生工具、顶层 PTC `run_code` 源码及原有 PTC 内层调用都进入模型分类。high 在 reviewer listener 内直接返回 deny、记录原始 `exec`，不调用后续审批链；同一插件注册 `ctx.tools.guard`，waterfall 后仍对记录中的 exec 返回拒绝。medium deny 才继续进入逐次审批；低风险按 reviewer allow 继续。reviewer 异常 fail closed；插件卸载回退 `workspace-write`，Android shell 在 spawn 前拒绝受限档位。用户切换当前会话权限档位会退出 Auto Review；设置中的默认值仅用于新会话。三个固定 npm 包的 source fixture、运行时语义和 runner 反证在 `scripts/patches/tests/permission-auto-review-default.test.mjs`；本机测试不替代设备验收。
-- **Workspace Write 档位说明**：后置 engine 补丁 `scripts/patches/data/workspace-write-boundary-warning.mjs` 在当前会话选择器、新会话默认设置与 `/permission` 命令三条入口拦截档位变更；确认说明 Android 没有覆盖所有工具的路径级文件系统沙箱，Termux Shell 在 bash 启动前失败关闭，其他工具按各自实现并受 app UID 边界约束。选中后 settings 描述持续提示。它依赖 AR1 注册同一 client target；本代夹具与 runner 反证见 `scripts/patches/tests/workspace-write-boundary-warning.test.mjs`。
-- **当前来源链**：官方 0.2.1-rc.5 → native addon → 官方 host-libraries → Client compiler → 根 Client bundle → Web → 固定源码导出 → 临时部署闭包 → pnpm deploy → 恢复源码 → 快照/补丁/注入/双构建/隔离签名。Android client 构建注入 official profile、版本、提交短哈希与标题，并检查品牌槽位和 HTML title。PTC A1 的 planPatch 同时验证 index/process/persistent-process，patchRuntimeIndex 与 patchPersistentLaunch 分别处理两条 launch；固定 spawn 数、enforcing argv 与 companion 门均不得绕过。v0.14.10 来源构建与未完成的设备验收见 [升级记录](ENGINE-UPGRADE-2026-10-31.md)。
-- **下载失败快速止损与重试**：builder 和 signer 对固定 Temurin 17.0.20+8 各最多三次尝试；builder 在昂贵来源测试前以 `./gradlew --version` 下载/校验 wrapper，最多五次，只对暂态 HTTP/网络错误重试，失败不进入耗时构建。Termux bootstrap、Debian keys、NDK、固定 marketplace tarball、Debian Snapshot 元数据与 Node 资产经 `retry-curl.sh` 下载：curl 自身处理已识别的 HTTP/超时错误，外层只对退出码 5/6/7/18/52/55/56 有界重试；404、TLS 和本地文件错误快速失败。npm CLI 使用 `--fetch-retries=8`；pnpm 11+ 的 Harness install/deploy 使用经 pnpm 11.28.5 与 12.2.0 `config get` 逐项验证的 `pnpm_config_*` 环境变量，禁止把 npm `--fetch-*` 参数传给 pnpm。pnpm 12.2.0 的 Corepack 配置探测与 deploy 使用 `--pm-on-fail=ignore` 绕过 workspace 的 pnpm 11.28.5 pin。两者退避 1-30 秒且单请求超时 5 分钟；包仓 Python fetch 最多八次总请求并限制可重试错误类型。重试不改变固定 SHA-256/SHA-1、签名和 fingerprint 判据。workflow 合同、curl 传输负控、shell 504 实跑夹具和下载负控在 `scripts/source-build/retry-curl.test.mjs`、`cloud-workflow.test.mjs`、`engine-base-workflow.test.mjs`、`linux-assets-workflow.test.mjs` 与 `test_prepare_termux_signed_repo.py`；详情见 [构建与环境](build-and-env.md#来源链下载抖动与快速预检)、[坑 653](gotchas.md)、[坑 654](gotchas.md) 和[坑 655](gotchas.md)。
-- 以下旧来源链锚点仅作历史回查；当前固定源码与允许入口见 [构建环境](build-and-env.md)，本轮实际验证见升级记录。
-
-
-- **一句话**：把「一次打包命令」变成可发布的 APK：先在 WSL 内从基座建出注入前的运行时快照，再逐 ABI 注入插件与补丁、过完整门禁集、写快照指纹并 gradle 出包，任一 ABI 被拒即整链非 0。
-- **入口/触发**：
-  - 快照段：`node scripts/build-snapshot-013.mjs arm64 或 x86_64`（Windows 上自动重入 WSL；前置是 `.deploy-tmp/{arm64-base,x64-base}/base-usr.tar.xz`）。
-  - 打包段：`pwsh -File scripts\build-apk-013.ps1 [-Suffix ""] [-Fast] [-OnlyAbi 指定 ABI] [-SkipInject] [-ExportSnapshots]`，**在协调仓根执行**（apk 仓 AGENTS.md:30；apk 仓副本 scripts/ 与协调仓逐字节镜像，权威源在协调仓同名路径——本条目行号一律取 apk 仓副本）。
-  - 间接入口：发布链 `scripts/build-release.ps1:56,60,147` 与 CI/云端 `dsh-mobile-apk/scripts/build-apk.mjs` 跑同一套门禁集（`check-release-gates.mjs:136-140` 断言接线）。
-  - 一键发布 workflow 的 version 输入只通过环境变量进入 shell，先做版本格式与 `versionName` 相等断言；跨 job artifact 使用固定名称与下载目录，版本只用于验证后的 release 子目录。
-- **运行顺序**：
-  - 第 1 段（快照构建，无注入）：Windows 宿主自重重入 WSL（`build-snapshot-013.mjs:31-45`，可用 `DSH_NO_WSL_REEXEC=1` 关闭）→ 基座与 base-dsh 解压到 ext4 stage（`:120-126`，`xz -dT「XZ_THREADS 线程」 | tar -x`）→ 机密剥离 + seed settings.yaml + patchReload 出厂值（`:134-153`）→ 剥离清单后置断言（`:168-175`）→ 引擎 overlay 逐包 tgz 覆盖（`:192-275`，登记表 snapshot-config/engine-overlay.json）→ 引擎树补丁 `apply-patches.mjs --apply --scope engine` 并逐条复查 marker、再跑四项行为回归（`:291-350`）→ chrome87 语法降级 + 复扫（`:366-413`）→ combo 缓存预计算（`:415-447`）→ 能力目录快照（`:449-460`）→ Termux 索引/依赖闭包/deb 下载校验/提取（`:462-599`）→ dpkg status 初始化（`:601-615`）→ shebang 与 RUNPATH 重写（`:617-624`）→ 三缺陷固化 tar/git/rg + cordis.patch.yml 权威覆盖（`:626-693`）→ pnpm/canvas/apt-dpkg wrapper/install-clang.sh（`:694-864`）→ 错位目录剔除与瘦身（`:866-925`）→ 软链自净化（`:933-966`）→ 归档 `tar -c --mtime=@「固定纪元」 | xz -T「XZ_THREADS 线程」 -6` 并写 snapshot.sha256（`:968-989`）→ 归档内 LICENSES、旧 Termux 前缀软链、A1 出厂值三道自检（`:997-1046`）。产出 `.deploy-tmp/snapshot-013/「abi」/snapshot.tar.xz`。
-  - 第 2 段（打包编排）：循环外先跑静态门禁（`build-apk-013.ps1:37-146`，含补丁镜像 `:38`、契约 `:45`、状态登记/桥对称/SKIP 纪律 `:51-58`、中止语义自检 `:62`、指纹预检 `:69`、manifest/注释/有界读/路由鉴权/协议 V2/工具 schema/控制 op/插件单测/冷启动预算/构建器产出面/并发上限/Kotlin 单测数量）→ pi-ai 目录 diff（`:150-161`，信息性不拒）→ 读 build.gradle.kts 版本定 out 目录（`:164-165`）→ 逐 ABI（arm64、x86_64 顺序，`:182`）：overlay 抽验（`:193`）→ vendor 补丁门禁（`:211`）→ 注入段语法降级到暂存副本（`:229-264`，vendor 是入库跟踪文件，禁就地改写）→ 注入段 combo 增量预计算（`:270-276`）→ `inject-all.py` 单 pass 注入（`:283`）→ 挂载集（`:287`）、注入成员完整性（`:291`）、combo 覆盖（`:295`）、语法下限复扫（`:303`）、工具面预算（`:308`）、注入后鉴权（`:312`）、strip 后置（`:316`）→ 权限模式（`:326`）、第三方合规（`:338`）、许可资产入 assets（`:341-344`）、机密（`:350`）、elf（`:355`）、运行时补丁资产（`:365`）、A1 出厂值（`:370`）→ 清 assets 残留并写 snapshot.tar.xz + snapshot.sha256（`:377-381`）→ 指纹 `--require` 严格对账（`:384`）→ `gradlew :app:assembleDebug -PversionNameSuffix=`（`:388`）→ 拷到 `out/v「版本」/pocket-harness-v「版本」「后缀」-「abi」.apk`（`:391`）。
-  - 第 3 段（可选归档）：`-ExportSnapshots` 导出注入后快照 + 写 .sha256，并用 `check-snapshot-asset.ps1` 比对 APK 内嵌快照逐字节一致（`:403-420`）→ 交发布链/上传面。
-  - **APK 终端组装共用段**：本地 `build-apk-013.ps1`、云端 `build-apk.yml → build-apk.mjs`、发布 `build-release.ps1` 都把已准备好的 ABI 快照交给 `build-apk-engine.mjs assemble`；该引擎负责复制快照、写 SHA-256 指纹、严格跑 `check-snapshot-fingerprint.mjs --require`、Gradle `:app:assembleDebug`、复制命名产物。三条调用路径随后都对最终输出目录运行 `build-apk-engine.mjs verify`，由 `check-apk-signatures.mjs` 调 `apksigner verify --verbose` 并要求 v1/v2/v3 全为 true；云端 workflow 另有一次目录/单 APK 签名复核。（0.14.5：原先 `build-snapshot.yml` 那条独立快照构建工作流直接调用 Gradle、不属于这里描述的共享终端引擎链；**该 workflow 已删除**，现在只有下列三条路径属于终端组装面。）
-  - 收口：任一 ABI 被门禁拒绝或零产出 → 打印汇总后 `exit 1`（`:427-428`），由 `check-build-chain-abort.mjs:53-89` 静态锁住记账纪律。
-- **嵌套与线程**：主线程 = PowerShell 编排，逐 ABI 串行；每 ABI 一次 `gradlew --no-daemon`（`:388`，独立 JVM）。快照段在 Windows 上是父子进程：父进程 `execSync wsl.exe -e bash -lc`（`build-snapshot-013.mjs:40`）只转发退出码，子进程在 WSL 的 ext4 stage 里跑完全链，压缩/解压线程数统一取 `scripts/lib/shell.mjs:31` 的 XZ_THREADS（默认 8，`DSH_CPU_THREADS` 可覆写）。Python 注入（inject-all.py）与 node 门禁都是子进程调用、各自单线程；调用深度最多 3 层（ps1 → node/python 工具；build-snapshot → apply-patches.mjs → 其内部再无 spawn）。
-- **耦合**：
-  - `scripts/plugin-dirs.json` 的 `dirs`/`externals` 是注入集唯一出处：ps1:174-178 读它、`check-inject-completeness.mjs:37-38` 也读它；增删包只改这一处。
-  - `profile-web.cordis.patch.yml` 的 `name:` 行集合 ↔ 注入包 package.json 的 name：`check-patch-mounts.mjs:28-40` 双向差集（挂载 ⊇ 注入，且反向差集只允许 `@deepseek-ai/*` 在挂载侧）。
-  - registry.json 的 `scope` 分区：`engine` 归快照段（build-snapshot-013.mjs:294,297），`vendor` 归打包段（build-apk-013.ps1:211）；`marker` 由 build-snapshot-013.mjs:300-311 逐条复查，`requires` 由 apply-patches.mjs:2490#expect=requirementFailure 提前诊断。
-  - 补丁变换只用 `replaceOnce` / `replaceOnceRe` 校验锚点唯一；只有可选旧形态迁移可用 `replaceAtMostOnce` 变体。`scripts/patches/tests/replace-once.test.mjs` 对真实 ArkWeb 正则锚点造重复负控，runner 必须失败且保持目标文件不变。
-  - 环境变量面：`DSH_INJECT_PRESET`（ps1:17 写入 → inject-all.py:174 决定重压缩 preset，`-Fast`=1、发布档默认 9）、`SOURCE_DATE_EPOCH`（build-snapshot-013.mjs:982 与 inject-all.py:304 共用的固定 mtime，保可复现）、`DSH_SNAPSHOT_STAGE`/`DSH_NO_WSL_REEXEC`/`DSH_PROFILE_PATCH_RELOAD`（:88/:31/:149）、`XZ_THREADS`/`DSH_CPU_THREADS`（scripts/lib/shell.mjs:31）。
-  - 装配 profile 常量 `PROFILES=(web,headless)` 与负控 `headless-bad`（inject-all.py:32,35）必须与 `check-inject-completeness.mjs:28` 默认 `--profiles web,headless` 一致；权威 patch 只覆盖前两者、负控显式跳过（inject-all.py:273-281）。
-  - 路径契约：构建器写 `.deploy-tmp/snapshot-013/「abi」/snapshot.tar.xz`（:970）＝ 打包链读同一路径（ps1:186），由 `check-snapshot-builder-output.mjs:139-146` 锁同源；打包段再把它写进 `app/src/main/assets/{snapshot.tar.xz,snapshot.sha256}`（ps1:379-381），壳侧按此指纹判「快照是否变化」。
-  - 注入段与快照段的 combo 缓存键都以 sha256(client.js) 为准，所以降级必须发生在预计算之前（build-snapshot:359 顺序硬约束、ps1:268 注释同一约束）。
-  - 门禁集是唯一声明处 `check-release-gates.mjs:28-104`（现数 27 项），本地链必须逐条出现其脚本名，聚合入口只由 build-release.ps1 与 CI 调用。
-- **关键坐标**：
-  - `scripts/build-apk-013.ps1:182`（逐 ABI 主循环；-OnlyAbi/-Fast 只改循环范围）
-  - `scripts/build-apk-013.ps1:283`（inject-all.py 单 pass 注入调用）
-  - `scripts/build-apk-013.ps1:388`（gradle assembleDebug，出包唯一一步）
-  - `scripts/build-apk-engine.mjs:33` / `:86`（共用 assemble 与签名验证入口）；调用测试锁住本地、云端、发布三路汇合：`scripts/build-apk-engine.test.mjs:121`
-  - `scripts/patches/data/registry-scan-c4.mjs:11`（同步 flush 的 Loader 临时索引与 manifest 复用；详细设备计时/预算见 RUNTIME-PATCHES §7.6，自动补给的异步 checkpoint 见 model-capability README）
-  - `scripts/patches/data/client-index-loader-barrier.mjs:3`（G2：首页HTML在快照插件图前等待同一host Loader收敛；静态资源不参与等待）
-  - `scripts/patches/data/undo-safe-transaction-snippet.mjs:1`（Safe Mode 事务代码模板；由 `apply-patches.mjs:620#expect=const%20transaction` 注入 vendor 快照代码）
-  - `scripts/build-apk-013.ps1:427`（被拒非空即 exit 1 的收口）
-  - `scripts/build-snapshot-013.mjs:31`（Windows 宿主重入 WSL 的判据）
-  - `scripts/build-snapshot-013.mjs:297`（引擎树补丁 --apply --scope engine）
-  - `scripts/build-snapshot-013.mjs:985`（归档 tar | xz，快照产物的唯一产出点）
-  - `scripts/inject-all.py:321`（补缺循环：包内新增文件补 push，坑 63 的主链修复点）
-  - `scripts/patches/apply-patches.mjs:2456#expect=const%20mode`（mode 推导：无 --apply 即 check）与 `scripts/patches/apply-patches.mjs:2460#expect=const%20scope`（--scope 默认 vendor）
-- **不变量**：
-  - 注入集与 patch 挂载集双向一致，注入成员集合与源包逐项一致且 lib 内相对 import 可解析（`check-patch-mounts.mjs`、`check-inject-completeness.mjs:98-115`）——违反的症状是设备侧 `ERR_MODULE_NOT_FOUND`、引擎启动即死。
-  - 新包目录与补缺文件父目录由 `inject-all.py` 的 `ensure_parent_dirs` 共用 `seen_dirs` 记账，包含输入中已有空包目录的情况；不得先裸写目录再补父目录，否则双构建读取器拒绝重复成员。覆盖：`scripts/source-build/test_inject_all.py` 新包与仅目录包两种夹具（坑 439）。
-  - 归档里不得有指向旧 Termux 前缀的绝对软链（build-snapshot-013.mjs:1029 判 0），权限只能由 inject-all.py 重打包按内容归一（ELF/shebang=0700、数据=0600，`:210-214`）——WSL 9p 下 chmod 无效，所以「归档前 chmod」是无效步骤。
-  - 产物 tar 与声明 sha256 逐字节一致（ps1:384 `--require`）；发布快照资产必须与 APK 内嵌快照同源（check-snapshot-asset.ps1:26），禁止手工从 `.deploy-tmp/snapshot-013/` 拷发布资产。
-  - 双仓逐字节镜像（**已退役，2026-10-15**）：原先涵盖 `scripts/patches/**`、`scripts/build-apk-013.ps1`、`scripts/build-snapshot-013.mjs`、`scripts/inject-all.py`、`scripts/plugin-dirs.json`、`scripts/profile-web.cordis.patch.yml`、`scripts/lib/shell.mjs`、`scripts/snapshot-config/engine-overlay.json` 等；现由树内副本自洽 + 各自门禁保障，不做跨树比对（AGENTS §4 铁律 9）。
-  - `-Fast` 与发布档的差异只有两处：`OnlyAbi` 缺省 x86_64（ps1:16）与 `DSH_INJECT_PRESET=1`（ps1:17）；门禁集不缩、产物体积更大、禁作发布资产。`-SkipInject` 是另一条 dev 档：跳过注入与文件模式门禁（只告警，ps1:326-335），直接打包 build-snapshot 原始产物。
-- **症状 → 排查**：
-  - 打包刚起步就红在「补丁镜像不一致」：跑 `node scripts/check-patch-mirror.mjs`；对端探测顺序与镜像面清单见该脚本 `:56-72`（脚本自身也在镜像面内）。
-  - 设备装上后引擎起不来、日志 `Cannot find module` / `ERR_MODULE_NOT_FOUND`：注入丢件，跑 `node scripts/check-inject-completeness.mjs .deploy-tmp\build-\13-「abi」\snap-final2.tar.xz`，并在构建日志 grep `[fill]` `[prune]` `[add]`（inject-all.py:336-358）。
-  - 快照「看起来没更新」：比对 `.deploy-tmp\snapshot-013\「abi」\snapshot.tar.xz` 的 mtime 与同级 snapshot.sha256 内容；跑 `node scripts/check-snapshot-builder-output.mjs`（坑 151：产出面被删会静默复用陈旧 tar）。
-  - 老 WebView 白屏无报错：`node scripts/check-browser-syntax-floor.mjs --scan 「注入后 tar」`；降级落点在 build-snapshot-013.mjs:366-413（快照段）与 build-apk-013.ps1:229-264（注入段，vendor 走暂存副本）。
-  - 权限模式门禁红 / 发行 tar 可执行位丢失：确认没走 `-SkipInject`（ps1:329-334），并核「该 ABI」的 snap-final2 是否由 inject-all.py 重打包产出（9p 下 chmod 不生效，gotchas.md 第 44 条）。
-  - 引擎补丁「marker 全绿但行为不对」：看快照构建日志里四项行为回归（boot-pending-G1 / pi-toolcall-G2 / arkweb-resource-protocol-H1 / external-draft-conversation-seam-J1，build-snapshot-013.mjs:315-349）与 `apply-patches.mjs --list`。
-- **可疑点**：
-  1. `scripts/build-apk-013.ps1:166` 无条件重设 `$apkDir = Join-Path $Root "dsh-mobile-apk"`，把 `:22-23` 的「apk 仓自包含布局」检测**作废**（已确认，代码可判）：从 apk 仓根直跑时该目录不存在，第 3 步写 assets 与 `Push-Location` 会失败；与脚本自身注释（`:20-21` 声称两种布局共用同一份脚本）矛盾。当前文档口径是「在协调仓根执行」（apk AGENTS.md:30），故影响为潜在；协调仓 `coord:docs/review/state-audit/build-runtime.md:385` 已记录同一条。
-  2. `scripts/build-apk-013.ps1:206-212` 注释称 vendor 补丁「默认 ensure 语义（缺席即施加）」，实际调用不带 `--apply`/`--scope`，`scripts/patches/apply-patches.mjs:2456#expect=const%20mode`、`scripts/patches/apply-patches.mjs:2460#expect=const%20scope` 推导为 `mode=check`（已确认）：只校验不施加，补丁必须先打在入库的 `vendor/*/lib/` 里；缺一条即 `Deny-Abi` 拒打包（失败关闭，但排查时按注释预期会找不到「自动施加」这一步）。0.13.7-CERTIFICATION.md:11 亦记 `mode=check`，即注释是旧语义残留。
-  3. `scripts/make-snapshot.sh:8` 的 `SNAP_PKG_ROOT` 默认 `/data/user/0/com.snoworwind.pocketharness`（不含 `/files`），`:158` 的 sed 会把 heredoc 兜底 patch 的 `/data/data/com.termux/files/usr` 改写成 `.../com.snoworwind.pocketharness/usr/bin/bash`（已确认，触发条件 = 设备上找不到外部权威 patch，走 `:156` 警告分支）→ 设备侧 assertBash 失败、注入包全不装配。该脚本是备选发布入口的输入端（`build-release.ps1:89-114` 要求设备侧产出 `snapshot/snapshot-*.tar.xz`），且这条入口的快照无软链净化、无归档自检（协调仓 `coord:docs/COMPAT-REVIEW-0.14.0-2026-09-19.md:1337` 记 I-4）。
-  4. `scripts/build-apk-013.ps1:141-144` 注释称「本次构建前必须重跑 Kotlin 单测由发布链步骤保证」，但 `build-release.ps1` 全文没有 `testDebugUnitTest`（已确认）：发布链经 `check-release-gates.mjs --run --require` 调用 `check-kotlin-test-count.mjs`（`:104` 条目、通用 argvFor 不带 `--allow-missing`），干净机器上无结果即 `exit 1`。本地链用 `--allow-missing`（ps1:145）所以不红——症状是「本地全绿、发布链在干净机器上红」（协调仓 `coord:docs/COMPAT-REVIEW-0.14.0-2026-09-19.md:1334` 记 I-1，P1）。
-  5. 【历史项已退役（2026-10-15）】旧 MIRROR_TOP 覆盖缺口只针对已移除的跨树逐字节镜像；现行本仓门禁只校验 registry↔IMPLS 自洽，不能把旧清单当作当前缺陷。入口见 `scripts/check-patch-mirror.mjs:53#expect=const%20regPath`。
-  - 补充（非可疑，语义澄清）：坑 63 的「只替换已有成员、新增文件丢弃」在**主链已被 inject-all.py 修复**（`:204-208` 注释 + `:321-338` 补缺循环 + 门禁 `check-inject-completeness.mjs:2`），但 `inject-snapshot.py:106-121`（只在整包缺席时走 need_add）仍是另外一条路径的注入器：`build-release.ps1:109`。（0.14.5：原先还有 apk 仓的独立快照 workflow（`build-snapshot.yml`，注入步），它只注入 3 个包、不做引擎 overlay/引擎补丁/语法降级，故也带坑 63 语义；**该 workflow 已删除**——快照构建入口已收敛为 `build-apk.yml` / `release.yml` 单一链，故其注入器语义不再适用。**2026-10-15：`release.yml` 亦已退役（本分支不出 Release，只允许来源链构建，见 AGENTS §4 铁律 9）**。）
-
-- 已修（2026-10-31）：`build-and-env.md` 已按源码说明共享 `XZ_THREADS` 与 `DSH_CPU_THREADS` 覆写。
-- 已退役：执行地图中的旧构建描述仅作发现时快照；当前线程配置与来源链步骤以 `build-and-env.md` 和来源构建源码为准。
-- 已退役：门禁数量为易漂移数据；当前按 `scripts/check-release-gates.mjs --list` 现数，旧桥文档快照的数字不作现状。
-- [B01] 历史漂移已修（2026-10-29）：build-and-env.md 已把旧本地链描述标作历史并以来源链实际调用为准；当前门禁接线由 PR Gate 检查。
-- 已修（2026-10-31）：`RUNTIME-PATCHES.md` 已将活动补丁执行边界改为本仓来源链 runner，不再称旧本地脚本会施加 vendor 补丁。
-漂移（**2026-09-25 已修**）：`docs/AGENTS/RUNTIME-PATCHES.md` 原写 engine 补丁「当前全量」14 项；该文件已按现数改为 **15 项**（`scripts/patches/registry.json` 实测 30 条总 / 15 条 engine / 15 条 vendor）。原条目点名的四条缺口（combo-single-lazy-A5、combo-parallel-C3、combo-probe-P1、boot-third-party-isolation-G3）中，**A5 与 C3 已于 0.14.2 追版时按实测撤销**（见 RUNTIME-PATCHES §7.4 与 `scripts/patches/README.md` 撤销段），P1 与 G3 仍在册 ⇒ 清单已与源码同源，此处不再是漂移。
-- 已修（2026-10-31）：`AGENTS.md` 的 vendor 目录摘要已与本仓现存 marketplace 与 undo-savepoint 副本一致。
-
-```mermaid
-flowchart TD
-  A["触发 本地打包命令 或 发布链 或 CI"] --> B["build-snapshot-013.mjs 快照构建"]
-  B --> C{"宿主是 Windows"}
-  C -->|"是"| D["重入 WSL 在 ext4 执行"]
-  C -->|"否"| E["本机 Linux 执行"]
-  D --> F["基座解压 引擎 overlay 引擎树补丁"]
-  E --> F
-  F --> G{"补丁 marker 与行为回归"}
-  G -->|"失败"| X["非零退出 拒绝出产物"]
-  G -->|"通过"| H["语法降级 与 combo 预计算"]
-  H --> I{"归档自检 LICENSES 与软链"}
-  I -->|"失败"| X
-  I -->|"通过"| J["产出 snapshot.tar.xz 与 sha256"]
-  J --> K["build-apk-013.ps1 编排"]
-  K --> L{"静态门禁 与 补丁镜像"}
-  L -->|"失败"| X
-  L -->|"通过"| M["逐 ABI 打包循环"]
-  M --> N["注入段降级 与 combo 增量"]
-  N --> O["inject-all.py 单 pass 注入并补缺"]
-  O --> P{"注入后产物门禁"}
-  P -->|"失败"| Q["Deny-Abi 记账 跳过本 ABI"]
-  P -->|"通过"| R["写 assets 快照与指纹 严格对账"]
-  Q --> S{"有 ABI 被拒 或 零产出"}
-  R --> T["gradle assembleDebug 出 APK"]
-  T --> U["可选 导出快照资产并核对 APK 内嵌"]
-  U --> S
-  S -->|"是"| X
-  S -->|"否"| V["交付 out 目录产物"]
-```
-
-组件来源证明调用链：`record-project-components.mjs inputs` → `committedComponent` 从固定提交读取清单与哈希 → `rejectUntrackedInputs` 拒绝额外源码 → 构建 → `outputs` 再从提交重建身份并核对报告 → 检查实际源码与输出 → 写出证明。覆盖由 `scripts/source-build/record-project-components.test.mjs` 的篡改与真实 CLI 负控维护；边界见 `gotchas.md` 坑 336。
-
-本地来源链隔离：`run-local-source-chain.mjs` → `prepareSourceWorkspace` 初建/续跑 → `rejectEscapedWriteRoots` → `canonicalPath` 解析 dangling link、递归宿主写树并跟随树内别名 → `rejectSourceLinks` 原仓保护 → 才运行 workflow 步骤。编排器只解析 workflow 的 `build-abi` 单构建步骤定义；CI 的 Termux 输入预检 artifact 下载步骤在本地映射成同一 `prepare-termux-signed-repo.py` 调用，避免本地与 CI 分叉输入校验。新增的锁定 Gradle 预热归到 `verify` 阶段，因此 `--from apk` 续跑也会先做这项快速网络预检。覆盖账本由 `scripts/source-build/local-source-workspace.test.mjs` 的初建/续跑、外部报告叶子、组件编译树、runtime/pnpm 正例及真实 runner 负控维护，见 `gotchas.md` 坑 339、506。
-
-本地 x86_64 QA 变体：调用同一 workflow 步骤，以 `--abi x86_64` 注入目标 ABI；`assertMaintainedSource` 只允许已提交的 `codex/x86-*` 分支显式跑本地 QA。云端 `build-apk-source.yml` 在 main 上通过 `abi` 输入选择 arm64 或 x86_64；草稿工作流用矩阵分别运行两个 ABI。Termux bootstrap、签名索引、Koffi、node-pty、base/snapshot 路径和最终 APK ABI 同步切换；x86 跳过 ARM64 Linux 资产与 Canvas native，最终来源证明绑定所选 ABI。
-
-模型能力凭据出口：工具/手动填充 → `probePassive` 或主动正/负控 → `endpointUrl` 与 `authHeaders` → fetch 拒绝重定向 → `diagnosticText` 清理 URL 与已知请求凭据 → 报告；`apply()` 的 provider 配置 → `safeDiagnostic` → diag/logger/writer trace 共用去敏出口。reasoning 校验读取内存原文后，仅去敏副本进入结果。覆盖账本为 `plugins/dsh-model-capability/test/capability-probe.test.mjs` 的真实双 HTTP 服务、回显凭据与 Unicode 负控，以及 `test/save-triggered-fill.test.mjs` 的生产 apply/discover 日志反例；设备层阻塞及证据见 `gotchas.md` 坑 340。
-
-归一化调用链：`export-dsh-engine.mjs` → `canonicalizePackedManifest` → `canonicalPackageJson`（保留条件导出及扩展字段内部顺序）→ 固定 gzip 头；来源 workflow 产出侧 → `collectEntries`（权限、目录入账，特殊类型拒绝）→ `normalizeSnapshot` → 未命中规则按原 Buffer 哈希，命中规则严格解码 → 同一 package 规则及精确 pnpm 规则 → v3 摘要。覆盖账本：`scripts/source-build/normalize-snapshot.test.mjs` 的二进制、特殊字段、顺序、真实 Node 加载、Unix 执行权限及 CLI 负控；边界见 `gotchas.md` 坑 337、338。
-
-Engine base 双副本：`build-base.yml` 的两路 `build-engine.sh` → `engine-base.mjs capture` 复制部署树 → 仅对 `engine-deploy/package.json` 与 `engine-deploy/pnpm-workspace.yaml` 调用受限 canonicalizer（JSON 条件导出顺序保留，YAML 非映射形态判红）→ `check-dsh-runtime-dependencies.mjs` 按 `(importer, dependency)` 固定报告序，另递归检查已启用 telemetry consumers 的精确第三方传递依赖与 Node 实际查找位置 → `indexTree`/`compare` 逐文件校验 → 通过后才写 candidate 与 cache。覆盖账本：`engine-base.test.mjs` 对映射键逆序的双副本做真实 archive compare，断言缺依赖仍判红，并用根目录正确但消费者嵌套副本过期的夹具证明版本错配判红；materialize 仅以可信 lock 验 manifest、输出哈希与 tree receipt 后落盘。
-来源依赖检查对第一方直接依赖和必需 peer 核对实际解析版本，并单独登记已审 Koffi 覆盖；另对当前启用的 `dsh-otel` 与 `dsh-session-telemetry-otel` 从实际 package 目录递归走 Node 查找路径，校验完整 `dependencies` 闭包、精确版本及缺包，诊断带消费者引用链。OpenTelemetry 消费者局部版本由 `engine-overlay.json` 的 `nested` 登记；八个 SDK/导出器包固定为 0.222.0 或 2.11.0，session telemetry 固定 `api-logs@0.222.0`。`engine-base.test.mjs` 覆盖陈旧嵌套包即使根目录版本正确仍判红，以及修正后的正控。完整来源构建与设备三层验收仍待本 PR 合并后补证；本轮按用户指示不做设备验证。
-来源 APK 注入完成后，`build-apk.mjs` 对最终快照执行 `check-snapshot-profile-identity.py`，核对 web/headless 两个生产 profile 的权威字节、applicationId 与应用私有 files 路径；headless-bad 仅在输入中存在时核对其仍与权威 patch 不同，不要求进入生产 APK。门禁同时拒绝重复/非规范 profile 路径及链接，再执行其他快照门禁；最终来源 APK 尚待构建验证。
-
-**ABI 参数化来源审计变体**：`.github/workflows/build-apk-source.yml` 是独立的 `workflow_dispatch` 入口。它从固定 Harness commit 通过官方 Host/Client 编译、根 workspace bundle 与 Web 步骤构建 CLI/UI；部署前临时把 overlay 清单中的第一方工作区包加入实际部署目标 `apps/cli` 的 production dependencies，并同步更新锁文件 `apps/cli` importer 后 pnpm deploy，以纳入这些包及其生产依赖闭包；deploy 完成即恢复上游 `apps/cli/package.json` 与锁文件，并把临时输入哈希和包清单附入 provenance。第一方 tarball 构建产物写入 deploy 树中对应符号链接的物理包目录，保留 pnpm 依赖目录与虚拟 store 链接；快照生成后把第一方包顶层 payload 物化为普通文件目录，并令 `.pnpm` store 中相同 payload 通过相对链接回指顶层文件，为顶层包合并包内和 `.pnpm` 同级的依赖链接并保留 Node 搜索优先级，之后重打包并更新快照 SHA-256。注入后、快照构建后分别由 `scripts/source-build/check-dsh-runtime-dependencies.mjs` 按 Node 的 `node_modules` 祖先查找规则验证必需依赖的 `package.json` 在运行时树中可达，并保存路径报告；该检查确认 pnpm 包依赖在运行时树内；APK 源码构建在打包步骤临时用 source-build 适配器把既有 overlay 门禁调用路由至 `source-build/check-dsh-source-snapshot.mjs`，从最终压缩快照核验固定来源包版本与 tarball 哈希、依赖链接、引擎补丁标记及内置预设载体（载体清单在 `scripts/source-build/preset-carriers.mjs`，与权威 overlay 门禁的 CARRIERS 同源，其单测读权威源文本双向比对以防重锚后脱钩）；原件由退出 trap 恢复，原件/适配器/检查器哈希记入策略 provenance，普通构建仍走 `check-engine-overlay.mjs`。同一打包步骤在跑门禁前用 `restore-overlay-pins.mjs` 按策略报告记下的清单把构建期摘除的第一方 overlay 钉并回 `engine-overlay.json`（摘除是为了让快照构建器不可回拉上游发布版 tarball 覆盖源码产物；而 `check-contract.mjs` 第 7 节按这份清单定运行时版本并判 profile 引擎包 insert 行同版），还原记录进策略 provenance，退出 trap 随后覆盖回原文件。Termux 官方 bootstrap ZIP 在 producer 与 build 两处对固定 GitHub Release URL 使用最多 8 次、最长 600 秒的瞬态错误重试，解压前仍校验 ABI 固定 SHA-256；独立 `termux-package-inputs` job 从该 bootstrap 读取密钥、验签本轮滚动 `InRelease`，按签名摘要/长度核验 `Packages.gz` 并逐项校验依赖闭包 `.deb`，将摘要、包版本和哈希写入 provenance。`build-abi` 的 primary/reference 两路依赖预检 job，并下载同一个按 ABI + run ID 命名的 attempt-independent artifact；失败 job 重跑复用成功 producer 的快照，完整 workflow rerun 则由 `overwrite: true` 替换同名快照；两路不再分别请求滚动仓库。PRoot recipe 从 `linux-backend-packages.json` 固定 commit 路径取件并校验 SHA-256；recipe 跨时间固定，Termux stable 包输入按轮记录，缺失 `.deb` 或签名索引不一致时失败关闭。profile 文件由上游 `profile.ts` 模板初始化。壳插件从项目源构建，host-web-compat 对照本次项目提交内的 JavaScript 源码，marketplace 用**固定 npm 发布产物**（`dshmarketplace-plugin-0.1.7.tgz`，sha256 钉在 workflow 里；不再从组件源码树重建——我们的镜像与 market-* 补丁都按发布字节定义，重建会用不同工具链产出不同字节、把补丁锚空，见坑 205）；此变体把旧 LFS 基座独有且未挂载的四个遗留包排除，名单与理由随策略清单附出。此流程不启用 LFS、不读取 `base/base-usr-*` 或 `base-dsh`，通过本地只读 HTTP 镜像把验签后的索引与 deb 交给既有快照构建器，最后按 ABI 输入出对应 APK 与来源清单/哈希；release 草稿对 arm64 与 x86_64 各运行一轮。当前构建副本只用临时证书；云端独立验证两个 runner 的 APK/快照后，隔离签名 job 才读取正式 PKCS12，并以仓库固定生产证书 pin 复核三签。实现分别位于 `scripts/source-build/prepare-termux-bootstrap.py`、`prepare-termux-signed-repo.py`、`seed-dsh-profiles.mjs`、`export-dsh-engine.mjs`、`inject-dsh-engine-packages.mjs`、`check-dsh-runtime-dependencies.mjs`、`materialize-dsh-pnpm-packages.mjs`、`check-dsh-source-snapshot.mjs`、`check-dsh-source-snapshot-gate.mjs`、`prepare-pnpm-deploy-runtime-closure.mjs`。Android 运行时闭包还锁定 Koffi 3.2.1、启用 Android/ARM64 目标并加入 Sharp WASM 后备；`check-android-native-runtime-packages.mjs` 核验 AArch64 ELF、WASM 可解析路径与包 payload 哈希。
+- **入口与边界**：`.github/workflows/build-apk.yml` 或 `build-apk-source.yml`；只接受专用实验分支、ARM64 与显式开关；不调用旧快照构建器、不本地构建、不生产签名、不发布。详细输入/缓存/门禁迁移账本见 [Linux CI](LINUX-CI.md)。
+- **顺序**：固定源码双副本引擎底座 → 当前源码插件/marketplace → 固定 NDK 宿主库与 Linux 资产 → `build-linux-payload.mjs` 施加/独立重放引擎补丁 → 两套 profile 工厂插件目录装配与完整性检查 → 客体 engine/home 归档 → 四件套清单 → Kotlin 单测 → `build-linux-apk.mjs` 门禁/Gradle → APK 字节、载荷、三签检查 → 上传 → 可选独立比较。
+- **嵌套与线程**：Actions job 中 Node 编排子进程；宿主原生库与客体源码编译使用固定工具链；home 的 GNU xz 最多 8 线程，engine 的 Python lzma 单线程；不启动 Termux HTTP 镜像。
+- **耦合**：引擎底座只缓存引擎输入，当前项目组件收据在命中后重新冻结；Linux 资产使用精确内容键；插件依赖收集复用 `inject-all.py` 的纯 payload 函数，不执行其快照入口。ownership manifest 从最终目录装配推导；最终 APK 载荷以 manifest 与 SHA-256 绑定。
+- **覆盖账本**：`scripts/source-build/linux-payload.test.mjs`、`test_linux_ci_payload.py`、`native-runtime-inventory-workflow.test.mjs` 验证实际 profile seed、客体路径/秘密负控、artifact 传播和独立比较的签名边界；`check-linux-ci.mjs --self-test` 防止旧链接回。源码组件篡改测试继续由 `record-project-components.test.mjs` 维护。
 
 ```mermaid
 flowchart LR
-  A["workflow_dispatch ABI（默认 arm64）"] --> B["检出项目源码 不启用 LFS"]
-  B --> R["核对插件 package-lock 根声明"]
-  R --> C["固定 Harness commit"]
-  C --> D["pnpm install 冻结锁文件"]
-  D --> P["当前 Harness 全仓源码构建"]
-  P --> V["原位替换固定 Cordis 源码 保留 node_modules"]
-  V --> W["只对齐五个旧版包的锁文件 importer"]
-  W --> Q["单独编译五个固定旧版包"]
-  Q --> E["导出 first-party overlay tarballs 与源码哈希"]
-  B --> F["构建副本下载 pinned Termux bootstrap ZIP"]
-  F --> G{"SHA-256 匹配"}
-  G -->|"否"| X["终止 不产 APK"]
-  G -->|"是"| H["按 SYMLINKS 重建 usr 并从 profile.ts seed"]
-  A --> T["独立 job 下载并校验同一 pinned bootstrap"]
-  T --> T1["bootstrap keyring 验签当轮 InRelease"]
-  T1 --> T2{"签名 Packages.gz 匹配"}
-  T2 -->|"否"| X
-  T2 -->|"是"| T3["下载闭包并逐 deb 核 SHA-256"]
-  T3 --> T4["写 provenance 并上传本轮包快照"]
-  T4 --> K["所选 ABI 的两路构建下载同一 artifact"]
-  H --> K
-  E --> L["快照构建 本地镜像只提供验过的 Termux 文件"]
-  K --> L
-  L --> M["既有注入与门禁"]
-  M --> N["assembleDebug ABI APK"]
-  N --> O["APK SHA-256 与来源清单"]
+  A[显式实验分支 ARM64] --> B[固定引擎源码底座]
+  B --> C[源码插件和 marketplace]
+  C --> D[固定 NDK 与 Debian Node 资产]
+  D --> E[Linux engine 和 factory home]
+  E --> F[源码独立重放和插件完整性]
+  F --> G[四件套 manifest]
+  G --> H[Kotlin 单测与 Linux 门禁]
+  H --> I[Gradle APK]
+  I --> J[载荷 原生库 三签复验]
+  J --> K[artifact]
 ```
 
+```mermaid
+flowchart LR
+  A[primary APK] --> C[核验 Linux manifest 与载荷]
+  B[reference APK] --> C
+  C --> D[比较除 JAR 签名外全部成员摘要]
+  D --> E{一致}
+  E -->|是| F[独立重建证明]
+  E -->|否| G[失败 禁止 verified artifact]
+```
+
+历史 PowerShell/Termux 构建器仍在源码树中用于追溯与独立回归，不属于本分支 CI；不允许用其产出 APK。
+
 #### B02 静态门禁链与 CI
+
+当前实验分支的活跃门禁与退役替代关系以 [Linux CI](LINUX-CI.md) 为准；以下旧快照/发布聚合门禁说明是保留工具的历史调用地图，已不接当前 PR/APK 工作流。
 
 
 - **一句话**：用 33 个 `scripts/check-*.mjs` 静态脚本守住「产物形态、跨层集合一致、SKIP 纪律」三类不变量，并由 `scripts/check-release-gates.mjs` 一处声明门禁集（当前 27 项），强制两仓 CI 与两条打包链逐项接线；发布链再以 `--run --require` 要求 SKIP=0。
@@ -1787,7 +1670,7 @@ flowchart LR
   - `scripts/build-apk.mjs:62#expect=const%20market%20%3D%20externalNamed%28%27dshmarketplace-plugin%27%29`（云端链 GATE_SCRIPTS，与本地链差集须为 0）/`:197`（`--allow-missing`）
   - `scripts/build-apk-013.ps1:145`（本地链 `check-kotlin-test-count --allow-missing`）/`:427`（任一 ABI 被拒 = 整链非 0）
   - `scripts/build-release.ps1:60`（注入前 `--run --require`）/`:147`（注入后产物级复跑）
-  - `.github/workflows/pr-gate.yml:40`（apk CI 只跑 `check-patch-mirror.mjs --self`）/`:82`（语法下限只跑 `--self-test`）/`:138`（全量 Kotlin 单测接进 CI）
+  - `.github/workflows/pr-gate.yml:39#expect=full%3A%20%24%7B%7B%20steps.classify.outputs.full%20%7D%7D`（apk CI 只跑 `check-patch-mirror.mjs --self`）/`:82`（语法下限只跑 `--self-test`）/`:138`（全量 Kotlin 单测接进 CI）
   - `scripts/check-boot-budget.mjs:681`（`SKIP(#1)(real-data)` 发射点）/`:684`（随即 `selfTest()` 退出，`SKIP=` 汇总不打印）
   - `scripts/check-code-map.mjs:59#expect=const%20UNIVERSE`（UNIVERSE 覆盖全域；本门禁当前零调用点）
 - **不变量**：
@@ -1805,9 +1688,9 @@ flowchart LR
 - **可疑点**：
   1. 【已确认，源码可复现】Kotlin 单测数量门禁的「防净零抵消」可被**整类删除**绕过：A 判据只对**现存源码测试类**要求有结果（`scripts/check-kotlin-test-count.mjs:129`），B 判据对结果里缺席的类直接 `continue`（`:153`）→ 删掉整个测试文件（例如 29 例的 `SnapshotTransactionTest.kt`）再在别处补足总数即恒绿。影响：一整类防线被无声削掉，而该门禁不在 CI（`ci:false`），只在两条链以 `--allow-missing` 跑。
   2. 【已确认】发布链的「SKIP=0」存在盲区：聚合入口用 `/SKIP=(\d+)/` 统计（`scripts/check-release-gates.mjs:246`），而 `scripts/check-boot-budget.mjs` 真检缺席时打印的是 `SKIP(#1)(real-data)`（`:681`）并立刻 `selfTest()` 退出（`:684`）——该 SKIP 既不入合计、在 `--require` 档下也不判红；唯一能判红的 `--require-real` 零调用点（仅注释提到）。影响：无设备产物时发布链可打印 SKIP=0 全绿，冷启动预算真判据从未执行。
-  3. 【已确认，apk 树结构性必红】`plugins/dsh-android-vdisplay/test/tools-callable.test.mjs:122`（另 `:144`/`:161`/`:174`）用 `../../../dsh-mobile-apk/app/src/main/java/com/snoworwind/pocketharness/VdisplayController.kt` 读壳侧源码——该相对路径只在协调仓布局成立；apk 自包含树里 4 个用例 `readFileSync` 抛错。而 `scripts/check-plugin-tests.mjs` 在 `GATES` 里 `ci:true`，apk 仓 `.github/workflows/pr-gate.yml:64` 会跑它。影响：apk 仓 CI 与 apk 自包含构建结构性变红（对应协调仓评审 S-11 第二项 / §4.4-V-M4，本轮工作树仍未修）。
+  3. 【已确认，apk 树结构性必红】`plugins/dsh-android-vdisplay/test/tools-callable.test.mjs:122`（另 `:144`/`:161`/`:174`）用 `../../../dsh-mobile-apk/app/src/main/java/com/snoworwind/pocketharness/VdisplayController.kt` 读壳侧源码——该相对路径只在协调仓布局成立；apk 自包含树里 4 个用例 `readFileSync` 抛错。而 `scripts/check-plugin-tests.mjs` 在 `GATES` 里 `ci:true`，apk 仓 `.github/workflows/pr-gate.yml:41#expect=-%20uses%3A%20actions%2Fcheckout%4011d5960a326750d5838078e36cf38b85af677262%20%23%20v4` 会跑它。影响：apk 仓 CI 与 apk 自包含构建结构性变红（对应协调仓评审 S-11 第二项 / §4.4-V-M4，本轮工作树仍未修）。
   4. 【已确认】`scripts/check-snapshot-builder-output.mjs:156` 的「两树同版」用**硬编码**`<ROOT>/dsh-mobile-apk/scripts/build-snapshot-013.mjs` 且 `existsSync` 为假时静默跳过（无 SKIP 计数，`:157`）——apk 自包含树里这条判据根本不存在，而它正是「0.14.0 归档段被删、构建器 exit 0 不产 tar」事故的反回归防线。
-  5. 【未证实，需跑一次才能定性】`scripts/check-plugin-tests.mjs:33` 对「没有 test 目录」的插件只 WARN（删测试即从判据里消失）；且本轮工作树里 `scripts/patches/tests/` 的 16 个补丁回归测试只有 3 个被 pr-gate 硬编码调用（`.github/workflows/pr-gate.yml:41-43`），第 4 个经 `scripts/check-runtime-assets.mjs:96` 的行为回归间接执行，其余 12 个仍无执行路径（评审 I-6 的同族结论，未本轮复测是否已改）。
+  5. 【未证实，需跑一次才能定性】`scripts/check-plugin-tests.mjs:33` 对「没有 test 目录」的插件只 WARN（删测试即从判据里消失）；且本轮工作树里 `scripts/patches/tests/` 的 16 个补丁回归测试只有 3 个被 pr-gate 硬编码调用（`.github/workflows/pr-gate.yml:40#expect=steps%3A`），第 4 个经 `scripts/check-runtime-assets.mjs:96` 的行为回归间接执行，其余 12 个仍无执行路径（评审 I-6 的同族结论，未本轮复测是否已改）。
 
 - **门禁速查表**（触发点缩写：CI = 两仓 `pr-gate.yml`；链 = `build-apk-013.ps1` + `build-apk.mjs`；发布 = `build-release.ps1`；快照构建 = `build-snapshot-013.mjs`）
 
@@ -1849,7 +1732,7 @@ flowchart LR
 
 - **CI 与打包链的顺序**（含依赖：`npm` = 必须先构建插件 `lib/`，`快照` = 需要注入后 tar 或快照资产）
 
-**A. pr-gate `static` 作业（`.github/workflows/pr-gate.yml:11-111`，串行 16 步）**
+**A. pr-gate `static` 作业（`.github/workflows/pr-gate.yml:11#expect=%23%20release%2Fbuild%20workflows%20are%20dispatched%20explicitly%20rather%20than%20by%20push.`，串行 16 步）**
 1. 冲突标记扫描（`app/src` 的 kt/java/xml/html/js/yml）。
 2. 敏感信息扫描（`sk-`/`ghp_`/`AKIA`/`xox` 四类正则）。
 3. `check-patch-mirror.mjs --self` + 三份补丁回归测试（`scripts/patches/tests/{spj-migration-link-f5,atomic-stale-lock,publish-exclusive-reclaim}.test.mjs`）——只做树内自洽；跨仓一致性判据已于 2026-10-15 随镜像层移除（本分支不依赖协调仓）。
@@ -1867,7 +1750,7 @@ flowchart LR
 15. `check-state-registry.mjs` + `check-bridge-symmetry.mjs` + `check-gate-skips.mjs` + `check-kotlin-comments.mjs` + `check-build-chain-abort.mjs` + `check-perf-instrumentation.mjs`（离线可跑，与两条链同源）。
 16. `npm install && npm run build` 八个目录 → `check-tool-surface-budget.mjs`（npm；真跑各插件 `apply()`，缺产物时门禁拒绝而非假绿）。
 
-**B. pr-gate `compile` 作业（`.github/workflows/pr-gate.yml:113-148`）**：setup-java 17 → Android SDK 36 → `./gradlew :app:compileDebugKotlin --no-daemon` → `./gradlew :app:testDebugUnitTest --no-daemon`（全量，0.14.1 新增）→ 失败时上传 HTML 报告。**不依赖 A 的任何产物**，也不依赖快照。
+**B. pr-gate `compile` 作业（`.github/workflows/pr-gate.yml:84#expect=exit%201`）**：setup-java 17 → Android SDK 36 → `./gradlew :app:compileDebugKotlin --no-daemon` → `./gradlew :app:testDebugUnitTest --no-daemon`（全量，0.14.1 新增）→ 失败时上传 HTML 报告。**不依赖 A 的任何产物**，也不依赖快照。
 
 **C. 本地链 `scripts/build-apk-013.ps1`**
 1. 注入前门禁段（`:38-146`，顺序即文件顺序）：patch-mirror → contract `--require` → state-registry → bridge-symmetry → gate-skips → build-chain-abort `--self-test` → snapshot-fingerprint（预检）→ manifest-hardening → kotlin-comments → bounded-io → api-route-auth（源码档）→ protocol-v2 → tool-output-schema → control-ops → plugin-tests（**需本机 `plugins/*/lib`**）→ boot-budget（默认档）→ snapshot-builder-output → build-parallel-cap → kotlin-test-count `--allow-missing`（**用的是上一次 gradle 结果**）。
@@ -1899,13 +1782,13 @@ flowchart LR
   - `scripts/check-code-map.mjs`——33 个 `check-*.mjs` 里**唯一零外部调用点**：不在 `GATES`、不在两条链、不在两仓 CI、不在 `MIRROR_TOP`（该清单与镜像层已于 2026-10-15 按用户决定移除），且只存在于 apk 仓（协调仓 `scripts/` 无同名文件）；文档 `docs/AGENTS/EXECUTION-MAP.md` 未写时它会 `exit 2`。
   - `scripts/check-snapshot-secrets.ps1`——旧 PowerShell 实现，已被 `.mjs` 取代，零调用点（其旧缺陷正是「归档不可读时静默继续」）。
   - `scripts/tests/boot-pending.test.mjs`、`scripts/tests/pi-toolcall.test.mjs`——零调用点。
-  - `scripts/patches/tests/` 的 16 个补丁回归测试里，只有 3 个被 pr-gate 硬编码（`.github/workflows/pr-gate.yml:41-43`），第 4 个经 `scripts/check-runtime-assets.mjs:96` 的行为回归间接执行，其余 12 个无执行路径（与评审 I-6 同族）。
+  - `scripts/patches/tests/` 的 16 个补丁回归测试里，只有 3 个被 pr-gate 硬编码（`.github/workflows/pr-gate.yml:40#expect=steps%3A`），第 4 个经 `scripts/check-runtime-assets.mjs:96` 的行为回归间接执行，其余 12 个无执行路径（与评审 I-6 同族）。
   - 旗标模式零调用点：`--require-real`、`--pull`（`scripts/check-boot-budget.mjs`）、`--list`（`scripts/check-build-parallel-cap.mjs` / `scripts/check-bridge-symmetry.mjs` / `scripts/check-state-registry.mjs` / `scripts/check-code-map.mjs`）；`--as-shipped` 无显式调用方，但其行为已折进 `scripts/check-browser-syntax-floor.mjs` 的默认真实产物反向对照（`scripts/check-browser-syntax-floor.mjs:658-670`）。
   - ~~半接线~~（2026-10-15 已消解）：原先 apk 侧 `check-patch-mirror.mjs --self` 打印 `SKIP=0` 却从未做跨仓比对（靠协调仓 CI 的 `--require-peer`）；现镜像层整体移除，`--self` 与默认调用等价，输出 `SKIP=0` 名副其实——判据只覆盖树内自洽。
 - **假绿机制（只看文本在场或判据可绕过）**：
   1. `scripts/check-release-gates.mjs:152` 的接线断言是 `text.includes(<门禁文件名>)`——门禁名出现在**注释**里即算「已接线」；`scripts/check-gate-skips.mjs:40`/`:49` 同样按正则扫文本（`{ script: '...'` 与 `["'/\\]check-*.mjs`）。
   2. 聚合入口的 SKIP 统计只认 `SKIP=`（`scripts/check-release-gates.mjs:246`），漏掉 `SKIP(#n)` 形态 → 见可疑点 2。
-  3. CI 里的 `check-browser-syntax-floor.mjs --self-test`（`.github/workflows/pr-gate.yml:82`）只证「判据能判红」，不扫本次产物；产物合规只在两条链上验。
+  3. CI 里的 `check-browser-syntax-floor.mjs --self-test`（`.github/workflows/pr-gate.yml:81#expect=--include%3D%27%2A.txt%27%20--include%3D%27%2A.patch%27%20--include%3D%27%2A.svg%27%20%7C%7C%20rc%3D%24%3F`）只证「判据能判红」，不扫本次产物；产物合规只在两条链上验。
   4. `scripts/check-build-parallel-cap.mjs` 只约束 5 个文件的**源码文本**，`-T0\b` 正则漏 `-T$(nproc)`/`-T"$N"`/`-P`，gradle 并行度不在判据内（评审 I-11）。
   5. `scripts/check-contract.mjs:165` 的版本钉只读 `peerDependencies` + `devDependencies`，`dependencies` 不在判据内（评审 I-10）→ `host-web-compat` 打绿但覆盖面为空。
   6. `scripts/check-plugin-tests.mjs:33`/`:35` 对「无 test 目录/无测试文件」的插件只 WARN；`scripts/check-kotlin-test-count.mjs` 可被整类删除绕过（可疑点 1）——两条同族「删掉即判绿」。
@@ -1978,7 +1861,7 @@ flowchart TD
 | `scripts/deploy-device.ps1` | 把已构建的插件包推进**设备 profile 层** `node_modules`（termux 形态），然后重启 `dsh web` | adb push 到 `/data/local/tmp` → `run-as com.termux sh -c` 拷进 `~/.dsh/profiles/<Profile>/node_modules/@dsh-android/<pkg>` 并 `chmod -R a+rX` | `pwsh scripts/deploy-device.ps1 -Serial <s> [-Package <name>] [-Profile web]` | ① 最后一步 `..\web-restart.ps1` 不存在 → 重启静默失效（可疑点 5）；② 暂存目录是**仓库根的 `.deploy-staging`**（`:14`），与 `deploy-embedded.ps1` 共用同一路径（两者不可并跑）；③ `lib/index.js` 不存在直接 throw（`:11`），先跑 `scripts/build.mjs` | 插件已 `lib/` 构建；设备已装 Termux 形态 dsh 且 profile 目录存在 |
 | `scripts/deploy-embedded.ps1` | 把插件推进**内嵌形态**：`/data/user/0/com.snoworwind.pocketharness/files/home/.dsh/profiles/web/node_modules/@dsh-android/<pkg>` | `adb push` → `run-as com.snoworwind.pocketharness sh -c` 拷贝 + `chmod` | `pwsh scripts/deploy-embedded.ps1 -Serial <s> -Package <name>`（仓根执行）；**根目录取 `$PSScriptRoot` 的父目录，默认 serial 取 `ADB_SERIAL`**（缺失即报错），无 `-Profile` 参数（写死 `web`，`:17`） | ① `-Package` 语义有缺陷：既当仓库相对目录又当设备包名（传 `plugins/dsh-android-bridge` 会在 `@dsh-android/` 下嵌出同形子路径 → 插件解析不到）——须传**纯包名**（协调仓 `coord:docs/0.14.0-preview-VERIFICATION-LOG.md:211,253` 已登记为 N-5 未修）；② 与 `deploy-device.ps1` 共用 `.deploy-staging`，不可并跑 | 内嵌形态应用已装且跑过一次（`files/home` 已解压）；`run-as` 可用 |
 | `scripts/t0-check.ps1` | `--dump-config` 输出里 `shell-termux` / `bash-sandbox` / `permission` 三行在场，且 `shell-termux` 不得是 `disabled` | `adb shell run-as com.termux sh -c` 调设备内 node 跑 `--dump-config` 并 `cat` 结果 | `pwsh scripts/t0-check.ps1 -Serial <s>` | ① 禁用判定正则写错（可疑点 4）→ 对「被禁」假绿；② 只在 `shell-termux` 后 200 字符窗口内找 `disabled`，dump 排版一变即漏；③ `matrix()` 行匹配是纯子串，插件改名可能误命中 | 设备内 Termux 形态引擎在位（`/data/data/com.termux/files/usr/lib/node_modules/@deepseek-ai/dsh`） |
-| `scripts/e2e-phone-test.ps1` | 旧 RPC 端到端：`session.create` → `session.prompt`（让模型跑 bash echo/uname）→ 轮询 `session.history` 最多 120s | 纯宿主侧 HTTP，**不接 adb**：要求操作者事先把宿主端口转发好 | 无参数；`$base` 写死 `http://127.0.0.1:3081`，请求体落到 `D:\coding\dsh-mobile\.deploy-tmp` | ① 点号 wire + 旧端口 3081，而现行文档口径是 `forward 23080→3080`（`docs/AGENTS/build-and-env.md:205#expect=forward%20tcp%3A23080%20tcp%3A3080`）且 `/api` 需 `EngineAuth` cookie（`历史 BRIDGE-API 副本（当前契约见§6 K04）`）→ 大概率直接被拒（未证实，本轮未实跑）；② 脚本内无 serial / pkg 参数，无法在多设备上选择；③ 轮询结束不判「有没有拿到回复」，只看最后一条事件类型 | 宿主转发在位 + 引擎 cookie；同目录 `scripts/dsh-agent-chat.ps1` 才是 0.13.3+ 的斜杠 wire 版本（它自己 `:4` 就写明本脚本是旧 wire 旧端口），新验收优先用它 |
+| `scripts/e2e-phone-test.ps1` | 旧 RPC 端到端：`session.create` → `session.prompt`（让模型跑 bash echo/uname）→ 轮询 `session.history` 最多 120s | 纯宿主侧 HTTP，**不接 adb**：要求操作者事先把宿主端口转发好 | 无参数；`$base` 写死 `http://127.0.0.1:3081`，请求体落到 `D:\coding\dsh-mobile\.deploy-tmp` | ① 点号 wire + 旧端口 3081，而现行文档口径是 `forward 23080→3080`（`docs/AGENTS/build-and-env.md:207#expect=forward%20tcp%3A23080%20tcp%3A3080`）且 `/api` 需 `EngineAuth` cookie（`历史 BRIDGE-API 副本（当前契约见§6 K04）`）→ 大概率直接被拒（未证实，本轮未实跑）；② 脚本内无 serial / pkg 参数，无法在多设备上选择；③ 轮询结束不判「有没有拿到回复」，只看最后一条事件类型 | 宿主转发在位 + 引擎 cookie；同目录 `scripts/dsh-agent-chat.ps1` 才是 0.13.3+ 的斜杠 wire 版本（它自己 `:4` 就写明本脚本是旧 wire 旧端口），新验收优先用它 |
 
 **CDP 与 adb 的能力边界对照**
 

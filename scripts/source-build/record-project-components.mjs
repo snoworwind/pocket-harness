@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
+import { mkdirSync, realpathSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { isDeepStrictEqual } from 'node:util'
@@ -123,7 +123,7 @@ export function captureProjectOutputs(root, commit, inputs) {
   return report
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (process.argv[1] && realpathSync(resolve(process.argv[1])) === realpathSync(fileURLToPath(import.meta.url))) {
   const [mode, output] = process.argv.slice(2)
   if (!['inputs', 'outputs'].includes(mode) || !output || process.argv.length !== 4) throw new Error('usage: record-project-components.mjs <inputs|outputs> <report.json>')
   const root = process.cwd()

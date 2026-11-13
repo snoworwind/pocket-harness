@@ -23,8 +23,6 @@ test('negative control rejects missing source toolchain', () => {
 })
 
 function checkLinuxAssetDownloads(source) {
-  assert.match(source, /npm ci --no-audit --no-fund --fetch-retries=8 --fetch-retry-factor=2 \\\n\s+--fetch-retry-mintimeout=1000 --fetch-retry-maxtimeout=30000 --fetch-timeout=300000/,
-    'the source-built Node addon dependency install must retry registry 5xx with a finite timeout')
   assert.match(source, /bash scripts\/source-build\/retry-curl\.sh --fail --location --retry 8 --retry-max-time 600 "\$DEBIAN_SNAPSHOT\/dists\/trixie\/InRelease"/,
     'the signed Debian Release metadata download must tolerate transient gateway errors')
   assert.match(source, /bash scripts\/source-build\/retry-curl\.sh --fail --location --retry 8 --retry-max-time 600 "https:\/\/nodejs\.org\/dist\/v\$NODE_VERSION\/node-v\$NODE_VERSION-linux-arm64\.tar\.xz"/,
@@ -46,7 +44,6 @@ test('negative controls reject short retry windows or missing pinned asset diges
       'curl --fail --location --retry 3 "$DEBIAN_SNAPSHOT/dists/trixie/InRelease"'),
     source.replace('bash scripts/source-build/retry-curl.sh --fail --location --retry 8 --retry-max-time 600 "https://nodejs.org/dist/v$NODE_VERSION/node-v$NODE_VERSION-linux-arm64.tar.xz"',
       'curl --fail --location --retry 3 "https://nodejs.org/dist/v$NODE_VERSION/node-v$NODE_VERSION-linux-arm64.tar.xz"'),
-    source.replace('--fetch-retries=8 --fetch-retry-factor=2', '--fetch-retries=2 --fetch-retry-factor=2'),
     source.replace('printf \'%s  %s\\n\' "$DEBIAN_SHA" "$WORK/input/debian-InRelease" | sha256sum --check --strict', '# missing Debian Release digest check'),
     source.replace('printf \'%s  %s\\n\' "$NODE_SHA" "$NODE_ARCHIVE" | sha256sum --check --strict', '# missing Node archive digest check'),
   ]) assert.throws(() => checkLinuxAssetDownloads(bad), assert.AssertionError)
@@ -54,7 +51,7 @@ test('negative controls reject short retry windows or missing pinned asset diges
 
 function checkLinuxAssetWorkflowDownloads(source) {
   const npmCi = source.match(/^\s+npm ci --prefix .*$/gm) ?? []
-  assert.equal(npmCi.length, 4, 'the standalone asset workflow must keep all four reviewed npm install steps')
+  assert.equal(npmCi.length, 3, 'the standalone asset workflow must keep all three reviewed npm install steps')
   assert.ok(npmCi.every(line => line.includes('--fetch-retries=8 --fetch-retry-factor=2 --fetch-retry-mintimeout=1000 --fetch-retry-maxtimeout=30000 --fetch-timeout=300000')),
     'each standalone Linux plugin dependency install must use the bounded registry retry policy')
   assert.equal((source.match(/--retry 8 --retry-max-time 600/g) ?? []).length, 3,
