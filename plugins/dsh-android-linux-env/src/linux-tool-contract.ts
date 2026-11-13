@@ -8,3 +8,10 @@ export const LINUX_TOOL_GUIDANCE = [
 
 export const LINUX_PHASES = ['unavailable', 'absent', 'inactive', 'restoring', 'checking', 'automatic-check',
   'installing', 'reinstalling', 'uninstalling', 'busy', 'failed', 'unhealthy', 'ready'] as const
+
+export interface LinuxEnvironmentStatus {
+  phase: typeof LINUX_PHASES[number]
+  ready: boolean
+  engine: 'termux'
+  reason: string
+}

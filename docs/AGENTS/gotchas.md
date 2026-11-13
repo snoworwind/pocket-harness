@@ -3764,3 +3764,9 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
      真因：持久化 opt-in 被内存 scope 的 inactive 覆盖；整段版本匹配不接受 warning；loader 无重试且诊断缺 mmap 参数。
      修法：bootstrap 在同步状态前复验 bundle 并恢复已明确启用的 runtime，删除/停用不恢复，失败只停 Linux；runtime 按 manifest 阈值逐行判 glibc，并在一次客体脚本中运行 getconf、绝对路径 Node 与真实 exec/PTY/嵌套/管道；loader 仅对文件 mmap 的 -EFAULT 原参数重试一次，仍失败打印 fd/prot/offset 和 site/status。脚本保留 /dev 标准别名。APK 仅内置可信 manifest/sidecar，runtime 归档安装时下载并限量、核对 size/SHA-256 后发布。Android 可执行 PRoot 闭包仍须位于 APK nativeLibraryDir，不能从可写目录执行下载二进制。
      证据：runtime 管理器、Linux 插件、来源脚本回归见 release/v0.15.3/plugin-migration.md；本轮尚未执行最终 APK/CDP/ADB 验收，不代表真机 EFAULT 已修复。
+
+721. **状态工具 enum 与异步返回值的字面量拓宽（2026-11-14）**
+     现象：新增 Linux phase/engine enum 后，干净 Linux 资产 CI 的 TypeScript 编译拒绝 execute，返回字段被推断为 string。
+     真因：异步回调的对象返回值没有显式契约，动态 operation 也只被运行期 includes 校验，类型仍为 string；schema 推导却要求 phase/engine 字面量联合。
+     修法：导出 LinuxEnvironmentStatus，execute 显式返回 Promise<该契约>；operation 用枚举数组 find 收窄，不用宽泛 string 或强制绕过类型检查。状态与系统指引回归继续覆盖 unavailable/failed/ready。
+     复验：干净依赖安装后的 Linux CI 及完整门禁结果随 PR #333 收口；设备层不在此处宣称通过。

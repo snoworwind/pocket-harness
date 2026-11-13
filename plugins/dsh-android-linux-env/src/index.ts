@@ -1,4 +1,4 @@
-import { LINUX_PHASES, LINUX_TOOL_GUIDANCE } from './linux-tool-contract.js'
+import { LINUX_PHASES, LINUX_TOOL_GUIDANCE, type LinuxEnvironmentStatus } from './linux-tool-contract.js'
 /**
  * dsh-android-linux-env — 工具链与环境设置面板（PRD F1.3/F1.0/F1.5，M3.2）
  *
@@ -279,12 +279,12 @@ function tools(ctx: Context, svc: { status(): { tier: string } } | undefined) {
       } },
       render: (_args, value: { phase: string; reason: string; ready: boolean; engine: string }) => [{ type: 'text', text: `${value.phase}: ${value.reason}` }],
     },
-    execute: async () => {
+    execute: async (): Promise<LinuxEnvironmentStatus> => {
       try {
         const bootstrap = serviceOf<LinuxBootstrap>(ctx, 'linuxBootstrap')
         if (!bootstrap) return { phase: 'unavailable', ready: false, engine: 'termux', reason: 'Linux bootstrap 尚未启用；Termux bash 可继续使用。' }
         const status = await bootstrap.status()
-        const operation = status.operation && (LINUX_PHASES as readonly string[]).includes(status.operation) ? status.operation : 'busy'
+        const operation = LINUX_PHASES.find(phase => phase === status.operation) ?? 'busy'
         const runtime = typeof status.runtime === 'object' ? status.runtime as { healthy?: boolean; reason?: string } | null : null
         return {
           ready: status.injectionActivated === true && runtime?.healthy === true && !status.error && !status.lastError,
