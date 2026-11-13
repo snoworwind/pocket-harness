@@ -50,7 +50,7 @@ NDK 预编译工具链是构建引导输入，不进入 APK。源归档身份直
 | talloc 2.5.0 | 构建时指定 SONAME `libtalloc.so`，使 PRoot 正常链接 APK 可安装的名字；不再对 PRoot ELF 字符串表做事后字节重写。交叉配置答案与实际生成配置可复核；不把 configure 中的交叉答案当设备功能测试 |
 | libandroid-shmem 0.7 | `_PATH_TMP` 依赖外部 Termux 构建宏，官方 NDK 下实际编译失败。移除固定路径格式串，使用本仓 helper 从 `PROOT_TMP_DIR`、其次 `TMPDIR` 读取目录；缺失或相对目录拒绝，snprintf 越界拒绝；调用处出错会释放既有 mutex 后返回 |
 | PRoot 5.1.107.102 | ashmem_memfd 源文件漏引 `string.h`，新 Clang 对 strcmp/memset 隐式声明实际报错；定点补头文件，不关闭编译诊断。版本带 `-pocket-source.1` 标识；GIT=false 防止把外层项目仓库版本意外写入 build.h |
-| PRoot 5.1.107.102（issue #322） | 新增两处**运行期开关**：`src/tracee/event.c` 在 `PROOT_POCKET_TRACE_WAIT` 下把每个 `waitpid` 状态打到 stderr（判「子进程初始 ptrace stop 到底有没有送达」）；`src/tracee/tracee.c` 在 `PROOT_POCKET_RESUME_SILENT_CHILD` 下对「fork 事件已登记但从未报过首次 stop」的子进程显式 `PTRACE_CONT`，用于鸿蒙 Linux ABI 兼容层不投递 initial stop 的场景。两者缺省关闭，正常内核行为不变；配方用 `replace_once` 锚点，锚点漂移即拒绝构建 |
+| PRoot 5.1.107.102（issue #322） | 新增两处**运行期开关**：`src/tracee/event.c` 在 `PROOT_POCKET_TRACE_WAIT` 下把每个 `waitpid` 状态打到 stderr（判「子进程初始 ptrace stop 到底有没有送达」）；`src/tracee/tracee.c` 在 `PROOT_POCKET_RESUME_SILENT_CHILD` 下对「fork 事件已登记但从未报过首次 stop」的子进程恢复：先置 `sigstop = SIGSTOP_ALLOWED`、按 `seccomp` 状态显式给出 `restart_how`（`PROOT_NO_SECCOMP=1` 下是 `PTRACE_SYSCALL`），再走 `restart_tracee()` 而不是裸 `PTRACE_CONT`——裸 CONT 会跳过系统调用入口 stop，PRoot 就失去路径翻译与 syscall 改写的机会。用于鸿蒙 Linux ABI 兼容层不投递 initial stop 的场景。两者缺省关闭，正常内核行为不变；配方用 `replace_once` 锚点，锚点漂移即拒绝构建 |
 | loader/NDK | 独立静态 loader 以 APK 名称交付；32 位目标显式关闭；主程序及全部原生依赖使用 16 KB LOAD 对齐；默认 loader 路径是故意不可用的 sentinel，调用者必须传入当前安装目录的 PROOT_LOADER |
 
 `/dev/shm/...` 在 shared-memory 源码中还用于抽象 Unix socket 名称（sun_path[0] 为零），
@@ -67,7 +67,15 @@ PROOT_POCKET_TRACE_WAIT=1
 PROOT_POCKET_RESUME_SILENT_CHILD=1
 ```
 
-判读：若开 (1) 后 fork 子进程的 pid 从未出现在 `proot-wait:` 行里，说明内核没有投递 initial stop；此时开 (2) 若 fork/管道恢复，则确认为「缺 initial stop」这一类，可把 (2) 的依据补上后考虑改为默认。两个开关都只改 PRoot 源码（构建期定点补丁，provenance 记录前后摘要），不改 Termux 包。
+判读：若开 (1) 后 fork 子进程的 pid 从未出现在 `proot-wait:` 行里，说明内核没有投递 initial stop。
+
+开 (2) 之后必须三条同时成立才算真修好，缺一不可（第一条只是「不挂死」，第二条才是「没丢 syscall 拦截」）：
+
+1. `bash -c '/bin/true; echo OK'` 不再挂死且真的打印 `OK`；
+2. 路径翻译仍正确：`ls /` 看到的是 Debian rootfs、`cat /etc/os-release` 是 Debian；
+3. 嵌套 fork 与管道正常：`bash -c 'bash -c "echo NESTED"'`、`yes | head -1`。
+
+若只满足第一条而第二条失败（典型是宿主 `/bin/true` 的 ENOENT），说明恢复成功但丢了 syscall 拦截，属「换了症状」，不能算修复。两个开关都只改 PRoot 源码（构建期定点补丁，provenance 记录前后摘要），不改 Termux 包。
 
 同一批补丁还给 loader 的 `FATAL()` 加了落点诊断：任何 182 都会先往 stderr 写一行
 `[proot-loader] site=<行号> status=<errno>`（`FATAL_STATUS`），再按原语义退出 182。
