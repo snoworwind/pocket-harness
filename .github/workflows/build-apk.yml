@@ -16,6 +16,6 @@ jobs:
   source-build:
     uses: ./.github/workflows/build-apk-source.yml
     with:
-      abi: arm64
+      abi: all
       reference: ${{ inputs.reference }}
       fast: ${{ inputs.fast }}

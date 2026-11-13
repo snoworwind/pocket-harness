@@ -1,6 +1,8 @@
 """Package verified source-built Linux assets and an offline manifest; no network."""
+import argparse
 import base64
 import hashlib
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -14,6 +16,30 @@ from urllib.parse import urlparse
 ROOT = Path(__file__).resolve().parents[2]
 
 
+def _load_linux_abi():
+    path = Path(__file__).with_name('linux-abi.py')
+    spec = importlib.util.spec_from_file_location('pocket_harness_linux_abi', path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+_LINUX_ABI = _load_linux_abi()
+ABIS = _LINUX_ABI.ABIS
+
+
+def linux_abi(value='arm64'):
+    return _LINUX_ABI.linux_abi(value)
+
+
+def node_digest(inputs, mapping):
+    key = 'nodeSha256' if mapping['abi'] == 'arm64' else 'nodeSha256X64'
+    digest = inputs.get(key)
+    if not digest:
+        raise ValueError(f'linux-inputs.json is missing the pinned Node digest for {mapping["abi"]}')
+    return digest
+
+
 def sha256_file(path):
     digest = hashlib.sha256()
     with Path(path).open('rb') as stream:
@@ -22,16 +48,17 @@ def sha256_file(path):
     return digest.hexdigest()
 
 
-def package_assets(work, epoch):
+def package_assets(work, epoch, abi='arm64'):
+    mapping = linux_abi(abi)
     work = Path(work).resolve()
     if work != ROOT / '.deploy-tmp/linux-build':
         raise ValueError('Linux packaging requires the dedicated build directory')
     inputs = json.loads((ROOT / 'scripts/source-build/linux-inputs.json').read_text())
     stage = work / 'assets'
     stage.mkdir(parents=True, exist_ok=True)
-    node_archive = work / 'input' / f'node-v{inputs["node"]}-linux-arm64.tar.xz'
+    node_archive = work / 'input' / f'node-v{inputs["node"]}-{mapping["node_platform"]}.tar.xz'
     actual = sha256_file(node_archive)
-    if actual != inputs['nodeSha256']:
+    if actual != node_digest(inputs, mapping):
         raise ValueError('official Node archive digest mismatch')
     node_source = work / 'node-source'
     if node_source.exists():
@@ -44,7 +71,7 @@ def package_assets(work, epoch):
             # Older local Python lacks tarfile's data filter. The archive is checked against the
             # source-pinned official Node SHA-256 above before this compatibility path is reachable.
             archive.extractall(node_source)
-    original = node_source / f'node-v{inputs["node"]}-linux-arm64'
+    original = node_source / f'node-v{inputs["node"]}-{mapping["node_platform"]}'
     node = work / 'node-stage'
     if node.exists():
         shutil.rmtree(node)
@@ -78,14 +105,25 @@ def package_assets(work, epoch):
         subprocess.run(['tar', '--sort=name', f'--mtime=@{int(epoch)}', '--owner=0', '--group=0', '--numeric-owner',
                         '-cJf', str(stage / name), '-C', str(directory), '.'], check=True)
 
-    pack(node, f'node-glibc-v{inputs["node"]}-linux-arm64.tar.xz')
-    manifest = dict(schemaVersion=1, runtime='linux-arm64-glibc', assets={})
-    for name in ('debian-minimal-aarch64.tar.xz', f'node-glibc-v{inputs["node"]}-linux-arm64.tar.xz'):
+    node_name = f'node-glibc-v{inputs["node"]}-{mapping["node_platform"]}.tar.xz'
+    pack(node, node_name)
+    manifest = dict(schemaVersion=1, runtime=mapping['runtime'], assets={})
+    for name in (mapping['rootfs_asset'], node_name):
         path = stage / name
         manifest['assets'][name] = dict(sha256=sha256_file(path), size=path.stat().st_size)
     (stage / 'linux-assets.json').write_text(json.dumps(manifest, indent=2) + '\n')
     return manifest
 
 
+def main(argv=None):
+    parser = argparse.ArgumentParser()
+    parser.add_argument('work')
+    parser.add_argument('epoch')
+    parser.add_argument('--abi', default='arm64', choices=ABIS)
+    args = parser.parse_args(argv)
+    package_assets(args.work, args.epoch, args.abi)
+    return 0
+
+
 if __name__ == '__main__':
-    package_assets(sys.argv[1], sys.argv[2])
+    raise SystemExit(main())

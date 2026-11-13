@@ -9,13 +9,20 @@ import tempfile
 import zipfile
 
 
-EXPECTED = (
-    'lib/arm64-v8a/libpocketharness_proot.so',
-    'lib/arm64-v8a/libpocketharness_proot_loader.so',
-    'lib/arm64-v8a/libtalloc.so',
-    'lib/arm64-v8a/libandroid-shmem.so',
-)
+ABI_DIRS = {'arm64': 'arm64-v8a', 'x86_64': 'x86_64'}
+
+
+def expected_members(abi):
+    directory = f"lib/{ABI_DIRS[abi]}/"
+    return (
+        directory + 'libpocketharness_proot.so',
+        directory + 'libpocketharness_proot_loader.so',
+        directory + 'libtalloc.so',
+        directory + 'libandroid-shmem.so',
+    )
 MAX_LIBRARY_BYTES = 64 * 1024 * 1024
+# Self-test fixtures are built for the default product ABI.
+EXPECTED = expected_members('arm64')
 
 
 def fail(message):
@@ -37,7 +44,11 @@ def digest(path):
     return size, value.hexdigest()
 
 
-def verify(apk, native_library_root, license_root, provenance_path):
+def verify(apk, native_library_root, license_root, provenance_path, abi=None):
+    abi = abi or os.environ.get('DSH_ABI', 'arm64')
+    if abi not in ABI_DIRS:
+        fail(f'unsupported ABI: {abi}')
+    members = expected_members(abi)
     if os.path.islink(provenance_path) or not os.path.isfile(provenance_path):
         fail('Linux backend provenance must be a regular file')
     with open(provenance_path, 'r', encoding='utf-8') as stream:
@@ -51,18 +62,18 @@ def verify(apk, native_library_root, license_root, provenance_path):
     if not isinstance(library_records, list):
         fail('Linux backend provenance has no native library records')
     recorded_libraries = {item.get('name'): item for item in library_records if isinstance(item, dict)}
-    expected_names = {member.rsplit('/', 1)[1] for member in EXPECTED}
+    expected_names = {member.rsplit('/', 1)[1] for member in members}
     if len(recorded_libraries) != len(library_records) or set(recorded_libraries) != expected_names:
         fail('Linux backend provenance native library set is not exact')
 
     native_library_root = os.path.abspath(native_library_root)
     if os.path.islink(native_library_root) or not os.path.isdir(native_library_root):
         fail('native library root must be a real directory')
-    source_root = os.path.join(native_library_root, 'arm64-v8a')
+    source_root = os.path.join(native_library_root, ABI_DIRS[abi])
     if os.path.islink(source_root) or not os.path.isdir(source_root):
-        fail('ARM64 native library directory must be a real directory')
+        fail(f'{ABI_DIRS[abi]} native library directory must be a real directory')
     expected = {}
-    for member in EXPECTED:
+    for member in members:
         name = member.rsplit('/', 1)[1]
         source = os.path.join(source_root, name)
         if not os.path.isfile(source) or os.path.islink(source) or not os.access(source, os.X_OK):
@@ -209,7 +220,7 @@ def self_test():
         try:
             verify(apk, os.path.join(temporary, 'native-libs'), licenses, provenance_path)
         except ValueError as error:
-            if 'ARM64 native library directory must be a real directory' not in str(error):
+            if 'arm64-v8a native library directory must be a real directory' not in str(error):
                 raise
         else:
             raise AssertionError('symlinked ARM64 native library directory was accepted')
@@ -276,6 +287,7 @@ def main():
     parser.add_argument('native_library_root', nargs='?')
     parser.add_argument('license_root', nargs='?')
     parser.add_argument('provenance', nargs='?')
+    parser.add_argument('--abi', default=os.environ.get('DSH_ABI', 'arm64'), choices=sorted(ABI_DIRS))
     parser.add_argument('--self-test', action='store_true')
     args = parser.parse_args()
     if args.self_test:
@@ -283,11 +295,11 @@ def main():
         return
     if not args.apk or not args.native_library_root or not args.license_root or not args.provenance:
         parser.error('apk, native_library_root, license_root and provenance are required')
-    verified = verify(args.apk, args.native_library_root, args.license_root, args.provenance)
-    for name in EXPECTED:
+    verified = verify(args.apk, args.native_library_root, args.license_root, args.provenance, args.abi)
+    for name in expected_members(args.abi):
         size, sha = verified[name]
         print(f'{sha} {size} {name}')
-    print('PASS Linux native APK: exact ARM64 PRoot, loader, and dependency payloads')
+    print(f'PASS Linux native APK: exact {args.abi} PRoot, loader, and dependency payloads')
 
 
 if __name__ == '__main__':

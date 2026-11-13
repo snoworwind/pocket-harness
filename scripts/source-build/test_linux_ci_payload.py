@@ -68,6 +68,7 @@ executable: /data/data/com.snoworwind.pocketharness/files/usr/libexec/dsh-node
             # Payload verifier has its own real ZIP controls; isolate comparison's signature boundary.
             with patch.object(comparison.payload, 'verify', return_value={}):
                 self.assertTrue(comparison.compare(left, right)['independentRebuildMatched'])
+                self.assertEqual(comparison.compare(left, right, 'x86_64')['runtime'], 'linux-x64-glibc')
                 with self.assertRaisesRegex(ValueError, 'different APK'):
                     comparison.compare(left, left)
                 for payload, service in [('changed', 'same'), ('same', 'changed')]:
@@ -99,11 +100,11 @@ executable: /data/data/com.snoworwind.pocketharness/files/usr/libexec/dsh-node
             header[:6] = b'\x7fELF\x02\x01'
             header[18:20] = (183).to_bytes(2, 'little')
             path.write_bytes(header)
-            guest.aarch64(path)
+            guest.guest_elf(path, 'arm64')
             header[18:20] = (62).to_bytes(2, 'little')
             path.write_bytes(header)
             with self.assertRaisesRegex(ValueError, 'AArch64'):
-                guest.aarch64(path)
+                guest.guest_elf(path, 'arm64')
             path.write_bytes(b'bad')
             with self.assertRaisesRegex(ValueError, 'AArch64'):
-                guest.aarch64(path)
+                guest.guest_elf(path, 'arm64')

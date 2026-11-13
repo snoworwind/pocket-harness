@@ -24,7 +24,6 @@ const blocks = [
       `| Kotlin | ${required(/id\("org.jetbrains.kotlin.android"\) version "([^"]+)"/, 'Kotlin', read('build.gradle.kts'))} |`,
       `| Gradle wrapper | ${required(/gradle-([\d.]+)-bin\.zip/, 'Gradle wrapper', read('gradle/wrapper/gradle-wrapper.properties'))} |`,
       `| Java target | ${required(/targetCompatibility\s*=\s*JavaVersion.VERSION_(\d+)/, 'Java target')} |`,
-      `| Termux | ${required(/buildConfigField\("String",\s*"TERMUX_VERSION",[^\n]*?(\d+\.\d+\.\d+)/, 'Termux')} |`,
       ...['compileSdk', 'targetSdk', 'minSdk'].map((key) => `| ${key} | ${required(new RegExp(`^\\s*${key}\\s*=\\s*(\\d+)`, 'm'), key)} |`),
       '',
       '| Gradle 范围 | 依赖声明 |',

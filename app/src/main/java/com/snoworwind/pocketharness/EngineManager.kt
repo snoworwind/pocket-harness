@@ -120,21 +120,21 @@ class EngineManager(private val context: Context, private val pickToken: String?
   /**
    * 最后一次「live 树残缺」拒启的**逐项取证**（issue #309）。
    *
-   * 为什么拒启时就要取证：恢复动作是「删指纹 + 全量重抽取」，而重抽取会**覆盖现场**。
+   * 为什么拒启时就要取证：当时的恢复动作是「删指纹 + 全量重抽取」，而重抽取会**覆盖现场**。
    * 旧实现既没有恢复动作、也没有取证，issue 报障者只能靠人回忆「我删过 usr/lib 里的符号链接」。
    * 现在把「缺了哪几项、路径是什么、mtime/大小」在**删指纹之前**落进 boot-fail.log；
    * 若一个确认项都缺（只有 REQUIRED_LIBS 这类置信度低的判据命中），则按 issue #309 的反向告诫
-   * **不触发重抽取**——见 EngineStartFlow.maybeRecoverFromIncompleteLiveRuntime。
+   * **不触发重抽取**。旧运行时树闸门与重抽取路径已随内置 Linux 实例迁移移除，本字段现在只作诊断输出。
    */
   @Volatile
   var lastStartRefusalEvidence: String? = null
 
   /**
-   * 上一次「live 树残缺」拒启中的**确诊缺失项**（[RuntimeTree.START_RECOVERY_CONFIRMED_ENTRIES]）。
+   * 上一次「live 树残缺」拒启中的**确诊缺失项**（issue #309）。
    *
-   * 与 [lastStartRefusalEvidence] 的分工：evidence 是给人看的现场全文（含低置信度条目），
-   * 本字段是**判据**——只有它非空才允许花掉那次全量重抽取。分成两个字段而不是让调用方解析文本，
-   * 是为了让「恢复条件」是一个可直读的值，而不是一段需要正则的字符串。
+   * 旧运行时树判据表已随内置 Linux 实例迁移移除；本字段只保留为 boot-fail 诊断输出
+   * （`start_refusal_confirmed`），当前启动链路不再写入非空值。与 [lastStartRefusalEvidence]
+   * 的分工不变：evidence 是现场全文，本字段是判据值（历史语义见 issue #309）。
    */
   @Volatile
   var lastStartRefusalConfirmed: List<String> = emptyList()

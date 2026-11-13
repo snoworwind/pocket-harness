@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate this run's ARM64 Linux source release artifact and package its evidence; never rebuild APKs."""
+"""Validate this run's dual-ABI Linux source release artifacts and package their evidence; never rebuild APKs."""
 import hashlib
 import glob
 import json
@@ -9,8 +9,13 @@ import re
 import shutil
 import sys
 import zipfile
+import importlib.util
 
-ABIS = ('arm64',)
+_spec = importlib.util.spec_from_file_location('linux_abi', Path(__file__).with_name('linux-abi.py'))
+_abi = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(_abi)
+
+ABIS = ('arm64', 'x86_64')
 OPTIONAL_EVIDENCE_BY_ABI = {}
 
 
@@ -57,7 +62,7 @@ def validate_abi(source, abi, sha, repo, server):
         raise ValueError(f'expected exactly one source {abi} APK')
     apk = apks[0]
     proof = json.loads((evidence / 'independent-rebuild-verification.json').read_text(encoding='utf-8'))
-    if (proof.get('schemaVersion') != 2 or proof.get('runtime') != 'linux-arm64-glibc'
+    if (proof.get('schemaVersion') != 2 or proof.get('runtime') != _abi.linux_abi(abi)['runtime']
             or proof.get('abi') != abi or proof.get('independentRebuildMatched') is not True
             or proof.get('sourceCommit') != sha or not re.fullmatch(r'[a-f0-9]{64}', proof.get('payloadSha256') or '')
             or not re.fullmatch(r'[a-f0-9]{64}', proof.get('primaryApkSha256') or '')
@@ -85,13 +90,15 @@ def prepare(source_root, output, env):
     children = list(source_root.iterdir())
     if ({child.name for child in children} != set(ABIS)
             or any(child.is_symlink() or not child.is_dir() for child in children)):
-        raise ValueError('source artifact root must contain only a real arm64 directory')
+        raise ValueError('source artifact root must contain real arm64 and x86_64 directories')
 
     artifacts = {
         abi: validate_abi(source_root / abi, abi, sha, repo, server)
         for abi in ABIS
     }
-    apk_version = re.fullmatch(r'pocket-harness-(v[\w.+-]+)-source-arm64\.apk', artifacts['arm64'][2].name)[1]
+    apk_versions = {re.fullmatch(r'pocket-harness-(v[\w.+-]+)-source-(?:arm64|x86_64)\.apk', row[2].name)[1] for row in artifacts.values()}
+
+    apk_version = apk_versions.pop()
 
     # Do not overwrite a previous release preparation or accept partial output as success.
     output.mkdir(parents=True, exist_ok=False)
@@ -110,13 +117,13 @@ def prepare(source_root, output, env):
     if published.is_file():
         notes.write_text(published.read_text(encoding='utf-8'), encoding='utf-8')
     else:
-        notes.write_text(f'''Pocket Harness {apk_version} source release (ARM64).
+        notes.write_text(f'''Pocket Harness {apk_version} source release (ARM64 + x86_64).
 
 Commit: {sha}
 Build: {server}/{repo}/actions/runs/{env['GITHUB_RUN_ID']}
 
 Draft prerelease for the maintained main line. The APK is copied unchanged from this run's
-independently verified ARM64 source build and signed with the Pocket Harness production
+independently verified ARM64 and x86_64 source builds and signed with the Pocket Harness production
 identity. provenance.zip contains the full evidence; verify the downloaded assets with
 SHA256SUMS.txt before installing or publishing.
 ''', encoding='utf-8')

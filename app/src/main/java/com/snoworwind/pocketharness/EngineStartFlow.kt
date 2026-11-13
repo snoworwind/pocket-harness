@@ -1433,18 +1433,11 @@ internal fun startupRecoverThenProbe(recover: () -> Unit, probeRunning: () -> Bo
   return probeRunning()
 }
 
-// ── task-79（Bug A）+ issue #309：运行时树损坏 ⇒ 一次受控重抽取 ────────────────
-
 /**
- * 本次 app 运行是否已经为「运行时树损坏」自愈过一次（进程内一次性，见 [RuntimeTree.maySelfHeal]）。
+ * 等待引擎 HTTP 就绪的硬预算（毫秒）：超预算按「未就绪」如实收口，绝不无限等待。
  *
- * 为什么是**进程内**标记而不是持久化：预算是「每次 app 运行最多一次」——用户重启 app 就是重新给一次机会，
- * 这与「每次启动都无限重抽取」有本质区别。持久化会让用户永远翻不了身。
+ * 预算与用户可见文案只许有这一个来源（见 [awaitEngineHttpReady] 的调用方），不得在别处硬编码秒数。
  */
-// 独立评审 C3：「读-判-写」三步并不原子，而它有两个真实并发来源——启动流的 worker 线程与
-// EngineService 看门狗的 RESTART 拍（`EngineService.kt:319` 直接调 startEngine），两者可能
-// 同时读到 false。后果本来无害（删指纹/清账本都幂等），但注释宣称「每次运行最多一次」，
-// 那就让它**真的**只有一次：用 CAS 把「花掉预算」变成单次操作。
 internal const val ENGINE_BOOT_BUDGET_MS = 90_000L
 
 /** 轮询步进（毫秒）。 */

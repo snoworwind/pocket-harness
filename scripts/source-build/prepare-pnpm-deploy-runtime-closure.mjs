@@ -62,7 +62,9 @@ if (!importer) throw new Error('pnpm-lock.yaml is missing the apps/cli importer'
 // No bootstrap-era overlay downloader or Android fallback packages participate.
 const linuxRuntimeDependencies = {
   [koffiLinuxPackage]: '3.2.1',
+  '@koromix/koffi-linux-x64': '3.2.1',
   '@img/sharp-linux-arm64': '0.35.5',
+  '@img/sharp-linux-x64': '0.35.5',
 }
 const thirdPartyPins = Object.fromEntries(Object.entries({ ...overlay.vendorTop, ...overlay.pins, 'partial-json': '0.1.7' })
   .filter(([name]) => !name.startsWith('@deepseek-ai/')))
@@ -75,7 +77,7 @@ workspaceConfig.overrides = { ...(workspaceConfig.overrides ?? {}), koffi: '3.2.
 for (const [host, children] of Object.entries(overlay.nested ?? {})) {
   for (const [dependency, version] of Object.entries(children)) workspaceConfig.overrides[`${host}>${dependency}`] = version
 }
-workspaceConfig.supportedArchitectures = { os: ['current', 'linux'], cpu: ['current', 'arm64'], libc: ['glibc'] }
+workspaceConfig.supportedArchitectures = { os: ['current', 'linux'], cpu: ['current', 'arm64', 'x64'], libc: ['glibc'] }
 
 const packageDirs = new Map()
 function walk(dir) {

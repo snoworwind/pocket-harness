@@ -25,7 +25,7 @@ internal object LinuxInstanceInstaller {
   @Volatile var preparationStartedAt: Long = 0
     private set
 
-  data class Instance(val root: File, val rootfs: File, val node: File, val engine: File)
+  data class Instance(val root: File, val rootfs: File, val node: File, val engine: File, val architecture: String = "arm64")
 
   internal data class Source(
     val open: (String) -> InputStream,
@@ -83,6 +83,7 @@ internal object LinuxInstanceInstaller {
       rootfs = File(root, "rootfs"),
       node = File(root, "node/bin/node"),
       engine = File(root, "engine"),
+      architecture = record.optString("guestArchitecture", "arm64"),
     )
     for ((file, code) in listOf(
       instance.rootfs to "linux-instance-incomplete",
@@ -159,7 +160,7 @@ internal object LinuxInstanceInstaller {
           val candidate = Instance(root,
             File(root, "rootfs"),
             File(if ("node" in repair) stage else root, "node/bin/node"),
-            File(if ("engine" in repair) stage else root, "engine"))
+            File(if ("engine" in repair) stage else root, "engine"), asset.optString("guestArchitecture", "arm64"))
           source.trial(candidate, asset, onProgress)
         },
       )
@@ -173,10 +174,16 @@ internal object LinuxInstanceInstaller {
 
   }
 
+  private class ComponentCorrupt(
+    val component: String,
+    val expected: String,
+    cause: Throwable,
+  ) : IOException("Linux $component tree digest mismatch (expected $expected)", cause)
+
   private fun validateAssetRecord(asset: JSONObject) {
     require(asset.getInt("schemaVersion") == SCHEMA) { "unsupported Linux asset schema" }
-    require(asset.getString("guestArchitecture") == "arm64") { "unsupported Linux architecture" }
-    require(asset.getString("baseId").matches(Regex("[a-z0-9][a-z0-9.-]{1,100}"))) { "invalid base identity" }
+    require(asset.getString("guestArchitecture") in setOf("arm64", "x86_64")) { "unsupported Linux architecture" }
+    require(asset.getString("baseId").matches(Regex("[a-z0-9][a-z0-9._-]{1,100}"))) { "invalid base identity" }
     for (key in listOf("rootfsSha256", "nodeSha256", "engineSha256", "homeSha256", "rootfsTreeSha256", "nodeTreeSha256", "engineTreeSha256")) {
       require(asset.getString(key).matches(Regex("[0-9a-f]{64}"))) { "invalid asset digest: $key" }
     }
@@ -287,16 +294,25 @@ internal object LinuxInstanceInstaller {
         val component = File(stage, name)
         val ready = File(stage, ".$name.ready")
         val expected = record.getString(name + "TreeSha256")
-        val reusable = ready.isFile && ready.readText() == expected && runCatching { LinuxFileTree.digest(component) }.getOrNull() == expected
-        if (reusable) onProgress("复用已校验的 Linux $name…") else {
+        try {
+          val reusable = ready.isFile && ready.readText() == expected &&
+            runCatching { LinuxFileTree.digest(component) }.getOrNull() == expected
+          if (reusable) onProgress("复用已校验的 Linux $name…") else {
+            SnapshotFs.deletePath(component)
+            onProgress("解包 Linux $name…")
+            extractVerified(source, record, name, component, onProgress)
+            LinuxUpgradeTransaction.atomicWrite(ready, expected)
+          }
+        } catch (error: Exception) {
+          // A partial or corrupt component must never be reused or become the instance. Discard
+          // only this staged component; the rest remains verified so a retry resumes cheaply.
           SnapshotFs.deletePath(component)
-          onProgress("解包 Linux $name…")
-          extractVerified(source, record, name, component, onProgress)
-          LinuxUpgradeTransaction.atomicWrite(ready, expected)
+          SnapshotFs.deletePath(ready)
+          throw ComponentCorrupt(name, expected, error)
         }
       }
       seedHome(source, filesDir, record, onProgress)
-      source.trial(Instance(stage, File(stage, "rootfs"), File(stage, "node/bin/node"), File(stage, "engine")), record, onProgress)
+      source.trial(Instance(stage, File(stage, "rootfs"), File(stage, "node/bin/node"), File(stage, "engine"), record.optString("guestArchitecture", "arm64")), record, onProgress)
       File(stage, MANIFEST_NAME).writeText(record.toString(2) + "\n")
       if (!stage.renameTo(root)) throw IOException("无法把 Linux 实例暂存目录提交到位")
       LinuxUpgradeTransaction.atomicWrite(File(filesDir, "linux-install-metrics.json"), JSONObject()
@@ -305,6 +321,11 @@ internal object LinuxInstanceInstaller {
         .put("measurement", "wall time and process RSS/HWM at commit; HWM covers the whole process lifetime").toString())
       LinuxLegacyMigration.commit(filesDir)
       open(filesDir)
+    } catch (error: ComponentCorrupt) {
+      // Retryable: the corrupt component was removed; a later first-boot retry re-extracts it.
+      Result.Failed("linux-" + error.component + "-corrupt",
+        "Linux ${error.component} 解包后与清单摘要不一致或无法验证，已删除损坏暂存并停止安装；请重试。" +
+          (error.cause?.message?.let { " 原因：$it" } ?: ""))
     } catch (error: Exception) {
       // Completed, hash-verified components remain staged for a later retry.
       Result.Failed("linux-install-failed", error.message ?: error.javaClass.simpleName)

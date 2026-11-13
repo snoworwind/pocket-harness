@@ -6,6 +6,7 @@ cd "$ROOT"
 node scripts/source-build/check-linux-sources.mjs
 python3 scripts/source-build/linux-debian-snapshot-wget.py --self-test
 SOURCE_PROOF_INPUTS=(
+  scripts/source-build/linux-abi.mjs scripts/source-build/linux-abi.py
   vendor/linux-proot
   scripts/source-build/build-linux-assets.sh scripts/source-build/retry-curl.sh scripts/source-build/linux-inputs.json
   scripts/source-build/linux-backend-packages.json scripts/source-build/linux-source-manifest.json
@@ -33,6 +34,19 @@ for source in "${SOURCE_PROOF_INPUTS[@]}"; do
 done
 SOURCE_PROOF_SYMLINK=$(find "${SOURCE_PROOF_INPUTS[@]}" -type l -print -quit)
 [[ -z "$SOURCE_PROOF_SYMLINK" ]] || { echo "Linux source proof input is a symlink: $SOURCE_PROOF_SYMLINK" >&2; exit 1; }
+ABI="${DSH_ABI:-arm64}"
+case "$ABI" in arm64|x86_64) ;; *) echo "unsupported DSH_ABI: $ABI" >&2; exit 2;; esac
+ABI_JSON=$(node --input-type=module -e "import { linuxAbi } from './scripts/source-build/linux-abi.mjs'; console.log(JSON.stringify(linuxAbi(process.argv[1])))" "$ABI")
+abi() { node -e "console.log(JSON.parse(process.argv[1])[process.argv[2]])" "$ABI_JSON" "$1"; }
+DEBIAN_ARCH=$(abi debianArch)
+NODE_PLATFORM=$(abi nodePlatform)
+ELF_MACHINE=$(abi elfName)
+READELF=$(abi readelf)
+CROSS_GCC=$(abi gcc)
+QEMU_STATIC=$(abi qemu)
+ROOTFS_ASSET=$(abi rootfsAsset)
+PROOT_ASSET=$(abi prootBackendAsset)
+ANDROID_ABI=$(abi androidAbi)
 WORK="$ROOT/.deploy-tmp/linux-build"
 [[ "$(realpath -m "$WORK")" == "$WORK" ]] || { echo 'Linux build root escapes workspace' >&2; exit 1; }
 mkdir -p "$WORK/assets" "$WORK/input" "$WORK/provenance"
@@ -46,7 +60,7 @@ THREADS=$(node --input-type=module -e 'import { XZ_THREADS, CPU_THREADS_CAP } fr
 export XZ_OPT="-T$THREADS -6"
 EPOCH=$(git show -s --format=%ct HEAD)
 NODE_VERSION=$(node -p 'require("./scripts/source-build/linux-inputs.json").node')
-NODE_SHA=$(node -p 'require("./scripts/source-build/linux-inputs.json").nodeSha256')
+if [[ "$ABI" = arm64 ]]; then NODE_SHA=$(node -p 'require("./scripts/source-build/linux-inputs.json").nodeSha256'); else NODE_SHA=$(node -p 'require("./scripts/source-build/linux-inputs.json").nodeSha256X64'); fi
 NODE_HEADERS_SHA=$(node -p 'require("./scripts/source-build/linux-inputs.json").nodeHeadersSha256')
 DEBIAN_SNAPSHOT=$(node -p 'require("./scripts/source-build/linux-inputs.json").debianSnapshot')
 DEBIAN_SHA=$(node -p 'require("./scripts/source-build/linux-inputs.json").debianInReleaseSha256')
@@ -57,7 +71,7 @@ test -s "$DEBIAN_KEYRING"
 # Source builds consume archives, never Termux binary packages or bootstrap keys.
 # Reject a redirected provenance parent before clearing only our own generated records.
 [[ "$(realpath -m "$WORK/provenance")" == "$WORK/provenance" ]] || exit 1
-rm -f -- "$WORK/provenance/proot-backend-inputs.json" "$WORK/provenance/proot-source-build-arm64.json"
+rm -f -- "$WORK/provenance/proot-backend-inputs.json" "$WORK/provenance/proot-source-build-$ABI.json"
 rm -rf -- "$WORK/provenance/proot-source-archives"
 PROOT_SOURCES="$WORK/input/proot-sources"
 mkdir -p "$PROOT_SOURCES"
@@ -69,19 +83,19 @@ while IFS=$'\t' read -r name url sha; do
   printf '%s  %s\n' "$sha" "$archive" | sha256sum --check --strict
 done < <(node -e 'const x=require("./scripts/source-build/linux-backend-packages.json"); for(const n of ["proot","libtalloc","libandroid-shmem"]) {const r=x.packageSources[n]; console.log([n,r.sourceUrl,r.sourceSha256].join("\t"));}')
 source_build=$(mktemp -d "$WORK/proot-source-build.XXXXXX")
-python3 scripts/source-build/build-proot-source.py "$PROOT_SOURCES" "$NDK_ROOT" "$source_build" --abi arm64
+python3 scripts/source-build/build-proot-source.py "$PROOT_SOURCES" "$NDK_ROOT" "$source_build" --abi "$ABI"
 python3 scripts/source-build/prepare-proot-source-backend.py \
-  "$source_build" "$PROOT_SOURCES" "$WORK/backend" "$WORK/native-libs" "$WORK/provenance" --abi arm64
-NATIVE_LIBS="$WORK/native-libs/arm64-v8a"
-aarch64-linux-gnu-readelf -h "$NATIVE_LIBS/libpocketharness_proot.so" | grep 'Machine:.*AArch64'
-aarch64-linux-gnu-readelf -l "$NATIVE_LIBS/libpocketharness_proot.so" | grep '/system/bin/linker64'
-aarch64-linux-gnu-readelf -h "$NATIVE_LIBS/libpocketharness_proot_loader.so" | grep 'Machine:.*AArch64'
-if aarch64-linux-gnu-readelf -l "$NATIVE_LIBS/libpocketharness_proot_loader.so" | grep -q 'Requesting program interpreter'; then
+  "$source_build" "$PROOT_SOURCES" "$WORK/backend" "$WORK/native-libs" "$WORK/provenance" --abi "$ABI"
+NATIVE_LIBS="$WORK/native-libs/$ANDROID_ABI"
+"$READELF" -h "$NATIVE_LIBS/libpocketharness_proot.so" | grep -i "Machine:.*$ELF_MACHINE"
+if [[ "$ABI" = arm64 ]]; then "$READELF" -l "$NATIVE_LIBS/libpocketharness_proot.so" | grep '/system/bin/linker64'; else "$READELF" -l "$NATIVE_LIBS/libpocketharness_proot.so" | grep '/system/bin/linker64'; fi
+"$READELF" -h "$NATIVE_LIBS/libpocketharness_proot_loader.so" | grep -i "Machine:.*$ELF_MACHINE"
+if "$READELF" -l "$NATIVE_LIBS/libpocketharness_proot_loader.so" | grep -q 'Requesting program interpreter'; then
   echo 'PRoot loader must be static and directly executable from nativeLibraryDir' >&2
   exit 1
 fi
 tar --sort=name --mtime="@$EPOCH" --owner=0 --group=0 --numeric-owner -cJf \
-  "$STAGE/proot-backend-aarch64.tar.xz" -C "$WORK/backend" bin lib libexec share LICENSE-GPL-2.0.txt
+  "$STAGE/$PROOT_ASSET" -C "$WORK/backend" bin lib libexec share LICENSE-GPL-2.0.txt
 
 bash scripts/source-build/retry-curl.sh --fail --location --retry 8 --retry-max-time 600 "$DEBIAN_SNAPSHOT/dists/trixie/InRelease" -o "$WORK/input/debian-InRelease"
 printf '%s  %s\n' "$DEBIAN_SHA" "$WORK/input/debian-InRelease" | sha256sum --check --strict
@@ -102,10 +116,10 @@ mkdir -p "$DEBOOTSTRAP_BIN"
 install -m755 scripts/source-build/linux-debian-snapshot-wget.py "$DEBOOTSTRAP_BIN/wget"
 REAL_WGET=$(command -v wget)
 [[ "$REAL_WGET" == /* && -x "$REAL_WGET" ]] || { echo 'Cannot resolve the real wget executable' >&2; exit 1; }
-sudo env "PATH=$DEBOOTSTRAP_BIN:$PATH" "DEBOOTSTRAP_REAL_WGET=$REAL_WGET" debootstrap --arch=arm64 --foreign --variant=minbase --components=main \
+sudo env "PATH=$DEBOOTSTRAP_BIN:$PATH" "DEBOOTSTRAP_REAL_WGET=$REAL_WGET" debootstrap --arch="$DEBIAN_ARCH" --foreign --variant=minbase --components=main \
   --keyring="$DEBIAN_KEYRING" \
   --include="apt,bash,ca-certificates,debian-archive-keyring,libstdc++6,$GUEST_TOOLS" trixie "$ROOTFS" "$DEBIAN_SNAPSHOT"
-sudo install -m755 /usr/bin/qemu-aarch64-static "$ROOTFS/usr/bin/qemu-aarch64-static"
+sudo install -m755 "/usr/bin/$QEMU_STATIC" "$ROOTFS/usr/bin/$QEMU_STATIC"
 sudo mkdir -p "$ROOTFS/dev" "$ROOTFS/proc"
 cleanup_mounts() {
   local failed=0
@@ -117,19 +131,19 @@ trap 'cleanup_mounts || true' EXIT
 sudo mount --bind /dev "$ROOTFS/dev"
 sudo mount -t proc proc "$ROOTFS/proc"
 sudo chroot "$ROOTFS" /debootstrap/debootstrap --second-stage
-test "$(sudo chroot "$ROOTFS" dpkg --print-architecture)" = arm64
+test "$(sudo chroot "$ROOTFS" dpkg --print-architecture)" = "$DEBIAN_ARCH"
 # A foreign bootstrap leaves some alternatives unselected (awk/vim/nc point at
 # /etc/alternatives entries that exist but have no target), so probes would report
 # missing commands in an otherwise complete rootfs.
 for alternative in $(sudo chroot "$ROOTFS" /bin/sh -c 'if [ -d /etc/alternatives ]; then ls /etc/alternatives; fi'); do
   sudo chroot "$ROOTFS" update-alternatives --auto "$alternative" >/dev/null 2>&1 || true
 done
-sudo chroot "$ROOTFS" /bin/bash -ec '/lib/ld-linux-aarch64.so.1 --version; /usr/bin/apt-get --version'
+if [[ "$ABI" = arm64 ]]; then sudo chroot "$ROOTFS" /bin/bash -ec '/lib/ld-linux-aarch64.so.1 --version; /usr/bin/apt-get --version'; else sudo chroot "$ROOTFS" /bin/bash -ec '/lib64/ld-linux-x86-64.so.2 --version; /usr/bin/apt-get --version'; fi
 # QEMU user-mode probes run with the caller's uid. CI runners are uid 1001, which has no
 # account inside the Debian rootfs, so ssh/passwd-aware tools fail with "No user exists for
 # uid 1001". Run the probes as root (matching the local container) and hand the report back.
 sudo python3 scripts/source-build/verify-guest-tools.py --rootfs "$ROOTFS" \
-  --report "$WORK/provenance/guest-tools-report.json" --qemu /usr/bin/qemu-aarch64-static
+  --report "$WORK/provenance/guest-tools-report.json" --qemu "/usr/bin/$QEMU_STATIC"
 sudo chown -R "$(id -u):$(id -g)" "$WORK/provenance"
 cleanup_mounts
 trap - EXIT
@@ -146,16 +160,16 @@ tar -xzf "$HEADERS_ARCHIVE" -C "$WORK/input/node-headers"
 python3 scripts/source-build/build-guest-addons.py \
   --harness .deploy-tmp/deepseek-harness \
   --headers "$WORK/input/node-headers/node-v$NODE_VERSION/include/node" \
-  --cc aarch64-linux-gnu-gcc \
+  --cc "$CROSS_GCC" --abi "$ABI" \
   --out "$WORK/guest-addons/system" | tee "$WORK/provenance/guest-addons-build.log"
 cp "$WORK/guest-addons/system/guest-addons.json" "$WORK/provenance/guest-addons.json"
 
 # Rootfs finalize: drop bootstrap residue, install the glibc compat preload that PRoot needs,
 # then normalize and verify the guest image before archiving it.
-sudo rm -f "$ROOTFS/usr/bin/qemu-aarch64-static"
+sudo rm -f "$ROOTFS/usr/bin/$QEMU_STATIC"
 sudo chroot "$ROOTFS" dpkg-query -W '-f=${binary:Package}\t${Version}\t${source:Package}\t${source:Version}\n' > "$WORK/provenance/debian-packages.tsv"
 mkdir -p "$WORK/provenance"
-aarch64-linux-gnu-gcc -shared -fPIC -O2 -Wall -Wextra -Werror \
+"$CROSS_GCC" -shared -fPIC -O2 -Wall -Wextra -Werror \
   -ffile-prefix-map="$ROOT"=/usr/src/pocket-harness -fdebug-prefix-map="$ROOT"=/usr/src/pocket-harness \
   -Wl,-soname,libpocket-linux-compat.so \
   -o "$WORK/provenance/libpocket-linux-compat.so" vendor/linux-proot/compat/termfold_compat.c -ldl
@@ -183,20 +197,20 @@ if sudo grep -RniE 'Acquire::(http|https)::Proxy|proxy=' "$ROOTFS/etc/apt/apt.co
   exit 1
 fi
 sha256sum "$NATIVE_LIBS"/*.so > "$WORK/provenance/linux-native-libraries.sha256"
-node scripts/source-build/check-linux-native-libraries.mjs "$WORK/native-libs"
+node scripts/source-build/check-linux-native-libraries.mjs "$WORK/native-libs" "$ABI"
 find "$ROOTFS/var/cache/apt/archives" -type f -name '*.deb' -print0 | sort -z | xargs -0 -r sha256sum > "$WORK/provenance/debian-debs.sha256"
 
 sudo tar --sort=name --mtime="@$EPOCH" --owner=0 --group=0 --numeric-owner --exclude='./dev/*' --exclude='./proc/*' \
-  -cJf "$STAGE/debian-minimal-aarch64.tar.xz" -C "$ROOTFS" .
-sudo chmod 644 "$STAGE/debian-minimal-aarch64.tar.xz"
+  -cJf "$STAGE/$ROOTFS_ASSET" -C "$ROOTFS" .
+sudo chmod 644 "$STAGE/$ROOTFS_ASSET"
 
-NODE_ARCHIVE="$WORK/input/node-v$NODE_VERSION-linux-arm64.tar.xz"
-bash scripts/source-build/retry-curl.sh --fail --location --retry 8 --retry-max-time 600 "https://nodejs.org/dist/v$NODE_VERSION/node-v$NODE_VERSION-linux-arm64.tar.xz" -o "$NODE_ARCHIVE"
+NODE_ARCHIVE="$WORK/input/node-v$NODE_VERSION-$NODE_PLATFORM.tar.xz"
+bash scripts/source-build/retry-curl.sh --fail --location --retry 8 --retry-max-time 600 "https://nodejs.org/dist/v$NODE_VERSION/node-v$NODE_VERSION-$NODE_PLATFORM.tar.xz" -o "$NODE_ARCHIVE"
 printf '%s  %s\n' "$NODE_SHA" "$NODE_ARCHIVE" | sha256sum --check --strict
 PNPM_VERSION=$(node -p 'require("./scripts/source-build/linux-inputs.json").pnpm.version')
 bash scripts/source-build/retry-curl.sh --fail --location --retry 8 --retry-max-time 600 "https://registry.npmjs.org/pnpm/-/pnpm-$PNPM_VERSION.tgz" -o "$WORK/input/pnpm.tgz"
-python3 scripts/source-build/package-linux-product-assets.py "$WORK" "$EPOCH"
-qemu-aarch64-static -L "$ROOTFS" "$WORK/node-stage/bin/node" --version | grep -Fx "v$NODE_VERSION"
+python3 scripts/source-build/package-linux-product-assets.py "$WORK" "$EPOCH" --abi "$ABI"
+"$QEMU_STATIC" -L "$ROOTFS" "$WORK/node-stage/bin/node" --version | grep -Fx "v$NODE_VERSION"
 cp "$WORK/input/debian-InRelease" "$WORK/provenance/"
 cp scripts/source-build/linux-inputs.json scripts/source-build/linux-source-manifest.json "$WORK/provenance/"
 mkdir -p "$WORK/provenance/linux-native-licenses"
@@ -207,5 +221,5 @@ printf '%s\n' "$(git rev-parse HEAD)" > "$WORK/provenance/project-source-commit.
 tar --sort=name --mtime="@$EPOCH" --owner=0 --group=0 --numeric-owner \
   -cJf "$WORK/provenance/linux-component-source.tar.xz" "${SOURCE_PROOF_INPUTS[@]}" \
   .deploy-tmp/linux-build/provenance/proot-source-archives \
-  .deploy-tmp/linux-build/provenance/proot-source-build-arm64.json
-echo "Built verified ARM64 Linux assets: $STAGE"
+  ".deploy-tmp/linux-build/provenance/proot-source-build-$ABI.json"
+echo "Built verified $ABI Linux assets: $STAGE"

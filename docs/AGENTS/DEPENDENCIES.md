@@ -24,7 +24,6 @@
 | Kotlin | 2.0.21 |
 | Gradle wrapper | 8.11.1 |
 | Java target | 17 |
-| Termux | 0.118.3 |
 | compileSdk | 36 |
 | targetSdk | 34 |
 | minSdk | 26 |

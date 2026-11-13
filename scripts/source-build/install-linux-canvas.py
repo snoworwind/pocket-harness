@@ -1,12 +1,18 @@
 #!/usr/bin/env python3
 """Install the authenticated Canvas facade into the factory web profile."""
+import importlib.util
 import json
 from pathlib import Path
 import sys
 import tarfile
 
+_SPEC = importlib.util.spec_from_file_location('linux_abi', Path(__file__).with_name('linux-abi.py'))
+_ABI = importlib.util.module_from_spec(_SPEC)
+_SPEC.loader.exec_module(_ABI)
 
-def install(home, archive_path, version):
+
+def install(home, archive_path, version, abi='arm64'):
+    config = _ABI.linux_abi(abi)
     profile = Path(home) / '.dsh/profiles/web'
     target = profile / 'node_modules/@napi-rs/canvas'
     target.mkdir(parents=True, exist_ok=False)
@@ -22,7 +28,7 @@ def install(home, archive_path, version):
         raise ValueError('Canvas facade identity mismatch')
     path = profile / 'package.json'
     factory = json.loads(path.read_text())
-    factory.setdefault('dependencies', {}).update({'@napi-rs/canvas': version, '@napi-rs/canvas-linux-arm64-gnu': version})
+    factory.setdefault('dependencies', {}).update({'@napi-rs/canvas': version, config['canvas_binding']: version})
     path.write_text(json.dumps(factory, indent=2) + '\n')
 
 

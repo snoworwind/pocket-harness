@@ -18,12 +18,20 @@ import { tmpdir } from 'node:os'
 // 并行上限的唯一真源（scripts/lib/shell.mjs）：本文件只用它解压校验用快照，见下方 xz 调用。
 // 不写死数字、更不用 `-T0`——`-T0` = 吃满全部逻辑核，本地跑链时会与模拟器抢满 CPU
 // （check-build-parallel-cap.mjs 明文禁止；本文件此前是漏网的一处）。
+import { linuxAbi } from './linux-abi.mjs'
 import { XZ_THREADS } from '../lib/shell.mjs'
 import { checkDshRuntimeDependencies } from './check-dsh-runtime-dependencies.mjs'
 import { checkPresetCarriers } from './preset-carriers.mjs'
 import { verifyPackagePayload, packagePayload } from './verify-package-payload.mjs'
 import { collectPhysicalFiles, matchesPatchTarget, enginePatchTargets, verifyCanonicalEnginePatch } from './reconcile-engine-patch-copies.mjs'
 
+import { checkEngineArtifacts } from './check-linux-runtime-packages.mjs'
+if (process.argv[2] === '--artifacts-only') {
+  if (!process.argv[3]) throw new Error('engine root required')
+  checkEngineArtifacts(resolve(process.argv[3]))
+  console.log('Linux engine development metadata check passed')
+  process.exit(0)
+}
 const compositionArg = process.argv[2]
 if (!compositionArg) {
   console.error('usage: node check-linux-engine.mjs <composition-root>')
@@ -237,7 +245,7 @@ try {
       sourceCommit,
       sourceTree,
     })),
-    runtime: 'linux-arm64-glibc',
+    runtime: linuxAbi().runtime,
     packageCount: packageChecks.length,
     packages: packageChecks,
     dependencyCheck,

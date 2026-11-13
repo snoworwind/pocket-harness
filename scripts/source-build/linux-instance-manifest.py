@@ -1,10 +1,28 @@
 #!/usr/bin/env python3
 """Bind compressed assets and the extracted managed trees to the APK manifest."""
+import argparse
 import hashlib
+import importlib.util
 import json
 from pathlib import Path, PurePosixPath
 import sys
 import tarfile
+
+
+def _load_linux_abi():
+    path = Path(__file__).with_name('linux-abi.py')
+    spec = importlib.util.spec_from_file_location('pocket_harness_linux_abi', path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+_LINUX_ABI = _load_linux_abi()
+ABIS = _LINUX_ABI.ABIS
+
+
+def linux_abi(value='arm64'):
+    return _LINUX_ABI.linux_abi(value)
 
 
 def digest_file(path):
@@ -64,10 +82,11 @@ def archive_tree(path):
     return digest.hexdigest()
 
 
-def build(directory):
+def build(directory, abi='arm64'):
+    mapping = linux_abi(abi)
     root = Path(directory)
-    record = dict(schemaVersion=1, homeSchemaVersion=2, baseId='debian-13-arm64-glibc-2',
-                  guestArchitecture='arm64', minimumGlibc='2.41')
+    record = dict(schemaVersion=1, homeSchemaVersion=2, baseId=mapping['base_id'],
+                  guestArchitecture=mapping['legacy'], minimumGlibc='2.41')
     for name in ('rootfs', 'node', 'engine', 'home'):
         path = root / f'{name}.tar.xz'
         record[name + 'Sha256'] = digest_file(path)
@@ -79,5 +98,14 @@ def build(directory):
     return record
 
 
+def main(argv=None):
+    parser = argparse.ArgumentParser()
+    parser.add_argument('directory')
+    parser.add_argument('--abi', default='arm64', choices=ABIS)
+    args = parser.parse_args(argv)
+    build(args.directory, args.abi)
+    return 0
+
+
 if __name__ == '__main__':
-    build(sys.argv[1])
+    raise SystemExit(main())

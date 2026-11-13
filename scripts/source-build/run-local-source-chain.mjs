@@ -236,7 +236,6 @@ function main() {
   if (only && !STAGES.some((s) => s.key === only)) { console.error(`未知阶段: ${only}`); process.exit(2) }
 
   const selected = selectPlanned(planned, { from, to, only, fromStep })
-    .filter((item) => abi === 'arm64' || item.stage !== 'linux-assets')
 
   // ── 本地前置检查（代替被跳过的 uses: 步骤）────────────────────────────────
   const preflight = () => {

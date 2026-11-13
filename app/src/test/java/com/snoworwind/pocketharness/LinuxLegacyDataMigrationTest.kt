@@ -73,4 +73,25 @@ class LinuxLegacyDataMigrationTest {
     f.install(); assertEquals("user-instructions", File(f.files, "home/.agents/AGENTS.md").readText())
     assertTrue(File(dsh, "AGENTS.md").readText().contains("factory-one"))
   }
+
+  @Test fun legacyBackupIsScopedToThePathsMigrationRewrites() = LinuxInstallerFixture().use { f ->
+    val dsh = oldUser(f); File(dsh, "settings.yaml").writeText("keep")
+    File(f.files, "home/attachments/large.bin").apply { parentFile!!.mkdirs(); writeText("not rewritten") }
+    f.install()
+    assertTrue(File(f.files, "linux-legacy-backup/home/.dsh/settings.yaml").isFile)
+    assertFalse(File(f.files, "linux-legacy-backup/home/attachments/large.bin").exists())
+    assertFalse(File(f.files, "linux-legacy-backup/home/.dsh/sessions").exists())
+  }
+
+  @Test fun tamperedLegacyBackupBlocksCleanupOfOldUsr() = LinuxInstallerFixture().use { f ->
+    val dsh = oldUser(f); File(dsh, "settings.yaml").writeText("keep")
+    f.trial = { _, _ -> error("stop before commit") }
+    assertTrue(LinuxInstanceInstaller.ensure(f.source(), f.files) is LinuxInstanceInstaller.Result.Failed)
+    assertTrue(File(f.files, "usr/bin/node").isFile)
+    File(f.files, "linux-legacy-backup/home/.dsh/settings.yaml").writeText("tampered")
+    assertTrue(LinuxInstanceInstaller.ensure(f.source(), f.files) is LinuxInstanceInstaller.Result.Failed)
+    assertTrue("校验失败后必须保留旧运行时候删", File(f.files, "usr/bin/node").isFile)
+    assertEquals("keep", File(dsh, "settings.yaml").readText())
+  }
+
 }

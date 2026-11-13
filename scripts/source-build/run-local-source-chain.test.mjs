@@ -36,7 +36,7 @@ test('planSteps：最终复验跟随 apk 阶段，而不是落入 misc', () => {
   }
   // 只有首个具名阶段之前的本地前置允许留在 misc；阶段开始后不得再有漏网步骤。
   assert.deepEqual(namesOf(planned.filter((item) => item.stage === 'misc')), [
-    'Require the maintained ARM64 source branch',
+    'Require the maintained Linux source branch',
     'Isolate npm cache from checked-in developer settings',
   ])
   assert.ok(!planned.some(item => /Termux|injected snapshot/.test(item.name)))

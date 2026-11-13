@@ -38,7 +38,7 @@ test('signing refuses stale bytes, wrong commit and unverified claims before loa
   const abi = process.env.DSH_ABI || 'arm64'
   const otherAbi = abi === 'arm64' ? 'x86_64' : 'arm64'
   const digest = createHash('sha256').update('candidate').digest('hex')
-  const linux = { schemaVersion: 2, runtime: 'linux-arm64-glibc', abi, independentRebuildMatched: true,
+  const linux = { schemaVersion: 2, runtime: abi === 'arm64' ? 'linux-arm64-glibc' : 'linux-x64-glibc', abi, independentRebuildMatched: true,
     sourceCommit: 'a'.repeat(40), payloadSha256: 'c'.repeat(64), primaryApkSha256: digest, referenceApkSha256: 'd'.repeat(64) }
   const legacy = { abi, independentRebuildMatched: true, normalizationVersion: 3, sourceCommit: 'a'.repeat(40),
     primaryUnsignedApkSha256: digest }
@@ -76,7 +76,7 @@ test('actual final signer binds bytes for ARM64 and x86_64 and refuses a wrong c
     try {
       for (const certificate of ['cd'.repeat(32), expected]) {
         writeFileSync(apk, 'candidate')
-        const proof = { schemaVersion: 2, runtime: 'linux-arm64-glibc', abi, independentRebuildMatched: true, sourceCommit: 'a'.repeat(40), payloadSha256: 'c'.repeat(64), primaryApkSha256: createHash('sha256').update('candidate').digest('hex') }
+        const proof = { schemaVersion: 2, runtime: abi === 'arm64' ? 'linux-arm64-glibc' : 'linux-x64-glibc', abi, independentRebuildMatched: true, sourceCommit: 'a'.repeat(40), payloadSha256: 'c'.repeat(64), primaryApkSha256: createHash('sha256').update('candidate').digest('hex') }
         writeFileSync(join(reports, 'independent-rebuild-verification.json'), JSON.stringify(proof))
         const result = spawnSync(process.execPath, [script], { cwd: root, encoding: 'utf8', env: { ...process.env, DSH_ABI: abi, GITHUB_SHA: 'a'.repeat(40), POCKET_SIGNING_KEYSTORE_BASE64: Buffer.from('test key, not production').toString('base64'), POCKET_SIGNING_KEYSTORE_PASSWORD: 'test-only', APKSIGNER: signer, TEST_CERT: certificate } })
         assert.equal(result.status, certificate === expected ? 0 : 1, result.stderr)
