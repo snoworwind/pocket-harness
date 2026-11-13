@@ -79,7 +79,12 @@ internal object LinuxCandidateProbe {
         if (cookie != null) {
           val anonymous = runCatching { request(port, "/api/android/env/status").let { c -> try { c.responseCode } finally { c.disconnect() } } }.getOrNull()
           val authenticated = runCatching { request(port, "/api/android/env/status", cookie).let { c ->
-            try { c.responseCode == 200 && JSONObject(c.inputStream.bufferedReader().readText()).length() > 0 } finally { c.disconnect() }
+            try {
+              // Bounded read: a wedged candidate must not turn the readiness probe into an
+              // unbounded wait (the connect/read timeouts do not bound a buffered reader).
+              val body = c.inputStream.use { it.readNBytes(64 * 1024).toString(Charsets.UTF_8) }
+              c.responseCode == 200 && JSONObject(body).length() > 0
+            } finally { c.disconnect() }
           } }.getOrDefault(false)
           if (anonymous == 401 && authenticated) { healthy = true; break }
         }
