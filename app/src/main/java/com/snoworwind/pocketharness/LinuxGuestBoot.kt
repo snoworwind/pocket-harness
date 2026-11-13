@@ -150,7 +150,8 @@ internal object LinuxGuestBoot {
     val env = mapOf(
       "PROOT_LOADER" to loader.absolutePath,
       "PROOT_TMP_DIR" to prootTmp.absolutePath,
-      // Android 16/6.6 上 PRoot 的 seccomp 加速器会间歇性 exit 182，客体执行统一关掉它。
+      // Disable PRoot's optional seccomp accelerator for compatibility. Loader exit 182
+      // can still occur with this disabled; it is not proof of an accelerator failure (#322).
       "PROOT_NO_SECCOMP" to "1",
       "LD_LIBRARY_PATH" to paths.nativeLibraryDir.absolutePath,
     )

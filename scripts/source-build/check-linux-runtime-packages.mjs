@@ -110,6 +110,20 @@ function nodePtyBinding(root, from, abi) {
   return { path: relative(root, module), sha256: hash(module) }
 }
 
+export function systemAddonBinding(root, from, abi) {
+  const config = linuxAbi(abi)
+  const source = packageAt(root, from, '@deepseek-ai/node-addon-system')
+  const manifest = identity(source, '@deepseek-ai/node-addon-system', '0.1.2')
+  assert.ok(manifest.exports?.['./flock'], 'system wrapper must export flock')
+  const name = `@deepseek-ai/node-addon-system-${config.nodePlatform}`
+  const binding = packageAt(root, source, name)
+  identity(binding, name, '0.1.2')
+  const module = join(binding, 'bin/glibc/system.node')
+  assert.ok(existsSync(module), 'system wrapper resolves a missing glibc addon')
+  guestElf(readFileSync(module), abi, 'system flock')
+  return { path: relative(root, module), sha256: hash(module) }
+}
+
 /** Production engine archives must not carry stripped development payloads. */
 export function checkEngineArtifacts(root, abi = process.env.DSH_ABI || 'arm64') {
   for (const name of walkNames(root)) {
@@ -153,6 +167,12 @@ export function checkLinuxRuntimePackages(input, reportPath, abi = process.env.D
 
   const sharp = sharpBinding(root, deployed.get('@deepseek-ai/dsh-attachment-local'), abi)
   const nodePty = nodePtyBinding(root, deployed.get('@deepseek-ai/dsh-subprocess-local'), abi)
+  // Audit each real wrapper instance: pnpm may expose a different sibling optional
+  // dependency from the correct-looking package at the engine's top level.
+  const systemAddons = walkNames(root)
+    .filter(name => name.endsWith('/node-addon-system/package.json') && lstatSync(join(root, name)).isFile())
+    .map(name => systemAddonBinding(root, dirname(join(root, name)), abi))
+  assert.ok(systemAddons.length > 0, 'no system flock wrapper was audited')
 
   const inventory = files(join(root, 'node_modules/.pnpm'))
   assert.ok(inventory.length > 0, 'native module inventory is empty: nothing collected under node_modules/.pnpm')
@@ -170,6 +190,7 @@ export function checkLinuxRuntimePackages(input, reportPath, abi = process.env.D
     koffi,
     sharp,
     nodePty,
+    systemAddons,
     inventory: inventory
       .map((item) => ({ path: item.path, sha256: hash(item.file) }))
       .sort((left, right) => left.path.localeCompare(right.path)),

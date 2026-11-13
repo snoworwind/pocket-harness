@@ -87,6 +87,12 @@ function scaffold(root, abi = 'arm64') {
   for (const name of ['dsh-subprocess-local', 'dsh-win32-process', 'dsh-attachment-local']) {
     symlink(root, `node_modules/@deepseek-ai/${name}`, `../.pnpm/@deepseek-ai+${name}@1/node_modules/@deepseek-ai/${name}`)
   }
+  const system = `${pnpm}/@deepseek-ai+node-addon-system@0.1.2/node_modules/@deepseek-ai/node-addon-system`
+  write(root, `${system}/package.json`, JSON.stringify({name: '@deepseek-ai/node-addon-system', version: '0.1.2', exports: {'./flock': './lib/flock.js'}}))
+  const systemBinding = `${pnpm}/@deepseek-ai+node-addon-system-linux-arm64@0.1.2/node_modules/@deepseek-ai/node-addon-system-linux-arm64`
+  write(root, `${systemBinding}/package.json`, JSON.stringify({name: '@deepseek-ai/node-addon-system-linux-arm64', version: '0.1.2'}))
+  write(root, `${systemBinding}/bin/glibc/system.node`, arm64())
+  symlink(root, `${pnpm}/@deepseek-ai+node-addon-system@0.1.2/node_modules/@deepseek-ai/node-addon-system-linux-arm64`, '../../../@deepseek-ai+node-addon-system-linux-arm64@0.1.2/node_modules/@deepseek-ai/node-addon-system-linux-arm64')
 }
 
 function withFixture(fn, abi = 'arm64') {
@@ -116,6 +122,18 @@ test('audit rejects a host x64 koffi binding', () => withFixture((root) => {
   put(root, `${pnpm}/@koromix+koffi-linux-arm64@3.2.1/node_modules/@koromix/koffi-linux-arm64/linux_arm64/koffi.node`, x64())
   assert.throws(() => checkLinuxRuntimePackages(root, undefined, 'arm64'), /AArch64 ELF/)
 }))
+
+for (const abi of ['arm64', 'x86_64']) {
+  test(`audit rejects a missing wrapper sibling even with a valid top-level addon: ${abi}`, () => withFixture(root => {
+    const platform = abi === 'arm64' ? 'arm64' : 'x64'
+    const name = `@deepseek-ai/node-addon-system-linux-${platform}`
+    put(root, `node_modules/${name}/package.json`, JSON.stringify({name, version: '0.1.2'}))
+    put(root, `node_modules/${name}/bin/glibc/system.node`, abi === 'arm64' ? arm64() : x64())
+    const module = `${pnpm}/@deepseek-ai+node-addon-system-linux-${platform}@0.1.2/node_modules/${name}/bin/glibc/system.node`
+    rmSync(join(root, module))
+    assert.throws(() => checkLinuxRuntimePackages(root, undefined, abi), /wrapper resolves a missing glibc addon/)
+  }, abi))
+}
 
 test('audit rejects an Android koffi binding and any unreviewed native family', () => withFixture((root) => {
   const android = `${pnpm}/@koromix+koffi-android-arm64@3.2.1/node_modules/@koromix/koffi-android-arm64`

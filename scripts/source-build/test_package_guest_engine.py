@@ -38,6 +38,44 @@ class PackageGuestEngineTest(unittest.TestCase):
     def test_system_addon_package_name_is_pinned(self):
         self.assertEqual(MODULE.ABI_CONFIG['arm64']['addon'], '@deepseek-ai/node-addon-system-linux-arm64')
 
+    def test_addon_replaces_pnpm_siblings_and_preserves_links_for_both_abis(self):
+        for abi in ('arm64', 'x86_64'):
+            with self.subTest(abi=abi), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                tree, addon = root / 'tree', root / 'addon'
+                name = MODULE.ABI_CONFIG[abi]['addon']
+                sibling = tree / '@deepseek-ai/dsh/node_modules/.pnpm/platform/node_modules' / name
+                sibling.mkdir(parents=True)
+                (sibling / 'package.json').write_text(json.dumps({'name': name}))
+                (sibling / 'obsolete').write_text('must disappear')
+                top = tree / '@deepseek-ai/dsh/node_modules' / name
+                top.parent.mkdir(parents=True, exist_ok=True)
+                top.symlink_to(Path('../.pnpm/platform/node_modules') / name)
+                (addon / 'bin/glibc').mkdir(parents=True)
+                (addon / 'package.json').write_text(json.dumps({'name': name}))
+                (addon / 'bin/glibc/system.node').write_bytes(b'compiled-for-' + abi.encode())
+                receipt = MODULE.install_system_addon(tree, addon, abi)
+                self.assertTrue(top.is_symlink())
+                self.assertEqual((top / 'bin/glibc/system.node').read_bytes(), b'compiled-for-' + abi.encode())
+                self.assertFalse((sibling / 'obsolete').exists())
+                self.assertEqual(len(receipt['installedPaths']), 1)
+
+    def test_addon_rejects_symlink_outside_engine(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            addon, tree, external = root / 'addon', root / 'tree', root / 'external'
+            (addon / 'bin/glibc').mkdir(parents=True)
+            name = MODULE.ABI_CONFIG['arm64']['addon']
+            (addon / 'package.json').write_text(json.dumps({'name': name}))
+            (addon / 'bin/glibc/system.node').write_bytes(b'compiled')
+            external.mkdir()
+            top = tree / '@deepseek-ai/dsh/node_modules' / name
+            top.parent.mkdir(parents=True)
+            top.symlink_to(external)
+            with self.assertRaisesRegex(ValueError, 'escapes engine'):
+                MODULE.install_system_addon(tree, addon)
+            self.assertEqual(list(external.iterdir()), [])
+
 
 if __name__ == '__main__':
     unittest.main()

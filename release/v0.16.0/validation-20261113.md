@@ -1,6 +1,6 @@
 # 0.16.0 双 ABI 候选验证记录
 
-候选源码：`26b924a71a7184f2f688157d7c8c8ecf5c10dc99`（PR #320 的 merge commit；PR #319 的 `dd5d1981` 含运行时实现）。本记录不构成公开发布或设备验收通过。
+已构建源码：`38108db86ebf3178b4d25210b1e9899ac9cecac4`（PR #321 merge commit）。来源链与签名通过，但干净首启预检失败，后续修复尚待新 APK 验证。本记录不构成公开发布或设备验收通过。
 
 ## 代码与 CI
 
@@ -40,3 +40,22 @@ x86 开发 run `43401048477` 在独立的原生 APK self-test 发现第二处环
 
 
 本地 Linux 门禁补充：`809d927a605d` 的完整静态/脚本/插件门禁 24/24 通过，证据 `.deploy-tmp/local-gate/6e93508065d7.json` 与同名 `.log`（本轮刻意不重跑 Kotlin，输入未变，沿用 PR #321 已通过证据）。随后对“父进程失败但仍有后代”的清理作追加修正，并在 Linux 单独执行全部 7 条 bootstrap 自检通过，日志 `/tmp/pocket-bootstrap-linux-selftest.log`。未把本地最小 rootfs 或这些门禁写作最终 APK/设备通过。
+
+
+## 双 ABI 最终来源 run 与首启失败
+
+[run 43409484559](https://github.com/snoworwind/pocket-harness/actions/runs/43409484559) 在 main `38108db8` 完成四路来源构建、每 ABI 双副本独立比对、隔离生产签名、资产校验及未发布 draft。ARM64 的 debootstrap 第二阶段分别为 473.2 秒、465.9 秒，均成功，未重现旧版 31 分钟停顿。PR #321 门禁 run 43409007126 / Linux 资产验证 43409007141 均成功。
+
+本地下载后 apksigner 验证两份 APK 均为 pin `914a519b9a338ea6c43669eef9bbeb9f0f62b1c94094e317eea943da08496e6d`。SHA-256：
+
+- ARM64：`44511b1a3074125f051bb4ad1309ef07f37d7dacd76321e85d760fbe8ac06968`
+- x86_64：`0b7cd4353f704c508a3cb161230b92702f7a00a2a44b38b93b4ad565bdf00d34`
+
+ARM64 Android 16 AVD（host GPU，emulator-5554）先卸载旧 0.15.2-source，再安装 versionCode 60 / 0.16.0-source。四件套解包后候选 Node/addon/PTY 预检失败，未提交 linux/instance.json，不能计为首启通过。日志显示错误的 addon 根入口；诊断继而发现 pnpm wrapper 的 sibling addon 缺少二进制，以及 node-pty 从错误依赖层解析。修复必须由新来源 APK 重新验证，不能把暂存树修改当最终产物。
+
+[Issue #322](https://github.com/snoworwind/pocket-harness/issues/322) 提供旧 0.15.2 真机的 182、fork 挂死与工具挂载报告。当前 bootstrap 源码已有 reactivateInstalledRuntime；默认产品改用 Linux shell。loader 182 的具体原因仍未确认，关闭 PRoot seccomp 加速器不能作为已修复结论。候选预检增加真实 flock 调用与 guest fork/管道，失败保持阻断，不对用户命令自动重试。
+
+root ADB 辅助诊断（su 域、应用 UID，非应用 SELinux 域）修复暂存依赖后，100 次 flock+PTY+fork/管道均 exit 0；隔离 home 使用出厂 profiles 启动引擎，匿名 env/status 为 401，token 换取 cookie 后为 200。这些仅用于提前发现后续故障，不替代最终 APK 的应用域、CDP、真机或 SAF/FUSE 设备验收。证据：`.deploy-tmp/final-source-43409484559/`；原始诊断日志可能含临时本地鉴权值，不提交或作为公开附件。
+
+
+首启修复的本地回归：双 ABI 各执行来源 workflow 的完整昂贵构建前预检通过；更新后的全量 Kotlin 1506 用例通过，数量与新鲜度门禁 SKIP=0；Node 全套本地回归通过，Python 146 项（22 项按条件跳过）通过。新增候选脚本直接执行测试覆盖真实导出子路径、flock 调用、依赖所属包解析，以及锁失败/PTY 失败/输出缺失负控。首次受限沙箱的 socket 测试因 EPERM 失败，开放本地监听权限后完整双 ABI 预检通过，未改测试判据。
