@@ -29,6 +29,14 @@ internal object LinuxCandidateProbe {
     })().catch(error=>{console.error(error);process.exit(1);});
   """.trimIndent()
 
+  /** Single-line, bounded probe failure: exit code plus the last non-empty output line. */
+  internal fun candidateFailure(stage: String, exit: Int, output: String, expected: String): String {
+    val line = output.lineSequence().map { it.trim() }.lastOrNull { it.isNotEmpty() } ?: ""
+    val detail = line.filter { it.code in 0x20..0x7e || it.code > 0x7f }.take(300)
+    return "guest $stage preflight failed: exit=$exit expected=$expected output=" +
+      (detail.ifEmpty { "<empty>" })
+  }
+
   internal fun glibcSatisfies(actual: String, minimum: String): Boolean {
     fun version(value: String): List<Int>? = Regex("(?:glibc )?(\\d+)\\.(\\d+)").matchEntire(value.trim())
       ?.groupValues?.drop(1)?.map { it.toInt() }
@@ -74,9 +82,18 @@ internal object LinuxCandidateProbe {
     try {
       process = launch(listOf("/usr/bin/getconf", "GNU_LIBC_VERSION"), output)
       check(process.waitFor(20, TimeUnit.SECONDS)) { "glibc preflight timed out" }
-      check(process.exitValue() == 0 && glibcSatisfies(output.readText(), manifest.getString("minimumGlibc"))) { "rootfs glibc does not satisfy candidate runtime" }
+      val glibcExit = process.exitValue()
+      val glibcOutput = runCatching { output.readText() }.getOrDefault("")
+      check(glibcExit == 0 && glibcSatisfies(glibcOutput, manifest.getString("minimumGlibc"))) {
+        // Never report a bare "glibc too old": on kernels that reject the guest loader this
+        // preflight is the first exec, so its exit code and stderr are the only evidence.
+        candidateFailure("glibc", glibcExit, glibcOutput, manifest.optString("minimumGlibc"))
+      }
       process = launch(listOf("NODE", "--expose-internals", "-e", nativeProbeScript), output)
-      check(process.waitFor(30, TimeUnit.SECONDS) && process.exitValue() == 0) { "guest Node/addon/PTY preflight failed" }
+      check(process.waitFor(30, TimeUnit.SECONDS)) { "guest Node/addon/PTY preflight timed out" }
+      val nodeExit = process.exitValue()
+      val nodeOutput = runCatching { output.readText() }.getOrDefault("")
+      check(nodeExit == 0) { candidateFailure("node", nodeExit, nodeOutput, "0") }
       val log = File(trial, "engine.log")
       process = launch(listOf("NODE", "--expose-internals", "/opt/dsh/" + LinuxGuestBoot.ENGINE_ENTRY, "web", "--port", port.toString(), "--no-open"), log)
       val deadline = System.currentTimeMillis() + 180_000
