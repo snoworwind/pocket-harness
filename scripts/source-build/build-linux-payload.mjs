@@ -23,6 +23,7 @@ mkdirSync(engine, { recursive: true })
 cpSync(join(ROOT, '.deploy-tmp/engine-deploy'), engine, { recursive: true, verbatimSymlinks: true })
 mkdirSync(reports, { recursive: true })
 node('source-build/seed-linux-home.mjs', join(ROOT, '.deploy-tmp/deepseek-harness'), join(stage, 'home'))
+run(process.execPath, ['scripts/source-build/fetch-overlay-tarballs.mjs', join(reports, 'engine-overlay.original.json'), join(ROOT, '.deploy-tmp/engine-overlay')])
 node('probe-engine-anchors.mjs', '--fixtures', '--capture-only', '--overlay', join(reports, 'engine-overlay.original.json'), '--source-manifest', '.deploy-tmp/engine-overlay/source-build-manifest.json')
 node('patches/apply-patches.mjs', stage, '--apply', '--scope', 'engine')
 node('check-browser-syntax-floor.mjs', '--degrade', '--stage', stage)
@@ -38,6 +39,7 @@ run('python3', ['scripts/source-build/check-linux-home.py', join(stage, 'home')]
 node('build-hard-manifest.mjs', '--tree', stage, '--out', join(work, 'plugin-hard-manifest.json'))
 node('source-build/check-linux-engine.mjs', stage)
 run('python3', ['scripts/source-build/package-guest-engine.py', '--tree', join(stage, 'usr/lib/node_modules'), '--addon', '.deploy-tmp/linux-build/guest-addons/system', '--out', join(work, 'engine'), '--epoch', '1704067200'])
+node('source-build/check-linux-runtime-packages.mjs', join(work, 'engine/@deepseek-ai/dsh'), join(reports, 'linux-native-runtime-packages.json'))
 const preinstall = JSON.parse(readFileSync('scripts/runtime-config/preinstall.json'))
 const version = preinstall.canvas.version
 const name = '@napi-rs/canvas-linux-arm64-gnu'

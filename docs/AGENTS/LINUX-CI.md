@@ -7,8 +7,8 @@
 1. `build-base.yml` 按内容键复用或双副本构建固定 Harness 源码，验证 deploy tree、源码包与锁文件收据；引擎生产图直接解析 Linux ARM64 glibc 的 Koffi/Sharp 与已审第三方 pins/消费者 overrides，不再装 Android Koffi/Sharp WASM fallback；源码构建后恢复上游清单与锁文件。
 2. `build-apk-source.yml` 构建清单中的壳插件，并对固定 marketplace 发布字节施加已登记补丁。
 3. Kotlin 全量单测与测试数量门禁在重型资产构建前执行，避免编译或命名迁移失败后才浪费构建时间。随后固定官方 NDK 编译宿主 PRoot/loader/talloc/shmem 与原生终端；Debian 签名快照、固定 Node 归档和客体 system addon 由 Linux 资产生产器提供。先恢复缓存，再按命中情况安装交叉工具与 keyring；`linux-product-assets-v1` 精确内容键覆盖所有生产输入；不使用宽前缀恢复。
-4. `build-linux-payload.mjs` 直接复制已审计 deploy tree，施加引擎补丁、同步 pnpm 物理副本、物化第一方包；从上游官方 bundle 数据初始化 web/headless profile，按插件清单把源码构建产物与运行期依赖装入工厂 home。
-5. `check-linux-engine.mjs` 从固定来源 tarball 独立重放补丁，核对第一方 payload、依赖闭包、pnpm 副本与预设载体；`check-inject-completeness.mjs --tree` 核对两套 profile 的源码字节、导入和运行期依赖。语法下限复扫、工厂 home 隐私与客体路径检查均为实际输入检查。
+4. `build-linux-payload.mjs` 直接复制已审计 deploy tree，先按引擎补丁目标解析出第三方发布包并从固定 registry 拉取对应版本 tgz（sha512 校验，第一方来自源码导出），再施加引擎补丁、同步 pnpm 物理副本、物化第一方包；从上游官方 bundle 数据初始化 web/headless profile，按插件清单把源码构建产物与运行期依赖装入工厂 home。
+5. `check-linux-engine.mjs` 从固定来源 tarball 独立重放补丁，核对第一方 payload、依赖闭包、pnpm 副本与预设载体；`check-linux-runtime-packages.mjs` 从每个已部署 koffi 消费者解析 `@koromix/koffi-linux-arm64` 的 glibc 模块、沿 sharp 发布 loader 找到 AArch64 ELF、并要求 node-pty 使用 linux-arm64 prebuild 且无源码 shadow，同时盘点 `.pnpm` 内全部原生模块只能属于已审家族；`check-inject-completeness.mjs --tree` 核对两套 profile 的源码字节、导入和运行期依赖。语法下限复扫、工厂 home 隐私与客体路径检查均为实际输入检查。
 6. 客体引擎与 home 分别归档；Canvas JS facade 和 glibc binding 都按源码 SHA-512 pin 校验，Node 中含固定 pnpm。四件套经 `linux-instance-manifest.py` 写入压缩摘要、受管树摘要、版本与展开体积。
 7. 产物装配前，`build-linux-apk.mjs` 执行 Linux 专用代码/桥/权限/协议/插件/测试数量门禁，打入四件套、ownership manifest 与按实际 Debian/Node/Harness 来源清单生成许可证通知，清除旧 snapshot 资产后调用 Gradle。
 8. 最终 APK 必须通过宿主原生库字节/许可证/来源核验、Linux 载荷身份检查及 v1/v2/v3 临时签名验证。工厂载荷报告通过 builder 与 verifier artifact 两个边界保存。

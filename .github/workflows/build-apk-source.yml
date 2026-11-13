@@ -584,6 +584,7 @@ jobs:
             .deploy-tmp/source-build/ndk-archive-sha1.txt
             .deploy-tmp/source-build/harness-web-preview-exclusion.json
             .deploy-tmp/source-build/linux-payload-identity.json
+            .deploy-tmp/source-build/linux-native-runtime-packages.json
             .deploy-tmp/source-build/linux-engine-check.json
             .deploy-tmp/source-build/linux-payload-build.json
             .deploy-tmp/source-build/pnpm-package-materialization.json
@@ -656,6 +657,7 @@ jobs:
             .deploy-tmp/source-build/ndk-archive-sha1.txt
             .deploy-tmp/source-build/harness-web-preview-exclusion.json
             .deploy-tmp/source-build/linux-payload-identity.json
+            .deploy-tmp/source-build/linux-native-runtime-packages.json
             .deploy-tmp/source-build/linux-engine-check.json
             .deploy-tmp/source-build/linux-payload-build.json
             .deploy-tmp/source-build/independent-rebuild-verification.json

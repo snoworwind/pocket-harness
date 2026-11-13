@@ -1611,7 +1611,7 @@ flowchart TD
 - **顺序**：固定源码双副本引擎底座 → 当前源码插件/marketplace → 固定 NDK 宿主库与 Linux 资产 → `build-linux-payload.mjs` 施加/独立重放引擎补丁 → 两套 profile 工厂插件目录装配与完整性检查 → 客体 engine/home 归档 → 四件套清单 → Kotlin 单测 → `build-linux-apk.mjs` 门禁/Gradle → APK 字节、载荷、三签检查 → 上传 → 可选独立比较。
 - **嵌套与线程**：Actions job 中 Node 编排子进程；宿主原生库与客体源码编译使用固定工具链；home 的 GNU xz 最多 8 线程，engine 的 Python lzma 单线程；不启动 Termux HTTP 镜像。
 - **耦合**：引擎底座只缓存引擎输入，当前项目组件收据在命中后重新冻结；Linux 资产使用精确内容键；插件依赖收集复用 `inject-all.py` 的纯 payload 函数，不执行其快照入口。ownership manifest 从最终目录装配推导；最终 APK 载荷以 manifest 与 SHA-256 绑定。
-- **覆盖账本**：`scripts/source-build/linux-payload.test.mjs`、`test_linux_ci_payload.py`、`native-runtime-inventory-workflow.test.mjs` 验证实际 profile seed、客体路径/秘密负控、artifact 传播和独立比较的签名边界；`check-linux-ci.mjs --self-test` 防止旧链接回。源码组件篡改测试继续由 `record-project-components.test.mjs` 维护。
+- **覆盖账本**：`scripts/source-build/linux-payload.test.mjs`、`test_linux_ci_payload.py`、`native-runtime-inventory-workflow.test.mjs` 验证实际 profile seed、客体路径/秘密负控、artifact 传播和独立比较的签名边界；`linux-runtime-packages.test.mjs` 在 pnpm 布局夹具上验证 koffi/sharp/node-pty 的 glibc 解析与未审原生家族负控；`check-linux-ci.mjs --self-test` 防止旧链接回。源码组件篡改测试继续由 `record-project-components.test.mjs` 维护。
 
 ```mermaid
 flowchart LR

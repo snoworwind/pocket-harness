@@ -23,6 +23,7 @@ test('payload composer has no retired build inputs and checks actual source, plu
   assert.doesNotMatch(build, /prepare-termux|build-snapshot-013|snapshot\.tar|base-usr|bootstrap-extracted/)
   for (const contract of ['engine-deploy', 'check-linux-engine.mjs', 'check-inject-completeness.mjs', 'check-linux-home.py', 'verifyPinnedNpm', 'linux-instance-manifest.py', 'build-hard-manifest.mjs']) assert.ok(build.includes(contract), contract)
   const apk = read('scripts/source-build/build-linux-apk.mjs')
+  assert.ok(build.indexOf('fetch-overlay-tarballs.mjs') < build.indexOf('probe-engine-anchors.mjs'))
   assert.ok(apk.indexOf('check-kotlin-test-count.mjs') < apk.indexOf("run('./gradlew'"))
   assert.ok(apk.indexOf("run('./gradlew'") < apk.indexOf('verify-linux-native-apk.py'))
   assert.match(apk, /verifyApks\(\{ files: \[apk\] \}\)/)

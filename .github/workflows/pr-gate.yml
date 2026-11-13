@@ -152,6 +152,8 @@ jobs:
         run: |
           node scripts/source-build/check-linux-ci.mjs --self-test
           node scripts/source-build/check-linux-names.mjs --self-test
+          node scripts/source-build/check-linux-runtime-packages.mjs --self-test
+          node scripts/source-build/fetch-overlay-tarballs.mjs --self-test
           python3 scripts/source-build/verify-linux-payload.py --self-test
           node --test scripts/source-build/linux-payload.test.mjs
       - name: 来源审计源码替换回归

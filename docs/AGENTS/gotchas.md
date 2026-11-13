@@ -3986,3 +3986,26 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
     修法：改为 `ptc-linux-launch.test.mjs`，同时核对 PTC launch、引擎 NODE 解析、受管 Node bind、
     `env -i` 和 loader 环境边界；旧 wrapper、宿主 linker、错误 Node 路径与缺 bind 都必须拒绝。
     复验：定向测试和补丁回归总入口执行通过；没有新增失败豁免。
+
+698. **glibc 原生载荷审计不能按包子路径直接当 ELF 读（2026-11-13，实验分支）**
+     现象：Linux 引擎打包后，koffi/sharp/node-pty 的 AArch64 绑定没有独立验收；按
+     `@img/sharp-linux-arm64/sharp.node` 解析会把 `index.cjs` 当二进制读，误判 ELF。
+     真因：`@img/*` 的 `exports["./sharp.node"]` 指向 `index.cjs`，真正的 `.node` 由其中
+     `require('./lib/...')` 加载；koffi 的 glibc 模块也由包内 `index.js` 在运行期按 libc 选择。
+     修法：审计沿发布 loader 走：sharp 先解析子路径再读 `lib/*.node`，koffi 断言 loader 选择
+     `linux_arm64`，node-pty 要求 `prebuilds/linux-arm64` 且无 `build/` shadow；消费者清单由
+     已部署包的 `koffi` 依赖动态枚举，Android koffi 与 `.pnpm` 内未审家族失败关闭。
+     复验：`linux-runtime-packages.test.mjs` 用真实 pnpm 布局夹具覆盖正例与 x64/Android/
+     shadow/未审家族/缺绑定五类负控，并接入 PR Gate 与本地 preflight。
+
+699. **删除旧快照链会连带删掉补丁探针依赖的第三方 tgz 缓存（2026-11-13，实验分支）**
+     现象：新 Linux 来源链在 `build-linux-payload.mjs` 的锚点探针前置处判红，
+     `.deploy-tmp/engine-overlay/` 缺 `node-addon-require-builtin-0.1.9.tgz` 与
+     `@earendil-works/pi-ai-1.3.0.tgz`，整条云端构建停在这一步。
+     真因：这两个 tgz 原先由旧快照构建器的 overlay 下载逻辑顺带拉取；新链只从源码导出
+     第一方 tarball，第三方补丁目标的发布字节没有任何生产者。
+     修法：新增 `fetch-overlay-tarballs.mjs`，从 overlay 与补丁 registry 反推「引擎补丁/退役
+     目标所属的非 @deepseek-ai 包」，按版本从配置的 registry 拉 tgz 并以 dist.sha512/integrity
+     校验后落入同一缓存；缺归属或目标越界直接失败。构建顺序固定为 fetch → 探针 → 施加补丁。
+     复验：`fetch-overlay-tarballs.test.mjs` 覆盖只取第三方、去重、退役目标、未知归属与越界
+     目标负控；`linux-payload.test.mjs` 断言 fetch 在探针之前；PR Gate 与本地 preflight 均执行自检。
