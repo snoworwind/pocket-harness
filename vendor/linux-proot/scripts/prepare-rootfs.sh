@@ -46,6 +46,24 @@ for directory in dev proc sys tmp var/tmp dev/shm root; do
         mkdir -p "$ROOTFS/$directory"
     fi
 done
+for device in fd stdin stdout stderr; do
+    case "$device" in
+        fd) destination=/proc/self/fd ;;
+        stdin) destination=/proc/self/fd/0 ;;
+        stdout) destination=/proc/self/fd/1 ;;
+        stderr) destination=/proc/self/fd/2 ;;
+    esac
+    if [ "$VERIFY" = 1 ]; then
+        [ -L "$ROOTFS/dev/$device" ] && [ "$(readlink "$ROOTFS/dev/$device")" = "$destination" ] || {
+            echo "NEEDS-FIX /dev/$device must link to $destination" >&2; exit 1;
+        }
+    else
+        [ ! -e "$ROOTFS/dev/$device" ] || [ -L "$ROOTFS/dev/$device" ] || {
+            echo "refusing to replace non-link /dev/$device" >&2; exit 1;
+        }
+        ln -sfn "$destination" "$ROOTFS/dev/$device"
+    fi
+done
 if [ "$VERIFY" != 1 ]; then
     mkdir -p "$ROOTFS/etc" "$ROOTFS/opt/pocket-harness"
 fi

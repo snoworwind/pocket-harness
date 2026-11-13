@@ -4093,3 +4093,27 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
      真因：预检绕开公开子路径、装配仅写顶层 addon，且把传递依赖误当直接依赖。旧 printf 内建命令还不能检查 Issue #322 的 fork/管道故障。
      修法：预检通过 /flock 实际加锁，从 subprocess-local 解析 PTY 并执行真实 fork/管道；装配替换所有同名 pnpm 真实包且保留树内链接，拒绝越界目标；门禁沿 wrapper 查找 glibc addon。修正“关闭 seccomp 就修复 182”的无证据注释，不自动重试用户命令。
      复验：双 ABI 包装夹具、缺失 sibling/越界链接、锁失败、PTY 错退出/错误输出/缺 fork 输出负控；设备暂存树 su 域 100 次成功及 HTTP 401/200 仅为诊断。最终新 APK 与真机应用域仍待验证，见 release/v0.16.0/validation-20261113.md。
+
+710. **Linux 客体启动路径从未注入中继 preload：端口被壳独占，引擎却还想自己 listen 3080（2026-11-13）**
+     现象：干净安装后 Web UI 打不开，引擎进程还活着；诊断树里手动起引擎能看到 `dsh web: http://127.0.0.1:3080/`，但应用侧私有 socket 一直不可达。
+     真因：`EngineTransport.preparePreload` 有实现却**没有任何调用点**。壳侧先 bind 127.0.0.1:3080，客体内的 node 没被 `--require` 劫持 listen，于是要么 bind 失败、要么绕开中继；WebView 走的是私有无名 socket 路径，两边根本不在一条链上。
+     修法：把 preload 与 socket 收进独立 `files/engine-transport/` 目录（只 bind 这一个目录进客体，不再整目录绑 `files/`），`LinuxGuestBoot.withPrivateTransport` 在 proot 参数里插入 `-b <dir>:<dir>`，并在 `/opt/node/bin/node` 后插入 `--require <preload>`；preload 用 `__dirname` 找 socket，宿主/客体同路径才不会错位。宿主与客体路径不一致、preload 缺失或为符号链接一律拒启。
+     复验：`LinuxGuestBootTest` 覆盖目录绑定位置、`--require` 位置、不出现整目录 `files/` 绑定、缺失/链接 preload 负控；设备上应用进程内 `su`-free 探活返回 200 且 auth ok（.deploy-tmp/final-source-43409484559/root-transport-live.log）。
+
+711. **DNS 只写进私有文件、没绑进客体 /etc/resolv.conf：客体只有注释行，模型请求 transport failed（2026-11-13）**
+     现象：模型选择正常，提交任务立刻 `DeepSeek Messages transport failed`；客体内 `/etc/resolv.conf` 只有注释，连模型列表都取不到。
+     真因：壳侧 `LinuxDnsServers` 只把地址发布到 `files/linux-dns-servers`，`LinuxGuestBoot.resolve` 没有把它挂到客体的 `/etc/resolv.conf`，rootfs 里那份是构建机残留。
+     修法：同一份地址同时发布 `files/linux-resolv.conf`（最多 4 条 `nameserver`，逐条校验只允许 IP 字符，空集合写 `127.0.0.1` 保持离线失败而不是回退公共 DNS）；启动时 `-b <file>:/etc/resolv.conf`，缺失则 `-b /dev/null:/etc/resolv.conf`。符号链接或非普通文件直接 `linux-guest-dns-invalid` 拒启，Private DNS 仍按原策略清空。
+     复验：`LinuxDnsPrivacyPolicyTest` 覆盖地址渲染、空集合不落公共 DNS、注入换行/域名负控；`LinuxGuestBootTest` 覆盖绑定、缺失回退与符号链接拒启；设备上 `apt-get update` 实拉 Debian trixie 索引 16.8 MB（.deploy-tmp/term-apt-20261113/README.md）。
+
+712. **rootfs 缺标准 `/dev/fd` 等别名：Bash 进程替换与 `<(...)` 直接失败（2026-11-13）**
+     现象：客体里 `bash` 的进程替换（`<(...)`/`>(...)`）报错，依赖 `/dev/fd/N` 的脚本、`tee`、部分测试框架一并失效。
+     真因：`prepare-rootfs.sh` 只建了 `dev`/`proc`/`sys` 等目录，没有建 Debian 标准的 `/dev/fd`、`/dev/stdin|stdout|stderr` 符号链接；PRoot 下 `/proc/self/fd` 可用，但缺别名就没有名字可指向。
+     修法：预处理阶段创建 `fd -> /proc/self/fd`、`stdin|stdout|stderr -> /proc/self/fd/0|1|2`；`--verify` 逐条核对链接目标，非链接的同名实体拒绝覆盖。
+     复验：`test_prepare_rootfs_proot.py` 覆盖四个链接目标，以及删除/改指向后 `--verify` 必须非零退出。设备上**以应用身份**重建链接后实测：`ls -l /dev/fd` 显示 `-> /proc/self/fd`，`cat <(echo PROC-SUBST-OK)` 输出 PROC-SUBST-OK，`diff <(echo a) <(echo a)` 输出 DIFF-OK，`echo x > /dev/stdout` 正常；同一条命令若链接由 root adb shell 创建则全部 `Permission denied`，真因见坑 713。
+
+713. **root adb 在应用数据目录里造的文件丢失 MLS 类别，untrusted_app 一律 EACCES（2026-11-13）**
+     现象：为省一次打包，用 root 在设备 rootfs 里补了 `/dev/fd`、`/dev/stdin|stdout|stderr` 四条标准符号链接。`ls -l` 看得到、`stat` 报 `cannot read symbolic link: Permission denied`，Bash 进程替换 `<( )` 报 `/dev/fd/63: Permission denied`，而同一目标的自建链接 `/dev/fdtest -> /proc/self/fd/1`、`/tmp/fdlink -> /proc/self/fd/1` 都正常。
+     真因：`ls -Z` 显示 root 创建的四条链接标签是 `u:object_r:app_data_file:s0`，没有进程的 MLS 类别（应用自建的带 `:c155,c256,c512,c768`）。SELinux 的类别不匹配让 untrusted_app 读链接即被拒；链接目标本身没问题，所以换个名字就"能工作"，极易误判成 PRoot 不支持 `/dev/fd`。
+     修法：应用数据目录下的功能性文件必须由**应用身份**创建（应用内 bash、或正式的解包/装配路径）；root adb 只用于读取和清障（`rm`），不要用来"补"功能文件。反证时先用 `ls -lZ` 比对标签再下结论。
+     复验：root adb 删除四条链接后，在应用终端里 `ln -s /proc/self/fd /dev/fd` 等重建，进程替换、`diff <( )`、`> /dev/stdout` 全部通过（.deploy-tmp/term-apt-20261113/ui-10-procsubst-ok.png）；正式 rootfs 由 CI 构建、应用进程解包，标签天然正确。

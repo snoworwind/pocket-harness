@@ -633,7 +633,7 @@ class EngineManager(private val context: Context, private val pickToken: String?
   }
 
   /**
-   * 启动客体引擎。与 Termux 路径的区别：不注入 termux-exec 预载，不追加 `--require`，
+   * 启动客体引擎。只预载壳侧私有 HTTP 中继模块，不注入 Termux 执行兼容层，
    * 只把 API key/版本等与平台无关的变量带进 PRoot；平台路径类变量一律用客体值。
    */
   private fun startGuestWithLaunch(launch: LinuxGuestBoot.Launch): Process {
@@ -661,7 +661,8 @@ class EngineManager(private val context: Context, private val pickToken: String?
       "DEEPSEEK_API_KEY" to (File(context.filesDir, "deepseek-key.txt").takeIf { it.exists() }?.readText()?.trim() ?: ""),
       "DASHSCOPE_API_KEY" to (File(context.filesDir, "dashscope-key.txt").takeIf { it.exists() }?.readText()?.trim() ?: ""),
     )
-    val guestLaunch = LinuxGuestBoot.withEnvironment(launch, guestEnv)
+    val privateLaunch = LinuxGuestBoot.withPrivateTransport(launch, EngineTransport.preparePreload(context))
+    val guestLaunch = LinuxGuestBoot.withEnvironment(privateLaunch, guestEnv)
     val process = ProcessBuilder(guestLaunch.argv).also { builder ->
       builder.environment().putAll(guestLaunch.env)
       if (launch.workingDirectory.isDirectory) builder.directory(launch.workingDirectory)
@@ -1584,33 +1585,37 @@ private object LinuxDnsServers {
   }
 
   private fun publishAddresses(context: Context, addresses: List<java.net.InetAddress>) {
-    val value = addresses.asSequence()
+    val servers = addresses.asSequence()
       .filterNot { it.isAnyLocalAddress || it.isLoopbackAddress || it.isMulticastAddress || it.isLinkLocalAddress }
       .mapNotNull { it.hostAddress?.substringBefore('%')?.takeIf { address -> address.isNotBlank() } }
       .distinct()
       .take(4)
-      .joinToString(",")
+      .toList()
+    val outputs = mapOf(FILE_NAME to servers.joinToString(","), "linux-resolv.conf" to linuxResolverConfig(servers))
     synchronized(lock) {
-      val target = File(context.filesDir, FILE_NAME)
-      if (
-        target.isFile && !Files.isSymbolicLink(target.toPath()) &&
-        runCatching { target.readText() }.getOrNull() == value
-      ) return
-      val temporary = try {
-        File.createTempFile("linux-dns-", ".tmp", context.filesDir)
-      } catch (error: Throwable) {
-        clearStaleResolver(target, error)
-        return
-      }
-      try {
-        FileOutputStream(temporary).use { stream ->
-          stream.write(value.toByteArray(Charsets.UTF_8))
-          stream.fd.sync()
+      for ((name, value) in outputs) {
+        val target = File(context.filesDir, name)
+        if (
+          target.isFile && !Files.isSymbolicLink(target.toPath()) &&
+          runCatching { target.readText() }.getOrNull() == value
+        ) continue
+        val temporary = try {
+          File.createTempFile("linux-dns-", ".tmp", context.filesDir)
+        } catch (error: Throwable) {
+          outputs.keys.forEach { clearStaleResolver(File(context.filesDir, it), error) }
+          return
         }
-        if (!SnapshotFs.atomicReplace(temporary, target)) throw java.io.IOException("DNS state publication failed")
-      } catch (error: Throwable) {
-        temporary.delete()
-        clearStaleResolver(target, error)
+        try {
+          FileOutputStream(temporary).use { stream ->
+            stream.write(value.toByteArray(Charsets.UTF_8))
+            stream.fd.sync()
+          }
+          if (!SnapshotFs.atomicReplace(temporary, target)) throw java.io.IOException("DNS state publication failed")
+        } catch (error: Throwable) {
+          temporary.delete()
+          outputs.keys.forEach { clearStaleResolver(File(context.filesDir, it), error) }
+          return
+        }
       }
     }
   }
@@ -1619,6 +1624,15 @@ private object LinuxDnsServers {
     val cleared = runCatching { Files.deleteIfExists(target.toPath()) }.getOrDefault(false)
     Log.e(TAG, "Linux DNS state update failed; stale resolver ${if (cleared) "cleared" else "may remain"}", error)
   }
+}
+
+/** Empty/Private DNS state stays offline; never silently substitute a public resolver. */
+internal fun linuxResolverConfig(servers: List<String>): String {
+  require(servers.size <= 4 && servers.all { it.length <= 64 && it.matches(Regex("[0-9a-fA-F:.]+")) }) {
+    "invalid Android DNS address"
+  }
+  return (servers.ifEmpty { listOf("127.0.0.1") }.joinToString("") { "nameserver $it\n" }) +
+    "options timeout:2 attempts:2\n"
 }
 
 /** Observe startup before liveness so publishing a child then releasing the start

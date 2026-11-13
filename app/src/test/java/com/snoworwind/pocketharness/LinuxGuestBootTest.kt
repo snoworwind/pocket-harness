@@ -21,6 +21,48 @@ class LinuxGuestBootTest {
     return file
   }
 
+  @Test fun managedEngineBindsOnlyTransportDirectoryAndPreloadsInsideGuest() {
+    val paths = fixture()
+    val launch = (LinuxGuestBoot.resolve(paths) as LinuxGuestBoot.Result.Ready).launch
+    val preload = touch(File(EngineTransport.privateDirectory(paths.filesDir), "engine-private-transport.cjs"))
+    val managed = LinuxGuestBoot.withPrivateTransport(launch, preload)
+    val directory = preload.parentFile!!.canonicalPath
+    val bind = managed.argv.indexOf("$directory:$directory")
+    assertTrue("transport directory must be bound", bind > 0)
+    assertEquals("-b", managed.argv[bind - 1])
+    assertTrue(bind < managed.argv.indexOf("/usr/bin/env"))
+    val node = managed.argv.indexOf("/opt/node/bin/node")
+    assertEquals(listOf("--require", preload.canonicalPath), managed.argv.subList(node + 1, node + 3))
+    assertTrue(managed.argv.none { it == "${paths.filesDir}:${paths.filesDir}" })
+    assertEquals(launch.env, managed.env)
+    assertTrue(launch.argv.none { it == "--require" })
+  }
+
+  @Test fun guestResolverFollowsAndroidPublicationAndMissingOrLinkedStateFailsClosed() {
+    val paths = fixture()
+    fun argv() = (LinuxGuestBoot.resolve(paths) as LinuxGuestBoot.Result.Ready).launch.argv
+    assertTrue(argv().contains("/dev/null:/etc/resolv.conf"))
+    val resolver = File(paths.filesDir, "linux-resolv.conf").apply { writeText("nameserver 10.0.2.3\n") }
+    assertTrue(argv().contains("${resolver.canonicalPath}:/etc/resolv.conf"))
+    resolver.delete()
+    java.nio.file.Files.createSymbolicLink(resolver.toPath(), touch(File(temporary.newFolder(), "foreign")).toPath())
+    assertEquals("linux-guest-dns-invalid", (LinuxGuestBoot.resolve(paths) as LinuxGuestBoot.Result.Refused).code)
+  }
+
+  @Test fun transportRejectsMissingOrLinkedPreloadAndLinkedDirectory() {
+    val paths = fixture()
+    val launch = (LinuxGuestBoot.resolve(paths) as LinuxGuestBoot.Result.Ready).launch
+    val dir = EngineTransport.privateDirectory(paths.filesDir)
+    val missing = File(dir, "missing.cjs")
+    assertTrue(runCatching { LinuxGuestBoot.withPrivateTransport(launch, missing) }.isFailure)
+    val external = touch(File(temporary.newFolder(), "external.cjs"))
+    java.nio.file.Files.createSymbolicLink(missing.toPath(), external.toPath())
+    assertTrue(runCatching { LinuxGuestBoot.withPrivateTransport(launch, missing) }.isFailure)
+    missing.delete(); dir.delete()
+    java.nio.file.Files.createSymbolicLink(dir.toPath(), external.parentFile!!.toPath())
+    assertTrue(runCatching { EngineTransport.privateDirectory(paths.filesDir) }.isFailure)
+  }
+
   @Test fun x86GuestUsesTheX64Addon() {
     val paths = fixture()
     val root = File(paths.filesDir, "linux")

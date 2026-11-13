@@ -58,7 +58,7 @@
     "vendor/linux-proot/compat/NOTICE.md": "0126c519f02d3e3c524632919d785a8b4e099ea9022aaf9d35a56e86270af2f5",
     "vendor/linux-proot/compat/SOURCE.json": "b77d9aa4fdc117253c4eb1245cded2aedd74735c65bff17e9264188afd52ed7b",
     "vendor/linux-proot/compat/termfold_compat.c": "0c47b5a7302e16aa5f588c393c87b40142cefb15e8a4b9298753aeb3002f8169",
-    "vendor/linux-proot/scripts/prepare-rootfs.sh": "60bce55c13fcad571cf6ce9cd408ee6a3ee0e0cc049caf13e66b6482c643cd8e"
+    "vendor/linux-proot/scripts/prepare-rootfs.sh": "4ff1a613b2e3e62cd3defd8f14daf09a6af621e0458a924aa15f4d949f1ff5bd"
   },
   "localPatches": {
     "plugins/dsh-linux-bootstrap/build-client.mjs": {
