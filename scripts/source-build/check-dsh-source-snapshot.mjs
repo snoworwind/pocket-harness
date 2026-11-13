@@ -219,9 +219,11 @@ try {
     }
     canvasReport = { version: canvasManifest.version, size: canvasBytes.length, sha256: sha256(canvasBytes) }
   }
-  const launcher = readFileSync('app/src/main/java/com/snoworwind/pocketharness/EngineManager.kt', 'utf8')
+  // The engine argv moved into the guest boot contract when the primary engine switched to
+  // PRoot/Debian; the fallback still needs the V8 internals flag on that same argv.
+  const launcher = readFileSync('app/src/main/java/com/snoworwind/pocketharness/LinuxGuestBoot.kt', 'utf8')
   if (!launcher.includes('"--expose-internals"')) {
-    throw new Error('the Android engine no longer exposes Node internals for the JavaScript loader fallback')
+    throw new Error('the guest engine argv no longer exposes Node internals for the JavaScript loader fallback')
   }
   const patchRegistry = JSON.parse(readFileSync('scripts/patches/registry.json', 'utf8'))
   const patchChecks = []
