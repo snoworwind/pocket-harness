@@ -4140,3 +4140,9 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
      真因：`build-linux-assets.sh` 归档 rootfs 时用 `--exclude='./dev/*'`（为了不带 device node），把同样是 `dev/` 下条目的四个**符号链接**一起排除了。构建期的 verify 看的是还没打包的目录树，所以永远绿；缺陷只在装机后才暴露。解包出来的 `dev/` 里只剩安装器运行时创建的空文件，`stdout` 那个普通文件还是 `echo > /dev/stdout` 失败时 shell 自己造的。
      修法：打包前只删 `dev/` 下**非目录非链接**的条目（device node），tar 改为只排除运行时子树 `./dev/pts/*`、`./dev/shm/*`，保留 `./dev/fd|stdin|stdout|stderr` 四条标准链接；`/proc` 仍整段排除。
      复验：`test_linux_assets_dev_archive` 三条断言（tar 不再整段排除 dev、删 device node 在 tar 之前、prepare-rootfs 仍建四条链接）；修复后需重新出包，在设备上确认 `ls -l /dev/fd`、`cat <(echo …)`、`diff <( )`、`> /dev/stdout` 全部可用。**旧包（run 43432157196）不含此修复，不得据其判 /dev/fd 通过。**
+
+719. **候选 trial 把「客体执行失败」误报成「glibc 版本不满足」，真机首启只得到一句误导文案（2026-11-13，真机 SGT-AL10）**
+     现象：0.16.0 APK 在鸿蒙真机首启失败，界面只有 `Linux 环境准备失败 / rootfs glibc does not satisfy candidate runtime`；诊断包里没有 trial 自己的输出，无法判断是 loader 182、exec 被拒还是版本真的低。
+     真因：`LinuxCandidateProbe.verify` 把 `getconf GNU_LIBC_VERSION` 的**退出码与输出**合并成一个布尔判断，非 0 就统一报 glibc 版本；而这一步恰是该设备上第一个 guest exec，182/loader 失败都会落到这句话上。trial 的输出只写进 `files/linux-trial-failed.log`，又不在诊断包白名单里。
+     修法：失败文案改为 `guest <stage> preflight failed: exit=<code> expected=<min> output=<最后一行>`（单行、限 300 字符、空输出写 `<empty>`），exit 与 `[proot-loader] …` 行得以保留；`LogShare.candidateFiles` 白名单加入 `linux-trial-failed.log`（写入时已经过脱敏）。
+     复验：`CandidateProbeDiagnosticsTest` 覆盖 exit/最后一行、空输出、控制字符不换行、长度上限与诊断包白名单；`LogShareTest`/`IndependentLogShareTest` 的封闭白名单同步更新。真机下一次首启失败将直接显示 exit 码与 loader 落点。
