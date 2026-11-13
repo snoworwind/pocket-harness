@@ -31,9 +31,9 @@ DeepSeek Harness 的独立安卓应用 **Pocket Harness**（包名与 Kotlin nam
 ## 2. 怎么建、怎么装、怎么验
 
 ```powershell
-# 在本仓触发 ARM64 Linux 云端来源链（main；release=true 时双副本比对并生产签名）：
+# 在本仓触发双 ABI Linux 云端来源链（main；release=true 时双副本比对并生产签名）：
 gh workflow run build-apk-source.yml --repo snoworwind/pocket-harness --ref main
-# 生产签名的 ARM64 draft prerelease（main，自动双副本 + 隔离签名）：
+# 生产签名的双 ABI draft prerelease（main，自动双副本 + 隔离签名）：
 gh workflow run release-source-draft.yml --repo snoworwind/pocket-harness --ref main
 # Linux / WSL 本地隔离来源副本，默认 main ARM64；x86 QA 用 --abi x86_64（codex/x86-*）；只构建已提交 HEAD：
 node scripts/source-build/run-local-source-chain.mjs
@@ -87,7 +87,7 @@ adb -s <serial> install -r -t out\v<版本>\pocket-harness-v<版本>-arm64.apk
 3. 发布验收任务必须真实且由模型自主编排：提供目标、约束和成功标准，不提供操作序列；过程须保留工具调用、失败重试和最终汇报。屏幕范围、Shizuku、虚拟屏或通道状态变更先跑 node scripts/verify-screen-scope-matrix.mjs --serial <s>，再补人眼判读。
 4. CDP 和 ADB 证据默认不能互相替代：DOM 断言看不到几何、遮挡、焦点和键盘问题；截图也不能证明状态语义。正式发布验收默认两层都通过；若按 §4 豁免，须记录未执行层且不得称其已验收。
 5. 发布验收证据落盘：命令清单、每步截图（.deploy-tmp/<round>/ui-NN-*.png）和三层结论；Release 说明或相关 PR 贴结论与路径。若豁免设备层，必须记录未执行层、原因和剩余风险且不得写功能验收通过。
-6. ARM64 发布验收默认覆盖两个方向：Google 官方 Android 16（API 36）default/arm64-v8a AVD；同一 ARM64 真机竖屏和横屏各至少一次 tap 级操作与截图。草稿只含 ARM64 APK；x86 AVD 仅供本地开发 QA，不能替代 ARM64 设备验收。几何或布局改动两个设备方向都必须跑。缺设备时不得记 PASS；若按 §4 显式记录设备验收豁免，可带未验收说明发布。
+6. ARM64 发布验收默认覆盖两个方向：Google 官方 Android 16（API 36）default/arm64-v8a AVD；同一 ARM64 真机竖屏和横屏各至少一次 tap 级操作与截图。草稿包含 ARM64 与 x86_64 APK；x86 AVD 验证对应 x86_64 包，不能替代 ARM64 设备验收。几何或布局改动两个设备方向都必须跑。缺设备时不得记 PASS；若按 §4 显式记录设备验收豁免，可带未验收说明发布。
 7. Linux 实例首次装配或升级事务期间禁跑发布设备验收；uid-mode appop 残留、prefs 僵尸 a11y 标记或应用被切后台会制造假失败，清理与判据见详档 §3、§8。
 
 ---
@@ -96,7 +96,7 @@ adb -s <serial> install -r -t out\v<版本>\pocket-harness-v<版本>-arm64.apk
 
 - 开始版本任务时建立 `release/v<版本>/notes.md` 草稿，随实现和证据更新；计划/待验收明确标注。最终对照上一 Release、目标 Commit/Tag、已合并 PR、Issue、CI/设备证据和资产核对，仅保留该版本实际交付内容。发布说明面向用户，先写问题改善，再写安装/升级、限制与验证范围。
 - 根据变更输入选择自检；结果记录源码/门禁版本、输入哈希、环境和命令。相关输入、依赖、门禁或环境改变即失效；相关输入不变可复用已有有效证据。成组修正后集中重验；权限、数据事务、签名、桥协议及门禁自身的即时反证不可省。
-- 纯 runtime JS 改动开发期优先热推；壳侧、签名、Manifest、APK assets 改动需要 APK。云端来源链只构建 ARM64；草稿发布在 main 上执行双副本独立比对后由隔离作业以生产证书签名。x86_64 仅保留本地开发 QA。装机前实际查询 ADB 设备和 `ro.product.cpu.abilist`，设备为空或未知不得推断已兼容或已验收。最终候选从最终源码构建 ARM64；对应设备验收要求见 §2.1；若显式豁免设备层，按 §4 在 Release 记录中披露且保持未验收状态；热推证据不能代替最终 APK。
+- 纯 runtime JS 改动开发期优先热推；壳侧、签名、Manifest、APK assets 改动需要 APK。云端来源链支持 ARM64 与 x86_64 Linux；草稿发布在 main 上执行双副本独立比对后由隔离作业以生产证书签名。x86_64 发布包须在对应 ABI 设备上验证。装机前实际查询 ADB 设备和 `ro.product.cpu.abilist`，设备为空或未知不得推断已兼容或已验收。最终候选从最终源码构建 ARM64；对应设备验收要求见 §2.1；若显式豁免设备层，按 §4 在 Release 记录中披露且保持未验收状态；热推证据不能代替最终 APK。
 - 来源审计入口 `scripts/source-build/run-local-source-chain.mjs` 仅构建已提交 HEAD，在原工作树外的独立检出执行；未提交内容不进入来源链。产物留在隔离目录，续跑显式传 `--build-workspace <同 HEAD 目录>`。不要把来源链的 LFS pointer 当成本地底座归档。
 - 权限、用户数据、运行时生效、ABI、签名、Linux 实例/APK 产物门禁保持阻断。仅维护说明的生成块漂移由 PR Gate 的提示 job 呈现（`check-maintenance-docs.mjs`，更新用 `--write`），不加入 APK 发布阻断链；`main` 的分支保护已在远端启用（2026-10-20），本文只记录口径，不在此处改远端设置，详见 `docs/AGENTS/build-and-env.md`。
 
@@ -213,6 +213,6 @@ adb -s <serial> install -r -t out\v<版本>\pocket-harness-v<版本>-arm64.apk
 
 ## 6. 高频雷点（只有三条，全量见 §3 坑位表）
 
-1. **ABI**：产品 APK 内置 ARM64 Linux 四件套；x86_64 产物仅限本地 QA。真机只用 `-arm64.apk`。
+1. **ABI**：产品 APK 按 ARM64/x86_64 分别内置 Linux 四件套；不可跨 ABI 安装。真机只用 `-arm64.apk`。
 2. **Linux 实例装配**：首次启动或升级事务进行中**禁 force-stop/杀进程**，也不得跑设备套件；装配完成以实例 manifest/事务收据消失为准（详见 PERSISTENT-DATA 与 Linux CI）。
 3. **`Select -First N` 会杀掉长任务子进程**——构建/长脚本必须全量重定向日志，不能用 `Select -First`。

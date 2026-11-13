@@ -438,3 +438,8 @@ ARM64 本地 Linux 来源构建使用 `node scripts/source-build/run-local-sourc
 自编译 PRoot 需要 gawk；不要依赖宿主默认 awk。构建器在编译前检查 GNU awk，来源链显式安装该包，工具身份随收据保存。
 
 本地运行器为每一步在隔离 RUNNER_TEMP 中创建专用 GITHUB_OUTPUT；GITHUB_ENV 继续跨步累计受允许的键。
+
+
+### Linux 双 ABI 来源构建（2026-11-13 当前候选）
+
+维护链以 [Linux CI](LINUX-CI.md) 为准：`build-apk-source` 支持 `abi=all|arm64|x86_64`，每个 ABI 独立缓存、验证、比对和签名。`release-source-draft` 请求 `abi=all` 与 `reference=true`。本地 x86 QA 也构建 Debian/Node/engine/home 四件套，不能使用旧快照兜底；只消费已提交 HEAD。当前候选尚待双 ABI 云端来源链与最终设备验证。

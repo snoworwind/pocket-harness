@@ -1,4 +1,4 @@
-// build-snapshot-013.mjs — 0.13.0 运行时快照构建器（主机侧，双 ABI；PRD F1.1/M3.1）
+// build-snapshot-013.mjs — 0.13.0 运行时快照构建器（主机侧，双 ABI；PRD F1.1/M3.1）；历史 Termux 链，仅供追溯/独立回归，当前产品不调用，禁止用于产出 APK。
 //
 // 输入：base-usr-<abi>.tar.xz（设备基座：0.12.5-fx-1 完整运行时 = 引擎 0.1.1-rc.2 + 原生模块 + 既有工具）
 // 流程：① 基座解压（WSL，保 symlink）② 预装工具集（Termux 源 binary-<abi>，镜像回退链：清华 Tuna → 官方）

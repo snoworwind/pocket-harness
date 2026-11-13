@@ -73,7 +73,7 @@ flowchart TD
 
 - 实例准入由内置 Linux 实例清单与受管树摘要决定：rootfs 只在无实例时铺底，受管 node/engine 缺件才修复，当前锚点见§6 K03。
 - shared ownership prelude已结算后先恢复事务再probe/strictSHA/fresh；不新鲜暂存解压→用户配置stage过滤→factory交换→提交指纹，pending不提前读事务。
-- 首次部署解包内置实例并只补缺失的用户文件：home 种子不覆盖已有 profile/凭据（`LinuxFileTree.kt:44#expect=fun%20mergeHomeSeed`）；旧 Termux 布局先做一次性备份再改写 profile 内的旧路径（`LinuxLegacyMigration.kt:16#expect=fun%20prepare`）；
+- 首次部署解包内置实例并只补缺失的用户文件：home 种子不覆盖已有 profile/凭据（`LinuxFileTree.kt:44#expect=fun%20mergeHomeSeed`）；旧 Termux 布局先做一次性备份再改写 profile 内的旧路径（`LinuxLegacyMigration.kt:90#expect=fun%20prepare`）；
   受管组件更新走 prepare→probe→upgrade→done 事务，中断按 journal 回滚且 rootfs 不参与（`LinuxUpgradeTransaction.kt:115#expect=fun%20apply`）；
 - 覆盖现存工厂配置时，`preserveOverwrittenUserFile` 先逐块比较内容；变化文件先复制、校验、同步并发布 `.pre-*` 备份，任何读取/复制/校验/发布失败都会中止事务，所需副本计入空间预算。`writeTextAtomic` 仅通过同目录替换移动发布 `package.json` / `cordis.patch.yml`，替换失败保留旧字节证据，不直接截断目标。残留回收只认 `usr.failed-<时间戳>`、`profiles.failed-<时间戳>` 等明确写点，不按任意包含 `.failed-` 的名称删除。
 - **0.14.2-fx-2 缺陷 D（安全模式）**：启动失败页主按钮变「安全模式启动」→ `GuidePageRenderer.kt` 的 `enterSafeMode()`；Kotlin `SafeMode.kt`、离线 `scripts/dsh-undo-emergency.mjs`、vendor `dsh-undo-savepoint/lib/core.mjs` 共用 `safe-mode.json` / 主备份命名契约与内容寻址副本。默认 web 新状态用平铺 `undo-snapshots/auto` 与 Kotlin 共享；Safe Mode 单独识别唯一既有 scoped marker 并绑定其原目录，平铺与 scoped 同时有 marker（损坏也算）则 fail closed。显式 custom autoDir 与非 web profile 不参与解析，普通 snapshot 布局不变。副本在所选 auto 的 sibling `safe-mode-recovery/`。vendor 实现由 `scripts/patches/data/undo-safe-transaction-snippet.mjs` 生成，S2 门禁要求 CAS + resolver 契约。Marker 绑定 profile；Kotlin exit 兼容恢复 vendor 写入的 home/package 备份。Safe Mode ON 同时筛选 rc2 `package.json` 的 profile bundles：只保留权威 HardManifest 给出的 exact `{name,version,patchSha256}` 工厂元组，摘要按 `DSHBNDL1`、声明顺序和路径/内容长度帧计算；缺少活跃 bundle 身份即拒绝修改。完整 package bytes 进入 primary 与 SHA 寻址恢复副本，OFF 原字节还原。退出先将全部必需 live bytes 读入并校验，任一来源主副本均失效就不写 live 文件；成功时写回已校验的同一组内存字节。S2 patch gate 的 S5 判据同时要求 bundle selector/hash 实现，避免旧 S4 core 被误判为已更新。控制台命令解析在 `SafeConsole.kt`（纯函数，命中即不落 bash，接线 `ConsoleActivity.kt`）。
@@ -437,7 +437,7 @@ Linux 发现补充（P04，坑 373）：bootstrap `index.js` 串行发现 → `g
 | 从 | 到 | 关系 | 证据 |
 |---|---|---|---|
 | K01 | 引擎进程与快照面 | EngineStartFlow 在工作线程调 refreshSnapshot/startEngine/engineProcessAlive，Activity 侧只传 Activity 与 pickToken | app/src/main/java/com/snoworwind/pocketharness/EngineStartFlow.kt:408 |
-| K01 | 用户包与 home 持久化 | 用户 apt/pip/npm 全局包分别落在 rootfs 与 `$HOME/.local`；受管组件更新只替换 node/engine，home 种子只补缺失文件，旧 `usr` 中用户全局 npm 包在修复前搬进 home | app/src/main/java/com/snoworwind/pocketharness/LinuxLegacyMigration.kt:86#expect=fun%20preserveNodeGlobals |
+| K01 | 用户包与 home 持久化 | 用户 apt/pip/npm 全局包分别落在 rootfs 与 `$HOME/.local`；受管组件更新只替换 node/engine，home 种子只补缺失文件，旧 `usr` 中用户全局 npm 包在修复前搬进 home | app/src/main/java/com/snoworwind/pocketharness/LinuxLegacyMigration.kt:164#expect=fun%20preserveNodeGlobals |
 | K01 | 升级事务（跨进程真源） | 启动请求与安全模式重启不得在实例准备/升级窗口内被静默丢弃。判据 = Linux 升级 journal（跨进程），而不是本 Activity 的内存态所有权；安全模式重启在**停旧引擎之前**先判该 journal | app/src/main/java/com/snoworwind/pocketharness/EngineManager.kt:97#expect=internal%20fun%20recoverLinuxUpgrade |
 
 K01 journal 发布：`LinuxUpgradeTransaction.atomicWrite` 写同目录临时文件并 fsync 后替换，失败不得截断旧 journal；恢复是幂等的，未完成升级回滚、已提交升级只清备份。
@@ -465,7 +465,7 @@ K01 journal 发布：`LinuxUpgradeTransaction.atomicWrite` 写同目录临时文
 | K03 | 引导与启动 | refreshSnapshot 的进度/失败文案与恢复前置由启动流拉起，刷新期 snapshotRefreshing 闸门禁止拉引擎 | app/src/main/java/com/snoworwind/pocketharness/EngineStartFlow.kt:427 |
 | K03 | 引擎探活与看门狗 | 每 5 秒一拍 onEngineProbe 记录客体健康；启动前先恢复未完成的升级事务 | app/src/main/java/com/snoworwind/pocketharness/EngineService.kt:337#expect=watchdog%20tick%20failed |
 | K03 | 引擎总管 EngineManager | 事务/残渣/空间的调用方，也是 usr、home、.snapshot-fingerprint 的持有者；启动前 profile 自愈调用 `SnapshotFs.replaceWithVerifiedBackup` 校验 live 字节、唯一同步备份后原子发布，失败不落幂等标记并在下次启动重试 | EngineManager.kt:99、SnapshotFs.kt:226 |
-| K03 | home shell 身份迁移 | seed 更新只迁移已知工厂 id/包名组合，用户配置与自建行保留；链接及超限拒绝 | app/src/main/java/com/snoworwind/pocketharness/LinuxFileTree.kt:58#expect=fun%20migrateShellIdentity,app/src/main/java/com/snoworwind/pocketharness/LinuxInstanceInstaller.kt:224#expect=migrateHomeShellIdentity |
+| K03 | home shell 身份迁移 | seed 更新只迁移已知工厂 id/包名组合，用户配置与自建行保留；链接及超限拒绝 | app/src/main/java/com/snoworwind/pocketharness/LinuxFileTree.kt:58#expect=fun%20migrateShellIdentity,app/src/main/java/com/snoworwind/pocketharness/LinuxInstanceInstaller.kt:231#expect=migrateHomeShellIdentity |
 | K03 | 构建与发布 | APK 内嵌 Linux 四件套与 manifest；从固定源码 deploy 树直接装配客体 engine/home | scripts/source-build/build-linux-payload.mjs:1#expect=%23!/usr/bin/env%20node |
 | K03 | 插件注入层 | profiles 的 package.json 与 cordis.patch.yml 决定引擎实际挂载集，工厂 disabled 语义以 FactoryProfilePatch 为权威 | app/src/main/java/com/snoworwind/pocketharness/FactoryProfilePatch.kt:79 |
 
@@ -736,6 +736,9 @@ K01 journal 发布：`LinuxUpgradeTransaction.atomicWrite` 写同目录临时文
 - **证据**：新startup/wiring/resource fixtures未执行；真实陈旧effects=0、caller-vs-worker、wake/后台任务待外验，无本轮APK/hash/PASS。
 
 #### K03 快照事务与更新链
+
+Linux runtime 审计收口：首装树摘要失败删除该暂存组件并允许重试；迁移仅复制改写范围，逐文件摘要并在删除旧 usr 前复核；备份按私有暂存 → fsync → SAF → fsync → O_DIRECT 回读执行，不支持直接 IO 时失败。LinuxGuestBoot 按实例 guestArchitecture 检查 addon。双 ABI 映射 `scripts/source-build/linux-abi.mjs` / `linux-abi.py` 进入资产源码收据与缓存键，本地链两种 ABI 都执行 Linux 资产阶段。
+
 
 - **提交点**：`.snapshot-fingerprint` 是已提交快照树的耐久身份；发布必须用 `SnapshotTransaction.writeTextAtomic`，替换失败保留旧值并留存失败证据，禁止先删除或直接写目标。对应反例与回归见坑 583。
 - **严格SHA**：SnapshotFingerprintPolicy要求内嵌64hex；fresh须node在场及durable committed fingerprint匹配。缺/非法metadata在抽取/事务/refresh/spawn前拒绝，无legacy/degraded旁路、不无限解压，既有用户数据不被坏包改变。

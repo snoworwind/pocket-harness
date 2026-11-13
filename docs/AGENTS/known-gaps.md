@@ -1,5 +1,8 @@
 # known-gaps.md — 当前缺口与验收入口
 
+
+- 2026-11-13，Linux runtime 审计 R-07/R-17/R-18：pnpm 的 `file:` store 名仍含构建绝对路径，换构建根可能改变树摘要，尚未归一化；迁移兼容代码及 dex 中仍可能保留 snapshot/shell-termux 历史字符串，不代表产品使用旧运行时；开发来源构建默认单副本，verified 只表示就地核验，只有 `reference=true` 双副本独立比对后才可生产签名。双 ABI 当前候选未完成来源构建、直接 IO 导出设备负控、最终体积/首装耗时/迁移磁盘峰值实测，不能宣称审计或设备验收全部通过。
+
 > 本分支宗旨及当前验证边界见 [SECURITY-HARDENING.md](SECURITY-HARDENING.md)。源码有改动不等于新包已验收；来源构建状态以 [变更记录](changelog-archive.md) 最新条目为准。下方带日期的状态只描述对应审查时点；0.14.10 已正式发布，但设备验收尚未完成，见[发布说明](../../release/v0.14.10/notes.md)。
 
 ## 当前入口
