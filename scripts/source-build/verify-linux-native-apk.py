@@ -42,7 +42,12 @@ def verify(apk, native_library_root, license_root, provenance_path):
         fail('Linux backend provenance must be a regular file')
     with open(provenance_path, 'r', encoding='utf-8') as stream:
         provenance = json.load(stream)
-    if provenance.get('schemaVersion') != 1 or provenance.get('target') != 'proot':
+    if provenance.get('schemaVersion') == 2:
+        from proot_source_provenance import verify_backend
+        verify_backend(provenance_path)
+        if provenance.get('architecture') != 'arm64':
+            fail('source backend ABI must be arm64')
+    elif provenance.get('schemaVersion') != 1 or provenance.get('target') != 'proot':
         fail('Linux backend provenance has an unsupported schema or target')
     library_records = provenance.get('nativeLibraries')
     if not isinstance(library_records, list):

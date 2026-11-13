@@ -12,6 +12,10 @@ on:
       - 'scripts/source-build/*linux*'
       - 'scripts/source-build/prepare-termux-bootstrap.py'
       - 'scripts/source-build/prepare-proot-backend.py'
+      - 'scripts/source-build/*proot*'
+      - 'scripts/source-build/verify-ndk-archive.py'
+      - 'scripts/source-build/proot-source/**'
+      - 'scripts/source-build/inventory-native-runtime.py'
       - 'scripts/source-build/termux_signed_packages.py'
       - 'scripts/source-build/prepare-termux-signed-repo.py'
       - 'scripts/source-build/test_prepare_termux_bootstrap.py'
@@ -59,6 +63,9 @@ jobs:
           retry sudo apt-get install -y gcc gcc-aarch64-linux-gnu dpkg-dev gnupg
       - name: Verify reviewed inputs and native payload shape
         run: |
+          python3 scripts/source-build/build-proot-source.py --self-test
+          python3 scripts/source-build/prepare-proot-source-backend.py --self-test
+          python3 -m unittest discover -s scripts/source-build -p test_linux_assets_dev_archive.py
           node scripts/source-build/check-linux-sources.mjs --self-test
           node --test scripts/source-build/check-linux-sources.test.mjs
           node scripts/check-vendored-linux-bootstrap.mjs --self-test
@@ -107,7 +114,7 @@ jobs:
       - name: Install signed distribution build tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y gcc-aarch64-linux-gnu debootstrap debian-archive-keyring qemu-user-static binfmt-support xz-utils gnupg
+          sudo apt-get install -y gcc-aarch64-linux-gnu debootstrap debian-archive-keyring qemu-user-static binfmt-support xz-utils gnupg gawk unzip
           sudo update-binfmts --enable qemu-aarch64
       - name: Fetch and authenticate the Termux bootstrap signing keys
         shell: bash
@@ -162,6 +169,29 @@ jobs:
           grep -Fx "$release_fingerprint" <<<"$fingerprints"
           gpg --batch --quiet --homedir "$homedir" --export > "$keydir/debian-archive-keyring.gpg"
           test -s "$keydir/debian-archive-keyring.gpg"
+      - name: Restore verified NDK archive cache
+        id: ndk-cache
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: .deploy-tmp/source-build/android-ndk-r30-linux.zip
+          key: ndk-r30-linux-753611f410d002cfcd3f3dc2ef49aad532089d3180b436c060a90bf0fcb64df2
+      - name: Prepare pinned PRoot source toolchain
+        run: |
+          set -euo pipefail
+          mkdir -p .deploy-tmp/source-build/ndk
+          if ! python3 scripts/source-build/verify-ndk-archive.py .deploy-tmp/source-build/android-ndk-r30-linux.zip; then
+            bash scripts/source-build/retry-curl.sh --fail --location --retry 8 --retry-max-time 600 \
+              https://dl.google.com/android/repository/android-ndk-r30-linux.zip \
+              -o .deploy-tmp/source-build/android-ndk-r30-linux.zip
+          fi
+          python3 scripts/source-build/verify-ndk-archive.py .deploy-tmp/source-build/android-ndk-r30-linux.zip
+          unzip -q .deploy-tmp/source-build/android-ndk-r30-linux.zip -d .deploy-tmp/source-build/ndk
+      - name: Save verified NDK archive cache
+        if: steps.ndk-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: .deploy-tmp/source-build/android-ndk-r30-linux.zip
+          key: ndk-r30-linux-753611f410d002cfcd3f3dc2ef49aad532089d3180b436c060a90bf0fcb64df2
       - name: Build source-owned offline ARM64 Linux assets
         env:
           DEBIAN_KEYRING: ${{ github.workspace }}/.deploy-tmp/linux-keyring/debian-archive-keyring.gpg
@@ -174,7 +204,7 @@ jobs:
           name: pocket-harness-linux-arm64-${{ github.sha }}
           path: |
             .deploy-tmp/linux-build/assets/*
-            .deploy-tmp/linux-build/provenance/*
+            .deploy-tmp/linux-build/provenance/**
           include-hidden-files: true
           if-no-files-found: error
           retention-days: 7

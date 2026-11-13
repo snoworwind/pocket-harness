@@ -1,5 +1,5 @@
 # gotchas.md — 关键实现细节与坑（全量）
-
+> Linux 条目按日期记录历史；自 0.15.3 起改为按 manifest 下载，旧“全部内嵌/离线安装”不代表当前链路，见坑 720。
 324. **气泡导航代理必须跟随原生标签栏节点重建**：上游在活动 TabHost 下挂载 strip；同分栏切页会替换结构相同的原按钮。只比 outerHTML 会保留断连按钮闭包，导致全屏、收起和新标签无响应。代理缓存同时比较元素身份，并释放断连 strip 引用。长按后只抑制物理释放产生的标签点击，取消/失焦要清理；系统返回不能被吞，并须把焦点交还三点按钮。列表范围同时读取 visualViewport 与原生 IME inset；Android adjustNothing 下真实键盘出现时 visualViewport 仍可保持全高。当时的真实设备验收入口现已随气泡 UI 退役；历史截图与结论保留在 `docs/maintenance/sidebar-bubbles-2026-10-17.md`。
 
 > grep 用法：`grep -n "<坑号>\." docs/AGENTS/gotchas.md` 或按关键词（如 `borrowSession`、`MANAGE_EXTERNAL_STORAGE`、`store-rehome`）定位。
@@ -3702,3 +3702,65 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
     真因：`TerminalViewHost.openOnUi` 把页面传来的 `info.cols/rows`（PTY 自己的旧值，引擎默认 80×24）直接交给 `TerminalView.open()` 建网格；而 `onSizeChanged` 只在「新网格 != 当前网格」时回报 resize，视图先被 1×1 初始布局触发一次、open 又用 80×24 覆盖，之后若尺寸不再变化就再也不会把真实列数推给 PTY。页面侧的 `__dshTermResize → model.resize` 因此从未收到真实尺寸。
     修法：`TerminalView.open()` 在视图已布局时以 `terminalGridFor(width,height,cellW,cellH)` 为准（页面值只作兜底）并在 `nativeCreate` 后无条件回报一次；新增 `syncGrid(force)`；`TerminalViewHost` 在 open 后、bounds 应用后、可见性恢复时各补一次同步（复用时强制）。`terminalGridFor` 是纯函数，JVM 单测锁定推导与最小值/非法度量边界。
     复验：`TerminalGridTest` 覆盖 1320×2400/33×55 → 40×43、未布局/过小返回 null、NaN/Infinity/0/负值拒绝、不足一格向下取整；设备层已用来源链 APK（run 43154506740，commit 0fd2f22）覆盖安装确认：竖屏 `stty size` 跟随可见网格（不再是固定 80），长输入折行与连续退格正常。横屏与系统字体大小走同一 `onSizeChanged`/Activity 重建路径，本次未单独截图取证。
+
+
+以下 710–719 为已回退纯 Linux 主环境的历史现场；当前 Termux 主环境不走其中的 LinuxCandidateProbe/EngineManager 客体链。插件迁移的现行判据见 720。
+
+710. **Linux 客体启动路径从未注入中继 preload：端口被壳独占，引擎却还想自己 listen 3080（2026-11-13）**
+     现象：干净安装后 Web UI 打不开，引擎进程还活着；诊断树里手动起引擎能看到 `dsh web: http://127.0.0.1:3080/`，但应用侧私有 socket 一直不可达。
+     真因：`EngineTransport.preparePreload` 有实现却**没有任何调用点**。壳侧先 bind 127.0.0.1:3080，客体内的 node 没被 `--require` 劫持 listen，于是要么 bind 失败、要么绕开中继；WebView 走的是私有无名 socket 路径，两边根本不在一条链上。
+     修法：把 preload 与 socket 收进独立 `files/engine-transport/` 目录（只 bind 这一个目录进客体，不再整目录绑 `files/`），`LinuxGuestBoot.withPrivateTransport` 在 proot 参数里插入 `-b <dir>:<dir>`，并在 `/opt/node/bin/node` 后插入 `--require <preload>`；preload 用 `__dirname` 找 socket，宿主/客体同路径才不会错位。宿主与客体路径不一致、preload 缺失或为符号链接一律拒启。
+     复验：`LinuxGuestBootTest` 覆盖目录绑定位置、`--require` 位置、不出现整目录 `files/` 绑定、缺失/链接 preload 负控；设备上应用进程内 `su`-free 探活返回 200 且 auth ok（.deploy-tmp/final-source-43409484559/root-transport-live.log）。
+
+711. **DNS 只写进私有文件、没绑进客体 /etc/resolv.conf：客体只有注释行，模型请求 transport failed（2026-11-13）**
+     现象：模型选择正常，提交任务立刻 `DeepSeek Messages transport failed`；客体内 `/etc/resolv.conf` 只有注释，连模型列表都取不到。
+     真因：壳侧 `LinuxDnsServers` 只把地址发布到 `files/linux-dns-servers`，`LinuxGuestBoot.resolve` 没有把它挂到客体的 `/etc/resolv.conf`，rootfs 里那份是构建机残留。
+     修法：同一份地址同时发布 `files/linux-resolv.conf`（最多 4 条 `nameserver`，逐条校验只允许 IP 字符，空集合写 `127.0.0.1` 保持离线失败而不是回退公共 DNS）；启动时 `-b <file>:/etc/resolv.conf`，缺失则 `-b /dev/null:/etc/resolv.conf`。符号链接或非普通文件直接 `linux-guest-dns-invalid` 拒启，Private DNS 仍按原策略清空。
+     复验：`LinuxDnsPrivacyPolicyTest` 覆盖地址渲染、空集合不落公共 DNS、注入换行/域名负控；`LinuxGuestBootTest` 覆盖绑定、缺失回退与符号链接拒启；设备上 `apt-get update` 实拉 Debian trixie 索引 16.8 MB（.deploy-tmp/term-apt-20261113/README.md）。
+
+712. **rootfs 缺标准 `/dev/fd` 等别名：Bash 进程替换与 `<(...)` 直接失败（2026-11-13）**
+     现象：客体里 `bash` 的进程替换（`<(...)`/`>(...)`）报错，依赖 `/dev/fd/N` 的脚本、`tee`、部分测试框架一并失效。
+     真因：`prepare-rootfs.sh` 只建了 `dev`/`proc`/`sys` 等目录，没有建 Debian 标准的 `/dev/fd`、`/dev/stdin|stdout|stderr` 符号链接；PRoot 下 `/proc/self/fd` 可用，但缺别名就没有名字可指向。
+     修法：预处理阶段创建 `fd -> /proc/self/fd`、`stdin|stdout|stderr -> /proc/self/fd/0|1|2`；`--verify` 逐条核对链接目标，非链接的同名实体拒绝覆盖。
+     复验：`test_prepare_rootfs_proot.py` 覆盖四个链接目标，以及删除/改指向后 `--verify` 必须非零退出。设备上**以应用身份**重建链接后实测：`ls -l /dev/fd` 显示 `-> /proc/self/fd`，`cat <(echo PROC-SUBST-OK)` 输出 PROC-SUBST-OK，`diff <(echo a) <(echo a)` 输出 DIFF-OK，`echo x > /dev/stdout` 正常；同一条命令若链接由 root adb shell 创建则全部 `Permission denied`，真因见坑 713。
+
+713. **root adb 在应用数据目录里造的文件丢失 MLS 类别，untrusted_app 一律 EACCES（2026-11-13）**
+     现象：为省一次打包，用 root 在设备 rootfs 里补了 `/dev/fd`、`/dev/stdin|stdout|stderr` 四条标准符号链接。`ls -l` 看得到、`stat` 报 `cannot read symbolic link: Permission denied`，Bash 进程替换 `<( )` 报 `/dev/fd/63: Permission denied`，而同一目标的自建链接 `/dev/fdtest -> /proc/self/fd/1`、`/tmp/fdlink -> /proc/self/fd/1` 都正常。
+     真因：`ls -Z` 显示 root 创建的四条链接标签是 `u:object_r:app_data_file:s0`，没有进程的 MLS 类别（应用自建的带 `:c155,c256,c512,c768`）。SELinux 的类别不匹配让 untrusted_app 读链接即被拒；链接目标本身没问题，所以换个名字就"能工作"，极易误判成 PRoot 不支持 `/dev/fd`。
+     修法：应用数据目录下的功能性文件必须由**应用身份**创建（应用内 bash、或正式的解包/装配路径）；root adb 只用于读取和清障（`rm`），不要用来"补"功能文件。反证时先用 `ls -lZ` 比对标签再下结论。
+     复验：root adb 删除四条链接后，在应用终端里 `ln -s /proc/self/fd /dev/fd` 等重建，进程替换、`diff <( )`、`> /dev/stdout` 全部通过（.deploy-tmp/term-apt-20261113/ui-10-procsubst-ok.png）；正式 rootfs 由 CI 构建、应用进程解包，标签天然正确。
+715. **fork 挂死的判据是「子进程首次 ptrace stop 有没有送达」，只能在 PRoot 源码里取证（2026-11-13，issue #322）**
+     现象：鸿蒙 Linux ABI 兼容层上 `bash -c '/bin/true; echo OK'` 挂死；父进程在 `wait4`，子进程内核态 `S`、wchan 是 `pdebug_handle_hmsign`，`proot -v 3` 里子进程一条 syscall 都没有。普通 Android AVD 上同样的命令 100 次全过。
+     真因：Termux proot 5.1.107.102 的 `attach_child()` 只在 `sigstop == SIGSTOP_PENDING && !running` 时恢复子进程；内核若压根不投递 initial stop，该分支不成立，子进程永远停在停机状态。这是兼容层缺事件，不是 PRoot 逻辑写错，所以应用层重试/超时都不解决问题。
+     修法：在 PRoot 源码加两个**默认关闭**的开关（构建期定点补丁，见 PROOT-SOURCE-BUILD.md）：`PROOT_POCKET_TRACE_WAIT=1` 打印每个 `waitpid` 状态；`PROOT_POCKET_RESUME_SILENT_CHILD=1` 对「已登记但从未报 stop」的子进程恢复。恢复必须复用上游语义：置 `sigstop = SIGSTOP_ALLOWED`、按 seccomp 状态显式给 `restart_how`（`PROOT_NO_SECCOMP=1` 即 `PTRACE_SYSCALL`），再走 `restart_tracee()`；裸 `PTRACE_CONT` 会跳过 syscall 入口 stop，child 之后的 `execve` 不被翻译，症状会从「挂死」变成「宿主路径 ENOENT」。正常内核不开启，行为不变。
+     复验：补丁锚点在固定摘要源归档上唯一命中；改后的 `event.c` / `tracee.c` 在 Linux GCC + talloc 2.5.0 头文件下 `-fsyntax-only` 通过；`test_proot_source_build` / `test_proot_source_backend` 15 项通过（含 `PATCH_PATHS` 闭合校验）。真机效果仍需鸿蒙设备开开关复验，未验证前不改默认。
+
+716. **loader 182 不带落点，只能靠排除法猜是 open 还是 mmap（2026-11-13，issue #322 续）**
+     现象：真机 2%-10% 的 guest 执行无输出返回 182，两边都可能是 `src/loader/loader.c` 里 `FATAL()` 的任意一处。
+     真因：`FATAL()` 只做 `exit(182)`，失败站点与 errno 全部丢失。
+     修法：给 loader 加 `pocket_loader_fatal()`：向 stderr 写 `[proot-loader] site=<行号> status=<errno>` 后再退出 182；带 status 的四个站点（close/open/mmap-file/mmap-anon）改用 `FATAL_STATUS`。为此在 `assembly-arm64.h`/`assembly-x86_64.h` 补 `WRITE` 系统调用号。
+     复验：固定摘要源归档上 5 个文件锚点唯一命中；改后的 loader 用 `clang --target={aarch64,x86_64}-linux-gnu -fsyntax-only` 双 ABI 通过；source-build Python 147 项通过。真机 182 的落点待设备复验。
+
+717. **恢复「静默子进程」不能用裸 PTRACE_CONT：会跳过 syscall 入口 stop，把挂死换成 ENOENT（2026-11-13，issue #322 复核）**
+     现象（代码面推演 + 上游对照）：`attach_child()` 正常路径用 `restart_tracee(child, 0)`，它按 `restart_how` 重启；`PROOT_NO_SECCOMP=1` 时该值是 `PTRACE_SYSCALL`。若补丁直接 `ptrace(PTRACE_CONT, …)`，子进程恢复后不会在任何 syscall 入口停下，PRoot 拿不到路径翻译与 syscall 改写的时机，child 随后的 `execve("/bin/true")` 会被内核按宿主路径解析 ⇒ ENOENT。
+     真因：恢复原语选错，不是条件判断错。`sigstop == SIGSTOP_IGNORED && !running` 准确命中「已由 fork 事件登记、从未报 stop、也没运行过」。
+     修法：置 `child->sigstop = SIGSTOP_ALLOWED`，按 `seccomp == ENABLED ? PTRACE_CONT : PTRACE_SYSCALL` 显式写 `child->restart_how`，再调用 `restart_tracee(child, 0)`；成功/失败都把结果与 errno 打到 stderr（`proot-resume:` 前缀，进 engine.log），不要只留 VERBOSE。迟到的 initial stop 仍由事件循环处理（此时 sigstop 已是 ALLOWED，不会重复挂起）。
+     复验与判据：改后 `tracee.c` 在 Linux GCC + talloc 2.5.0 下 `-fsyntax-only` 通过。真机必须三条同时成立：`bash -c '/bin/true; echo OK'` 打出 OK；`ls /`/`cat /etc/os-release` 仍是 Debian rootfs（证明 syscall 拦截没丢）；嵌套 `bash -c 'bash -c "echo NESTED"'` 与 `yes | head -1` 正常。只满足第一条 = 换了症状，不算修复。
+
+718. **rootfs 打包的 `--exclude='./dev/*'` 把 /dev/fd 修复整包丢掉：构建期 verify 全绿，装机后 `ls /dev/fd` 是 ENOENT（2026-11-13）**
+     现象：`prepare-rootfs.sh` 已建好 `fd/stdin/stdout/stderr` 四个标准链接，`--verify` 在构建宿主上也通过；但新 APK 干净安装后终端里 `cat <(echo x)` 报 `/dev/fd/63: No such file or directory`，`ls /dev/fd` 直接不存在。
+     真因：`build-linux-assets.sh` 归档 rootfs 时用 `--exclude='./dev/*'`（为了不带 device node），把同样是 `dev/` 下条目的四个**符号链接**一起排除了。构建期的 verify 看的是还没打包的目录树，所以永远绿；缺陷只在装机后才暴露。解包出来的 `dev/` 里只剩安装器运行时创建的空文件，`stdout` 那个普通文件还是 `echo > /dev/stdout` 失败时 shell 自己造的。
+     修法：打包前只删 `dev/` 下**非目录非链接**的条目（device node），tar 改为只排除运行时子树 `./dev/pts/*`、`./dev/shm/*`，保留 `./dev/fd|stdin|stdout|stderr` 四条标准链接；`/proc` 仍整段排除。
+     复验：`test_linux_assets_dev_archive` 三条断言（tar 不再整段排除 dev、删 device node 在 tar 之前、prepare-rootfs 仍建四条链接）；修复后需重新出包，在设备上确认 `ls -l /dev/fd`、`cat <(echo …)`、`diff <( )`、`> /dev/stdout` 全部可用。**旧包（run 43432157196）不含此修复，不得据其判 /dev/fd 通过。**
+
+719. **候选 trial 把「客体执行失败」误报成「glibc 版本不满足」，真机首启只得到一句误导文案（2026-11-13，真机 SGT-AL10）**
+     现象：0.15.3 APK 在鸿蒙真机首启失败，界面只有 `Linux 环境准备失败 / rootfs glibc does not satisfy candidate runtime`；诊断包里没有 trial 自己的输出，无法判断是 loader 182、exec 被拒还是版本真的低。
+     真因：`LinuxCandidateProbe.verify` 把 `getconf GNU_LIBC_VERSION` 的**退出码与输出**合并成一个布尔判断，非 0 就统一报 glibc 版本；而这一步恰是该设备上第一个 guest exec，182/loader 失败都会落到这句话上。trial 的输出只写进 `files/linux-trial-failed.log`，又不在诊断包白名单里。
+     修法：失败文案改为 `guest <stage> preflight failed: exit=<code> expected=<min> output=<最后一行>`（单行、限 300 字符、空输出写 `<empty>`），exit 与 `[proot-loader] …` 行得以保留；`LogShare.candidateFiles` 白名单加入 `linux-trial-failed.log`（写入时已经过脱敏）。
+     复验：`CandidateProbeDiagnosticsTest` 覆盖 exit/最后一行、空输出、控制字符不换行、长度上限与诊断包白名单；`LogShareTest`/`IndependentLogShareTest` 的封闭白名单同步更新。真机下一次首启失败将直接显示 exit 码与 loader 落点。
+
+720. **Linux 可选插件冷启动丢激活、预检误判与 loader EFAULT（2026-11-14）**
+     现象：进程重启后 Linux 工具消失；PRoot warning 混入 getconf 输出会误判 glibc；真机曾出现 loader 文件映射 EFAULT/182。
+     真因：持久化 opt-in 被内存 scope 的 inactive 覆盖；整段版本匹配不接受 warning；loader 无重试且诊断缺 mmap 参数。
+     修法：bootstrap 在同步状态前复验 bundle 并恢复已明确启用的 runtime，删除/停用不恢复，失败只停 Linux；runtime 按 manifest 阈值逐行判 glibc，并在一次客体脚本中运行 getconf、绝对路径 Node 与真实 exec/PTY/嵌套/管道；loader 仅对文件 mmap 的 -EFAULT 原参数重试一次，仍失败打印 fd/prot/offset 和 site/status。脚本保留 /dev 标准别名。APK 仅内置可信 manifest/sidecar，runtime 归档安装时下载并限量、核对 size/SHA-256 后发布。Android 可执行 PRoot 闭包仍须位于 APK nativeLibraryDir，不能从可写目录执行下载二进制。
+     证据：runtime 管理器、Linux 插件、来源脚本回归见 release/v0.15.3/plugin-migration.md；本轮尚未执行最终 APK/CDP/ADB 验收，不代表真机 EFAULT 已修复。

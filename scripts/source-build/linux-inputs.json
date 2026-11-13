@@ -14,6 +14,9 @@
   "prootSourceUrl": "https://github.com/termux/proot/archive/v5.1.107.102.zip",
   "prootSourceSha256": "30d12a6e2cc4147123756ff58edea262d3083bbc238c12d0ab9b39e3d1c40852",
   "termuxPackagesRecipeCommit": "b734bc49dc0eedb2c454e1c5d3c48d35d81d4bc9",
-  "runtimeVersion": "0.6.2",
-  "minimumAppVersion": "0.14.0"
+  "runtimeVersion": "0.15.3",
+  "minimumAppVersion": "0.14.0",
+  "minimumGlibc": "2.36",
+  "ndkSize": 738633529,
+  "ndkSha256": "753611f410d002cfcd3f3dc2ef49aad532089d3180b436c060a90bf0fcb64df2"
 }

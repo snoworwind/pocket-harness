@@ -74,17 +74,18 @@ async function prepare(assetsDir, provenanceDir, snapshotRoot, projectCommit, wr
     if (error?.code !== 'ENOENT') throw error
   }
   await mkdir(bundle, { recursive: true })
-  for (const name of EXPECTED) await cp(join(assets, name), join(bundle, name), { errorOnExist: true, force: false })
+  for (const name of ['linux-release.json', 'linux-runtime-manifest.sha256']) await cp(join(assets, name), join(bundle, name), { errorOnExist: true, force: false })
   const report = {
     schemaVersion: 1,
     projectSourceCommit: projectCommit,
     manifestSha256: manifestDigest,
     architecture: 'arm64',
-    embeddedAssets: [...EXPECTED].sort(),
+    embeddedAssets: ['linux-release.json', 'linux-runtime-manifest.sha256'],
+    downloadableAssets: [...expectedAssets.keys()].sort(),
     bundleRelativePath: 'usr/share/pocket-harness/linux-assets',
   }
   if (writeEvidence) await writeFile(join(ROOT, '.deploy-tmp/source-build/linux-bundle-injection.json'), JSON.stringify(report, null, 2) + '\n')
-  console.log(`Embedded ${expectedAssets.size} authenticated ARM64 assets plus pinned manifest at ${bundle}`)
+  console.log(`Pinned ${expectedAssets.size} downloadable ARM64 assets in manifest at ${bundle}`)
   return report
 }
 

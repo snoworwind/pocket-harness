@@ -81,6 +81,8 @@ export interface RuntimeManager {
   install(...args: unknown[]): unknown
   uninstall(...args: unknown[]): unknown
   reinstall?(...args: unknown[]): unknown
+  /** Fresh execution health check on cold-start restoration; never downloads. */
+  verify?(...args: unknown[]): unknown
 }
 export interface PluginInstall { directory: string; entry?: string; config?: Record<string, unknown>; enable?: boolean }
 export interface PluginUninstall { runtimeId?: string; directory?: string; rollback?: unknown }
@@ -381,7 +383,9 @@ export function registerLinuxEnvironmentRoutes(options: {
           const code = typeof candidate === 'string' && /^linux-[a-z0-9-]+$/.test(candidate)
             ? candidate
             : 'linux-operation-failed'
-          const message = code === 'linux-rootfs-prepare-failed'
+          const message = code === 'linux-insufficient-space'
+            ? '存储空间不足，请释放空间后重试安装 Linux。'
+            : code === 'linux-rootfs-prepare-failed'
             ? 'Linux 根文件系统准备失败。请查看应用私有目录 files/linux-environment/linux-bootstrap-state.json 中的 lastError。'
             : code === 'linux-host-library-path-unavailable'
               ? 'Linux 宿主运行环境未就绪。详细原因保存在应用私有目录 files/linux-environment/linux-bootstrap-state.json 中。'

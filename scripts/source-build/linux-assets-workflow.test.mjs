@@ -72,9 +72,9 @@ function checkLinuxAssetWorkflowDownloads(source) {
   assert.equal(npmCi.length, 4, 'the standalone asset workflow must keep all four reviewed npm install steps')
   assert.ok(npmCi.every(line => line.includes('--fetch-retries=8 --fetch-retry-factor=2 --fetch-retry-mintimeout=1000 --fetch-retry-maxtimeout=30000 --fetch-timeout=300000')),
     'each standalone Linux plugin dependency install must use the bounded registry retry policy')
-  assert.equal((source.match(/--retry 8 --retry-max-time 600/g) ?? []).length, 3,
-    'bootstrap ZIP and both Debian signing-key downloads need the extended bounded retry window')
-  assert.equal((source.match(/bash scripts\/source-build\/retry-curl\.sh/g) ?? []).length, 3,
+  assert.equal((source.match(/--retry 8 --retry-max-time 600/g) ?? []).length, 4,
+    'NDK, bootstrap ZIP and both Debian signing-key downloads need the extended bounded retry window')
+  assert.equal((source.match(/bash scripts\/source-build\/retry-curl\.sh/g) ?? []).length, 4,
     'all fixed Linux asset workflow downloads must retry known curl transport errors')
   assert.match(source, /printf '%s  %s\\n' "\$BOOTSTRAP_SHA256" \.deploy-tmp\/linux-termux\/bootstrap-aarch64\.zip \| sha256sum --check --strict/,
     'the Termux bootstrap retry must remain protected by its pinned digest')

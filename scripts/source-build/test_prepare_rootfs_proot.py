@@ -38,6 +38,22 @@ class PrepareRootfsProotTest(unittest.TestCase):
         self.assertIn("current Android network", resolver)
         self.assertEqual((self.rootfs / "etc/ld.so.preload").read_text().strip(),
                          "/opt/pocket-harness/libpocket-linux-compat.so")
+        for name, target in [('fd', '/proc/self/fd'), ('stdin', '/proc/self/fd/0'),
+                             ('stdout', '/proc/self/fd/1'), ('stderr', '/proc/self/fd/2')]:
+            self.assertEqual(str((self.rootfs / 'dev' / name).readlink()), target)
+
+    def test_verify_refuses_missing_or_retargeted_fd_alias(self):
+        subprocess.run(['sh', str(SCRIPT), '--rootfs', str(self.rootfs)], check=True, capture_output=True)
+        alias = self.rootfs / 'dev/fd'
+        alias.unlink()
+        for wrong in [None, '/tmp/foreign']:
+            if wrong:
+                alias.symlink_to(wrong)
+            result = subprocess.run(['sh', str(SCRIPT), '--rootfs', str(self.rootfs), '--verify'], capture_output=True, text=True)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn('/dev/fd', result.stderr)
+            if wrong:
+                alias.unlink()
 
     def test_verify_refuses_missing_compatibility_preload(self):
         prepared = subprocess.run(["sh", str(SCRIPT), "--rootfs", str(self.rootfs)], capture_output=True, text=True)

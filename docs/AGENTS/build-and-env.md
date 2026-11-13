@@ -416,3 +416,7 @@ engine 的 checkout/upstream/overlay/patches/build/deploy 步骤集中到 `scrip
 执行地图锚点同时验证文件/行存在、既有源码行快照与新/移动引用的显式内容片段。新锚点写成 ``path:line#expect=<URI 编码片段>``，片段应短且能区分目标源码；旧引用基线在 `scripts/check-code-map-anchor-baseline.json`。检查器变更先运行 `node scripts/check-code-map.mjs --self-test`，再跑正式检查。只有审阅所有源码行差异后才运行 `node scripts/check-code-map.mjs --refresh-anchor-baseline`；刷新会拒绝未标注的新坐标和旧坐标新增引用，除非先为其添加 `#expect=`。不得以刷新基线代替核对执行地图语义。耦合矩阵证据仍独立检查文件存在与行号范围。判据反例见 [gotchas.md](gotchas.md) 坑 601。
 
 来源派发前市场包预检从 `scripts/contract.json` 的 `runtimeCompat.metadataDeltas` 读取唯一 URL、版本与 SHA-256，并核对 `build-apk-source.yml` 消费同一发布包。`node scripts/source-build/preflight-source-chain.mjs --self-test` 覆盖真实输入和五项受控负控；完整预检中的 tar 重打包测试须在 Linux/CI 验证，Windows GNU tar 的反斜线成员路径会使该测试失败（见[坑 613](gotchas.md)）。
+
+### 可下载 Linux 插件来源链（2026-11-14）
+
+Termux 继续承载主引擎。Linux 资产构建通过 `build-proot-source.py` 使用锁定 PRoot/talloc/shmem 源码和 NDK r30，`prepare-proot-source-backend.py` 回放补丁并保留原归档、编译 receipt、许可证；APK 门禁复验 schema 2 receipt 和原生字节。构建机需 GNU awk；独立 Linux workflow 安装同一 NDK。APK snapshot 只携带 manifest/sidecar，归档保留在来源 artifact 中供最终 Release 上传。用户安装才下载 runtime/rootfs/Node，按清单 size/SHA-256 核验。`.github/workflows/publish-linux-runtime.yml` 在 hardening-source-* 来源 Release 正式公开（非 prerelease）后复验归档，创建同源 commit 的 `v<runtimeVersion>` Linux 附件 Release（`--latest=false`，不覆盖已有 tag/资产）。这一步提供 manifest 对应的下载 URL；草稿私有资产不能作为匿名安装源。开发证据与尚未执行项见 `release/v0.15.3/plugin-migration.md`。

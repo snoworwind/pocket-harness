@@ -2,9 +2,9 @@
 
 ## Linux PRoot 资产（2026-10-22，0.6.0）
 
-- 后端不再编译/分发 Bionilux。PRoot ARM64 可执行文件、loader、`libtalloc` 与 `libandroid-shmem` 从 Termux 官方签名仓库的 ARM64 包闭包提取；锁定版本、上游源码归档摘要、recipe、声明许可证及闭包见 `scripts/source-build/linux-backend-packages.json`。构建器验证 Termux `InRelease` 签名、签名 Release 内的 Packages.gz SHA-256/长度、精确 package/version 和每个 `.deb` 摘要，再抽取 ELF；provenance 保存证据链。
-- PRoot 按 GPL-2.0 分发；依赖的包许可证按锁和包内 copyright 记录（libtalloc 声明 LGPL-3.0-or-later，Termux 包 metadata 标注 GPL-3.0；libandroid-shmem BSD-3-Clause）。包内版权文件和适用许可全文随 APK assets 分发。
-- `libpocket-linux-compat.so` 改编自 TermFold Apache-2.0，来源 commit/hash 记于 `vendor/linux-proot/compat/SOURCE.json`；完整许可证与归属 NOTICE 随源码和 APK 一起分发。硬链接复制 fallback 是本地适配，必须将不共享 inode、最多 1 GiB、空间占用和包管理器行为限制一并披露。
+- PRoot、静态 loader、talloc、shmem 使用锁定源码归档和官方 NDK r30 构建，不取 Termux 预编译后端。原始归档、补丁前后摘要、编译参数与原生输出摘要随 source receipt 保留；装配时独立回放补丁。PRoot 为 GPL-2.0，talloc 为 LGPL-3.0-or-later，shmem 为 BSD-3-Clause。许可证及 source adapter 说明随 APK 与来源资产分发。
+- 当前构建与下载边界见 [构建详档](build-and-env.md) 的“可下载 Linux 插件来源链”。下载归档仍须作为最终 Release 附件与同版本 manifest 一起提供，不能以源码自检宣称资产已发布。
+
 - `verify-linux-native-apk.py` 对 APK 中 PRoot ELF/依赖及对应许可文件做成员唯一性、提取条件和逐字节 SHA-256 核对；源码自检不能代替具体来源 APK 对 `assets/licenses/linux-native/` 的核验。后续来源构建状态见[构建详档](build-and-env.md)；不得将历史自检推广为其他 APK 的许可证验收。
 
 ## WSL 来源构建的 Termux 许可补齐（2026-10-15）

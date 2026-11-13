@@ -107,6 +107,7 @@ internal object LogShare {
       "boot-fail.log", "boot-fail.log.1",
       "boot-diag.log", "boot-diag.log.1",
       "boot-segments.log", "boot-segments.log.1",
+      "linux-trial-failed.log",
     )
     return names.map { File(filesDir, it) }
   }

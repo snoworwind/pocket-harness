@@ -7,9 +7,10 @@
  * loads and activates it.
  *
  * It owns the runtime lifecycle (install, reinstall, uninstall, health) and the
- * Agent-facing `linux_bash` tool. Termux PRoot, the Debian minimal rootfs and the
+ * Agent-facing `linux_bash` tool. Source-built PRoot, the Debian minimal rootfs and the
  * shared glibc Node.js package are assembled from pinned inputs and embedded as
- * checksum-verified APK assets, then managed by the bootstrap plugin.
+ * checksum-verified downloadable assets, then managed by the bootstrap plugin.
+ * Android executable PRoot libraries remain in the signed APK native library directory.
  */
 import { createManager, LinuxRuntimeManager, ExecutionGate } from '../modules/manager.js';
 

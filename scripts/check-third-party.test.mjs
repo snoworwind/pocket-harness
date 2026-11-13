@@ -176,3 +176,48 @@ test('PRoot notice refuses a symlink license root', () => linuxBackendFixture(({
   assert.equal(result.status, 1)
   assert.match(result.stderr, /普通目录/)
 }))
+
+function sourceBackendFixture(run) {
+  linuxBackendFixture(({ dir, check }) => {
+    const helper = fileURLToPath(new URL('./source-build', import.meta.url))
+    const generated = spawnSync(process.env.PYTHON || 'python3', ['-c',
+      'import sys,json; sys.path.insert(0,sys.argv[1]); from test_proot_source_backend import receipt; print(json.dumps(receipt()))', helper,
+    ], { encoding: 'utf8' })
+    assert.equal(generated.status, 0, generated.stderr)
+    const receipt = JSON.parse(generated.stdout)
+    const receiptName = 'proot-source-build-arm64.json'
+    writeFileSync(join(dir, receiptName), generated.stdout)
+    const path = join(dir, 'linux-provenance.json')
+    const old = JSON.parse(readFileSync(path))
+    const report = {
+      schemaVersion: 2, provenanceKind: 'source-build', target: 'proot', architecture: 'arm64',
+      targetVersion: receipt.sources.proot.version, sourceBuildReceipt: receiptName,
+      sourceBuildReceiptSha256: createHash('sha256').update(generated.stdout).digest('hex'),
+      nativeLibraries: receipt.nativeLibraries,
+      licenseOrigins: Object.entries(receipt.sources).map(([name, row]) => ({ package: name, sourceArchiveSha256: row.sha256 })),
+      compatibilityShim: old.compatibilityShim, licenseFiles: old.licenseFiles,
+    }
+    writeFileSync(path, JSON.stringify(report))
+    run({ dir, check, path, report })
+  })
+}
+
+test('source-built PRoot notice describes source compilation without claiming signed Termux packages', () => sourceBackendFixture(({ dir, check }) => {
+  const result = check()
+  assert.equal(result.status, 0, result.stderr)
+  const notices = readFileSync(join(dir, 'notices.md'), 'utf8')
+  assert.match(notices, /固定摘要源码使用官方 NDK 构建/)
+  assert.doesNotMatch(notices, /Termux 官方签名仓库包提供|动态依赖名作了受审查的 ELF 字符串修正/)
+}))
+
+test('source-built PRoot notice rejects a forged receipt and package masquerade', () => sourceBackendFixture(({ check, path, report }) => {
+  for (const candidate of [
+    { ...report, sourceBuildReceiptSha256: '0'.repeat(64) },
+    { ...report, repository: 'https://packages.termux.dev' },
+  ]) {
+    writeFileSync(path, JSON.stringify(candidate))
+    const result = check()
+    assert.equal(result.status, 1, result.stdout)
+    assert.match(result.stderr, /source provenance 不符合源码构建协议/)
+  }
+}))

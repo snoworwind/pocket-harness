@@ -1,9 +1,9 @@
 # @dsh-android/linux-runtime
 
 The experimental Linux capability plugin installs and runs a Debian/glibc
-rootfs through the Termux PRoot binary and owns the Agent-facing `linux_bash`
-tool. It is packaged into the APK's ARM64 Termux snapshot by the source-build
-workflow. Its inputs are pinned and verified before use; Android device
+rootfs through our source-built PRoot binary and owns the Agent-facing `linux_bash`
+tool. Since Pocket Harness 0.15.3 it is downloaded from our versioned GitHub
+Release using the manifest pinned in the signed APK. Its inputs are pinned and verified before use; Android device
 acceptance is still pending, so this package is not enabled by default.
 
 ## Runtime layout and execution
@@ -20,8 +20,8 @@ removed only when no installed instance references it.
 explicit shared Node.js path instead of letting Debian's `/etc/profile`
 replace it in a login shell. On Android, PRoot is launched with
 `PROOT_NO_SECCOMP=1` to disable PRoot's seccomp accelerator; Android's own
-seccomp policy remains in force. The target Android 16 / Linux 6.6.98 ROM
-intermittently exited 182 in the accelerator before guest output. Failed install
+seccomp policy remains in force. Exit 182 is a loader failure; the observed
+MAP_FIXED EFAULT must not be attributed to the seccomp accelerator without evidence. Failed install
 probes persist host/guest cwd, the relevant guest and PRoot environment,
 stdout and stderr to the private bootstrap state file, with each stream bounded
 to 4096 characters. `execute` returns stdout, stderr, exit status, signal,
@@ -30,7 +30,7 @@ Termux host shell. The Agent sees this through `linux_bash` only after the
 runtime health check passes.
 
 On Android, the PRoot launcher, static loader and dependencies are duplicated
-from verified Termux packages into APK `nativeLibraryDir`, where Android can
+from pinned source builds into APK `nativeLibraryDir`, where Android can
 load app native libraries. The same package files are also kept in the runtime
 archive for source-side integrity checks and non-Android tests. The APK build
 checks ELF shape and then compares each native library and license file in the
@@ -87,11 +87,9 @@ package-manager behavior, DNS on every network, or multi-level guest
 
 The PRoot package closure and Debian rootfs inputs are pinned in
 `scripts/source-build/linux-inputs.json` and
-`scripts/source-build/linux-backend-packages.json`. Termux's signed `InRelease`
-authenticates its ARM64 package index; the builder independently verifies the
-index and each `.deb` against that signature before extracting files. Source
-archives, package copyright files, local ELF changes, native libraries and APK
-payload digests are recorded in the build provenance.
+`scripts/source-build/linux-backend-packages.json`. PRoot/talloc/shmem are compiled
+with pinned NDK r30. Original source archives, replayable patch digests, compiler
+commands, native libraries and APK payload digests are retained in source receipts.
 
 The PRoot executable is GPL-2.0; the closure also includes `libtalloc`
 (LGPL-3.0-or-later) and `libandroid-shmem` (BSD-3-Clause). Their package

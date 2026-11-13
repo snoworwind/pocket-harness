@@ -1,17 +1,17 @@
 {
-  "baseline": 18528,
+  "baseline": 18718,
   "perPlugin": {
     "dsh-android-bridge": {
       "count": 4,
-      "bytes": 1464
+      "bytes": 1467
     },
     "dsh-android-manage": {
       "count": 14,
-      "bytes": 7897
+      "bytes": 7928
     },
     "dsh-android-browser": {
       "count": 19,
-      "bytes": 4973
+      "bytes": 5015
     },
     "dsh-android-vdisplay": {
       "count": 4,
@@ -22,15 +22,15 @@
       "bytes": 159
     },
     "dsh-android-linux-env": {
-      "count": 2,
-      "bytes": 340
+      "count": 3,
+      "bytes": 446
     },
     "dsh-model-capability": {
       "count": 2,
-      "bytes": 2120
+      "bytes": 2128
     }
   },
-  "initialVisible": 2951,
+  "initialVisible": 3068,
   "maskedGroups": [
     "phone",
     "browser",
@@ -41,6 +41,7 @@
     "android_env_recipe",
     "android_file_incoming_status",
     "android_toolchain_status",
+    "linux_environment_status",
     "model_capability_apply",
     "model_capability_probe"
   ]
