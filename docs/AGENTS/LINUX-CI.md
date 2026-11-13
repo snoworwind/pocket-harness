@@ -11,7 +11,7 @@
 5. `check-linux-engine.mjs` 从固定来源 tarball 独立重放补丁，核对第一方 payload、依赖闭包、pnpm 副本与预设载体；`check-linux-runtime-packages.mjs` 从每个已部署 koffi 消费者解析 `@koromix/koffi-linux-arm64` 的 glibc 模块、沿 sharp 发布 loader 找到 AArch64 ELF、并要求 node-pty 使用 linux-arm64 prebuild 且无源码 shadow，同时盘点 `.pnpm` 内全部原生模块只能属于已审家族；`check-inject-completeness.mjs --tree` 核对两套 profile 的源码字节、导入和运行期依赖。语法下限复扫、工厂 home 隐私与客体路径检查均为实际输入检查。
 6. 客体引擎与 home 分别归档；Canvas JS facade 和 glibc binding 都按源码 SHA-512 pin 校验，Node 中含固定 pnpm。四件套经 `linux-instance-manifest.py` 写入压缩摘要、受管树摘要、版本与展开体积。
 7. 产物装配前，`build-linux-apk.mjs` 执行 Linux 专用代码/桥/权限/协议/插件/测试数量门禁，打入四件套、ownership manifest 与按实际 Debian/Node/Harness 来源清单生成许可证通知，清除旧 snapshot 资产后调用 Gradle。
-8. 最终 APK 必须通过宿主原生库字节/许可证/来源核验、Linux 载荷身份检查及 v1/v2/v3 临时签名验证。工厂载荷报告通过 builder 与 verifier artifact 两个边界保存。
+8. 最终 APK 必须通过宿主原生库字节/许可证/来源核验、Linux 载荷身份检查及 v1/v2/v3 临时签名验证；签名校验显式绑定一次性构建证书文件，绝不回落到生产 keystore 指纹。工厂载荷报告通过 builder 与 verifier artifact 两个边界保存。
 9. `reference=true` 时，`compare-linux-apks.py` 独立核验两份 APK 的 Linux 载荷，再比较全部 ZIP 文件内容摘要，仅排除 JAR 签名记录；`META-INF/services` 等内容仍必须一致。`reference=false` 不声称通过独立重建比对。
 
 ## 已退役的 CI 路径与替代判据

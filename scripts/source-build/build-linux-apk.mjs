@@ -48,7 +48,9 @@ const apk = join(out, `pocket-harness-v${version}-source-arm64.apk`)
 copyFileSync(join(release, 'app-release.apk'), apk)
 run('python3', ['scripts/source-build/verify-linux-native-apk.py', apk, native, join(assets, 'licenses/linux-native'), '.deploy-tmp/linux-build/provenance/proot-backend-inputs.json'])
 run('python3', ['scripts/source-build/verify-linux-payload.py', '--apk', apk, '--out', join(reports, 'linux-payload-identity.json')])
-verifyApks({ files: [apk] })
+// Builders never receive the production key; verify against the exact temporary
+// build certificate, never the repository keystore fallback.
+verifyApks({ files: [apk], certificateSha256File: process.env.POCKET_BUILD_CERTIFICATE_FILE })
 run(process.execPath, ['scripts/source-build/record-project-components.mjs', 'outputs', join(reports, 'project-component-provenance.json')])
 writeFileSync(join(reports, 'project-source-commit.txt'), process.env.GITHUB_SHA + '\n')
 run('bash', ['-c', 'find out -type f -name "*.apk" -print -exec sha256sum {} \\; > .deploy-tmp/source-build/apk-sha256.txt'])

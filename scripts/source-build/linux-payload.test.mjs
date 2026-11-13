@@ -26,7 +26,7 @@ test('payload composer has no retired build inputs and checks actual source, plu
   assert.ok(build.indexOf('fetch-overlay-tarballs.mjs') < build.indexOf('probe-engine-anchors.mjs'))
   assert.ok(apk.indexOf('check-kotlin-test-count.mjs') < apk.indexOf("run('./gradlew'"))
   assert.ok(apk.indexOf("run('./gradlew'") < apk.indexOf('verify-linux-native-apk.py'))
-  assert.match(apk, /verifyApks\(\{ files: \[apk\] \}\)/)
+  assert.match(apk, /verifyApks\(\{ files: \[apk\], certificateSha256File: process\.env\.POCKET_BUILD_CERTIFICATE_FILE \}\)/)
 })
 test('official bundle templates seed both Linux profiles without source node_modules', () => {
   const root = mkdtempSync(join(tmpdir(), 'linux-profile-'))

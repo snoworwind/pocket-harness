@@ -4009,3 +4009,13 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
      校验后落入同一缓存；缺归属或目标越界直接失败。构建顺序固定为 fetch → 探针 → 施加补丁。
      复验：`fetch-overlay-tarballs.test.mjs` 覆盖只取第三方、去重、退役目标、未知归属与越界
      目标负控；`linux-payload.test.mjs` 断言 fetch 在探针之前；PR Gate 与本地 preflight 均执行自检。
+
+700. **来源 APK 的签名校验必须显式传构建证书，否则回落到生产指纹（2026-11-13，实验分支）**
+     现象：Linux APK 已用临时构建密钥签出并通过 v1/v2/v3，但 `build-linux-apk.mjs` 的
+     `verifyApks({ files: [apk] })` 判红「签名证书与仓库 keystore 不符」，整步失败。
+     真因：`check-apk-signatures.mjs` 在未传 `--certificate-sha256` 时默认读
+     `keystore/pocket-harness-cert-sha256.txt`（生产指纹）；构建副本按设计只用一次性密钥，
+     两者必然不同。旧链的 `build-apk.mjs` 显式传了 `POCKET_BUILD_CERTIFICATE_FILE`，迁移时漏了。
+     修法：`build-linux-apk.mjs` 与旧入口一致，显式传 `certificateSha256File:
+     process.env.POCKET_BUILD_CERTIFICATE_FILE`；工作流复验步骤同样显式传该文件。
+     复验：`linux-payload.test.mjs` 断言该参数；云端构建在修复后应通过签名门禁。
