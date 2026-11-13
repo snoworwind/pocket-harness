@@ -17,6 +17,7 @@
  *   - .deploy-tmp/linux-build/native-libs (the APK build packages and verifies
  *     the source-authenticated PRoot launcher, loader and dependencies),
  *   - .deploy-tmp/linux-build/provenance (uploaded as evidence),
+ *   - .deploy-tmp/linux-build/assets (downloadable Release payloads),
  *   - .deploy-tmp/engine-overlay (the checker's hash-bound source tarballs),
  *   - .deploy-tmp/source-build (reports/manifests consumed by later gates).
  *
@@ -151,13 +152,18 @@ function runProduction() {
   for (const [rel, rootOwned] of removals) removePath(deployReal, join(deployReal, rel), { checkOnly, rootOwned })
 
   // The Linux provenance is uploaded. Native libraries are consumed later by
-  // APK assembly; other linux-build products are only consumed while assembling
-  // the snapshot.
+  // APK assembly. Since 0.15.3, assets are separate Release payloads and remain
+  // inputs after sealing the snapshot; only the other build scratch trees can go.
   const linuxBuild = join(deployReal, 'linux-build')
   if (existsSync(linuxBuild)) {
     const safeLinuxBuild = safeTarget(deployReal, linuxBuild)
     for (const entry of readdirSync(safeLinuxBuild)) {
       if (entry === 'provenance' || entry === 'native-libs') continue
+      if (entry === 'assets') {
+        const assets = safeTarget(deployReal, join(safeLinuxBuild, entry))
+        if (!lstatSync(assets).isDirectory()) throw new Error('Linux release assets must be a real directory')
+        continue
+      }
       removePath(deployReal, join(safeLinuxBuild, entry), { checkOnly, rootOwned: entry === 'rootfs' })
     }
   }
@@ -218,6 +224,7 @@ function runSelfTest() {
       'linux-build/rootfs', 'linux-build/cargo']) {
       write(join(deploy, rel, 'marker'), `${rel}\n`)
     }
+    write(join(deploy, 'linux-build', 'assets', 'linux-runtime-plugin.tar.xz'), 'verified runtime payload\n')
     write(join(deploy, 'linux-build', 'native-libs', 'arm64-v8a', 'libpocketharness_proot.so'), 'launcher\n')
     write(join(deploy, 'linux-build', 'provenance', 'keep.txt'), 'keep provenance\n')
     makeHarnessCheckout(root)
@@ -225,9 +232,12 @@ function runSelfTest() {
     const positive = runChild(['--root', root, '--min-free-mb', '0'], root)
     if (positive.status !== 0) throw new Error(`positive cleanup failed:\n${positive.stdout}\n${positive.stderr}`)
     for (const rel of ['engine-deploy', 'source-build/ndk', 'source-build/termux-webroot',
-      'source-build/bootstrap-extracted', 'source-build/node-deb-extracted', 'linux-build/assets',
+      'source-build/bootstrap-extracted', 'source-build/node-deb-extracted',
       'linux-build/rootfs', 'linux-build/cargo']) {
       if (existsSync(join(deploy, rel))) throw new Error(`positive cleanup left ${rel}`)
+    }
+    if (readFileSync(join(deploy, 'linux-build', 'assets', 'linux-runtime-plugin.tar.xz'), 'utf8') !== 'verified runtime payload\n') {
+      throw new Error('positive cleanup removed or changed downloadable Linux Release assets')
     }
     if (!existsSync(join(deploy, 'linux-build', 'provenance', 'keep.txt'))) {
       throw new Error('positive cleanup removed linux-build/provenance')
@@ -311,6 +321,25 @@ function runSelfTest() {
       rmSync(escapeRoot, { recursive: true, force: true })
     }
 
+    const assetLinkRoot = mkdtempSync(join(tmpdir(), 'reclaim-build-disk-assets-'))
+    try {
+      const deploy = join(assetLinkRoot, '.deploy-tmp')
+      mkdirSync(join(deploy, 'linux-build'), { recursive: true })
+      const outside = join(assetLinkRoot, 'outside')
+      write(join(outside, 'keep.txt'), 'outside asset tree stays intact\n')
+      const link = join(deploy, 'linux-build', 'assets')
+      const created = spawnSync(process.platform === 'win32' ? 'cmd' : 'ln',
+        process.platform === 'win32' ? ['/c', 'mklink', '/J', link, outside] : ['-s', outside, link])
+      if (created.status !== 0) throw new Error('cannot create retained-assets symlink control')
+      const rejected = runChild(['--root', assetLinkRoot, '--min-free-mb', '0'], assetLinkRoot)
+      if (rejected.status === 0 || !rejected.stderr.includes('refuses symlinked reclaim target')) {
+        throw new Error('linked Linux Release assets were accepted')
+      }
+      if (readFileSync(join(outside, 'keep.txt'), 'utf8') !== 'outside asset tree stays intact\n') {
+        throw new Error('retained asset link changed its outside target')
+      }
+    } finally { rmSync(assetLinkRoot, { recursive: true, force: true }) }
+
     // A dangling symlink is still a symlink target and must fail closed; the
     // ordinary existsSync API follows links and would incorrectly call it absent.
     const danglingRoot = mkdtempSync(join(tmpdir(), 'reclaim-build-disk-dangling-'))
@@ -358,7 +387,7 @@ function runSelfTest() {
       rmSync(floorRoot, { recursive: true, force: true })
     }
 
-    console.log('RECLAIM-BUILD-DISK SELF-TEST PASSED (positive cleanup, parent-repository isolation, symlink and dangling-link rejection, check-only, free-space floor)')
+    console.log('RECLAIM-BUILD-DISK SELF-TEST PASSED (positive cleanup, Release asset retention/link rejection, parent-repository isolation, symlink and dangling-link rejection, check-only, free-space floor)')
   } finally {
     rmSync(root, { recursive: true, force: true })
   }
