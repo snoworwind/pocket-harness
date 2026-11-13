@@ -8,7 +8,7 @@ import java.util.concurrent.Executors
 
 /**
  * Console session: spawns the snapshot bash (env matching the engine: PATH/LD_LIBRARY_PATH/
- * HOME/DSH_HOME/TERMUX_*), writes commands to stdin, reads merged stdout/stderr on a background
+ * HOME/DSH_HOME and guest runtime paths), writes commands to stdin, reads merged stdout/stderr on a background
  * thread, and streams output back to the UI via a Listener. Works even when the engine is not
  * running (for diagnosing engine startup failures); the process dies with the Activity.
  *
@@ -193,7 +193,7 @@ class ConsoleSession(private val context: Context) {
       reader.isDaemon = true
       reader.name = "dsh-console-output"
       // Post READY before starting the reader so an immediate EOF cannot be followed by stale READY.
-      notifyIfCurrent(gen) { listener.onStatus(State.READY, "bash 已就绪（快照 Termux 环境）") }
+      notifyIfCurrent(gen) { listener.onStatus(State.READY, "bash 已就绪（Debian Linux 环境）") }
       reader.start()
     } catch (t: Throwable) {
       val failedProcess = proc

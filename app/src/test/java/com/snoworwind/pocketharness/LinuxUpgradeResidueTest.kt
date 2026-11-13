@@ -10,7 +10,7 @@ import org.junit.runners.Parameterized
 
 /** Residue and malformed-journal negatives apply to Linux swaps; no legacy snapshot engine is compiled. */
 @RunWith(Parameterized::class)
-class SnapshotMoveResidueTest(private val scenario: String) {
+class LinuxUpgradeResidueTest(private val scenario: String) {
   companion object {
     @JvmStatic @Parameterized.Parameters(name = "{0}") fun cases() = listOf(
       "unowned-stage", "unowned-previous", "corrupt-journal", "unknown-phase", "unknown-component", "duplicate-component",

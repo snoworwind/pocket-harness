@@ -1,8 +1,8 @@
 - id: bash-sandbox
   disabled: true
 - insert:
-    - id: shell-termux
-      name: '@dsh-android/dsh-shell-termux'
+    - id: shell-linux
+      name: '@dsh-android/dsh-shell-linux'
       config:
         bashPath: /x/bash
     - id: host-web-compat

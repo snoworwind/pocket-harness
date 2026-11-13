@@ -4,8 +4,8 @@ import java.io.File
 import org.junit.Assert.*
 import org.junit.Test
 
-/** Historical baseline identity: Debian supplies zsh/terminfo; the shell no longer injects Termux prefixes. */
-class RelocatedTermuxEnvTest {
+/** Debian guest paths, shell and native environment isolation. */
+class LinuxGuestEnvironmentTest {
   private fun launch(f: LinuxInstallerFixture): LinuxGuestBoot.Launch {
     f.install(); val native = File(f.files, "native").apply { mkdirs() }
     for (name in listOf("libpocketharness_proot.so", "libpocketharness_proot_loader.so")) File(native, name).writeText("fixture")

@@ -151,6 +151,7 @@ jobs:
         if: always()
         run: |
           node scripts/source-build/check-linux-ci.mjs --self-test
+          node scripts/source-build/check-linux-names.mjs --self-test
           python3 scripts/source-build/verify-linux-payload.py --self-test
           node --test scripts/source-build/linux-payload.test.mjs
       - name: 来源审计源码替换回归
@@ -186,8 +187,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # 历史包名 dsh-shell-termux 是客体 shell 适配器；linux-env 编译依赖其声明产物。
-          mapfile -t plugin_dirs < <(node -e "const {dirs}=require('./scripts/plugin-dirs.json'); console.log(dirs.filter(d=>d==='dsh-shell-termux'||d.startsWith('plugins/')).join('\n'))")
+          # dsh-shell-linux 是 Debian 客体 shell 适配器；linux-env 编译依赖其声明产物。
+          mapfile -t plugin_dirs < <(node -e "const {dirs}=require('./scripts/plugin-dirs.json'); console.log(dirs.filter(d=>d==='dsh-shell-linux'||d.startsWith('plugins/')).join('\n'))")
           test "${#plugin_dirs[@]}" -gt 0
           for d in "${plugin_dirs[@]}"; do
             node scripts/source-build/install-project-dependencies.mjs "$d" .deploy-tmp/source-build/plugin-lock-resolution-pr.json
@@ -306,7 +307,7 @@ jobs:
           yes | sudo "${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0" >/dev/null 2>&1 || true
       # Kotlin 单测门禁（0.14.1 P0：此前 CI **从不跑** testDebugUnitTest——全仓 grep 零命中）。
       # 为什么必须补：本轮全量实跑 456 例，其中契约断言（CallSiteContractTest / BootDiagnosticsContractTest
-      # / ApiLevelGuardTest / UndoGateDecisionTest / SnapshotTransactionTest / NotificationContractTest /
+      # / ApiLevelGuardTest / UndoGateDecisionTest / LinuxComponentTransactionTest / NotificationContractTest /
       # OverlayHaloInvariantTest / BootFailLogTest …）**只有在 CI 里跑起来才是防线**；否则它们只是
       # 「本地跑过」，改坏实现不会有任何拦截——与 P0-a「判据真会红但被结构性绕开」是同一形态。
       # 全量实跑（Lead 本机，同 runner 档位）：456 tests / 0 failures / 1 skipped，冷启 BUILD ~39s。

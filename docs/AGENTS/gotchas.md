@@ -3970,3 +3970,12 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
     因路径不同跳过整个 CLI，连证明文件也未写。
     修法：对 argv 与模块路径都 realpath 后比较；保留实际 CLI 篡改与输入报告不覆盖反例。
     复验：`record-project-components.test.mjs` 实际 CLI 负控在 macOS 通过；不是忽略该测试。
+
+696. **运行时切换后必须一起迁移包名、模型工具名与工厂条目（2026-11-13，实验分支）**
+    现象：Debian 客体仍被叫作 Termux 执行器，控制台和引导文案也承诺旧环境。
+    真因：实现已经切换，但包身份、通道、配置目录、代码符号与 UI 没有作为同一部署契约更新。
+    修法：活跃身份统一为 `dsh-shell-linux` / `LinuxBashExecutor` / `android_linux_channel_exec`，
+    配置目录改为 `runtime-config`，工厂 patch 直接使用客体路径。home seed 合并只迁移旧工厂
+    id+包名的精确组合，用户配置、自建条目保留；链接和超限 patch 拒绝写。上游与历史证据原名保留。
+    复验：包锁根声明、桥对称、工具名承诺、有界读和来源检查通过；新增迁移正反例与名称契约。
+    Kotlin/插件编译及最终来源 APK 由云端继续验证，不能用旧 lib 或旧构建结果代替。

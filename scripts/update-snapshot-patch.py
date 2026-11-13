@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """update-snapshot-patch.py — 用主仓库权威 profile patch 覆盖快照内 profiles/web/cordis.patch.yml。
 
-快照内 patch 是基座旧版（0.12.5-fx-1 装配），0.13.0 装配（undo/market/shell-termux v2 写面配置）
+快照内 patch 是基座旧版（0.12.5-fx-1 装配），0.13.0 装配（undo/market/shell-linux v2 写面配置）
 以主仓库 scripts/profile-web.cordis.patch.yml 为权威（make-snapshot.sh 既有原则：权威副本覆盖防漂移）。
 2026-08-23（审核 M1）：0.13.0 装配只对 web profile 有意义——非 web profile（headless 等保留形态）
 默认跳过，除非传 --all-profiles 显式覆盖。

@@ -67,7 +67,7 @@ for (const [label, script] of [
     assert.equal(r.status, 0, r.stderr)
     assert.deepEqual(readFileSync(join(root, 'plugin-calls'), 'utf8').trim().split('\n'),
       buildableDirs.flatMap(d => ['deps:' + d, 'build:' + d]))
-    assert.ok(buildableDirs.indexOf('dsh-shell-termux') < buildableDirs.indexOf('plugins/dsh-android-linux-env'))
+    assert.ok(buildableDirs.indexOf('dsh-shell-linux') < buildableDirs.indexOf('plugins/dsh-android-linux-env'))
   }))
   test(label + ' plugin preparation: dependency failure stops before any package build', linux, () => fixture(root => {
     preparePluginBuild(root)
@@ -123,7 +123,7 @@ test('deploy cleanup is scoped and rejects empty workspace and linked parent', l
   assert.equal(bash(cleanup, root).status, 0)
   assert.equal(existsSync(join(root, '.deploy-tmp/engine-deploy')), false)
   assert.equal(readFileSync(join(root, '.deploy-tmp/sibling'), 'utf8'), 'keep')
-  assert.ok(harness.includes('git show "$GITHUB_SHA:scripts/snapshot-config/engine-overlay.json" > scripts/snapshot-config/engine-overlay.json'))
+  assert.ok(harness.includes('git show "$GITHUB_SHA:scripts/runtime-config/engine-overlay.json" > scripts/runtime-config/engine-overlay.json'))
   assert.notEqual(bash(cleanup, root, { GITHUB_WORKSPACE: '' }).status, 0)
   const other = join(root, 'other'); mkdirSync(other); writeFileSync(join(other, 'sentinel'), 'keep')
   rmSync(join(root, '.deploy-tmp'), { recursive: true }); symlinkSync(other, join(root, '.deploy-tmp'))

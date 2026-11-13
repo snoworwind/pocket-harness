@@ -125,7 +125,7 @@ export function checkDshRuntimeDependencies(engineRootArg) {
   // 但「放过」不等于「静默」：刻意缺席单独计数、列进报告，外部复核方看得到；
   // 若有人把某条从 slim.json 删掉，这里立刻恢复判红（清单与判据自洽）。
   const platformDead = new Set(
-    (JSON.parse(readFileSync(join(import.meta.dirname, '..', 'snapshot-config', 'slim.json'), 'utf8'))
+    (JSON.parse(readFileSync(join(import.meta.dirname, '..', 'runtime-config', 'slim.json'), 'utf8'))
       .platformDeadPackages ?? []).map((entry) => entry.name),
   )
   const deliberatelyAbsent = []

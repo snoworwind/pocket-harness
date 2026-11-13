@@ -13,7 +13,7 @@
 
 - 2026-10-20：继续比较上游源码后新增悬浮服务退出候选：本仓 OverlayService 缺少上游 #443 的服务自停/非粘性策略，现有 EngineService 的收尾不覆盖其未启动场景；实际任务划除复活仍待本仓设备复现。输入清空/回执与虚拟屏弹层差异也已细化反例。证据和静态推导见 [第二轮源码复核](UPSTREAM-SOURCE-REVIEW-2026-10-20.md)，实施依赖见 [吸收计划](UPSTREAM-ABSORPTION-PLAN-2026-10-20.md)。**本轮仅文档，未修复、未构建 APK、未做设备验证，不构成候选通过。**
 
-- 2026-10-22：Android `dsh-shell-termux` 尚无真实路径级执行围栏；源码现对 `read-only`/`workspace-write` 在 spawn 前 fail-closed，并要求每次会话策略显式选择 `danger-full-access` 才启动 bash。该档仍以应用 UID 运行，app-domain 不是工作区隔离；独立 UID/Landlock、秘密隔离与设备行为仍未验收。详见 [dsh-shell-termux 沙箱边界审计](SHELL-TERMUX-SANDBOX-AUDIT-2026-10-19.md)。本轮有宿主代码回归，**未构建 APK、未做设备验证**。
+- 2026-10-22：Android `dsh-shell-linux` 尚无真实路径级执行围栏；源码现对 `read-only`/`workspace-write` 在 spawn 前 fail-closed，并要求每次会话策略显式选择 `danger-full-access` 才启动 bash。该档仍以应用 UID 运行，app-domain 不是工作区隔离；独立 UID/Landlock、秘密隔离与设备行为仍未验收。详见 [dsh-shell-linux 沙箱边界审计](SHELL-TERMUX-SANDBOX-AUDIT-2026-10-19.md)。本轮有宿主代码回归，**未构建 APK、未做设备验证**。
 
 - 2026-10-22：能力组撤销/解锁的持久化失败语义已在源码修复：写入失败不再返回成功，撤销仍立即锁住当前会话并提示旧磁盘授权在重启后可能恢复；只有原子写成功才承诺跨重启状态。源码反例与落盘/rename 失败用例通过；[PR #97](https://github.com/snoworwind/pocket-harness/pull/97) 已合入 main。该轮未构建 APK、未做设备验证，持久化失败恢复路径仍需随当前候选补设备证据。实现见 [能力持久化坑位](gotchas.md#498-能力组撤销与解锁必须等待持久状态写入成功)；这不等于写入失败时能清除旧授权。
 

@@ -349,7 +349,7 @@ async function drivePlugin(pluginDir, mode) {
     moduleSpec = await import(pathToFileURL(LIB).href)
   } catch (e) {
     // 宿主缺 peer 依赖 ≠ 插件缺陷，但也**绝不能**让它以崩溃形态吃掉整条聚合链：本轮实锤
-    // （`plugins/dsh-android-linux-env` → `@dsh-android/dsh-shell-termux` → `@deepseek-ai/dsh-bash-local`
+    // （`plugins/dsh-android-linux-env` → `@dsh-android/dsh-shell-linux` → `@deepseek-ai/dsh-bash-local`
     // 缺席）是未捕获的 ERR_MODULE_NOT_FOUND 直接终止进程，`--run` 在 29 条里第 6 条就死，
     // 后面 23 条一条都没跑，而在此之前已发射的条目让人以为"门禁跑了"。
     // 口径与「引擎校验器缺席」完全一致：无 `--require` 如实 SKIP 并计数；带 `--require`（本地/发布链）

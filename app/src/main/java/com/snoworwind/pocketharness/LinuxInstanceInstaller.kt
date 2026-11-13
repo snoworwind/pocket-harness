@@ -221,6 +221,7 @@ internal object LinuxInstanceInstaller {
       extractVerified(source, asset, "home", stage)
       require(stage.listFiles().orEmpty().all { it.name == "home" }) { "home seed contains non-home paths" }
       LinuxFileTree.mergeHomeSeed(stage, filesDir)
+      LinuxFileTree.migrateHomeShellIdentity(File(filesDir, "home"))
       // Schema 2 adds persistent package-manager homes; it never replaces user files.
       if (nextSchema >= 2) for (name in listOf(".local/bin", ".local/lib/node_modules", ".local/share/pnpm", ".local/share/corepack")) {
         LinuxFileTree.safeDirectory(File(filesDir, "home"), name)

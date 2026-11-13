@@ -6,9 +6,9 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.junit.runners.Parameterized
 
-/** Baseline identity retained: these cases protect Debian user packages, not the retired Termux migrator. */
+/** Debian user packages survive managed component updates. */
 @RunWith(Parameterized::class)
-class PythonPackagesTest(private val pythonMinor: String) {
+class LinuxUserPackagesTest(private val pythonMinor: String) {
   companion object {
     @JvmStatic @Parameterized.Parameters(name = "Python {0}") fun versions() = listOf("3.11", "3.12", "3.13", "3.14", "3.15").map { arrayOf(it) }
   }

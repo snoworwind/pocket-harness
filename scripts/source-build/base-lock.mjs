@@ -17,8 +17,8 @@ const SKIP_DIRS = new Set(['.git', 'node_modules', '.deploy-tmp'])
 export const COMPONENTS = Object.freeze({
   engine: [
     'scripts/contract.json',
-    'scripts/snapshot-config/engine-overlay.json',
-    'scripts/snapshot-config/engine-overlay-licenses.json',
+    'scripts/runtime-config/engine-overlay.json',
+    'scripts/runtime-config/engine-overlay-licenses.json',
     'scripts/patches',
     'scripts/source-build/build-engine.sh',
     'scripts/source-build/engine-base.mjs',
@@ -36,14 +36,6 @@ export const COMPONENTS = Object.freeze({
     'scripts/source-build/check-dsh-runtime-dependencies.mjs',
     'scripts/source-build/prepare-marketplace-metadata.mjs',
     'vendor/dshmarketplace-plugin/package.json',
-  ],
-  termux: [
-    'scripts/contract.json',
-    'scripts/snapshot-config/preinstall.json',
-    'scripts/source-build/prepare-termux-bootstrap.py',
-    'scripts/source-build/prepare-termux-signed-repo.py',
-    'scripts/source-build/termux_signed_packages.py',
-    'scripts/source-build/build-node-pty-android.mjs',
   ],
   linux: [
     'scripts/source-build/linux-inputs.json',

@@ -254,3 +254,5 @@ bootstrap 调用 `linuxPluginHost.install({directory,entry='lib/index.js',config
 ### 无障碍在线事实
 
 引擎 `a11yFacts()` 把无障碍来源分为 `heartbeat`、`disabled`、`stale` 与 `unknown`。只有壳侧明确启用且心跳非未来、年龄小于 20 秒时才开放无障碍路由；明确关闭返回 `disabled`，缺失/过期/未来心跳返回 `stale`，缺少启用键或状态不可读返回 `unknown`。心跳年龄保留符号用于诊断，未来时间不会被归一成新鲜。控制队列可以在无障碍服务缺席时继续轮询，不能单独证明服务在线。设备侧验证尚未完成。
+
+Linux 实验分支的模型 shell 通道名为 `android_linux_channel_exec`，执行环境是 Debian 客体；旧 `android_termux_channel_exec` 不再注册，门控与审计继续失败关闭。

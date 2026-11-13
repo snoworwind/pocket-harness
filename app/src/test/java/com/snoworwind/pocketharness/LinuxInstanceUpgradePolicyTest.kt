@@ -5,8 +5,8 @@ import org.json.JSONObject
 import org.junit.Assert.*
 import org.junit.Test
 
-/** Former refresh policy baseline now covers frozen-rootfs upgrade and resumable-install behavior. */
-class SnapshotRefreshPolicyTest {
+/** Frozen-rootfs upgrade and resumable-install behavior. */
+class LinuxInstanceUpgradePolicyTest {
   @Test fun identicalAssetsNeverRepeatTheTrialOrUnpack() = LinuxInstallerFixture().use { f ->
     f.install(); f.reads.clear(); var trials = 0; f.trial = { _, _ -> trials++ }
     assertTrue(LinuxInstanceInstaller.ensure(f.source(), f.files) is LinuxInstanceInstaller.Result.Ready)

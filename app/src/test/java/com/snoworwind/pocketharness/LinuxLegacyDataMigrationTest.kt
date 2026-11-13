@@ -4,8 +4,8 @@ import java.io.File
 import org.junit.Assert.*
 import org.junit.Test
 
-/** Baseline identity retained for the Termux-to-Debian data boundary, not the retired swap implementation. */
-class SnapshotMigrationPolicyTest {
+/** Legacy Bionic-to-Debian user data boundary. */
+class LinuxLegacyDataMigrationTest {
   private fun oldUser(f: LinuxInstallerFixture): File {
     File(f.files, "usr/bin").mkdirs(); File(f.files, "usr/bin/node").writeText("old-bionic-node")
     return File(f.files, "home/.dsh").apply { mkdirs() }

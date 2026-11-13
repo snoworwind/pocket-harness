@@ -109,8 +109,8 @@ if (process.argv.includes('--self-test')) {
     '- id: bash-sandbox',
     '  disabled: true',
     '- insert:',
-    "    - id: shell-termux",
-    "      name: '@dsh-android/dsh-shell-termux'",
+    "    - id: shell-linux",
+    "      name: '@dsh-android/dsh-shell-linux'",
     '    - id: host-web-compat',
     "      name: '@dsh-android/dsh-host-web-compat'",
     '- id: llm-pi-ai',
@@ -126,7 +126,7 @@ if (process.argv.includes('--self-test')) {
     '  disabled: true',
   ].join('\n')
   const got = mountedNames(fixture)
-  const want = new Set(['@dsh-android/dsh-shell-termux', '@dsh-android/dsh-host-web-compat', '@deepseek-ai/dsh-llm-pi-ai'])
+  const want = new Set(['@dsh-android/dsh-shell-linux', '@dsh-android/dsh-host-web-compat', '@deepseek-ai/dsh-llm-pi-ai'])
   const missing = [...want].filter((x) => !got.has(x))
   const extra = [...got].filter((x) => !want.has(x))
   const ok = missing.length === 0 && extra.length === 0 && got.size === 3

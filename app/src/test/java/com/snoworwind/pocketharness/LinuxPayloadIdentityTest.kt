@@ -5,8 +5,8 @@ import org.json.JSONObject
 import org.junit.Assert.*
 import org.junit.Test
 
-/** The old fingerprint baseline now tests authenticated Linux archive and extracted-byte identities. */
-class SnapshotFingerprintPolicyTest {
+/** Authenticated Linux archive and extracted-byte identities. */
+class LinuxPayloadIdentityTest {
   private fun changed(source: LinuxInstanceInstaller.Source, update: (JSONObject) -> Unit) = source.copy(open = { path ->
     if (path == "linux/manifest.json") source.open(path).use { JSONObject(it.bufferedReader().readText()).also(update).toString().byteInputStream() } else source.open(path)
   })

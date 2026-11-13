@@ -17,7 +17,6 @@
     "FileIncoming.kt:40": 1,
     "FileIncoming.kt:163": 2,
     "FileIncoming.kt:417": 1,
-    "plugins/dsh-android-bridge/src/index.ts:1045": 2,
     "app/src/main/java/com/snoworwind/pocketharness/VdisplayController.kt:84": 2,
     "app/src/main/java/com/snoworwind/pocketharness/VdisplayController.kt:60": 1,
     "app/src/main/java/com/snoworwind/pocketharness/VdisplayController.kt:322": 2,
@@ -256,7 +255,6 @@
     "dsh-client-ui-responsive/src/client/android-bridge.ts:82": 2,
     "app/src/main/java/com/snoworwind/pocketharness/FileIncoming.kt:35": 2,
     "plugins/dsh-android-file-open/src/index.ts:238": 3,
-    "plugins/dsh-android-linux-env/src/index.ts:349": 2,
     "plugins/dsh-android-file-open/src/index.ts:525": 3,
     "plugins/dsh-model-capability/src/index.ts:166": 2,
     "plugins/dsh-model-capability/src/settings-writer.ts:134": 1,
@@ -331,7 +329,6 @@
     "app/src/main/java/com/snoworwind/pocketharness/ControlPoller.kt:158": 2,
     "app/src/main/java/com/snoworwind/pocketharness/AdbKeyboardEdit.kt:37": 1,
     "plugins/dsh-android-manage/src/ime-broadcast.ts:1": 1,
-    "plugins/dsh-android-bridge/src/index.ts:1034": 4,
     "plugins/dsh-android-bridge/src/screen-scope.ts:405": 2,
     "app/src/main/java/com/snoworwind/pocketharness/ControlCarrier.kt:107": 1,
     "plugins/dsh-android-bridge/src/screen-scope.ts:392": 1,
@@ -354,7 +351,6 @@
     "app/src/main/java/com/snoworwind/pocketharness/OverlayPanel.kt:87": 1,
     "app/src/main/java/com/snoworwind/pocketharness/OverlayLiveFeed.kt:26": 1,
     "app/src/main/AndroidManifest.xml:65": 1,
-    "plugins/dsh-android-bridge/src/index.ts:1564": 1,
     "app/src/main/java/com/snoworwind/pocketharness/NotifyBridge.kt:207": 1,
     "app/src/main/java/com/snoworwind/pocketharness/NotifyCenter.kt:828": 1,
     "app/src/main/java/com/snoworwind/pocketharness/AndroidBridge.kt:385": 1,
@@ -363,21 +359,14 @@
     "app/src/main/java/com/snoworwind/pocketharness/NotifyStore.kt:68": 1,
     "plugins/dsh-android-bridge/src/control-policy.ts:79": 1,
     "plugins/dsh-android-bridge/src/shell-ops.ts:120": 3,
-    "plugins/dsh-android-bridge/src/index.ts:645": 1,
-    "plugins/dsh-android-bridge/src/index.ts:1612": 1,
-    "plugins/dsh-android-bridge/src/index.ts:234": 1,
-    "plugins/dsh-android-bridge/src/index.ts:251": 2,
     "plugins/dsh-android-bridge/src/capability-gate.ts:12": 1,
     "plugins/dsh-android-browser/src/tools.ts:254": 1,
     "plugins/dsh-android-browser/src/index.ts:336": 1,
     "plugins/dsh-android-vdisplay/src/index.ts:198": 1,
-    "plugins/dsh-android-bridge/src/index.ts:949": 4,
     "scripts/check-tool-output-schema.mjs:153": 2,
     "plugins/dsh-android-file-open/src/route-auth.ts:47": 2,
     "app/src/main/java/com/snoworwind/pocketharness/FileIncoming.kt:32": 1,
     "dsh-client-ui-responsive/src/client/mobile/incoming-draft.ts:175": 1,
-    "dsh-shell-termux/src/index.ts:42": 2,
-    "plugins/dsh-android-bridge/src/index.ts:569": 2,
     "plugins/dsh-model-capability/src/settings-writer.ts:239": 3,
     "plugins/dsh-android-file-open/src/index.ts:302": 1,
     "plugins/dsh-android-linux-env/src/runtime-cache.ts:40": 1,
@@ -386,7 +375,6 @@
     "dsh-host-web-compat/lib/index.js:302": 1,
     "plugins/dsh-android-file-open/src/index.ts:527": 1,
     "dsh-client-ui-responsive/src/client/dev-section/runtime-cache.tsx:91": 1,
-    "dsh-shell-termux/src/index.ts:39": 1,
     "dsh-host-web-compat/scripts/boot-watchdog.test.mjs:231": 1,
     "scripts/check-release-gates.mjs:28": 3,
     "scripts/build-snapshot-013.mjs:933": 1,
@@ -435,7 +423,6 @@
     "ShellState.kt:38": 2,
     "ShellState.kt:99": 1,
     "EngineAuth.kt:46": 1,
-    "plugins/dsh-android-bridge/src/index.ts:135": 1,
     "app/src/main/java/com/snoworwind/pocketharness/BackGate.kt:52": 1,
     "app/src/main/java/com/snoworwind/pocketharness/EngineAuth.kt:172": 1,
     "app/src/main/java/com/snoworwind/pocketharness/MuxClient.kt:172": 1,
@@ -509,7 +496,6 @@
     "OverlayPanel.kt:835": 1,
     "OverlayPanel.kt:112": 1,
     "EngineService.kt:37": 1,
-    "plugins/dsh-android-bridge/src/index.ts:1593": 1,
     "NotifyStore.kt:197": 1,
     "EngineService.kt:123": 1,
     "NotifyStore.kt:233": 1,
@@ -526,7 +512,6 @@
     "NotifyDecisionQueue.kt:28": 1,
     "NotifyProbe.kt:21": 1,
     "NotifyStore.kt:36": 1,
-    "plugins/dsh-android-bridge/src/index.ts:1457": 1,
     "notify-projection.ts:55": 1,
     "OverlayPanel.kt:69": 1,
     "NotifyCenter.kt:84": 1,
@@ -548,7 +533,6 @@
     "NotifyProbe.kt:32": 1,
     "NotifyCenter.kt:1168": 1,
     "NotifyStore.kt:127": 1,
-    "plugins/dsh-android-bridge/src/index.ts:1224": 1,
     "plugins/dsh-android-bridge/src/capability-gate.ts:250": 1,
     "index.ts:1438": 2,
     "control-queue.ts:347": 1,
@@ -577,11 +561,7 @@
     "app/src/main/java/com/snoworwind/pocketharness/ControlCarrier.kt:70": 1,
     "index.ts:251": 1,
     "scripts/api-route-auth-policy.json:126": 1,
-    "plugins/dsh-android-bridge/src/index.ts:909": 1,
-    "plugins/dsh-android-bridge/src/index.ts:472": 1,
     "plugins/dsh-android-bridge/src/control-queue.ts:139": 1,
-    "plugins/dsh-android-bridge/src/index.ts:755": 1,
-    "plugins/dsh-android-bridge/src/index.ts:1558": 1,
     "index.ts:472": 1,
     "screen-scope.ts:569": 1,
     "control-queue.ts:140": 1,
@@ -639,20 +619,16 @@
     "VdisplayHost.kt:70": 1,
     "app/src/main/java/com/snoworwind/pocketharness/FileIncoming.kt:379": 1,
     "plugins/dsh-android-file-open/src/index.ts:481": 1,
-    "plugins/dsh-android-linux-env/src/index.ts:337": 1,
     "plugins/dsh-model-capability/src/index.ts:238": 1,
     "FileIncoming.kt:301": 1,
     "plugins/dsh-android-bridge/src/route-auth.ts:4": 1,
     "FileIncoming.kt:32": 1,
     "plugins/dsh-android-file-open/src/index.ts:36": 1,
-    "plugins/dsh-android-linux-env/src/index.ts:30": 1,
-    "plugins/dsh-android-linux-env/src/index.ts:72": 1,
     "plugins/dsh-model-capability/src/settings-config.ts:50": 1,
     "plugins/dsh-model-capability/src/index.ts:417": 1,
     "scripts/build-snapshot-013.mjs:456": 1,
     "plugins/dsh-android-file-open/src/index.ts:431": 1,
     "plugins/dsh-android-file-open/src/index.ts:216": 1,
-    "plugins/dsh-android-linux-env/src/index.ts:353": 1,
     "plugins/dsh-android-linux-env/src/runtime-cache.ts:492": 1,
     "plugins/dsh-model-capability/src/index.ts:134": 1,
     "FileIncoming.kt:342": 1,
@@ -2102,12 +2078,6 @@
     "dsh-host-web-compat/scripts/smoke-injections.mjs:50": [
       "// 接线契约是**两条** transform：① polyfill+主题桥+picker（共用 pick-token 幂等判据）；"
     ],
-    "dsh-shell-termux/src/index.ts:39": [
-      "if (policy === undefined || policy === null) return fallback"
-    ],
-    "dsh-shell-termux/src/index.ts:42": [
-      "if (mode === undefined) return fallback"
-    ],
     "facts.ts:104": [
       "const value: FactsRead = fromShell ?? {"
     ],
@@ -2147,10 +2117,10 @@
       "output: {"
     ],
     "index.ts:112": [
-      "* @param ctx - 插件上下文。",
+      "* @param session - 会话（可选）。",
       "* 手动关机（0.14.0）：销毁本机全部虚拟屏，与设置页「强制销毁」同口径。",
       ".join('\\n')",
-      "/** Default permission mode reported to the shell tool. Android cannot enforce path-restricted modes. */",
+      "/** The configured bash path. */",
       "create(id?: unknown, opts?: { meta?: Record<string, unknown> }): HostSession",
       "ctx.effect(() => injectStyle('dev-section', DEV_SECTION_CSS), 'ui-responsive: Android developer section styles')",
       "export type { ScreenAccessDecision, ScreenId, UserScreenScope } from './screen-scope.js'",
@@ -2194,10 +2164,9 @@
       "/** 会话 id：生命周期 op 的**归属键**，壳侧据此做单实例归属校验（0.14.0）。 */",
       "/** 可选服务读取：未声明 inject 时直接读属性会抛（cordis 4 实测），统一走 ctx.get。 */",
       "// 裸键上匹配，引号键整族漏掩。键清单与壳侧 LogSanitizer SENSITIVE_KV 逐项对齐（含",
-      "const profile = join(homeRoot, 'profiles', 'web')",
+      "const readText = (p: string): string | undefined => {",
       "name: 'sidebar.right.pane.tab', key: EXTERNAL_OPEN_ID,",
       "ok: true,",
-      "this.prefix = entry.prefix",
       "}"
     ],
     "index.ts:1664": [
@@ -2215,30 +2184,31 @@
     "index.ts:251": [
       "*/",
       "/**",
-      "// 安卓引擎进程的 process.platform 是 'linux'（Termux 快照），以 TERMUX__PREFIX 作壳域标记。",
+      "// ST-16：三键运行期实时读后的字段与来源",
+      "// The explicit guest marker identifies the Android shell's Debian execution context.",
       "activePanelId: () => ctx.layout.panelInfo.getSnapshot().activePanelId,",
       "const lifecycleOutput = (verb: string) => ({",
       "if (explicit?.thinkingFormat !== undefined && explicit.thinkingFormat !== 'mimo') continue",
       "return { ok: false, message: '路径不在临时工作区内或不存在' }",
-      "sharedDirs: { type: 'array', items: { type: 'string' } },",
       "type: 'text',",
       "window.clearTimeout(timer)"
     ],
     "index.ts:263": [
       "",
       "// 0.13.5 W4：无障碍控制通道事实（服务连接状态 + 队列共享令牌）",
-      "// 只放 JSON 的话设备侧无法用会话日志证明「档位/工作区来源」（本轮实测日志里查不到该字段）。",
       "? configuredEfforts as ReasoningEfforts",
       "bytes,",
       "if (!document.hidden) schedulePoll()",
       "marker.attach()",
       "render: (_args: unknown, v: Record<string, unknown>) => [{",
-      "this.assertBash()",
-      "try {"
+      "try {",
+      "{ type: 'text', text: `环境配方导出于 ${String(v.exportedAt)}：档位 ${String(v.writeMode ?? '?')}（来源 ${String(v.writeModeSource ?? '?')}）/ 工作区来源 ${String(v.workspaceSource ?? '?')} / ${(v.dpkgPackages as string[]).length} 个软件包，共享目录 ${(v.sharedDirs as string[]).join(', ') || '（无）'}` },",
+      "}"
     ],
     "index.ts:295": [
       "",
       "const conversation = (): ReturnType<IncomingDraftRuntimeServices['conversation']> =>",
+      "const text = handle.collected.stdout?.readFrom(0).text ?? ''",
       "function optionalService<T>(ctx: Context, name: string): T | undefined {",
       "return serviceOf<HostSessionController>('sessionController')",
       "return undefined",
@@ -2248,22 +2218,22 @@
     "index.ts:298": [
       "",
       "(path, init) => fetch(path, init),",
-      "* 扫描计划 → UI 载荷。**绝不下发绝对路径**：只给稳定 id、类别、`$DSH_HOME`/`$DSH_FILES_DIR`",
+      "* 形式的展示标签与体积，避免把应用私有目录布局泄漏到页面（§4.3⑤ 的「如实上报」用标签达成）。",
       "/**",
-      "const spawnSpec: SubprocessSpawnSpec = {",
       "export async function runConfirmedActiveProbe(",
       "let workspacePromise: { key: string; value: Promise<string | undefined> } | undefined",
       "schema: {",
+      "}",
       "} catch {",
       "},"
     ],
     "index.ts:31": [
       "/**",
-      "/** Default grace period passed to probe spawns. */",
       "/** SlotMap 本地 augmentation：与上游 keyed/session 语义一致（临时性见文件头注释）。 */",
       "//  故鉴权内联在本文件（包内成员集合保持与基座一致：index/facts/tier/contract）。",
+      ": undefined",
       "import { ExportResultChannel, reportUserFacingResult, type ExportResultPayload } from './export-result.ts'",
-      "import { PROBE_BINARIES, REQUIRED_TOOLCHAIN, TOOLCHAIN_REPRESENTATIVE } from '@dsh-android/dsh-shell-termux'",
+      "import { PROBE_BINARIES, REQUIRED_TOOLCHAIN, TOOLCHAIN_REPRESENTATIVE } from '@dsh-android/dsh-shell-linux'",
       "import { detailRecord, pageRows, writeDetailStore } from './detail-store.js'",
       "isVirtualScreenId,",
       "type FetchLike,",
@@ -2274,8 +2244,8 @@
       "/** Signed age is retained for diagnostics; negative means the device clock is ahead. */",
       ": ['浏览器操作 ' + execution.name + ' 需要本次用户批准。']",
       "const style = document.createElement('style')",
-      "registerLinuxEnvironmentRoutes({",
       "signal?: AbortSignal",
+      "webServer: wsvc,",
       "}"
     ],
     "index.ts:393": [
@@ -2285,7 +2255,7 @@
       "byId.set(id, fresh)",
       "for (const t of tools()) (ctx.tools as unknown as { register(tool: unknown): void }).register(t)",
       "let placedFor: number | undefined",
-      "res.end(JSON.stringify({ ok: false, error: 'GET only' }))",
+      "return",
       "try {"
     ],
     "index.ts:394": [
@@ -2296,15 +2266,15 @@
       "let pendingFor: number | undefined",
       "let sessionId = ''",
       "report.models.push(fresh)",
-      "return"
+      "}"
     ],
     "index.ts:42": [
-      "",
       "* `slots: SlotRegistry`），但 renderer 包不在本插件 client 半的依赖面上（运行时由宿主",
       "* 引擎与壳同 uid 可读）。文件缺失（旧壳 / 桌面宿主）返回空串 = 不带 auth 参数，",
+      "/** Fail-closed result when Android cannot enforce a restricted bash mode. */",
+      "/** 会话档位实时解析（ST-16，F-ENV-06/09/10）。 */",
       "function queueDir(): string {",
       "headers?: Record<string, string | string[] | undefined>",
-      "if (mode === undefined) return fallback",
       "import {",
       "import { createBrowserControllers } from './mobile/upstream-browser/browser/BrowserController.ts'",
       "method?: string",
@@ -2313,7 +2283,7 @@
     "index.ts:428": [
       "// argv 级：分隔符切词（同时覆盖 && ; | 拼接的后续段）",
       "// 由 applyDeferredModelsDevLevels 在 S4 之后决定写或跳过——方言门本身不动。",
-      "handler: async (req: MobileRouteRequest, res: MobileRouteResponse) => {",
+      "const rejection = authorizeMobileRoute(req, authOptions())",
       "let ctxRef: Context | undefined",
       "rmSync(filePath, { force: true })",
       "}",
@@ -2323,10 +2293,10 @@
       "* 做法在本地镜像其签名（registry.ts:209 inject / :741 register，均返回 dispose）。",
       "*/",
       "/** 鉴权只需要的最小响应面（`end()` 允许空体——403 拒绝不得回任何内容）。 */",
-      "? mode as SandboxMode",
+      "const requested = typeof mode === 'string' ? mode : 'unknown'",
+      "defaultMode?: string",
       "headers?: Record<string, string | string[] | undefined>",
       "import { createBrowserStore } from './mobile/upstream-browser/browser/store.ts'",
-      "interface SandboxPolicyFace {",
       "mkdirSync(d, { recursive: true })",
       "sendMobileRouteRejection,",
       "} from './control-queue.js'"
@@ -2360,9 +2330,9 @@
     ],
     "index.ts:69": [
       "",
-      "'SANDBOX_SELECTION_REQUIRED: Android shell requires this call\\'s session policy to explicitly select danger-full-access. The command was not started.',",
-      "* @param session - 会话（工具面可按 `exec.agent.session` 传入；HTTP 面无会话）。",
+      "* @returns 事实 + 各键来源。",
       "* `webServer` is deliberately **not** injected: it is optional. The headless profile",
+      "/** Executables probed under `$PREFIX/bin` (coreutils/findutils/grep basics). Exported for the same reason. */",
       "function injectStyle(id: string, css: string): () => void {",
       "interface TabDefinition {",
       "return typeof v === 'string' ? v : Array.isArray(v) ? v[0] : undefined",
@@ -2415,57 +2385,6 @@
     ],
     "plugins/dsh-android-bridge/src/control-queue.ts:347": [
       "webServer.register({"
-    ],
-    "plugins/dsh-android-bridge/src/index.ts:1034": [
-      "a11ySource: a11y.source,"
-    ],
-    "plugins/dsh-android-bridge/src/index.ts:1045": [
-      "const mode = policy?.mode"
-    ],
-    "plugins/dsh-android-bridge/src/index.ts:1224": [
-      "const gate = this.gateFor(resolved.session)"
-    ],
-    "plugins/dsh-android-bridge/src/index.ts:135": [
-      "/** 已配对（第三道人门；0.14 起 = 真实 adb pair 握手成功） */"
-    ],
-    "plugins/dsh-android-bridge/src/index.ts:1457": [
-      "const r = step.kind === 'pull'"
-    ],
-    "plugins/dsh-android-bridge/src/index.ts:1558": [
-      "}"
-    ],
-    "plugins/dsh-android-bridge/src/index.ts:1564": [
-      "*/"
-    ],
-    "plugins/dsh-android-bridge/src/index.ts:1593": [
-      "? '系统设置 → 无障碍 → 开启「DeepCode 设备控制」'"
-    ],
-    "plugins/dsh-android-bridge/src/index.ts:1612": [
-      "queue,"
-    ],
-    "plugins/dsh-android-bridge/src/index.ts:234": [
-      "/** 0.13.5 W4：轮询心跳（epoch ms）——判定服务是否真的活着（防僵尸 a11yEnabled）。 */"
-    ],
-    "plugins/dsh-android-bridge/src/index.ts:251": [
-      "// 安卓引擎进程的 process.platform 是 'linux'（Termux 快照），以 TERMUX__PREFIX 作壳域标记。"
-    ],
-    "plugins/dsh-android-bridge/src/index.ts:472": [
-      ""
-    ],
-    "plugins/dsh-android-bridge/src/index.ts:569": [
-      "*   写：`settings put global <三键之一> <数值|null>`，可多段以 `;` 连接"
-    ],
-    "plugins/dsh-android-bridge/src/index.ts:645": [
-      "let prev: string | null = null"
-    ],
-    "plugins/dsh-android-bridge/src/index.ts:755": [
-      "}"
-    ],
-    "plugins/dsh-android-bridge/src/index.ts:909": [
-      "const virtual = (data.screens ?? []).filter((s) => s.kind === 'virtual')"
-    ],
-    "plugins/dsh-android-bridge/src/index.ts:949": [
-      "if (!r.ok) return []"
     ],
     "plugins/dsh-android-bridge/src/lossless-json.ts:1": [
       "/**"
@@ -2556,21 +2475,6 @@
     ],
     "plugins/dsh-android-file-open/src/route-auth.ts:47": [
       "export const authorizeIncomingRoute = authorizeMobileRoute"
-    ],
-    "plugins/dsh-android-linux-env/src/index.ts:30": [
-      "// 规避两个已踩过的启动即死形态（ERR_PACKAGE_PATH_NOT_EXPORTED / 注入链丢新增文件）。"
-    ],
-    "plugins/dsh-android-linux-env/src/index.ts:337": [
-      "status: item.status,"
-    ],
-    "plugins/dsh-android-linux-env/src/index.ts:349": [
-      "const root = process.env.DSH_FILES_DIR"
-    ],
-    "plugins/dsh-android-linux-env/src/index.ts:353": [
-      "}"
-    ],
-    "plugins/dsh-android-linux-env/src/index.ts:72": [
-      "export function liveFacts(ctx: Context, session?: unknown) {"
     ],
     "plugins/dsh-android-linux-env/src/runtime-cache.ts:40": [
       "export const CURRENT_ENGINE_LOG = 'engine.log'"
@@ -2813,7 +2717,7 @@
       "{"
     ],
     "scripts/t0-check.ps1:14": [
-      "if ($dump -match \"shell-termux[sS]{0,200}?disabled:s*true\") { Write-Output \"WARN: shell-termux appears disabled\"; $fail++ }"
+      "if ($dump -match \"shell-linux[sS]{0,200}?disabled:s*true\") { Write-Output \"WARN: shell-linux appears disabled\"; $fail++ }"
     ],
     "scripts/verify-browser-host.mjs:55": [
       "async function resolveTarget(mainWs, url, timeoutMs = 15_000) {"

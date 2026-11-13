@@ -83,7 +83,7 @@ class SafeModeTest {
 
   /** Verified product rows represented by this fixture; user entries never become Hard by parsing the fixture. */
   private val fixtureHardEntries = setOf(
-    PluginMounts.HardEntry("shell-termux", "@dsh-android/dsh-shell-termux"),
+    PluginMounts.HardEntry("shell-linux", "@dsh-android/dsh-shell-linux"),
     PluginMounts.HardEntry("host-web-compat", "@dsh-android/dsh-host-web-compat"),
     PluginMounts.HardEntry("ui-responsive", "@dsh-android/dsh-client-ui-responsive"),
     PluginMounts.HardEntry("android-bridge", "@dsh-android/dsh-android-bridge"),
@@ -536,7 +536,7 @@ class SafeModeTest {
     val before = realisticPatch()
     val after = filterWithProductManifest(before)
     for (p in listOf(
-      "@dsh-android/dsh-shell-termux",
+      "@dsh-android/dsh-shell-linux",
       "@dsh-android/dsh-host-web-compat",
       "@dsh-android/dsh-client-ui-responsive",
       "@dsh-android/dsh-android-bridge",
@@ -648,7 +648,7 @@ class SafeModeTest {
       "Kotlin壳过滤必须与共享黄金输出一致",
       expected,
       SafeMode.filterThirdPartyInserts(input, setOf(
-        PluginMounts.HardEntry("mobile-hard", "@dsh-android/dsh-shell-termux"),
+        PluginMounts.HardEntry("mobile-hard", "@dsh-android/dsh-shell-linux"),
         PluginMounts.HardEntry("upstream-hard", "@deepseek-ai/dsh-shipped-core"),
         PluginMounts.HardEntry("undo", "dsh-undo-savepoint"),
         PluginMounts.HardEntry("disabled-product", "@dsh-android/dsh-host-web-compat"),
@@ -658,7 +658,7 @@ class SafeModeTest {
       "回执只能点名被移除的insert插件",
       listOf("@deepseek-ai/dsh-mcp-client", "dsh-code-diff-viewer", "user-disabled-plugin"),
       SafeMode.removedPluginNames(input, setOf(
-        PluginMounts.HardEntry("mobile-hard", "@dsh-android/dsh-shell-termux"),
+        PluginMounts.HardEntry("mobile-hard", "@dsh-android/dsh-shell-linux"),
         PluginMounts.HardEntry("upstream-hard", "@deepseek-ai/dsh-shipped-core"),
         PluginMounts.HardEntry("undo", "dsh-undo-savepoint"),
         PluginMounts.HardEntry("disabled-product", "@dsh-android/dsh-host-web-compat"),
@@ -707,8 +707,8 @@ class SafeModeTest {
   fun `权威清单缺席时不得使用名字或前缀静态兜底`() {
     val patch = listOf(
       "- insert:",
-      "    - id: shell-termux",
-      "      name: '@dsh-android/dsh-shell-termux'",
+      "    - id: shell-linux",
+      "      name: '@dsh-android/dsh-shell-linux'",
       "    - id: marketplace",
       "      name: 'dshmarketplace-plugin'",
       "    - id: evil",
@@ -716,7 +716,7 @@ class SafeModeTest {
       "",
     ).joinToString("\n")
     val after = SafeMode.filterThirdPartyInserts(patch, emptySet())
-    assertFalse("名字相同不能证明工厂归属", after.contains("@dsh-android/dsh-shell-termux"))
+    assertFalse("名字相同不能证明工厂归属", after.contains("@dsh-android/dsh-shell-linux"))
     assertFalse("具名包名不能证明工厂归属", after.contains("dshmarketplace-plugin"))
     assertFalse("未知 entry 必须被纯过滤器视作 Soft", after.contains("dsh-code-diff-viewer"))
   }

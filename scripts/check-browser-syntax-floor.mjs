@@ -74,7 +74,7 @@ const TS_CANDIDATES = [
   'plugins/dsh-android-browser/node_modules/typescript',
   'plugins/dsh-android-vdisplay/node_modules/typescript',
   'dsh-client-ui-responsive/node_modules/typescript',
-  'dsh-shell-termux/node_modules/typescript',
+  'dsh-shell-linux/node_modules/typescript',
   'node_modules/typescript',
 ]
 const ESBUILD_CANDIDATES = [
@@ -145,7 +145,7 @@ const provisionEsbuild = async () => {
   if (!platformPkg) die('无 esbuild 平台包映射：' + process.platform + '/' + process.arch
     + '。请用 --esbuild <node_modules/esbuild/lib/main.js> 显式指定一个本平台可用的 esbuild@' + ESBUILD_PIN + '。')
   let mirrors = ['https://registry.npmjs.org']
-  try { mirrors = JSON.parse(readFileSync(join(ROOT, 'scripts', 'snapshot-config', 'preinstall.json'), 'utf8')).npmMirrors ?? mirrors } catch { /* 用默认镜像 */ }
+  try { mirrors = JSON.parse(readFileSync(join(ROOT, 'scripts', 'runtime-config', 'preinstall.json'), 'utf8')).npmMirrors ?? mirrors } catch { /* 用默认镜像 */ }
   mkdirSync(dest, { recursive: true })
   console.log('  准备 esbuild@' + ESBUILD_PIN + '（' + process.platform + '/' + process.arch + '，镜像链 ' + mirrors.length + ' 个）…')
   for (const m of mirrors) {

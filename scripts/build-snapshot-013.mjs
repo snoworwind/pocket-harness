@@ -52,12 +52,12 @@ function log0(msg) { console.log(`[build-013/${ABI}] ${msg}`) }
 /** Python 命令名：Windows 用 python，Linux/WSL 用 python3（0.13.5 W5 起构建在 WSL 内跑）。 */
 const PYTHON = process.platform === 'win32' ? 'python' : 'python3'
 
-// ── 数据模块（Phase 2b 外置：scripts/snapshot-config/，双仓同版——雷点 10）──
+// ── 数据模块（Phase 2b 外置：scripts/runtime-config/，双仓同版——雷点 10）──
 // 清单/模板与编排逻辑分离：预装包、镜像链、剥离清单、瘦身清单、seed 模板、apt.conf、
 // install-clang.sh 均在本目录维护；编排器只读数据 + 走流程。@@PREFIX@@ 为模板占位
 // （构建期替换为设备端前缀，本地 stage 路径不可烧入）。
 import { checkShippedProfileManifests } from './lib/profile-seed.mjs'
-const CFG_DIR = join(ROOT, 'scripts', 'snapshot-config')
+const CFG_DIR = join(ROOT, 'scripts', 'runtime-config')
 const readCfg = (f) => readFileSync(join(CFG_DIR, f), 'utf8')
 const PREINSTALL = JSON.parse(readCfg('preinstall.json'))
 const STRIP = JSON.parse(readCfg('strip.json'))
@@ -66,7 +66,7 @@ const SEED_SETTINGS = readCfg('seed-settings.yaml')
 const APT_CONF_TPL = readCfg('apt.conf.template')
 const INSTALL_CLANG_TPL = readCfg('install-clang.sh')
 for (const [name, v] of [['preinstall', PREINSTALL], ['strip', STRIP], ['slim', SLIM]]) {
-  if (!v || typeof v !== 'object') { console.error(`snapshot-config/${name} 无效`); process.exit(1) }
+  if (!v || typeof v !== 'object') { console.error(`runtime-config/${name} 无效`); process.exit(1) }
 }
 
 // ── 配置 ────────────────────────────────────────────────────────────────
@@ -642,7 +642,7 @@ mkdirSync(join(homeDir, 'tmp'), { recursive: true })
 writeFileSync(join(homeDir, '.gitconfig'), '[safe]\n\tdirectory = *\n[user]\n\tname = dsh-mobile\n\temail = local@dsh\n')
 log('git safe.directory + user 写就（home/.gitconfig）')
 // 7b2. cordis.patch.yml 权威装配覆盖（2026-08-24 真机实锤修复）：基座 cordis.patch.yml 是
-// 0.12.x 旧版（仅 shell-termux/host-web-compat/ui-responsive 三条）——0.13.0 新增的
+// 0.12.x 旧版（仅 shell-linux/host-web-compat/ui-responsive 三条）——0.13.0 新增的
 // android-bridge / android-manage / android-linux-env / android-file-open / undo-savepoint /
 // marketplace 装配条目从不进入快照，导致真机引擎不加载这些插件（F5 404、ADB 设置项缺失）。
 // 仓库 scripts/profile-web.cordis.patch.yml 是权威装配清单——归档前无条件覆盖快照内同名文件。
@@ -918,7 +918,7 @@ const binDir = join(U, 'bin')
 const wrapHead = `#!/system/bin/sh\n# dsh-mobile 0.13.0: ${PKG_PREFIX} 编译期路径覆盖 wrapper（见 M3-VERIFICATION-NOTES §4）\nB="\${TERMUX__PREFIX:-${PKG_PREFIX}}"\nexport PREFIX="$B"\nexport APT_CONFIG="$B/etc/apt/apt.conf"\n`
 // apt.conf 主文件（APT_CONFIG 指向；覆盖全部编译期旧前缀目录）。
 // 注：真实路径用设备端 /data/user/0/...（与 wrapper 内 B 一致；构建期 stage 路径不可烧入）。
-// 模板外置 snapshot-config/apt.conf.template（@@PREFIX@@ 占位，Dir::Log 为 0.13.1 W6 实验补）。
+// 模板外置 runtime-config/apt.conf.template（@@PREFIX@@ 占位，Dir::Log 为 0.13.1 W6 实验补）。
 writeFileSync(join(U, 'etc/apt/apt.conf'), APT_CONF_TPL.replaceAll('@@PREFIX@@', PKG_PREFIX))
 // apt 运行目录骨架（缺失时 apt 报 packaging system type 无法确定；落在 usr/var 下与 Termux 布局一致）
 for (const d of ['var/cache/apt/archives/partial', 'var/lib/apt/lists/partial', 'var/lib/apt/periodic', 'var/log/apt']) {
@@ -967,13 +967,13 @@ if (existsSync(join(binDir, 'dpkg'))) {
 // 走 apt download-only + dpkg-deb 解包式安装（绕开 dpkg 数据库与 cfg.d 扫描）。
 // gcc 说明：Termux 不发布 gcc；脚本补 gcc -> clang 兼容符号链接（clang 自带 g++ 别名）。
 // dpkg 正规修复（LD_PRELOAD 路径重定向 interposer，需云构建 NDK）归 0.14。
-// 脚本本体外置 snapshot-config/install-clang.sh（@@PREFIX@@ 占位，构建期替换设备端前缀）。
+// 脚本本体外置 runtime-config/install-clang.sh（@@PREFIX@@ 占位，构建期替换设备端前缀）。
 writeFileSync(join(U, 'bin', 'install-clang.sh'), INSTALL_CLANG_TPL.replaceAll('@@PREFIX@@', PKG_PREFIX), { mode: 0o755 })
 log('install-clang.sh 就位（usr/bin，按需 C 工具链安装器）')
 
 // ── 7e. 错位目录剔除（issue #80 P5，2026-08-24）：relocate-snapshot 历史上会把
 // 包内绝对路径 `/data/data/com.termux/...` 当作相对路径搬进 usr 树——纯冗余（PATH 不会搜到），
-// 但混淆体检与体积审计。清单外置 snapshot-config/slim.json（misplacedDirs）。
+// 但混淆体检与体积审计。清单外置 runtime-config/slim.json（misplacedDirs）。
 log('剔除错位目录 usr/data/data/...（relocate 残留）…')
 for (const rel of SLIM.misplacedDirs) {
   wsl(`rm -rf "${wslPath(join(U, rel))}" 2>/dev/null || true`)
@@ -982,7 +982,7 @@ for (const rel of SLIM.misplacedDirs) {
 // ── 8a. 快照瘦身（2026-08-23 体积审计）：node-pty 非 Android prebuilds + 全树 sourcemap ──
 // node-pty 的 prebuilds 含 win32/darwin（纯死重 + ~52MB .pdb）——Android 运行时永不加载，
 // linux-arm64/x64 保留。全树 .map（引擎上游包 35.2MB raw）与 home/.dsh 剥离语义一致。
-// 清单外置 snapshot-config/slim.json（nodePtyPrebuilds / sourcemapDelete）。
+// 清单外置 runtime-config/slim.json（nodePtyPrebuilds / sourcemapDelete）。
 log('瘦身：node-pty win32/darwin prebuilds + usr 全树 .map…')
 const ptyPre = join(STAGE, 'root', npmDshRoot, 'node-pty', 'prebuilds')
 {
@@ -1036,7 +1036,7 @@ log('瘦身扩展完成（global 孤儿重复包已剔除）')
 // 反向门禁要求「快照内每个包要么逐条登记、要么可由登记包经依赖闭包到达」。这 4 个 0.1.1-rc.2 的包
 // 两者都不是：上游 0.1.7-rc.1 全仓已无此名（被改名/删除），而设备基座的引擎树还带着它们
 // ——overlay 只覆盖登记表内的包，从不删树里的旧包，于是每个快照都在发死代码。
-// 清单 = snapshot-config/slim.json 的 engineStalePackages；门禁同时反向断言这些包**缺席**。
+// 清单 = runtime-config/slim.json 的 engineStalePackages；门禁同时反向断言这些包**缺席**。
 for (const entry of SLIM.engineStalePackages ?? []) {
   const declared = OVERLAY.packages[entry.name] !== undefined
     || (OVERLAY.keepUnpublished ?? []).some((x) => String(x).replace(/ \(.+\)$/, '').trim() === entry.name)
@@ -1121,7 +1121,7 @@ if (ABI === 'arm64') {
 for (const entry of SLIM.platformDeadPackages ?? []) {
   if (OVERLAY.packages[entry.name] !== undefined) {
     console.error(`[平台死重剔除中止] ${entry.name} 已在 overlay 登记表内——它可能是真依赖。`
-      + '请把该条从 snapshot-config/slim.json 的 platformDeadPackages 删掉。')
+      + '请把该条从 runtime-config/slim.json 的 platformDeadPackages 删掉。')
     process.exit(1)
   }
   const store = join(ENGINE_NM_STAGE, '.pnpm')
@@ -1188,7 +1188,7 @@ const STAGE_ROOT = join(STAGE, 'root')
 // ── 8a5. 清单驱动的通用裁剪（0.14.2 T2 第一层）────────────────────────────
 // 此前体积裁剪只有 sourcemapDelete 一条**硬编码**特例（`find -name '*.map' -delete`），
 // 按扩展名/按整树裁剪没有通用机制——每加一类都要再写一段硬编码 find。本步把两类裁剪外置到
-// snapshot-config/slim.json 的 treeDelete / extensionDelete，构建器只做「读清单 -> 生成 find/rm」。
+// runtime-config/slim.json 的 treeDelete / extensionDelete，构建器只做「读清单 -> 生成 find/rm」。
 //
 // 为什么必须是清单驱动而不是再加一段硬编码：check-snapshot-builder-output.mjs 用
 // 「slim.json 的每个键都必须在构建器里被消费」判死键——硬编码找不到对应的键就只能把清单当摆设。

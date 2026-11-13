@@ -49,4 +49,35 @@ class LinuxFileTreeTest {
     assertFalse(LinuxCandidateProbe.glibcSatisfies("not glibc", "2.41"))
     assertFalse(LinuxCandidateProbe.glibcSatisfies("glibc 2.41", "bad"))
   }
+  @Test fun shellIdentityMigrationPreservesUserConfigurationAndUnknownRows() {
+    val legacy = """- insert:
+    - id: shell-termux
+      name: '@dsh-android/dsh-shell-termux'
+      config:
+        home: /home/custom
+        timeoutMs: 321
+    - id: shell-termux-custom
+      name: user-shell
+"""
+    val migrated = LinuxFileTree.migrateShellIdentity(legacy)
+    assertTrue(migrated.contains("- id: shell-linux"))
+    assertTrue(migrated.contains("name: '@dsh-android/dsh-shell-linux'"))
+    assertTrue(migrated.contains("home: /home/custom"))
+    assertTrue(migrated.contains("timeoutMs: 321"))
+    assertTrue(migrated.contains("- id: shell-termux-custom"))
+    assertEquals(migrated, LinuxFileTree.migrateShellIdentity(migrated))
+    val custom = "- id: shell-termux\n  name: user-owned-shell\n"
+    assertEquals(custom, LinuxFileTree.migrateShellIdentity(custom))
+  }
+
+  @Test fun shellIdentityMigrationRejectsLinkedProfilesWithoutChangingTheTarget() {
+    val home = temporary.newFolder()
+    val external = temporary.newFolder()
+    val patch = File(external, "cordis.patch.yml").apply { writeText("user-owned") }
+    File(home, ".dsh/profiles").mkdirs()
+    Files.createSymbolicLink(File(home, ".dsh/profiles/web").toPath(), external.toPath())
+    assertTrue(runCatching { LinuxFileTree.migrateHomeShellIdentity(home) }.isFailure)
+    assertEquals("user-owned", patch.readText())
+  }
+
 }

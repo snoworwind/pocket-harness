@@ -482,7 +482,7 @@ object PluginMounts {
       // 0.14.2（D11 同源）：命中行若不是**顶层条目首行**，它就在某个 `- insert:` 组里 —— 此时
       // 删的必须是**那一条子条目**（上溯到同组最近的同层 `- id:` / `- name:` 行），不是整个组。
       // 旧实现无条件删整组 ⇒ 同组里我们自己的硬清单插件被连坐摘掉（实测反证：2 子组里摘
-      // host-web-compat 会连带删掉 shell-web-compat 的兄弟 shell-termux）。
+      // host-web-compat 会连带删掉 shell-web-compat 的兄弟 shell-linux）。
       if (start != hit) {
         // 条目边界 = 组内承载命中行的那一条：从 start 之后找到**最后一个** `- id:` / `- name:`
         // 列表项行（就是本条目的首行），条目末行 = 其后第一个缩进不深于它的非空行。

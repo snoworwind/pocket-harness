@@ -30,29 +30,24 @@
 - insert:
     - id: auto-review
       name: '@deepseek-ai/dsh-experimental-auto-review'
-# Android adaptation (M1.1 final form): dsh-shell-termux replaces the temporary patch v2.
-# Android has no path-level bash confiner: read-only/workspace-write fail before spawn;
-# danger-full-access requires an explicit session selection and remains within the app UID domain.
+# Guest Bash executes inside the built-in Debian instance under the Android app UID.
+# Restricted modes remain unavailable without a path-level confiner.
 - id: bash-sandbox
   disabled: true
 - insert:
-    - id: shell-termux
-      name: '@dsh-android/dsh-shell-termux'
+    - id: shell-linux
+      name: '@dsh-android/dsh-shell-linux'
       config:
-        # bash/toolchain point at the in-shell snapshot (same domain as the engine, self-contained, no Termux App dependency):
-        # the Termux App's bash belongs to u0_a423 with 700 perms, so the engine (u0_a461) cross-uid
-        # accessSync(X_OK) check always fails (measured "is not executable"). The in-shell
-        # usr/bin ships bash/curl/node; wget is now distributed with the snapshot too.
-        bashPath: /data/data/com.snoworwind.pocketharness/files/usr/bin/bash
-        prefix: /data/data/com.snoworwind.pocketharness/files/usr
-        home: /data/data/com.snoworwind.pocketharness/files/home
-        cwd: /data/data/com.snoworwind.pocketharness/files/home
+        bashPath: /usr/bin/bash
+        prefix: /usr
+        home: /home
+        cwd: /home
         timeoutMs: 120000
         maxTimeoutMs: 600000
         # 默认档位为 workspace-write；Android 无路径级 bash 围栏，因此该档位执行前失败关闭。
         # workspaceRoot/sharedDirs 只作子进程兼容/诊断变量，不提供访问控制；设置页仍维护这些值。
         writeMode: workspace-write
-        workspaceRoot: /data/data/com.snoworwind.pocketharness/files/home/.dsh/workspaces
+        workspaceRoot: /home/.dsh/workspaces
         sharedDirs: []
     - id: host-web-compat
       name: '@dsh-android/dsh-host-web-compat'
@@ -106,7 +101,7 @@
       name: '@dsh-android/dsh-android-manage'
 
 # 工具链与环境设置面板（0.13.0 F1.3/F1.5，M3.2）：dsh-android-linux-env——工具链状态/环境配方/
-# 共享目录与镜像设置视图；同时维护 shell-termux 传给子进程的兼容目录变量（非执行围栏，见上文）——
+# 共享目录与镜像设置视图；同时维护 shell-linux 传给子进程的兼容目录变量（非执行围栏，见上文）——
 # 不装载则共享目录设置无处维护（审校 C4 2026-08-23：注入四件套缺此条目）。
 - insert:
     - id: android-linux-env
@@ -193,55 +188,13 @@
     - id: android-vdisplay
       name: '@dsh-android/dsh-android-vdisplay'
 
-# PTC 代码执行（TypeScript 代码块）：**nodeExecutable 必须显式钉死**，不得依赖 `process.execPath`。
-#
-# 现场（用户 2026-09-27 报障）：「连最小的程序（return 1 + 1;）都失败了，共试了 4 次」，
-# 报错 code run failed (worker-exit): Node process exited before completing (1):
-#     error: expected absolute path: "--max-old-space-size=512"
-#
-# 真因链（设备实测逐段复现）：
-#   ① 壳侧 EngineManager.startWithArgs 在 direct exec 被拒时改用系统链接器：
-#      build(listOf("/system/bin/linker64") + args)（EngineManager.kt:1126）。这是 Android 15+
-#      对 app-data ELF 的既定绕法，引擎本身照常起来。
-#   ② 但此时 **process.execPath 变成 /apex/com.android.runtime/bin/linker64**（实测：
-#      /system/bin/linker64 <node> -e "console.log(process.execPath)" 输出 linker64 自身）。
-#   ③ NodePtcRuntime 的 nodeExecutable 出厂缺省就是 process.execPath
-#      （ptc-runtime-node/src/index.ts:76 config.nodeExecutable ?? process.execPath），于是每个代码块
-#      子进程的 argv 成为 [linker64, "--max-old-space-size=512", <process.js>, ...]
-#      （同文件 :223 [executable, heapFlag, ...bootstrapArgs]）。
-#   ④ linker64 把**第一个非选项参数**当程序路径，--max-old-space-size=512 正好排在它
-#      —— 于是它自己报 expected absolute path 并退出，Node 根本没被加载。实测原样复现：
-#        /system/bin/linker64 --max-old-space-size=512 <node> -e 1
-#        → error: expected absolute path: "--max-old-space-size=512"（与本缺陷逐字节相同）。
-#
-# 为什么模拟器上不复现：x86_64 模拟器 direct exec 成功，execPath 就是真的 node，绕不到链接器这一支。
-# 这也是它只在部分真机上出现的原因——**与设备是否走链接器回落有关，与用户代码无关**。
-#
-# 修法：把 nodeExecutable 钉成快照内 node 的绝对路径（与上方 shell-termux 的 bashPath 同口径、
-# 同一份快照），从此这条链路**完全不读 process.execPath**。
-#
-# 【0.14.2 追加】上面这条「钉成 bin/node 绝对路径」只解决了 execPath 被污染，**没有解决 env**：
-# PTC 给子进程传的是显式过滤后的 env（ptc-runtime-node 的 STARTUP_ENVIRONMENT_NAMES 只放
-# PATH/PATHEXT/SYSTEMROOT/WINDIR/TEMP/TMP），LD_LIBRARY_PATH 不在其中 ⇒ 子进程里的 node 找不到
-# libz.so.1 等 DT_NEEDED（Permissive 模拟器报 CANNOT LINK；Enforcing 真机则 app 域 exec app-data ELF
-# 直接被拒 ⇒ EACCES，即用户截图的 code run failed）。
-# 故 nodeExecutable 改指**快照内的 wrapper 脚本** usr/libexec/dsh-node（由 build-snapshot-013.mjs 7c1 生成）：
-#   #!/system/bin/sh
-#   export LD_LIBRARY_PATH=<prefix>/lib
-#   exec /system/bin/linker64 <prefix>/bin/node "$@"
-# 脚本非 ELF ⇒ 内核走 shebang 读它，不触发 app-data ELF exec；LD_LIBRARY_PATH 由 wrapper 自己 export，
-# 不依赖被 tombstone 的继承；linker64 只**读取** node 而非 exec，绕开 execute_no_trans。
-# 设备实测（16416，同 env 只差是否走 wrapper）：直连 node → CANNOT LINK libz.so.1；wrapper → CHILD-OK。
-# 逆转条件：上游把 LD_LIBRARY_PATH（或等价的动态链接器搜索路径）纳入 PTC 子进程 env 白名单后，本行可改回 bin/node。
-# 与 marketplace 补丁 B 是同一族修法（那里的 execPath:process.execPath 也曾被 linker64 回退污染，
-# 导致 bad ELF magic）——同一环境事实，第二次咬人。
-# 逆转条件：上游 NodePtcRuntime 自己解析执行世界里的 node（不再缺省取 process.execPath）后，本行可撤。
+# PTC uses the same managed glibc Node executable as the guest engine.
 - id: ptc-runtime
   config:
-    # 0.2.1 launch union: use the Android snapshot wrapper with Node-script bootstrap.
+    # Node-script bootstrap runs inside the Debian guest.
     launch:
       kind: node-script
-      executable: /data/data/com.snoworwind.pocketharness/files/usr/libexec/dsh-node
+      executable: /opt/node/bin/node
 
 # Office→PDF（0.14.2 追版决策，2026-09-25 实测）——**显式禁用上游 web-app bundle 的 office-to-pdf 行**。
 # rc.1 新增该行（0.1.5 的 web-app bundle 里 office 零命中），它运行时依赖

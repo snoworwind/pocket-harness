@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { captureProjectInputs, captureProjectOutputs, resolveSourceRepository } from './record-project-components.mjs'
 
-const dirs = ['dsh-shell-termux', 'dsh-client-ui-responsive', 'dsh-host-web-compat']
+const dirs = ['dsh-shell-linux', 'dsh-client-ui-responsive', 'dsh-host-web-compat']
 const FIXTURE_REPOSITORY = 'https://github.com/fixture/fork'
 const sha256 = bytes => createHash('sha256').update(bytes).digest('hex')
 function fixture(fn) {
@@ -17,7 +17,7 @@ function fixture(fn) {
   git('config', 'user.name', 'Fixture')
   git('config', 'user.email', 'fixture@example.invalid')
   git('remote', 'add', 'origin', FIXTURE_REPOSITORY + '.git')
-  writeFileSync(join(root, '.gitignore'), '.deploy-tmp/\ndsh-shell-termux/lib/\ndsh-client-ui-responsive/lib/\ntoken*\n')
+  writeFileSync(join(root, '.gitignore'), '.deploy-tmp/\ndsh-shell-linux/lib/\ndsh-client-ui-responsive/lib/\ntoken*\n')
   for (const directory of dirs) {
     mkdirSync(join(root, directory, 'src'), { recursive: true })
     mkdirSync(join(root, directory, 'lib'))
@@ -26,10 +26,10 @@ function fixture(fn) {
     writeFileSync(join(root, directory, 'package.json'), JSON.stringify({ name: `@dsh-android/${directory}`, version: '1.0.0', dependencies: { '@deepseek-ai/cordis': '4.0.4' } }) + '\n')
     writeFileSync(join(root, directory, 'package-lock.json'), '{"lockfileVersion":3}\n')
   }
-  mkdirSync(join(root, 'scripts/snapshot-config'), { recursive: true })
+  mkdirSync(join(root, 'scripts/runtime-config'), { recursive: true })
   mkdirSync(join(root, 'scripts/source-build'))
   copyFileSync(join(import.meta.dirname, 'record-project-components.mjs'), join(root, 'scripts/source-build/record-project-components.mjs'))
-  writeFileSync(join(root, 'scripts/snapshot-config/engine-overlay.json'), '{"packages":{"@deepseek-ai/cordis":"4.0.4"}}\n')
+  writeFileSync(join(root, 'scripts/runtime-config/engine-overlay.json'), '{"packages":{"@deepseek-ai/cordis":"4.0.4"}}\n')
   git('add', '.')
   git('commit', '-qm', 'fixture')
   const commit = git('rev-parse', 'HEAD')
@@ -55,11 +55,11 @@ test('project component source files and actual built outputs bind to the same c
     assert.equal(record.inputFiles['src/index.ts'], sha256(readFileSync(join(root, directory, 'src/index.ts'))))
   }
   assert.ok(inputs.components['dsh-host-web-compat'].inputFiles['lib/index.js'])
-  assert.equal(inputs.components['dsh-shell-termux'].inputFiles['lib/index.js'], undefined)
-  writeFileSync(join(root, 'dsh-shell-termux/lib/index.js'), 'new build output\n')
+  assert.equal(inputs.components['dsh-shell-linux'].inputFiles['lib/index.js'], undefined)
+  writeFileSync(join(root, 'dsh-shell-linux/lib/index.js'), 'new build output\n')
   const outputs = captureProjectOutputs(root, commit, inputs)
-  assert.equal(outputs.components['dsh-shell-termux'].outputFiles['lib/index.js'], sha256(Buffer.from('new build output\n')))
-  assert.equal(inputs.components['dsh-shell-termux'].outputFiles, undefined)
+  assert.equal(outputs.components['dsh-shell-linux'].outputFiles['lib/index.js'], sha256(Buffer.from('new build output\n')))
+  assert.equal(inputs.components['dsh-shell-linux'].outputFiles, undefined)
 }))
 
 test('source repository resolves from env, CI variables or git origin — never hardcoded', () => fixture(({ root }) => {
@@ -73,11 +73,11 @@ test('source repository resolves from env, CI variables or git origin — never 
 }))
 
 test('dirty tracked and untracked component inputs cannot claim committed provenance', () => fixture(({ root, commit }) => {
-  const tracked = join(root, 'dsh-shell-termux/src/index.ts')
+  const tracked = join(root, 'dsh-shell-linux/src/index.ts')
   writeFileSync(tracked, 'dirty source')
   assert.throws(() => captureProjectInputs(root, commit), /differs from project commit/)
   writeFileSync(tracked, 'export const value = 1\n')
-  writeFileSync(join(root, 'dsh-shell-termux/src/untracked.ts'), 'extra source')
+  writeFileSync(join(root, 'dsh-shell-linux/src/untracked.ts'), 'extra source')
   assert.throws(() => captureProjectInputs(root, commit), /untracked component inputs/)
 }))
 
@@ -90,15 +90,15 @@ test('outputs reject a stale input report and a changed checked-in host payload'
 
 test('missing output and changed manifest fail rather than producing incomplete provenance', () => fixture(({ root, commit }) => {
   const inputs = captureProjectInputs(root, commit)
-  rmSync(join(root, 'dsh-shell-termux/lib/index.js'))
+  rmSync(join(root, 'dsh-shell-linux/lib/index.js'))
   assert.throws(() => captureProjectOutputs(root, commit, inputs), /did not produce lib\/index.js/)
-  writeFileSync(join(root, 'dsh-shell-termux/lib/index.js'), 'output')
-  writeFileSync(join(root, 'dsh-shell-termux/package.json'), '{}')
+  writeFileSync(join(root, 'dsh-shell-linux/lib/index.js'), 'output')
+  writeFileSync(join(root, 'dsh-shell-linux/package.json'), '{}')
   assert.throws(() => captureProjectOutputs(root, commit, inputs), /manifest changed/)
 }))
 
 test('component input provenance preserves the engine-overlay Cordis pin check', () => fixture(({ root, commit }) => {
-  writeFileSync(join(root, 'scripts/snapshot-config/engine-overlay.json'), '{"packages":{"@deepseek-ai/cordis":"wrong"}}')
+  writeFileSync(join(root, 'scripts/runtime-config/engine-overlay.json'), '{"packages":{"@deepseek-ai/cordis":"wrong"}}')
   assert.throws(() => captureProjectInputs(root, commit), /Cordis dependency differs/)
 }))
 
@@ -111,16 +111,16 @@ test('a source rewrite during build cannot be attributed to the original input c
 test('rewriting source and its mutable input hash report cannot forge committed provenance', () => fixture(({ root, commit }) => {
   const inputs = captureProjectInputs(root, commit)
   const payload = 'export const value = "injected"\n'
-  writeFileSync(join(root, 'dsh-shell-termux/src/index.ts'), payload)
-  writeFileSync(join(root, 'dsh-shell-termux/lib/index.js'), payload)
-  inputs.components['dsh-shell-termux'].inputFiles['src/index.ts'] = sha256(Buffer.from(payload))
+  writeFileSync(join(root, 'dsh-shell-linux/src/index.ts'), payload)
+  writeFileSync(join(root, 'dsh-shell-linux/lib/index.js'), payload)
+  inputs.components['dsh-shell-linux'].inputFiles['src/index.ts'] = sha256(Buffer.from(payload))
   assert.throws(() => captureProjectOutputs(root, commit, inputs), /input provenance differs from project commit/)
 }))
 
 test('removing a modified source from the input report cannot hide it', () => fixture(({ root, commit }) => {
   const inputs = captureProjectInputs(root, commit)
-  writeFileSync(join(root, 'dsh-shell-termux/src/index.ts'), 'injected source')
-  delete inputs.components['dsh-shell-termux'].inputFiles['src/index.ts']
+  writeFileSync(join(root, 'dsh-shell-linux/src/index.ts'), 'injected source')
+  delete inputs.components['dsh-shell-linux'].inputFiles['src/index.ts']
   assert.throws(() => captureProjectOutputs(root, commit, inputs), /input provenance differs from project commit/)
 }))
 
@@ -136,28 +136,28 @@ test('source additions during build are rejected, including Git-ignored source n
 
 test('staging an extra compiler input cannot hide it from the pinned commit check', () => fixture(({ root, commit }) => {
   const inputs = captureProjectInputs(root, commit)
-  writeFileSync(join(root, 'dsh-shell-termux/src/staged.ts'), 'export const injected = true\n')
-  execFileSync('git', ['-C', root, 'add', 'dsh-shell-termux/src/staged.ts'])
+  writeFileSync(join(root, 'dsh-shell-linux/src/staged.ts'), 'export const injected = true\n')
+  execFileSync('git', ['-C', root, 'add', 'dsh-shell-linux/src/staged.ts'])
   assert.throws(() => captureProjectOutputs(root, commit, inputs), /untracked component inputs/)
 }))
 
 test('ignored compiler inputs are rejected before build and lock realization remains recorded', () => fixture(({ root, commit }) => {
-  const path = join(root, 'dsh-shell-termux/src/token-injected.ts')
+  const path = join(root, 'dsh-shell-linux/src/token-injected.ts')
   writeFileSync(path, 'export const injected = true\n')
   assert.throws(() => captureProjectInputs(root, commit), /untracked component inputs/)
   rmSync(path)
   const inputs = captureProjectInputs(root, commit)
   const lock = '{"lockfileVersion":3,"packages":{"resolved":{}}}\n'
-  writeFileSync(join(root, 'dsh-shell-termux/package-lock.json'), lock)
+  writeFileSync(join(root, 'dsh-shell-linux/package-lock.json'), lock)
   const outputs = captureProjectOutputs(root, commit, inputs)
-  assert.equal(outputs.components['dsh-shell-termux'].resolvedLockSha256, sha256(Buffer.from(lock)))
-  assert.equal(outputs.components['dsh-shell-termux'].inputFiles['package-lock.json'], sha256(Buffer.from('{"lockfileVersion":3}\n')))
+  assert.equal(outputs.components['dsh-shell-linux'].resolvedLockSha256, sha256(Buffer.from(lock)))
+  assert.equal(outputs.components['dsh-shell-linux'].inputFiles['package-lock.json'], sha256(Buffer.from('{"lockfileVersion":3}\n')))
 }))
 
 test('forged component and repository identities are rejected at output capture', () => fixture(({ root, commit }) => {
   for (const mutate of [
     inputs => { inputs.sourceRepository = 'https://github.com/other/repository' },
-    inputs => { inputs.components['dsh-shell-termux'].packageVersion = '9.9.9' },
+    inputs => { inputs.components['dsh-shell-linux'].packageVersion = '9.9.9' },
   ]) {
     const inputs = captureProjectInputs(root, commit)
     mutate(inputs)
@@ -168,8 +168,8 @@ test('forged component and repository identities are rejected at output capture'
 test('actual output CLI rejects forged source hashes without overwriting the input report', () => fixture(({ root, commit }) => {
   const inputs = captureProjectInputs(root, commit)
   const payload = 'export const value = "injected"\n'
-  writeFileSync(join(root, 'dsh-shell-termux/src/index.ts'), payload)
-  inputs.components['dsh-shell-termux'].inputFiles['src/index.ts'] = sha256(Buffer.from(payload))
+  writeFileSync(join(root, 'dsh-shell-linux/src/index.ts'), payload)
+  inputs.components['dsh-shell-linux'].inputFiles['src/index.ts'] = sha256(Buffer.from(payload))
   const reportPath = join(root, 'inputs.json')
   const before = JSON.stringify(inputs) + '\n'
   writeFileSync(reportPath, before)

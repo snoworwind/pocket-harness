@@ -6,9 +6,9 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.junit.runners.Parameterized
 
-/** Historical baseline identity retained; all 65 cases now test Linux component transactions. */
+/** Linux component transaction checkpoint coverage. */
 @RunWith(Parameterized::class)
-class SnapshotTransactionTest(private val checkpoint: String) {
+class LinuxComponentTransactionTest(private val checkpoint: String) {
   companion object {
     @JvmStatic @Parameterized.Parameters(name = "{0}") fun points() = listOf(
       "journal-prepared", "prepared", "probed", "journal-upgrade", "backed-up:node", "activated:node",

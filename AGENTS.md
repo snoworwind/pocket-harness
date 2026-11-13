@@ -20,7 +20,7 @@ DeepSeek Harness 的独立安卓应用 **Pocket Harness**（包名与 Kotlin nam
 **构建链**：minSdk 26 / targetSdk 34 / compileSdk 36；Kotlin 2.0.21；AGP 8.8.2；Java 17。
 
 **兄弟子仓**（本仓内含自包含副本，见 §4 同步铁律）：
-`dsh-shell-termux` 0.2.0 · `dsh-client-ui-responsive` 0.3.5 · `dsh-host-web-compat` 0.1.15 · `plugins/`（bridge 0.2.4 / manage 0.3.0 / model-capability 0.2.1 / file-open 0.1.0 / browser 0.1.0 / linux-env 0.1.3 / vdisplay 0.1.0）· `vendor/`（marketplace / undo-savepoint）
+`dsh-shell-linux` 0.2.0 · `dsh-client-ui-responsive` 0.3.5 · `dsh-host-web-compat` 0.1.15 · `plugins/`（bridge 0.2.4 / manage 0.3.0 / model-capability 0.2.1 / file-open 0.1.0 / browser 0.1.0 / linux-env 0.1.3 / vdisplay 0.1.0）· `vendor/`（marketplace / undo-savepoint）
 
 **上游** `deepseek-ai/deepseek-harness`（协调仓 `dsh/` 只读 checkout）：**零改动**，一切适配走补丁/插件/壳侧。
 
@@ -139,7 +139,7 @@ adb -s <serial> install -r -t out\v<版本>\pocket-harness-v<版本>-arm64.apk
 3. **原子化交付 + 分档验证**：一个 PR = 一个逻辑改动，可独立 revert；禁止把「修 bug + 重构 + 顺手优化」混在一个 PR 里。每个 PR 必须携带风险相符的代码和静态证据：L0 文档/注释 → CI 绿即可；L1 门禁/脚本逻辑 → --self-test + 一条受控负控；L2 安全面/判据 → 相关代码测试、门禁正向与受控负向；L3 UI/UX 与壳侧行为 → 相关单测、组件或集成回归。模拟器、CDP、ADB 设备验收统一只在正式 Release 前按 §2.1 执行。
    统一全量测试（ARM64 全链 + 冷启动矩阵 + 真机补充门禁）在发布准备时执行，作为最终集成验证；不能替代各 PR 的风险相符代码证据。细则见[0.14.8 交付计划](docs/0.14.8-DELIVERY-PLAN-2026-10-14.md) §3。
 4. **默认改动走 PR**（仓库自 2026-10-20 起为公开仓：标准托管 runner 免费、`main` 已启用分支保护，直接 push 会被拒绝，合并方式只保留 merge commit）：建分支 → 提交（`<type>: <描述>`）→ 推分支 → 开 PR（1-3 标签）→ CI 绿（必检项与保护配置见 `docs/AGENTS/build-and-env.md`；本地门禁 `node scripts/ci/local-gate.mjs` 可先自查）→ 合并 → 删分支。**禁止直接 push `main`**。本仓以 `main` 为长期维护线，首个提交为基线导入；后续改动按 PR 合入，来源链构建与安全加固规则继续适用，详见 `docs/AGENTS/SECURITY-HARDENING.md`。其他例外仅限不改仓库内容的外部动作（Release 资产、issue 评论与开关、标签）。
-5. **子仓副本同步（幽灵缺陷防线）**：改 `dsh-client-ui-responsive` / `dsh-host-web-compat` / `dsh-shell-termux` / `plugins/dsh-android-*` 后，**必须把源码与 `package.json` 同步进本仓同名目录**（本分支树内副本即权威，不存在需要对端的第二棵树）。`plugins/*/lib/` 是 `.gitignore` 明确排除的构建产物；PR Gate 和来源构建在打包前通过锁文件安装依赖并从同步源码重建 `lib/`，不提交生成目录。漏同步源码或清单会让构建注入旧副本，**编译通过但功能缺失**。
+5. **子仓副本同步（幽灵缺陷防线）**：改 `dsh-client-ui-responsive` / `dsh-host-web-compat` / `dsh-shell-linux` / `plugins/dsh-android-*` 后，**必须把源码与 `package.json` 同步进本仓同名目录**（本分支树内副本即权威，不存在需要对端的第二棵树）。`plugins/*/lib/` 是 `.gitignore` 明确排除的构建产物；PR Gate 和来源构建在打包前通过锁文件安装依赖并从同步源码重建 `lib/`，不提交生成目录。漏同步源码或清单会让构建注入旧副本，**编译通过但功能缺失**。
    - 只同步**镜像清单内的文件**，切勿对 `scripts/` 等目录整体 `/MIR`——会删掉本仓独有的设备脚本（真实事故）。
 6. **跨树权威已收归本仓（2026-10-15，按用户决定）**：原先声明 `scripts/patches/**`、`scripts/check-patch-mirror.mjs`、`scripts/build-apk-013.ps1` 等是「协调仓的逐字节镜像，单边演进即拒；补丁改动先合本仓镜像 PR、再合协调仓权威源 PR」。本分支既然只从源码构建、且不依赖 kelai141 名下任何仓库（见 `docs/AGENTS/SECURITY-HARDENING.md` 的「独立」口径），**跨树镜像层已从门禁中整体移除**——`check-patch-mirror.mjs` 只保留 registry↔IMPLS 自洽面，`check-release-gates.mjs` 的「两树同版」断言已删除（它原先在对端缺席时打印 PASS 却从未比对）。树内副本即权威，这些文件在本分支按本仓评审与门禁正常演进，不需要对端配合。
    - 代价已记账：这些文件自此与协调仓**永久分叉**，将来若引入上游改动，这几处必冲突（见 `docs/AGENTS/known-gaps.md`）。

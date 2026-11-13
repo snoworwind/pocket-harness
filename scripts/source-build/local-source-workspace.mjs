@@ -50,8 +50,8 @@ const EXPECTED_SOURCE_CHANGES = [
   // APK 步临时替换 overlay 门禁脚本，随后由 trap 还原；中断时可能仍停在替换形态。
   'scripts/check-engine-overlay.mjs',
   // Harness / termux 步按构建期策略改写并（通常）还原的配置输入。
-  'scripts/snapshot-config/engine-overlay.json',
-  'scripts/snapshot-config/preinstall.json',
+  'scripts/runtime-config/engine-overlay.json',
+  'scripts/runtime-config/preinstall.json',
   // probe-engine-anchors --fixtures --capture-only 会重写当前版本的补丁夹具。
   'scripts/patches/tests/fixtures/',
   // 组件源按固定 npm 产物整目录替换，并施加已登记的 market-* 补丁。
@@ -61,7 +61,7 @@ const EXPECTED_SOURCE_CHANGES = [
   'vendor/dsh-undo-savepoint/lib/core.mjs',
   'vendor/dsh-undo-savepoint/lib/index.js',
   // install-project-dependencies.mjs 先 npm install --package-lock-only 再 npm ci，会更新 lock。
-  'dsh-shell-termux/package-lock.json',
+  'dsh-shell-linux/package-lock.json',
   'dsh-client-ui-responsive/package-lock.json',
 ]
 /** 插件 lockfile 的形态只允许这一个：plugins/<name>/package-lock.json。 */
@@ -148,7 +148,7 @@ function contains(parent, child) {
 // Android /data/data/com.termux links until the snapshot sanitizer runs.
 function rejectEscapedWriteRoots(workspace) {
   const writeRoots = [
-    '.deploy-tmp', 'scripts', 'vendor', 'plugins', 'dsh-shell-termux',
+    '.deploy-tmp', 'scripts', 'vendor', 'plugins', 'dsh-shell-linux',
     'dsh-client-ui-responsive', 'dsh-host-web-compat', 'out', 'base', 'app',
   ]
   for (const path of writeRoots) {

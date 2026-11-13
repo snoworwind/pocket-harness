@@ -1,16 +1,15 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { TermuxBashExecutor } from '../lib/index.js'
+import { LinuxBashExecutor } from '../lib/index.js'
 
 function executor(defaultMode = 'workspace-write') {
-  const instance = Object.create(TermuxBashExecutor.prototype)
+  const instance = Object.create(LinuxBashExecutor.prototype)
   let spawnCount = 0
   Object.assign(instance, {
-    bashPath: '/snapshot/usr/bin/bash',
+    bashPath: '/usr/bin/bash',
     writeMode: defaultMode,
-    prefix: '/snapshot/usr',
-    home: '/snapshot/home',
-    termuxVersion: 'test',
+    prefix: '/usr',
+    home: '/home',
     extraPath: [],
     sharedDirs: [],
     resolvedModes: new WeakMap(),

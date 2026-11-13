@@ -86,7 +86,7 @@ const assert = (cond, msg) => {
 }
 
 const statusOf = (regs) => Object.fromEntries(regs.map((r) => [r.path, r]))['/api/android/privilege/status']
-const channelOf = (tools) => tools.find((t) => t.name === 'android_termux_channel_exec')
+const channelOf = (tools) => tools.find((t) => t.name === 'android_linux_channel_exec')
 
 function callStatus(entry) {
   return new Promise((resolve) => {

@@ -49,7 +49,7 @@ function checkSourceCachePath(text) {
   assert.equal(restorePath, '.deploy-tmp/base-cache', 'restore path must use the cache path saved by build-base.yml')
   assert.match(materialize, /engine-base\.mjs materialize-self \.deploy-tmp\/base-cache \.deploy-tmp\/engine-base-plan\.json/)
 }
-test('base workflow is main-only and publishes only after actual dual comparison', () => check(workflow))
+test('base workflow restricts source refs and publishes only after actual dual comparison', () => check(workflow))
 test('source workflow restores and materializes the exact build-base cache path', () => checkSourceCachePath(sourceWorkflow))
 test('controlled workflow regressions reject bypassed comparison and cache writes', () => {
   for (const bad of [workflow.replace('engine-base.mjs compare', 'true # omitted comparison'),

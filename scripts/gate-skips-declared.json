@@ -7,7 +7,7 @@
   "gates": {
     "check-tool-output-schema.mjs": {
       "max": 3,
-      "why": "三处不适用：dsh-shell-termux / dsh-client-ui-responsive 源码无 defineTool（非工具插件），dsh-host-web-compat 无 src/index.ts——这三者没有可校的 output.schema。剩下的工具插件逐个真跑（覆盖 7 个插件 / 156 个校验分支）。"
+      "why": "三处不适用：dsh-shell-linux / dsh-client-ui-responsive 源码无 defineTool（非工具插件），dsh-host-web-compat 无 src/index.ts——这三者没有可校的 output.schema。剩下的工具插件逐个真跑（覆盖 7 个插件 / 156 个校验分支）。"
     },
     "check-boot-budget.mjs": {
       "max": 2,

@@ -34,11 +34,11 @@ export function experimentalDispatch(env = process.env) {
   return env.GITHUB_ACTIONS === 'true' && env.DSH_LINUX_EXPERIMENT === '1' && env.GITHUB_REF === LINUX_EXPERIMENT_REF
 }
 
-export function requireMain(root, env = process.env) {
+export function requireBuildSource(root, env = process.env) {
   const commit = git(root, 'rev-parse', 'HEAD')
   if (env.GITHUB_ACTIONS === 'true') {
-    if (env.GITHUB_SHA !== commit || env.GITHUB_EVENT_NAME === 'pull_request') fail('base publication requires the signed main workflow commit')
-    if (!experimentalDispatch(env) && env.GITHUB_REF !== 'refs/heads/main') fail('base publication requires the main workflow commit')
+    if (env.GITHUB_SHA !== commit || env.GITHUB_EVENT_NAME === 'pull_request') fail('base publication requires the authorized source workflow commit')
+    if (!experimentalDispatch(env) && env.GITHUB_REF !== 'refs/heads/main') fail('base publication requires the authorized source workflow commit')
   } else if (git(root, 'symbolic-ref', '--quiet', 'HEAD') !== 'refs/heads/main') fail('local base production requires attached main')
   return commit
 }
@@ -77,7 +77,7 @@ export function toolchain(root, local = false) {
 }
 
 export function makePlan(root, runtime, env = process.env) {
-  const sourceCommit = requireMain(root, env)
+  const sourceCommit = requireBuildSource(root, env)
   git(root, 'diff', '--exit-code', 'HEAD', '--', ...COMPONENTS.engine)
   if (git(root, 'ls-files', '--others', '--exclude-standard', '--', ...COMPONENTS.engine)) fail('uncommitted engine inputs')
   const sourceRef = experimentalDispatch(env) ? LINUX_EXPERIMENT_REF : 'refs/heads/main'
@@ -166,13 +166,13 @@ export function canonicalizeEngineDeploy(engineDeploy) {
 }
 
 export function capture(root, plan, artifact, buildRun, replica, env = process.env) {
-  if (requireMain(root, env) !== plan.sourceCommit) fail('source commit changed during engine build')
+  if (requireBuildSource(root, env) !== plan.sourceCommit) fail('source commit changed during engine build')
   if (buildRun !== plan.buildRun || !['primary', 'reference'].includes(replica)) fail('invalid replica/run identity')
   const expected = committedInputs(root, plan.toolchain)
   if (expected.key !== plan.key || expected.inputs.sha256 !== plan.inputs.sha256) fail('producer plan drifted')
   const modified = git(root, 'diff', '--name-only', 'HEAD', '--', ...COMPONENTS.engine).split('\n').filter(Boolean)
   const allowed = new Set([
-    'scripts/snapshot-config/engine-overlay.json',
+    'scripts/runtime-config/engine-overlay.json',
     'vendor/dshmarketplace-plugin/package.json',
     'vendor/dshmarketplace-plugin/PATCHES.md',
   ])
@@ -230,7 +230,7 @@ export function checkPayload(artifact, manifest) {
 
 /** Verify a trusted base, then materialize its payload into the build workspace. */
 export function materialize(root, artifact, env = process.env) {
-  requireMain(root, env)
+  requireBuildSource(root, env)
   const lock = json(join(root, 'base-lock.json'))
   const manifest = verifyTrusted(root, lock, artifact)
   checkPayload(artifact, manifest)
@@ -280,7 +280,7 @@ export function verifySelf(root, artifact, planPath) {
 
 /** 用自证 base 覆盖引擎树（不读 base-lock.json）。 */
 export function materializeSelf(root, artifact, planPath, env = process.env) {
-  requireMain(root, env)
+  requireBuildSource(root, env)
   const manifest = verifySelf(root, artifact, planPath)
   const file = manifest.outputs.find(output => output.path === `base-engine-${manifest.key}.tar.zst`)
   if (!file) fail('base archive missing')
@@ -314,7 +314,7 @@ export function materializeSelf(root, artifact, planPath, env = process.env) {
 }
 
 export function publishCandidate(root, plan, primary, reference, destination, env = process.env) {
-  const sourceCommit = requireMain(root, env)
+  const sourceCommit = requireBuildSource(root, env)
   const expectedRef = experimentalDispatch(env) ? LINUX_EXPERIMENT_REF : 'refs/heads/main'
   if (plan.sourceCommit !== sourceCommit || plan.sourceRef !== expectedRef || committedInputs(root, plan.toolchain).key !== plan.key) fail('comparison plan drifted')
   const a = json(join(primary, 'manifest.json')), b = json(join(reference, 'manifest.json'))
@@ -366,13 +366,13 @@ function main() {
   } else if (command === 'materialize-self') {
     materializeSelf(root, resolve(args[0]), resolve(args[1]))
   } else if (command === 'reuse-self') {
-    requireMain(root)
+    requireBuildSource(root)
     const artifact = resolve(args[0]), destination = resolve(args[1])
     verifySelf(root, artifact, resolve(args[2]))
     if (existsSync(destination) && readdirSync(destination).length) fail('reuse destination must be empty')
     cpSync(artifact, destination, { recursive: true })
   } else if (command === 'reuse') {
-    requireMain(root)
+    requireBuildSource(root)
     const artifact = resolve(args[0]), destination = resolve(args[1]), lock = json(join(root, 'base-lock.json'))
     verifyTrusted(root, lock, artifact)
     if (existsSync(destination) && readdirSync(destination).length) fail('reuse destination must be empty')

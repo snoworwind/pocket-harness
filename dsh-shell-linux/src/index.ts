@@ -1,22 +1,8 @@
 /**
- * Android/Termux service provider for the bash capability seam.
- *
- * Extends the local bash executor with the Termux execution world:
- * - every spawn carries an explicit, self-contained Termux environment
- *   (PATH/LD_LIBRARY_PATH/HOME/PREFIX/TERMUX_VERSION/SHELL), so execution
- *   never depends on the ambient environment being accidentally correct;
- * - run/start hand an explicit bashPath to the inherited subprocess
- *   mechanics (process-group SIGTERM→SIGKILL, output caps + spill, grace),
- *   reusing LocalBashExecutor's budgets and lifecycle unchanged;
- * - the sandbox declaration is honest: enforcement is the Android app domain
- *   (SELinux u0_aXXX) plus the approval flow, not a path-level confiner, so
- *   results report `enforcement: 'partial'` and the default mode stays
- *   `workspace-write` (same as the desktop default) for permission presets;
- * - probe() reports bash presence/version and the toolchain the model-facing
- *   tools rely on; misconfigured bash fails loudly with repair guidance.
- *
- * Mount only on Android (patch row `disabled: !!js process.platform !== 'android'`).
- * @module @dsh-android/dsh-shell-termux
+ * Debian/glibc guest provider for the bash capability seam.
+ * Every subprocess receives explicit guest PATH/HOME/SHELL and diagnostic permission labels.
+ * Restricted modes fail closed; full access requires the session's explicit policy selection.
+ * @module @dsh-android/dsh-shell-linux
  */
 
 import { accessSync, constants } from 'node:fs'
@@ -93,20 +79,18 @@ export const TOOLCHAIN_REPRESENTATIVE: Readonly<Record<(typeof REQUIRED_TOOLCHAI
 }
 
 /**
- * Plugin config: the local executor's knobs verbatim, plus the Termux world
+ * Plugin config: the local executor's knobs verbatim, plus the Linux guest
  * coordinates. bashPath/prefix/home are deployment facts (patch config), not
  * user settings; the inherited knobs remain editable through the shell
  * settings section exactly as on desktop.
  */
 export interface Config extends LocalConfig {
-  /** Absolute path to the Termux bash binary (default probe: $PREFIX/bin/bash). */
+  /** Absolute path to the guest Bash binary. */
   bashPath: string
-  /** Termux prefix root (the directory containing bin/, lib/, etc.). */
+  /** Guest system prefix (the directory containing bin/, lib/, etc.). */
   prefix: string
-  /** Termux home directory (commands' ambient HOME, usually .../files/home). */
+  /** Guest home directory (commands' ambient HOME). */
   home: string
-  /** Termux version string injected as TERMUX_VERSION. */
-  termuxVersion?: string
   /** Extra PATH entries prepended to the injected PATH (e.g. /system/bin). */
   extraPath?: string[]
   /** Default permission mode reported to the shell tool. Android cannot enforce path-restricted modes. */
@@ -118,8 +102,8 @@ export interface Config extends LocalConfig {
 }
 
 /** The shape after schemastery applied the defaults (optional fields keep their undefined). */
-type ResolvedConfig = Required<Omit<Config, 'cwd' | 'termuxVersion' | 'extraPath' | 'writeMode' | 'workspaceRoot' | 'sharedDirs'>> &
-  Pick<Config, 'cwd' | 'termuxVersion' | 'extraPath' | 'writeMode' | 'workspaceRoot' | 'sharedDirs'>
+type ResolvedConfig = Required<Omit<Config, 'cwd' | 'extraPath' | 'writeMode' | 'workspaceRoot' | 'sharedDirs'>> &
+  Pick<Config, 'cwd' | 'extraPath' | 'writeMode' | 'workspaceRoot' | 'sharedDirs'>
 
 /** Result of the environment probe, for diagnostics/UI panels. */
 export interface ProbeResult {
@@ -129,20 +113,20 @@ export interface ProbeResult {
   bash: string
   /** First line of `bash --version`, when bash runs. */
   bashVersion?: string
-  /** Missing toolchain package names (pkg install hints). */
+  /** Missing toolchain package names (apt package hints). */
   missing: string[]
   /** 写面档位（PRD F1.4）：探测结果附带当前档位，供工具链状态/缺包提示/写面状态面板消费。 */
   writeMode?: SandboxMode
 }
 
 /**
- * Termux bash executor over the inherited subprocess mechanics. Registers as
+ * Linux guest Bash executor over the inherited subprocess mechanics. Registers as
  * `ctx.shell` in place of the local/sandbox executors on Android; the tool
  * layer and approval flow are unchanged consumers.
  */
-export class TermuxBashExecutor extends LocalBashExecutor {
+export class LinuxBashExecutor extends LocalBashExecutor {
   // No own Config: the inherited knobs' schema (with defaults) is inherited
-  // verbatim — schemastery preserves unknown keys (verified), so the Termux
+  // verbatim — schemastery preserves unknown keys (verified), so the guest
   // coordinates arrive in the raw config and are validated in the constructor.
   private readonly bashPath: string
   private readonly prefix: string
@@ -158,7 +142,7 @@ export class TermuxBashExecutor extends LocalBashExecutor {
     const entry = config as ResolvedConfig
     for (const [name, value] of [['bashPath', entry.bashPath], ['prefix', entry.prefix], ['home', entry.home]] as const) {
       if (typeof value !== 'string' || !value.startsWith('/')) {
-        throw new Error(`shell-termux: ${name} must be an absolute path, got ${String(value)}`)
+        throw new Error(`shell-linux: ${name} must be an absolute path, got ${String(value)}`)
       }
     }
     this.bashPath = entry.bashPath
@@ -167,7 +151,7 @@ export class TermuxBashExecutor extends LocalBashExecutor {
     this.extraPath = entry.extraPath ?? []
     const mode = entry.writeMode ?? 'workspace-write'
     if (!['workspace-write', 'danger-full-access', 'read-only'].includes(mode)) {
-      throw new Error(`shell-termux: invalid writeMode '${String(mode)}' (workspace-write | danger-full-access | read-only)`)
+      throw new Error(`shell-linux: invalid writeMode '${String(mode)}' (workspace-write | danger-full-access | read-only)`)
     }
     this.writeMode = mode
     this.workspaceRoot = entry.workspaceRoot
@@ -199,7 +183,7 @@ export class TermuxBashExecutor extends LocalBashExecutor {
     const mode = modeFromPolicy(request, this.writeMode)
     const fence = this.guestEnv(mode ?? this.writeMode)
     const user = { ...request.env }
-    for (const k of TermuxBashExecutor.FENCE_KEYS) delete user[k]
+    for (const k of LinuxBashExecutor.FENCE_KEYS) delete user[k]
     const spec = super.resolve({ ...request, env: { ...fence, ...user } })
     // 坑 537（R3-27）：父类 spawnSpec 的合并序是 {…overrides, …spec.env, …spec.dshEnv}——
     // dshEnv（in-process hooks 的受信通道，类型允许任意 DSH_* 键）合并最晚，能把 fence
@@ -207,7 +191,7 @@ export class TermuxBashExecutor extends LocalBashExecutor {
     // 变量（execute 只信 sandboxPolicy），但标签必须不可伪造：在 spec 层重盖，fence 恒胜。
     // 返回的是新对象，WeakMap 键必须落在返回值上（消费方按 resolve 的产物查 execute）。
     const dshEnv: Record<string, string> = { ...(spec.dshEnv ?? {}) }
-    for (const k of TermuxBashExecutor.FENCE_KEYS) delete dshEnv[k]
+    for (const k of LinuxBashExecutor.FENCE_KEYS) delete dshEnv[k]
     const stamped: ShellExecSpec = { ...spec, dshEnv: { ...dshEnv, ...fence } }
     this.resolvedModes.set(stamped, { mode, explicit: hasExplicitPolicyMode(request) })
     return stamped
@@ -219,7 +203,7 @@ export class TermuxBashExecutor extends LocalBashExecutor {
       accessSync(this.bashPath, constants.X_OK)
     } catch {
       throw new Error(
-        `shell-termux: ${this.bashPath} is not executable; run 'pkg install bash' in Termux or fix bashPath/prefix in the shell-termux plugin config`,
+        `shell-linux: ${this.bashPath} is not executable; repair the bundled Linux instance or fix bashPath/prefix in the shell-linux plugin config`,
       )
     }
   }
@@ -265,7 +249,7 @@ export class TermuxBashExecutor extends LocalBashExecutor {
   }
 
   /**
-   * Probe the Termux execution world: bash presence/version plus the
+   * Probe the Linux guest execution environment: bash presence/version plus the
    * model-tool toolchain. Never throws; unusable states are structured data.
    */
   async probe(): Promise<ProbeResult> {
@@ -314,4 +298,4 @@ export class TermuxBashExecutor extends LocalBashExecutor {
   }
 }
 
-export default TermuxBashExecutor
+export default LinuxBashExecutor

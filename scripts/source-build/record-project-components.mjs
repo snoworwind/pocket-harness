@@ -6,7 +6,7 @@ import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { isDeepStrictEqual } from 'node:util'
 
-const COMPONENTS = ['dsh-shell-termux', 'dsh-client-ui-responsive', 'dsh-host-web-compat']
+const COMPONENTS = ['dsh-shell-linux', 'dsh-client-ui-responsive', 'dsh-host-web-compat']
 const sha256 = bytes => createHash('sha256').update(bytes).digest('hex')
 const git = (root, ...args) => execFileSync('git', ['-C', root, ...args], { maxBuffer: 32 * 1024 * 1024 })
 
@@ -70,7 +70,7 @@ export function captureProjectInputs(root, commit, sourceRepository = resolveSou
     report.components[directory] = component
   }
   const cordisKey = '@deepseek-ai/cordis'
-  const overlay = JSON.parse(readFileSync(join(root, 'scripts/snapshot-config/engine-overlay.json'), 'utf8'))
+  const overlay = JSON.parse(readFileSync(join(root, 'scripts/runtime-config/engine-overlay.json'), 'utf8'))
   const host = JSON.parse(readFileSync(join(root, 'dsh-host-web-compat/package.json'), 'utf8'))
   if (!overlay.packages?.[cordisKey] || host.dependencies?.[cordisKey] !== overlay.packages[cordisKey]) throw new Error('host-web-compat Cordis dependency differs from engine overlay')
   return report

@@ -78,3 +78,8 @@ test('directory injection gate ignores directory headers and rejects changed sou
     assert.notEqual(run().status, 0)
   } finally { rmSync(root, { recursive: true, force: true }) }
 })
+
+test('Linux naming gate rejects old package, class, tool, environment and configuration names', () => {
+  const result = spawnSync(process.execPath, [join(ROOT, 'scripts/source-build/check-linux-names.mjs'), '--self-test'], { encoding: 'utf8' })
+  assert.equal(result.status, 0, result.stdout + result.stderr)
+})

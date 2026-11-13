@@ -38,7 +38,7 @@ run('python3', ['scripts/source-build/check-linux-home.py', join(stage, 'home')]
 node('build-hard-manifest.mjs', '--tree', stage, '--out', join(work, 'plugin-hard-manifest.json'))
 node('source-build/check-linux-engine.mjs', stage)
 run('python3', ['scripts/source-build/package-guest-engine.py', '--tree', join(stage, 'usr/lib/node_modules'), '--addon', '.deploy-tmp/linux-build/guest-addons/system', '--out', join(work, 'engine'), '--epoch', '1704067200'])
-const preinstall = JSON.parse(readFileSync('scripts/snapshot-config/preinstall.json'))
+const preinstall = JSON.parse(readFileSync('scripts/runtime-config/preinstall.json'))
 const version = preinstall.canvas.version
 const name = '@napi-rs/canvas-linux-arm64-gnu'
 const canvas = join(work, 'canvas.tgz')

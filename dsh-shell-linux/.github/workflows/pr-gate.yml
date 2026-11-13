@@ -1,4 +1,4 @@
-# PR Gate — dsh-shell-termux: build and sandbox-mode gate
+# PR Gate — dsh-shell-linux: build and sandbox-mode gate
 name: PR Gate
 
 on:

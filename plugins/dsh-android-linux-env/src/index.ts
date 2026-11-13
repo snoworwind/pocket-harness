@@ -25,17 +25,16 @@ import {
   type MobileRouteRequest,
   type MobileRouteResponse,
 } from '@dsh-android/dsh-android-bridge'
-// ST-17：工具链表**单一来源** = dsh-shell-termux 的导出（其 probe() 用同一张表）。
+// ST-17：工具链表**单一来源** = dsh-shell-linux 的导出（其 probe() 用同一张表）。
 // 不再在本插件维护第二份字面量清单。走该包**根导出**（已存在的稳定子路径）+ 只改既有文件，
 // 规避两个已踩过的启动即死形态（ERR_PACKAGE_PATH_NOT_EXPORTED / 注入链丢新增文件）。
-import { PROBE_BINARIES, REQUIRED_TOOLCHAIN, TOOLCHAIN_REPRESENTATIVE } from '@dsh-android/dsh-shell-termux'
+import { PROBE_BINARIES, REQUIRED_TOOLCHAIN, TOOLCHAIN_REPRESENTATIVE } from '@dsh-android/dsh-shell-linux'
 // 块 E：白名单扫描/执行/标签（设计与判据见 runtime-cache.ts 头注释）。
 import { displayLabel, executeCleanup, planCleanup, type CleanupPlan } from './runtime-cache.js'
 import {
-  createLinuxPluginHost, checkLinuxEnvironmentAfterMobileChange, registerLinuxEnvironmentRoutes, cordisScope,
+  registerLinuxEnvironmentRoutes,
   type LinuxBootstrap,
 } from './linux-environment.js'
-import { createLinuxBootstrapConfig } from './linux-host-asset-io.js'
 
 export const name = 'dsh-android-linux-env'
 export const inject = ['tools', 'webServer', 'androidPrivilege'] as const
@@ -92,7 +91,7 @@ export function liveFacts(ctx: Context, session?: unknown) {
   }
   const workspace = typeof e.DSH_WORKSPACE === 'string' && e.DSH_WORKSPACE !== '' ? e.DSH_WORKSPACE : process.cwd()
   return {
-    prefix: e.DSH_BUNDLED_LINUX === '1' ? '/usr' : e.TERMUX__PREFIX ?? e.PREFIX ?? '',
+    prefix: e.DSH_GUEST_PREFIX ?? '/usr',
     home: e.HOME ?? '',
     writeMode: writeMode ?? 'workspace-write',
     writeModeSource,
@@ -100,7 +99,7 @@ export function liveFacts(ctx: Context, session?: unknown) {
     workspaceSource: typeof e.DSH_WORKSPACE === 'string' && e.DSH_WORKSPACE !== '' ? 'env-override' : 'engine-cwd',
     sharedDirs: (e.DSH_SHARED_DIRS ?? '').split(':').filter(Boolean),
     sharedDirsSource: 'env',
-    termuxVersion: e.TERMUX_VERSION ?? '',
+    runtimeKind: 'debian-glibc',
     // adbTier 权威判定在 bridge 服务（本处只读呈现，见 dsh-android-bridge currentStatus）。
     adbTier: 'T0' as const,
   }
@@ -123,7 +122,7 @@ function toolchainStatus(adbTier: string | undefined, ctx: Context, session?: un
     present[binary] = ok
     if (!ok) missingBinaries.push(binary)
   }
-  // 结构化 missing（**包名**口径，与 shell-termux probe() 一致）；bash 缺失 = unusable（整表缺失）。
+  // 结构化 missing（**包名**口径，与 shell-linux probe() 一致）；bash 缺失 = unusable（整表缺失）。
   const missing: string[] = missingBinaries.includes('bash')
     ? [...REQUIRED_TOOLCHAIN]
     : REQUIRED_TOOLCHAIN.filter((pkg) => missingBinaries.includes(TOOLCHAIN_REPRESENTATIVE[pkg]))
@@ -174,7 +173,7 @@ function recipeExport(ctx: Context, session?: unknown): Record<string, unknown> 
       .match(/^Package: (.+)$/gm) ?? []).map((l) => l.slice(9)).sort()
     : []
   // 环境变量白名单（不含密钥类：KEY/TOKEN/SECRET/CREDENTIAL）
-  const allowlisted = ['PATH', 'PREFIX', 'TERMUX_VERSION', 'DSH_WRITE_MODE', 'DSH_WORKSPACE', 'DSH_SHARED_DIRS']
+  const allowlisted = ['PATH', 'HOME', 'SHELL', 'DSH_WRITE_MODE', 'DSH_WORKSPACE', 'DSH_SHARED_DIRS']
   const env: Record<string, string> = {}
   for (const k of allowlisted) if (process.env[k]) env[k] = process.env[k]!
   const profilePatch = readText(join(profile, 'cordis.patch.yml'))
@@ -212,7 +211,7 @@ function tools(ctx: Context, svc: { status(): { tier: string } } | undefined) {
         properties: {
           prefix: { type: 'string', required: true },
           tools: { type: 'object', additionalProperties: true },
-          // ST-17：结构化缺失（包名，口径同 shell-termux probe()）+ 工具链整体状态
+          // ST-17：结构化缺失（包名，口径同 shell-linux probe()）+ 工具链整体状态
           missing: { type: 'array', items: { type: 'string' } },
           toolchainState: { type: 'string', description: 'full / partial / unusable' },
           dpkgPackages: { type: 'number' },
@@ -352,7 +351,7 @@ export function apply(ctx: Context, _config: Record<string, unknown> = {}) {
     return { installed: Boolean(instance), enabled: true, injectionActivated: true, version: process.env.DSH_APP_VERSION ?? 'unknown', mobileVersion: process.env.DSH_APP_VERSION ?? 'unknown', autoUpdate: false, runtime: { id: 'bundled-debian', label: 'APK 内置 Debian 主运行时', state: selfCheck.ok ? 'healthy' : 'check-required' }, instance: instance ?? undefined, selfCheck }
   }
   const nativeManagement = () => { throw new Error('主 Linux 运行时由 APK 管理；请在应用管理中心导出备份或确认重置，不支持下载式安装或卸载。') }
-  const primaryBootstrap: LinuxBootstrap = { status: primaryStatus, checkForUpdates: primaryStatus, install: nativeManagement, reinstall: nativeManagement, uninstall: nativeManagement, setAutoUpdateEnabled: nativeManagement }
+  const primaryEnvironment: LinuxBootstrap = { status: primaryStatus, checkForUpdates: primaryStatus, install: nativeManagement, reinstall: nativeManagement, uninstall: nativeManagement, setAutoUpdateEnabled: nativeManagement }
   // 授权档位权威 = bridge 服务（androidPrivilege，patch 顺序 bridge 先于本插件）
   const svc = (ctx as unknown as { androidPrivilege?: { status(): { tier: string } } }).androidPrivilege
   // 主运行时只展示壳侧实例；不再提供动态插件安装器或第二套 Linux 底座。
@@ -369,7 +368,7 @@ export function apply(ctx: Context, _config: Record<string, unknown> = {}) {
       webServer: wsvc,
       effect: register => ctx.effect(register),
       auth: authOptions,
-      bootstrap: () => primaryBootstrap,
+      bootstrap: () => primaryEnvironment,
     })
     for (const [path, builder] of [
       ['/api/android/env/status', async () => ({ ...toolchainStatus(svc?.status().tier, ctx), ...(process.env.DSH_BUNDLED_LINUX === '1' ? { runtimeSelfCheck: await cachedGuestSelfCheck() } : {}) })],

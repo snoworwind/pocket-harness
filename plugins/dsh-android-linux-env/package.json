@@ -20,7 +20,7 @@
   },
   "dependencies": {
     "@dsh-android/dsh-android-bridge": "file:../dsh-android-bridge",
-    "@dsh-android/dsh-shell-termux": "file:../../dsh-shell-termux",
+    "@dsh-android/dsh-shell-linux": "file:../../dsh-shell-linux",
     "tar-stream": "3.1.7",
     "xz-decompress": "0.2.3"
   },

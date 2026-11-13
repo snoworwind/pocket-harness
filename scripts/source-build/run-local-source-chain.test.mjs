@@ -1,7 +1,7 @@
 // run-local-source-chain 的阶段选择回归（审计 A09）。
 //
-// 反例的定义：`--from apk` / `--only apk` 必须同时选中 Build ABI APK 与构建之后的
-// 最终复验（快照语义归一化 + APK 文件复验）。旧规则把未映射步骤一律归 misc（阶段索引 -1），
+// 反例的定义：`--from apk` / `--only apk` 必须同时选中 Build Linux ARM64 APK 与构建之后的
+// 最终复验（Linux 载荷身份 + APK 文件复验）。旧规则把未映射步骤一律归 misc（阶段索引 -1），
 // 于是它们在 `from apk` 过滤时被判为「早于 apk」而漏掉——本文件的负控用生产计划的
 // `stageSource` 元数据还原旧规则，确认那条规则会判红。
 import test from 'node:test'
@@ -24,7 +24,7 @@ const FINAL = [
 
 test('planSteps：最终复验跟随 apk 阶段，而不是落入 misc', () => {
   const build = planned.find((item) => item.name === BUILD)
-  assert.ok(build, '生产 workflow 里必须存在 Build ABI APK')
+  assert.ok(build, '生产 workflow 里必须存在 Build Linux ARM64 APK')
   assert.equal(build.stage, 'apk')
   assert.equal(planned.find((item) => item.name === 'Warm pinned Gradle distribution with bounded transient retries')?.stage, 'verify',
     'the Gradle preflight must still run when resuming the local chain from the APK stage')
@@ -40,11 +40,11 @@ test('planSteps：最终复验跟随 apk 阶段，而不是落入 misc', () => {
     'Isolate npm cache from checked-in developer settings',
   ])
   assert.ok(!planned.some(item => /Termux|injected snapshot/.test(item.name)))
-  // Kotlin 单测门禁是 APK 步的前置输入；--to snapshot 不应顺带跑它，--only apk 必须带上它。
+  // Kotlin 单测门禁是 APK 步的前置输入；--to payload 不应顺带跑它，--only apk 必须带上它。
   assert.equal(planned.find((item) => item.name.startsWith('单元测试门禁前置'))?.stage, 'apk')
 })
 
-test('--from apk 与 --only apk 的选择都包含 Build ABI APK 和最终复验', () => {
+test('--from apk 与 --only apk 的选择都包含 Build Linux ARM64 APK 和最终复验', () => {
   for (const options of [{ from: 'apk' }, { only: 'apk' }]) {
     const selected = namesOf(selectPlanned(planned, options))
     for (const name of [BUILD, ...FINAL]) {
@@ -52,12 +52,12 @@ test('--from apk 与 --only apk 的选择都包含 Build ABI APK 和最终复验
     }
     assert.ok(!selected.includes('Assemble Linux engine and factory home from verified source'), 'apk 阶段不应重跑快照构建')
   }
-  // --to snapshot 停在快照阶段，不能顺带跑 APK 前才会用到的单测门禁。
-  const toSnapshot = namesOf(selectPlanned(planned, { to: 'snapshot' }))
+  // --to payload 停在快照阶段，不能顺带跑 APK 前才会用到的单测门禁。
+  const toSnapshot = namesOf(selectPlanned(planned, { to: 'payload' }))
   assert.ok(!toSnapshot.includes(FINAL[0]) && !toSnapshot.includes(FINAL[1]))
   assert.ok(!toSnapshot.some((name) => name.startsWith('单元测试门禁前置')))
-  // --from snapshot 会继续到 apk，最终复验同样不能漏。
-  const fromSnapshot = namesOf(selectPlanned(planned, { from: 'snapshot' }))
+  // --from payload 会继续到 apk，最终复验同样不能漏。
+  const fromSnapshot = namesOf(selectPlanned(planned, { from: 'payload' }))
   assert.ok(FINAL.every((name) => fromSnapshot.includes(name)))
   // --from-step 仍按 --list 序号选择，不受阶段继承影响。
   const last = planned.findIndex((item) => item.name === FINAL[1])

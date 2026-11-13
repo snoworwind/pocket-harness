@@ -80,9 +80,9 @@
   ],
   "inserted": [
     {
-      "id": "shell-termux",
-      "pkg": "@dsh-android/dsh-shell-termux",
-      "repo": "dsh-shell-termux"
+      "id": "shell-linux",
+      "pkg": "@dsh-android/dsh-shell-linux",
+      "repo": "dsh-shell-linux"
     },
     {
       "id": "ui-responsive",
@@ -134,27 +134,27 @@
     {
       "pkg": "dsh-bash-local",
       "symbol": "class LocalBashExecutor",
-      "repo": "dsh-shell-termux"
+      "repo": "dsh-shell-linux"
     },
     {
       "pkg": "dsh-shell",
       "symbol": "sandboxMode",
-      "repo": "dsh-shell-termux"
+      "repo": "dsh-shell-linux"
     },
     {
       "pkg": "dsh-bash-local",
       "symbol": "executeArgv",
-      "repo": "dsh-shell-termux"
+      "repo": "dsh-shell-linux"
     },
     {
       "pkg": "dsh-shell",
       "symbol": "ShellExecution",
-      "repo": "dsh-shell-termux"
+      "repo": "dsh-shell-linux"
     },
     {
       "pkg": "dsh-sandbox",
       "symbol": "SandboxEnforcement",
-      "repo": "dsh-shell-termux"
+      "repo": "dsh-shell-linux"
     }
   ],
   "clientSlots": {
@@ -841,18 +841,18 @@
     ]
   },
   "envContract": {
-    "repo": "dsh-shell-termux",
+    "repo": "dsh-shell-linux",
     "keys": [
       "PATH",
-      "LD_LIBRARY_PATH",
       "HOME",
-      "PREFIX",
-      "TERMUX_VERSION",
-      "SHELL"
+      "SHELL",
+      "DSH_WRITE_MODE",
+      "DSH_WORKSPACE",
+      "DSH_SHARED_DIRS"
     ]
   },
   "profiles": {
-    "device": "/data/data/com.snoworwind.pocketharness/files/home/.dsh/profiles",
+    "device": "/home/.dsh/profiles",
     "patches": [
       "web/cordis.patch.yml",
       "headless/cordis.patch.yml"

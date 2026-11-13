@@ -19,10 +19,10 @@
 // 用法（在 WSL/Linux 的仓库根执行）：
 //   node scripts/source-build/run-local-source-chain.mjs --list
 //   node scripts/source-build/run-local-source-chain.mjs                 # 全链
-//   node scripts/source-build/run-local-source-chain.mjs --from snapshot # 从快照阶段续跑
+//   node scripts/source-build/run-local-source-chain.mjs --from payload # 从快照阶段续跑
 //   node scripts/source-build/run-local-source-chain.mjs --only apk      # 只跑打包阶段
 //   node scripts/source-build/run-local-source-chain.mjs --dry-run       # 只打印将要执行什么
-//   node scripts/source-build/run-local-source-chain.mjs --build-workspace /tmp/dsh-build --from snapshot
+//   node scripts/source-build/run-local-source-chain.mjs --build-workspace /tmp/dsh-build --from payload
 // 实际执行只使用 HEAD 的隔离检出；不包含原工作树未提交文件。隔离目录保留用于续跑与取件。
 //
 // 环境：ANDROID_HOME 默认取 `.deploy-tmp/android-sdk`（缺失即判红并给出铺法）。
@@ -44,9 +44,9 @@ export const STAGES = [
   { key: 'harness', label: '从源码构建 Harness 并打包', match: /^Build and pack DeepSeek Harness/ },
   { key: 'plugins', label: '构建插件与市场补丁', match: /^Build project plugins|^Apply project patches/ },
   { key: 'linux-assets', label: '构建签名校验的离线 ARM64 Linux 资产', match: /^Install Linux asset cross-build tools|^Prepare pinned Debian archive trust keys|^Build source-owned offline ARM64 Linux assets/ },
-  { key: 'snapshot', label: '装配 Linux 运行时载荷', match: /^Assemble Linux engine and factory home/ },
+  { key: 'payload', label: '装配 Linux 运行时载荷', match: /^Assemble Linux engine and factory home/ },
   // Kotlin 单测门禁是 APK 步的**前置输入**（build-apk.mjs 的 check-kotlin-test-count 会读它产出的
-  // 结果目录）。不归 snapshot：`--to snapshot` 不应顺带跑十几分钟单测；归 apk 使 `--only apk`
+  // 结果目录）。不归 payload：`--to payload` 不应顺带跑十几分钟单测；归 apk 使 `--only apk`
   // 自带它所需的测试结果。
   { key: 'apk', label: '门禁 + 注入 + 打包 Android APK', match: /^单元测试门禁前置|^Build Linux ARM64 APK/ },
 ]
@@ -343,11 +343,7 @@ function main() {
   }
   applyStepEnvironment()
 
-  // 抹掉 WSL_DISTRO_NAME：本链的步骤全部按 **CI 的原生 Linux 语义**写死路径
-  // （`build-snapshot-013.mjs` 的 IN_WSL 分支会把 stage 改到 `~/.dsh-stage/<abi>`，而 workflow 的
-  // 后续步骤——materialize / 重打包 / 副本收敛 / 快照检查器——都按 `.deploy-tmp/snapshot-013/<abi>/stage`
-  // 取件，stage 一挪就必然 ENOENT）。本地工作区本来就在 ext4，那条 WSL 分支省不到 I/O，
-  // 只有害处。shell.mjs 里对 WSL_DISTRO_NAME 的另一处用法只在 Windows 宿主侧生效，不受影响。
+  // Use the same native Linux helper semantics as the hosted workflow.
   delete baseEnv.WSL_DISTRO_NAME
   // Do not let caller Git path overrides escape the isolated checkout.
   for (const name of ['GIT_DIR', 'GIT_COMMON_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE', 'GIT_OBJECT_DIRECTORY', 'GIT_ALTERNATE_OBJECT_DIRECTORIES']) delete baseEnv[name]

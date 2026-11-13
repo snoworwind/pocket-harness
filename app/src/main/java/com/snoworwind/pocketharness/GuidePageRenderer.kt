@@ -634,7 +634,7 @@ internal class GuidePageRenderer(private val activity: MainActivity) {
    * 所以这里只给「别关应用」这个用户真正需要知道的事。
    */
   private fun extractHintBody(): String =
-    "正在写入内嵌 Termux 环境（首次启动需数分钟，请勿关闭应用）。"
+    "正在准备内置 Linux 环境（首次启动需数分钟，请勿关闭应用）。"
 
   private fun setStatusPulse(on: Boolean) {
     statusPulseWanted = on

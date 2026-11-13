@@ -57,8 +57,8 @@ set -euo pipefail
 mkdir -p "$GITHUB_WORKSPACE/.deploy-tmp/source-build"
 # Previous stage interruption may leave the project overlay in its source-only form.
 # Regenerate from the immutable audited project commit, not the previous run artifact.
-git show "$GITHUB_SHA:scripts/snapshot-config/engine-overlay.json" > scripts/snapshot-config/engine-overlay.json
-git show "$GITHUB_SHA:scripts/snapshot-config/preinstall.json" > scripts/snapshot-config/preinstall.json
+git show "$GITHUB_SHA:scripts/runtime-config/engine-overlay.json" > scripts/runtime-config/engine-overlay.json
+git show "$GITHUB_SHA:scripts/runtime-config/preinstall.json" > scripts/runtime-config/preinstall.json
 cd .deploy-tmp/deepseek-harness
 # Reset only the dedicated build checkout on rerun; retain ignored caches.
 # All vendor sources now follow the official target; no older commit is staged.
@@ -169,7 +169,7 @@ NODE
 # No source replacement or second compilation of older packages occurs.
 python3 "$GITHUB_WORKSPACE/scripts/source-build/prepare-harness-vendor-overrides.py" \
   "$GITHUB_WORKSPACE/.deploy-tmp/deepseek-harness" \
-  "$GITHUB_WORKSPACE/scripts/snapshot-config/engine-overlay.json" \
+  "$GITHUB_WORKSPACE/scripts/runtime-config/engine-overlay.json" \
   "$GITHUB_WORKSPACE/.deploy-tmp/source-build/harness-vendor-overrides.json"
 node "$GITHUB_WORKSPACE/scripts/source-build/reconcile-harness-vendor-lock.mjs" \
   "$GITHUB_WORKSPACE/.deploy-tmp/deepseek-harness" \
@@ -198,7 +198,7 @@ cp "$GITHUB_WORKSPACE/.deploy-tmp/source-build/pnpm-deploy-build-policy.json" \
   "$GITHUB_WORKSPACE/.deploy-tmp/source-build/source-build-policy.json"
 node "$GITHUB_WORKSPACE/scripts/source-build/prepare-pnpm-deploy-runtime-closure.mjs" \
   "$GITHUB_WORKSPACE/.deploy-tmp/deepseek-harness" \
-  "$GITHUB_WORKSPACE/scripts/snapshot-config/engine-overlay.json" \
+  "$GITHUB_WORKSPACE/scripts/runtime-config/engine-overlay.json" \
   "$package_backup_dir" \
   "$GITHUB_WORKSPACE/.deploy-tmp/source-build/pnpm-deploy-runtime-closure.json" \
   "${DSH_ABI:-arm64}"
@@ -256,10 +256,10 @@ python3 scripts/source-build/prune-harness-preview.py \
   .deploy-tmp/deepseek-harness \
   .deploy-tmp/engine-deploy \
   .deploy-tmp/source-build/harness-web-preview-exclusion.json
-cp scripts/snapshot-config/engine-overlay.json .deploy-tmp/source-build/engine-overlay.original.json
+cp scripts/runtime-config/engine-overlay.json .deploy-tmp/source-build/engine-overlay.original.json
 node <<'NODE'
 const fs = require('node:fs')
-const path = 'scripts/snapshot-config/engine-overlay.json'
+const path = 'scripts/runtime-config/engine-overlay.json'
 const manifest = JSON.parse(fs.readFileSync(path, 'utf8'))
 const baseHash = require('node:crypto').createHash('sha256').update(fs.readFileSync(path)).digest('hex')
 const sourceOnlyVendorTop = { 'partial-json': '0.1.7' }
@@ -286,11 +286,11 @@ node scripts/source-build/export-dsh-engine.mjs \
   .deploy-tmp/deepseek-harness .deploy-tmp/engine-overlay
 node scripts/source-build/inject-dsh-engine-packages.mjs \
   .deploy-tmp/engine-deploy .deploy-tmp/engine-overlay \
-  scripts/snapshot-config/engine-overlay.json \
+  scripts/runtime-config/engine-overlay.json \
   .deploy-tmp/source-build/first-party-deploy-injection.json
 node <<'NODE'
 const fs = require('node:fs')
-const path = 'scripts/snapshot-config/engine-overlay.json'
+const path = 'scripts/runtime-config/engine-overlay.json'
 const manifest = JSON.parse(fs.readFileSync(path, 'utf8'))
 const injection = JSON.parse(fs.readFileSync('.deploy-tmp/source-build/first-party-deploy-injection.json', 'utf8'))
 const runtimeClosure = JSON.parse(fs.readFileSync('.deploy-tmp/source-build/pnpm-deploy-runtime-closure.json', 'utf8'))

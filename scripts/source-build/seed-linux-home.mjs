@@ -14,6 +14,6 @@ for (const name of ['web', 'headless']) {
   writeFileSync(join(profile, 'package.json'), JSON.stringify({ name: `dsh-profile-${name}`, private: true, dependencies: {}, dsh: { profile: { bundles } } }, null, 2) + '\n')
   writeFileSync(join(profile, 'pnpm-workspace.yaml'), 'packages: []\n')
 }
-const settings = readFileSync('scripts/snapshot-config/seed-settings.yaml', 'utf8')
+const settings = readFileSync('scripts/runtime-config/seed-settings.yaml', 'utf8')
 writeFileSync(join(destination, '.dsh/settings.yaml'), settings)
 copyFileSync('scripts/global-AGENTS.md', join(destination, '.dsh/AGENTS.md'))

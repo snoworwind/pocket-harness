@@ -19,6 +19,7 @@ for (const path of [join(native, 'arm64-v8a/libpocketharness_proot.so'), join(RO
   if (!existsSync(path)) throw new Error(`required native product missing: ${path}`)
 }
 run(process.execPath, ['scripts/source-build/check-linux-ci.mjs'])
+run(process.execPath, ['scripts/source-build/check-linux-names.mjs'])
 run(process.execPath, ['scripts/source-build/check-linux-native-libraries.mjs', native])
 for (const script of [
   'check-manifest-hardening.mjs', 'check-bounded-io.mjs', 'check-api-route-auth.mjs',

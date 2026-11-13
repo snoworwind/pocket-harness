@@ -30,7 +30,7 @@ jobs:
       key: ${{ steps.plan.outputs.key }}
       reused: ${{ steps.reuse.outputs.reused }}
     steps:
-      - name: Require main before checkout or cache access
+      - name: Require authorized source before checkout or cache access
         env:
           SOURCE_REF: ${{ github.ref }}
           REQUESTED_REF: ${{ inputs.ref }}

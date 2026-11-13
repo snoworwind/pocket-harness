@@ -218,8 +218,8 @@ class PluginMountsTest {
   private val fixture = """
     # 顶层说明注释：属于它后面紧邻的那个条目，拔别的块时不得被误删。
     - insert:
-        - id: shell-termux
-          name: '@dsh-android/dsh-shell-termux'
+        - id: shell-linux
+          name: '@dsh-android/dsh-shell-linux'
           config:
             # 块内注释：随本块一起删除
             writeMode: workspace-write
@@ -261,7 +261,7 @@ class PluginMountsTest {
     val text = after!!
     assertFalse("目标块必须消失", text.contains("dshmarketplace"))
     assertTrue("别的条目一条不少", PluginMounts.mountedNames(text).containsAll(
-      listOf("@dsh-android/dsh-shell-termux", "dsh-undo-savepoint", "@dsh-android/dsh-android-bridge", "@deepseek-ai/dsh-agent-default-model"),
+      listOf("@dsh-android/dsh-shell-linux", "dsh-undo-savepoint", "@dsh-android/dsh-android-bridge", "@deepseek-ai/dsh-agent-default-model"),
     ))
     assertTrue("顶层说明注释不得被误删（它属于后面的块）", text.contains("顶层说明注释"))
     assertTrue("disabled 条目不得受影响", text.contains("disabled: true"))
@@ -274,7 +274,7 @@ class PluginMountsTest {
   fun 块内缩进注释随块删除_顶层注释保留() {
     // 这一条专门钉「注释边界」：块**内**的缩进注释属于该块（随之删除），
     // 块**前**的列 0 注释属于后面那个条目（必须保留，否则会把下一块的文档吃掉）。
-    val after = PluginMounts.removeEntry(fixture, "@dsh-android/dsh-shell-termux", "shell-termux")!!
+    val after = PluginMounts.removeEntry(fixture, "@dsh-android/dsh-shell-linux", "shell-linux")!!
     assertFalse("块内缩进注释必须随块删除", after.contains("块内注释"))
     assertTrue("顶层说明注释必须保留", after.contains("顶层说明注释"))
     assertTrue("同块内的配置字段一并删除", !after.contains("writeMode"))
@@ -616,8 +616,8 @@ class PluginMountsTest {
       - id: bash-sandbox
         disabled: true
       - insert:
-          - id: shell-termux
-            name: '@dsh-android/dsh-shell-termux'
+          - id: shell-linux
+            name: '@dsh-android/dsh-shell-linux'
           - id: host-web-compat
             name: '@dsh-android/dsh-host-web-compat'
       - id: open-in-app
@@ -628,10 +628,10 @@ class PluginMountsTest {
 
     assertNotNull(after)
     assertFalse("目标条目必须消失", after!!.contains("host-web-compat"))
-    assertTrue("同组兄弟必须一字不动（D11）", after.contains("shell-termux"))
+    assertTrue("同组兄弟必须一字不动（D11）", after.contains("shell-linux"))
     assertTrue("组包装行必须保留（还剩一个子条目）", after.contains("- insert:"))
     assertTrue(after.contains("bash-sandbox") && after.contains("open-in-app"))
-    assertEquals(listOf("@dsh-android/dsh-shell-termux"), PluginMounts.entryNames(after))
+    assertEquals(listOf("@dsh-android/dsh-shell-linux"), PluginMounts.entryNames(after))
   }
 
   /** 摘掉组内**最后一个**子条目时，\`- insert:\` 空壳必须一并清理（YAML 里它是 null 条目）。 */

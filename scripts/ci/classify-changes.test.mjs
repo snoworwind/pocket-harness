@@ -30,8 +30,8 @@ test('engine patch changes require engine and APK', () => {
 })
 
 test('engine overlay and preinstall fan out to their downstream components', () => {
-  expect(classifyPaths(['scripts/snapshot-config/engine-overlay.json']), { engine: true, app: true, apk: true })
-  expect(classifyPaths(['scripts/snapshot-config/preinstall.json']), { linux: true, app: true, apk: true })
+  expect(classifyPaths(['scripts/runtime-config/engine-overlay.json']), { engine: true, app: true, apk: true })
+  expect(classifyPaths(['scripts/runtime-config/preinstall.json']), { linux: true, app: true, apk: true })
 })
 
 test('linux inputs stay linux + APK, not a generic full build', () => {

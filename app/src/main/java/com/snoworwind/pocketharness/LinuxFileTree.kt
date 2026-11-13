@@ -54,6 +54,31 @@ internal object LinuxFileTree {
     if (factory.isFile) LinuxUpgradeTransaction.atomicWrite(live, factory.readText())
   }
 
+  /** Rename only the known factory shell entry; preserve every user setting and custom row. */
+  fun migrateShellIdentity(text: String): String {
+    val legacy = Regex("""(?m)^(\s*- id: )shell-termux(\s*\n\s*name: ['"]?)@dsh-android/dsh-shell-termux(['"]?\s*)$""")
+    return legacy.replace(text) { match ->
+      match.groupValues[1] + "shell-linux" + match.groupValues[2] +
+        "@dsh-android/dsh-shell-linux" + match.groupValues[3]
+    }
+  }
+
+  fun migrateHomeShellIdentity(home: File) {
+    val profiles = File(home, ".dsh/profiles")
+    require(!Files.isSymbolicLink(File(home, ".dsh").toPath()) && !Files.isSymbolicLink(profiles.toPath())) { "profile root is a symlink" }
+    for (profile in listOf("web", "headless")) {
+      val directory = File(profiles, profile)
+      val patch = File(directory, "cordis.patch.yml")
+      require(!Files.isSymbolicLink(directory.toPath()) && !Files.isSymbolicLink(patch.toPath())) { "profile patch is a symlink; user data retained" }
+      if (!patch.isFile) continue
+      val bytes = patch.inputStream().use { it.readNBytes(2 * 1024 * 1024 + 1) }
+      require(bytes.size <= 2 * 1024 * 1024) { "profile patch exceeds migration limit" }
+      val before = bytes.toString(Charsets.UTF_8)
+      val after = migrateShellIdentity(before)
+      if (after != before) LinuxUpgradeTransaction.atomicWrite(patch, after)
+    }
+  }
+
   /** Copy missing entries only. A file or symlink at any existing parent wins over factory data. */
   fun mergeMissing(source: File, target: File) {
     require(!Files.isSymbolicLink(source.toPath())) { "seed root must not be a link" }

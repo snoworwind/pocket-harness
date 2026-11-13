@@ -9,7 +9,7 @@ SOURCE_PROOF_INPUTS=(
   vendor/linux-proot
   scripts/source-build/build-linux-assets.sh scripts/source-build/retry-curl.sh scripts/source-build/linux-inputs.json
   scripts/source-build/linux-backend-packages.json scripts/source-build/linux-source-manifest.json
-  scripts/snapshot-config/preinstall.json scripts/lib/shell.mjs
+  scripts/runtime-config/preinstall.json scripts/lib/shell.mjs
   scripts/source-build/build-proot-source.py scripts/source-build/proot-source
   scripts/source-build/inventory-native-runtime.py scripts/source-build/test_native_runtime_inventory.py
   scripts/source-build/guest-tools.json scripts/source-build/verify-guest-tools.py scripts/source-build/build-guest-addons.py

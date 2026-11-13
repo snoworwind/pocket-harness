@@ -11,7 +11,7 @@ function fixture(fn) {
   const root = mkdtempSync(join(tmpdir(), 'local-source-safety-'))
   const source = join(root, 'source')
   mkdirSync(join(source, 'vendor/dshmarketplace-plugin'), { recursive: true })
-  mkdirSync(join(source, 'scripts/snapshot-config'), { recursive: true })
+  mkdirSync(join(source, 'scripts/runtime-config'), { recursive: true })
   mkdirSync(join(source, '.github/workflows'), { recursive: true })
   const git = (...args) => execFileSync('git', ['-C', source, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim()
   git('init', '-q', '-b', 'main')
@@ -19,7 +19,7 @@ function fixture(fn) {
   git('config', 'user.email', 'fixture@example.invalid')
   git('remote', 'add', 'origin', 'https://github.com/example/independent-shell.git')
   writeFileSync(join(source, 'vendor/dshmarketplace-plugin/tracked.js'), 'committed marketplace\n')
-  writeFileSync(join(source, 'scripts/snapshot-config/engine-overlay.json'), '{"committed":true}\n')
+  writeFileSync(join(source, 'scripts/runtime-config/engine-overlay.json'), '{"committed":true}\n')
   writeFileSync(join(source, '.github/workflows/build-apk-source.yml'), 'committed workflow\n')
   writeFileSync(join(source, '.gitignore'), '.deploy-tmp/\nbase/\n')
   git('add', '.')
@@ -77,7 +77,7 @@ test('A11：续跑绑定工作树源码字节，未白名单的改写与新增�
   // 预期生成路径：忽略目录内的产物与白名单内的已跟踪配置都可以变化。
   mkdirSync(join(workspace, '.deploy-tmp/source-build'), { recursive: true })
   writeFileSync(join(workspace, '.deploy-tmp/source-build/generated.json'), '{"generated":true}\n')
-  writeFileSync(join(workspace, 'scripts/snapshot-config/engine-overlay.json'), '{"generated":true}\n')
+  writeFileSync(join(workspace, 'scripts/runtime-config/engine-overlay.json'), '{"generated":true}\n')
   assert.equal(prepareSourceWorkspace(source, commit, workspace), workspace)
 
   // 窄口径：新增的未跟踪源文件同样属于对「只构建已提交 HEAD」的偏离，不能放行。
@@ -88,7 +88,7 @@ test('A11：续跑绑定工作树源码字节，未白名单的改写与新增�
 test('dirty tracked, untracked and ignored source files survive successful and interrupted destructive steps', linux, () => fixture(({ root, source, commit }) => {
   writeFileSync(join(source, 'vendor/dshmarketplace-plugin/tracked.js'), 'uncommitted marketplace\n')
   writeFileSync(join(source, 'vendor/dshmarketplace-plugin/extra.txt'), 'untracked user data\n')
-  writeFileSync(join(source, 'scripts/snapshot-config/engine-overlay.json'), '{"local":true}\n')
+  writeFileSync(join(source, 'scripts/runtime-config/engine-overlay.json'), '{"local":true}\n')
   mkdirSync(join(source, 'base'))
   writeFileSync(join(source, 'base/sentinel.tar.xz'), 'ignored base bytes\n')
   for (const ending of ['exit 0', 'exit 23', 'kill -TERM $$']) {
@@ -99,7 +99,7 @@ test('dirty tracked, untracked and ignored source files survive successful and i
       'test "$PWD" = "$GITHUB_WORKSPACE"',
       'test "$DSH_APK_DIR" = "$GITHUB_WORKSPACE"',
       'rm -rf vendor/dshmarketplace-plugin',
-      'git show "$GITHUB_SHA:scripts/snapshot-config/engine-overlay.json" > scripts/snapshot-config/engine-overlay.json',
+      'git show "$GITHUB_SHA:scripts/runtime-config/engine-overlay.json" > scripts/runtime-config/engine-overlay.json',
       ending,
     ].join('\n')], { cwd: workspace, env: { ...process.env, GITHUB_WORKSPACE: workspace, DSH_APK_DIR: workspace, GITHUB_SHA: commit } })
     if (ending === 'exit 0') assert.equal(result.status, 0)
@@ -107,7 +107,7 @@ test('dirty tracked, untracked and ignored source files survive successful and i
     else assert.equal(result.signal, 'SIGTERM')
     assert.equal(readFileSync(join(source, 'vendor/dshmarketplace-plugin/tracked.js'), 'utf8'), 'uncommitted marketplace\n')
     assert.equal(readFileSync(join(source, 'vendor/dshmarketplace-plugin/extra.txt'), 'utf8'), 'untracked user data\n')
-    assert.equal(readFileSync(join(source, 'scripts/snapshot-config/engine-overlay.json'), 'utf8'), '{"local":true}\n')
+    assert.equal(readFileSync(join(source, 'scripts/runtime-config/engine-overlay.json'), 'utf8'), '{"local":true}\n')
     assert.equal(readFileSync(join(source, 'base/sentinel.tar.xz'), 'utf8'), 'ignored base bytes\n')
     assert.equal(prepareSourceWorkspace(source, commit, workspace), workspace)
   }
@@ -169,11 +169,11 @@ test('fresh checkout rejects committed host write-root links to unrelated user d
   const outside = join(root, 'outside')
   mkdirSync(outside)
   writeFileSync(join(outside, 'engine-overlay.json'), 'keep unrelated data')
-  rmSync(join(source, 'scripts/snapshot-config'), { recursive: true })
-  symlinkSync(outside, join(source, 'scripts/snapshot-config'))
+  rmSync(join(source, 'scripts/runtime-config'), { recursive: true })
+  symlinkSync(outside, join(source, 'scripts/runtime-config'))
   git('add', '-A')
   git('commit', '-qm', 'linked write root')
-  assert.throws(() => prepareSourceWorkspace(source, sourceCommit(source), join(root, 'build')), /写入路径逃出.*scripts\/snapshot-config/)
+  assert.throws(() => prepareSourceWorkspace(source, sourceCommit(source), join(root, 'build')), /写入路径逃出.*scripts\/runtime-config/)
   assert.equal(readFileSync(join(outside, 'engine-overlay.json'), 'utf8'), 'keep unrelated data')
 }))
 
@@ -212,7 +212,7 @@ test('component build outputs and temporary script replacements cannot alias ext
   const outside = join(root, 'outside')
   mkdirSync(outside)
   writeFileSync(join(outside, 'keep.js'), 'keep')
-  for (const name of ['plugins/dsh-android-bridge/lib', 'dsh-shell-termux/lib', 'dsh-client-ui-responsive/lib', 'dsh-host-web-compat/lib', 'vendor/dsh-undo-savepoint/lib', 'scripts/check-engine-overlay.mjs']) {
+  for (const name of ['plugins/dsh-android-bridge/lib', 'dsh-shell-linux/lib', 'dsh-client-ui-responsive/lib', 'dsh-host-web-compat/lib', 'vendor/dsh-undo-savepoint/lib', 'scripts/check-engine-overlay.mjs']) {
     const link = join(workspace, name)
     mkdirSync(dirname(link), { recursive: true })
     symlinkSync(outside, link)
@@ -271,7 +271,7 @@ test('resume rejects deep source aliases and Git object alternates', linux, () =
   writeFileSync(join(workspace, '.deploy-tmp/deepseek-harness/.git'), `gitdir: ${join(source, '.git')}\n`)
   assert.throws(() => prepareSourceWorkspace(source, commit, workspace), /Git 链接可触及原工作树/)
   rmSync(join(workspace, '.deploy-tmp/deepseek-harness'), { recursive: true })
-  symlinkSync(join(source, 'scripts/snapshot-config/engine-overlay.json'), join(workspace, 'scripts/check-engine-overlay.mjs'))
+  symlinkSync(join(source, 'scripts/runtime-config/engine-overlay.json'), join(workspace, 'scripts/check-engine-overlay.mjs'))
   assert.throws(() => prepareSourceWorkspace(source, commit, workspace), /写入路径逃出|链接可触及原工作树/)
   rmSync(join(workspace, 'scripts/check-engine-overlay.mjs'))
   writeFileSync(join(workspace, '.git/objects/info/alternates'), join(source, '.git/objects') + '\n')
@@ -297,7 +297,7 @@ test('actual local runner routes cwd and build environment into isolation and ke
     '          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"',
     '          test "$DSH_SOURCE_REPOSITORY" = https://github.com/example/independent-shell',
     '          rm -rf vendor/dshmarketplace-plugin',
-    '          git show "$GITHUB_SHA:scripts/snapshot-config/engine-overlay.json" > scripts/snapshot-config/engine-overlay.json',
+    '          git show "$GITHUB_SHA:scripts/runtime-config/engine-overlay.json" > scripts/runtime-config/engine-overlay.json',
     '          mkdir -p .deploy-tmp/source-build',
     '          printf policy > .deploy-tmp/source-build/source-build-policy.json',
     '          printf isolated > result.txt', '          exit 23', '',
@@ -306,7 +306,7 @@ test('actual local runner routes cwd and build environment into isolation and ke
   git('add', '.')
   git('commit', '-qm', 'runner fixture')
   writeFileSync(join(source, 'vendor/dshmarketplace-plugin/extra.txt'), 'keep')
-  writeFileSync(join(source, 'scripts/snapshot-config/engine-overlay.json'), 'local config')
+  writeFileSync(join(source, 'scripts/runtime-config/engine-overlay.json'), 'local config')
   const sdk = join(root, 'sdk')
   mkdirSync(join(sdk, 'build-tools/36.0.0'), { recursive: true })
   mkdirSync(join(sdk, 'platforms/android-36'), { recursive: true })
@@ -327,7 +327,7 @@ test('actual local runner routes cwd and build environment into isolation and ke
   assert.ok(result.stderr.includes('--build-workspace'))
   assert.equal(readFileSync(join(workspace, 'result.txt'), 'utf8'), 'isolated')
   assert.equal(readFileSync(join(source, 'vendor/dshmarketplace-plugin/extra.txt'), 'utf8'), 'keep')
-  assert.equal(readFileSync(join(source, 'scripts/snapshot-config/engine-overlay.json'), 'utf8'), 'local config')
+  assert.equal(readFileSync(join(source, 'scripts/runtime-config/engine-overlay.json'), 'utf8'), 'local config')
   assert.equal(existsSync(join(source, 'result.txt')), false)
   assert.match(readFileSync(join(workspace, '.deploy-tmp/local-github-env'), 'utf8'), /npm_config_cache=/)
   const outside = join(root, 'unrelated-policy.json')

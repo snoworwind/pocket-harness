@@ -1,6 +1,6 @@
 # DEPENDENCIES.md — 引用库权威登记
 
-> 依赖以 [APK Gradle 声明](../../app/build.gradle.kts) 和 [引擎 overlay](../../scripts/snapshot-config/engine-overlay.json) 为准。生成区由 `node scripts/check-maintenance-docs.mjs --write` 更新，`node scripts/check-maintenance-docs.mjs` 检查；源码声明不证明产物版本、ABI、hash 或测试通过。
+> 依赖以 [APK Gradle 声明](../../app/build.gradle.kts) 和 [引擎 overlay](../../scripts/runtime-config/engine-overlay.json) 为准。生成区由 `node scripts/check-maintenance-docs.mjs --write` 更新，`node scripts/check-maintenance-docs.mjs` 检查；源码声明不证明产物版本、ABI、hash 或测试通过。
 
 ## 1. 工具链与构建声明
 

@@ -9,7 +9,7 @@ const root = dirname(dirname(fileURLToPath(import.meta.url)))
 const target = process.argv[2]
 const packages = target
   ? [target]
-  : ['dsh-shell-termux', 'dsh-host-web-compat'].filter((p) => existsSync(join(root, p, 'tsconfig.json')))
+  : ['dsh-shell-linux', 'dsh-host-web-compat'].filter((p) => existsSync(join(root, p, 'tsconfig.json')))
 
 for (const pkg of packages) {
   const dir = join(root, pkg)

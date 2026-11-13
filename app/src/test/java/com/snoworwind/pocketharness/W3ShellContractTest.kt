@@ -230,9 +230,9 @@ class W3ShellContractTest {
   // ── 0.14.2 D13：侧边栏终端的默认 shell ─────────────────────────────────────
 
   @Test
-  fun shellEnvPinsTheSnapshotBashAsTheDefaultShell() {
+  fun shellEnvPinsGuestBashAsTheDefaultShell() {
     val code = codeOnly(source("EngineManager.kt"))
-    // 判据（注入这一半）：SHELL 必须指向快照内 bash，且与 PATH 同源（usrDir），
+    // 判据（注入这一半）：SHELL 必须指向客体 bash，且与客体 PATH 同域，
     // 不得是 Termux 编译期前缀。
     assertTrue(
       "D13：客体引擎必须注入 SHELL=/bin/bash（Debian 的 bash），否则上游会回退到宿主解析出的 shell",
