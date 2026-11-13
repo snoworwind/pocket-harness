@@ -351,16 +351,22 @@ int event_loop()
         '\tVERBOSE(child, 1, "vpid %" PRIu64 ": pid %d", child->vpid, child->pid);\n\n\treturn 0;\n}\n',
         '''\t/* Issue #322: the HarmonyOS Linux ABI compatibility layer does not report the
 \t * initial stop of a forked child, so the child waits inside the kernel while its
-\t * parent waits in wait(2).  Resuming it explicitly lets the child run, at the
-\t * cost of handling its initial stop separately once it arrives.  Opt-in only:
-\t * kernels that do report the stop keep the stock ordering.  */
+\t * parent waits in wait(2).  Resume it the same way the normal path does -- through
+\t * restart_tracee() with an explicit restart_how -- because a bare PTRACE_CONT would
+\t * skip the syscall-entry stops PRoot needs for path translation.  Opt-in only:
+\t * kernels that do report the stop keep the stock ordering, and a stop that arrives
+\t * late is still handled by the event loop (sigstop is already SIGSTOP_ALLOWED).  */
 \tif (child->sigstop == SIGSTOP_IGNORED && !child->running
 \t    && getenv("PROOT_POCKET_RESUME_SILENT_CHILD") != NULL) {
-\t\tif (ptrace(PTRACE_CONT, child->pid, NULL, 0) < 0)
-\t\t\tVERBOSE(parent, 1, "vpid %" PRIu64 ": cannot resume child %d: %s",
-\t\t\t\tparent->vpid, child->pid, strerror(errno));
+\t\tchild->sigstop = SIGSTOP_ALLOWED;
+\t\tchild->restart_how = (child->seccomp == ENABLED ? PTRACE_CONT : PTRACE_SYSCALL);
+\t\tif (restart_tracee(child, 0))
+\t\t\tfprintf(stderr, "proot-resume: child %d resumed with %s\\n",
+\t\t\t\tchild->pid,
+\t\t\t\tchild->seccomp == ENABLED ? "PTRACE_CONT" : "PTRACE_SYSCALL");
 \t\telse
-\t\t\tchild->running = true;
+\t\t\tfprintf(stderr, "proot-resume: child %d not resumed: %s\\n",
+\t\t\t\tchild->pid, strerror(errno));
 \t}
 
 \tVERBOSE(child, 1, "vpid %" PRIu64 ": pid %d", child->vpid, child->pid);

@@ -4120,7 +4120,7 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
 715. **fork 挂死的判据是「子进程首次 ptrace stop 有没有送达」，只能在 PRoot 源码里取证（2026-11-13，issue #322）**
      现象：鸿蒙 Linux ABI 兼容层上 `bash -c '/bin/true; echo OK'` 挂死；父进程在 `wait4`，子进程内核态 `S`、wchan 是 `pdebug_handle_hmsign`，`proot -v 3` 里子进程一条 syscall 都没有。普通 Android AVD 上同样的命令 100 次全过。
      真因：Termux proot 5.1.107.102 的 `attach_child()` 只在 `sigstop == SIGSTOP_PENDING && !running` 时恢复子进程；内核若压根不投递 initial stop，该分支不成立，子进程永远停在停机状态。这是兼容层缺事件，不是 PRoot 逻辑写错，所以应用层重试/超时都不解决问题。
-     修法：在 PRoot 源码加两个**默认关闭**的开关（构建期定点补丁，见 PROOT-SOURCE-BUILD.md）：`PROOT_POCKET_TRACE_WAIT=1` 打印每个 `waitpid` 状态；`PROOT_POCKET_RESUME_SILENT_CHILD=1` 对「已登记但从未报 stop」的子进程显式 `PTRACE_CONT`。后者是候选修复，正常内核不开启，行为不变。
+     修法：在 PRoot 源码加两个**默认关闭**的开关（构建期定点补丁，见 PROOT-SOURCE-BUILD.md）：`PROOT_POCKET_TRACE_WAIT=1` 打印每个 `waitpid` 状态；`PROOT_POCKET_RESUME_SILENT_CHILD=1` 对「已登记但从未报 stop」的子进程恢复。恢复必须复用上游语义：置 `sigstop = SIGSTOP_ALLOWED`、按 seccomp 状态显式给 `restart_how`（`PROOT_NO_SECCOMP=1` 即 `PTRACE_SYSCALL`），再走 `restart_tracee()`；裸 `PTRACE_CONT` 会跳过 syscall 入口 stop，child 之后的 `execve` 不被翻译，症状会从「挂死」变成「宿主路径 ENOENT」。正常内核不开启，行为不变。
      复验：补丁锚点在固定摘要源归档上唯一命中；改后的 `event.c` / `tracee.c` 在 Linux GCC + talloc 2.5.0 头文件下 `-fsyntax-only` 通过；`test_proot_source_build` / `test_proot_source_backend` 15 项通过（含 `PATCH_PATHS` 闭合校验）。真机效果仍需鸿蒙设备开开关复验，未验证前不改默认。
 
 716. **loader 182 不带落点，只能靠排除法猜是 open 还是 mmap（2026-11-13，issue #322 续）**
@@ -4128,3 +4128,9 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
      真因：`FATAL()` 只做 `exit(182)`，失败站点与 errno 全部丢失。
      修法：给 loader 加 `pocket_loader_fatal()`：向 stderr 写 `[proot-loader] site=<行号> status=<errno>` 后再退出 182；带 status 的四个站点（close/open/mmap-file/mmap-anon）改用 `FATAL_STATUS`。为此在 `assembly-arm64.h`/`assembly-x86_64.h` 补 `WRITE` 系统调用号。
      复验：固定摘要源归档上 5 个文件锚点唯一命中；改后的 loader 用 `clang --target={aarch64,x86_64}-linux-gnu -fsyntax-only` 双 ABI 通过；source-build Python 147 项通过。真机 182 的落点待设备复验。
+
+717. **恢复「静默子进程」不能用裸 PTRACE_CONT：会跳过 syscall 入口 stop，把挂死换成 ENOENT（2026-11-13，issue #322 复核）**
+     现象（代码面推演 + 上游对照）：`attach_child()` 正常路径用 `restart_tracee(child, 0)`，它按 `restart_how` 重启；`PROOT_NO_SECCOMP=1` 时该值是 `PTRACE_SYSCALL`。若补丁直接 `ptrace(PTRACE_CONT, …)`，子进程恢复后不会在任何 syscall 入口停下，PRoot 拿不到路径翻译与 syscall 改写的时机，child 随后的 `execve("/bin/true")` 会被内核按宿主路径解析 ⇒ ENOENT。
+     真因：恢复原语选错，不是条件判断错。`sigstop == SIGSTOP_IGNORED && !running` 准确命中「已由 fork 事件登记、从未报 stop、也没运行过」。
+     修法：置 `child->sigstop = SIGSTOP_ALLOWED`，按 `seccomp == ENABLED ? PTRACE_CONT : PTRACE_SYSCALL` 显式写 `child->restart_how`，再调用 `restart_tracee(child, 0)`；成功/失败都把结果与 errno 打到 stderr（`proot-resume:` 前缀，进 engine.log），不要只留 VERBOSE。迟到的 initial stop 仍由事件循环处理（此时 sigstop 已是 ALLOWED，不会重复挂起）。
+     复验与判据：改后 `tracee.c` 在 Linux GCC + talloc 2.5.0 下 `-fsyntax-only` 通过。真机必须三条同时成立：`bash -c '/bin/true; echo OK'` 打出 OK；`ls /`/`cat /etc/os-release` 仍是 Debian rootfs（证明 syscall 拦截没丢）；嵌套 `bash -c 'bash -c "echo NESTED"'` 与 `yes | head -1` 正常。只满足第一条 = 换了症状，不算修复。
