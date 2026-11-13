@@ -5,7 +5,7 @@ import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import test from 'node:test'
-import { checkLinuxRuntimePackages } from './check-linux-runtime-packages.mjs'
+import { checkLinuxRuntimePackages, checkEngineArtifacts } from './check-linux-runtime-packages.mjs'
 
 function elf(machine) {
   const bytes = Buffer.alloc(20)
@@ -140,3 +140,29 @@ test('audit fails closed when a koffi consumer loses its binding', () => withFix
   rmSync(join(root, pnpm, '@deepseek-ai+dsh-win32-process@1/node_modules/koffi'))
   assert.throws(() => checkLinuxRuntimePackages(root), /koffi is missing/)
 }))
+
+test('engine metadata gate rejects maps, tests and test directories', () => {
+  const root = mkdtempSync(join(tmpdir(), 'guest-metadata-'))
+  try {
+    put(root, 'lib/runtime.js', 'export {}')
+    checkEngineArtifacts(root)
+    for (const path of ['lib/runtime.js.map', 'lib/runtime.test.js', '__tests__/fixture.json']) {
+      put(root, path, '{}')
+      assert.throws(() => checkEngineArtifacts(root), /development metadata/)
+      rmSync(join(root, path))
+    }
+  } finally { rmSync(root, { recursive: true, force: true }) }
+})
+
+test('engine artifact gate reads ELF headers even when filenames have no platform token', () => {
+  const root = mkdtempSync(join(tmpdir(), 'guest-elf-'))
+  try {
+    for (const abi of ['arm64', 'x86_64']) {
+      put(root, 'bin/tool', abi === 'arm64' ? arm64() : x64())
+      checkEngineArtifacts(root, abi)
+      put(root, 'lib/foreign.so', abi === 'arm64' ? x64() : arm64())
+      assert.throws(() => checkEngineArtifacts(root, abi), /guest native module must be/)
+      rmSync(join(root, 'lib/foreign.so'))
+    }
+  } finally { rmSync(root, { recursive: true, force: true }) }
+})

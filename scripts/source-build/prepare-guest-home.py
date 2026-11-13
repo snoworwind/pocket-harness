@@ -1,14 +1,20 @@
 #!/usr/bin/env python3
 """Create a Debian home seed from the factory home without Bionic modules or host paths."""
 from pathlib import Path
+import importlib.util
 import json
 import os
 import shutil
 import sys
 import tarfile
 
+_SPEC = importlib.util.spec_from_file_location('linux_abi', Path(__file__).with_name('linux-abi.py'))
+_ABI = importlib.util.module_from_spec(_SPEC)
+_SPEC.loader.exec_module(_ABI)
 
-def prepare(source, destination, canvas_archive):
+
+def prepare(source, destination, canvas_archive, abi='arm64'):
+    config = _ABI.linux_abi(abi)
     source, destination = Path(source), Path(destination)
     if destination.exists():
         raise ValueError('guest home stage already exists')
@@ -33,12 +39,12 @@ def prepare(source, destination, canvas_archive):
                 text = text.replace(prefix + '/bin/bash', '/bin/bash')
                 text = text.replace(prefix + '/bin/python3', '/usr/bin/python3')
                 text = text.replace(prefix, '/usr')
-            text = text.replace('@napi-rs/canvas-android-arm64', '@napi-rs/canvas-linux-arm64-gnu')
+            text = text.replace(config['canvas_android'], config['canvas_binding'])
             path.write_text(text)
-    for path in home.glob('.dsh/profiles/*/node_modules/@napi-rs/canvas-android-arm64'):
+    for path in home.glob(f'.dsh/profiles/*/node_modules/{config["canvas_android"]}'):
         if path.is_symlink(): path.unlink()
         elif path.exists(): shutil.rmtree(path)
-    profile = home / '.dsh/profiles/web/node_modules/@napi-rs/canvas-linux-arm64-gnu'
+    profile = home / '.dsh/profiles/web/node_modules' / config['canvas_binding']
     profile.mkdir(parents=True, exist_ok=True)
     with tarfile.open(canvas_archive, 'r:gz') as archive:
         for member in archive:

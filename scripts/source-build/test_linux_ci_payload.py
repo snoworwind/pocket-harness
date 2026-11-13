@@ -99,11 +99,11 @@ executable: /data/data/com.snoworwind.pocketharness/files/usr/libexec/dsh-node
             header[:6] = b'\x7fELF\x02\x01'
             header[18:20] = (183).to_bytes(2, 'little')
             path.write_bytes(header)
-            guest.aarch64(path)
+            guest.guest_elf(path, 'arm64')
             header[18:20] = (62).to_bytes(2, 'little')
             path.write_bytes(header)
             with self.assertRaisesRegex(ValueError, 'AArch64'):
-                guest.aarch64(path)
+                guest.guest_elf(path, 'arm64')
             path.write_bytes(b'bad')
             with self.assertRaisesRegex(ValueError, 'AArch64'):
-                guest.aarch64(path)
+                guest.guest_elf(path, 'arm64')

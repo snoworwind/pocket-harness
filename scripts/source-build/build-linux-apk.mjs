@@ -4,6 +4,7 @@ import { spawnSync } from 'node:child_process'
 import { cpSync, copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { verifyApks } from '../build-apk-engine.mjs'
+import { linuxAbi } from './linux-abi.mjs'
 const ROOT = resolve(import.meta.dirname, '../..')
 const reports = join(ROOT, '.deploy-tmp/source-build')
 const run = (command, args) => {
@@ -11,16 +12,18 @@ const run = (command, args) => {
   if (result.error) throw result.error
   if (result.status !== 0) throw new Error(`${command} failed (${result.status})`)
 }
-if (process.env.DSH_ABI !== 'arm64' || process.env.DSH_LINUX_RUNTIME !== '1') throw new Error('the maintained ARM64 Linux runtime build is required')
+if (process.env.DSH_LINUX_RUNTIME !== '1') throw new Error('the maintained Linux runtime build is required')
+const config = linuxAbi(process.env.DSH_ABI || 'arm64')
 const assets = join(ROOT, 'app/src/main/assets')
 const native = join(ROOT, '.deploy-tmp/linux-build/native-libs')
 const licenses = join(ROOT, '.deploy-tmp/linux-build/provenance/linux-native-licenses')
-for (const path of [join(native, 'arm64-v8a/libpocketharness_proot.so'), join(ROOT, '.deploy-tmp/source-build/terminal-native-libs/arm64-v8a/libpocketharness_terminal.so')]) {
+const terminal = join(ROOT, '.deploy-tmp/source-build/terminal-native-libs')
+for (const path of [join(native, config.androidAbi, 'libpocketharness_proot.so'), join(terminal, config.androidAbi, 'libpocketharness_terminal.so')]) {
   if (!existsSync(path)) throw new Error(`required native product missing: ${path}`)
 }
 run(process.execPath, ['scripts/source-build/check-linux-ci.mjs'])
 run(process.execPath, ['scripts/source-build/check-linux-names.mjs'])
-run(process.execPath, ['scripts/source-build/check-linux-native-libraries.mjs', native])
+run(process.execPath, ['scripts/source-build/check-linux-native-libraries.mjs', native, config.abi])
 for (const script of [
   'check-manifest-hardening.mjs', 'check-bounded-io.mjs', 'check-api-route-auth.mjs',
   'check-kotlin-comments.mjs', 'check-state-registry.mjs', 'check-bridge-symmetry.mjs',
@@ -33,7 +36,11 @@ for (const leaf of ['snapshot.tar.xz', 'snapshot.sha256', 'linux', 'licenses']) 
 cpSync('.deploy-tmp/linux-payload/assets', join(assets, 'linux'), { recursive: true })
 copyFileSync('.deploy-tmp/linux-payload/plugin-hard-manifest.json', join(assets, 'plugin-hard-manifest.json'))
 mkdirSync(join(assets, 'licenses'))
-for (const file of readdirSync('LICENSES')) if (file.endsWith('.txt')) copyFileSync(join('LICENSES', file), join(assets, 'licenses', file))
+for (const file of readdirSync('LICENSES')) {
+  // Retired Termux licenses are not part of the Linux guest closure (audit R-06).
+  if (file.startsWith('Termux-')) throw new Error(`retired Termux license must not ship: ${file}`)
+  if (file.endsWith('.txt')) copyFileSync(join('LICENSES', file), join(assets, 'licenses', file))
+}
 run('python3', ['scripts/source-build/write-linux-notices.py', ROOT, join(assets, 'licenses/THIRD_PARTY_NOTICES.md')])
 copyFileSync('.deploy-tmp/linux-build/provenance/debian-packages.tsv', join(assets, 'licenses/DEBIAN-PACKAGES.tsv'))
 cpSync(licenses, join(assets, 'licenses/linux-native'), { recursive: true })
@@ -42,12 +49,12 @@ if (!version) throw new Error('versionName missing')
 const out = join(ROOT, 'out', 'v' + version)
 const release = join(ROOT, 'app/build/outputs/apk/release')
 rmSync(release, { force: true, recursive: true })
-run('./gradlew', [':app:assembleRelease', '--no-daemon', '--console=plain', '-PversionNameSuffix=-source', `-PlinuxNativeLibraryDir=${native}`, `-PterminalNativeLibraryDir=${ROOT}/.deploy-tmp/source-build/terminal-native-libs`])
+run('./gradlew', [':app:assembleRelease', '--no-daemon', '--console=plain', '-PversionNameSuffix=-source', `-PlinuxNativeLibraryDir=${native}`, `-PterminalNativeLibraryDir=${terminal}`, `-PlinuxNativeAbiDir=${config.androidAbi}`])
 mkdirSync(out, { recursive: true })
-const apk = join(out, `pocket-harness-v${version}-source-arm64.apk`)
+const apk = join(out, `pocket-harness-v${version}-source-${config.legacy}.apk`)
 copyFileSync(join(release, 'app-release.apk'), apk)
-run('python3', ['scripts/source-build/verify-linux-native-apk.py', apk, native, join(assets, 'licenses/linux-native'), '.deploy-tmp/linux-build/provenance/proot-backend-inputs.json'])
-run('python3', ['scripts/source-build/verify-linux-payload.py', '--apk', apk, '--out', join(reports, 'linux-payload-identity.json')])
+run('python3', ['scripts/source-build/verify-linux-native-apk.py', apk, native, join(assets, 'licenses/linux-native'), '.deploy-tmp/linux-build/provenance/proot-backend-inputs.json', '--abi', config.abi])
+run('python3', ['scripts/source-build/verify-linux-payload.py', '--apk', apk, '--abi', config.abi, '--out', join(reports, 'linux-payload-identity.json')])
 // Builders never receive the production key; verify against the exact temporary
 // build certificate, never the repository keystore fallback.
 verifyApks({ files: [apk], certificateSha256File: process.env.POCKET_BUILD_CERTIFICATE_FILE })

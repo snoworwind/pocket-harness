@@ -14,8 +14,8 @@ payload = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(payload)
 
 
-def contents(apk):
-    payload.verify(apk)
+def contents(apk, abi='arm64'):
+    payload.verify(apk, abi)
     result = {}
     with zipfile.ZipFile(apk) as archive:
         for item in archive.infolist():
@@ -26,14 +26,14 @@ def contents(apk):
     return result
 
 
-def compare(primary, reference):
+def compare(primary, reference, abi='arm64'):
     if Path(primary).resolve() == Path(reference).resolve():
         raise ValueError('independent comparison requires different APK inputs')
-    left, right = contents(primary), contents(reference)
+    left, right = contents(primary, abi), contents(reference, abi)
     if left != right:
         changed = sorted(key for key in left.keys() | right.keys() if left.get(key) != right.get(key))
         raise ValueError('independent Linux APK payload differs: ' + ', '.join(changed[:20]))
-    return dict(schemaVersion=2, runtime='linux-arm64-glibc', independentRebuildMatched=True,
+    return dict(schemaVersion=2, runtime=payload._abi.linux_abi(abi)['runtime'], independentRebuildMatched=True,
                 payloadSha256=hashlib.sha256(json.dumps(left, sort_keys=True).encode()).hexdigest(),
                 apkPayloadFiles=len(left))
 
@@ -46,11 +46,11 @@ def main():
     files = [list(Path(directory).rglob('*.apk')) for directory in (args.primary, args.reference)]
     if any(len(items) != 1 for items in files):
         parser.error('require exactly one APK per independent builder')
-    result = compare(files[0][0], files[1][0])
+    result = compare(files[0][0], files[1][0], os.environ.get('DSH_ABI', 'arm64'))
     sha = os.environ.get('GITHUB_SHA', '')
     if not re.fullmatch('[a-f0-9]{40}', sha):
         parser.error('source commit is required')
-    result.update(schemaVersion=2, sourceCommit=sha, abi='arm64',
+    result.update(schemaVersion=2, sourceCommit=sha, abi=os.environ.get('DSH_ABI', 'arm64'),
                   primaryApkSha256=hashlib.sha256(Path(files[0][0]).read_bytes()).hexdigest(),
                   referenceApkSha256=hashlib.sha256(Path(files[1][0]).read_bytes()).hexdigest())
     Path('.deploy-tmp/source-build/independent-rebuild-verification.json').write_text(json.dumps(result, indent=2) + '\n')

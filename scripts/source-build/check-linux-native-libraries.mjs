@@ -4,6 +4,7 @@ import { chmodSync, lstatSync, mkdtempSync, mkdirSync, readFileSync, readdirSync
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
+import { LINUX_ABIS, linuxAbi } from './linux-abi.mjs'
 
 const EXPECTED = new Map([
   ['libpocketharness_proot.so', { type: 3, interp: '/system/bin/linker64', entry: true }],
@@ -14,10 +15,10 @@ const EXPECTED = new Map([
 
 function fail(message) { throw new Error(`Linux native library check: ${message}`) }
 
-function parseElf(bytes, name, expected) {
+function parseElf(bytes, name, expected, machine) {
   if (bytes.length < 64 || bytes.subarray(0, 4).toString('hex') !== '7f454c46') fail(`${name} is not ELF`)
   if (bytes[4] !== 2 || bytes[5] !== 1 || bytes[6] !== 1) fail(`${name} must be 64-bit little-endian ELF`)
-  if (bytes.readUInt16LE(16) !== expected.type || bytes.readUInt16LE(18) !== 183) fail(`${name} has an unexpected ELF type or architecture`)
+  if (bytes.readUInt16LE(16) !== expected.type || bytes.readUInt16LE(18) !== machine) fail(`${name} has an unexpected ELF type or architecture`)
   const entry = bytes.readBigUInt64LE(24)
   const phoff = Number(bytes.readBigUInt64LE(32))
   const phentsize = bytes.readUInt16LE(54)
@@ -50,15 +51,17 @@ function parseElf(bytes, name, expected) {
   }
 }
 
-export function checkLinuxNativeLibraries(directory) {
+export function checkLinuxNativeLibraries(directory, abi = process.env.DSH_ABI || 'arm64') {
+  const mapping = linuxAbi(abi)
+  const archLabel = mapping.abi === 'arm64' ? 'ARM64' : 'x86_64'
   const root = resolve(directory)
   const rootInfo = lstatSync(root)
   if (!rootInfo.isDirectory() || rootInfo.isSymbolicLink()) fail('native library root must be a real directory')
-  if (JSON.stringify(readdirSync(root).sort()) !== JSON.stringify(['arm64-v8a'])) fail('native library root must contain only arm64-v8a')
-  const abiDir = join(root, 'arm64-v8a')
+  if (JSON.stringify(readdirSync(root).sort()) !== JSON.stringify([mapping.androidAbi])) fail(`native library root must contain only ${mapping.androidAbi}`)
+  const abiDir = join(root, mapping.androidAbi)
   const abiInfo = lstatSync(abiDir)
-  if (!abiInfo.isDirectory() || abiInfo.isSymbolicLink()) fail('arm64-v8a must be a real directory')
-  if (JSON.stringify(readdirSync(abiDir).sort()) !== JSON.stringify([...EXPECTED.keys()].sort())) fail('unexpected ARM64 native library members')
+  if (!abiInfo.isDirectory() || abiInfo.isSymbolicLink()) fail(`${mapping.androidAbi} must be a real directory`)
+  if (JSON.stringify(readdirSync(abiDir).sort()) !== JSON.stringify([...EXPECTED.keys()].sort())) fail(`unexpected ${archLabel} native library members`)
 
   const files = []
   for (const [name, shape] of EXPECTED) {
@@ -68,13 +71,13 @@ export function checkLinuxNativeLibraries(directory) {
       fail(`${name} must be a bounded executable regular file`)
     }
     const bytes = readFileSync(file)
-    parseElf(bytes, name, shape)
+    parseElf(bytes, name, shape, mapping.elfMachine)
     files.push({ name, size: bytes.length, sha256: createHash('sha256').update(bytes).digest('hex') })
   }
-  return { architecture: 'arm64', files }
+  return { architecture: mapping.legacy, files }
 }
 
-function fixtureElf({ type, interp = null, entry = true }) {
+function fixtureElf({ type, interp = null, entry = true }, machine = 183) {
   const phoff = 64
   const phentsize = 56
   const phnum = interp ? 2 : 1
@@ -83,7 +86,7 @@ function fixtureElf({ type, interp = null, entry = true }) {
   const bytes = Buffer.alloc(interpOffset + interpBytes.length)
   bytes.set([0x7f, 0x45, 0x4c, 0x46, 2, 1, 1])
   bytes.writeUInt16LE(type, 16)
-  bytes.writeUInt16LE(183, 18)
+  bytes.writeUInt16LE(machine, 18)
   bytes.writeBigUInt64LE(entry ? 0x40n : 0n, 24)
   bytes.writeBigUInt64LE(BigInt(phoff), 32)
   bytes.writeUInt16LE(phentsize, 54)
@@ -104,30 +107,49 @@ function fixtureElf({ type, interp = null, entry = true }) {
 }
 
 function selfTest() {
-  const root = mkdtempSync(join(tmpdir(), 'linux-native-libraries-'))
-  try {
-    const libraries = join(root, 'native-libs')
-    const abi = join(libraries, 'arm64-v8a')
-    mkdirSync(abi, { recursive: true })
-    for (const [name, shape] of EXPECTED) writeFileSync(join(abi, name), fixtureElf(shape))
-    for (const name of EXPECTED.keys()) chmodSync(join(abi, name), 0o755)
-    checkLinuxNativeLibraries(libraries)
+  for (const abi of LINUX_ABIS) {
+    const mapping = linuxAbi(abi)
+    const root = mkdtempSync(join(tmpdir(), `linux-native-libraries-${abi}-`))
+    try {
+      const libraries = join(root, 'native-libs')
+      const abiDir = join(libraries, mapping.androidAbi)
+      mkdirSync(abiDir, { recursive: true })
+      for (const [name, shape] of EXPECTED) writeFileSync(join(abiDir, name), fixtureElf(shape, mapping.elfMachine))
+      for (const name of EXPECTED.keys()) chmodSync(join(abiDir, name), 0o755)
+      const result = checkLinuxNativeLibraries(libraries, abi)
+      if (result.architecture !== mapping.legacy) fail(`self-test returned ${result.architecture} for ${abi}`)
 
-    writeFileSync(join(abi, 'libpocketharness_proot_loader.so'), fixtureElf({ type: 3, interp: '/system/bin/linker64' }))
-    let rejected = false
-    try { checkLinuxNativeLibraries(libraries) } catch (error) { rejected = /unexpected ELF type/.test(error.message) || /unexpected PT_INTERP/.test(error.message) }
-    if (!rejected) fail('self-test accepted a dynamic PRoot loader')
-    console.log('PASS Linux native libraries: PRoot launcher, static loader, and dependency ELF shapes validated')
-  } finally {
-    rmSync(root, { recursive: true, force: true })
+      // Wrong ABI directory: the same contents must be rejected when checked as the other ABI.
+      const foreign = LINUX_ABIS.find(value => value !== abi)
+      let rejectedDirectory = false
+      try { checkLinuxNativeLibraries(libraries, foreign) } catch (error) { rejectedDirectory = /must contain only/.test(error.message) }
+      if (!rejectedDirectory) fail(`self-test accepted a ${mapping.androidAbi} tree checked as ${foreign}`)
+
+      // Wrong ELF machine: an otherwise valid tree must not pass as the other ABI.
+      writeFileSync(join(abiDir, 'libtalloc.so'), fixtureElf({ type: 3, interp: null }, linuxAbi(foreign).elfMachine))
+      chmodSync(join(abiDir, 'libtalloc.so'), 0o755)
+      let rejectedMachine = false
+      try { checkLinuxNativeLibraries(libraries, abi) } catch (error) { rejectedMachine = /unexpected ELF type or architecture/.test(error.message) }
+      if (!rejectedMachine) fail(`self-test accepted a ${foreign} ELF as ${abi}`)
+      writeFileSync(join(abiDir, 'libtalloc.so'), fixtureElf({ type: 3, interp: null }, mapping.elfMachine))
+      chmodSync(join(abiDir, 'libtalloc.so'), 0o755)
+
+      writeFileSync(join(abiDir, 'libpocketharness_proot_loader.so'), fixtureElf({ type: 3, interp: '/system/bin/linker64' }, mapping.elfMachine))
+      let rejected = false
+      try { checkLinuxNativeLibraries(libraries, abi) } catch (error) { rejected = /unexpected ELF type/.test(error.message) || /unexpected PT_INTERP/.test(error.message) }
+      if (!rejected) fail('self-test accepted a dynamic PRoot loader')
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
   }
+  console.log('PASS Linux native libraries: PRoot launcher, static loader, and dependency ELF shapes validated for arm64 and x86_64')
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   try {
     if (process.argv[2] === '--self-test') selfTest()
     else {
-      const result = checkLinuxNativeLibraries(process.argv[2] ?? '')
+      const result = checkLinuxNativeLibraries(process.argv[2] ?? '', process.argv[3] ?? process.env.DSH_ABI ?? 'arm64')
       for (const file of result.files) console.log(`${file.sha256} ${file.size} ${file.name}`)
       console.log(`PASS Linux native libraries: ${result.architecture}`)
     }

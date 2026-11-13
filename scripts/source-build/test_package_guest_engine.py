@@ -15,11 +15,13 @@ class PackageGuestEngineTest(unittest.TestCase):
 
     def test_android_and_desktop_variants_are_pruned(self):
         for name in ('android-arm64', 'darwin-arm64', 'win32-x64', 'linux-x64'):
-            self.assertIn(name, MODULE.PRUNE_DIRS)
-        self.assertNotIn('linux-arm64', MODULE.PRUNE_DIRS)
+            self.assertTrue(MODULE._is_pruned_dir(Path('prebuilds') / name, 'arm64'))
+        self.assertFalse(MODULE._is_pruned_dir(Path('prebuilds/linux-arm64'), 'arm64'))
+        self.assertFalse(MODULE._is_pruned_dir(Path('prebuilds/linux-x64'), 'x86_64'))
+        self.assertTrue(MODULE._is_pruned_dir(Path('@openai+codex@1-linux-arm64'), 'x86_64'))
 
     def test_system_addon_package_name_is_pinned(self):
-        self.assertEqual(MODULE.ADDON_PACKAGE, '@deepseek-ai/node-addon-system-linux-arm64')
+        self.assertEqual(MODULE.ABI_CONFIG['arm64']['addon'], '@deepseek-ai/node-addon-system-linux-arm64')
 
 
 if __name__ == '__main__':
