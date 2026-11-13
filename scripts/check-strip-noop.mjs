@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // check-strip-noop.mjs — 剥离清单后置断言（0.13.8-b ST-16 / 坑：剥离步骤静默 no-op）。
 //
-// 背景：`build-snapshot-013.mjs` 的剥离步骤按 `scripts/snapshot-config/strip.json` 删三类东西
+// 背景：`build-snapshot-013.mjs` 的剥离步骤按 `scripts/runtime-config/strip.json` 删三类东西
 // （secretLeaves / stalePnpmState / runtimeDirs）。此前**没有任何断言证明剥离真的发生了**：清单写错键名、
 // 路径前缀漂移、或剥离后又被后续步骤写回，都会让机密/陈旧状态随快照出厂而无人知。
 //
@@ -61,7 +61,7 @@ if (process.argv.includes('--self-test')) {
   process.exit(ok ? 0 : 1)
 }
 
-const strip = JSON.parse(readFileSync(join(ROOT, 'scripts', 'snapshot-config', 'strip.json'), 'utf8'))
+const strip = JSON.parse(readFileSync(join(ROOT, 'scripts', 'runtime-config', 'strip.json'), 'utf8'))
 const failures = []
 let checked = 0
 const check = (label, ok, detail) => {

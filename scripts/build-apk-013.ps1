@@ -220,7 +220,7 @@ if ($LASTEXITCODE -ne 0) { Write-Host "执行地图失真（覆盖缺口/锚点�
 
 # pi-ai 目录 diff（0.13.3 W1/P2）：baseline -> pin 信息性输出（构建日志 + 报告文件），
 # 删除清单供回归报告引用——不拒绝构建（删除项由 W4 降级补丁兜底）。
-$overlayManifest = Join-Path $Root "scripts\snapshot-config\engine-overlay.json"
+$overlayManifest = Join-Path $Root "scripts\runtime-config\engine-overlay.json"
 if (Test-Path $overlayManifest) {
     $ov = Get-Content $overlayManifest -Raw | ConvertFrom-Json
     if ($ov.catalogDiff -and $ov.pins) {
@@ -494,7 +494,7 @@ foreach ($abi in @('arm64', 'x86_64')) {
 }
 
 # 4. 发布快照资产导出 + 一致性门禁（0.13.2 增补；0.13.1 实锤教训：Release snapshot-*.tar.xz
-#    被误取为注入前 build-snapshot 原始产物——缺 6 个注入包 + shell-termux 0.1.2 无 FENCE_KEYS，
+#    被误取为注入前 build-snapshot 原始产物——缺 6 个注入包 + shell-linux 0.1.2 无 FENCE_KEYS，
 #    而 APK 内嵌的是注入后 snap-final2。铁律：发布快照资产必须与 APK 内嵌快照同源一致，
 #    禁止手工从 .deploy-tmp\snapshot-013\<abi>\ 拷贝）
 if ($ExportSnapshots) {

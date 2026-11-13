@@ -28,8 +28,15 @@ export function finalApks(root, abi = process.env.DSH_ABI || 'arm64') {
 
 export function verifyRebuildProof(root, apk, commit, abi = process.env.DSH_ABI || 'arm64') {
   const proof = JSON.parse(readFileSync(join(root, '.deploy-tmp/source-build/independent-rebuild-verification.json'), 'utf8'))
-  if (proof.abi !== abi || proof.independentRebuildMatched !== true || proof.normalizationVersion !== 3 || !/^[0-9a-f]{40}$/.test(commit ?? '') || proof.sourceCommit !== commit
-    || proof.primaryUnsignedApkSha256 !== digest(apk)) {
+  const common = proof.abi === abi && proof.independentRebuildMatched === true
+    && /^[0-9a-f]{40}$/.test(commit ?? '') && proof.sourceCommit === commit
+  // Schema 2 is the Linux source chain: two independently rebuilt APKs with identical payloads.
+  const linux = proof.schemaVersion === 2 && proof.runtime === 'linux-arm64-glibc'
+    && /^[0-9a-f]{64}$/.test(proof.payloadSha256 ?? '') && proof.primaryApkSha256 === digest(apk)
+  // Schema 1 remains readable for historical normalization-v3 proofs only.
+  const legacy = proof.schemaVersion === undefined && proof.normalizationVersion === 3
+    && proof.primaryUnsignedApkSha256 === digest(apk)
+  if (!common || (!linux && !legacy)) {
     throw new Error('final signing requires independent proof for these exact APK bytes and source commit')
   }
   return proof

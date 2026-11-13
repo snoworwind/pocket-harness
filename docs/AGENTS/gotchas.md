@@ -3702,3 +3702,346 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
     真因：`TerminalViewHost.openOnUi` 把页面传来的 `info.cols/rows`（PTY 自己的旧值，引擎默认 80×24）直接交给 `TerminalView.open()` 建网格；而 `onSizeChanged` 只在「新网格 != 当前网格」时回报 resize，视图先被 1×1 初始布局触发一次、open 又用 80×24 覆盖，之后若尺寸不再变化就再也不会把真实列数推给 PTY。页面侧的 `__dshTermResize → model.resize` 因此从未收到真实尺寸。
     修法：`TerminalView.open()` 在视图已布局时以 `terminalGridFor(width,height,cellW,cellH)` 为准（页面值只作兜底）并在 `nativeCreate` 后无条件回报一次；新增 `syncGrid(force)`；`TerminalViewHost` 在 open 后、bounds 应用后、可见性恢复时各补一次同步（复用时强制）。`terminalGridFor` 是纯函数，JVM 单测锁定推导与最小值/非法度量边界。
     复验：`TerminalGridTest` 覆盖 1320×2400/33×55 → 40×43、未布局/过小返回 null、NaN/Infinity/0/负值拒绝、不足一格向下取整；设备层已用来源链 APK（run 43154506740，commit 0fd2f22）覆盖安装确认：竖屏 `stty size` 跟随可见网格（不再是固定 80），长输入折行与连续退格正常。横屏与系统字体大小走同一 `onSizeChanged`/Activity 重建路径，本次未单独截图取证。
+
+671. **原生运行时不能按扩展名或执行位盘点，也不能把 PRoot 客体误改成 Android `.so`（2026-11-12，Linux 实验分支）**
+    现象：只看 `usr/bin` 会漏掉 Git helper、Python/Node 原生扩展；只看 `*.so` 会漏掉
+    无后缀 ELF 与 `.node`；只看执行位会漏掉经 dlopen 加载的普通只读模块。
+    真因：执行入口、动态加载与客体执行是不同链路，文件名和执行位均不能代表 ELF 载荷范围。
+    修法：`inventory-native-runtime.py` 按内容扫整树与 APK 原生成员，记录解释器、动态依赖、
+    ABI、对齐、摘要和链接；宿主快照与 Linux rootfs/Node 分档，客体绝对链接只在输入树内
+    词法解析，不打开宿主 `/usr`。Linux 程序不生成 APK 改名候选；所有盘点结果仍明确未迁移。
+    复验：`python3 scripts/source-build/inventory-native-runtime.py --self-test` 覆盖无执行位模块、
+    helper、客体绝对链接、损坏 ELF、错 ABI、空盘点、目录链接与树外报告负控；来源 workflow
+    回归验证从本轮 APK 取注入后快照，报告跨 builder/verifier/signer 传递。
+    边界：不展开嵌套归档、不证明 ELF 已能在设备运行；高 targetSdk、用户编译产物和完整
+    Linux 工具链仍须后续真实产物及平台证据，不以参考项目的说明代替。
+
+672. **把 PRoot 改成独立源码编译时，不能沿用 Termux 的隐式构建环境或用编译成功冒充运行修复（2026-11-12，实验分支）**
+    现象：官方 NDK r30 直接编译锁定源码，shmem 因 `_PATH_TMP` 未定义失败；PRoot 的
+    ashmem_memfd 因 strcmp/memset 缺少声明被新 Clang 拒绝。talloc 默认 SONAME `.so.2`
+    还会与 APK 安装命名冲突。
+    真因：旧包依赖 Termux 工具链注入的路径宏和编译环境，拿已编译 `.deb` 看不到这些前提；
+    APK 的文件名与动态依赖名也不是同一个事实。182 退出码还可由 loader 的 FATAL 发出，
+    不能单凭该码把根因定为 seccomp。
+    修法：`build-proot-source.py` 验源码摘要、固定 NDK/API，从源码构建完整闭包；shmem
+    改读 PROOT_TMP_DIR/TMPDIR 且检查路径/长度；talloc 构建时明确 SONAME；PRoot 定点补头文件。
+    不读取 Termux 包索引、bootstrap、keyring 或 `.deb`，不关闭编译诊断、不事后改 ELF 字符串。
+    复验：源码构建自证包含宿主真实 C 路径测试及坏源码/NDK/ABI/对齐/依赖/SONAME 负控；
+    双 ABI 实际编译、另目录重建四件 ELF 摘要一致，命令和源码差异已落盘。完整边界见
+    [PRoot 源码构建](PROOT-SOURCE-BUILD.md)；尚未接入 APK，未在设备运行，不称兼容性验收通过。
+
+673. **源码后端不能套用二进制包来源证明（2026-11-12，实验分支）**
+    现象：旧 Linux 资产链只识别 Termux 签名包字段，独立源码产物无法如实接入。
+    真因：包仓验签与编译收据证明不同的输入，沿用旧字段会伪造来源。
+    修法：增加 schema 2 来源协议，校验固定源码、配方、适配器和原生闭包身份；组装前复验
+    实际 ELF、原始归档并重放补丁，许可证从同一归档提取，保留原始源码及收据。
+    复验：ARM64 真实构建产物组装通过；受控修改配方、二进制、收据及冒充包来源均拒绝。
+    完整资产构建、APK 和 Android 16 运行验证尚未完成，不能称设备兼容通过。
+
+674. **实验 APK 不能借用 main 身份绕过来源门禁（2026-11-12，实验分支）**
+    现象：用户要求本地构建并安装实验 APK，但来源链默认拒绝 ARM64 实验分支。
+    真因：原来源策略只有正式 main 和 x86 QA 例外，没有 ARM64 实验入口。
+    修法：增加显式 `--experimental-linux`，仅授权当前 ARM64 实验分支的本地隔离来源构建；
+    工作流门禁要求非 GitHub Actions，保留真实 Git ref。云端正式构建与发布规则不变。
+    复验：本地来源身份与工作流测试覆盖显式授权、错分支、错 ABI、未授权及云端拒绝。
+
+675. **本地来源链不能要求只在 CI 产生的引擎缓存（2026-11-12）**
+    现象：实验本地构建通过前置与回归后，停在 auto-built engine base unavailable。
+    真因：本地不执行 Actions cache/reusable workflow，但逐步运行器仍执行云端缓存缺失阻断。
+    修法：仅非 Actions 环境跳过该缓存缺失阻断，下一步仍从固定源码构建引擎；云端缺失仍红。
+    复验：工作流真实 shell 在本地返回成功、Actions 返回失败；不伪造缓存、Git 身份或来源收据。
+
+676. **本地来源运行器不能丢失工作流步骤 env（2026-11-12）**
+    现象：底座完成后 Linux 资产步骤因 DEBIAN_KEYRING 缺失退出，尽管前序已生成 keyring/NDK。
+    真因：运行器只解析 name/run/shell/uses，忽略步骤 env；CI 自动注入的路径在本地为空。
+    修法：解析步骤 env，按隔离 GITHUB_WORKSPACE 与真实 SOURCE_REF 解析路径/ref；不向后续步骤
+    泄漏覆盖，不执行环境值中的 shell 文本，未知 Actions 表达式失败关闭。本地注入缓存保持未命中。
+    复验：Linux 下运行器及隔离续跑 22 项全过，包含正确路径、未知表达式拒绝、缓存未命中及字面值负控。
+
+677. **PRoot loader 生成依赖 GNU awk，不能默认任意 awk 均兼容（2026-11-12）**
+    现象：本地自编译通过 talloc/shmem 后在 loader-info.awk 因 strtonum 未定义失败。
+    真因：干净 Ubuntu 容器默认 mawk，云端预装 gawk，隐式工具差异未被配方声明。
+    macOS BSD awk 还可因不识别 GNU 词边界而静默不匹配：受控符号表预期偏移 128，却成功输出 0。
+    修法：两条 Linux 资产消费链显式安装 gawk；源码构建提前验证 GNU awk，优先选择 gawk，
+    将工具路径放入私有 awk 包装目录，并在收据记录版本/摘要。不修改第三方算法来掩盖环境差异。
+    复验：GNU awk 正例、非 GNU 和缺失负控通过；原始失败编译日志保留于本地来源证据。
+
+678. **本地来源链需要逐步骤 GITHUB_OUTPUT 文件（2026-11-12）**
+    现象：Kotlin 全量单测通过后，快照指纹步骤因 GITHUB_OUTPUT 未绑定退出。
+    真因：GitHub runner 自动提供的步骤输出文件未被本地运行器模拟；脚本启用 set -u 后准确暴露缺失。
+    修法：每一步在隔离 RUNNER_TEMP 中新建专用目录及输出文件，不与跨步 GITHUB_ENV 混用。
+    本地仍不伪造 Actions 缓存命中，文件值也不会被当作 shell 命令执行。
+    复验：真实 CLI 夹具验证文件存在且可写，隔离与续跑回归覆盖该执行路径；已有候选从指纹阶段续跑。
+
+679. **首次安装 Linux 环境时，原生 PRoot 探测会因 cwd 不存在而误报 ENOENT（2026-11-12，实验分支）**
+    现象：Android 16 上首次安装 Linux 环境返回 `linux-host-exec-assets-unavailable`，
+    `lastError` 为 `APK native PRoot probe failed: spawn .../lib/arm64/libpocketharness_proot.so ENOENT`；
+    同一文件用应用 UID 手工执行 `--version` 正常打印源码构建版本，包内字节也与构建收据一致。
+    真因：`_installLocked` 先做原生后端探测、后建目录，而探测的 cwd 是 `dataDir`
+    （`files/linux-environment/runtime`）。首装时该目录尚不存在，Node `spawn` 在 cwd 缺失时
+    以命令路径报 ENOENT，把「目录没建」伪装成「APK 原生程序不存在」。
+    修法：`_ensureDirectories()` 提到探测之前；新增「dataDir 不存在」用例断言探测时 cwd 已存在。
+    既有测试都先用 `makeAndroidNativeLibraries` 隐式建出 dataDir，因此长期未覆盖首装路径。
+    复验：`node --test vendor/dsh-linux-runtime/test/manager.test.mjs` 36 项全过（含新用例）。
+    设备复验需重出 APK：运行时会从内置插件包重新解包，直接改设备上的 `manager.js` 会在重启时被覆盖。
+
+680. **原生 `tools.register` 要编译态 JSON Schema，`defineTool` 的 `required: true` 写法会被拒并静默丢工具（2026-11-12，实验分支）**
+    现象：Linux 环境安装健康、状态 `enabled/injectionActivated=true`，但模型工具面里始终没有
+    `linux_bash`（新旧会话都没有），模型只能用 Termux 的 `bash`。
+    真因：`vendor/dsh-linux-runtime` 直接调 `ctx.tools.register()`，却沿用了 `defineTool` 的
+    作者态 schema（每个属性 `required: true`）。引擎 `assertSupportedJsonSchema` 只接受对象级
+    `required: string[]`，于是注册抛错；`syncTool` 的 `catch {}` 把错误吞掉，工具静默消失。
+    插件内的 `defineTool` 用户之所以没踩到，是因为 `defineTool` 会先做 schema 归一化。
+    修法：`parameters`/`output.schema` 改为编译态（对象级 `required` 数组、
+    `additionalProperties:false`），并把注册失败改为经 `ctx.logger` 告警而非静默；
+    回归用例按引擎子集规则校验两个 schema，禁止属性级 `required`。
+    复验：`node --test vendor/dsh-linux-runtime/test/manager.test.mjs` 37 项全过。
+    后续来源 APK `186c7d55` 在 Android 16 ARM64 AVD 完成干净安装与真实模型调用，
+    `linux_bash` 注册缺陷的定向复验通过；范围与证据见 `known-gaps.md` 的实验验证记录。
+
+681. **引擎重启后注入的 Linux 运行时插件不再激活，状态会被同步成「未启用」（2026-11-12，实验分支）**
+    现象：装好并启用的 Linux 环境在应用重启后 `enabled/injectionActivated` 变 false，
+    `linux_bash` 消失；只能整包 reinstall 才回来。
+    真因：宿主 `linuxPluginHost` 只在当前进程内 `ctx.plugin()` 激活插件，重启后插件在盘上
+    但未被注入；bootstrap 的 `load()` 直接调用 `synchronizeInjectionState()`，把宿主「未激活」
+    当成用户「已关闭」，覆盖了持久化的启用意图。
+    修法：`load()` 在同步前先 `reactivateInstalledRuntime()`——已安装且持久化启用、但宿主未激活时，
+    用持久化的 `pluginDirectory` + `pinnedManifest` 重新 `install({enable:true})` 并解析 manager；
+    失败则记录 `linux-runtime-reactivate-failed` 并让随后的同步按宿主视图禁用。
+    复验：新增 3 条用例（成功重激活保持 enabled、失败留错误码并禁用、未启用时不动），
+    `plugins/dsh-linux-bootstrap/test/*.test.mjs` 15 项全过。后续来源 APK `186c7d55`
+    在 Android 16 ARM64 AVD 重启后保持启用与同一实例，模型再次调用 `linux_bash` 成功，
+    报告文件摘要不变；范围与证据见 `known-gaps.md` 的实验验证记录。
+
+682. **重启恢复修复未同步 Linux 来源清单，来源链在打包前拒绝（2026-11-12，实验分支）**
+    现象：`07d6774f` 本地来源链在 `Build source-owned offline ARM64 Linux assets` 报
+    `additional Linux source file set differs from reviewed import: plugins/dsh-linux-bootstrap`。
+    真因：新增 `test/reactivate.test.mjs` 与修改 `src/index.js` 后只更新了 vendored 漂移表，
+    未更新独立的 `linux-source-manifest.json`；该门禁同时约束完整文件集合与源码摘要。
+    修法：在全局与 additionalSources 两份文件映射登记新测试和当前入口摘要，并登记本地修改原因；
+    保持文件集合、摘要与符号链接拒绝规则。复验：`check-linux-sources.mjs --self-test`
+    覆盖正控、等长投毒、未登记输入与符号链接负控；来源 APK 与设备复验另行记录。
+683. **客体原生 addon 不是“改个路径就能用”：装载树是按构建机平台裁掉的（2026-11-12，实验分支）**
+    现象：审计 P2/P3 时发现，即便 PRoot 能在 Debian 里跑起 glibc Node，引擎树里也没有客体
+    ABI 的原生 addon——`node-addon-system`、`require-builtin` 在 Android 上走的是降级分支。
+    真因：引擎包在 linux-x64 构建机上按 `os/cpu` 过滤可选依赖，`native/system/packages/linux-arm64`
+    被判 `Unsupported platform` 丢弃；`17d7ed22` 完整来源链日志里这类告警 361 行。裁剪发生在
+    打包阶段，和运行期 ABI 选择无关。
+    修法（选项 B，进行中）：`build-guest-addons.py` 从固定 harness 源码交叉编译客体 addon，
+    校验 ELF（AARCH64、DYN、无 PT_INTERP、NEEDED 仅 libc/ld）、记录编译器与头文件摘要并出收据；
+    已产出 `flock` 的 `system.node`（71 KB，仅 `libc.so.6`），并在 Debian 13 aarch64/glibc
+    Node v24.22.0（qemu-user，`--jitless`）里 `require()` 成功、导出 `tryLock`。
+    边界：静态 musl 的 `landlock-run` 需要 musl 交叉工具链，收据里登记为 deferred；
+    产物尚未接入 Linux 资产/快照打包，也没有设备证据；`node-addon-require-builtin` 与 SQLite
+    相关 addon 的源码获取/重建方式未定，不能算已补齐。
+    证据：`.deploy-tmp/native-runtime-p0/guest-addons/`（`system.node`、`guest-addons.json`、
+    `load-proof.log`）；自证 `python3 scripts/source-build/build-guest-addons.py --self-test`。
+
+684. **客体引擎不能沿用 Termux 的 env 与预载，缺件必须拒绝而不是静默回退（2026-11-12，实验分支）**
+    现象：装好 Linux 环境后应用仍从 `files/usr/bin/node` 起引擎；把引擎搬进 PRoot 时若沿用
+    `shellEnv()`，`LD_PRELOAD`（termux-exec）、`TERMUX__*` 与 `--require` 预载全部指向 Bionic 树。
+    真因：宿主（Bionic/Android）与客体（glibc/Debian）是两套 ABI、路径与加载器；同一份 env
+    不可能同时成立。缺 addon 或实例时静默回退 Termux 又会让“纯 Linux”变成假绿。
+    修法：`LinuxGuestBoot` 只从 `active.json` 推导实例、客体 Node、引擎入口与 rootfs 内
+    `@deepseek-ai/node-addon-system-linux-arm64`，构造 PRoot argv（`-r/-0/--sysvipc/--kill-on-exit`
+    + bind 列表）与最小 env（`PROOT_LOADER/PROOT_TMP_DIR/PROOT_NO_SECCOMP/LD_LIBRARY_PATH`）；
+    API key、版本等平台无关变量由壳侧单独注入。装了实例即默认客体启动，`boot-mode.json`
+    可显式固定 `termux`/`linux`，文件损坏按 Termux 处理；客体模式缺件直接 `return false` 并给出
+    稳定拒绝码，不回退。
+    复验：`LinuxGuestBootTest` 5 项（未安装/缺 addon/坏记录/argv 形状/模式判定）通过。
+    设备复验待本轮来源 APK；引擎在客体里的插件兼容（P3）仍可能失败，日志会落在同一 `engine.log`。
+
+685. **“以 .so 存在”会踩到按自身文件名/路径推导资源的程序，必须逐项验证或改源码重编（2026-11-12，实验分支）**
+    现象：宿主可执行程序改成 `lib*.so` 放进 `nativeLibraryDir` 后，部分程序会按自身文件名或
+    `$ORIGIN` 推导资源/加载器路径；客体侧还有 `node` 这类按 `process.execPath` 找 ICU 的程序。
+    真因：改名只改了文件系统名字，程序内部假设没变；Android 又禁止执行 app 私有目录 ELF，
+    所以宿主侧只能“改名 + 显式传路径”，不能靠名字自发现。
+    修法/边界：
+    - PRoot 的 loader 一律用 `PROOT_LOADER` 显式传绝对路径（编译期也钉了
+      `PROOT_UNBUNDLE_LOADER`），不依赖 proot 自己找；
+    - 客体程序保持**真实路径与真实文件名**（node 在 `.../bin/node`，bash 在 `/bin/bash`），
+      不把客体 ELF 改成 `.so`；只有宿主侧 NativeLibrary 才用 `lib*.so`；
+    - 新增的宿主原生件必须跑 `--version`/真实 tracee 烟测，并检查 `DT_NEEDED`/`RPATH` 无自引用；
+    - 若某个程序确实把自身文件名写死（或读 `/proc/self/exe` 推导前缀），**改源码重新编译**，
+      不接受“跑起来再说”。
+    复验：`libpocketharness_proot.so`/loader 在 Android 16 上通过 `--version` 与 shell tracee；
+    客体 `node`/`bash`/`zsh` 全部使用 Debian 路径；`pty.node` 在客体 Node 中真实拉起 `/bin/bash`。
+
+686. **Android 引擎树直接搬进 Debian 会带一堆坏链接和错误 ABI 的原生件（2026-11-12，实验分支）**
+    现象：把快照里的 `usr/lib/node_modules` 原样拷进客体时 `copytree` 直接失败，报一批
+    `No such file or directory`；这些是 pnpm 指向 **已被平台过滤删掉** 的 linux-x64/arm64 可选包
+    的悬空符号链接。即使拷贝成功，`node-pty`、`canvas`、`koffi` 等仍是 Android/darwin/win32 变体。
+    真因：引擎树是按 Android 目标组装的，pnpm 的链接拓扑里保留了“本该存在但被裁掉”的条目；
+    客体要的是 `process.platform === 'linux'` 的那套原生件。
+    修法：`package-guest-engine.py` 单遍复制（用 `os.symlink` 原样保留悬空链接，不 dereference），
+    按目录名裁掉非 linux-arm64 变体，再用自编译的 `node-pty`（glibc）和
+    `node-addon-system-linux-arm64` 覆盖；收据记录裁剪清单与产物摘要。
+    复验：真实快照树装配出 `engine-glibc.tar.xz` 79 MB，在 Debian 13 aarch64 客体 Node 中执行
+    `@deepseek-ai/dsh/lib/bin.js --version` 输出 `0.2.2-rc.1`；自证含悬空链接保留与缺入口负控。
+
+687. **客体引擎树要在快照阶段生成，并依赖 linux-assets 阶段的自编译 addon（2026-11-12，实验分支）**
+    现象：把 `package-guest-engine.py` 接到构建链时，快照阶段拿不到 node-pty/flock 的 glibc 构建产物。
+    真因：引擎树在快照阶段才装配，而两个 addon 在 linux-assets 阶段交叉编译；两者目录约定必须显式。
+    修法：linux-assets 输出固定目录 `guest-addons/system`（flock 包）与 `guest-addons/node-pty`；
+    快照阶段在归档后用这两个目录调用装配器，产出 `engine-glibc.tar.xz` 与 sha256；x86_64 明确跳过。
+    复验：两段脚本语法与门禁通过；真实树装配产物 79 MB 并已在 Debian 客体中启动（见坑位 686）。
+
+688. **客体启动必须自己先装实例，否则又回到“先起引擎才能装 Linux”的死结（2026-11-12，实验分支）**
+    现象：把 `startEngine` 切到客体后，首启没有 `files/linux`，如果只在已安装时才走客体，
+    首启就会退回 Termux 路径——等于没脱离。
+    真因：Linux 安装原本由引擎侧插件驱动；引擎又必须先启动，形成循环。
+    修法：APK 内置 `assets/linux/{rootfs,node,engine}.tar.xz`；`startEngine` 在检测到内置资产时
+    **总是**走客体路径，缺实例就先由壳侧 `LinuxInstanceInstaller` 解包，再 PRoot 启动。x86_64 QA 档
+    没有内置资产时才保留旧的 Termux 分支。Gradle 资产闸门改为“linux 资产或旧快照至少一个”。
+    复验：Kotlin 编译通过；后续需来源 APK + AVD 实机确认首启解包与引擎启动。
+
+689. **有了 PRoot/Debian 就别再手编客体组件：能被 apt/npm 管理的交给包管理器（2026-11-12，实验分支）**
+    现象：此前把 node-pty、flock 都从源码交叉编译并塞进引擎树/rootfs，构建链多两条自编译支线。
+    真因：PRoot 让客体拥有完整的 Debian 与 npm 生态，重复自编译只会增加维护面与兼容风险；
+    **只有宿主侧（bionic、必须放 nativeLibraryDir 的 PRoot/loader 及其 bionic 依赖）无法交给包管理器**。
+    修法：
+    - 引擎树的 pnpm `supportedArchitectures` 增加 `linux`/`arm64`/`glibc`，让
+      `node-pty` prebuild 与 `@deepseek-ai/node-addon-system-linux-arm64` 正常安装；
+    - 客体装配器只做“裁掉非 linux-arm64 变体”，不再注入自编译产物；
+    - `build-linux-assets.sh` 删掉 node-pty/flock 的交叉编译与 rootfs 注入；
+    - **顺序**：客体引擎树必须在“平台死重剔除”之前装配，否则被剔掉的正是客体要用的 linux 包。
+    - 自编译脚本（`build-guest-addons.py`/`build-guest-node-pty.py`）保留为离线工具，不接链。
+    复验：链脚本语法、Python 回归、门禁通过；下一次来源 APK 出包后按 AVD 清单验收。
+
+690. **删除 APK 快照后必须同时移除页面启动闸门，缺件修复不得重铺用户 rootfs（2026-11-12，实验分支）**
+    现象：新包缺少旧 snapshot.sha256，启动流程与 showWeb 仍读旧指纹，会挡在引导页；
+    实例 node/engine 缺件又会触发 install 整体替换 files/linux，连用户 apt 软件一起丢失。
+    真因：仅替换 EngineManager 的 spawn，遗漏外层启动判据；结构缺件与从未安装共用恢复分支。
+    修法：冷启动只准备内置 Linux 实例，失败带稳定码与明细进入错误页；Web 呈现用实例判据。
+    ensure 只有实例目录不存在时才首装；存量 rootfs/清单损坏保留现场，受管组件缺件仅补组件。
+    显式重置由管理中心确认删除 Linux 软件，未确认或仍有客体进程拒绝执行，home 保留。
+    复验：Kotlin 1478 项、0 失败；数量门禁通过；缺件、坏清单、未知 schema 的用户包保留反证通过。
+    来源 APK 与设备验收尚未执行；升级事务、摘要与旧机制清理仍是后续同轮必做项。
+
+691. **客体执行的三处硬边界：`env -i` 之后才注入、PRoot 必须带 /proc·PTY·link2symlink、home 种子不能覆盖用户文件（2026-11-12/13，实验分支）**
+    现象：引擎变量只加在宿主 ProcessBuilder，进客体被 `env -i` 清空；客体里 `ps`/PTY/`npm install` 行为异常；升级时工厂 home 种子覆盖用户 profile 与凭据。
+    真因：`env -i` 隔离只清环境不清 argv 顺序；PRoot 不自带 /proc、/dev/pts 与 link(2) 兼容；种子解包按文件覆盖写入。
+    修法：`LinuxGuestBoot.withEnvironment` 把变量插到 `env -i` 之后并拒绝 `LD_*`/`PROOT_*`/`TERMUX*` 跨越边界；PRoot argv 增加 `--link2symlink`、`/proc`、`/sys`、`/dev/pts`、`/dev/ptmx` 与 rootfs canonical 自镜像；home 种子改 `LinuxFileTree.mergeHomeSeed`（只补缺失，出厂 `AGENTS.md` 除外）。
+    复验：Kotlin 1490 项 0 失败；`LinuxGuestBootTest`/`LinuxFileTreeTest` 覆盖边界变量、bind 与不覆盖负例。
+
+692. **来源链改成“客人组件由包管理器提供”后，仍有两类必须自编译：宿主 PRoot/compat 与 harness 自带的平台包（2026-11-13，实验分支）**
+    现象：云端 `build-linux-assets` 依次在 guest-tool 探针、rootfs 校验、客体引擎树装配三处失败：
+    `ssh: No user exists for uid 1001`、`NEEDS-FIX PRoot compatibility preload missing`、
+    `guest platform closure missing; assemble before Android platform pruning`。
+    真因：
+    - QEMU user-mode 探针以调用者 uid 运行；CI runner 是 uid 1001，Debian rootfs 里没有该账号，
+      `ssh -V` 之类会先查 passwd；
+    - `libpocket-linux-compat.so`（`vendor/linux-proot/compat/termfold_compat.c`）是 PRoot 客体的
+      `ld.so.preload` 依赖，必须交叉编译并装进 rootfs，之前随“删自编译 addon”一并误删；
+    - `@deepseek-ai/node-addon-system-linux-arm64` 是 harness 仓库内的 `file:` 工作区包（源码
+      `native/system/packages/linux-arm64` + `entry/src/flock.ts`），npm 上不存在该 glibc 预编译件；
+      node-pty 才是 npm 自带 `prebuilds/linux-arm64`。
+    修法：探针用 `sudo python3 verify-guest-tools.py` 并把 provenance chown 回调用者；
+    恢复 compat 预加载库的交叉编译与 `install -D` 到 `/opt/pocket-harness`；
+    `build-linux-assets.sh` 恢复 Node headers 下载并用 `build-guest-addons.py` 编译该平台包，
+    `build-snapshot-013.mjs` 把产物作为 `--addon` 传给 `package-guest-engine.py`。
+    复验：Python 相关单测与 `linux-assets-workflow.test.mjs` 通过；云端 Linux 资产构建成功。
+
+693. **Linux-bundle APK 的来源证据不能继续提取 Termux 快照（2026-11-13，实验分支）**
+    现象：APK 打包移除 `assets/snapshot.tar.xz` 后，来源工作流的归一化步骤仍无条件 unzip 该成员。
+    真因：打包载荷已切换，最终证据生成仍假定所有 APK 都有 Termux 快照。
+    修法：存在快照时保留原归一化与盘点；否则必须读取 Linux manifest，生成明确标为
+    `linux-guest` 的 manifest SHA-256、载荷摘要和 APK 资产/原生库清单；缺 manifest 直接失败。
+    复验：工作流证据测试使用合成 ZIP 执行内联 Python，覆盖 Linux 身份与缺 manifest 负控；云端结果另行记录。
+
+694. **Linux 产品 CI 不得先构建 Termux 再从中拆客体载荷（2026-11-13，实验分支）**
+    现象：Linux APK 已不发 snapshot，但来源工作流仍下载 bootstrap/滚动 deb、编 Android node-pty，
+    构建并二次注入完整 Termux 快照，门禁与 provenance 也继续假定旧载荷。
+    真因：迁移只改最终 APK 资产，构建输入、插件工厂件与验收入口没有同时迁移。
+    修法：独立 Linux payload/APK 入口从固定源码 deploy 树直接装配 engine/home；目录模式复用插件
+    完整性检查，独立重放来源包与补丁；最终 APK 校验四件套摘要、宿主原生库字节与三签。
+    Linux 资产生产不再构建退役 bootstrap/runtime 插件，换用精确 Linux product 缓存键。
+    引擎底座的 production deploy 图也改为 glibc Koffi/Sharp 与已审 pins/消费者 overrides；不能
+    假定删掉旧 overlay 下载器后，deploy 原树就自动包含所有适配依赖。
+    PR Gate 移除旧快照产出/指纹/发布接线及旧 launcher 堆预算/中止判据；草稿与生产签名入口关闭。
+    许可证通知按本轮 Debian/Harness 收据生成，不沿用 Termux 清单；目录 ownership 模式保留链接类型。
+    插件目录清单保留目录尾斜杠，避免把 `lib/types/` 当多余文件；先逐字节对账，再仅对注入副本降级语法。迁移表见 `LINUX-CI.md`。
+    复验：Linux CI 自检与受控负控、合成 APK 缺件/篡改/旧 snapshot/错 ABI 反例、工厂 profile
+    客体路径/秘密反例及独立比较签名边界测试通过；真实云端运行结果后续追加，不代表设备验收。
+
+695. **macOS 临时目录别名会让来源证明 CLI 空跑（2026-11-13）**
+    现象：来源证明模块的实际 CLI 篡改负控退出 0，而直接函数调用能拒绝篡改。
+    真因：argv 使用 `/var/...`，ESM URL 已解析成 `/private/var/...`；入口 guard 按字符串比较，
+    因路径不同跳过整个 CLI，连证明文件也未写。
+    修法：对 argv 与模块路径都 realpath 后比较；保留实际 CLI 篡改与输入报告不覆盖反例。
+    复验：`record-project-components.test.mjs` 实际 CLI 负控在 macOS 通过；不是忽略该测试。
+
+696. **运行时切换后必须一起迁移包名、模型工具名与工厂条目（2026-11-13，实验分支）**
+    现象：Debian 客体仍被叫作 Termux 执行器，控制台和引导文案也承诺旧环境。
+    真因：实现已经切换，但包身份、通道、配置目录、代码符号与 UI 没有作为同一部署契约更新。
+    修法：活跃身份统一为 `dsh-shell-linux` / `LinuxBashExecutor` / `android_linux_channel_exec`，
+    配置目录改为 `runtime-config`，工厂 patch 直接使用客体路径。home seed 合并只迁移旧工厂
+    id+包名的精确组合，用户配置、自建条目保留；链接和超限 patch 拒绝写。上游与历史证据原名保留。
+    复验：包锁根声明、桥对称、工具名承诺、有界读和来源检查通过；新增迁移正反例与名称契约。
+    Kotlin/插件编译及最终来源 APK 由云端继续验证，不能用旧 lib 或旧构建结果代替。
+
+697. **PTC 的回归必须随主运行时迁移，不能继续锁旧 Bionic wrapper（2026-11-13）**
+    现象：Linux 工厂 patch 改用 `/opt/node/bin/node` 后，PR Gate 只有旧 wrapper 静态回归失败。
+    真因：测试仍把旧 snapshot 构建器与 linker64 wrapper 当现行真源，未验证客体的 Node bind 与 env 隔离。
+    修法：改为 `ptc-linux-launch.test.mjs`，同时核对 PTC launch、引擎 NODE 解析、受管 Node bind、
+    `env -i` 和 loader 环境边界；旧 wrapper、宿主 linker、错误 Node 路径与缺 bind 都必须拒绝。
+    复验：定向测试和补丁回归总入口执行通过；没有新增失败豁免。
+
+698. **glibc 原生载荷审计不能按包子路径直接当 ELF 读（2026-11-13，实验分支）**
+     现象：Linux 引擎打包后，koffi/sharp/node-pty 的 AArch64 绑定没有独立验收；按
+     `@img/sharp-linux-arm64/sharp.node` 解析会把 `index.cjs` 当二进制读，误判 ELF。
+     真因：`@img/*` 的 `exports["./sharp.node"]` 指向 `index.cjs`，真正的 `.node` 由其中
+     `require('./lib/...')` 加载；koffi 的 glibc 模块也由包内 `index.js` 在运行期按 libc 选择。
+     修法：审计沿发布 loader 走：sharp 先解析子路径再读 `lib/*.node`，koffi 断言 loader 选择
+     `linux_arm64`，node-pty 要求 `prebuilds/linux-arm64` 且无 `build/` shadow；消费者清单由
+     已部署包的 `koffi` 依赖动态枚举，Android koffi 与 `.pnpm` 内未审家族失败关闭。
+     复验：`linux-runtime-packages.test.mjs` 用真实 pnpm 布局夹具覆盖正例与 x64/Android/
+     shadow/未审家族/缺绑定五类负控，并接入 PR Gate 与本地 preflight。
+
+699. **删除旧快照链会连带删掉补丁探针依赖的第三方 tgz 缓存（2026-11-13，实验分支）**
+     现象：新 Linux 来源链在 `build-linux-payload.mjs` 的锚点探针前置处判红，
+     `.deploy-tmp/engine-overlay/` 缺 `node-addon-require-builtin-0.1.9.tgz` 与
+     `@earendil-works/pi-ai-1.3.0.tgz`，整条云端构建停在这一步。
+     真因：这两个 tgz 原先由旧快照构建器的 overlay 下载逻辑顺带拉取；新链只从源码导出
+     第一方 tarball，第三方补丁目标的发布字节没有任何生产者。
+     修法：新增 `fetch-overlay-tarballs.mjs`，从 overlay 与补丁 registry 反推「引擎补丁/退役
+     目标所属的非 @deepseek-ai 包」，按版本从配置的 registry 拉 tgz 并以 dist.sha512/integrity
+     校验后落入同一缓存；缺归属或目标越界直接失败。构建顺序固定为 fetch → 探针 → 施加补丁。
+     复验：`fetch-overlay-tarballs.test.mjs` 覆盖只取第三方、去重、退役目标、未知归属与越界
+     目标负控；`linux-payload.test.mjs` 断言 fetch 在探针之前；PR Gate 与本地 preflight 均执行自检。
+
+700. **来源 APK 的签名校验必须显式传构建证书，否则回落到生产指纹（2026-11-13，实验分支）**
+     现象：Linux APK 已用临时构建密钥签出并通过 v1/v2/v3，但 `build-linux-apk.mjs` 的
+     `verifyApks({ files: [apk] })` 判红「签名证书与仓库 keystore 不符」，整步失败。
+     真因：`check-apk-signatures.mjs` 在未传 `--certificate-sha256` 时默认读
+     `keystore/pocket-harness-cert-sha256.txt`（生产指纹）；构建副本按设计只用一次性密钥，
+     两者必然不同。旧链的 `build-apk.mjs` 显式传了 `POCKET_BUILD_CERTIFICATE_FILE`，迁移时漏了。
+     修法：`build-linux-apk.mjs` 与旧入口一致，显式传 `certificateSha256File:
+     process.env.POCKET_BUILD_CERTIFICATE_FILE`；工作流复验步骤同样显式传该文件。
+     复验：`linux-payload.test.mjs` 断言该参数；云端构建在修复后应通过签名门禁。
+
+701. **正式化不能只改名：实验开关、发布桩与签名证明必须同时收口（2026-11-13，0.16.0）**
+     现象：来源链此前只接受实验分支与 `linux_experiment=true`，发布工作流恒失败；
+     生产签名作业被移除，独立比对证明仍是旧 schema，release 准备脚本也只认双 ABI 旧字段。
+     真因：迁移只保证实验产物流水线跑通，正式入口（main、生产签名、draft 发布、证据清单）
+     没有随之建立；把开关改名会留下能构建但不能正式发布的半成品。
+     修法：base/来源/发布工作流只接受 main 与 ARM64；删除实验输入与恒失败桩；恢复隔离
+     `sign-abi`（仅 main + reference=true，持有生产 keystore secrets），独立比对写出 schema 2
+     证明并绑定两份 APK 摘要；签名器与 release 准备脚本校验 schema 2、生产证书指纹、提交与
+     APK 字节；release-source-draft 只打包 ARM64 生产签名 artifact 并创建 draft prerelease。
+     复验：`check-linux-ci.mjs` 自检锁定 main guard 与签名作业；`linux-payload.test.mjs` 执行
+     真实分支守卫；`sign-source-artifacts.test.mjs` 覆盖 schema 2 正/负控；
+     `test_prepare_source_release.py` 覆盖生产指纹、篡改、非 main 与 release 资产校验。
+
+702. **Android SELinux 拒绝 app 数据区硬链接，Debian rootfs 解包必须回退复制（2026-11-13，0.16.0 实修）**
+     现象：全新安装后的首次启动失败（`linux-prepare-failed`），日志停在
+     `rootfs/./usr/bin/perl5.40.1 -> rootfs/./usr/bin/perl`，同进程出现
+     `avc: denied { link } ... tclass=file`；应用随后只反复等待事务。
+     真因：Debian rootfs tar 用硬链接共享 `perl` 等文件；`SnapshotExtractor` 解包尾部统一调用
+     `Files.createLink`，而 untrusted_app 域在 app 数据区被 SELinux 禁止创建硬链接。
+     修法：新增 `SnapshotExtractor.linkOrCopy`：先尝试硬链接，平台以 IOException/
+     UnsupportedOperationException 拒绝时，按已通过归档与树摘要认证的字节复制，并保留可执行位与
+     读写权限；硬链接目标缺失或不可解析时仍失败关闭。复制不改变产品契约（树摘要按内容计算）。
+     复验：`SnapshotExtractorTest.hardlinkFallbackCopiesBytesWhenTheHostRejectsLinks` 覆盖平台拒绝
+     回退、支持平台仍建硬链接、不可解析链接失败三类；云端重出 APK 后在 Android 16 ARM64 AVD
+     重新执行首启安装验证。

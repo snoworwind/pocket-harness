@@ -67,7 +67,7 @@ for (const [label, script] of [
     assert.equal(r.status, 0, r.stderr)
     assert.deepEqual(readFileSync(join(root, 'plugin-calls'), 'utf8').trim().split('\n'),
       buildableDirs.flatMap(d => ['deps:' + d, 'build:' + d]))
-    assert.ok(buildableDirs.indexOf('dsh-shell-termux') < buildableDirs.indexOf('plugins/dsh-android-linux-env'))
+    assert.ok(buildableDirs.indexOf('dsh-shell-linux') < buildableDirs.indexOf('plugins/dsh-android-linux-env'))
   }))
   test(label + ' plugin preparation: dependency failure stops before any package build', linux, () => fixture(root => {
     preparePluginBuild(root)
@@ -82,66 +82,6 @@ for (const [label, script] of [
     assert.equal(existsSync(join(root, 'plugin-calls')), false)
   }))
 }
-const bootstrap = step('Authenticate official Termux bootstrap and extract signing keys')
-const guard = bootstrap.slice(bootstrap.indexOf('bootstrap_pin='), bootstrap.indexOf('\n# 先清空'))
-const good = Buffer.from('authenticated dummy bootstrap\n')
-const sha = createHash('sha256').update(good).digest('hex')
-function prepare(root) {
-  mkdirSync(join(root, 'scripts/source-build'), { recursive: true })
-  mkdirSync(join(root, '.deploy-tmp/source-build'), { recursive: true })
-  mkdirSync(join(root, 'bin'))
-  writeFileSync(join(root, 'scripts/source-build/prepare-termux-bootstrap.py'), [
-    'import json, sys',
-    'if sys.argv[1] == "--print-pin": print(json.dumps({"url": "https://example.invalid/bootstrap.zip", "sha256": "' + sha + '"}))',
-    '',
-  ].join('\n'))
-  writeFileSync(join(root, 'scripts/source-build/retry-curl.sh'),
-    readFileSync(join(ROOT, 'scripts/source-build/retry-curl.sh')))
-  writeFileSync(join(root, 'download'), good)
-  const curl = [
-    '#!/bin/bash', 'set -eu', 'printf "download\\n" >> "$HOME/calls"',
-    'while [ "$#" -gt 0 ]; do if [ "$1" = "--output" ] || [ "$1" = "-o" ]; then output="$2"; break; fi; shift; done',
-    'if [ "' + '$' + '{INTERRUPT:-0}" = 1 ] && [ ! -f "$HOME/interrupted" ]; then printf partial > "$output"; touch "$HOME/interrupted"; exit 22; fi',
-    'cp "$HOME/download" "$output"', '',
-  ].join('\n')
-  writeFileSync(join(root, 'bin/curl'), curl)
-  chmodSync(join(root, 'bin/curl'), 0o755)
-  return join(root, '.deploy-tmp/source-build/bootstrap-arm64.zip')
-}
-for (const cached of ['valid', 'absent', 'wrong', 'truncated']) {
-  test('bootstrap ' + cached + ': only authenticated hits reuse', linux, () => fixture(root => {
-    const cache = prepare(root)
-    if (cached !== 'absent') writeFileSync(cache, cached === 'valid' ? good : Buffer.from(cached))
-    const r = bash(guard, root)
-    assert.equal(r.status, 0, r.stderr)
-    assert.deepEqual(readFileSync(cache), good)
-    assert.equal(existsSync(join(root, 'calls')), cached !== 'valid')
-    assert.ok(bootstrap.includes('python3 scripts/source-build/prepare-termux-bootstrap.py'))
-  }))
-}
-test('interrupted bootstrap download retries next invocation', linux, () => fixture(root => {
-  const cache = prepare(root)
-  assert.equal(bash(guard, root, { INTERRUPT: '1' }).status, 22)
-  assert.notDeepEqual(readFileSync(cache), good)
-  const r = bash(guard, root, { INTERRUPT: '1' })
-  assert.equal(r.status, 0, r.stderr)
-  assert.deepEqual(readFileSync(cache), good)
-  assert.equal(readFileSync(join(root, 'calls'), 'utf8').trim().split('\n').length, 2)
-}))
-test('bad downloaded bytes are rejected before bootstrap extraction', linux, () => fixture(root => {
-  const cache = prepare(root)
-  writeFileSync(join(root, 'download'), 'bad download')
-  assert.equal(bash(guard, root).status, 0)
-  const destination = join(root, 'extracted/usr')
-  const checked = spawnSync('/usr/bin/python3', [join(ROOT, 'scripts/source-build/prepare-termux-bootstrap.py'),
-    '--extract-bootstrap-only', cache, destination], {
-    encoding: 'utf8', timeout: 10000,
-    env: { PATH: '/usr/bin:/bin', HOME: root, TMPDIR: root, LC_ALL: 'C' },
-  })
-  assert.notEqual(checked.status, 0)
-  assert.ok((checked.stderr + checked.stdout).includes('SHA-256 mismatch'))
-  assert.equal(existsSync(destination), false)
-}))
 test('source reset restores inputs but preserves ignored dependencies', linux, () => fixture(root => {
   const source = join(root, '.deploy-tmp/deepseek-harness')
   mkdirSync(source, { recursive: true })
@@ -183,7 +123,7 @@ test('deploy cleanup is scoped and rejects empty workspace and linked parent', l
   assert.equal(bash(cleanup, root).status, 0)
   assert.equal(existsSync(join(root, '.deploy-tmp/engine-deploy')), false)
   assert.equal(readFileSync(join(root, '.deploy-tmp/sibling'), 'utf8'), 'keep')
-  assert.ok(harness.includes('git show "$GITHUB_SHA:scripts/snapshot-config/engine-overlay.json" > scripts/snapshot-config/engine-overlay.json'))
+  assert.ok(harness.includes('git show "$GITHUB_SHA:scripts/runtime-config/engine-overlay.json" > scripts/runtime-config/engine-overlay.json'))
   assert.notEqual(bash(cleanup, root, { GITHUB_WORKSPACE: '' }).status, 0)
   const other = join(root, 'other'); mkdirSync(other); writeFileSync(join(other, 'sentinel'), 'keep')
   rmSync(join(root, '.deploy-tmp'), { recursive: true }); symlinkSync(other, join(root, '.deploy-tmp'))

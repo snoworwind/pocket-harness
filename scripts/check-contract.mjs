@@ -591,7 +591,7 @@ function resolveSemver() {
   return null
 }
 
-const overlayPath = join(root, 'scripts', 'snapshot-config', 'engine-overlay.json')
+const overlayPath = join(root, 'scripts', 'runtime-config', 'engine-overlay.json')
 const runtimeOverrideIdx = argv.indexOf('--runtime')
 const runtimeOverride = runtimeOverrideIdx >= 0 ? String(argv[runtimeOverrideIdx + 1] ?? '') : null
 const semverImpl = resolveSemver()

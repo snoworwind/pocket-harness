@@ -7,7 +7,7 @@
  * the Kotlin tests observe" — not "this change touches the build system". Workflow and
  * generic `scripts/source-build/**` changes build artifacts but are never read by
  * `app/src/test` (enforced by `classify-changes.test.mjs`), so they stay `build` only.
- * Engine/termux/linux/plugin/app changes still set `apk`.
+ * Engine/linux/plugin/app changes still set `apk`.
  *
  * Usage:
  *   node scripts/ci/classify-changes.mjs --base <sha> --head <sha>
@@ -19,15 +19,14 @@ import { appendFileSync } from 'node:fs'
 import { posix } from 'node:path'
 
 const DOC_RE = /^(?:docs\/|README(?:\.[^/]*)?$|AGENTS\.md$|LICENSE(?:\..*)?$|THIRD_PARTY_NOTICES\.md$|\.github\/ISSUE_TEMPLATE\/)/
-const ENGINE_RE = /^(?:scripts\/contract\.json|scripts\/snapshot-config\/engine-overlay(?:-licenses)?\.json|scripts\/patches\/|scripts\/source-build\/(?:export-dsh-engine|inject-dsh-engine-packages|prepare-harness-vendor-overrides|reconcile-harness-vendor-lock|prune-harness-preview|materialize-dsh-pnpm-packages|build-engine)\.)/
-const TERMUX_RE = /^(?:scripts\/snapshot-config\/preinstall\.json|scripts\/source-build\/(?:prepare-termux-bootstrap|prepare-termux-signed-repo|build-node-pty-android)\.|scripts\/contract\.json$)/
-const LINUX_RE = /^(?:scripts\/check-vendored-linux-bootstrap\.mjs$|scripts\/source-build\/(?:linux-|build-linux-assets|package-linux-assets|prepare-linux-snapshot-bundle|check-linux-sources|prepare-proot-backend|prepare-termux-signed-repo|ensure-no-rootfs-mounts|verify-linux-native-apk)|scripts\/source-build\/linux-inputs\.json|scripts\/source-build\/linux-source-manifest\.json|vendor\/linux-proot\/|vendor\/dsh-linux-runtime\/|plugins\/dsh-android-linux-env\/|plugins\/dsh-linux-bootstrap\/|app\/src\/main\/java\/com\/snoworwind\/pocketharness\/LinuxAsset)/
-const PLUGIN_RE = /^(?:plugins\/|dsh-shell-termux\/|dsh-client-ui-responsive\/|dsh-host-web-compat\/|vendor\/dshmarketplace-plugin\/|vendor\/dsh-undo-savepoint\/)/
-const APP_RE = /^(?:app\/|gradle\/|build\.gradle(?:\.kts)?$|settings\.gradle(?:\.kts)?$|gradle\.properties$|gradlew(?:\.bat)?$|scripts\/build-apk|scripts\/build-snapshot|scripts\/inject-all\.py|scripts\/profile-web\.cordis\.patch\.yml|scripts\/snapshot-config\/)/
+const ENGINE_RE = /^(?:scripts\/contract\.json|scripts\/runtime-config\/engine-overlay(?:-licenses)?\.json|scripts\/patches\/|scripts\/source-build\/(?:export-dsh-engine|inject-dsh-engine-packages|prepare-harness-vendor-overrides|reconcile-harness-vendor-lock|prune-harness-preview|materialize-dsh-pnpm-packages|build-engine)\.)/
+const LINUX_RE = /^(?:scripts\/runtime-config\/preinstall\.json$|scripts\/check-vendored-linux-bootstrap\.mjs$|scripts\/source-build\/(?:linux-|build-linux-assets|build-linux-payload|build-linux-apk|package-linux-product-assets|verify-linux-payload|inject-linux-home|seed-linux-home|check-linux-engine|check-linux-ci|package-linux-assets|prepare-linux-snapshot-bundle|check-linux-sources|prepare-proot-backend|ensure-no-rootfs-mounts|verify-linux-native-apk)|scripts\/source-build\/linux-inputs\.json|scripts\/source-build\/linux-source-manifest\.json|vendor\/linux-proot\/|vendor\/dsh-linux-runtime\/|plugins\/dsh-android-linux-env\/|plugins\/dsh-linux-bootstrap\/|app\/src\/main\/java\/com\/snoworwind\/pocketharness\/LinuxAsset)/
+const PLUGIN_RE = /^(?:plugins\/|dsh-shell-linux\/|dsh-client-ui-responsive\/|dsh-host-web-compat\/|vendor\/dshmarketplace-plugin\/|vendor\/dsh-undo-savepoint\/)/
+const APP_RE = /^(?:app\/|gradle\/|build\.gradle(?:\.kts)?$|settings\.gradle(?:\.kts)?$|gradle\.properties$|gradlew(?:\.bat)?$|scripts\/build-apk|scripts\/build-snapshot|scripts\/inject-all\.py|scripts\/profile-web\.cordis\.patch\.yml|scripts\/runtime-config\/)/
 const GATE_RE = /^scripts\/check-/
 const BUILD_RE = /^(?:\.github\/|scripts\/ci\/|scripts\/source-build\/)/
 
-const FLAGS = ['engine', 'termux', 'linux', 'plugins', 'app', 'build', 'gates']
+const FLAGS = ['engine', 'linux', 'plugins', 'app', 'build', 'gates']
 
 /** Normalize a path to POSIX form without a leading `./`. */
 export function normalizePath(file) {
@@ -40,14 +39,13 @@ export function classifyPath(file) {
   if (!path || path === '.') return null
   if (DOC_RE.test(path)) return { docs: true }
   const flags = {}
-  // engine first; preinstall/contract also affect termux/app downstream.
+  // engine first; preinstall/contract also affect Linux/app downstream.
   if (ENGINE_RE.test(path)) flags.engine = true
-  if (TERMUX_RE.test(path)) flags.termux = true
   if (LINUX_RE.test(path)) flags.linux = true
   if (PLUGIN_RE.test(path)) flags.plugins = true
   if (APP_RE.test(path)) flags.app = true
   if (GATE_RE.test(path)) flags.gates = true
-  if (BUILD_RE.test(path) && !flags.engine && !flags.termux && !flags.linux) flags.build = true
+  if (BUILD_RE.test(path) && !flags.engine && !flags.linux) flags.build = true
   return Object.keys(flags).length > 0 ? flags : null
 }
 
@@ -80,7 +78,7 @@ export function classifyPaths(files) {
   // directly (all covered by engine/app above). Keeping `build` out of `apk` stops a
   // workflow-only tweak from paying for a full Kotlin compile; every gate in the static
   // job still runs, so build-system changes remain covered.
-  out.apk = out.engine || out.termux || out.linux || out.plugins || out.app
+  out.apk = out.engine || out.linux || out.plugins || out.app
   return out
 }
 

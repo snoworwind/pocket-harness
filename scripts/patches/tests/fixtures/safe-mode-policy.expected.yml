@@ -1,6 +1,6 @@
 - insert:
     - id: mobile-hard
-      name: '@dsh-android/dsh-shell-termux'
+      name: '@dsh-android/dsh-shell-linux'
       config:
         keepUnknown: true
     - id: upstream-hard

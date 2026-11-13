@@ -514,33 +514,35 @@ object UndoGate {
     args: List<String>,
   ): List<String> {
     return try {
-      val cmd = listOf(
-        engine.usrDir.absolutePath + "/bin/node",
-        cli.absolutePath,
-      ) + args
-      // #118 根因2（2026-09）：直接 exec app-data ELF 在 Android 15+ 恒 Permission denied
-      // （error=13），auto-undo 因此从未真正执行。与 EngineManager.startWithArgs 同款：
-      // 捕获 Permission denied 后降级经 /system/bin/linker64 加载（系统库加载机制对
-      // app 数据永远放行）。
-      fun build(argv: List<String>): ProcessBuilder = ProcessBuilder(argv).apply {
-        environment().putAll(engine.shellEnv())
-        environment()["DSH_HOME"] = dsh.absolutePath
-        environment()["DSH_UNDO_ROOT"] = File(dsh, "undo-snapshots").absolutePath
-        environment()["DSH_UNDO_PROFILE"] = "web"
-        // 2026-08-23 真机实测：快照 node 编译期 openssl.cnf 路径为 /data/data/com.termux/...（不可读），
-        // 缺失该覆盖时 Node 启动致命退出（OpenSSL config error）→ CLI 无输出 → 误判「无快照可回滚」，
-        // 自动回退从未执行。显式指向快照内真实 cnf（与 shellEnv 的 SSL_CERT_FILE 同域）。
-        environment()["OPENSSL_CONF"] = File(engine.usrDir, "etc/tls/openssl.cnf").absolutePath
-        redirectErrorStream(true)
+      // 急救 CLI 是纯 Node 脚本（只用 node: 内置模块），放进客体执行即可；
+      // 宿主文件系统按原路径 bind 进 PRoot，DSH_HOME/UNDO_ROOT 仍是同一批路径。
+      val spec = when (
+        val built = LinuxGuestBoot.command(
+          paths = LinuxGuestBoot.Paths(
+            filesDir = context.filesDir,
+            nativeLibraryDir = File(context.applicationInfo.nativeLibraryDir),
+            homeDir = engine.homeDir,
+            port = 0,
+          ),
+          command = listOf("NODE", cli.absolutePath) + args,
+          guestEnv = mapOf(
+            "DSH_HOME" to dsh.absolutePath,
+            "DSH_UNDO_ROOT" to File(dsh, "undo-snapshots").absolutePath,
+            "DSH_UNDO_PROFILE" to "web",
+          ),
+        )
+      ) {
+        is LinuxGuestBoot.Result.Ready -> built.launch
+        is LinuxGuestBoot.Result.Refused -> {
+          Log.e(TAG, "emergency CLI unavailable: " + built.code + " " + built.detail)
+          return listOf("emergency CLI unavailable: " + built.code)
+        }
       }
-      var proc: Process
-      try {
-        proc = build(cmd).start()
-      } catch (e: java.io.IOException) {
-        if (e.message?.contains("Permission denied") != true) throw e
-        Log.w(TAG, "direct exec denied, falling back to linker64: " + e.message)
-        proc = build(listOf("/system/bin/linker64") + cmd).start()
-      }
+      val proc: Process = ProcessBuilder(spec.argv).also { builder ->
+        builder.environment().putAll(spec.env)
+        builder.redirectErrorStream(true)
+        if (spec.workingDirectory.isDirectory) builder.directory(spec.workingDirectory)
+      }.start()
       // 0.13.8 #173：有界读——CLI 挂起曾令 60s 守卫失效，且 execute 的 autoUndoRunning
       // 只在 finally 复位 → 恒「已在执行」，连看门狗 DEAD 支的强制重启都被锁死。
       // 超时分支显式复位标志与 arm 文件（幂等，防御未来再引入无界读）。

@@ -1,6 +1,6 @@
 import { spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { test } from 'node:test'
@@ -140,5 +140,24 @@ test('hard manifest refuses a product insert that lacks exact id identity', () =
     const run = spawnSync(process.execPath, [generator, '--snapshot', f.archive, '--out', f.output], { encoding: 'utf8' })
     assert.notEqual(run.status, 0)
     assert.match(run.stderr, /no exact id/)
+  } finally { rmSync(f.dir, { recursive: true, force: true }) }
+})
+
+test('Linux directory composition produces the same ownership identities and rejects missing bundles', () => {
+  const f = fixture("- insert:\n  - id: local-linux\n    name: local-hard\n")
+  try {
+    const tree = join(f.dir, 'tree')
+    mkdirSync(tree)
+    const unpack = spawnSync('tar', ['-xf', f.archive, '-C', tree], { encoding: 'utf8' })
+    assert.equal(unpack.status, 0, unpack.stderr)
+    const run = spawnSync(process.execPath, [generator, '--tree', tree, '--out', f.output], { encoding: 'utf8' })
+    assert.equal(run.status, 0, run.stderr)
+    const directory = JSON.parse(readFileSync(f.output, 'utf8'))
+    const archived = spawnSync(process.execPath, [generator, '--snapshot', f.archive, '--out', f.output], { encoding: 'utf8' })
+    assert.equal(archived.status, 0, archived.stderr)
+    const archive = JSON.parse(readFileSync(f.output, 'utf8'))
+    for (const key of ['entries', 'profileEntries', 'factoryBundles', 'names']) assert.deepEqual(directory[key], archive[key])
+    rmSync(join(tree, 'usr/lib/node_modules/@deepseek-ai/dsh/node_modules/@vendor/factory/package.json'))
+    assert.notEqual(spawnSync(process.execPath, [generator, '--tree', tree, '--out', f.output]).status, 0)
   } finally { rmSync(f.dir, { recursive: true, force: true }) }
 })

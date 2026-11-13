@@ -1,4 +1,5 @@
 """Package verified source-built Linux assets and an offline manifest; no network."""
+import base64
 import hashlib
 import json
 import os
@@ -51,6 +52,27 @@ def package_assets(work, epoch):
     shutil.copytree(original / 'bin', node / 'bin', symlinks=True)
     shutil.copytree(original / 'lib/node_modules', node / 'lib/node_modules', symlinks=True)
     shutil.copyfile(original / 'LICENSE', node / 'LICENSE')
+
+    pnpm_archive = work / 'input/pnpm.tgz'
+    with pnpm_archive.open('rb') as stream:
+        integrity = 'sha512-' + base64.b64encode(hashlib.file_digest(stream, 'sha512').digest()).decode()
+    if integrity != inputs['pnpm']['integrity']:
+        raise ValueError('pinned pnpm archive integrity mismatch')
+    pnpm = node / 'lib/node_modules/pnpm'
+    pnpm.mkdir()
+    with tarfile.open(pnpm_archive, 'r:gz') as archive:
+        for member in archive:
+            if not member.name.startswith('package/'):
+                raise ValueError('unexpected pnpm archive path')
+            member.name = member.name.removeprefix('package/')
+            if member.name:
+                archive.extract(member, pnpm, filter='data')
+    package = json.loads((pnpm / 'package.json').read_text())
+    if package.get('name') != 'pnpm' or package.get('version') != inputs['pnpm']['version']:
+        raise ValueError('pnpm package identity mismatch')
+    for name in ('pnpm', 'pnpx'):
+        (node / 'bin' / name).unlink(missing_ok=True)
+        (node / 'bin' / name).symlink_to(f'../lib/node_modules/pnpm/bin/{name}.cjs')
 
     def pack(directory, name):
         subprocess.run(['tar', '--sort=name', f'--mtime=@{int(epoch)}', '--owner=0', '--group=0', '--numeric-owner',

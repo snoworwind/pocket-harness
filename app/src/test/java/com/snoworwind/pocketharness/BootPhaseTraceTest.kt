@@ -49,7 +49,7 @@ class BootPhaseTraceTest {
     val names = listOf(
       BootPhaseTrace.ON_CREATE,
       BootPhaseTrace.WEBVIEW_CONSTRUCT,
-      BootPhaseTrace.SNAPSHOT_EXTRACT,
+      BootPhaseTrace.LINUX_PREPARE,
       BootPhaseTrace.LOADER_SETTLE,
     )
     assertEquals(names.size, names.toSet().size)
@@ -66,7 +66,7 @@ class BootPhaseTraceTest {
     assertTrue(activity.contains("BootPhaseTrace.markBootBase(this)"))
     assertTrue(activity.contains("BootPhaseTrace.WEBVIEW_CONSTRUCT"))
     assertTrue(activity.contains("BootPhaseTrace.ON_CREATE"))
-    assertTrue(engine.contains("BootPhaseTrace.SNAPSHOT_EXTRACT"))
+    assertTrue(engine.contains("BootPhaseTrace.LINUX_PREPARE"))
     assertTrue(collector.contains("BootPhaseTrace.LOADER_SETTLE"))
     assertTrue(collector.contains("seen.length + text.length - MAX_ENGINE_CHUNK"))
   }

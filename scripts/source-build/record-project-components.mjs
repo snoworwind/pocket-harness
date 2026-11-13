@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
+import { mkdirSync, realpathSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { isDeepStrictEqual } from 'node:util'
 
-const COMPONENTS = ['dsh-shell-termux', 'dsh-client-ui-responsive', 'dsh-host-web-compat']
+const COMPONENTS = ['dsh-shell-linux', 'dsh-client-ui-responsive', 'dsh-host-web-compat']
 const sha256 = bytes => createHash('sha256').update(bytes).digest('hex')
 const git = (root, ...args) => execFileSync('git', ['-C', root, ...args], { maxBuffer: 32 * 1024 * 1024 })
 
@@ -70,7 +70,7 @@ export function captureProjectInputs(root, commit, sourceRepository = resolveSou
     report.components[directory] = component
   }
   const cordisKey = '@deepseek-ai/cordis'
-  const overlay = JSON.parse(readFileSync(join(root, 'scripts/snapshot-config/engine-overlay.json'), 'utf8'))
+  const overlay = JSON.parse(readFileSync(join(root, 'scripts/runtime-config/engine-overlay.json'), 'utf8'))
   const host = JSON.parse(readFileSync(join(root, 'dsh-host-web-compat/package.json'), 'utf8'))
   if (!overlay.packages?.[cordisKey] || host.dependencies?.[cordisKey] !== overlay.packages[cordisKey]) throw new Error('host-web-compat Cordis dependency differs from engine overlay')
   return report
@@ -123,7 +123,7 @@ export function captureProjectOutputs(root, commit, inputs) {
   return report
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (process.argv[1] && realpathSync(resolve(process.argv[1])) === realpathSync(fileURLToPath(import.meta.url))) {
   const [mode, output] = process.argv.slice(2)
   if (!['inputs', 'outputs'].includes(mode) || !output || process.argv.length !== 4) throw new Error('usage: record-project-components.mjs <inputs|outputs> <report.json>')
   const root = process.cwd()

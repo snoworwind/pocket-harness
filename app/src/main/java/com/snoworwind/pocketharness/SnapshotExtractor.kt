@@ -126,6 +126,7 @@ object SnapshotExtractor {
     onProgress: (Long, Long) -> Unit,
     runtimeRoot: File = dest,
     limits: Limits = Limits.DEFAULT,
+    guestLinks: Boolean = false,
   ) {
     // D-3（0.14.7 / task-9）：tar/xz 必须在**任何**退出路径上关闭。
     // 旧实现把 `tar.close()` 放在函数体末尾（无 try/finally）：中途抛异常（超限判据、路径解算失败、
@@ -137,7 +138,7 @@ object SnapshotExtractor {
     val tar = TarArchiveInputStream(xz)
     var primary: Throwable? = null
     try {
-      extractEntries(tar, dest, totalBytes, onProgress, runtimeRoot, limits)
+      extractEntries(tar, dest, totalBytes, onProgress, runtimeRoot, limits, guestLinks)
     } catch (t: Throwable) {
       primary = t
       throw t
@@ -171,6 +172,7 @@ object SnapshotExtractor {
     onProgress: (Long, Long) -> Unit,
     runtimeRoot: File,
     limits: Limits,
+    guestLinks: Boolean = false,
   ) {
     val destCanon = dest.canonicalPath
     val runtimeCanon = try {
@@ -178,6 +180,7 @@ object SnapshotExtractor {
     } catch (_: Exception) {
       destCanon
     }
+    val hardlinks = mutableListOf<Pair<File, String>>()
     var done = 0L
     var entries = 0
     var entry: TarArchiveEntry? = tar.nextEntry
@@ -206,10 +209,17 @@ object SnapshotExtractor {
       }
       when {
         entry.isDirectory -> target.mkdirs()
+        entry.isLink -> {
+          val source = java.nio.file.Paths.get(entry.linkName)
+          if (source.isAbsolute || source.any { it.toString() == ".." }) throw IOException("unsafe hardlink")
+          hardlinks.add(target to entry.linkName)
+        }
         entry.isSymbolicLink -> {
           target.parentFile?.mkdirs()
           val linkPath = java.nio.file.Paths.get(entry.linkName)
-          if (!isLinkTargetAllowed(entry.linkName, target.parentFile, destCanon, runtimeCanon)) {
+          // 客体 rootfs 的绝对链接（/bin/sh -> /usr/bin/dash）在宿主看来指向不存在的位置，
+          // 它们只在该客体的命名空间里成立；归档是固定摘要的可信输入，这里按原文保留。
+          if (!guestLinks && !isLinkTargetAllowed(entry.linkName, target.parentFile, destCanon, runtimeCanon)) {
             Log.w("dsh-snap", "skipping unsafe symlink: " + entry.name + " -> " + entry.linkName)
             entry = tar.nextEntry
             continue
@@ -253,6 +263,54 @@ object SnapshotExtractor {
       if (done % (1024 * 1024) < entry.size) onProgress(done, totalBytes)
       entry = tar.nextEntry
     }
+    while (hardlinks.isNotEmpty()) {
+      var resolved = 0
+      val iterator = hardlinks.iterator()
+      while (iterator.hasNext()) {
+        val (target, name) = iterator.next()
+        val source = File(dest, name)
+        val sourcePath = source.canonicalPath
+        if (!sourcePath.startsWith(destCanon + File.separator) || java.nio.file.Files.isSymbolicLink(source.toPath())) throw IOException("escaping hardlink")
+        if (!source.isFile) continue
+        target.parentFile?.mkdirs()
+        if (!target.canonicalPath.startsWith(destCanon + File.separator)) throw IOException("escaping hardlink destination")
+        java.nio.file.Files.deleteIfExists(target.toPath())
+        linkOrCopy(target, source)
+        iterator.remove(); resolved++
+      }
+      if (resolved == 0) throw IOException("missing or cyclic hardlink target")
+    }
+  }
+
+
+  /**
+   * Materialize a tar hard link, falling back to an exact byte copy when the platform
+   * refuses to create links. Android SELinux denies `link` inside app data (measured on
+   * API 36 with the Debian rootfs perl hard links: `avc: denied { link }`), and the
+   * exception message exposes only the two paths, without a portable errno. The archive
+   * and extracted-tree digests already authenticated the bytes, so a copy preserves the
+   * product contract; re-running extraction on another platform still links when allowed.
+   */
+  internal fun linkOrCopy(
+    target: File,
+    source: File,
+    linker: (java.nio.file.Path, java.nio.file.Path) -> Unit = { to, from -> java.nio.file.Files.createLink(to, from) },
+  ) {
+    try {
+      linker(target.toPath(), source.toPath())
+      return
+    } catch (unsupported: UnsupportedOperationException) {
+      // Fall through to the copy path.
+    } catch (error: IOException) {
+      // Fall through to the copy path; a genuine copy failure is reported below.
+    }
+    target.parentFile?.mkdirs()
+    java.nio.file.Files.deleteIfExists(target.toPath())
+    source.inputStream().use { input -> target.outputStream().use { output -> input.copyTo(output, 64 * 1024) } }
+    target.setReadable(false, false)
+    target.setReadable(true, true)
+    target.setWritable(true, true)
+    target.setExecutable(source.canExecute(), true)
   }
 
   /**

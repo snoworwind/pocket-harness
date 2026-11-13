@@ -26,9 +26,9 @@ export const FACTORY_BASELINE_SENTINEL = '<!-- dsh-mobile-factory-baseline -->'
 export const REQUIRED_SNIPPETS = [
   { snippet: FACTORY_BASELINE_SENTINEL, why: '出厂标记：Shell 侧靠它判断这个文件是不是工厂件（旧版工厂件不得被当成用户笔记迁移）' },
   { snippet: '本文件随安装包发布', why: '必须声明自己是工厂件（升级替换），否则用户会把它当长期配置来改' },
-  { snippet: '$PREFIX', why: '必须点名出厂运行时目录，这是「绝不写入」红线的对象' },
+  { snippet: '/opt/node', why: '必须点名 APK 管理的 Node 目录，用户包不应写入受管资产' },
   { snippet: '$HOME', why: '必须点名用户面目录，否则没有可写的对照面' },
-  { snippet: 'linker64', why: 'node 不能派生子进程这条判据的具体形态' },
+  { snippet: '/opt/dsh', why: '必须点名主客体引擎目录，避免沿用旧 Android linker 启动假设' },
   { snippet: '.nomedia', why: '共享存储媒体索引的规避手段' },
   { snippet: '~/.agents/AGENTS.md', why: '必须给出「用户自己的全局约定写哪里」，否则用户只能改工厂件' },
   { snippet: 'AGENTS.local.md', why: '必须给出项目级个人覆盖的位置' },

@@ -1,7 +1,7 @@
 # @dsh-android/linux-runtime
 
 The experimental Linux capability plugin installs and runs a Debian/glibc
-rootfs through the Termux PRoot binary and owns the Agent-facing `linux_bash`
+rootfs through a source-built Android PRoot backend and owns the Agent-facing `linux_bash`
 tool. It is packaged into the APK's ARM64 Termux snapshot by the source-build
 workflow. Its inputs are pinned and verified before use; Android device
 acceptance is still pending, so this package is not enabled by default.
@@ -29,10 +29,10 @@ timeout state, cwd, runtime id and architecture. There is no fallback to the
 Termux host shell. The Agent sees this through `linux_bash` only after the
 runtime health check passes.
 
-On Android, the PRoot launcher, static loader and dependencies are duplicated
-from verified Termux packages into APK `nativeLibraryDir`, where Android can
-load app native libraries. The same package files are also kept in the runtime
-archive for source-side integrity checks and non-Android tests. The APK build
+On Android, the PRoot launcher, static loader and dependencies are built from
+pinned source archives with the official Android NDK and packaged into APK
+`nativeLibraryDir`. The same built binaries are also kept in the runtime archive
+for source-side integrity checks and non-Android tests. The APK build
 checks ELF shape and then compares each native library and license file in the
 APK byte-for-byte with the verified build inputs.
 
@@ -87,15 +87,19 @@ package-manager behavior, DNS on every network, or multi-level guest
 
 The PRoot package closure and Debian rootfs inputs are pinned in
 `scripts/source-build/linux-inputs.json` and
-`scripts/source-build/linux-backend-packages.json`. Termux's signed `InRelease`
-authenticates its ARM64 package index; the builder independently verifies the
-index and each `.deb` against that signature before extracting files. Source
-archives, package copyright files, local ELF changes, native libraries and APK
-payload digests are recorded in the build provenance.
+`scripts/source-build/linux-backend-packages.json`. The experimental backend
+uses original source archive digests, replayed source patches, a fixed NDK,
+GNU awk, compiler identities and exact native byte checks. It does not consume
+Termux binary packages or bootstrap keys. Schema 2 provenance retains original
+archives, source licenses and build receipts; historical schema 1 package
+provenance remains separately recognizable. The PRoot source fork is still
+termux/proot, not an unmodified upstream PRoot release. Guest Debian and Node
+inputs are not yet all rebuilt from source. See
+`docs/AGENTS/PROOT-SOURCE-BUILD.md` for the recipe and validation boundaries.
 
 The PRoot executable is GPL-2.0; the closure also includes `libtalloc`
-(LGPL-3.0-or-later) and `libandroid-shmem` (BSD-3-Clause). Their package
-copyright files and applicable full license texts ship with the APK. The
+(LGPL-3.0-or-later) and `libandroid-shmem` (BSD-3-Clause). Their source
+license files and applicable full license texts ship with the APK. The
 compatibility preload is adapted from TermFold under Apache-2.0; its source,
 upstream attribution, NOTICE and complete license are included in the APK. See
 `THIRD_PARTY_NOTICES.md` and `docs/AGENTS/gpl-compliance.md` for the

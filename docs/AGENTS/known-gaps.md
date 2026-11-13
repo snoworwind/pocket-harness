@@ -13,7 +13,7 @@
 
 - 2026-10-20：继续比较上游源码后新增悬浮服务退出候选：本仓 OverlayService 缺少上游 #443 的服务自停/非粘性策略，现有 EngineService 的收尾不覆盖其未启动场景；实际任务划除复活仍待本仓设备复现。输入清空/回执与虚拟屏弹层差异也已细化反例。证据和静态推导见 [第二轮源码复核](UPSTREAM-SOURCE-REVIEW-2026-10-20.md)，实施依赖见 [吸收计划](UPSTREAM-ABSORPTION-PLAN-2026-10-20.md)。**本轮仅文档，未修复、未构建 APK、未做设备验证，不构成候选通过。**
 
-- 2026-10-22：Android `dsh-shell-termux` 尚无真实路径级执行围栏；源码现对 `read-only`/`workspace-write` 在 spawn 前 fail-closed，并要求每次会话策略显式选择 `danger-full-access` 才启动 bash。该档仍以应用 UID 运行，app-domain 不是工作区隔离；独立 UID/Landlock、秘密隔离与设备行为仍未验收。详见 [dsh-shell-termux 沙箱边界审计](SHELL-TERMUX-SANDBOX-AUDIT-2026-10-19.md)。本轮有宿主代码回归，**未构建 APK、未做设备验证**。
+- 2026-10-22：Android `dsh-shell-linux` 尚无真实路径级执行围栏；源码现对 `read-only`/`workspace-write` 在 spawn 前 fail-closed，并要求每次会话策略显式选择 `danger-full-access` 才启动 bash。该档仍以应用 UID 运行，app-domain 不是工作区隔离；独立 UID/Landlock、秘密隔离与设备行为仍未验收。详见 [dsh-shell-linux 沙箱边界审计](SHELL-TERMUX-SANDBOX-AUDIT-2026-10-19.md)。本轮有宿主代码回归，**未构建 APK、未做设备验证**。
 
 - 2026-10-22：能力组撤销/解锁的持久化失败语义已在源码修复：写入失败不再返回成功，撤销仍立即锁住当前会话并提示旧磁盘授权在重启后可能恢复；只有原子写成功才承诺跨重启状态。源码反例与落盘/rename 失败用例通过；[PR #97](https://github.com/snoworwind/pocket-harness/pull/97) 已合入 main。该轮未构建 APK、未做设备验证，持久化失败恢复路径仍需随当前候选补设备证据。实现见 [能力持久化坑位](gotchas.md#498-能力组撤销与解锁必须等待持久状态写入成功)；这不等于写入失败时能清除旧授权。
 
@@ -191,3 +191,31 @@
 ## 已收口事项的历史详档
 
 Engine base 复用的实现与阶段证据保留在 [ENGINE-BASE-2026-10-19.md](ENGINE-BASE-2026-10-19.md)；该文档记录 2026-10-19/20 的构建阶段，不作为当前阻塞清单。版本发布与设备验收范围以本页顶部链接和 [版本历史](changelog-archive.md) 为准。
+
+## 原生宿主可执行载荷迁移
+
+main 目标为免 Root、无 Termux 的完整 Linux/glibc 用户空间，允许 PRoot；用户明确禁止
+合并 main 和发布。当前源码已将主引擎、控制台、终端、Python/Undo 命令切到客体合同，
+宿主 PRoot/loader/talloc/shmem 自编译，客体组件使用 Debian apt/npm 固定包。
+`38f8a9a2` 的完整本地来源链已按用户要求停止，修复后尚未重新出包；最终 APK 无快照、首装客体启动、
+重启不重铺 rootfs 及 apt 用户包持久化仍未验收。旧快照刷新/事务/运行时树自愈与 Python 快照迁移代码
+已从主源码删除，测试改为 Linux 实例与升级事务矩阵；`linux-inputs.json` 的旧客体编译 pin 已移除。
+阶段与判据见
+[原生迁移账本](NATIVE-RUNTIME-MIGRATION.md)；宿主构建边界见
+[PRoot 源码构建](PROOT-SOURCE-BUILD.md)。
+
+### ARM64 设备验证缺口（2026-11-12，Android 16 API 36 AVD）
+
+- 首个真机链路缺陷已修：首装时原生 PRoot 探测的 cwd 不存在会误报 `ENOENT`，见坑位 679；
+  修复后 Linux 环境可安装，health 探针在 PRoot 里跑通共享 glibc Node（`v24.22.0`）。
+- **工具注册与重启恢复定向验证已通过**：来源提交 `186c7d55` 的 ARM64 APK
+  （SHA-256 `61d7eef579933e4e5937c5b8e3594f1cf3f7ab5ea9f6c000e23f5d5da2b386e0`）
+  在 Android 16 API 36 ARM64 AVD（host GPU）卸载旧版后安装，Linux 首装健康。
+  实际模型会话记录 4 次成功的 `linux_bash` 调用；首次生成并回读 Debian 13/glibc 2.41/
+  Node v24.22.0 报告，应用重启后自动恢复同一 runtime 实例，回读文件的 908 字节与
+  SHA-256 均保持一致。schema 与恢复修复原因见坑位 680、681；命令、原始日志、截图与
+  独立文件核验见 `.deploy-tmp/native-runtime-p0/resume-validation.md`。
+  这是单台 AVD 的定向实验验证；未覆盖 ARM64 真机、横屏、x86_64、更新/重装/卸载、
+  apt/dpkg、原生扩展与编译产物执行，不能据此称完整 Linux 迁移或正式发布验收完成。
+- **重复安装的错误回执仍待改善**：`install` 在已安装时直接报错且不写 `lastError`，
+  路由层只回 `linux-operation-failed`；上述重激活修复不覆盖此错误回执。

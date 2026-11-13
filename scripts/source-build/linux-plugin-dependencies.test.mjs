@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 const read = (path) => JSON.parse(readFileSync(new URL(path, import.meta.url), 'utf8'))
-const overlay = read('../snapshot-config/engine-overlay.json')
+const overlay = read('../runtime-config/engine-overlay.json')
 const lock = read('../../plugins/dsh-android-linux-env/package-lock.json')
 function closure(pins, name, seen = new Set()) {
   if (seen.has(name)) return

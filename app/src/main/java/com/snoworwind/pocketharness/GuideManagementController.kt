@@ -148,7 +148,7 @@ internal class GuideManagementController(
     body.addView(label("存储管理", 24f))
     val data = activity.engineManager.dshDataDir
     val stats = StatFs(activity.filesDir.absolutePath)
-    body.addView(label("公共导出目录\n${data.absolutePath}\n\n应用私有数据\n${activity.engineManager.homeDir.absolutePath}\n\n应用私有运行时\n${activity.engineManager.usrDir.absolutePath}\n\n可用空间：${android.text.format.Formatter.formatFileSize(activity, stats.availableBytes)}", 14f))
+    body.addView(label("公共导出目录\n${data.absolutePath}\n\n应用私有数据\n${activity.engineManager.homeDir.absolutePath}\n\n应用私有运行时\n${java.io.File(activity.filesDir, "linux").absolutePath}\n\n可用空间：${android.text.format.Formatter.formatFileSize(activity, stats.availableBytes)}", 14f))
     body.addView(label("引擎在应用私有目录运行，无需公共存储授权。访问公共工作目录时才需要额外授权。此页不会清理工作区、插件配置或对话。", 14f))
     body.addView(Button(activity).apply {
       text = "复制公共导出目录"
@@ -169,6 +169,50 @@ internal class GuideManagementController(
         activity.provisionPublicRepoAndRefreshChip(PublicRepoProvision.TRIGGER_ON_RESUME)
         android.widget.Toast.makeText(activity, "正在检查公共目录，结果见下方状态", 0).show()
         postDelayed({ if (destination == "storage") showStorage() }, 1000)
+      }
+    })
+    body.addView(Button(activity).apply {
+      text = "导出 Linux 数据备份"
+      setOnClickListener {
+        activity.userClosedEngine = true
+        EngineService.setUserShutdown(activity, true)
+        activity.engineFlow.stopMonitoring()
+        Thread {
+          val stopped = activity.engineManager.stopOwnedEngine()
+          activity.runOnUiThread {
+            if (stopped) activity.startActivity(Intent(activity, LinuxBackupActivity::class.java))
+            else android.widget.Toast.makeText(activity, "无法停止引擎，请先关闭运行中的任务。", 1).show()
+          }
+        }.start()
+      }
+    })
+    body.addView(Button(activity).apply {
+      text = "重置 Linux 环境"
+      setOnClickListener {
+        android.app.AlertDialog.Builder(activity)
+          .setTitle("重置 Linux 环境？")
+          .setMessage(LinuxInstanceInstaller.RESET_WARNING + "\n请先关闭所有终端和控制台。")
+          .setNegativeButton("取消", null)
+          .setPositiveButton("确认删除 Linux 软件并重置") { _, _ ->
+            activity.userClosedEngine = true
+            EngineService.setUserShutdown(activity, true)
+            activity.engineFlow.stopMonitoring()
+            Thread {
+              val stopped = activity.engineManager.stopOwnedEngine()
+              val result = LinuxInstanceInstaller.reset(
+                activity, activity.filesDir, LinuxInstanceInstaller.RESET_CONFIRMATION, stopped,
+              )
+              activity.runOnUiThread {
+                if (activity.isFinishing || activity.isDestroyed) return@runOnUiThread
+                val message = when (result) {
+                  is LinuxInstanceInstaller.Result.Ready -> "Linux 环境已重置；点击启动引擎继续。"
+                  is LinuxInstanceInstaller.Result.Failed -> result.detail
+                }
+                android.app.AlertDialog.Builder(activity).setTitle("Linux 环境").setMessage(message)
+                  .setPositiveButton("知道了", null).show()
+              }
+            }.start()
+          }.show()
       }
     })
     val status = chrome.storageChip

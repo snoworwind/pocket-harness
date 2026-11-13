@@ -1,3 +1,4 @@
+import base64
 import hashlib
 import importlib.util
 import io
@@ -32,6 +33,12 @@ class PackageLinuxAssetsTest(unittest.TestCase):
             'bin/node': 'fixture Node bytes, not a native runtime', 'lib/node_modules/npm/index.js': 'fixture npm', 'LICENSE': 'fixture license'}.items()})
         with node.open('rb') as stream:
             self.inputs['nodeSha256'] = hashlib.sha256(stream.read()).hexdigest()
+        pnpm = self.work / 'input/pnpm.tgz'
+        with tarfile.open(pnpm, 'w:gz') as archive:
+            for name, text in {'package.json': json.dumps({'name': 'pnpm', 'version': self.inputs['pnpm']['version']}), 'bin/pnpm.cjs': '#!/usr/bin/env node\n', 'bin/pnpx.cjs': '#!/usr/bin/env node\n'}.items():
+                data = text.encode(); item = tarfile.TarInfo('package/' + name); item.size = len(data)
+                archive.addfile(item, io.BytesIO(data))
+        self.inputs['pnpm']['integrity'] = 'sha512-' + base64.b64encode(hashlib.sha512(pnpm.read_bytes()).digest()).decode()
         self.put('scripts/source-build/linux-inputs.json', json.dumps(self.inputs))
         for package in ['linux-runtime', 'linux-bootstrap']:
             directory = 'vendor/dsh-linux-runtime' if package == 'linux-runtime' else 'plugins/dsh-linux-bootstrap'

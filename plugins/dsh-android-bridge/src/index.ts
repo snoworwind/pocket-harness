@@ -9,7 +9,7 @@
  *  - 审计：每次提权操作写 files/audit/ 换行分隔 JSON（时间/工具/参数/结果，不含凭据）
  *  - 执行：经桥原语 adbExec（壳侧实现；本插件面只看状态与审计——执行本体由 dsh-android-manage 消费）
  *
- * 状态来源：DSH_WRITE_MODE 环境（shell-termux 注入的写面档位）+ 壳侧桥状态（经 HTTP 端点/env 注入）
+ * 状态来源：DSH_WRITE_MODE 环境（shell-linux 注入的写面档位）+ 壳侧桥状态（经 HTTP 端点/env 注入）
  * 首版（无 ADB 通道实现时）：状态查询 + 审计 + 失败关闭引导——与 PRD "未授权全部失败关闭" 语义一致。
  */
 import { readFileSync, appendFileSync, mkdirSync, statSync, writeFileSync, renameSync, rmSync } from 'node:fs'
@@ -115,7 +115,7 @@ export type { ControlRequest, ControlResult } from './control-queue.js'
 export const name = 'dsh-android-bridge'
 // 注意：inject 声明的服务必须预先存在——ctx.logger 是 cordis 内置方法（不需 inject），
 // 误声明 'logger' 会导致插件 pending（waiting for service: logger）→ 整个插件树装载失败。
-// 'shell' = dsh-shell-termux 提供的 Termux 原生执行器（F0.2 Termux 宿主通道经它执行）。
+// 'shell' = dsh-shell-linux 提供的 Debian 客体执行器（F0.2 Linux 客体通道经它执行）。
 // 'sandboxPolicy' = dsh-sandbox-policy（会话级档位实时 resolve——AI 获取面）。
 export const inject = ['tools', 'webServer', 'shell', 'sandboxPolicy', 'sessions'] as const
 
@@ -126,7 +126,7 @@ export interface AdbStatus {
   tier: PrivilegeTier
   /** 完全访问档位（All Files Access，系统权限；门1 前置） */
   fullAccess: boolean
-  /** 写面档位（shell-termux sandboxMode；第二独立前置，非 danger 不构成开放条件） */
+  /** 写面档位（shell-linux sandboxMode；第二独立前置，非 danger 不构成开放条件） */
   writeMode?: string
   /** 系统无线调试已开启（第一道人门，应用不可程序化开启） */
   wirelessDebugOn?: boolean
@@ -248,8 +248,8 @@ export interface ShellAdbPrefs {
 function shellPrefsPath(): string | null {
   const explicit = process.env.DSH_ADB_PREFS_PATH
   if (explicit) return explicit
-  // 安卓引擎进程的 process.platform 是 'linux'（Termux 快照），以 TERMUX__PREFIX 作壳域标记。
-  if (process.env.TERMUX__PREFIX && process.env.DSH_HOME) return SHELL_PREFS_DEFAULT
+  // The explicit guest marker identifies the Android shell's Debian execution context.
+  if (process.env.DSH_BUNDLED_LINUX === '1' && process.env.DSH_HOME) return SHELL_PREFS_DEFAULT
   return null
 }
 
@@ -401,7 +401,7 @@ export interface ControlGateFacts {
  * 策略：① argv 词集合检测（常见高危工具/参数组合，分隔符切分后逐词匹配）
  *   ② 全命令正则（覆盖重定向/多命令拼接中的模式）
  * ③ 破坏性系统写面（mkfs/shutdown/reboot/wipe 等）一律拒绝。
- * 该通道面向「Termux 原生系统工具上下文」，正常用途（ps/dmesg/getprop/package 查询）
+ * 该通道面向 Linux 客体 shell 上下文，正常用途（ps/dmesg/getprop/package 查询）
  * 不受影响。
  */
 function looksDangerous(command: string): boolean {
@@ -624,7 +624,7 @@ function pickText(v: Record<string, unknown>, ...keys: string[]): string {
 /**
  * 折叠重复行（0.14.0 设备实锤）。
  *
- * 缺陷形态：`android_termux_channel_exec` 跑 Termux 的 `am` 包装脚本时，同一条 loader 报错
+ * 历史缺陷形态：旧宿主通道跑 Termux 的 `am` 包装脚本时，同一条 loader 报错
  * 重复 40+ 次并**互相交错**，回执 25 KB 全是乱码：
  *
  *   CANNOT LINK EXECUTABLE "CANNOT LINK EXECUTABLE "grep": library ... not found
@@ -1342,9 +1342,9 @@ export class AndroidPrivilegeService {
     return this.#liveModel
   }
 
-  /** 经 termux 通道执行一行命令（adb 可执行；连接端口自动注入 `-s`）。 */
+  /** 经 Linux 客体通道执行一行命令（adb 可执行；连接端口自动注入 `-s`）。 */
   private async runLine(line: string): Promise<{ ok: boolean; stdout: string }> {
-    if (!this.#shellFace) return { ok: false, stdout: 'Termux 执行器（dsh-shell-termux）未装配' }
+    if (!this.#shellFace) return { ok: false, stdout: 'Linux 客体执行器（dsh-shell-linux）未装配' }
     try {
       const input = { command: line, cwd: '/', env: {} }
       const spec = this.#shellFace.resolve ? this.#shellFace.resolve(input) : input
@@ -1691,14 +1691,14 @@ function tools(svc: AndroidPrivilegeService, shellFace?: { resolve?(spec: Record
       )
     },
   })
-  const termuxChannelTool = defineTool({
-    name: 'android_termux_channel_exec',
+  const linuxChannelTool = defineTool({
+    name: 'android_linux_channel_exec',
     description:
-      'Termux 宿主通道（F0.2，第三授权通道）：仅当引擎级授权（门1 完全访问档位 + 门2 允许开关 + 门3 真实配对）' +
+      'Linux 客体通道（F0.2，第三授权通道）：仅当引擎级授权（门1 完全访问档位 + 门2 允许开关 + 门3 真实配对）' +
       '且会话档位 danger-full-access 时可用（自动审批不构成开放条件）；危险命令黑名单对该通道同样生效；' +
-      '每次调用写审计。用于需要 Termux 环境原生命令（含系统工具上下文）的操作。',
+      '每次调用写审计。用于需要 Debian 客体命令的操作。',
     parameters: {
-      command: { type: 'string', required: true, description: '要在 Termux 环境执行的 shell 命令' },
+      command: { type: 'string', required: true, description: '要在 Debian 客体执行的 shell 命令' },
     },
     output: {
       schema: {
@@ -1720,7 +1720,7 @@ function tools(svc: AndroidPrivilegeService, shellFace?: { resolve?(spec: Record
       // 自动审批只免交互确认，绝不作为特权档位替代——与文件头「自动审批不构成开放条件」一致。
       const gate = svc.gateFor((exec as { agent?: { session?: unknown } }).agent?.session)
       if (!gate.ok) {
-        writeAudit({ action: 'termux-channel', args: { command }, result: 'denied-not-gated' })
+        writeAudit({ action: 'linux-channel', args: { command }, result: 'denied-not-gated' })
         return { ok: false, text: gate.guidance }
       }
       // 危险命令阻挡（C2 修复：锚定开头黑名单可被 echo x; rm -rf / 等绕过）。
@@ -1728,14 +1728,14 @@ function tools(svc: AndroidPrivilegeService, shellFace?: { resolve?(spec: Record
       // 高危面收窄到真正需要的系统工具上下文。
       if (looksDangerous(command)) {
         const guidance = '命令被危险命令检查拦截（自动审批不豁免安全地板）'
-        writeAudit({ action: 'termux-channel', args: { command }, result: 'denied-danger' })
+        writeAudit({ action: 'linux-channel', args: { command }, result: 'denied-danger' })
         return { ok: false, text: guidance }
       }
-      writeAudit({ action: 'termux-channel', args: { command }, result: 'ok' })
-      if (!shellFace) return { ok: false, text: 'Termux 执行器（dsh-shell-termux）未装配' }
+      writeAudit({ action: 'linux-channel', args: { command }, result: 'ok' })
+      if (!shellFace) return { ok: false, text: 'Linux 客体执行器（dsh-shell-linux）未装配' }
       try {
         // P2-F4（审校 2026-08-23）：按 dsh-shell 契约「resolve 后 run」——resolve 注入
-        // termuxEnv 烙印（PATH/PREFIX/LD_LIBRARY_PATH/HOME 等，拒绝被 request.env 覆盖），
+        // guestEnv 烙印（PATH/HOME/SHELL 等，拒绝被 request.env 覆盖），
         // 直接 run 会绕开环境注入导致通道命令找不到工具。
         const raw = { command, cwd: '/', env: {} }
         const spec = shellFace.resolve ? shellFace.resolve(raw) : raw
@@ -1751,7 +1751,7 @@ function tools(svc: AndroidPrivilegeService, shellFace?: { resolve?(spec: Record
     },
   })
   /** 0.14.0 特权 shell 通道（Shizuku UserService，uid=2000；内置 adb 已退役，见 SPEC §6）。
-   *  门控=引擎级授权 + 会话级 danger-full-access；黑名单=termux 黑名单 + 系统写面附加项；
+   *  门控=引擎级授权 + 会话级 danger-full-access；黑名单=Linux 通道黑名单 + 系统写面附加项；
    *  每次调用审计。执行身份为 shell（uid=2000），可触达系统面
    *  （dumpsys/uiautomator/screencap/input/pm 查询）；未安装/未启动/未授权 Shizuku → 结构化拒绝。 */
   const shellTool = defineTool({
@@ -1806,7 +1806,7 @@ function tools(svc: AndroidPrivilegeService, shellFace?: { resolve?(spec: Record
     },
   })
 
-  return [statusTool, termuxChannelTool, shellTool]
+  return [statusTool, linuxChannelTool, shellTool]
 }
 
 /** webServer 注册面（与 file-open 同型）。 */
@@ -1828,7 +1828,7 @@ function sendJson(res: WsRes, code: number, obj: unknown) {
 }
 
 export function apply(ctx: Context, config: Record<string, unknown> = {}) {
-  // 写面默认档位回退：shell-termux 实例（config 面）；主权威 = sandboxPolicy.defaultMode（部署默认）。
+  // 写面默认档位回退：shell-linux 实例（config 面）；主权威 = sandboxPolicy.defaultMode（部署默认）。
   const shellMode = (): string | undefined => {
     try {
       const shell = (ctx as unknown as { shell?: { sandboxMode?: string } }).shell

@@ -14,9 +14,8 @@ import java.io.FileOutputStream
 import java.nio.file.Files
 
 /**
- * Owns the embedded Termux environment snapshot: first-launch extraction into
- * filesDir/usr and the dsh engine process lifecycle (PATH/LD_LIBRARY_PATH/HOME
- * injected explicitly — the snapshot is self-sufficient, no Termux app needed).
+ * Owns the APK-managed Debian guest and engine process lifecycle. The host runs
+ * only APK-installed PRoot; guest loader variables are isolated from the host.
  */
 class EngineManager(private val context: Context, private val pickToken: String? = null) {
 
@@ -26,7 +25,6 @@ class EngineManager(private val context: Context, private val pickToken: String?
       .onFailure { Log.w(TAG, "engine transport unavailable: ${it.javaClass.simpleName}") }
   }
 
-  val usrDir = File(context.filesDir, "usr")
   val homeDir = File(context.filesDir, "home")
 
   /**
@@ -40,8 +38,6 @@ class EngineManager(private val context: Context, private val pickToken: String?
         ?: File(context.filesDir, "dshdata-fallback")
       return File(publicDocs, "dshdata")
     }
-  private val nodeBin = File(usrDir, "bin/node")
-  private val dshBin = File(usrDir, "lib/node_modules/@deepseek-ai/dsh/lib/bin.js")
   /** The engine Process is process-owned, not Activity-owned: MainActivity and
    * EngineService create separate managers but must observe the same child. */
   private var engineProcess: Process?
@@ -64,7 +60,7 @@ class EngineManager(private val context: Context, private val pickToken: String?
   var lastAvailability: EngineProbe.EngineAvailability = EngineProbe.EngineAvailability.DOWN
     private set
 
-  val engineReady: Boolean get() = nodeBin.exists()
+  val engineReady: Boolean get() = linuxInstanceReady()
 
   /**
    * Deploy the undo emergency CLI (assets/undo-emergency.mjs → filesDir).
@@ -88,343 +84,20 @@ class EngineManager(private val context: Context, private val pickToken: String?
   }
 
 
-  /** Read once per manager; missing/invalid metadata is an explicit packaging failure, not freshness. */
-  private val bundledSnapshotFingerprint by lazy {
-    val raw = try {
-      context.assets.open("snapshot.sha256").bufferedReader().use { it.readText() }
-    } catch (e: Exception) {
-      Log.e(TAG, "bundled snapshot SHA could not be read", e)
-      null
-    }
-    SnapshotFingerprintPolicy.read(raw).also { result ->
-      if (result.failureCode != null) LogCollector.log(TAG, result.failureCode + ": " + result.detail)
+  internal fun prepareLinuxInstance(onProgress: (String) -> Unit = {}): LinuxInstanceInstaller.Result {
+    val start = SystemClockElapsed.elapsedRealtime()
+    return LinuxInstanceInstaller.ensure(context, context.filesDir, onProgress).also { result ->
+      BootPhaseTrace.mark(context, BootPhaseTrace.LINUX_PREPARE,
+        "ms=" + (SystemClockElapsed.elapsedRealtime() - start) + " ok=" + (result is LinuxInstanceInstaller.Result.Ready))
     }
   }
 
-  internal fun snapshotFingerprintProblem(): SnapshotFingerprintPolicy.Bundled? =
-    bundledSnapshotFingerprint.takeIf { it.failureCode != null }
+  internal fun linuxInstanceReady(): Boolean = LinuxInstanceInstaller.open(context.filesDir, verifyManaged = false) is LinuxInstanceInstaller.Result.Ready
 
-  /**
-   * 0.14.7 / task-9：**解码之前的**内嵌资产摘要预检。
-   *
-   * 为什么必须有（与 D-1 是互补的两条，不能互相取代）：
-   *  - D-1 记的是「预检通过、解码仍失败」时那条 CorruptedInputException 的全栈（真因在解码器内部）；
-   *  - 本预检记的是「连字节都对不上声明值」——它把真因从解码器内部提到**输入本身**，并给出
-   *    expected/actual/bytes 三项，使下一次真机失败在 boot-fail.log 里自证，
-   *    不必再连设备 pull base.apk 做字节比对。
-   *
-   * 成本纪律：**流式**读 + 固定 64KB 缓冲，既不一次性读进内存（194MB），也不解码（只需一遍顺序 IO）。
-   * 返回 null 表示「预检通过或声明值不可用」——声明值缺失/非法已由 [snapshotFingerprintProblem] 归类，此处不重复判。
-   */
-  private fun bundledAssetDigestProblem(): Pair<String, String>? {
-    val declared = bundledFingerprint().takeIf { it.isNotEmpty() } ?: return null
-    val actual = try {
-      SnapshotBundledAsset.digest(open = { context.assets.open(BUNDLED_SNAPSHOT_ASSET) })
-    } catch (t: Throwable) {
-      // 连资产都打不开：这不是解码器报错，而是资产缺席/不可读，必须与「摘要不一致」分开归类。
-      Log.e(TAG, "bundled snapshot asset could not be read for digest precheck", t)
-      return SnapshotBundledAsset.CODE_UNREADABLE to
-        ("内嵌运行时快照资产无法读取（" + BUNDLED_SNAPSHOT_ASSET + "）：" + t.javaClass.name + ": "
-          + (t.message ?: "无消息") + "。本次解码未开始即被拦下，现有用户数据未改动。")
-    }
-    return SnapshotBundledAsset.verdict(declared, actual)
+  internal fun recoverLinuxUpgrade() = synchronized(LinuxInstanceInstaller) {
+    LinuxUpgradeTransaction.recoverReset(context.filesDir)
+    LinuxUpgradeTransaction.recover(context.filesDir)
   }
-
-  private fun bundledFingerprint(): String = bundledSnapshotFingerprint.fingerprint.orEmpty()
-
-  private fun fingerprintFile(): File = File(context.filesDir, ".snapshot-fingerprint")
-
-  /**
-   * Whether the snapshot is extracted and matches the embedded version: node exists + fingerprint match.
-   * Upgrade lesson (v0.10.5→v0.10.6): engineReady only checked node existence, so an upgrade never
-   * re-extracted → old plugins kept running (injection-guard fixes etc. never took effect).
-   */
-  fun snapshotFresh(): Boolean {
-    val committed = liveFingerprint()
-    if (SnapshotFingerprintPolicy.fresh(nodeBin.exists(), bundledSnapshotFingerprint, committed)) return true
-    // Compatibility for an online update created before purpose-aware transaction markers existed.
-    // The pending marker plus preserved usr-old is its only on-disk probation evidence.
-    if (nodeBin.exists() && File(context.filesDir, ".update-pending").exists() &&
-      SnapshotFs.exists(File(context.filesDir, "usr-old"))) return true
-    val online = readOnlineSnapshotIdentity()
-    return SnapshotFingerprintPolicy.onlineFresh(
-      nodeBin.exists(), bundledFingerprint(), committed, online?.first, online?.second,
-    )
-  }
-
-  private fun readOnlineSnapshotIdentity(): Pair<String, String>? {
-    return try {
-      val fields = File(context.filesDir, ONLINE_SNAPSHOT_NAME).readLines()
-        .mapNotNull { line -> line.indexOf('=').takeIf { it > 0 }?.let { line.substring(0, it) to line.substring(it + 1) } }
-        .toMap()
-      val base = fields["base"] ?: return null
-      val archive = fields["archive"] ?: return null
-      if (!Regex("[0-9a-fA-F]{64}").matches(base) || !Regex("[0-9a-fA-F]{64}").matches(archive)) return null
-      base.lowercase(java.util.Locale.ROOT) to archive.lowercase(java.util.Locale.ROOT)
-    } catch (_: Throwable) { null }
-  }
-
-  /**
-   * Upgrade/snapshot change: extract the embedded snapshot into a staging directory, then
-   * activate it as one transaction. The live runtime is untouched while the archive is being
-   * extracted, so an interruption cannot leave a half-old/half-new tree; the swap itself only
-   * renames factory-owned entries and never touches user data (sessions, attachments, settings,
-   * credentials, workspaces, undo history, model metadata, compile cache).
-   *
-   * The transaction marker makes the next start deterministic: a staged-only run is discarded,
-   * an interrupted swap is rolled back to the previous factory tree, and a swap whose commit
-   * write was lost is rolled forward. See [SnapshotTransaction].
-   */
-  fun refreshSnapshot(
-    onProgress: (Long, Long) -> Unit,
-    onStage: (String) -> Unit = {},
-  ): Boolean {
-    snapshotFingerprintProblem()?.let { problem ->
-      lastRefreshFailureCode = problem.failureCode
-      lastRefreshFailure = IllegalStateException(problem.detail)
-      onStage(problem.detail.orEmpty())
-      return false // No staging, transaction write or retry ledger for a broken installation package.
-    }
-    lastRefreshFailure = null
-    lastRefreshFailureCode = null
-    lastRefreshDeferred = false
-    val fingerprint = bundledFingerprint()
-    val ok = refreshSnapshotInternal(onProgress, onStage)
-    // 0.14.1 D2（issue #240 建议 2）：把成败**跨进程**记账。失败账本按 fingerprint 计键，
-    // 是「同一份快照连续失败」与「换了快照又失败」的唯一区分依据——内存里那个
-    // engineRetryCount 是引擎启动重试计数（#118），进程一死即清零，管不到这里。
-    try {
-      if (ok) {
-        SnapshotFs.deletePath(refreshLedgerFile())
-      } else if (lastRefreshDeferred) {
-        // P1（定位报告 §2.5）：**「别人正在做」不是「我失败了」**。被让行（另一条事务在飞）不写失败
-        // 账本——否则纯粹的并发争用会把「同一份快照连续失败达阈」喂出来，让降级闸门
-        // （shouldDegradeRefresh）此后永久跳过刷新。账本语义是「这份快照自己起不来」。
-        Log.i(TAG, "snapshot refresh deferred: another transaction is in flight (failure ledger untouched)")
-      } else {
-        refreshLedgerFile().writeText(SnapshotRefreshPolicy.afterFailure(readRefreshLedger(), fingerprint))
-      }
-    } catch (t: Throwable) {
-      // 记账失败不得影响刷新结果本身（它是判据的输入，不是判据）。
-      Log.w(TAG, "could not update snapshot refresh ledger", t)
-    }
-    return ok
-  }
-
-  /**
-   * 刷新主体。抽出来只为在**单点**包一层成败记账（上面那个包装），
-   * 否则六处 `return false` 各写一次记账必然漏。
-   */
-  private fun refreshSnapshotInternal(
-    onProgress: (Long, Long) -> Unit,
-    onStage: (String) -> Unit = {},
-  ): Boolean {
-    val filesDir = context.filesDir
-    if (!beginSnapshotTransaction()) {
-      // P1（定位报告 §2.5）：**口径纠正**。旧实现把「别人正在做」记成自己的失败
-      // （挂 IllegalStateException 到 lastRefreshFailure），而同一堵墙上的另两处早已是对的：
-      // startEngine(:1304-1307) 返回 true 让行、invalidateSnapshotFreshness(:443-446) 返回 false 让行。
-      // 全仓只有这一处把事务在飞记成失败，这是口径不一致而非设计取舍。
-      //
-      // 返回值仍是 false（本次**确实没有**刷新，调用方据此不得宣称已安排），但事实必须如实：
-      // lastRefreshFailure=null（没有属于本次的异常）+ lastRefreshDeferred=true（是被让行），
-      // 且不进跨进程失败账本（见 refreshSnapshot 的包装）。
-      lastRefreshFailure = null
-      lastRefreshFailureCode = "snapshot-transaction-in-flight"
-      lastRefreshDeferred = true
-      return false
-    }
-    val fingerprint = bundledFingerprint()
-    val startedAt = System.currentTimeMillis()
-    val stage = SnapshotTransaction.stageRoot(filesDir)
-    try {
-      onStage("正在检查上次更新…")
-      applyRecovery(SnapshotTransaction.recover(filesDir, stage, usrDir, homeDir))
-      if (snapshotFresh()) {
-        // A rolled-forward transaction already activated this snapshot.
-        return true
-      }
-
-      onStage("正在解压运行时…")
-      // 清理上次残留。deletePath 现在逐项容错（见 SnapshotFs），但**删不掉的条目仍会挡住解压**：
-      // 0.14.0 模拟器实锤——解压中途掉线留下的 \`.snapshot-stage/home\` 内部元数据损坏，
-      // root 都删不掉（\`Not a data message\`），于是之后**每次启动都失败**，用户只能清应用数据。
-      //
-      // 因此清理后复查：仍有残留就把整个 stage **改名挪开**（改名只需动父目录项，不触碰坏子项，
-      // 因此比删除更容易成功），再用干净的固定名 stage 继续。挪开的孤儿目录留待后续启动清理，
-      // 它不再参与事务，也不会阻塞升级。
-      val discarded = mutableListOf<String>()
-      SnapshotFs.deletePath(stage) { f, ex -> discarded += (f.name + " (" + ex.javaClass.simpleName + ")") }
-      if (SnapshotFs.exists(stage)) {
-        val orphan = File(filesDir, SnapshotTransaction.STAGE_ORPHAN_PREFIX + startedAt)
-        val movedAside = try {
-          SnapshotFs.move(stage, orphan); true
-        } catch (t: Throwable) {
-          Log.w(TAG, "snapshot refresh: could not move residue stage aside", t); false
-        }
-        if (!movedAside) {
-          // 连改名都失败：如实报告并保留诊断，不再让后续每次启动都撞同一堵墙。
-          Log.e(TAG, "snapshot refresh aborted: unusable staging residue at " + stage.absolutePath
-            + " -> " + discarded.joinToString(", "))
-          onStage("上次更新的残留目录无法清理，请清应用数据后重试")
-          // D-1：这条 return false 同样是「只有布尔值」的静默失败支（旧实现只 onStage 一句文案，
-          // 真因 = 哪些条目删不掉、哪些条目改名挪不开，全部只存在于 logcat）。
-          lastRefreshFailure = SnapshotFsException(
-            CODE_STAGE_RESIDUE, emptyList(),
-            "上次更新的残留目录既删不掉也移不开（stage=" + stage.absolutePath + "，未删除项="
-              + discarded.joinToString(", ") + "）；现有用户数据未改动，需清理应用数据后重试。",
-          )
-          lastRefreshFailureCode = CODE_STAGE_RESIDUE
-          return false
-        }
-        Log.w(TAG, "snapshot refresh: residue stage moved aside to " + orphan.name
-          + " -> " + discarded.joinToString(", "))
-      }
-      SnapshotFs.createDirectories(stage)
-      // 0.14.7 / task-9：**摘要预检**必须在解码之前。理由见 [bundledAssetDigestProblem]：
-      // 没有它时，资产字节损坏的唯一线索是解码器内部的 CorruptedInputException（真因在解码器里，
-      // 输入本身对不上声明值这件事反而看不见）；有了它，boot-fail.log 直接给出 expected/actual/bytes。
-      bundledAssetDigestProblem()?.let { (code, detail) ->
-        Log.e(TAG, "snapshot refresh refused before decoding: " + code + " -> " + detail)
-        onStage(detail)
-        lastRefreshFailure = SnapshotFsException(code, emptyList(), detail)
-        lastRefreshFailureCode = code
-        SnapshotFs.deletePath(stage)
-        return false
-      }
-      if (!SnapshotRefreshStage.extractAndValidate(
-          stage,
-          extract = { extractSnapshotTo(it, onProgress) },
-          validate = ::stagedRuntimeComplete,
-        )) {
-        Log.e(TAG, "snapshot refresh: extraction failed or staged runtime incomplete; live runtime untouched")
-        // 【0.14.7 / task-9 D-1】解压/校验以布尔值回报失败时，**真因必须有人写**。
-        // 旧实现只在这里 return false：extractSnapshotTo 的 catch 只写了 Log.e（易失的 logcat），
-        // 异常对象从未挂到 lastRefreshFailure ⇒ 调用方（EngineStartFlow:863-864）只能拿到 null
-        // ⇒ boot-fail.log 落成 error=none(boolean-failure-path)、stack=none，排障者拿不到真因。
-        // 现在由 extractSnapshotTo 负责把异常挂上（它同时覆盖「校验失败」这一支）。
-        if (lastRefreshFailure == null) {
-          val missing = RuntimeTree.missingEntries(
-            root = File(stage, "usr"),
-            profileDir = File(stage, "home/.dsh/profiles/web"),
-          )
-          lastRefreshFailure = SnapshotFsException(
-            SnapshotBundledAsset.CODE_STAGE_INCOMPLETE, emptyList(),
-            "内嵌运行时快照解压完成但 staged 运行时缺件（missing=" + missing.joinToString(", ")
-              + "）；本次未换树，现有用户数据未改动。",
-          )
-          lastRefreshFailureCode = SnapshotBundledAsset.CODE_STAGE_INCOMPLETE
-        }
-        return false
-      }
-
-      onStage("正在恢复用户数据…")
-      restoreLegacyUserData(File(homeDir, ".dsh"))
-      // 0.13.5 W1a（issue #126 P1 的兜底诉求）：换树前留一份 settings.yaml 快照。
-      // 事务化本身从不触碰用户数据，这份副本是「万一」时的取证/回滚来源——
-      // 只保留最近 3 代，写失败仅告警（不阻断刷新）。
-      snapshotSettingsBackup()
-      val userDataNotes = SnapshotUserData.prepareStagedSnapshot(File(stage, "home/.dsh"), File(homeDir, ".dsh"))
-      for (note in userDataNotes) LogCollector.log(TAG, "snapshot user-data policy: " + note)
-
-      onStage("正在完成运行时更新…")
-      // issue #271 ⑤：**事务自己**清理上一轮的失败残渣（不依赖 30 分钟年龄门槛）。
-      // 上一轮已结束 ⇒ 它留下的 *.failed-* 确定不再被任何进行中事务引用；不清就会与本次事务
-      // 争空间，形成「失败→残渣→空间紧→更易失败」的自我强化。
-      val clearedResidue = SnapshotTransaction.clearFailedResidue(filesDir)
-      if (clearedResidue.isNotEmpty()) {
-        LogCollector.log(TAG, "failed snapshot residue cleared before swap: " + clearedResidue.joinToString(", "))
-      }
-      SnapshotTransaction.lastFailedResidueFailure?.let {
-        Log.w(TAG, "failed snapshot residue could not be cleared: " + it)
-      }
-      SnapshotTransaction.writeMarker(
-        filesDir,
-        SnapshotTransaction.Marker(SnapshotTransaction.Phase.STAGED, fingerprint, startedAt),
-      )
-      // Move packages out of usr before the factory tree is replaced.
-      migratePythonPackages("before-swap")
-      val swapNotes = SnapshotTransaction.swap(
-        filesDir = filesDir,
-        stagedRoot = stage,
-        usrDir = usrDir,
-        homeDir = homeDir,
-        preservedNames = SnapshotUserData.preservedNames.toSet(),
-        fingerprint = fingerprint,
-        startedAt = startedAt,
-        onEntry = { onStage("正在更新 " + it) },
-        spaceCheck = { required -> insufficientSpaceReason(filesDir, required) },
-      )
-      // Recover packages from the old usr tree before finish() removes .snapshot-previous.
-      migratePythonPackages("after-swap-rescue")
-      // #214：profiles 合并期间的工厂语义纠正逐条留档（升级现场可追溯，不只依赖 UI 文案）。
-      for (note in swapNotes) LogCollector.log(TAG, "profile patch reconciled during swap: " + note)
-      // Commit point: the fingerprint is durable only after the swap completed.
-      writeFingerprint(fingerprint)
-      SnapshotTransaction.finish(filesDir)
-      Log.i(TAG, "snapshot refreshed (fingerprint " + fingerprint.take(12) + ")")
-      return true
-    } catch (t: Throwable) {
-      Log.e(TAG, "snapshot refresh failed; rolling back", t)
-      onStage("运行时更新失败，正在回滚…")
-      // 【0.14.1 升级路径 P0】把真因留存给 boot-fail.log。
-      // 旧实现只 `return false`，调用方（EngineStartFlow）只能拿到一个布尔值 → boot-fail.log
-      // 里 `error=none(boolean-failure-path)`、detail 只有「返回 false」。设备实测该形态下
-      // 真因（`FileSystemException: ... Directory not empty` + 栈）**完全没有落盘**，排障者
-      // 只能靠 logcat 反查——正是用户反馈一「App 启动失败时几乎不留任何诊断日志」的同形复发。
-      lastRefreshFailure = t
-      // issue #271 ④：把**失败归类**（错误码）挂出来，供 boot 侧给「可直接照做」的文案，
-      // 而不是让用户看到一句无指向的「运行时更新失败」+ 90s 超时。
-      lastRefreshFailureCode = (t as? SnapshotFsException)?.code ?: "snapshot-refresh-failed"
-      try {
-        val marker = SnapshotTransaction.readMarker(filesDir)
-        if (marker != null) {
-          SnapshotTransaction.rollback(filesDir, stage, usrDir, homeDir, marker)
-          SnapshotTransaction.clearMarker(filesDir)
-        } else {
-          SnapshotFs.deletePath(stage)
-        }
-      } catch (rollbackError: Throwable) {
-        // Keep the marker: the next start retries the rollback before anything else.
-        Log.e(TAG, "snapshot refresh rollback failed; recovery marker retained", rollbackError)
-        // 补偿失败也要留证（它是「marker 为何留着」的直接解释），但不得取代真因。
-        t.addSuppressed(rollbackError)
-      }
-      return false
-    } finally {
-      endSnapshotTransaction()
-    }
-  }
-
-  /**
-   * 最近一次快照刷新失败的真因（0.14.1 升级路径 P0）。
-   *
-   * 为什么需要：`refreshSnapshot` 以布尔值回报成败，调用方拿不到异常 → `boot-fail.log` 的
-   * `error=` 字段只能是 `none(boolean-failure-path)`。把真因挂在这里，调用方可原样落盘。
-   * 只保留最近一次（诊断用途，不需要历史）；读取后不清空，便于多处消费。
-   */
-  @Volatile
-  var lastRefreshFailure: Throwable? = null
-
-  /**
-   * 最近一次刷新失败的**稳定错误码**（issue #271 ④）。
-   *
-   * 为什么要有码而不只有异常：`SnapshotFsException.code` 是可归因的判据
-   * （`snapshot-delete-residue` / `snapshot-move-blocked` / `snapshot-foreign-owner`），
-   * boot 侧据此给不同文案；没有码时回落 `snapshot-refresh-failed`（表示真因未归类）。
-   */
-  @Volatile
-  var lastRefreshFailureCode: String? = null
-
-  /**
-   * 上一次 [refreshSnapshot] 的 false 是不是**被让行**（另一条快照事务在飞）而不是失败（0.14.8 P1）。
-   *
-   * 为什么必须与 [lastRefreshFailureCode] 分开：`snapshot-transaction-in-flight` 这个码本身
-   * 需要保留（调用方据此给「正在解压，稍后自动继续」的文案），但它是**推迟**语义而不是失败语义——
-   * 失败账本、失败终态文案都不得据此记账（定位报告 §2.5）。
-   */
-  @Volatile
-  var lastRefreshDeferred: Boolean = false
 
   /**
    * 最近一次**拒绝启动**的可归因原因（issue #271 ④）：非空即表示上一次 `startEngine` 是被
@@ -466,469 +139,6 @@ class EngineManager(private val context: Context, private val pickToken: String?
   @Volatile
   var lastStartRefusalConfirmed: List<String> = emptyList()
 
-  /**
-   * 把「live 树已被外部改坏」显式告诉新鲜度判据：删掉指纹。
-   *
-   * 为什么是删文件而不是加一个状态位：[snapshotFresh] 的既有语义就是「node 在 + 指纹一致」，
-   * 删指纹即令其为假，冷启动路径 `if (!snapshotFresh()) refreshSnapshot(...)` 随即走完整重抽取，
-   * 不需要新增第三个判据分支、也不会与降级闸门产生新的组合面。
-   *
-   * @return 真 = 现在确实不 fresh（删掉了或本就不在）；假 = 文件在且删不掉——此时调用方
-   *   **不得**声称「已安排重抽取」，因为下次冷启动仍会在 [snapshotFresh] 处早退。
-   */
-  fun invalidateSnapshotFreshness(): Boolean {
-    // 独立评审：删除必须让开正在进行的刷新。`refreshSnapshotInternal` 会在提交点重写指纹
-    // （`writeFingerprint`），若在它进行中把指纹删掉，会出现「删了又被写回」而预算已花——
-    // 恢复动作静默失效。与 `startEngine` 的旁路闸门同源：刷新期间不碰运行时面。
-    // 返回 false 让调用方走「如实写 blocked 文案 + 退回预算」那条路，而不是假装成功。
-    if (EngineManager.snapshotRefreshing.get()) {
-      Log.w(TAG, "snapshot fingerprint invalidation deferred: a snapshot refresh is in progress")
-      return false
-    }
-    val fp = File(context.filesDir, ".snapshot-fingerprint")
-    if (!fp.exists()) return true
-    val deleted = try {
-      fp.delete()
-    } catch (t: Throwable) {
-      Log.w(TAG, "could not delete snapshot fingerprint", t)
-      false
-    }
-    if (!deleted) {
-      Log.e(TAG, "snapshot fingerprint could not be deleted; next start may still take the fresh early-exit")
-    }
-    return deleted
-  }
-
-  /**
-   * issue #309：闸门 A 拒启时的**逐项取证**（纯字符串，不改树、不做恢复）。
-   *
-   * 为什么必须在拒启的那一刻做：唯一的恢复动作是「删指纹 + 全量重抽取」，而重抽取会覆盖现场。
-   * 取证写在 boot-fail.log 里，事后能回答「当时缺的是哪几项、路径、大小、mtime」——
-   * issue 报障者的触发源正是外部对 live 树的改动，没有这条就只剩「我猜我删过什么」。
-   *
-   * 输出三段，用 ` | ` 连接（boot-fail.log 与 logcat 都是单行消费，不得换行）：
-   *   ① `missing=...` 逐项缺失（缺失项的输出形态由 [RuntimeTree.missingEntries] 决定）；
-   *   ② `confirmed=...` 其中**确诊**项（[RuntimeTree.START_RECOVERY_CONFIRMED_ENTRIES]，决定能否恢复）；
-   *   ③ `probe=...` 每项的存在性/大小/mtime（含未缺失项，用于区分「被删」与「从未有过」）。
-   *
-   * 只读，且**不重算判据**：`missing`/`confirmed` 由调用方（闸门 A）算好后传进来，
-   * 保证「记进日志的缺失项」与「决定要不要恢复的缺失项」来自同一次探测（否则两者可能不一致）。
-   * 绝不在这里删指纹——那是 EngineStartFlow.maybeRecoverFromIncompleteLiveRuntime 的职责，
-   * 它还要先过预算与证据分级两道闸门。
-   *
-   * @param missing [RuntimeTree.missingEntries] 的结果。
-   * @param confirmed [RuntimeTree.confirmedDamage] 的结果。
-   */
-  private fun liveRuntimeEvidence(missing: List<String>, confirmed: List<String>): String {
-    val probes = (RuntimeTree.BASE_ENTRIES.map { it to File(usrDir, it) } +
-      listOf("home/.dsh/profiles/web" to File(homeDir, ".dsh/profiles/web")) +
-      RuntimeTree.REQUIRED_LIBS.map { "lib/" + it to File(File(usrDir, "lib"), it) })
-      .joinToString(", ") { (name, file) -> name + "=" + RuntimeTree.describeEntry(file) }
-    return "missing=" + (missing.ifEmpty { listOf("(none)") }).joinToString(", ") +
-      " | confirmed=" + (confirmed.ifEmpty { listOf("(none)") }).joinToString(", ") +
-      " | probe=" + probes
-  }
-
-  /**
-   * 最近一次「启动恢复未收敛」的明细（D-3：回滚失败时 marker 保留，下次启动重试）。
-   * 非空即表示**当前这棵树可能不完整**——启动自检与诊断面据此如实上报，而不是当作正常启动。
-   */
-  var pendingRecoveryFailure: String? = null
-    private set
-
-  internal fun snapshotRecoveryBlocksRuntime(): Boolean = SnapshotRecoveryNotice.blocksRuntimeStart(
-    pendingRecoveryFailure,
-    SnapshotTransaction.readMarker(context.filesDir) != null,
-  )
-
-  /**
-   * Resolves a transaction interrupted by a kill, an OEM cleaner or a low-memory restart.
-   * Cheap when nothing is pending (one stat) and safe to call on every start.
-   *
-   * review C13：整个函数体由 CAS 保护（旧实现 check-then-set 可被并发重入——两个线程同时
-   * 读到 null marker 后各自 delete stage，或与 refresh 交错时同时操作 stage/previous）。
-   */
-  fun recoverInterruptedRefresh() {
-    // Another refresh/recovery owns the stage/previous trees right now: never race it.
-    if (!beginSnapshotTransaction()) return
-    // 提到 try 之外：catch 里要用它做「marker 是否真的还在」的对账（0.14.1 块K ②）。
-    val filesDir = context.filesDir
-    try {
-      val marker = SnapshotTransaction.readMarker(filesDir)
-      // Rescue a previous usr tree before either the normal or failure cleanup can reclaim it.
-      migratePythonPackages("startup-recovery")
-      if (marker == null) {
-        // No marker: only a stale stage directory can survive (a rollback that was
-        // interrupted before it deleted the stage).
-        //
-        // 0.14.1 块K ②（反馈二「幂等收敛」）：marker 缺席 + 残渣在场 = finish() 没跑完
-        // （用户实测：0.14.0 覆盖安装留下 SWAPPED 半程事务 + 920 MB previous + 176 MB stage）。
-        // 此处**只在快照已激活**时回收——那是「live 已是工厂新树、previous 只是被置换下去的旧副本」
-        // 的唯一安全条件；半程事务的 previous 是回滚源，绝不能被这一路径删。
-        if (SnapshotTransaction.hasResidue(filesDir) && snapshotFresh()) {
-          val reclaimed = SnapshotTransaction.reclaimResidue(filesDir)
-          if (reclaimed.isNotEmpty()) {
-            Log.w(TAG, "snapshot residue reclaimed on start (no pending transaction): " + reclaimed.joinToString(", "))
-            LogCollector.log(TAG, "snapshot residue reclaimed: " + reclaimed.joinToString(", "))
-          }
-        } else {
-          SnapshotFs.deletePath(SnapshotTransaction.stageRoot(filesDir))
-        }
-        return
-      }
-      applyRecovery(
-        SnapshotTransaction.recover(filesDir, SnapshotTransaction.stageRoot(filesDir), usrDir, homeDir),
-      )
-    } catch (t: Throwable) {
-      // 文案必须与事实一致（0.14.1 块K ②）：finish() 现在用 try/finally 保证 marker 先被清，
-      // 因此**本 catch 不能再无条件断言「marker retained」**——清理抛错时 marker 其实已清，
-      // 照旧打印会把「残渣没扫完」误报成「事务未收敛」，正是反馈一里「日志与事实不符」的同类形态。
-      val markerStillThere = SnapshotTransaction.readMarker(filesDir) != null
-      if (markerStillThere) {
-        Log.e(TAG, "snapshot transaction recovery failed; marker retained", t)
-      } else {
-        Log.e(TAG, "snapshot transaction recovery failed after the marker was cleared "
-          + "(residue reclaim is retried on the next start)", t)
-      }
-      // 恢复失败但事务已收敛：顺手回收残渣，避免 920 MB previous 长期占地（反馈二）。
-      if (!markerStillThere && snapshotFresh()) {
-        val reclaimed = SnapshotTransaction.reclaimResidue(filesDir)
-        if (reclaimed.isNotEmpty()) {
-          LogCollector.log(TAG, "snapshot residue reclaimed after recovery failure: " + reclaimed.joinToString(", "))
-        }
-      }
-    } finally {
-      endSnapshotTransaction()
-    }
-  }
-
-  private fun beginSnapshotTransaction(): Boolean = synchronized(EngineManager.transactionStateLock) {
-    snapshotRefreshing.compareAndSet(false, true)
-  }
-
-  private fun endSnapshotTransaction() = synchronized(EngineManager.transactionStateLock) {
-    snapshotRefreshing.set(false)
-  }
-
-  private fun applyRecovery(recovery: SnapshotTransaction.Recovery) {
-    // 收敛即复位守卫：除 ROLLBACK_FAILED（仍未收敛，必须保留供上报）外，其余结局都算收敛。
-    // 放在 when 之前而不是塞进各分支，是为了**不改动既有分支结构**（各分支的日志与副作用保持原样）。
-    if (SnapshotRecoveryNotice.recoveryConverged(recovery.outcome == SnapshotTransaction.Outcome.ROLLBACK_FAILED)) {
-      clearStaleRecoveryFailure()
-    }
-    when (recovery.outcome) {
-      SnapshotTransaction.Outcome.NONE -> return
-      SnapshotTransaction.Outcome.DISCARDED_STAGE -> {
-        Log.w(TAG, "interrupted refresh discarded (staged runtime was never activated)")
-      }
-      SnapshotTransaction.Outcome.ROLLED_BACK -> {
-        if (recovery.fingerprintToRestore != null) {
-          writeFingerprint(recovery.fingerprintToRestore)
-          File(context.filesDir, ".update-pending").delete()
-          File(context.filesDir, ".update-pending-at").delete()
-        }
-        Log.w(TAG, "interrupted refresh rolled back to the previous factory runtime")
-      }
-      SnapshotTransaction.Outcome.ROLLED_FORWARD -> {
-        val fingerprint = recovery.fingerprintToCommit
-        if (!fingerprint.isNullOrEmpty()) writeFingerprint(fingerprint)
-        if (recovery.onlineUpdateCommit && !fingerprint.isNullOrEmpty()) {
-          writeOnlineSnapshotIdentity(bundledFingerprint(), fingerprint)
-          File(context.filesDir, ".update-pending").delete()
-          File(context.filesDir, ".update-pending-at").delete()
-        }
-        SnapshotTransaction.finish(context.filesDir)
-        Log.w(TAG, "interrupted refresh completed (runtime was already activated)")
-      }
-      // 【D-3 / 审查 §7.7.5】回滚未完整落地：marker **已保留**（下次启动先重试），
-      // 并把失败条目写进诊断面——用户实报的「插件注册了但不真实可用」正是「半成品树被当成
-      // 已恢复长期使用」的下游症状（§7.7），所以这条必须可归因，不能只留一行 logcat。
-      SnapshotTransaction.Outcome.ROLLBACK_FAILED -> {
-        val detail = recovery.failures.joinToString(", ")
-        Log.e(TAG, "interrupted refresh rollback incomplete; recovery marker retained: " + detail)
-        LogCollector.log(TAG, "snapshot recovery incomplete (retry on next start): " + detail)
-        pendingRecoveryFailure = detail
-      }
-    }
-  }
-
-  /**
-   * 0.14.2-fx-2（lead 指出的既有缺陷）：恢复**收敛即复位** `pendingRecoveryFailure`。
-   *
-   * 缺陷形态：`pendingRecoveryFailure` 原先全仓只有一处赋值（ROLLBACK_FAILED）、**从不清空** ⇒
-   * 一旦历史上拒绝过一次，之后每次启动（含事务早已收敛的新启动）都会重新命中这条陈旧明细：
-   * 诊断面被污染（排障者以为当前树还没收敛），新加的「恢复期拒绝」提示还会退化成**常驻假告警**。
-   *
-   * 只保留 ROLLBACK_FAILED（真未收敛、仍需上报），其余结局一律视为已收敛。
-   */
-  private fun clearStaleRecoveryFailure() {
-    if (pendingRecoveryFailure != null) {
-      Log.i(TAG, "snapshot recovery converged; clearing stale pendingRecoveryFailure")
-      pendingRecoveryFailure = null
-    }
-  }
-
-  /**
-   * 交换前空间断言（审查 §7.2-F-4 / B12）：把 StatFs 事实翻译成**可直接照做**的文案。
-   *
-   * 为什么必须有它：`refreshSnapshot`/`swap` 全程没有任何空间前置检查，空间不足时解压/合并
-   * 中途 ENOSPC → 报「运行时更新失败」，用户与维护者都看不出真因（§7.2 的 F-7 形态）。
-   * 这也是唯一一条「重启未必好、且会重复失败」的机制。
-   * @return 拒绝文案；null = 空间充足。
-   */
-  private fun insufficientSpaceReason(filesDir: File, requiredBytes: Long): String? {
-    return try {
-      val stat = android.os.StatFs(filesDir.absolutePath)
-      val free = stat.availableBytes
-      if (free >= requiredBytes) return null
-      val needMb = requiredBytes / (1024 * 1024)
-      val freeMb = free / (1024 * 1024)
-      "存储空间不足：运行时更新需要约 " + needMb + " MB 可用空间，当前仅 " + freeMb + " MB。" +
-        "请清理存储（开发者选项 → 清除运行时缓存，或删除不需要的文件）后重试；本次更新未改动现有运行时。"
-    } catch (t: Throwable) {
-      // 拿不到 StatFs 事实（异常挂载等）：不因测量失败而阻断更新，但留日志以便事后归因。
-      Log.w(TAG, "snapshot space precheck unavailable", t)
-      null
-    }
-  }
-
-  private fun liveFingerprint(): String = try {
-    fingerprintFile().takeIf { it.exists() }?.readText()?.trim() ?: ""
-  } catch (_: Throwable) {
-    ""
-  }
-
-  /** The fingerprint is the transaction commit point, so it is written atomically. */
-  private fun writeFingerprint(fingerprint: String) {
-    // This marker commits the snapshot swap. A failed publish must preserve the prior fingerprint
-    // so SnapshotTransaction can roll the live tree back to the generation it still identifies.
-    SnapshotTransaction.writeTextAtomic(
-      target = fingerprintFile(),
-      text = fingerprint,
-      label = "snapshot fingerprint",
-      validate = {},
-    )
-  }
-
-  private fun writeOnlineSnapshotIdentity(base: String, archive: String) {
-    val target = File(context.filesDir, ONLINE_SNAPSHOT_NAME)
-    val tmp = File(context.filesDir, ONLINE_SNAPSHOT_NAME + ".tmp")
-    tmp.writeText("base=$base\narchive=$archive\n")
-    SnapshotFs.move(tmp, target)
-  }
-
-  private fun commitOnlineUpdateIfPending(): Boolean {
-    val markerFile = SnapshotTransaction.markerFile(context.filesDir)
-    val marker = SnapshotTransaction.readMarker(context.filesDir) ?: return false
-    if (marker.purpose != SnapshotTransaction.Purpose.ONLINE_UPDATE || marker.phase != SnapshotTransaction.Phase.SWAPPED) return false
-    SnapshotTransaction.writeMarker(context.filesDir, marker.copy(phase = SnapshotTransaction.Phase.ONLINE_COMMITTED))
-    applyRecovery(SnapshotTransaction.recover(context.filesDir, SnapshotTransaction.stageRoot(context.filesDir), usrDir, homeDir))
-    return !SnapshotFs.exists(markerFile)
-  }
-
-  /**
-   * A stage that lacks the engine entry points **or its runtime libraries** must never be activated.
-   *
-   * task-79（Bug A）：旧实现只查 3 项 ⇒ `usr/lib` 动态库全缺也判「完整」⇒ 引擎被反复拉起、
-   * 每次都在链接期 CANNOT LINK 而死。现把动态库面并入判据（只加合取项），并**逐项打印缺失名**
-   * （旧日志只报 3 个布尔，排障者看不出缺的是哪个库，这本身是排障缺口）。
-   */
-  private fun stagedRuntimeComplete(stage: File): Boolean {
-    val missing = RuntimeTree.missingEntries(
-      root = File(stage, "usr"),
-      profileDir = File(stage, "home/.dsh/profiles/web"),
-    )
-    if (missing.isNotEmpty()) Log.e(TAG, "staged runtime incomplete: missing=" + missing.joinToString(", "))
-    return missing.isEmpty()
-  }
-
-  /**
-   * 0.14.1 D2：**live 树**的完整性判据（与 [stagedRuntimeComplete] 同口径，只是根不同）。
-   *
-   * 它决定「刷新连续失败时能不能降级启动」——live 不完整时放开拦截等于拉起一棵缺件的运行时，
-   * 会以「引擎能起但插件缺」的形态静默劣化。issue 现场的真正特征是 live 完整、缺的只是提交文件。
-   */
-  fun liveRuntimeComplete(): Boolean {
-    val missing = RuntimeTree.missingEntries(
-      root = usrDir,
-      profileDir = File(homeDir, ".dsh/profiles/web"),
-    )
-    // 逐项打印：真机现场只有「3 个布尔」时，排障者无从知道缺的是 libz.so.1 还是别的。
-    if (missing.isNotEmpty()) Log.e(TAG, "live runtime incomplete: missing=" + missing.joinToString(", "))
-    return missing.isEmpty()
-  }
-
-  /**
-   * task-79（Bug A）：读取「运行时树损坏」标记的时间戳（无标记返回 null）。
-   *
-   * 标记由 EngineStartFlow 在判定动态链接失败时写入、由启动成功路径清除。
-   * 这里是它**唯一的读取方**（诊断包 info.txt 的 `runtime_tree_damage` 行）——
-   * 没有读取方的话它就是死账本：事后既无法证明它被写过，也进不了诊断包。
-   *
-   * @returns 标记内的时间戳文本；无标记或不可读时 null。
-   */
-  private fun runtimeTreeDamageMarker(context: Context): String? = try {
-    val f = File(context.filesDir, RuntimeTree.DAMAGE_MARKER)
-    if (f.isFile) f.readText().trim().takeIf { it.isNotEmpty() } else null
-  } catch (_: Throwable) {
-    null
-  }
-
-  /** 刷新失败账本（单行 `<fingerprint>\t<N>`；成功即删）。 */
-  private fun refreshLedgerFile(): File = File(context.filesDir, ".snapshot-refresh-failures")
-
-  private fun readRefreshLedger(): String? = try {
-    refreshLedgerFile().takeIf { it.exists() }?.readText()
-  } catch (t: Throwable) {
-    Log.w(TAG, "could not read snapshot refresh ledger", t)
-    null
-  }
-
-  /**
-   * 是否应当跳过自动刷新、以现有运行时启动（0.14.1 D2）。判据全在 [SnapshotRefreshPolicy]：
-   * live 完整 + 账本存在 + 指纹一致 + 连续失败达阈。任一不满足即返回 false（维持现状拦截）。
-   */
-  fun shouldDegradeRefresh(): Boolean = bundledSnapshotFingerprint.fingerprint != null && SnapshotRefreshPolicy.shouldDegrade(
-    raw = readRefreshLedger(),
-    fingerprint = bundledFingerprint(),
-    liveComplete = liveRuntimeComplete(),
-  )
-
-  /**
-   * 清空刷新失败账本。**手动重试路径必须调用它**——用户显式点「重试」就是要求「再试一次刷新」，
-   * 若不清账，降级闸门会让他永远拿不到那次刷新（引导页按钮就成了摆设）。
-   * 与 `EngineStartFlow.engineRetryCount = 0` 是同一件事的两个面：一个管进程内的引擎启动重试，
-   * 一个管跨进程的快照刷新重试。
-   */
-  fun clearRefreshLedger() {
-    try {
-      SnapshotFs.deletePath(refreshLedgerFile())
-    } catch (t: Throwable) {
-      Log.w(TAG, "could not clear snapshot refresh ledger", t)
-    }
-  }
-
-  /**
-   * One-time migration for a `.dsh-backup` left by a pre-transaction refresh (<= 0.13.2).
-   * Additive: the backup can only add missing entries, never roll back newer data.
-   */
-  private fun restoreLegacyUserData(dsh: File) {
-    val backup = File(context.filesDir, ".dsh-backup")
-    if (!SnapshotFs.exists(backup)) return
-    try {
-      val result = SnapshotUserData.restoreLegacyBackup(backup, dsh) { link ->
-        Log.w(TAG, "legacy user-data restore skipped broken symbolic link: " + link.absolutePath)
-      }
-      Log.w(
-        TAG,
-        "legacy user-data backup restored (copied=" + result.copiedEntries +
-          " kept=" + result.skippedExisting + " broken=" + result.skippedBrokenLinks + ")",
-      )
-      SnapshotFs.deletePath(backup)
-    } catch (t: Throwable) {
-      // Keep the backup for the next attempt; a failed migration must not block the refresh.
-      Log.e(TAG, "legacy user-data restore failed; backup retained at " + backup.absolutePath, t)
-    }
-  }
-
-  /**
-   * 换树前把活动配置（迁移后为 web profile patch）复制到 `files/.snapshot-settings-backup/`（保留最近 3 代）。
-   *
-   * 事务化刷新本身从不移动/覆盖用户数据（[SnapshotTransaction] 跳过 preservedNames），
-   * 这份副本回应 issue #126 P1 的诉求：升级出意外时至少有一份「升级前」的配置可取证/回滚。
-   * 写入失败只告警——备份不是刷新的前置条件。
-   */
-  private fun snapshotSettingsBackup() {
-    val source = SnapshotUserData.configurationDocument(File(homeDir, ".dsh"))
-    if (!source.isFile) return
-    try {
-      val dir = File(context.filesDir, ".snapshot-settings-backup")
-      SnapshotFs.createDirectories(dir)
-      val stamp = java.text.SimpleDateFormat("yyyyMMdd-HHmmss", java.util.Locale.US).format(java.util.Date())
-      val target = File(dir, "settings-$stamp-" + source.name)
-      source.copyTo(target, overwrite = true)
-      // 只保留最近 3 代（按文件名时间戳排序，删旧留新）
-      val all = dir.listFiles { f -> f.isFile && f.name.startsWith("settings-") }?.sortedBy { it.name } ?: emptyList()
-      for (stale in all.dropLast(3)) SnapshotFs.deletePath(stale)
-      Log.i(TAG, "settings backup written: " + target.name + " (kept " + minOf(all.size, 3) + ")")
-    } catch (t: Throwable) {
-      Log.w(TAG, "settings backup failed (non-fatal)", t)
-    }
-  }
-
-  /** Process-level start guard (MainActivity and EngineService each construct their own EngineManager;
-   *  instance fields are invisible across them — the double-start race needs companion-level CAS). */
-  private val starting: Boolean
-    get() = STARTING.get()
-
-  /**
-   * Extract the bundled snapshot archive into [stage]. The live tree is never a
-   * destination: extraction is only ever performed inside the transaction stage.
-   *
-   * 【0.14.7 / task-9 D-1 + D-2】**真因必须挂到 [lastRefreshFailure]**：旧实现在 catch 里只写
-   * `Log.e`（只进易失的 logcat），随后 `return false` —— 调用方（EngineStartFlow 的失败分支）
-   * 只能拿到布尔值，于是 boot-fail.log 落成 `error=none(boolean-failure-path)`、`stack=none`。
-   * 真机现场那条 `org.tukaani.xz.CorruptedInputException: Compressed data is corrupt` 因此**零落盘**，
-   * 排障只能靠 logcat 反查。现在异常对象与稳定错误码都挂在这里，由既有链路一路写进 boot-fail.log。
-   *
-   * @param onProgress bytesDone, bytesTotal.
-   * @returns true on success.
-   */
-  private fun extractSnapshotTo(stage: File, onProgress: (Long, Long) -> Unit): Boolean {
-    // D-2（0.14.7 / task-9）：取 fd.length 用的 AssetFileDescriptor **必须关闭**。
-    // 旧实现 `val fd = context.assets.openFd(...)` 从不 close —— 真机 logcat 里那句
-    // "A resource failed to call close." 就是它。AssetFileDescriptor 持有真实的 ParcelFileDescriptor，
-    // 而这条路径在「每次启动都失败、每次重试」的形态下会被反复走到（真机正是这种形态），
-    // 泄漏是**按启动次数累积**的。用 use{} 保证异常路径同样关闭；长度先取出来再进解压。
-    val assetLength = try {
-      context.assets.openFd(BUNDLED_SNAPSHOT_ASSET).use { it.length }
-    } catch (t: Throwable) {
-      // 取不到长度不是致命：totalBytes 只用于进度显示（0 = 未知）。摘要预检已单独归类「资产不可读」。
-      Log.w(TAG, "could not read bundled snapshot asset length; continuing with unknown total", t)
-      0L
-    }
-    return try {
-      val extractStartMs = android.os.SystemClock.elapsedRealtime()
-      context.assets.open(BUNDLED_SNAPSHOT_ASSET).use { input ->
-        SnapshotExtractor.extract(input, assetLength, stage, onProgress, runtimeRoot = context.filesDir)
-      }
-      BootPhaseTrace.mark(
-        context,
-        BootPhaseTrace.SNAPSHOT_EXTRACT,
-        "ms=" + (android.os.SystemClock.elapsedRealtime() - extractStartMs) +
-          " compressedBytes=" + assetLength,
-      )
-      true
-    } catch (t: Throwable) {
-      Log.e(TAG, "snapshot extract failed", t)
-      // D-1 的落点：异常 + 归类码。`extract` 抛出的若是解码器异常，类名与栈原样保留在 cause 链上。
-      lastRefreshFailure = t
-      lastRefreshFailureCode = (t as? SnapshotFsException)?.code ?: CODE_EXTRACT_FAILED
-      false
-    }
-  }
-
-  /**
-   * Ensure the private DSH_HOME data layout is ready (idempotent, called from a background thread).
-   *
-   * Since v0.10.5 all runtime data lives in private app data; Documents/dshdata stays only as the
-   * user-initiated export repo (exports/ + .nomedia). This method:
-   *  - on a first/clean install: sets up the private .dsh layout and the public export repo;
-   *  - when it detects a pre-v0.10.4 public migration layout (.migrated-from or private symlinks):
-   *    performs a reverse migration, copying sessions/storages/attachments/profiles/settings.yaml
-   *    back into private storage and cleaning up the public leftovers;
-   *  - on any failure keeps the public data; the engine still starts with a private DSH_HOME and
-   *    retries next time.
-   *
-   * DSH_HOME always stays in the private domain: the profiles/node_modules flat-fallback symlink
-   * mechanism depends on the app-private domain (public FUSE forbids symlinks), so DSH_HOME must
-   * never be migrated wholesale.
-   */
-  /**
-   * #130-2：播种「手机操控」Agent 预设（`$DSH_HOME/.agent-presets/phone-control/`）。
-   * 组成文件直接复制当前引擎自带的 `standard` 预设（避免随引擎升级漂移），另附 SKILL.md
-   * 固定「dump → 按 ref 动作 → 校验 → 再 dump」的流程与纪律。已存在则不覆盖（用户可自改）。
-   */
   private fun seedPhoneControlPreset(privateDsh: File) {
     try {
       val dir = File(File(privateDsh, ".agent-presets"), "phone-control")
@@ -1264,62 +474,6 @@ class EngineManager(private val context: Context, private val pickToken: String?
    * (v0.12.4 rc8 removed the onImagePicked/llm-deepseek/textzoom patches — rc8's native image
    * request support and no-cache hardening supersede them.)
    */
-  private fun applyRuntimePatches() {
-    val dshPkgs = File(usrDir, "lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai")
-    applyAssetPatch("patched/attachment-local-index.js",
-      File(dshPkgs, "dsh-attachment-local/lib/index.js"))
-    applyAssetPatch("patched/session-persistence-jsonl-index.js",
-      File(dshPkgs, "dsh-session-persistence-jsonl/lib/index.js"))
-    applyAssetPatch("patched/fs-local-index.js",
-      File(dshPkgs, "dsh-fs-local/lib/index.js"))
-  }
-
-  /** Overwrite-style patch: applies when the target differs from the bundled asset (content
-   *  fingerprint), so an updated asset re-applies on upgrade instead of being skipped by a stale
-   *  marker string (the v1→v2 asset-update failure).
-   */
-  private fun applyAssetPatch(asset: String, target: File) {
-    // Patches track bundle layouts: when the runtime no longer ships the patched package
-    // (e.g. dsh-client-ui-primitives dropped from the dependency graph in dsh 0.1.1-rc.1),
-    // stop applying instead of littering a dead overlay into to the tree.
-    if (!target.parentFile.exists()) {
-      Log.i(TAG, "runtime patch skipped (target package absent): $asset")
-      return
-    }
-    val assetBytes = try {
-      context.assets.open(asset).use { it.readBytes() }
-    } catch (e: Exception) {
-      Log.w(TAG, "runtime patch asset missing: $asset")
-      return
-    }
-    if (target.exists() && target.readBytes().contentEquals(assetBytes)) return
-    try {
-      target.parentFile?.mkdirs()
-      target.writeBytes(assetBytes)
-      Log.i(TAG, "runtime patch applied/updated: $asset -> $target")
-    } catch (e: Exception) {
-      Log.e(TAG, "runtime patch failed: $asset", e)
-    }
-  }
-
-
-  /** Append-style patch (for cordis.patch.yml, keeping the user's existing entries). */
-  private fun applyAssetPatchAppend(asset: String, target: File, marker: String) {
-    if (target.exists() && target.readText().contains(marker)) return
-    try {
-      val content = context.assets.open(asset).bufferedReader().use { it.readText() }
-      target.parentFile?.mkdirs()
-      val existing = if (target.exists()) target.readText() else ""
-      val sep = if (existing.isNotBlank() && !existing.endsWith("\n")) "\n" else ""
-      target.writeText(existing + sep + content)
-      Log.i(TAG, "runtime patch appended: $asset -> $target")
-    } catch (e: Exception) {
-      Log.e(TAG, "runtime patch failed: $asset", e)
-    }
-  }
-
-  /** Starts the embedded engine. [force] is reserved for a confirmed hung boot
-   * after its full cold-start deadline; routine probes must never force-restart. */
   fun startEngine(port: Int = 3080, force: Boolean = false): Boolean {
     // 独立评审 6(a)：每次进入先**清掉上一次的拒启结论**，让「有码」严格等价于「本次就是被
     // 闸门 A 拒的」。旧实现只在**通过**闸门 A 时清码，于是闸门 A 之前的那几条 return false
@@ -1329,195 +483,76 @@ class EngineManager(private val context: Context, private val pickToken: String?
     lastStartRefusal = null
     lastStartRefusalCode = null
     lastStartRefusalConfirmed = emptyList()
-    snapshotFingerprintProblem()?.let { problem ->
-      lastStartRefusalCode = REFUSAL_RUNTIME_UNAVAILABLE
-      lastStartRefusal = problem.failureCode + ": " + problem.detail
-      return false
-    }
-    // 快照刷新进行中禁止拉起（看门狗旁路闸门）：主流程刷新完成后自会启动；期间拉起只会
-    // 起在半新半旧的运行时上。返回 true = 「无需再启动」（与冷却窗语义一致，5s 后看门狗复检）。
-    if (EngineManager.snapshotRefreshing.get()) {
-      LogCollector.log(TAG, "engine start skipped (snapshot refresh in progress)")
-      return true
-    }
-    // LD_PRELOAD depends on the snapshot's termux-exec lib: when missing, every child exec fails,
-    // and combined with the cooldown window that means a silent 90s engine outage — assert explicitly
-    // before starting and fail loudly if absent.
-    val preload = File(usrDir, "lib/libtermux-exec-ld-preload.so")
-    if (!preload.exists()) {
-      Log.e(TAG, "engine start failed: termux-exec preload missing at " + preload.absolutePath)
-      lastStartRefusalCode = REFUSAL_RUNTIME_UNAVAILABLE
-      lastStartRefusal = "termux-exec 预载库缺失（" + preload.absolutePath + "）"
-      return false
-    }
-    // ── issue #271 ④：刷新失败后的**半搬态**不得再走 spawn ─────────────────────────────
-    //
-    // 现场形态：快照事务在 replaceEntry 里失败后，live 的 usr 已被搬进 .snapshot-previous、
-    // staged 没搬进来 ⇒ node 不在。此后每一次 boot / 看门狗重启都照旧 spawn，子进程必然
-    // 立即死亡（issue 里引擎日志末行就是 `exec …/files/usr/bin/node: No such file or directory`），
-    // 而 boot 只看到「进程在 90s 预算内死亡、Web 端口未就绪」——用户侧就是「反复重启 + 一堆
-    // 没有指向的报错」。
-    //
-    // 判据复用既有的 [liveRuntimeComplete]（降级闸门用的就是它，口径单一）：live 不完整时
-    // **明确拒绝启动并给出可归因的原因**，让失败停在「运行时快照刷新失败」这一层，
-    // 而不是放大成 90s 超时 + 反复重启。
-    if (!liveRuntimeComplete()) {
-      // issue #309 建议 5：旧文案写「请重试刷新」，而当时**没有任何入口**能做这件事——文案承诺
-      // 了一个不存在的动作。现在两个出口都真实存在，文案按事实改写：
-      //   · 缺的是快照自身条目（确诊项）⇒ 调用方**自动**删指纹重做运行时，用户什么都不用做；
-      //   · 只缺低置信度条目 ⇒ 自动路径刻意不动（见 RuntimeTree.START_RECOVERY_CONFIRMED_ENTRIES），
-      //     用户可在错误页点主按钮强制重做一次。
-      lastStartRefusal = "运行时快照不完整（live 树缺 node/bin.js/profile）——上一次快照刷新失败留下的半搬态；" +
-        "缺的是快照自身条目时会自动重做运行时，否则可在错误页点主按钮强制重做；" +
-        "本次不拉起引擎（避免 90s 超时与反复重启）"
-      // issue #309：给出结构化原因码，调用方据此触发**一次**「删指纹 + 清账本」的恢复动作。
-      // 没有它就没有恢复路径：拒启 ⇒ 不 spawn ⇒ engine.log 永不产生 ⇒ 闸门 B 判据恒为假。
-      lastStartRefusalCode = REFUSAL_LIVE_RUNTIME_INCOMPLETE
-      // issue #309：**删指纹之前**取证。恢复会覆盖现场，取证只能在此刻做；分级决定要不要恢复。
-      val missing = RuntimeTree.missingEntries(
-        root = usrDir,
-        profileDir = File(homeDir, ".dsh/profiles/web"),
-      )
-      val confirmed = RuntimeTree.confirmedDamage(missing)
-      lastStartRefusalConfirmed = confirmed
-      lastStartRefusalEvidence = liveRuntimeEvidence(missing, confirmed)
-      Log.e(TAG, "engine start refused: live runtime incomplete — " + lastStartRefusal)
-      Log.e(TAG, "live runtime evidence: " + lastStartRefusalEvidence)
-      LogCollector.log(TAG, "engine start refused (live runtime incomplete) evidence=" + lastStartRefusalEvidence)
-      return false
-    }
-    // Persisted profile state can predate the current Hard manifest (for example, a bundle
-    // selection missing from an older migration). Reconcile before *every* spawn decision, even
-    // when the extracted snapshot fingerprint is already fresh. Only exact installed identities
-    // from the trusted manifest may be added; user Soft selections and pins remain intact.
-    val hard = PluginMounts.ensureHard(context, PluginMounts.currentFingerprint(context))
-    if (hard == null) {
-      lastStartRefusalCode = REFUSAL_HARD_BUNDLE_SELECTION
-      lastStartRefusal = "当前版本 Hard 插件清单缺失或与运行时快照不匹配；拒绝启动引擎，profile 未修改"
-      Log.e(TAG, "engine start refused: " + lastStartRefusal)
-      return false
-    }
-    val hardBundleRepair = PluginMounts.ensureHardBundlesSelected(
-      File(homeDir, ".dsh/profiles/web/package.json"),
-      File(usrDir, "lib/node_modules/@deepseek-ai/dsh/node_modules"),
-      hard,
-    )
-    if (hardBundleRepair.failure != null) {
-      lastStartRefusalCode = REFUSAL_HARD_BUNDLE_SELECTION
-      lastStartRefusal = "Hard bundle profile 校验/修复失败；拒绝启动引擎，" + hardBundleRepair.failure
-      Log.e(TAG, "engine start refused: " + lastStartRefusal)
-      return false
-    }
-    if (hardBundleRepair.changed) {
-      LogCollector.log(TAG, "required Hard factory bundles added to web profile; engine restart required")
-    }
-    val restartForHardBundleRepair = hardBundleRepair.changed
-    // 通过闸门 A：码与确诊项已在入口清过（见函数头注释），此处无需重复。
-    // 取证字段**刻意不清**：它是只增的现场记录，供诊断包读取。
-    val now = System.currentTimeMillis()
-    // Process-level CAS: only one concurrent call really starts (device-measured EADDRINUSE double-start).
+    // 纯 Linux 路径：装了内置实例就走客体，不再触碰 Termux 快照闸门。
+    // 纯 Linux 运行时：引擎一律在 PRoot/Debian 客体里启动，不存在 Termux 回退分支。
+    return startGuestEngine(port, force)
+  }
+
+  /**
+   * 客体启动：确保内置实例就位（缺则解包），再按 PRoot 命令起引擎。
+   * 不再有 Termux 快照闸门——那套判据只对已经不存在的 Bionic 树成立。
+   */
+  private fun startGuestEngine(port: Int, force: Boolean): Boolean {
     if (!STARTING.compareAndSet(false, true)) return true
-    // A tracked child proves exactly whether another manager is cold-booting.
-    // If it has exited, a caller may retry immediately; deferring on a timestamp
-    // alone turns a real early crash into a 90-second outage.
-    val withinCooldown = now - EngineManager.lastStartAttemptAt < START_COOLDOWN_MS
-    val availability = probeAvailability(1_000)
-    val managedProcessAlive = engineProcess?.isAlive == true
-    lastAvailability = availability
-    if (availability == EngineProbe.EngineAvailability.PORT_FOREIGN) {
-      val refusal = "本机 3080 端口由未归属到本壳的进程占用；为保护该进程，本次不杀、不重启、不拉起引擎"
-      lastStartRefusalCode = REFUSAL_PORT_FOREIGN
-      lastStartRefusal = refusal
-      LogCollector.log(TAG, "engine start refused (PORT_FOREIGN; force=$force)")
-      Log.w(TAG, refusal)
-      STARTING.set(false)
-      return false
-    }
-    val engineUsable = availability == EngineProbe.EngineAvailability.OUR_PROCESS ||
-      availability == EngineProbe.EngineAvailability.OUR_HTTP
-    val degradedHttp = engineUsable && WatchdogV2.degradedHttpTripped()
-    if (!force && !restartForHardBundleRepair && engineUsable && !degradedHttp) {
-      STARTING.set(false)
-      LogCollector.log(TAG, "engine start skipped (existing engine usable: " + availability + ")")
-      return true
-    }
-    if ((force || restartForHardBundleRepair || degradedHttp) && availability == EngineProbe.EngineAvailability.OUR_HTTP && !managedProcessAlive) {
-      lastStartRefusal = "引擎 HTTP 响应可归属，但本壳没有可安全停止的子进程句柄；拒绝盲目重启"
-      LogCollector.log(TAG, "engine restart refused (owned HTTP without tracked process handle)")
-      STARTING.set(false)
-      return false
-    }
-    if (withinCooldown) {
-      LogCollector.log(TAG, "engine start retrying after the tracked child exited during cooldown")
-    }
-    return try {
-      // 只停止持有句柄的本壳子进程；未归属监听器绝不通过名称匹配清理。
-      if (!killExistingEngine()) {
-        lastAvailability = EngineProbe.classifyPreSpawnPort(EngineProbe.portReachable(250))
-        if (lastAvailability == EngineProbe.EngineAvailability.PORT_FOREIGN)
+    try {
+      if (engineProcess?.isAlive == true) {
+        if (!force) return true
+        if (!stopOwnedEngine()) {
           lastStartRefusalCode = REFUSAL_PORT_FOREIGN
-        lastStartRefusal = "旧引擎停止后 3080 仍被占用；本次拒绝 spawn，避免覆盖未知监听器"
-        LogCollector.log(TAG, "engine start refused: listener remained after owned-child cleanup")
+          lastStartRefusal = "无法确认并停止本壳引擎，未启动替代进程"
+          return false
+        }
+      }
+      when (val installed = prepareLinuxInstance { LogCollector.log(TAG, "linux install: $it") }) {
+        is LinuxInstanceInstaller.Result.Ready -> LogCollector.log(TAG, "linux instance ready: " + installed.instance.root.absolutePath)
+        is LinuxInstanceInstaller.Result.Failed -> {
+          lastStartRefusalCode = installed.code; lastStartRefusal = installed.detail
+          Log.e(TAG, "linux instance preparation failed: " + installed.code)
+          return false
+        }
+      }
+      ensurePrivateDshData()
+      val hard = PluginMounts.ensureHard(context, PluginMounts.currentFingerprint(context))
+      if (hard == null) {
+        lastStartRefusalCode = REFUSAL_HARD_BUNDLE_SELECTION
+        lastStartRefusal = "APK Hard 插件清单与 Linux 引擎身份不可用；现有用户 profile 保留"
         return false
       }
-      // 0.13.1 W5：坏键迁移必须在引擎读 settings 前完成。
-      repairSettingsSeed()
-      SnapshotUserData.retireReseededFactorySettings(File(homeDir, ".dsh"))?.let { backup ->
-        LogCollector.log(TAG, "resurrected blank factory settings quarantined before profile import: " + backup.name)
-      }
-      // 0.14.0 #214：退役行 disabled 残留自愈（前置于引擎读 profile；幂等一次性，见函数注释）。
-      repairProfilePatch()
-      // 0.13.1 W3/W4：共享目录 README 每次启动刷新（此前只在迁移路径调用，正常启动不落盘）。
-      // 注意：本行**只覆盖「引擎真的启动」这一条路径**——startEngine 有两个早退会整段跳过它
-      // （快照刷新中 / 引擎已在跑）。故 provisionPublicRepo 另由 MainActivity 的 onCreate/onResume
-      // 触发，那里才是「授权之后能自愈」的入口（0.14.1 用户反馈）。
-      provisionPublicRepo(PublicRepoProvision.TRIGGER_ENGINE_START)
-      // Runs before the engine reads Python user-site state and before spawn.
-      migratePythonPackages("engine-start")
-      applyRuntimePatches()
-      // --no-open: the engine must never try to open a desktop browser on Android
-      // (the WebView IS the UI). Without it, rc.2's spawn xdg-open on a missing
-      // binary stalls engine serve on some emulators (MuMu root observed);
-      // the flag is the official engine CLI switch (see bin.js docs).
-      val args = arrayOf(
-        nodeBin.absolutePath, "--expose-internals", dshBin.absolutePath, "web", "--port", port.toString(), "--no-open",
+      val selected = PluginMounts.ensureHardBundlesSelected(
+        File(homeDir, ".dsh/profiles/web/package.json"),
+        File(context.filesDir, "linux/engine/@deepseek-ai/dsh/node_modules"), hard,
       )
-      // TOCTOU guard: cleanup is not proof that the port stayed free during runtime preparation.
-      val preSpawnAvailability = EngineProbe.classifyPreSpawnPort(EngineProbe.portReachable(300))
-      if (preSpawnAvailability != EngineProbe.EngineAvailability.DOWN) {
-        lastAvailability = preSpawnAvailability
-        lastStartRefusalCode = REFUSAL_PORT_FOREIGN
-        lastStartRefusal = "最终 spawn 前复查发现 3080 已被占用；按外部监听处理，本次只拒绝一次且不重试"
-        LogCollector.log(TAG, "engine start refused at final pre-spawn recheck (PORT_FOREIGN)")
+      if (selected.failure != null) {
+        lastStartRefusalCode = REFUSAL_HARD_BUNDLE_SELECTION
+        lastStartRefusal = "Linux Hard 插件选择失败：" + selected.failure
         return false
       }
-      val started = startWithArgs(args, shellEnv())
+      val launch = when (val resolved = guestBootLaunch(port)) {
+        is LinuxGuestBoot.Result.Ready -> resolved.launch
+        is LinuxGuestBoot.Result.Refused -> {
+          lastStartRefusalCode = resolved.code; lastStartRefusal = resolved.detail
+          return false
+        }
+      }
+      val started = startGuestWithLaunch(launch)
       engineProcess = started
-      // If a listener won the final check/start race, Node exits on EADDRINUSE. Reclassify once and
-      // leave subsequent watchdog attempts at the foreign-port refusal path (no kill/retry storm).
       try { Thread.sleep(200) } catch (_: InterruptedException) { Thread.currentThread().interrupt() }
       if (!started.isAlive && EngineProbe.portReachable(250)) {
         engineProcess = null
         lastAvailability = EngineProbe.EngineAvailability.PORT_FOREIGN
         lastStartRefusalCode = REFUSAL_PORT_FOREIGN
-        lastStartRefusal = "3080 在最终复查与引擎 bind 之间被其他进程抢占；已停止本次启动且不会清理外部进程"
-        LogCollector.log(TAG, "engine spawn lost EADDRINUSE race; classified PORT_FOREIGN, no retry")
+        lastStartRefusal = "引擎端口已被其他进程占用；未清理外部进程"
         return false
       }
-      // The cooldown is written only after a real start: failure paths don't consume the window (retry is immediate).
-      EngineManager.lastStartAttemptAt = now
-      LogCollector.log(TAG, "engine started")
-      true
-    } catch (t: Throwable) {
-      lastStartRefusalCode = startupExceptionCode(t)
-      Log.e(TAG, "engine start failed", t)
-      LogCollector.log(TAG, "engine start FAILED: " + (t.message ?: t.javaClass.simpleName))
-      // 0.13.1 W3：失败现场镜像到共享目录（此前 engine.log 只在私有域，外界拿不到）。
-      mirrorDiagnosticsToShared("engine-spawn-failed")
-      false
-    } finally {
-      STARTING.set(false)
-    }
+      lastStartAttemptAt = System.currentTimeMillis()
+      LogCollector.log(TAG, "engine started (PRoot guest)")
+      return true
+    } catch (error: Throwable) {
+      lastStartRefusalCode = startupExceptionCode(error)
+      lastStartRefusal = error.message ?: error.javaClass.simpleName
+      Log.e(TAG, "guest engine start failed", error)
+      return false
+    } finally { STARTING.set(false) }
   }
 
   /** Only syscall evidence classifies storage failures; arbitrary exception prose stays unknown. */
@@ -1585,40 +620,57 @@ class EngineManager(private val context: Context, private val pickToken: String?
    * binaries, but loading them through /system/bin/linker64 is the same
    * mechanism as native libraries (always permitted for app data).
    */
-  private fun startWithArgs(args: Array<String>, env: Map<String, String>): Process {
-    val preload = EngineTransport.preparePreload(context)
-    val privateArgs = listOf(args.first(), "--require", preload.absolutePath) + args.drop(1)
+  /** boot-mode.json 未开启时返回 null；开启后由 LinuxGuestBoot 决定可启动或拒绝。 */
+  private fun guestBootLaunch(port: Int): LinuxGuestBoot.Result {
+    return LinuxGuestBoot.resolve(
+      LinuxGuestBoot.Paths(
+        filesDir = context.filesDir,
+        nativeLibraryDir = File(context.applicationInfo.nativeLibraryDir),
+        homeDir = homeDir,
+        port = port,
+      ),
+    )
+  }
+
+  /**
+   * 启动客体引擎。与 Termux 路径的区别：不注入 termux-exec 预载，不追加 `--require`，
+   * 只把 API key/版本等与平台无关的变量带进 PRoot；平台路径类变量一律用客体值。
+   */
+  private fun startGuestWithLaunch(launch: LinuxGuestBoot.Launch): Process {
     val log = File(context.filesDir, "engine.log")
     rotateEngineLog(log)
-    // Rotation must isolate the active path; otherwise an old token could survive a failed rename.
     if (log.exists()) throw java.io.IOException("could not isolate engine.log generation before spawn")
-    // Mark the generation before ProcessBuilder creates the fresh redirect target. token extraction
-    // also checks creation time, so a stale file with a refreshed mtime cannot impersonate this run.
     runCatching { EngineAuth.markGenerationStart(System.currentTimeMillis()) }
     LogCollector.markBootStart(context, engineHeapMb(deviceTotalRamMb()))
     watchEngineListen()
-    fun build(argv: List<String>): ProcessBuilder =
-      ProcessBuilder(argv).also { b ->
-        b.environment().putAll(env)
-        // Working directory = the app workspace root (0.13.7fx-1). An Android app process starts
-        // in `/`, and the engine takes process.cwd() as the default Session cwd and as the
-        // file-reference root for a Session without a workspace — so `@` listed /acct, /apex, …
-        // instead of anything the user owns. The workspace root is where the app keeps its
-        // workspaces (and the shell write-fence root), so ungrouped Sessions stay inside it.
-        workspaceRootDir()?.let { b.directory(it) }
-        b.redirectErrorStream(true)
-        b.redirectOutput(log)
-      }
-    val process = try {
-      build(privateArgs).start()
-    } catch (e: java.io.IOException) {
-      if (e.message?.contains("Permission denied") != true) throw e
-      Log.w(TAG, "direct exec denied, falling back to linker64: " + e.message)
-      build(listOf("/system/bin/linker64") + privateArgs).start()
-    }
+    val guestEnv = mapOf(
+      // 引擎的终端工具按 SHELL 拉起用户 shell：这里必须是客体 Debian 的 bash，
+      // 否则 subprocess-local 会退回 Android/宿主路径。
+      "SHELL" to "/bin/bash",
+      "TERM" to "xterm-256color",
+      // 与旧 Termux 路径保持同一组资源策略：堆上限、线程池与 pnpm store 都在 shell 侧钉死，
+      // 只是路径改成客体可见的 $HOME 下（home 目录已 bind 进 PRoot）。
+      "NODE_OPTIONS" to heapOptionFrom(engineHeapMb(deviceTotalRamMb())),
+      "UV_THREADPOOL_SIZE" to uvThreadPoolSize(Runtime.getRuntime().availableProcessors()).toString(),
+      "npm_config_store_dir" to pnpmStoreDir(homeDir),
+      "DSH_APP_VERSION" to BuildConfig.VERSION_NAME,
+      "DSH_APP_VERSION_CODE" to BuildConfig.VERSION_CODE.toString(),
+      "DSH_FILES_DIR" to context.filesDir.absolutePath,
+      "DSH_HOME" to ensurePrivateDshData().absolutePath,
+      "DSH_PICK_TOKEN" to (pickToken ?: ""),
+      "DEEPSEEK_API_KEY" to (File(context.filesDir, "deepseek-key.txt").takeIf { it.exists() }?.readText()?.trim() ?: ""),
+      "DASHSCOPE_API_KEY" to (File(context.filesDir, "dashscope-key.txt").takeIf { it.exists() }?.readText()?.trim() ?: ""),
+    )
+    val guestLaunch = LinuxGuestBoot.withEnvironment(launch, guestEnv)
+    val process = ProcessBuilder(guestLaunch.argv).also { builder ->
+      builder.environment().putAll(guestLaunch.env)
+      if (launch.workingDirectory.isDirectory) builder.directory(launch.workingDirectory)
+      builder.redirectErrorStream(true)
+      builder.redirectOutput(log)
+    }.start()
     if (!log.isFile) {
       runCatching { process.destroyForcibly() }
-      throw java.io.IOException("engine spawn did not create a fresh engine.log")
+      throw java.io.IOException("guest engine spawn did not create a fresh engine.log")
     }
     return process
   }
@@ -1782,14 +834,12 @@ class EngineManager(private val context: Context, private val pickToken: String?
     sb.append("device: ").append(android.os.Build.MANUFACTURER).append(' ').append(android.os.Build.MODEL)
       .append(" / Android ").append(android.os.Build.VERSION.SDK_INT).append('\n')
     sb.append("abi: ").append(android.os.Build.SUPPORTED_ABIS.joinToString(",")).append('\n')
-    sb.append("snapshot_bundled_sha: ").append(bundledSnapshotFingerprint.failureCode ?: "valid").append('\n')
-    sb.append("snapshot_committed_sha: ").append(liveFingerprint()).append('\n')
+    sb.append("linux_instance_ready: ").append(linuxInstanceReady()).append('\n')
     engineExitInfo()?.let { sb.append("engine_exit: ").append(it).append('\n') }
     // task-79（Bug A）：运行时树损坏标记的**读取方**。
     // 为什么必须有人读它：`engine.log` 每次 spawn 被 redirectOutput 截断，所以「我们曾判定树损坏并触发
     // 重抽取」这件事只能落在壳侧标记里；没有读取方的话它就是死账本——事后既无法证明它被写过，
     // 也进不了诊断包。这里把它带进 info.txt（存在才有该行），于是失败现场自带这一条事实。
-    runtimeTreeDamageMarker(context)?.let { sb.append("runtime_tree_damage: ").append(it).append('\n') }
     // issue #309：把「闸门 A 为什么拒启、当时缺了什么」也带进诊断包。
     // 为什么必须进包：唯一的恢复动作（删指纹 + 全量重抽取）会覆盖现场；拒启取证如果只留在
     // logcat/boot-fail.log，用户取包反馈时就没有这条已整理好的事实。两个字段同源同上一次拒启。
@@ -2157,129 +1207,11 @@ class EngineManager(private val context: Context, private val pickToken: String?
    * previous runtime (second-layer fallback; the F3 plugin layer stays in
    * charge of config/plugin-code rollbacks). Never throws.
    */
+  /** Component upgrades are committed only after the isolated Linux trial; no snapshot health swaps remain. */
   fun onEngineProbe(healthy: Boolean) {
-    val pending = File(context.filesDir, ".update-pending")
-    if (!pending.exists()) {
-      updateHealthTicks = 0
-      return
-    }
-    val marker = SnapshotTransaction.readMarker(context.filesDir)
-    if (marker?.phase == SnapshotTransaction.Phase.UNKNOWN || marker?.purpose == SnapshotTransaction.Purpose.UNKNOWN) {
-      updateHealthTicks = 0
-      Log.e(TAG, "update health confirmation blocked by unknown transaction marker; recovery source retained")
-      return
-    }
-    if (marker?.purpose == SnapshotTransaction.Purpose.ONLINE_UPDATE &&
-      marker.phase == SnapshotTransaction.Phase.ONLINE_COMMITTED) {
-      applyRecovery(SnapshotTransaction.recover(context.filesDir, SnapshotTransaction.stageRoot(context.filesDir), usrDir, homeDir))
-      return
-    }
-    val acceptedHealth = if (healthy && marker?.purpose == SnapshotTransaction.Purpose.ONLINE_UPDATE) {
-      // HTTP readiness alone can commit a candidate whose required Android/product loaders
-      // failed to register. Reuse the same read-only inventory + preset + session/catalog
-      // proof used by Soft promotion; provider execution/permissions are intentionally excluded.
-      val hard = PluginMounts.ensureHard(context, marker.fingerprint)
-      hard != null && EngineProbe.completeSoftHealth(context, hard)
-    } else healthy
-    if (acceptedHealth) {
-      updateHealthTicks++
-      if (updateHealthTicks >= UPDATE_CONFIRM_TICKS) {
-        if (SnapshotTransaction.readMarker(context.filesDir)?.purpose == SnapshotTransaction.Purpose.ONLINE_UPDATE) {
-          try {
-            if (!commitOnlineUpdateIfPending()) {
-              Log.e(TAG, "online runtime health confirmation could not finalize transaction; journal retained")
-              return
-            }
-          } catch (t: Throwable) {
-            Log.e(TAG, "online runtime health confirmation failed; journal retained", t)
-            return
-          }
-        } else {
-          // Migrate the legacy pending-update fingerprint into the explicit freshness record before
-          // clearing its only probation marker. Keep usr-old as the legacy recovery source.
-          val committed = liveFingerprint()
-          if (bundledFingerprint().isNotEmpty() && Regex("[0-9a-fA-F]{64}").matches(committed)) {
-            try { writeOnlineSnapshotIdentity(bundledFingerprint(), committed) } catch (t: Throwable) {
-              Log.e(TAG, "legacy online update identity migration failed; pending state retained", t)
-              return
-            }
-          }
-        }
-        pending.delete()
-        File(context.filesDir, ".update-pending-at").delete()
-        updateHealthTicks = 0
-        LogCollector.log(TAG, "update confirmed")
-      }
-    } else {
-      updateHealthTicks = 0
-      val at = File(context.filesDir, ".update-pending-at").takeIf { it.exists() }?.readText()?.trim()?.toLongOrNull()
-      if (at != null && System.currentTimeMillis() - at > UPDATE_ROLLBACK_MS) {
-        if (rollbackToOld()) {
-          pending.delete()
-          File(context.filesDir, ".update-pending-at").delete()
-        }
-      }
-    }
+    if (healthy) LogCollector.log(TAG, "Linux engine health observed")
   }
 
-  /** Swap the current runtime back to the kept previous one; restarts the engine from it. */
-  private fun rollbackToOld(): Boolean {
-    val marker = SnapshotTransaction.readMarker(context.filesDir)
-    if (marker?.purpose == SnapshotTransaction.Purpose.ONLINE_UPDATE) {
-      if (!rollbackOnlineRuntime()) return false
-      lastStartAttemptAt = 0
-      try { startEngine() } catch (_: Throwable) { }
-      return true
-    }
-    val usr = File(context.filesDir, "usr")
-    val old = File(context.filesDir, "usr-old")
-    if (!old.exists()) return false
-    try {
-      val broken = File(context.filesDir, "usr-broken")
-      SnapshotFs.deletePath(broken)
-      if (usr.exists()) usr.renameTo(broken)
-      if (old.renameTo(usr)) {
-        LogCollector.log(TAG, "update rolled back to previous runtime; restarting engine")
-        EngineManager.lastStartAttemptAt = 0 // allow an immediate restart (no cooldown stall)
-        try { startEngine() } catch (_: Throwable) {
-        }
-        return true
-      } else {
-        // Rollback of the rollback: the failed old-swap left no usr — put the broken new one back.
-        if (!usr.exists() && broken.exists()) broken.renameTo(usr)
-        Log.e(TAG, "update rollback failed; usr restored from usr-old: " + usr.exists())
-        return false
-      }
-    } catch (t: Throwable) {
-      Log.e(TAG, "update rollback threw", t)
-      return false
-    }
-  }
-
-  internal fun rollbackOnlineRuntime(): Boolean {
-    val marker = SnapshotTransaction.readMarker(context.filesDir)
-      ?.takeIf { it.purpose == SnapshotTransaction.Purpose.ONLINE_UPDATE } ?: return false
-    val result = SnapshotTransaction.rollbackOnlineUpdate(
-      context.filesDir, SnapshotTransaction.stageRoot(context.filesDir), usrDir, homeDir, marker,
-    )
-    if (!result.ok) {
-      Log.e(TAG, "online update rollback failed; journal and previous runtime retained: " + result.failures.joinToString(", "))
-      return false
-    }
-    SnapshotTransaction.clearMarker(context.filesDir)
-    if (marker.priorFingerprint.isNotEmpty()) writeFingerprint(marker.priorFingerprint)
-    File(context.filesDir, ".update-pending").delete()
-    File(context.filesDir, ".update-pending-at").delete()
-    updateHealthTicks = 0
-    return true
-  }
-
-  /**
-   * 设备物理总内存（MB）；读不到时返回 0，由 [engineHeapMb] 退回下限（宁可给足，不编造）。
-   *
-   * 用 ActivityManager.MemoryInfo.totalMem 而不是 /proc/meminfo：前者是应用可直接读的 API，
-   * 不必依赖 procfs 在 Android 10+ 上的可见性收紧（实测读不到时返回 0 并按下限处理）。
-   */
   private fun deviceTotalRamMb(): Int {
     val am = context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager ?: return 0
     return try {
@@ -2296,124 +1228,7 @@ class EngineManager(private val context: Context, private val pickToken: String?
    * TERMUX_* injected explicitly — the snapshot is self-sufficient, no Termux app needed). Idempotent:
    * safe to call repeatedly (ensurePrivateDshData and the TMPDIR mkdirs are both idempotent).
    */
-  fun shellEnv(): Map<String, String> {
-    // The runtime manager reads this atomically updated file for each guest
-    // process, so changing Wi-Fi/VPN networks does not require restarting DSH.
-    LinuxDnsServers.refresh(context.applicationContext)
-    val preload = File(usrDir, "lib/libtermux-exec-ld-preload.so")
-    // Cert paths hardcoded at Termux package build time (/data/data/com.termux/...) break after the
-    // PREFIX relocation; relocate-snapshot.py doesn't rewrite ELF, so env vars cover the functional
-    // paths — curl/wget/git https CA validation depends on them (v0.12.3-FX-2).
-    val cert = File(usrDir, "etc/tls/cert.pem").takeIf { it.exists() }
-    val certEnv = if (cert != null) {
-      mapOf(
-        "SSL_CERT_FILE" to cert.absolutePath,
-        "CURL_CA_BUNDLE" to cert.absolutePath,
-        "GIT_SSL_CAINFO" to cert.absolutePath,
-        // 快照 node 编译期硬编码 OpenSSL 配置路径 /data/data/com.termux/...（app 域不可读）：
-        // 不注入则任何 node/npm 子进程启动即 OpenSSL configuration error 退出（agent 工具调用
-        // npm/node 全部失败，引擎本体侥幸存活）。与 UndoGate/AdbState 同一修复（坑 #5 统一到
-        // 引擎级 env，覆盖 agent 所有工具子进程，2026-08-24 真机实测实锤）。
-        "OPENSSL_CONF" to File(usrDir, "etc/tls/openssl.cnf").absolutePath,
-      )
-    } else emptyMap()
-    return mapOf(
-      "PATH" to (usrDir.absolutePath + "/bin:/system/bin"),
-      "LD_LIBRARY_PATH" to (usrDir.absolutePath + "/lib"),
-      "HOME" to homeDir.absolutePath,
-      // 0.14.2 D13：侧边栏「新建终端」的默认 shell。上游 subprocess-local 的
-      // terminalEnvironment() 取 process.env.SHELL ?? os.userInfo().shell，而快照的 NSS 把
-      // userInfo().shell 解析成 **Termux 编译期前缀**（实测 /data/data/com.termux/files/usr/bin/bash，
-      // 本应用域不可达）→ 终端创建直接失败：
-      //   subprocess-local: command "/data/data/com.termux/files/usr/bin/bash" is not an executable file
-      // 壳侧是唯一能注入引擎 env 的一方，故在此显式钉住快照内 bash（与 PATH 同源）。
-      // 不改上游（铁律：上游零改动）；SHELL 全仓仅这一个消费点（subprocess-local:258）。
-      "SHELL" to File(usrDir, "bin/bash").absolutePath,
-      // DSH_HOME always stays in the private domain (FUSE forbids symlinks, so the public domain
-      // can't maintain the profiles/node_modules flat fallback); all runtime user data lives in private
-      // files/home/.dsh, and public Documents/dshdata is only the export repo.
-      "DSH_HOME" to ensurePrivateDshData().absolutePath,
-      // 0.14.1 块K ③（反馈三）：从 shell 执行 `dsh plugin add` 必失败 —— ERR_PNPM_UNEXPECTED_STORE。
-      // 现象：node_modules 链自 `/data/user/0/…/.local/share/pnpm/store/v10`，pnpm 却想用
-      // `/data/data/…/.local/share/pnpm/store/v10`；两路径 **inode 相同**（用户实测 719892）
-      // —— 同一目录的两种写法（`/data/data` 与 `/data/user/0` 在本机实测同 inode）。
-      //
-      // 真因：pnpm 的 store 位置由它自己按 CWD/HOME 推导，而 shell 的 CWD（`files/home`）与
-      // 记录进 node_modules 元数据时的写法可能不同 → 两条写法指向同一目录却字符串不等，
-      // pnpm 判定「store 变了」直接拒绝安装（引擎内安装走同一 HOME，故不受影响）。
-      //
-      // 修法（用户建议二选一中的「显式设置 pnpm store-dir」）：**显式钉住** store 目录，
-      // 且与 HOME 同源派生（见 [pnpmStoreDir]）——pnpm 不再自己猜，两条路径必然同一字符串。
-      "npm_config_store_dir" to pnpmStoreDir(homeDir),
-      // 0.13.8 #183：引擎子进程读取键盘广播 nonce 的路径基（manage 插件 --es auth 随广播携带）
-      "DSH_FILES_DIR" to context.filesDir.absolutePath,
-      // PRoot, its static guest loader and dependencies are PackageManager-
-      // extracted native libraries. Android permits execution from this
-      // directory while denying direct execve of ELFs in writable filesDir.
-      "DSH_LINUX_NATIVE_LIBRARY_DIR" to context.applicationInfo.nativeLibraryDir,
-      // os.tmpdir() falls back to the baked-in Termux tmp on Android
-      // (unwritable from the app domain); keep spill inside filesDir.
-      "TMPDIR" to File(homeDir, "tmp").apply { mkdirs() }.absolutePath,
-      // Host-side Termux commands use termux-exec for app-private Bionic tools.
-      // PRoot and its guest loader use PackageManager-installed native files.
-      "LD_PRELOAD" to preload.absolutePath,
-      "TERMUX_EXEC__SYSTEM_LINKER_EXEC__MODE" to "force",
-      "TERMUX_EXEC__EXECVE_CALL__INTERCEPT" to "1",
-      "TERMUX__ROOTFS" to usrDir.parentFile.absolutePath,
-      "TERMUX__PREFIX" to usrDir.absolutePath,
-      "TERMUX_APP__DATA_DIR" to context.filesDir.parentFile.absolutePath,
-      "TERMUX_APP__LEGACY_DATA_DIR" to "/data/data/${BuildConfig.APPLICATION_ID}",
-      "TERMUX_VERSION" to BuildConfig.TERMUX_VERSION,
-      // 版本口径单一来源（2026-09-10 用户定例）：壳侧 UI/桥/诊断都读 BuildConfig.VERSION_NAME，
-      // 引擎侧插件（如 android-linux-env 导出的环境配方）一律读这两个环境变量，
-      // 不许再出现「界面显示 0.13.x 而插件里写 0.13.0」这类内部口径分裂。
-      "DSH_APP_VERSION" to BuildConfig.VERSION_NAME,
-      "DSH_APP_VERSION_CODE" to BuildConfig.VERSION_CODE.toString(),
-      // Directory-picker endpoint auth token (validated by the web-compat plugin via x-dsh-pick-token).
-      "DSH_PICK_TOKEN" to (pickToken ?: ""),
-      // 0.14.0：内置 adb 退役——DSH_ADB_* 授权快照不再注入（引擎侧特权面改由 Shizuku 承载，
-      // 就绪事实经控制队列 caps.shizuku 实时上报，不再有启动期快照与活体两套口径）。
-      // Vision backend (Qwen-VL) API key: read from a private file rather than hardcoded in source.
-      "DASHSCOPE_API_KEY" to (File(context.filesDir, "dashscope-key.txt").takeIf { it.exists() }?.readText()?.trim() ?: ""),
-      // DeepSeek 官方 provider（dsh-llm-deepseek，provider=deepseek-official）：同模式私有文件注入。
-      "DEEPSEEK_API_KEY" to (File(context.filesDir, "deepseek-key.txt").takeIf { it.exists() }?.readText()?.trim() ?: ""),
-      // node 预热（0.13.0 启动提速 D3）：v8 模块编译缓存——引擎/工具子进程首启自动生成、
-      // 二次冷启动命中，直接缩短 node 冷启 require 树编译时间（K20 Pro 实测每次冷启都慢、
-      // 0.13.0 之前全快；缓存目录持久在 home/.dsh 下，随用户数据保留不随快照）。
-      "NODE_COMPILE_CACHE" to File(ensurePrivateDshData(), ".node-compile-cache").apply { mkdirs() }.absolutePath,
-      // C1（P-AC-03 / §7.2）：libuv 线程池默认 4——fs/crypto/zlib/dns 全挤在这 4 条线程上。
-      // 显式取 min(8, cores)（见 uvThreadPoolSize）：零产品语义改动，引擎与所有工具子进程
-      // 经 shellEnv() 一并继承。判据：子进程回读 process.env.UV_THREADPOOL_SIZE = min(8, cores)。
-      "UV_THREADPOOL_SIZE" to uvThreadPoolSize(Runtime.getRuntime().availableProcessors()).toString(),
-      // 引擎 V8 老生代上限（0.14.8 堆下限）：**此前无人管理**——不设标志时 V8 只按物理内存推导，
-      // 小内存设备上推出来的上限可能小到引擎 boot 期就 OOM（社区反馈「JavaScript 堆太小导致启动失败」）。
-      // 这里显式给出自适应值（见 engineHeapMb）：设备总内存的一半、下限 512MB、上限 4096MB。
-      // 上限取 1024 会让「一半内存」分支在所有真实设备上被截断（0.14.8 缺陷），见下方自然标志档。
-      // 用 NODE_OPTIONS 而不是 argv，是因为 argv 会**覆盖** NODE_OPTIONS，二者不能同时表达同一件事；
-      // 而 NODE_OPTIONS 还顺带覆盖所有经 shellEnv() 派生的子进程（工具子进程 / 控制台 / UndoGate）。
-      // 实测口径：--max-old-space-size=N ⇒ heap_size_limit = N + 96MB；引擎最小可用堆约 70MB。
-      // 读不到设备内存时退回下限，保证「任何设备都够启动」而不是编造一个值。
-      "NODE_OPTIONS" to heapOptionFrom(engineHeapMb(deviceTotalRamMb())),
-    ) + certEnv + PythonPackages.environment(context.filesDir, usrDir) + relocatedTermuxEnv(usrDir)
-  }
-
   /** Move user-installed packages away from usr, which is replaced as a whole on refresh. */
-  internal fun migratePythonPackages(trigger: String) {
-    val result = try {
-      PythonPackages.migrate(context.filesDir, usrDir, homeDir)
-    } catch (t: Throwable) {
-      Log.w(TAG, "python package migration failed (" + trigger + ")", t)
-      LogCollector.log(TAG, "python package migration failed (" + trigger + "): " + t.javaClass.simpleName)
-      return
-    }
-    if (result.touched) {
-      val summary = "python package migration (" + trigger + "): moved=" + result.moved.size +
-        " conflicts=" + result.conflicts.size + " failures=" + result.failures.size
-      Log.i(TAG, summary)
-      LogCollector.log(TAG, summary)
-    }
-  }
-
   companion object {
     private const val TAG = "dsh-engine"
 
@@ -2481,29 +1296,6 @@ description: 手机操控纪律：无障碍语义树优先、ref 语义点击/�
 
     /** Process-level start CAS: visible across EngineManager instances (double-start race guard). */
     val STARTING = java.util.concurrent.atomic.AtomicBoolean(false)
-
-    /** 快照刷新进行中（companion 级：MainActivity 与 EngineService 各持 EngineManager 实例，实例字段
-     *  互不可见——同 STARTING CAS 道理）。看门狗自愈拉起在此期间必须止步：刷新先备份再全量解压
-     *  （模拟器实测 8 分钟），期间 startEngine 会拿到「解压到一半的运行时」——2026-09-05 用户质询
-     *  实锤「引擎先于刷新跑起来」。主流程自身在刷新完成后照常拉起（finally 清标志）。
-     *  review C13：改 CAS（AtomicBoolean）——旧实现「if (设位) return; … 设位」的 check-then-set
-     *  在刷新入口与恢复入口之间无互斥，两个线程可同时通过检查并同时操作 stage/previous。 */
-    val snapshotRefreshing = java.util.concurrent.atomic.AtomicBoolean(false)
-
-    private val transactionStateLock = Any()
-    private const val ONLINE_SNAPSHOT_NAME = ".online-snapshot"
-
-    /** 内嵌快照资产文件名（唯一出处）——摘要预检与解压必须指向**同一份**资产。 */
-    private const val BUNDLED_SNAPSHOT_ASSET = "snapshot.tar.xz"
-
-    /**
-     * 解压支的失败码（D-1）：解压本身抛异常时由 [extractSnapshotTo] 记真因与栈；
-     * 本条只用于「解压没抛错、但 staged 运行时缺件」这一支——它此前连异常对象都没有。
-     */
-    private const val CODE_EXTRACT_FAILED = "snapshot-extract-failed"
-
-    /** 上次残留目录既删不掉也移不开（D-1 的另一条静默 return false）。 */
-    private const val CODE_STAGE_RESIDUE = "snapshot-stage-residue"
 
     /** Last real start time (epoch ms); the watchdog cooldown-window baseline. */
     @Volatile
@@ -2583,71 +1375,6 @@ internal fun engineHeapMb(totalRamMb: Int): Int {
 internal fun heapOptionFrom(heapMb: Int): String =
   "--max-old-space-size=" + heapMb.coerceAtLeast(ENGINE_HEAP_FLOOR_MB)
 
-
-/**
- * 侧栏终端的**前缀重定位**补齐（0.15.1）。
- *
- * 快照把 Termux 前缀从 `/data/data/com.termux/files/usr` 搬到了 `<files>/usr`，但 zsh / ncurses
- * **二进制里写死的搜索路径没搬**，于是侧栏 zsh 出现两类只在它身上可见的故障：
- *
- *  1. `TERMINFO` 找不到：ncurses 只查编译期目录（旧前缀）。zsh 的 ZLE 擦除一个字符依赖
- *     terminfo 的 `cub1`（左移一列）；缺它时只写空格、光标不回退 → 用户看到「退格变空格、
- *     删不掉」（缓冲区其实已删，坏的只是显示）。bash 不受影响，因为 readline 对左移有内建回退。
- *  2. `fpath` 找不到：编译进 zsh 的函数目录是旧前缀，引擎注入的 `__dsh_shell_init` 里
- *     `autoload -Uz add-zsh-hook add-zle-hook-widget` 失败，首次提示符打印三行
- *     "function definition file not found"，忙碌/空闲上报也一并失效。
- *
- * 三条都靠**环境变量**覆盖（引擎是所有工具子进程与侧栏终端的父进程，环境自动继承）：
- *  - `PREFIX`：Termux 脚本使用的经典前缀变量（引擎默认没有；模型 bash 工具由
- *    dsh-shell-termux 另行注入，二者同值）；
- *  - `TERMINFO`：指向快照自带的 terminfo 数据库；
- *  - `FPATH`：zsh 的 fpath 环境变量，按「每个函数子目录一条」冒号分隔。
- *
- * 只在目标目录真实存在时注入，缺失时保持不设置——绝不把猜出来的路径写进 env。
- * @param prefix - 快照前缀目录（= filesDir/usr）。
- * @returns 需要合并进 shell env 的键值（可能为空）。
- */
-internal fun relocatedTermuxEnv(prefix: File): Map<String, String> {
-  if (!prefix.isDirectory) return emptyMap()
-  val env = linkedMapOf<String, String>()
-  env["PREFIX"] = prefix.absolutePath
-  val terminfo = File(File(prefix, "share"), "terminfo")
-  if (terminfo.isDirectory) env["TERMINFO"] = terminfo.absolutePath
-  zshFunctionPath(prefix)?.let { env["FPATH"] = it }
-  return env
-}
-
-/**
- * zsh 的 `fpath` 形态：**每个函数子目录一条**（不是 functions 父目录），按名字稳定展开。
- *
- * 与 zsh 出厂 fpath 一致：`share/zsh/functions` 下的全部目录（递归），再加 `site-functions` 与
- * `vendor-completions`（存在才收）。返回冒号分隔串，可直接作为 `FPATH` 环境变量；
- * `functions` 目录缺失时返回 null（不编造路径）。
- * @param prefix - 快照前缀目录（= filesDir/usr）。
- * @returns `FPATH` 的值，或 null。
- */
-internal fun zshFunctionPath(prefix: File): String? {
-  val zsh = File(File(prefix, "share"), "zsh")
-  val functions = File(zsh, "functions")
-  if (!functions.isDirectory) return null
-  val directories = mutableListOf<File>()
-  fun collect(directory: File) {
-    directory.listFiles()
-      ?.filter { it.isDirectory }
-      ?.sortedBy { it.name }
-      ?.forEach { child ->
-        // 只收**子目录**：functions 父目录本身不能进 fpath（autoload 不会递归）。
-        directories += child
-        collect(child)
-      }
-  }
-  collect(functions)
-  for (name in listOf("site-functions", "vendor-completions")) {
-    val extra = File(zsh, name)
-    if (extra.isDirectory) directories += extra
-  }
-  return directories.joinToString(":") { it.absolutePath }
-}
 
 /**
  * 0.14.1 块K ③（反馈三）：pnpm store 目录——**唯一真源**，与 HOME 同源派生。

@@ -42,7 +42,10 @@ def verify(apk, native_library_root, license_root, provenance_path):
         fail('Linux backend provenance must be a regular file')
     with open(provenance_path, 'r', encoding='utf-8') as stream:
         provenance = json.load(stream)
-    if provenance.get('schemaVersion') != 1 or provenance.get('target') != 'proot':
+    if provenance.get('schemaVersion') == 2:
+        from proot_source_provenance import verify_backend
+        verify_backend(provenance_path)
+    elif provenance.get('schemaVersion') != 1 or provenance.get('target') != 'proot':
         fail('Linux backend provenance has an unsupported schema or target')
     library_records = provenance.get('nativeLibraries')
     if not isinstance(library_records, list):
@@ -67,7 +70,7 @@ def verify(apk, native_library_root, license_root, provenance_path):
         source_hash = digest(source)
         recorded = recorded_libraries[name]
         if (recorded.get('size'), recorded.get('sha256')) != source_hash:
-            fail(f'source library differs from Termux provenance: {name}')
+            fail(f'source library differs from backend provenance: {name}')
         expected[member] = source_hash
 
     if os.path.islink(license_root) or not os.path.isdir(license_root):
@@ -103,7 +106,7 @@ def verify(apk, native_library_root, license_root, provenance_path):
         for member, value in expected_licenses.items()
     }
     if recorded_licenses != source_licenses:
-        fail('Linux native license files differ from Termux provenance')
+        fail('Linux native license files differ from backend provenance')
 
     try:
         with zipfile.ZipFile(apk, 'r') as archive:

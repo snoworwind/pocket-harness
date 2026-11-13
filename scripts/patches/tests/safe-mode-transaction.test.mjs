@@ -361,13 +361,13 @@ function writeOwnershipManifest(filesDir, factoryBundles = []) {
   writeFileSync(join(filesDir, '.plugin-hard-manifest.json'), JSON.stringify({
     schema: 2, complete: true, fingerprint,
     entries: [
-      { id: 'mobile-hard', name: '@dsh-android/dsh-shell-termux' },
+      { id: 'mobile-hard', name: '@dsh-android/dsh-shell-linux' },
       { id: 'upstream-hard', name: '@deepseek-ai/dsh-shipped-core' },
       { id: 'undo', name: 'dsh-undo-savepoint' },
       { id: 'disabled-product', name: '@dsh-android/dsh-host-web-compat' },
     ],
     profileEntries: [
-      { id: 'mobile-hard', name: '@dsh-android/dsh-shell-termux' },
+      { id: 'mobile-hard', name: '@dsh-android/dsh-shell-linux' },
       { id: 'disabled-product', name: '@dsh-android/dsh-host-web-compat' },
     ],
     factoryBundles,

@@ -5,7 +5,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync, existsSync
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { COMPONENTS } from './base-lock.mjs'
-import { capture, checkPayload, makePlan, materialize, publishCandidate, rebase, requireMain, verifyTrusted } from './engine-base.mjs'
+import { capture, checkPayload, makePlan, materialize, publishCandidate, rebase, requireBuildSource, verifyTrusted } from './engine-base.mjs'
 import { checkDshRuntimeDependencies } from './check-dsh-runtime-dependencies.mjs'
 
 const runtime = { node: '24.21.0', pnpm: '11.28.5', deploymentPnpm: '12.2.0', localDevelopment: true }
@@ -58,10 +58,21 @@ function built(root, order = 'canonical') {
 }
 
 test('main/commit guards reject feature branches and PR contexts', () => fixture(root => {
-  assert.equal(requireMain(root, env), git(root, 'rev-parse', 'HEAD'))
-  assert.throws(() => requireMain(root, { GITHUB_ACTIONS: 'true', GITHUB_REF: 'refs/pull/1/merge' }), /main workflow/)
+  assert.equal(requireBuildSource(root, env), git(root, 'rev-parse', 'HEAD'))
+  assert.throws(() => requireBuildSource(root, { GITHUB_ACTIONS: 'true', GITHUB_REF: 'refs/pull/1/merge' }), /source workflow/)
   git(root, 'switch', '-qc', 'feature')
   assert.throws(() => makePlan(root, runtime, env), /attached main/)
+}))
+
+test('only a main dispatch may produce a base', () => fixture(root => {
+  const commit = git(root, 'rev-parse', 'HEAD')
+  const base = { GITHUB_ACTIONS: 'true', GITHUB_SHA: commit, GITHUB_REF: 'refs/heads/main', GITHUB_EVENT_NAME: 'workflow_dispatch', GITHUB_RUN_ID: 'main-run' }
+  assert.equal(requireBuildSource(root, base), commit)
+  assert.equal(makePlan(root, runtime, base).sourceRef, 'refs/heads/main')
+  for (const ref of ['refs/heads/codex/linux-runtime-experiment', 'refs/heads/codex/candidate']) {
+    assert.throws(() => requireBuildSource(root, { ...base, GITHUB_REF: ref }), /main branch/)
+  }
+  assert.throws(() => requireBuildSource(root, { ...base, GITHUB_EVENT_NAME: 'pull_request' }), /source workflow/)
 }))
 
 test('content key ignores unrelated commits but rejects modified build inputs', () => fixture(root => {
@@ -218,8 +229,8 @@ test('runtime dependency report order is stable while missing links remain a har
 })
 
 test('telemetry consumers carry their exact isolated OpenTelemetry closure', () => {
-  const overlay = JSON.parse(readFileSync(new URL('../snapshot-config/engine-overlay.json', import.meta.url), 'utf8'))
-  const licenses = JSON.parse(readFileSync(new URL('../snapshot-config/engine-overlay-licenses.json', import.meta.url), 'utf8')).licenses
+  const overlay = JSON.parse(readFileSync(new URL('../runtime-config/engine-overlay.json', import.meta.url), 'utf8'))
+  const licenses = JSON.parse(readFileSync(new URL('../runtime-config/engine-overlay-licenses.json', import.meta.url), 'utf8')).licenses
   assert.deepEqual(overlay.nested['@deepseek-ai/dsh-otel'], {
     '@opentelemetry/api-logs': '0.222.0',
     '@opentelemetry/core': '2.11.0',

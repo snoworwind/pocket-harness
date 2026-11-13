@@ -1106,11 +1106,15 @@ export class LinuxRuntimeManager {
   async _installLocked(manifest, runtimeId) {
     if (this.disposed) throw new Error('manager is disposed');
     const selection = selectRuntime(manifest, runtimeId, this.arch);
+    // The native probe runs with `this.dataDir` as its working directory, so the
+    // directory tree must exist first. On a fresh install it does not, and
+    // spawn() then reports a misleading `ENOENT` naming the APK-native PRoot
+    // instead of the missing cwd.
+    await this._ensureDirectories();
     if (isAndroidRuntimeHost()) {
       this._assertAndroidNativeProotLoader();
       await this._probeAndroidNativeProot(selection.runtime.prootVersion);
     }
-    await this._ensureDirectories();
     const previous = this._readActive();
     const instanceId = makeId(runtimeId);
     const staging = path.join(this._paths().staging, instanceId);

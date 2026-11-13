@@ -95,7 +95,7 @@ const RUNTIME_ROOTS = [
   { dir: 'plugins', include: (path) => path.includes('/src/') },
   { dir: 'vendor', include: (path) => path.includes('/lib/') },
   { dir: 'dsh-host-web-compat', include: (path) => path.includes('/src/') || path.includes('/lib/') },
-  { dir: 'dsh-shell-termux', include: (path) => path.includes('/src/') || path.includes('/lib/') },
+  { dir: 'dsh-shell-linux', include: (path) => path.includes('/src/') || path.includes('/lib/') },
 ]
 const CODE_SUFFIX = /\.(?:[cm]?js|tsx?)$/
 

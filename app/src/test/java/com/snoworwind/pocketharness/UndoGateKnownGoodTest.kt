@@ -112,8 +112,8 @@ class UndoGateKnownGoodTest {
 
     assertTrue("启动前部署本地急救 CLI", startFlow.contains("engineManager.deployUndoCli()"))
     assertTrue("CLI 部署到壳可读的 filesDir", manager.contains("File(context.filesDir, asset)"))
-    assertTrue("控制台继承 shellEnv", session.contains("environment().putAll(engineManager.shellEnv())"))
-    assertTrue("shellEnv 为控制台提供 app-private 根目录", manager.contains("\"DSH_FILES_DIR\" to context.filesDir.absolutePath"))
+    assertTrue("控制台跑客体 bash（PRoot）", session.contains("LinuxGuestBoot.command(") && session.contains("listOf(\"/bin/bash\", \"-i\")"))
+    assertTrue("客体执行继承宿主私有根目录", manager.contains("\"DSH_FILES_DIR\" to context.filesDir.absolutePath"))
     assertTrue("错误页仍可打开离线控制台", guide.contains("onOpenConsole = { activity.startActivity(Intent(activity, ConsoleActivity::class.java)) }"))
     val emergencyCli = cli.readText()
     assertTrue("CLI 支持列出可选快照", emergencyCli.contains("case 'list':"))

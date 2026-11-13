@@ -21,14 +21,14 @@ android {
     // Guest ELF execution is mediated by the APK-installed PRoot executable and
     // its static loader in nativeLibraryDir; writable app data holds guest files.
     targetSdk = 34
-    // 0.15.2 version bump; the bundled engine is still 0.2.2-rc.1.
+    // 0.16.0 version bump; the bundled engine is still 0.2.2-rc.1.
     // All delivered APKs still require v1/v2/v3 signatures.
-    versionCode = 59
+    versionCode = 60
     // Snapshot builds append a suffix (e.g. -SN-1-RC13) via -PversionNameSuffix; release builds pass none.
     val snapshotSuffix = providers.gradleProperty("versionNameSuffix").getOrElse("")
     // 版本号单一来源：UI（GuidePageRenderer）、桥（androidBridge.version）、诊断日志、引擎环境变量
     // （DSH_APP_VERSION，见 EngineManager.engineEnv）全部读这里，禁止任何地方再硬编码版本字面量。
-    versionName = "0.15.2" + snapshotSuffix
+    versionName = "0.16.0" + snapshotSuffix
     buildConfigField("String", "TERMUX_VERSION", "\"0.118.3\"")
     // 0.14.0-preview：虚拟屏 P0 建屏矩阵走仪器测试入口（app UID 下运行 = P0-6 要测的调用者身份），
     // 不新增任何产品面（Activity/Bridge/Manifest 均不动）。见 .deploy-tmp/iter-0140/vdisplay-p0.md §8.8。
@@ -146,11 +146,14 @@ tasks.configureEach {
 tasks.whenTaskAdded {
   if (name == "mergeDebugAssets" || name == "mergeReleaseAssets") {
     doFirst {
+      // 纯 Linux 产品包只需要内置 Linux 实例资产；Termux 快照仅保留给未内置客体的
+      // x86_64 QA 档（来源链不为其产出 linux/* 资产）。
+      val linuxAssets = file("src/main/assets/linux/manifest.json")
       val snap = file("src/main/assets/snapshot.tar.xz")
-      if (!snap.exists()) {
+      if (!linuxAssets.exists() && !snap.exists()) {
         throw GradleException(
-          "缺少运行时快照 assets/snapshot.tar.xz —— " +
-          "请按 ARM64 来源链生成并放入 app/src/main/assets/snapshot.tar.xz（见 README.md）",
+          "缺少运行时资产：需要 assets/linux/manifest.json（内置 Linux 实例）或旧档 assets/snapshot.tar.xz —— " +
+          "请按来源链生成后放入 app/src/main/assets（见 README.md）",
         )
       }
     }

@@ -8,7 +8,7 @@ import java.util.concurrent.Executors
 
 /**
  * Console session: spawns the snapshot bash (env matching the engine: PATH/LD_LIBRARY_PATH/
- * HOME/DSH_HOME/TERMUX_*), writes commands to stdin, reads merged stdout/stderr on a background
+ * HOME/DSH_HOME and guest runtime paths), writes commands to stdin, reads merged stdout/stderr on a background
  * thread, and streams output back to the UI via a Listener. Works even when the engine is not
  * running (for diagnosing engine startup failures); the process dies with the Activity.
  *
@@ -86,40 +86,33 @@ class ConsoleSession(private val context: Context) {
     try {
       if (!isCurrent(gen)) return
       val engineManager = EngineManager(context, EngineManager.ensurePickToken())
-      val bash = File(engineManager.usrDir, "bin/bash")
-      if (!bash.exists()) {
-        // P3-6：快照内的相对路径不上屏（用户看不懂 `usr/bin/bash`，也做不了什么）——
-        // 正文说清「缺什么组件、能不能重试」，路径进日志。
-        Log.w(TAG, "console unavailable: bash missing at " + bash.absolutePath)
-        notifyIfCurrent(gen) {
-          listener.onStatus(State.MISSING,
-            "运行时缺少命令行组件（快照不完整），无法打开控制台——请重新安装应用或重装运行时快照")
+      // 控制台跑的是客体自己的 /bin/bash（Debian），宿主只执行 nativeLibraryDir 里的 PRoot。
+      val spec = when (
+        val built = LinuxGuestBoot.command(
+          paths = LinuxGuestBoot.Paths(
+            filesDir = context.filesDir,
+            nativeLibraryDir = File(context.applicationInfo.nativeLibraryDir),
+            homeDir = engineManager.homeDir,
+            port = 0,
+          ),
+          command = listOf("/bin/bash", "-i"),
+          guestEnv = mapOf("PS1" to "dsh:\\w$ "),
+        )
+      ) {
+        is LinuxGuestBoot.Result.Ready -> built.launch
+        is LinuxGuestBoot.Result.Refused -> {
+          Log.w(TAG, "console unavailable: " + built.code + " " + built.detail)
+          notifyIfCurrent(gen) {
+            listener.onStatus(State.MISSING, "内置 Linux 实例不完整，无法打开控制台——请重新安装应用")
+          }
+          return
         }
-        return
       }
-      // Exec-bit fallback: some devices/filesystems lose the exec bit after extraction (execve → EACCES,
-      // "Permission denied"). The tar mode is theoretically preserved; this is an idempotent hardening step.
-      try {
-        bash.setExecutable(true, false)
-      } catch (t: Throwable) {
-        Log.w(TAG, "bash setExecutable failed: " + (t.message ?: t.javaClass.simpleName))
-      }
-      fun build(argv: List<String>): ProcessBuilder =
-        ProcessBuilder(argv).also { p ->
-          p.environment().putAll(engineManager.shellEnv())
-          p.environment()["PS1"] = "dsh:\\w$ "
-          p.redirectErrorStream(true)
-        }
-      val argv = listOf(bash.absolutePath, "-i")
-      // Same fallback as the engine: Android 15/16 and some OEM systems (Honor/Huawei, measured)
-      // forbid the app domain from exec'ing an app-data ELF directly (EACCES Permission denied);
-      // loading via /system/bin/linker64 matches the Android system-lib mechanism and always works.
-      val startedProcess = try {
-        build(argv).start()
-      } catch (e: java.io.IOException) {
-        Log.w(TAG, "console: direct exec denied, falling back to linker64: " + e.message)
-        build(listOf("/system/bin/linker64") + argv).start()
-      }
+      val startedProcess = ProcessBuilder(spec.argv).also { p ->
+        p.environment().putAll(spec.env)
+        p.redirectErrorStream(true)
+        if (spec.workingDirectory.isDirectory) p.directory(spec.workingDirectory)
+      }.start()
       proc = startedProcess
       val accepted = synchronized(stateLock) {
         if (closed || generation != gen) false
@@ -200,7 +193,7 @@ class ConsoleSession(private val context: Context) {
       reader.isDaemon = true
       reader.name = "dsh-console-output"
       // Post READY before starting the reader so an immediate EOF cannot be followed by stale READY.
-      notifyIfCurrent(gen) { listener.onStatus(State.READY, "bash 已就绪（快照 Termux 环境）") }
+      notifyIfCurrent(gen) { listener.onStatus(State.READY, "bash 已就绪（Debian Linux 环境）") }
       reader.start()
     } catch (t: Throwable) {
       val failedProcess = proc

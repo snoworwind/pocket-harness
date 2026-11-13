@@ -19,15 +19,15 @@
 // 用法（在 WSL/Linux 的仓库根执行）：
 //   node scripts/source-build/run-local-source-chain.mjs --list
 //   node scripts/source-build/run-local-source-chain.mjs                 # 全链
-//   node scripts/source-build/run-local-source-chain.mjs --from snapshot # 从快照阶段续跑
+//   node scripts/source-build/run-local-source-chain.mjs --from payload # 从快照阶段续跑
 //   node scripts/source-build/run-local-source-chain.mjs --only apk      # 只跑打包阶段
 //   node scripts/source-build/run-local-source-chain.mjs --dry-run       # 只打印将要执行什么
-//   node scripts/source-build/run-local-source-chain.mjs --build-workspace /tmp/dsh-build --from snapshot
+//   node scripts/source-build/run-local-source-chain.mjs --build-workspace /tmp/dsh-build --from payload
 // 实际执行只使用 HEAD 的隔离检出；不包含原工作树未提交文件。隔离目录保留用于续跑与取件。
 //
 // 环境：ANDROID_HOME 默认取 `.deploy-tmp/android-sdk`（缺失即判红并给出铺法）。
 import { execFileSync, spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -43,19 +43,16 @@ export const STAGES = [
   { key: 'sources', label: '取固定来源（Harness / 组件 / 市场产物）', match: /^Checkout pinned/ },
   { key: 'harness', label: '从源码构建 Harness 并打包', match: /^Build and pack DeepSeek Harness/ },
   { key: 'plugins', label: '构建插件与市场补丁', match: /^Build project plugins|^Apply project patches/ },
-  // 注意：bootstrap 认证/取密钥那一步在文件里排得靠前（紧跟 harness 之后），但它属于 Termux 链
-  // ——归到 termux 阶段，`--from termux` 才不会再把它跳过（曾因此报「Termux 签名密钥不在场」）。
-  { key: 'termux', label: '组装并验签 Termux 基座', match: /^Authenticate official Termux bootstrap|^Add Node\.js to the clean Termux base|^Download this run's authenticated Termux package snapshot|^Cross-compile node-pty|^Assemble clean Termux base/ },
   { key: 'linux-assets', label: '构建签名校验的离线 ARM64 Linux 资产', match: /^Install Linux asset cross-build tools|^Prepare pinned Debian archive trust keys|^Build source-owned offline ARM64 Linux assets/ },
-  { key: 'snapshot', label: '构建运行时快照', match: /^Build runtime snapshot/ },
+  { key: 'payload', label: '装配 Linux 运行时载荷', match: /^Assemble Linux engine and factory home/ },
   // Kotlin 单测门禁是 APK 步的**前置输入**（build-apk.mjs 的 check-kotlin-test-count 会读它产出的
-  // 结果目录）。不归 snapshot：`--to snapshot` 不应顺带跑十几分钟单测；归 apk 使 `--only apk`
+  // 结果目录）。不归 payload：`--to payload` 不应顺带跑十几分钟单测；归 apk 使 `--only apk`
   // 自带它所需的测试结果。
-  { key: 'apk', label: '门禁 + 注入 + 打包 Android APK', match: /^单元测试门禁前置|^Build ABI APK/ },
+  { key: 'apk', label: '门禁 + 注入 + 打包 Android APK', match: /^单元测试门禁前置|^Build Linux ARM64 APK/ },
 ]
 const SKIP_STEP = /^(Set up job|Checkout project source|Prepare build tools|Run actions\/setup-|Install archive and signature tools|Upload APK and provenance|Post )/
 
-/** 极简 YAML 步骤解析：只取 steps[].name/.run/.shell/.uses（够用且不引依赖）。
+/** 极简 YAML 步骤解析：只取 steps[].name/.run/.shell/.uses/.env（够用且不引依赖）。
  *
  * 只处理两种 `run` 写法：行内（`- run: cmd`）与块标量（`run: |` + 缩进块）。块标量的内容缩进
  * **由第一行内容动态确定**（不写死 10 空格——workflow 一旦调整层级，写死就会静默少读脚本）。
@@ -83,6 +80,7 @@ export function parseWorkflowSteps(workflowText) {
   const lines = text.split('\n')
   const steps = []
   let current = null
+  let inEnv = false
   let runIndent = null // 正在收集的 run 块的内容缩进；null = 不在块里
   const assign = (key, rest) => {
     const value = rest.trim()
@@ -101,8 +99,9 @@ export function parseWorkflowSteps(workflowText) {
     const itemStart = /^ {6}- (name|uses|run|shell):(.*)$/.exec(line)
     if (itemStart) {
       pushStep()
-      current = { name: null, run: null, shell: null, uses: null }
+      current = { name: null, run: null, shell: null, uses: null, env: {} }
       runIndent = null
+      inEnv = false
       assign(itemStart[1], itemStart[2])
       continue
     }
@@ -114,6 +113,12 @@ export function parseWorkflowSteps(workflowText) {
         continue
       }
       runIndent = null // 缩进回退 = 块结束，落到下面按普通键处理
+    }
+    if (/^ {8}env:\s*$/.test(line) && current) { inEnv = true; continue }
+    if (inEnv && current) {
+      const entry = /^ {10}([A-Za-z_][A-Za-z0-9_]*):\s*(.*)$/.exec(line)
+      if (entry) { current.env[entry[1]] = entry[2]; continue }
+      if (line.trim()) inEnv = false
     }
     const kv = /^ {8}(name|uses|run|shell):(.*)$/.exec(line)
     if (kv && current) assign(kv[1], kv[2])
@@ -141,19 +146,6 @@ export function planSteps(workflowText) {
   for (const step of parseWorkflowSteps(workflowText)) {
     if (SKIP_STEP.test(step.name ?? '')) continue
     let run = step.run
-    if (!run && step.name === "Download this run's authenticated Termux package snapshot") {
-      run = [
-        'set -euo pipefail',
-        'node scripts/source-build/reset-local-termux-stage.mjs',
-        'mkdir -p .deploy-tmp/source-build/termux-package-artifact',
-        'python3 scripts/source-build/prepare-termux-signed-repo.py \\',
-        '  .deploy-tmp/source-build/bootstrap-extracted/usr \\',
-        '  .deploy-tmp/source-build/termux-package-input-source/termux-webroot \\',
-        '  scripts/snapshot-config/preinstall.json \\',
-        '  --abi "$DSH_ABI"',
-        'COPYFILE_DISABLE=1 tar --create --file=.deploy-tmp/source-build/termux-package-artifact/termux-package-inputs.tar --directory=.deploy-tmp/source-build/termux-package-input-source termux-webroot termux-packages-provenance.json',
-      ].join('\n')
-    }
     if (!run) continue
     const matched = STAGES.find((stage) => stage.match.test(step.name ?? ''))
     if (matched) inheritedStage = matched.key
@@ -162,10 +154,26 @@ export function planSteps(workflowText) {
       stage: matched?.key ?? inheritedStage ?? 'misc',
       stageSource: matched ? 'named' : (inheritedStage ? 'inherited' : 'pre-stage'),
       shell: step.shell,
+      env: step.env,
       run: run.trimEnd(),
     })
   }
   return planned
+}
+
+/** Resolve the supported local subset; cache expressions never claim a local cache hit. */
+export function resolveStepEnvironment(declarations = {}, base = {}) {
+  const result = { ...base }
+  for (const [key, raw] of Object.entries(declarations)) {
+    let value = raw
+    if ((value.startsWith("'") && value.endsWith("'")) || (value.startsWith('"') && value.endsWith('"'))) value = value.slice(1, -1)
+    if (key === 'DSH_INJECTED_SNAPSHOT' && value.includes('steps.injected-cache.outputs.cache-hit')) value = ''
+    value = value.replaceAll('${{ github.workspace }}', base.GITHUB_WORKSPACE ?? '')
+      .replaceAll('${{ github.ref }}', base.SOURCE_REF ?? '')
+    if (value.includes('${{')) throw new Error(`Unsupported local workflow env expression: ${key}`)
+    result[key] = value
+  }
+  return result
 }
 
 /** 阶段过滤（纯函数）：与 CLI 的 --from/--to/--only/--from-step 同一份实现。 */
@@ -334,11 +342,7 @@ function main() {
   }
   applyStepEnvironment()
 
-  // 抹掉 WSL_DISTRO_NAME：本链的步骤全部按 **CI 的原生 Linux 语义**写死路径
-  // （`build-snapshot-013.mjs` 的 IN_WSL 分支会把 stage 改到 `~/.dsh-stage/<abi>`，而 workflow 的
-  // 后续步骤——materialize / 重打包 / 副本收敛 / 快照检查器——都按 `.deploy-tmp/snapshot-013/<abi>/stage`
-  // 取件，stage 一挪就必然 ENOENT）。本地工作区本来就在 ext4，那条 WSL 分支省不到 I/O，
-  // 只有害处。shell.mjs 里对 WSL_DISTRO_NAME 的另一处用法只在 Windows 宿主侧生效，不受影响。
+  // Use the same native Linux helper semantics as the hosted workflow.
   delete baseEnv.WSL_DISTRO_NAME
   // Do not let caller Git path overrides escape the isolated checkout.
   for (const name of ['GIT_DIR', 'GIT_COMMON_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE', 'GIT_OBJECT_DIRECTORY', 'GIT_ALTERNATE_OBJECT_DIRECTORIES']) delete baseEnv[name]
@@ -352,7 +356,11 @@ function main() {
     const shellArgs = item.shell === 'bash'
       ? ['--noprofile', '--norc', '-eo', 'pipefail', '-c', item.run]
       : ['-e', '-c', item.run]
-    const res = spawnSync('bash', shellArgs, { cwd: buildRoot, env: baseEnv, stdio: 'inherit' })
+    const stepEnv = resolveStepEnvironment(item.env, baseEnv)
+    const outputDir = mkdtempSync(join(baseEnv.RUNNER_TEMP, 'step-output-'))
+    stepEnv.GITHUB_OUTPUT = join(outputDir, 'output')
+    writeFileSync(stepEnv.GITHUB_OUTPUT, '', { flag: 'wx' })
+    const res = spawnSync('bash', shellArgs, { cwd: buildRoot, env: stepEnv, stdio: 'inherit' })
     applyStepEnvironment()
     const seconds = ((Date.now() - started) / 1000).toFixed(1)
     if (res.status !== 0) {

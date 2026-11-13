@@ -1,5 +1,7 @@
 # 构建阶段拆分与增量复用（2026-11-11）
 
+> 本文保留主线旧链的分阶段设计与测量；`codex/linux-runtime-experiment` 已直接装配 Linux 四件套，不调用本文的 Termux/快照流程。当前执行契约见 [Linux CI](LINUX-CI.md)。
+
 来源链目前是一条单体 `build-apk-source.yml`：Termux 输入 → 引擎 source build → Termux base → Linux assets → source snapshot → inject-all → 门禁 → Gradle → 验签/签名。实测（run 42950780693，arm64 primary）：
 
 | 阶段 | 实测耗时 | 现状 |

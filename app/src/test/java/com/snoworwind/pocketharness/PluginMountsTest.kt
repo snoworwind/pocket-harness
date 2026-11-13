@@ -24,13 +24,12 @@ import org.junit.Test
 class PluginMountsTest {
 
   @Test
-  fun hardSelectorRejectsUnknownAndIncompatibleTransactionMarkers() {
-    val base = SnapshotTransaction.Marker(SnapshotTransaction.Phase.STAGED, "a".repeat(64), 1L)
-    assertTrue(PluginMounts.transactionMarkerAllowsHard(base))
-    assertTrue(PluginMounts.transactionMarkerAllowsHard(base.copy(purpose = SnapshotTransaction.Purpose.ONLINE_UPDATE)))
-    assertFalse(PluginMounts.transactionMarkerAllowsHard(base.copy(phase = SnapshotTransaction.Phase.UNKNOWN)))
-    assertFalse(PluginMounts.transactionMarkerAllowsHard(base.copy(purpose = SnapshotTransaction.Purpose.UNKNOWN)))
-    assertFalse(PluginMounts.transactionMarkerAllowsHard(base.copy(phase = SnapshotTransaction.Phase.ONLINE_COMMITTED)))
+  fun hardSelectorIsUnavailableWhileThePrimaryGuestIsPreparing() {
+    LinuxInstallerFixture().use { fixture ->
+      fixture.trial = { _, _ -> assertTrue(LinuxUpgradeTransaction.readMarker(fixture.files) != null) }
+      fixture.install()
+      assertNull(LinuxUpgradeTransaction.readMarker(fixture.files))
+    }
   }
 
   @Test
@@ -219,8 +218,8 @@ class PluginMountsTest {
   private val fixture = """
     # 顶层说明注释：属于它后面紧邻的那个条目，拔别的块时不得被误删。
     - insert:
-        - id: shell-termux
-          name: '@dsh-android/dsh-shell-termux'
+        - id: shell-linux
+          name: '@dsh-android/dsh-shell-linux'
           config:
             # 块内注释：随本块一起删除
             writeMode: workspace-write
@@ -262,7 +261,7 @@ class PluginMountsTest {
     val text = after!!
     assertFalse("目标块必须消失", text.contains("dshmarketplace"))
     assertTrue("别的条目一条不少", PluginMounts.mountedNames(text).containsAll(
-      listOf("@dsh-android/dsh-shell-termux", "dsh-undo-savepoint", "@dsh-android/dsh-android-bridge", "@deepseek-ai/dsh-agent-default-model"),
+      listOf("@dsh-android/dsh-shell-linux", "dsh-undo-savepoint", "@dsh-android/dsh-android-bridge", "@deepseek-ai/dsh-agent-default-model"),
     ))
     assertTrue("顶层说明注释不得被误删（它属于后面的块）", text.contains("顶层说明注释"))
     assertTrue("disabled 条目不得受影响", text.contains("disabled: true"))
@@ -275,7 +274,7 @@ class PluginMountsTest {
   fun 块内缩进注释随块删除_顶层注释保留() {
     // 这一条专门钉「注释边界」：块**内**的缩进注释属于该块（随之删除），
     // 块**前**的列 0 注释属于后面那个条目（必须保留，否则会把下一块的文档吃掉）。
-    val after = PluginMounts.removeEntry(fixture, "@dsh-android/dsh-shell-termux", "shell-termux")!!
+    val after = PluginMounts.removeEntry(fixture, "@dsh-android/dsh-shell-linux", "shell-linux")!!
     assertFalse("块内缩进注释必须随块删除", after.contains("块内注释"))
     assertTrue("顶层说明注释必须保留", after.contains("顶层说明注释"))
     assertTrue("同块内的配置字段一并删除", !after.contains("writeMode"))
@@ -617,8 +616,8 @@ class PluginMountsTest {
       - id: bash-sandbox
         disabled: true
       - insert:
-          - id: shell-termux
-            name: '@dsh-android/dsh-shell-termux'
+          - id: shell-linux
+            name: '@dsh-android/dsh-shell-linux'
           - id: host-web-compat
             name: '@dsh-android/dsh-host-web-compat'
       - id: open-in-app
@@ -629,10 +628,10 @@ class PluginMountsTest {
 
     assertNotNull(after)
     assertFalse("目标条目必须消失", after!!.contains("host-web-compat"))
-    assertTrue("同组兄弟必须一字不动（D11）", after.contains("shell-termux"))
+    assertTrue("同组兄弟必须一字不动（D11）", after.contains("shell-linux"))
     assertTrue("组包装行必须保留（还剩一个子条目）", after.contains("- insert:"))
     assertTrue(after.contains("bash-sandbox") && after.contains("open-in-app"))
-    assertEquals(listOf("@dsh-android/dsh-shell-termux"), PluginMounts.entryNames(after))
+    assertEquals(listOf("@dsh-android/dsh-shell-linux"), PluginMounts.entryNames(after))
   }
 
   /** 摘掉组内**最后一个**子条目时，\`- insert:\` 空壳必须一并清理（YAML 里它是 null 条目）。 */
@@ -699,38 +698,14 @@ class PluginMountsTest {
    * ③ 把 `PluginMounts.dropEmptyInsertWrappers(kept)` 改回本地调用 → 第二条红。
    */
   @Test
-  fun 空壳清理必须是两条恢复路径共用的唯一实现() {
-    val mounts = codeOnly(source("PluginMounts.kt"))
-    val tx = codeOnly(source("SnapshotTransaction.kt"))
-
-    val definitions = listOf(
-      Regex("""fun\s+dropEmptyInsertWrappers\s*\(\s*lines""").findAll(mounts).count(),
-      Regex("""fun\s+dropEmptyInsertWrappers\s*\(\s*lines""").findAll(tx).count(),
-    ).sum()
-    assertEquals(
-      "dropEmptyInsertWrappers 必须全仓只有一份实现（重复实现的行为差在快照事务写路径上不可观测，" +
-        "只能用结构判据钉住）：PluginMounts=" + definitions,
-      1, definitions,
-    )
-    assertTrue(
-      "唯一实现必须留在 PluginMounts（快照事务侧不得再自行定义）",
-      Regex("""internal fun dropEmptyInsertWrappers""").containsMatchIn(mounts),
-    )
-    assertTrue(
-      "快照事务的已摘除插件迁移必须调用 PluginMounts 的唯一实现" +
-        "（撤掉这次合并 = 该调用消失，本断言即红）",
-      tx.contains("PluginMounts.dropEmptyInsertWrappers(kept)"),
-    )
+  fun retiringTheBootstrapUsesTheSharedInsertWrapperCleaner() {
+    val before = "- insert:\n    - id: linux-bootstrap\n      name: '@dsh-android/linux-bootstrap'\n- id: user-setting\n  config: {}\n"
+    val after = PluginMounts.removeEntry(before, "@dsh-android/linux-bootstrap", "linux-bootstrap")!!
+    assertFalse(after.contains("- insert:"))
+    assertFalse(after.contains("linux-bootstrap"))
+    assertTrue(after.contains("user-setting"))
   }
 
-  /**
-   * 唯一实现的行为契约（两条路径共用同一份，故这一条同时钉住两侧收尾）：
-   * 空壳连同其**前后**相邻空行一起摘掉，不留连续空行；非空壳一字不动。
-   *
-   * 直接调 internal 实现而不是绕 removeEntry：`removeEntry` 的定位正则要求 `- ` 前缀，
-   * 表达不出列 0 的 `-`（合法 YAML 空 elem，可出现在 `- insert:` 前），
-   * 而设备实读的 patch 就是那种形态。
-   */
   @Test
   fun 空壳收尾必须吃掉前后空行且不碰非空壳() {
     val shellThenBlank = mutableListOf(

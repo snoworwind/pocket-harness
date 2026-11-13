@@ -15,7 +15,7 @@
 // 【本门禁的判据（结构化，非 grep 文本在场）】
 //   1. 产出面构造在场：tar 打包命令、sha256 落盘、归档后自检、A1 对账各自必须是**真实调用**
 //      （对源码做语法级子串定位后，再断言其上游依赖符号在同一文件里可解析）；
-//   2. **配置键消费者闭合**：`scripts/snapshot-config/slim.json` 的每个键都必须在本构建器里被
+//   2. **配置键消费者闭合**：`scripts/runtime-config/slim.json` 的每个键都必须在本构建器里被
 //      消费——死键 = 某一步被删/被绕过的确定性证据（本次事故的第一手信号）；
 //   3. 产出与判据同源：构建器写出的 tar 路径，必须与 `build-apk-013.ps1` 读取的路径逐字一致
 //      （否则「构建器写 A、打包链读 B」= 同一类静默假绿）。
@@ -32,7 +32,7 @@ const ROOT = dirname(HERE)
 const argv = process.argv.slice(2)
 
 const BUILDER = join(ROOT, 'scripts', 'build-snapshot-013.mjs')
-const SLIM = join(ROOT, 'scripts', 'snapshot-config', 'slim.json')
+const SLIM = join(ROOT, 'scripts', 'runtime-config', 'slim.json')
 const APK_CHAIN = join(ROOT, 'scripts', 'build-apk-013.ps1')
 const MIRROR_CHAIN = join(ROOT, 'dsh-mobile-apk', 'scripts', 'build-apk-013.ps1')
 const PORTABLE_CHAIN = join(ROOT, 'scripts', 'build-apk.mjs')

@@ -1,6 +1,11 @@
 
 # EXECUTION-MAP.md — 执行地图（查点表 / 运行顺序 / 耦合 / 流程图）
 
+B01 原生载荷迁移盘点：来源链从实际 APK 解出注入后快照，在语义归一化之后、清理之前调用
+`scripts/source-build/inventory-native-runtime.py`，同时读取 APK 原生成员，报告随三段 artifact
+传递；PR Gate 调 `--self-test` 并自动发现 `test_native_runtime_inventory.py`。盘点不切换启动路径，
+剩余迁移与参考项目复核见 [实施账本](NATIVE-RUNTIME-MIGRATION.md)。
+
 K11 离线 Linux 资产：`build-linux-assets.yml` → `check-linux-sources.mjs`（完整源码集合与摘要）→ `build-linux-assets.sh`（受限目录、固定输入、ARM64 编译与 QEMU 正控；固定 Debian Snapshot 的 `.deb` 下载错误时只允许经 `linux-debian-snapshot-wget.py` 回退官方同路径包，仍由已签名索引 SHA-256/size 校验）→ `package-linux-assets.py`（插件/Node 归档及本地清单）→ 私有 Actions artifact。该资产链无 APK/Release 写权限；来源构建与运行时接线及尚缺的设备证据见 [known-gaps.md](known-gaps.md)。
 
 独立检出补充（K11 构建链）：本地编排器先从原仓冻结 `DSH_SOURCE_REPOSITORY`，所有隔离阶段使用相同身份，无须为隔离目录添加远端。`scripts/source-build/local-source-workspace.test.mjs` 覆盖遗漏身份的失败与显式冻结的成功；`scripts/maintenance-inputs.mjs` 在旧 push base 不可达时扫描当前树，`scripts/tests/maintenance-inputs.test.mjs` 覆盖缺失/有效 base 和无关变更。
@@ -14,7 +19,7 @@ K11 离线 Linux 资产：`build-linux-assets.yml` → `check-linux-sources.mjs`
 > 3. 想**先通读一遍** → §1 全局运行顺序（阶段 0-4 + 时序图）→ §2 主表 → §4 耦合矩阵。
 >
 > **当前源码登记**：引擎适配目标为 `0.2.2-rc.1`；Pocket Harness `v0.14.12` 发布前设备三层验收按 [升级记录](ENGINE-UPGRADE-2026-11-06.md) 与[发布说明](../../release/v0.14.12/notes.md) 记账。旧版本轮次仅作历史溯源。
-> 锚点格式 `path:line`，路径一律**相对 apk 仓根**；新增或移动锚点用 ``path:line#expect=<URI 编码片段>`` 固定源码语义。旧锚点源码行与出现次数由 `scripts/check-code-map-anchor-baseline.json` 锁定；刷新须审阅基线 diff，命令与拒绝条件见 `docs/AGENTS/build-and-env.md`。插件与三个子仓（`plugins/*`、`dsh-client-ui-responsive`、`dsh-host-web-compat`、`dsh-shell-termux`）在本分支以树内副本为权威，跨树镜像约束已退役（AGENTS.md §4.6），行号以本仓副本为准。
+> 锚点格式 `path:line`，路径一律**相对 apk 仓根**；新增或移动锚点用 ``path:line#expect=<URI 编码片段>`` 固定源码语义。旧锚点源码行与出现次数由 `scripts/check-code-map-anchor-baseline.json` 锁定；刷新须审阅基线 diff，命令与拒绝条件见 `docs/AGENTS/build-and-env.md`。插件与三个子仓（`plugins/*`、`dsh-client-ui-responsive`、`dsh-host-web-compat`、`dsh-shell-linux`）在本分支以树内副本为权威，跨树镜像约束已退役（AGENTS.md §4.6），行号以本仓副本为准。
 >
 > **锚点会漂**：改了代码就跑 `node scripts/check-code-map.mjs --self-test` 和 `node scripts/check-code-map.mjs`——它守「覆盖完整、源码内容锚定、耦合证据行号、编号一致」（详见 §7）。
 > **维护**：新增/删除块、调用顺序或耦合关系变化 → 改本文对应查点（`AGENTS.md` §5.1 已登记）。
@@ -66,10 +71,10 @@ flowchart TD
 
 ### 阶段 0：首次部署（装机后第一次启动，一次性）
 
-- 快照准入由SnapshotFingerprintPolicy严格64hex决定；fresh需node与durable commit一致，当前锚点见§6 K03。
+- 实例准入由内置 Linux 实例清单与受管树摘要决定：rootfs 只在无实例时铺底，受管 node/engine 缺件才修复，当前锚点见§6 K03。
 - shared ownership prelude已结算后先恢复事务再probe/strictSHA/fresh；不新鲜暂存解压→用户配置stage过滤→factory交换→提交指纹，pending不提前读事务。
-- 交换内还要合并用户面：`SnapshotTransaction.kt:748#expect=fun%20mergeProfiles`；`mergeTree`（:1096#expect=private%20fun%20mergeTree）按 staged 补齐缺失的共享农场符号链接，live 已有项（含悬空链接）与 live-only 用户项保留，live 目录链接不递归穿越；链接接缝必须递归透传。已摘除插件的存量迁移在 `SnapshotTransaction.kt:668#expect=private%20fun%20reconcileRemovedProfilePlugins`；残渣按年龄回收 `SnapshotTransaction.kt:303#expect=fun%20reclaimResidue`；
-  **0.14.2-fx-2 缺陷 I（apk #271）在交换前新增了两道闸门**：`SnapshotTransaction.kt:443#expect=private%20fun%20requireDeletableResidue`（可写性预检，点名非应用属主残留）与 `SnapshotTransaction.kt:349#expect=fun%20clearFailedResidue`（无年龄门槛地清上一轮 `*.failed-*`）；`SnapshotFs.kt:177`（`move`）自保——目标非空先 `SnapshotFs.kt:83`（`deletePathStrict`）删净、删不净即抛（`snapshot-delete-residue` / `snapshot-move-blocked`）；
+- 首次部署解包内置实例并只补缺失的用户文件：home 种子不覆盖已有 profile/凭据（`LinuxFileTree.kt:44#expect=fun%20mergeHomeSeed`）；旧 Termux 布局先做一次性备份再改写 profile 内的旧路径（`LinuxLegacyMigration.kt:16#expect=fun%20prepare`）；
+  受管组件更新走 prepare→probe→upgrade→done 事务，中断按 journal 回滚且 rootfs 不参与（`LinuxUpgradeTransaction.kt:115#expect=fun%20apply`）；
 - 覆盖现存工厂配置时，`preserveOverwrittenUserFile` 先逐块比较内容；变化文件先复制、校验、同步并发布 `.pre-*` 备份，任何读取/复制/校验/发布失败都会中止事务，所需副本计入空间预算。`writeTextAtomic` 仅通过同目录替换移动发布 `package.json` / `cordis.patch.yml`，替换失败保留旧字节证据，不直接截断目标。残留回收只认 `usr.failed-<时间戳>`、`profiles.failed-<时间戳>` 等明确写点，不按任意包含 `.failed-` 的名称删除。
 - **0.14.2-fx-2 缺陷 D（安全模式）**：启动失败页主按钮变「安全模式启动」→ `GuidePageRenderer.kt` 的 `enterSafeMode()`；Kotlin `SafeMode.kt`、离线 `scripts/dsh-undo-emergency.mjs`、vendor `dsh-undo-savepoint/lib/core.mjs` 共用 `safe-mode.json` / 主备份命名契约与内容寻址副本。默认 web 新状态用平铺 `undo-snapshots/auto` 与 Kotlin 共享；Safe Mode 单独识别唯一既有 scoped marker 并绑定其原目录，平铺与 scoped 同时有 marker（损坏也算）则 fail closed。显式 custom autoDir 与非 web profile 不参与解析，普通 snapshot 布局不变。副本在所选 auto 的 sibling `safe-mode-recovery/`。vendor 实现由 `scripts/patches/data/undo-safe-transaction-snippet.mjs` 生成，S2 门禁要求 CAS + resolver 契约。Marker 绑定 profile；Kotlin exit 兼容恢复 vendor 写入的 home/package 备份。Safe Mode ON 同时筛选 rc2 `package.json` 的 profile bundles：只保留权威 HardManifest 给出的 exact `{name,version,patchSha256}` 工厂元组，摘要按 `DSHBNDL1`、声明顺序和路径/内容长度帧计算；缺少活跃 bundle 身份即拒绝修改。完整 package bytes 进入 primary 与 SHA 寻址恢复副本，OFF 原字节还原。退出先将全部必需 live bytes 读入并校验，任一来源主副本均失效就不写 live 文件；成功时写回已校验的同一组内存字节。S2 patch gate 的 S5 判据同时要求 bundle selector/hash 实现，避免旧 S4 core 被误判为已更新。控制台命令解析在 `SafeConsole.kt`（纯函数，命中即不落 bash，接线 `ConsoleActivity.kt`）。
   安全模式的 insert 过滤、移除回执与条目读取使用同一列零非空行边界，保留组后的顶层注释；设备侧验收仍未完成。
@@ -123,7 +128,7 @@ sequenceDiagram
 - 看门狗持续探活/退避/熔断（`WatchdogV2.kt:109`）；日志采集与轮转（`LogCollector`）；
 - 应用内更新已移除：启动页和设置页没有检查/下载/安装入口，原生桥不再暴露更新动作，旧在线快照调试 Intent 也已删除。APK 覆盖安装后的内嵌快照部署与历史事务恢复仍由启动链负责。见坑 317。
 - 公共下载页：`webpages/tools/build.mjs` 只从 GitHub 官方 MANIFEST 注入哈希，内联 JSON 转义 HTML raw-text 结束符；页面镜像探测只信可读 CORS 状态并对具体 APK 做 HEAD，无法判定时保留手动选择。源码位于 `webpages/src/assets/app.js` 与 `webpages/src/assets/release.js`。
-- 残渣回收与标记恢复（`SnapshotTransaction.kt:303#expect=fun%20reclaimResidue` / `EngineManager.kt:242#expect=applyRecovery`）。
+- 升级事务恢复与受管组件修复（`LinuxUpgradeTransaction.kt:81#expect=fun%20recover` / `EngineManager.kt:97#expect=internal%20fun%20recoverLinuxUpgrade`）。
 
 ### 横向：构建与验收链
 
@@ -141,7 +146,7 @@ Linux 发现补充（P04，坑 373）：bootstrap `index.js` 串行发现 → `g
 |---|---|---|---|---|---|---|---|---|
 | K01 | 启动与引导面 | 点开 App 到引擎页面可见的进程入口、引导页与 WebView 宿主 | LAUNCHER 图标、VIEW/SEND 来件 | 引导与启动 | 引擎进程与快照面、鉴权探活、诊断落盘 | 系统启动器与分享面板、BootReceiver、悬浮球跳转 | MainActivity.kt,EngineStartFlow.kt,GuidePageRenderer.kt,ForegroundPageRecoveryPolicy.kt | 高 |
 | K02 | 引擎生命周期与保活 | 起 node 引擎、Activity独立观察启动准备窗、5s 探活、看门狗重启熔断与日志落盘 | EngineStartFlow.start及生命周期结束后排队启动前台服务、EngineService先前台提升后初始化及5s tick | 引导与启动 | K01,K03 | MainActivity、BootReceiver、EngineStartFlow | EngineManager.kt,EngineService.kt,WatchdogV2.kt,LogCollector.kt | 高 |
-| K03 | 快照事务与更新链 | 内嵌快照暂存交换事务与回滚（插件故障走**清单式外科拔除**，不整份回滚），兼历史在线事务恢复与清单合并 | 启动流判指纹不新鲜 / APK 覆盖安装 / WebView 导出 | 快照与更新 | 引导启动流、引擎探活、构建快照资产 | EngineStartFlow.runFlow、EngineService 看门狗、引导页按钮、MainActivity 的 WebView 回调 | SnapshotTransaction.kt,SnapshotFs.kt,SnapshotRefreshPolicy.kt,PublicRepoProvision.kt,PluginMounts.kt,SnapshotUserData.kt,SnapshotFingerprintPolicy.kt,ProfilePackageManifest.kt | 高 |
+| K03 | Linux 实例铺底与升级事务 | 内置 rootfs/node/engine 首装解包；受管组件以 journal 事务替换并支持中断回滚；旧 Termux 布局迁移与旧树回收 | 首次启动 / APK 覆盖安装 / 管理中心重置 | Linux 实例 | 引导启动流、引擎探活、构建 Linux 资产 | EngineStartFlow.runFlow、EngineService 看门狗、引导页按钮、管理中心重置入口 | LinuxInstanceInstaller.kt,LinuxUpgradeTransaction.kt,LinuxFileTree.kt,LinuxLegacyMigration.kt,LinuxCandidateProbe.kt,SnapshotFileMode.kt,PluginMounts.kt,SnapshotUserData.kt,ProfilePackageManifest.kt | 高 |
 | K04 | 桥与控制协议面 | 顶层同步 facade 与 nonce dispatcher、引擎鉴权与控制队列承载 | 页面调 androidBridge；EngineService 起控制承载 | 稳态控制 | 引导与启动（EngineService/MainActivity）、无障碍与虚拟屏宿主、快照与更新（UndoGate） | MainActivity 注册并注入 MainFrameBridge；EngineService.onCreate 起 ControlCarrier；看门狗 tick 调 UndoGate | app/src/main/java/com/snoworwind/pocketharness/MainFrameBridge.kt,app/src/main/java/com/snoworwind/pocketharness/AndroidBridge.kt,app/src/main/java/com/snoworwind/pocketharness/ControlPoller.kt,app/src/main/java/com/snoworwind/pocketharness/EngineAuth.kt,app/src/main/java/com/snoworwind/pocketharness/ControlProtocolV2.kt | 高 |
 | K05 | 无障碍控制面 | 按需取语义树、节点 lease/代际回收，并对设备执行点击输入滚动截屏 | 控制队列取活 + 无障碍服务回调 | 稳态控制 | K04 控制协议、K06 特权执行 | ControlCarrier 控制队列取活、onServiceConnected、ADB 键盘逐次回执 | DeviceControlService.kt,AccessibilityNodeRecycler.kt,GlobalActionCatalog.kt,AdbKeyboardEdit.kt,AdbKeyboardService.kt,AdbKeyboardReceiver.kt | 高 |
 | K06 | 特权执行、屏幕范围与本地文件面 | Shizuku 特权 shell 通道、屏幕范围门与本地文件出入口 | 引擎 sh* op / 设置页范围写面 / 外部分享与打开 intent | 稳态控制 | 控制队列承载、引擎 bridge 插件、虚拟屏注册表、无障碍控制面 | 引擎 androidPrivilege 服务面与页面桥 | ShellOps.kt,ScreenScope.kt,ShizukuTransport.kt,ShizukuBindState.kt,ShizukuUserService.kt,ShizukuProbe.kt,ShizukuSupport.kt,ProcIo.kt,FileIncoming.kt,PathOpen.kt,ExternalLinks.kt,ConfigTransfer.kt,RootGrant.kt,RootAccess.kt,OwnershipRepairCore.kt,OwnershipRepair.kt,RootRepairMain.kt,RootExecutionFence.kt,RootMaintenanceLease.kt,RootOwnershipJobs.kt,LeaseClearProbe.kt | 高 |
@@ -153,10 +158,10 @@ Linux 发现补充（P04，坑 373）：bootstrap `index.js` 串行发现 → `g
 | P01 | 桥插件（dsh-android-bridge） | 设备控制的授权判定、控制队列与三条特权执行出口 | 模型设备工具 / 其它插件直连服务面 / 壳侧长轮询取活 | 稳态控制 | K04 控制队列协议、K05 无障碍面、K06 特权执行、P02 manage、P03 浏览器、K10 通知 | cordis 装配（provide androidPrivilege）、模型设备工具、壳侧 ControlPoller 长轮询 | plugins/dsh-android-bridge/src/index.ts,plugins/dsh-android-bridge/src/control-queue.ts,plugins/dsh-android-bridge/src/screen-scope.ts | 高 |
 | P02 | 管理插件（dsh-android-manage） | 把模型意图落成壳侧无障碍或特权 shell 的屏幕工具面 | 模型每轮 tool call；插件 apply 时注册 14 个工具 | 稳态控制 | 授权桥与控制队列（androidPrivilege）,壳侧无障碍与特权执行面,屏幕范围偏好 | 引擎 cordis 装配（android-bridge 先于 android-manage）；每次模型 tool call | plugins/dsh-android-manage/src/index.ts,plugins/dsh-android-manage/src/ime-broadcast.ts,plugins/dsh-android-manage/src/protocol-v2.ts,plugins/dsh-android-manage/src/vd-shot.ts,plugins/dsh-android-manage/src/tmp-cache.ts | 高 |
 | P03 | 浏览器与虚拟屏插件 | browser_* 与 vd* 工具落壳侧控制 op 并如实回执；vdisplay 原生 Surface 可见性同时让出给 DOM 弹层 | 模型调用 browser_* / android_vdisplay_* 工具 | 稳态控制/交互呈现 | K08,K07,桥控制队列 | 引擎启动时按装配集注册；面板可见性观察 DOM 状态并经 vdisplayBounds 下发 | plugins/dsh-android-browser/src/tools.ts,plugins/dsh-android-browser/src/index.ts,plugins/dsh-android-vdisplay/src/index.ts,plugins/dsh-android-vdisplay/src/status.ts,plugins/dsh-android-vdisplay/src/client/index.ts,plugins/dsh-android-vdisplay/src/client/stage-visibility.ts | 高 |
-| P04 | 文件打开、Linux 环境与模型能力插件 | 外部来件草稿、工具链与缓存清理、模型能力写回 | 壳侧 FileIncoming 投递 / 设置页 HTTP / cordis 装配 | 稳态控制 | 桥与鉴权、客户端注入层、shell-termux 工具链表、快照装配链 | 壳侧 FileIncoming.processIncomingIntent、设置页与开发者选项、cordis 装配 | plugins/dsh-android-file-open/src/index.ts,plugins/dsh-android-linux-env/src/runtime-cache.ts,plugins/dsh-model-capability/src/index.ts | 高 |
-| S01 | 引擎侧注入层（三个子仓） | DSH 原生 Web UI 拥有页面布局、响应式行为、设置、输入区、菜单与导航；客户端插件只接 Android inset/IME、主题/返回桥、原生能力槽位、文件与通知桥，以及隔离 BrowserHost | 客户端插件 apply() 装载；每个 index 响应经 tapIndex 注入 | 交互面 | K04（壳侧 androidBridge/dshBackBridge 桥面） | 引擎插件系统按 profile-web.cordis.patch.yml 的 insert 行拉起 | dsh-client-ui-responsive/src/client/index.ts,dsh-host-web-compat/lib/index.js,dsh-shell-termux/src/index.ts | 高 |
+| P04 | 文件打开、Linux 环境与模型能力插件 | 外部来件草稿、工具链与缓存清理、模型能力写回 | 壳侧 FileIncoming 投递 / 设置页 HTTP / cordis 装配 | 稳态控制 | 桥与鉴权、客户端注入层、shell-linux 工具链表、快照装配链 | 壳侧 FileIncoming.processIncomingIntent、设置页与开发者选项、cordis 装配 | plugins/dsh-android-file-open/src/index.ts,plugins/dsh-android-linux-env/src/runtime-cache.ts,plugins/dsh-model-capability/src/index.ts | 高 |
+| S01 | 引擎侧注入层（三个子仓） | DSH 原生 Web UI 拥有页面布局、响应式行为、设置、输入区、菜单与导航；客户端插件只接 Android inset/IME、主题/返回桥、原生能力槽位、文件与通知桥，以及隔离 BrowserHost | 客户端插件 apply() 装载；每个 index 响应经 tapIndex 注入 | 交互面 | K04（壳侧 androidBridge/dshBackBridge 桥面） | 引擎插件系统按 profile-web.cordis.patch.yml 的 insert 行拉起 | dsh-client-ui-responsive/src/client/index.ts,dsh-host-web-compat/lib/index.js,dsh-shell-linux/src/index.ts | 高 |
 
-| B01 | 构建链与快照注入 | 签名 Termux 包 → 按 ABI 构建 node-pty → 原生闭包门禁 → 快照 → APK；来源链按 ABI 执行独立双构建、比较与隔离签名；发布草稿并行覆盖 ARM64/x86_64，并统一打包两个 APK 与各自 provenance | GitHub Actions 来源构建或双 ABI 草稿；本地 `run-local-source-chain.mjs` | 构建与发布 | 门禁块,壳侧快照解压,插件源码与 vendor 固化面,可信上游签名/哈希 | 来源 workflow、双 ABI draft workflow、本地 source runner | scripts/build-apk-013.ps1,scripts/build-apk.mjs,scripts/build-apk-engine.mjs,scripts/build-apk-engine.test.mjs,scripts/build-release.ps1,scripts/check-apk-signatures.mjs,scripts/build-snapshot-013.mjs,scripts/inject-all.py,scripts/source-build/*,.github/workflows/build-apk.yml,.github/workflows/build-apk-source.yml,.github/workflows/release-source-draft.yml,webpages/tools/build.mjs,webpages/src/assets/app.js,webpages/src/assets/release.js,scripts/patches/data/undo-safe-transaction-snippet.mjs,scripts/patches/data/registry-scan-c4.mjs,scripts/patches/data/client-index-loader-barrier.mjs,scripts/patches/tests/client-index-loader-barrier.test.mjs,scripts/patches/tests/gateway-client-source-g1.test.mjs,scripts/patches/mimo-thinking-toggle-056.mjs,scripts/patches/tests/mimo-thinking-toggle-056.test.mjs,scripts/patches/data/permission-auto-review-default.mjs,scripts/patches/tests/permission-auto-review-default.test.mjs,scripts/patches/data/workspace-write-boundary-warning.mjs,scripts/patches/tests/workspace-write-boundary-warning.test.mjs | 高 |
+| B01 | Linux 来源构建与工厂载荷装配 | 固定引擎源码底座 → Linux engine/home → 四件套与清单 → APK；main 上双副本独立比对 → 隔离生产签名 → ARM64 draft 发布 | GitHub Actions main ARM64 来源链 | 构建与发布 | 门禁块,壳侧快照解压,插件源码与 vendor 固化面,可信上游签名/哈希 | 来源 workflow、双 ABI draft workflow、本地 source runner | scripts/build-apk-013.ps1,scripts/build-apk.mjs,scripts/build-apk-engine.mjs,scripts/build-apk-engine.test.mjs,scripts/build-release.ps1,scripts/check-apk-signatures.mjs,scripts/build-snapshot-013.mjs,scripts/inject-all.py,scripts/source-build/*,.github/workflows/build-apk.yml,.github/workflows/build-apk-source.yml,.github/workflows/release-source-draft.yml,webpages/tools/build.mjs,webpages/src/assets/app.js,webpages/src/assets/release.js,scripts/patches/data/undo-safe-transaction-snippet.mjs,scripts/patches/data/registry-scan-c4.mjs,scripts/patches/data/client-index-loader-barrier.mjs,scripts/patches/tests/client-index-loader-barrier.test.mjs,scripts/patches/tests/gateway-client-source-g1.test.mjs,scripts/patches/mimo-thinking-toggle-056.mjs,scripts/patches/tests/mimo-thinking-toggle-056.test.mjs,scripts/patches/data/permission-auto-review-default.mjs,scripts/patches/tests/permission-auto-review-default.test.mjs,scripts/patches/data/workspace-write-boundary-warning.mjs,scripts/patches/tests/workspace-write-boundary-warning.test.mjs | 高 |
 | B02 | 静态门禁链与 CI | 33 个静态门禁脚本与三层接线的唯一声明处 | PR/CI、两条打包链、发布链 | 测试与门禁 | B01,B03 | 提交 PR、推 main、构建/发版 | scripts/check-release-gates.mjs,scripts/check-gate-skips.mjs,.github/workflows/pr-gate.yml,scripts/build-apk-013.ps1 | 高 |
 | B03 | 设备验收套件（CDP 与 adb 面） | 12 个 CDP/设备断言套件 + 5 个部署冒烟脚本的设备侧验收入口 | 人手动逐个执行 node scripts/verify-*.mjs 与 pwsh scripts/*.ps1 | 测试与门禁 | S-12 双 ABI 包装机、快照刷新完成、桥面 / 浏览器宿主 / 虚拟屏 / 注入层各块 | 人（PR 前设备层验收；探针自检由 CI 接线） | scripts/verify-webview-015.mjs,scripts/verify-webview-settings.test.mjs,scripts/verify-state-sync.mjs,scripts/verify-browser-host.mjs,scripts/verify-browser-panel.mjs,scripts/verify-vdisplay-viewer.mjs,scripts/verify-vdisplay-float.mjs,scripts/verify-engine-log-copy.mjs,scripts/verify-screen-scope-matrix.mjs,scripts/verify-adb-only-tree.mjs,scripts/verify-notify-consumption.mjs,scripts/verify-auto-undo.mjs,scripts/verify-client-plugin-fail-recovery.mjs,scripts/device-smoke.ps1,scripts/deploy-device.ps1,scripts/deploy-embedded.ps1,scripts/t0-check.ps1,scripts/e2e-phone-test.ps1 | 高 |
 
@@ -183,7 +188,7 @@ Linux 发现补充（P04，坑 373）：bootstrap `index.js` 串行发现 → `g
 | 高 | K06 | 包装器后的解释器、输入设备命令与 Activity dump 曾不在范围门命令词面 | `ShellOps.splitCommandSegments/interpreterPayloadUnparsed`、`screen-scope.ts` 同名判据 | `nice sh`/`taskset 1 sh` 可让 stdin 或文件脚本藏在包装器后；`dumpsys activity`、`sendevent`、`getevent`、`cmd display` 没有可认证虚拟屏目标；屏幕命令中的畸形 `-d=7`/`-dx` 不能认证目标 | 已修：两侧同步识别不透明包装器链和新命令族，只在已识别的屏幕命令中拒绝畸形短选项；保留 `nice echo`、`echo -d=7`、`ls -dx` 与 `ls /dev/input` 正控，`cmd window` 仍按多屏接口 fail-closed。跨语言 fixture 与 Kotlin/插件测试通过，设备三层按用户要求未做，见坑 598 |
 | 高 | K05 | 输入广播未限定组件时可能向其他应用泄露 nonce | `plugins/dsh-android-manage/src/index.ts:34#expect=import%20%7B%20ADB_KEYBOARD_IME%2C%20ADB_KEYBOARD_RECEIVER%2C%20isInputMethodEnabled%20%7D%20from%20'.%2Fime-component.js'` | 同 action 接收器可能取得 auth 并伪造输入 | 源码已修：所有发送与重试显式指定 AdbKeyboardReceiver；设备验收待完成。见坑 312 |
 | 高 | K04 | 认证 HTTP 缺少统一初始源与重定向约束 | `EngineAuth.confineConnection` | 手工 Cookie 头不能依赖浏览器域策略，自动重定向可能把请求送到其他源 | 源码已修：精确引擎源、禁自动重定向；仅编译/静态检查，见坑 316 |
-| 高 | K06 | 特权服务面危险命令黑名单曾可被 `controlExec` 直连绕过 | `plugins/dsh-android-bridge/src/index.ts:1045`、`:1191`、`:1228` | 工具壳拒绝而服务面放行，会让直连插件绕过系统配置/权限写保护 | 已修：服务面 `controlExec`、`execAdbShell`、`execAdbLine` 共用拒绝判据并审计 |
+| 高 | K06 | 特权服务面危险命令黑名单曾可被 `controlExec` 直连绕过 | `plugins/dsh-android-bridge/src/index.ts:1045#expect=const%20mode%20%3D%20policy%3F.mode`、`:1191`、`:1228` | 工具壳拒绝而服务面放行，会让直连插件绕过系统配置/权限写保护 | 已修：服务面 `controlExec`、`execAdbShell`、`execAdbLine` 共用拒绝判据并审计 |
 | 高 | K07 | `touch()` 全仓零调用点，「空闲回收」实为「建屏后 10 分钟必回收」 | `app/src/main/java/com/snoworwind/pocketharness/VdisplayController.kt:84`、`app/src/main/java/com/snoworwind/pocketharness/VdisplayController.kt:60` | 长任务看虚拟屏时中途黑屏 | 未修（F-10/V-R0） |
 | 高 | K07 | `create()` 幂等判定在锁外、`setSurface` 失败被吞、`VdisplayHost.onMain` 无 catch | `app/src/main/java/com/snoworwind/pocketharness/VdisplayController.kt:322`、`app/src/main/java/com/snoworwind/pocketharness/VdisplayController.kt:495`、`app/src/main/java/com/snoworwind/pocketharness/VdisplayHost.kt:207-213` | 并发双建屏；查看器槽位被占但画面黑；主线程异常打穿 | 未修（S-8 同族） |
 | 高 | K10 | 前台延后通知原本只在内存，来源偏移却已推进 | `NotifySuppressQueue.encodeJournal/commitJournal/restore`、`NotifyStore.drain/start` | 进程回收后的恢复与崩溃重复窗口 | fx2 已实现有界私有日志和提交失败不消费；JVM 自检通过，真实进程回收验收待第三阶段 |
@@ -191,7 +196,7 @@ Linux 发现补充（P04，坑 373）：bootstrap `index.js` 串行发现 → `g
 | 高 | K02 | 启动诊断必须在文件与 logcat 出口脱敏 | `app/src/main/java/com/snoworwind/pocketharness/LogCollector.kt:465-481`、`:528-537`、`:753-766`、`EngineStartFlow.kt:335-341` | 页面 URL、诊断 detail 与异常消息可能携带 launch token；调用方另打 logcat 会绕过集中出口 | **源码已修（2026-10-15）**：boot-diag 与 boot-fail 文件写入统一脱敏；客户端失败的 detail 与 logcat 共用先脱敏再截断的副本，原文仅供恢复编排。完整 Kotlin 主源码编译通过；未运行测试或设备验收；`EngineAuth.redact` 当前覆盖 URL query token，见坑 319、320 |
 | 高 | K03 | 自动回滚目标取自**崩溃那次启动自己建的**快照（快照在建/挂载阶段就写，早于健康判定），于是「回滚成功」而状态没变好；跨版本还会把上一次安装的配置写回 | `app/src/main/java/com/snoworwind/pocketharness/UndoGate.kt:240`、`:194`、`vendor/dsh-undo-savepoint/lib/core.mjs:1180`（快照创建点；0.4.9 起实现由 index.js 拆到 core.mjs，原 index.js:2198 锚点已随追版失效） | 坏插件仍被挂载、引擎仍起不来而 `undo-gate.log` 报 `executed ok`；升级后若新版本从未健康启动，回滚会把新版本的补丁/挂载项静默删掉（新 APK + 旧配置） | 已修（2026-09-21：known-good 由壳侧探活健康定义 + 安装指纹护栏；设备验收 PASS=9） |
 | 高 | K03 | 整份配置回滚会**静默吞掉用户在最后一次健康启动之后装的插件**（挂载清单是一整份文件） | `app/src/main/java/com/snoworwind/pocketharness/PluginMounts.kt:41`、`UndoGate.kt:279` | 用一个坏插件换掉用户全部插件的装配状态 | **已改（2026-09-21 用户拍板）**：清单式——硬清单随版本并集（强制保留）+ 软清单记「当前清单被证明可用」；能点名则**只拔那一块**（其余条目与注释逐字节不动），点不出名且清单变过则拒绝回滚 |
-| 高 | K03 | 刷新失败路径不判 `rollback` 返回值即清 marker；残留 `previous` 会被下次失败路径当回滚源 | `app/src/main/java/com/snoworwind/pocketharness/EngineManager.kt:196-198` | 回滚结果被掩盖，坏树可能被「回滚」成更坏状态 | 未修（D-3 实效性缺口） |
+| 高 | K03 | 升级事务恢复必须幂等：未完成升级回滚到旧组件，已提交升级只回收备份，任何情况下 rootfs 与用户数据不参与交换 | `app/src/main/java/com/snoworwind/pocketharness/LinuxUpgradeTransaction.kt:81#expect=fun%20recover` | 半切换的 node/engine 会被当成可运行实例 | 已修（中断矩阵逐检查点覆盖） |
 | 高 | P01 | `sh -c "屏幕命令"` 后接重定向/位置参数曾绕过屏幕范围门 | `plugins/dsh-android-bridge/src/screen-scope.ts`、`app/src/main/java/com/snoworwind/pocketharness/ShellOps.kt` | 旧解析要求 `-c` 载荷直到段尾；尾随内容会使载荷不展开 | 已修：按 shell 规则只解析 `-c` 后第一个参数，后续重定向/位置参数不再隐藏命令体 |
 | 高 | P03 | 浏览器契约的 approval/confirm/full-access 曾只有声明，没有工具执行闸 | `plugins/dsh-android-browser/src/contract.ts`、`src/index.ts`、`src/tools.ts` | 导航/输入无逐项审批、身份切换无二次确认、截图未受会话完全访问档约束 | **源码已修（[PR #98](https://github.com/snoworwind/pocket-harness/pull/98) 待 CI）**：统一 pre-execute 审批 + 单调 guard；截图只认当前会话显式 danger-full-access；未构建 APK、未做设备验证 |
 | 高 | B02 | Kotlin 单测数量门禁可被**整类删除**绕过（A 判据只看现存类，B 判据对缺席类直接 continue） | `scripts/check-kotlin-test-count.mjs:129`、`scripts/check-kotlin-test-count.mjs:153` | 「防防线删失」被部分架空 | 未修 |
@@ -226,10 +231,10 @@ Linux 发现补充（P04，坑 373）：bootstrap `index.js` 串行发现 → `g
 - [K02] 5. 【已确认的代码事实，误杀未证实】`killExistingEngine` 的 pkill 比注释宽：注释称「pnpm/脚本子进程不含 bin.js web 特征，不会被误杀」（:1314-1316），实际命令是 `pkill -f "bin.js"`（:1318），没有 web 约束；同 uid 下任何命令行含 `bin.js` 的进程（例如 agent 工具里跑 `node xxx/bin.js`）都会被每次启动/重启杀掉。另 `.waitFor()` 无超时，同步阻塞调用线程（含看门狗线程）。
 - [K02] 已修（2026-10-31）：本仓现行环境与桥协议说明不再声称 `shellEnv()` 注入 `DSH_ADB_*`；旧无线 ADB 状态字段只为兼容与诊断保留。
 - [K02] 已修（2026-10-31）：架构表将 BOOT_COMPLETED 自启动归给 `BootReceiver`，并移除 LogCollector/EngineService 的易漂移行数。
-- [K03] 1. `app/src/main/java/com/snoworwind/pocketharness/EngineManager.kt:196-198` —— 刷新失败 catch 里 `SnapshotTransaction.rollback(...)` 的返回值未判、紧接着无条件 `clearMarker`，与 `SnapshotTransaction.recover` 的 D-3 处理（`SnapshotTransaction.kt:1294#expect=fun%20recover`「回滚失败不得无条件清 marker」）自相矛盾，也与 `EngineManager.applyRecovery`（`:607#expect=private%20fun%20applyRecovery` 把失败明细写进 `pendingRecoveryFailure`）不对称。触发：swap 中途抛异常且回滚有任一条目失败（例如删不净的 live 子树），marker 被清、失败条目无人上报。后果链：下一次刷新若在写 SWAPPING 之前就抛异常（空间断言拒绝 §7.2-F-4、或 stage 派生的任何异常），catch 会走 `rollback(marker=STAGED)`，而 `collectDisplacedNames`（`SnapshotTransaction.kt:1633#expect=private%20fun%20collectDisplacedNames`）会把残留的 `.snapshot-previous` 当成回滚源逐条覆盖回 live —— 即旧的工厂树被静默“复活”盖在新树上；此后 `hasResidue && snapshotFresh()` 的回收门也可能把仍需的残渣删掉。建议按 `recover` 的口径改：`if (!result.ok) { 保留 marker + 上报告警 } else clearMarker()`。
-- [K03] 2. `app/src/main/java/com/snoworwind/pocketharness/SnapshotTransaction.kt:547#expect=spaceCheck` —— 空间断言覆盖面窄于审查 §7.2-F-4 / B12 的原始发现：断言跑在解压完成之后（stage 已付过 2.5 GB 量级空间），解压阶段本身仍无任何 StatFs 前置检查（`EngineManager.extractSnapshotTo` :871 直调解压），所以「解压中途 ENOSPC → 报运行时更新失败」的原症状还在；且 required 只由 live profiles 体积推导（`backupBytes + 25% + 64MB`），当 live profiles 明显小于 staged（回滚补偿删剩 / 半合并的现场，正是「失败→留残渣→空间紧→更易失败」的自我强化回路）时，`mergeTree` 补入文件的新分配不在预算内，`SnapshotFs.sizeOf`(:89) 还会把不可读条目按 0 静默低估。后果：断言放行后仍在合并中途 ENOSPC。另有一致性问题：`InsufficientSpaceException` 的可照做文案只进 `lastRefreshFailure`/boot-fail.log，用户界面拿到的是通用「运行时更新失败」（EngineStartFlow.kt:497），B12 要的「专门文案」只实现了一半。
+- [K03] 1. 已随 Termux 快照移除：整树交换、指纹与 online 更新入口不再存在；现行只做受管组件事务替换，rootfs 不参与，恢复入口为 `EngineManager.kt:97#expect=internal%20fun%20recoverLinuxUpgrade`。
+- [K03] 2. 已随 Termux 快照移除：空间断言与解压期 StatFs 属于旧全树交换；现行首装解包按组件校验后复用已完成组件，中断不重解 rootfs（`LinuxInstanceInstaller.kt` 的 stage 复用判据）。
 - [K03] 3. 在线更新指纹错配已由共享事务与 `.online-snapshot` 身份绑定修复：freshness 同时要求当前内嵌 SHA 等于记录的 base SHA、committed fingerprint 等于 archive SHA；在线探活确认前保留 journal/source，冷启对未确认 SWAPPED 回滚。本分支已删除在线下载和新事务入口；仅保留历史状态恢复。既有恢复用例保留，本轮未执行测试或设备验收。
-- [K03] 4. 在线更新两步 rename、无冷启journal及删除旧回退源的失败链已由共享 `SnapshotTransaction` journal/stage/previous 替换：STAGED解压中断丢弃、SWAPPING中断回滚、SWAPPED未健康确认时冷启回滚；旧 `usr-old` 不作归属证明，也不会被新路径递归删除。覆盖失败与重入负例已加，Gradle/设备证据待验证。
+- [K03] 4. 已由 Linux 升级事务替代：`LinuxUpgradeTransaction.apply` 以 journal+stage+previous 完成 prepare/probe/upgrade/done，中断回滚，rootfs 不在允许组件集内；矩阵测试见 `LinuxComponentTransactionTest.kt`。
 - [K03] 5. 【已修，2026-10-28；改前缺陷与影响留档】`SnapshotExtractor.extractEntries` 原先在条目开始与完成时各累加一次 `entry.size`，使 `maxTotalBytes` 约在真实上限一半处触发且进度约翻倍。现在只在条目开始按归档声明大小累计一次；新增两条各 600,000 字节、总量限制 1,500,000 字节的回归，证明旧逻辑会在第二条前误拒，而修复后解压完成且进度恰为 1,200,000 字节。`SnapshotExtractorTest.countsEachEntryOnceForTheTotalLimitAndProgress`。
 - [K04] 1. 【已修·本轮，见 §3.1】 （已证实，机制层）`jsString` 的 U+2028/U+2029「修复」编译成恒等替换：`AndroidBridge.kt:455-457` 源码是 `.replace(<裸 U+2028 字符>, "<单个反斜杠>u2028")`，第二个实参在 Kotlin 里是同一个字符（`\uXXXX` 是转义，不是六个字符）——编译产物 `app/build/tmp/kotlin-classes/debug/com/snoworwind/pocketharness/AndroidBridgeKt.class` 常量池里只有裸 U+2028/U+2029 两条字符串常量（`\x01\x00\x03 E2 80 A8`），没有 `\u2028` 转义串，两个实参去重成同一条 ⇒ 该行不做任何转义。为什么单测还是绿的（现场反证）：JVM 单测类路径显式引入了另一份实现 `org.json:json:20240303`（`app/build.gradle.kts:133-134` 注释自陈「本地单测用真实 org.json，android.jar 桩在 JVM 里抛 Stub!」）；`BrowserHostNavigationPolicyTest.kt:129-141` 在恒等替换下仍判绿（`app/build/tmp/kotlin-classes/debugUnitTest/.../BrowserHostNavigationPolicyTest.class` 的常量池含断言用 `\u20` 字面量，`app/build/test-results/testDebugUnitTest/TEST-…BrowserHostNavigationPolicyTest.xml` 现场读到 tests=9 failures=0），只可能是这份 jar 的 `quote` 自己转义了 U+2028/U+2029（其 `JSONObject.class` 内含写 `\u` 的字符串字面量，与该区间转义实现相符）。设备运行时用的是 Android 框架 `org.json`，与单测类路径不是同一实现 ⇒ 这条绿的判据测不到设备行为，是假保证。设备侧是否真需要该转义（审查 §3.1-C3 / F-3 断言 `JSONObject.quote` 不转义该区间）本轮无本机复算手段，未证实。
 - [K04] 2. （历史缺陷，G-7 已修）旧审计曾把真实结果塞进 args、固定写 `result:"ok"`，且范围拒绝早退不落账；当前 `ShellOps.kt` 在拒绝路径显式写 `denied`，执行结果由 `ControlAudit.RESULT_OK/RESULT_FAILED` 传入。当前额外约束是 `ControlAudit.appendTo()` 的有界追加与超限原子滚动，详见 K06。
@@ -266,7 +271,7 @@ Linux 发现补充（P04，坑 373）：bootstrap `index.js` 串行发现 → `g
 - [K08] 同族【已确认，R2 / H-1】：`workspaces` 无上限、无 LRU/TTL，全仓无 `onTrimMemory`（grep 零命中），`MAX_TABS=8` 只是每工作台上限，也没有「会话被删除 → `dropWorkspace`」的可信信号。每个新 session 开页即多一个 WebView，驻留到 Activity 销毁。
 - [K08] 2. 【已确认，S-7 / R3 / R6 / F-6】浏览器 op 在控制队列线程上忙等：`awaitNavigation`（:1101-1107）用 `Thread.sleep(40)` 自旋，冷启动预算 10s（:1087）；而内置错误页的 `onPageStarted` 被守卫 `return`（:670）不推进代次 → DNS 立即失败时必然等满预算再 `return ok:true`（:1088）。影响：一次 `browser_open` 最坏占住整条设备控制队列 10s（a11y / vd / `sh*` 全排队），回执仍是成功（`reason` 只有 `status()` 带出）。
 - [K08] 3. 【已确认，S-6 / R7 / F-7】截图生命周期与回执：`shotOp` 写 `filesDir/home/tmp/dsh-tmp/browser-shot-<ts>.png`（:1565），全仓 grep `browser-shot` 只命中这一处写入点、无任何删除点，而 :1590 的 note 与工具层文案都称「读完即删」；`health` 是字面量 `"ok"`（:1589，契约声明 `ok|suspect`）；失败分支 `lastError.ifBlank { "shot-failed" }`（:1581）会把上一次遗留的 `lastError`（如 `load-error:-2`）当成截图失败原因。影响：长任务磁盘累积（全页 ARGB_8888 PNG 100%）+ 失败原因误导。
-- [K08] 4. 【已确认，H-7 / F-1 / F-4 / F-8】回执与能力不实四处：① `caps()` 的 `rendererProcesses:0`、`cdpEnabled:false`、`browserWebViewAvailable:true`、`androidxWebkitCompiled:true`、`densityOverrideSupported:false`（:1015-1017）与 `status().available:true`（:912）全是常量，被 P03 的 `facts.ts/tier.ts` 当设备事实消费；② `applyDocumentStartScript` 在能力门不过时静默 `return`（:1196），而 `viewportOp`/`setViewport` 成功体只有 `ok/route/width/height`（:1117、:1131），不报 `scriptApplied/degraded`（隔壁 `identityResult`:1182-1189 是如实上报的）→ 视口没生效也回 ok；③ 视口区间两侧不同源：面板 240..4096（dsh-client-ui-responsive/src/client/mobile/native-browser-adapter.ts:203、browser-tab.tsx:54）vs 壳侧 240..3840（:482、:1122、:1159），面板校验通过、壳侧拒、面板不渲染错误 → 用户看到「什么都没发生」；④ 隔离 WebView 无 `onReceivedHttpError`、无 `setDownloadListener`（grep 只命中可信 WebView：MainActivity.kt:1064#expect=onReceivedHttpError, MainActivity.kt:1195#expect=setDownloadListener;），404/403/500 与「点了 PDF」在 `loadState` 上仍报 `loaded`、在工具回执上仍是 `ok:true, changed:false`。
+- [K08] 4. 【已确认，H-7 / F-1 / F-4 / F-8】回执与能力不实四处：① `caps()` 的 `rendererProcesses:0`、`cdpEnabled:false`、`browserWebViewAvailable:true`、`androidxWebkitCompiled:true`、`densityOverrideSupported:false`（:1015-1017）与 `status().available:true`（:912）全是常量，被 P03 的 `facts.ts/tier.ts` 当设备事实消费；② `applyDocumentStartScript` 在能力门不过时静默 `return`（:1196），而 `viewportOp`/`setViewport` 成功体只有 `ok/route/width/height`（:1117、:1131），不报 `scriptApplied/degraded`（隔壁 `identityResult`:1182-1189 是如实上报的）→ 视口没生效也回 ok；③ 视口区间两侧不同源：面板 240..4096（dsh-client-ui-responsive/src/client/mobile/native-browser-adapter.ts:203、browser-tab.tsx:54）vs 壳侧 240..3840（:482、:1122、:1159），面板校验通过、壳侧拒、面板不渲染错误 → 用户看到「什么都没发生」；④ 隔离 WebView 无 `onReceivedHttpError`、无 `setDownloadListener`（grep 只命中可信 WebView：MainActivity.kt:1064#expect=onReceivedHttpError, MainActivity.kt:1195#expect=setDownloadListener;），404 与「点了 PDF」在 `loadState` 上仍报 `loaded`、在工具回执上仍是 `ok:true, changed:false`。
 - [K08] 5. 【已确认，S-3 / F-9】「隔离」只是无桥，不是存储隔离：`app/src/main/java` 全域无 `setDataDirectorySuffix` / `removeAllCookies` / `WebStorage.deleteAllData`，也无 `browserClearData` 一类清理 op（grep 零命中），而引擎鉴权 cookie 注入的是进程级 `CookieManager`（MainActivity.kt:363#expect=CookieManager.getInstance;）。影响：隔离 WebView 与引擎会话共用 cookie/存储池，AI 访问过的站点 cookie/localStorage 持久驻留且用户无撤销入口；请求级过滤一旦出现缺口，被解析到回环同源的请求会带引擎 cookie。
 - [K08] 未证实：请求级过滤把 `ws`/`wss` 也纳入 scheme 判定（BrowserHostNavigationPolicy.kt:87），似假定 WebSocket 握手会进 `shouldInterceptRequest`；Android 是否真把 WS 升级交进该回调，本轮未在设备上确认。若否，页面可用 `ws://127.0.0.1:3080/` 绕过 403 面（验证法：加载公网页后 `new WebSocket("ws://127.0.0.1:3080/")`，看 `blockedRequests` 是否 +1、logcat 是否出 `dsh-browser`）。
 - [K08] 已修（2026-10-31）：架构模块表没有硬编码 BrowserHostPolicy 类行数。
@@ -292,10 +297,10 @@ Linux 发现补充（P04，坑 373）：bootstrap `index.js` 串行发现 → `g
 - [K10] 已修（2026-10-31）：OverlayService KDoc 改为引用 `NotifyCenter.contentIntent`，不再指向过期行号。
 - [K10] 已修（2026-10-31）：引擎通知信道注释说明由壳侧按偏移消费、由引擎写入方负责轮转，不再声称壳侧截断文件。
 - [K10] 已退役：旧 `0.14.1-preview-NOTIFY-REALTIME-AND-STATE-SYNC.md` 不在当前仓库；现行通知契约见 `ARCHITECTURE.md`、`modules.md` 与 `BRIDGE-API.md`。
-- [K11] 1. 已确认：判据的产出者与消费者分属两条链。唯一产出结果的执行点是 `.github/workflows/pr-gate.yml:140`（CI 跑 gradle），而数量门禁只在打包/发布链里（`scripts/build-apk.mjs:200`、`scripts/build-apk-013.ps1:145`，均 `--allow-missing`；`scripts/check-release-gates.mjs:104` 登记 `ci: false`），CI 里的 `check-release-gates.mjs`（`.github/workflows/pr-gate.yml:91`）不带 `--run`，只断接线不跑门禁。且两条构建链自己只跑 `:app:assembleDebug`（`scripts/build-apk.mjs:356`、`scripts/build-apk-013.ps1:388`），从不跑 `:app:testDebugUnitTest`。影响：CI 里删掉一个测试类（gradle exit 仍 0）全绿，本地链则只能读到上一次手动跑留下的 XML——改了测试源码就判陈旧。两半防线各自成立，但没有一条链同时具备「产出 + 判据」。
+- [K11] 1. 已确认：判据的产出者与消费者分属两条链。唯一产出结果的执行点是 `.github/workflows/pr-gate.yml:137#expect=%23%20so%20a%20later%20edit%20cannot%20silently%20reintroduce%20the%20per-push%20cost%20or%20drop%20the%20coverage.`（CI 跑 gradle），而数量门禁只在打包/发布链里（`scripts/build-apk.mjs:201#expect=%2F%2F%20review%20C6%EF%BC%9A%E9%80%82%E9%85%8D%E5%B1%82%E5%A5%91%E7%BA%A6%EF%BC%88%E4%B8%8A%E6%B8%B8%20bundle%20%E8%A1%8C%E5%BC%95%E7%94%A8%20%2F%20%E6%B3%A8%E5%85%A5%E5%8C%85%20lib%20%E4%BA%A7%E7%89%A9%20%2F%20%E5%AE%A2%E6%88%B7%E7%AB%AF%E6%A7%BD%E4%BD%8D%20%2F%20%E7%89%88%E6%9C%AC%E9%92%89%E5%8F%B0%E8%B4%A6%EF%BC%89%E3%80%82`、`scripts/build-apk-013.ps1:145`，均 `--allow-missing`；`scripts/check-release-gates.mjs:104` 登记 `ci: false`），CI 里的 `check-release-gates.mjs`（`.github/workflows/pr-gate.yml:90#expect=-%20name%3A%20%E6%95%8F%E6%84%9F%E4%BF%A1%E6%81%AF%E6%89%AB%E6%8F%8F`）不带 `--run`，只断接线不跑门禁。且两条构建链自己只跑 `:app:assembleDebug`（`scripts/build-apk.mjs:357#expect=%2F%2F%20%E5%89%8D%E7%BD%AE%E4%BA%8E%E6%9C%AC%E6%AD%A5%E7%9A%84%E6%8F%92%E4%BB%B6%20npm%20build%20%E5%B7%B2%E4%BA%A7%E5%87%BA%20plugins%2F%2A%2Flib%EF%BC%8C%E9%97%A8%E7%A6%81%E7%9C%9F%E8%B7%91%E5%90%84%E6%8F%92%E4%BB%B6%20apply%28%29%20%E9%87%87%E9%9B%86%E5%B7%A5%E5%85%B7%E5%AE%9A%E4%B9%89%E3%80%82`、`scripts/build-apk-013.ps1:388`），从不跑 `:app:testDebugUnitTest`。影响：CI 里删掉一个测试类（gradle exit 仍 0）全绿，本地链则只能读到上一次手动跑留下的 XML——改了测试源码就判陈旧。两半防线各自成立，但没有一条链同时具备「产出 + 判据」。
 - [K11] 2. 已确认：`app/build.gradle.kts:91` 的 `unitTests.isReturnDefaultValues = true` 把 android.* 打桩成 0/null/false。本目录已有两条针对性反桩判据（`app/src/test/java/com/snoworwind/pocketharness/CallSiteContractTest.kt:294` 禁 `Color.argb`、`app/src/test/java/com/snoworwind/pocketharness/OverlayHaloInvariantTest.kt:92` 要求四态色互不相同），说明风险真实；将来任何新增的 android.graphics/Log 断言会静默恒真。已确认配置在场；未证实本目录还存在其它被桩恒真的断言（49 文件逐个读过，除 `app/src/test/java/com/snoworwind/pocketharness/NotifyCenterChannelTest.kt:33` 的常量同义反复外未发现）。
 - [K11] 3. 已确认：`app/src/test/java/com/snoworwind/pocketharness/SnapshotUserDataTest.kt:84` 在宿主不允许建符号链接时 `assumeTrue(..., false)` → 整例被 JUnit 假设失败跳过；而 `scripts/check-kotlin-test-count.mjs:143-147` 只对 failures/errors 判红，不判 skipped，基线仍按 5 例计。现场件：`app/build/test-results/testDebugUnitTest/` 下该类的 XML `skipped="1"`，即当前 456 例里实际执行 455 例（总数与基线比对完全一致，这个 skip 不会被任何判据点出来）。
-- [K11] 4. 已确认（自述）：`app/src/test/java/com/snoworwind/pocketharness/SnapshotTransactionTest.kt:319` 的回滚兜底用例自认「删掉兜底本用例仍然全绿」——「live 删不净仍能放回」这一分支在 JVM 上不可能被触发，判据没有牙，真证据只在设备（16384 覆盖安装实测）。影响：这条 P0 恢复路径的单测给不出保护，回归只能靠设备门禁。
+- [K11] 4. 已迁移：旧快照事务测试类现为 Linux 升级事务中断矩阵（每个 journal 检查点模拟进程死亡并断言组件一致、rootfs 与用户数据不变），不再依赖设备才能覆盖回滚分支。
 - [K11] 5. 已确认（自述）：`app/src/test/java/com/snoworwind/pocketharness/WatchdogMarkerConsumeTest.kt:45-61` 的 `consumeAll` 与 `app/src/test/java/com/snoworwind/pocketharness/BootPageConsoleRouteTest.kt:114-122` 的 `extractRuntimeForTest` 都是在测试里复刻生产算法，断言跑的是复刻件；守真实实现的只有同文件里的源码文本断言（`app/src/test/java/com/snoworwind/pocketharness/WatchdogMarkerConsumeTest.kt:159`）。生产循环改了而文本形态未变 → 复刻件照样全绿。
 - [K11] | 测试文件 | 被测块（K01..K10 或写「横切」） | 守什么不变量（≤25 字） | 关键断言坐标 | 假绿风险（无 / 具体原因） |
 - [K11] |---|---|---|---|---|
@@ -339,7 +344,7 @@ Linux 发现补充（P04，坑 373）：bootstrap `index.js` 串行发现 → `g
 - [K11] | app/src/test/java/com/snoworwind/pocketharness/SnapshotRefreshStageTest.kt | 横切 | 坏归档清 stage、live 保留、重复 repair 校验失败停在 swap 前 | app/src/test/java/com/snoworwind/pocketharness/SnapshotRefreshStageTest.kt:12,app/src/test/java/com/snoworwind/pocketharness/SnapshotRefreshStageTest.kt:38 | 低：真实调用 EngineManager 共用的预交换 helper，验证文件状态与失败结果；Android assets/Context 整合仍不在 JVM 用例内 |
 - [K11] | app/src/test/java/com/snoworwind/pocketharness/SnapshotFileModeTest.kt | 横切 | 仅 ELF/shebang 视为可直接执行 | app/src/test/java/com/snoworwind/pocketharness/SnapshotFileModeTest.kt:7,app/src/test/java/com/snoworwind/pocketharness/SnapshotFileModeTest.kt:10 | 低：全目录唯一单例用例，纯字节判定，无分支遗漏风险但覆盖极薄 |
 - [K11] | app/src/test/java/com/snoworwind/pocketharness/SnapshotRecoveryNoticeTest.kt | 横切 | 恢复失败通知与未收敛事务阻断启动判据 | app/src/test/java/com/snoworwind/pocketharness/SnapshotRecoveryNoticeTest.kt | 全量fresh `:app:testDebugUnitTest --rerun-tasks`通过；含本轮factory/online未收敛闭锁正反例。
-- [K11] | app/src/test/java/com/snoworwind/pocketharness/SnapshotTransactionTest.kt | 横切 | 工厂/在线互斥准入负例、在线usr-only交换/冷启回滚、已提交前滚、缺源拒绝回滚、旧marker兼容与未知purpose/非法phase fail closed、SWAPPING首个rename前冷杀安全收敛 | app/src/test/java/com/snoworwind/pocketharness/SnapshotTransactionTest.kt | 全量fresh `:app:testDebugUnitTest --rerun-tasks`通过；新增准入互斥/残渣、在线冷启与fail-closed负例。JVM跳过symlink恢复场景，既有回滚兜底仍需设备证据。
+- [K11] | app/src/test/java/com/snoworwind/pocketharness/LinuxComponentTransactionTest.kt | K03 | journal 检查点中断后的组件一致性与 rootfs/用户数据保留 | app/src/test/java/com/snoworwind/pocketharness/LinuxComponentTransactionTest.kt:1#expect=package%20com.snoworwind.pocketharness | 无：每个中断点都断言 node/engine 要么全旧要么全新，rootfs 与 home 用户文件按字节保留。
 - [K11] | app/src/test/java/com/snoworwind/pocketharness/SnapshotUserDataTest.kt | 横切 | 旧备份只补缺、绝不覆盖较新内容 | app/src/test/java/com/snoworwind/pocketharness/SnapshotUserDataTest.kt:14,app/src/test/java/com/snoworwind/pocketharness/SnapshotUserDataTest.kt:84 | 有：`:84` symlink 建不出来时 `assumeTrue(false)` → 该例被 skip；基线仍计 5 例、门禁不判 skipped，当前结果正含这 1 例 skipped |
 - [K11] | app/src/test/java/com/snoworwind/pocketharness/ProfilePackageManifestTest.kt | 横切 | user pin/未知字段优先，工厂新增 dependency/bundle 补齐，损坏 JSON 拒绝及空 user 基座 | app/src/test/java/com/snoworwind/pocketharness/ProfilePackageManifestTest.kt:8,app/src/test/java/com/snoworwind/pocketharness/ProfilePackageManifestTest.kt:23 | 已执行：随 SnapshotTransaction 聚焦集统一通过；merge 为纯 JVM 函数，解析失败返回 null 由调用方保留现场 |
 - [K11] | app/src/test/java/com/snoworwind/pocketharness/UndoGateDecisionTest.kt | 横切 | 五态闸门与两阶段观察窗边界 | app/src/test/java/com/snoworwind/pocketharness/UndoGateDecisionTest.kt:20,app/src/test/java/com/snoworwind/pocketharness/UndoGateDecisionTest.kt:61 | 无（纯决策函数，边界值两侧都钉） |
@@ -368,7 +373,7 @@ Linux 发现补充（P04，坑 373）：bootstrap `index.js` 串行发现 → `g
 - [P03] 4. 已确认（回执丢字段，同 issue #232 族）：`plugins/dsh-android-vdisplay/src/index.ts:140` 的 render 只输出 `guidance`，失败时模型看不到 `code`（工具说明却让模型「看 code/guidance」），active 时看不到 `screens` 里的 alias（`screenId` 需要 `virtual-N`）；`execute` 里算好的 `text`（`:157`）从不被渲染。判据同 `tools.ts:73-87` 记的「能力声明与可用通道不一致」。
 - [P03] 5. 已确认（客户端声明与壳侧不符且不在门禁面内）：`plugins/dsh-android-vdisplay/src/client/index.ts:83` 声明 `vdisplayDestroy(target?: string)`、`:284` 按别名调用，壳侧 `AndroidBridge.kt:335` 是无参方法、`MainActivity.kt:791#expect=%22dsh-public-repo%22%2C` 不传 target → 别名被 JS 桥静默丢弃，「关闭全部」的兜底路径（`:281-287`）实际按壳侧默认顺序（选中→本会话→任意）销毁一块。该声明不在 `scripts/bridge-symmetry-baseline.json` 的 surfaces（只覆盖 androidBridge/backGateBridge），门禁看不见；注入层同名声明是无参形态（`dsh-client-ui-responsive/src/client/android-bridge.ts:82`）。同处 `:40` 的 `VD_POLL_MS=10_000` 与真实 1s 轮询（`:252`）不符，是死常量。
 - [P04] 1. 【已确认，安全面；COMPAT-REVIEW §5.12 / H-11 仍在待办】`FileIncoming.SAFE_PREFIXES`（`app/src/main/java/com/snoworwind/pocketharness/FileIncoming.kt:35-38`）含本应用私有目录 `/data/user/0/com.snoworwind.pocketharness/` 与 `/data/data/...`，任意第三方应用 `ACTION_VIEW` 一个 `file://…/home/.dsh/.credentials.yaml` 就能让壳把它拷进临时工作区；引擎侧 `enqueueSession`（`plugins/dsh-android-file-open/src/index.ts:238-261`）只断言「在临时工作区内且存在」，不验来源，于是该文件变成一条未发送草稿，经 claim/content 可被取出（借壳读自身凭据）。
-- [P04] 2. 【已确认（代码面），一致性】linux-env 的两条 env 路由没有走 `ctx.effect`：`plugins/dsh-android-linux-env/src/index.ts:349-376` 在 `for` 循环里直接 `wsvc.register(...)`，而同文件 `:342` 的注释明确要求「热重载/卸载必须回收路由，不留重复 handler」，同文件 `:386/:400` 的 runtime-cache 路由与 file-open 五条（`plugins/dsh-android-file-open/src/index.ts:525/603/695/750/811`）都用了 `ctx.effect`。触发条件=热重载或卸载本插件；影响=旧 handler 残留、同名路由重复注册（未在设备上复现，运行期影响未证实）。
+- [P04] 2. 【已确认（代码面），一致性】linux-env 的两条 env 路由没有走 `ctx.effect`：`plugins/dsh-android-linux-env/src/index.ts:348#expect=const%20root%20%3D%20process.env.DSH_FILES_DIR` 在 `for` 循环里直接 `wsvc.register(...)`，而同文件 `:342` 的注释明确要求「热重载/卸载必须回收路由，不留重复 handler」，同文件 `:386/:400` 的 runtime-cache 路由与 file-open 五条（`plugins/dsh-android-file-open/src/index.ts:525/603/695/750/811`）都用了 `ctx.effect`。触发条件=热重载或卸载本插件；影响=旧 handler 残留、同名路由重复注册（未在设备上复现，运行期影响未证实）。
 - [P04] 3. 【已确认（代码 + 目录快照实测），写回口径】`mergeCatalog` 给模型设 `model.compat` 时不写 `model.sources`（`plugins/dsh-model-capability/src/index.ts:166-169`），而 `report.unknown` 按 `sources` 是否为空判定（`:195-198`）；按真实算法在 `plugins/dsh-model-capability/lib/catalog-snapshot.json` 上实测：181 / 961 个模型 id 会落到「有 dialect、无 thinkingLevelMap」。于是 `model_capability_apply`（offline 默认 true）会把 `compat.thinkingFormat` 等写进 settings，同时工具文本把这批模型列进「未获得能力元数据：…」——报告与实际写入自相矛盾（触发条件：路由声明了这批 id 之一并调用 apply）。
 - [P04] 4. 【已确认（代码面），配置写入面】`planModelPatch` 把字符串形态的模型条目规范化成对象（`plugins/dsh-model-capability/src/settings-writer.ts:134`），而第 181 行的判据 `changes.length > 0 || next !== entry` 中 `next !== entry` 恒真（`next` 是新对象）→ 只要该 id 命中 patch，条目必被替换；若同一次调用里该路由另有字段被写，用户写的 `models: ['a','b']` 会被改写成 `[{id:'a'},…]`（值不变、representation 变）。同函数 `changes` 跨 patch 累积，判据本身形同虚设（可单测复现）。
 - [P04] 5. 【2026-10-11 已修；原条目为历史记录】曾：诊断轨迹默认开启且 `tick()` 在早退前无条件写一行、**每 5 秒**一次 → `$DSH_HOME/model-capability.log` 约 1.7 万行/天、无轮转、无上限。**现已两条都改掉**：0.14.2 把 5 秒改成 120 秒兜底（仍每轮无条件写一行），本轮 A7 又把**定时器整体移除** ⇒ 现为**纯事件驱动，全插件无任何定时器**：唯一触发是 settings 保存同步 emit 的 `settings/document-updated`（另有启动期一次首读基线 `tick(false)`，同样**不排任何定时器**；无路由时留待下次保存自然补上）。写日志也改为**只在真有事发生**时（原「早退前无条件写一行」已删）⇒ 不再有常驻 tick、不再每天 1.7 万行。**仍成立的部分**：日志仍无轮转/无上限（`diag` 见 `plugins/dsh-model-capability/src/index.ts:181-185`，`DSH_MODEL_CAPABILITY_TRACE=0` 可关）；且它**仍不在**运行时缓存白名单里（`plugins/dsh-android-linux-env/src/runtime-cache.ts:59` 的 `CACHE_SUBDIR_ALLOW` 为空集、`:73` 的 `HOME_CACHE_ALLOW` 只有 `.node-compile-cache`），所以「清除运行时缓存」仍收不回这份增长——增长速率由每天 1.7 万行降为「每次保存若干行」。
@@ -387,15 +392,15 @@ Linux 发现补充（P04，坑 373）：bootstrap `index.js` 串行发现 → `g
 - [B01] 已修（2026-10-31）：`RUNTIME-PATCHES.md` 已将活动补丁执行边界改为本仓来源链 runner，不再称旧本地脚本会施加 vendor 补丁。
 - [B01] 漂移（**2026-09-25 已修**）：`docs/AGENTS/RUNTIME-PATCHES.md` 原写 engine 补丁「当前全量」14 项；该文件已按现数改为 **15 项**（`scripts/patches/registry.json` 实测 30 条总 / 15 条 engine / 15 条 vendor）。原条目点名的四条缺口（combo-single-lazy-A5、combo-parallel-C3、combo-probe-P1、boot-third-party-isolation-G3）中，**A5 与 C3 已于 0.14.2 追版时按实测撤销**（见 RUNTIME-PATCHES §7.4 与 `scripts/patches/README.md` 撤销段），P1 与 G3 仍在册 ⇒ 清单已与源码同源，此处不再是漂移。
 - [B01] 已修（2026-10-31）：`AGENTS.md` 的 vendor 目录摘要已与本仓现存 marketplace 与 undo-savepoint 副本一致。
-- [B02] 1. 【已确认，源码可复现】Kotlin 单测数量门禁的「防净零抵消」可被整类删除绕过：A 判据只对现存源码测试类要求有结果（`scripts/check-kotlin-test-count.mjs:129`），B 判据对结果里缺席的类直接 `continue`（`:153`）→ 删掉整个测试文件（例如 29 例的 `SnapshotTransactionTest.kt`）再在别处补足总数即恒绿。影响：一整类防线被无声削掉，而该门禁不在 CI（`ci:false`），只在两条链以 `--allow-missing` 跑。
+- [B02] 1. 【已确认，源码可复现】Kotlin 单测数量门禁的「防净零抵消」可被整类删除绕过：A 判据只对现存源码测试类要求有结果（`scripts/check-kotlin-test-count.mjs:129`），B 判据对结果里缺席的类直接 `continue`（`:153`）→ 删掉整个测试文件（例如 29 例的 `LinuxComponentTransactionTest.kt`）再在别处补足总数即恒绿。影响：一整类防线被无声削掉，而该门禁不在 CI（`ci:false`），只在两条链以 `--allow-missing` 跑。
 - [B02] 2. 【已确认】发布链的「SKIP=0」存在盲区：聚合入口用 `/SKIP=(\d+)/` 统计（`scripts/check-release-gates.mjs:246`），而 `scripts/check-boot-budget.mjs` 真检缺席时打印的是 `SKIP(#1)(real-data)`（`:681`）并立刻 `selfTest()` 退出（`:684`）——该 SKIP 既不入合计、在 `--require` 档下也不判红；唯一能判红的 `--require-real` 零调用点（仅注释提到）。影响：无设备产物时发布链可打印 SKIP=0 全绿，冷启动预算真判据从未执行。
-- [B02] 3. 【已确认，apk 树结构性必红】`plugins/dsh-android-vdisplay/test/tools-callable.test.mjs:122`（另 `:144`/`:161`/`:174`）用 `../../../dsh-mobile-apk/app/src/main/java/com/snoworwind/pocketharness/VdisplayController.kt` 读壳侧源码——该相对路径只在协调仓布局成立；apk 自包含树里 4 个用例 `readFileSync` 抛错。而 `scripts/check-plugin-tests.mjs` 在 `GATES` 里 `ci:true`，apk 仓 `.github/workflows/pr-gate.yml:64` 会跑它。影响：apk 仓 CI 与 apk 自包含构建结构性变红（对应协调仓评审 S-11 第二项 / §4.4-V-M4，本轮工作树仍未修）。
+- [B02] 3. 【已确认，apk 树结构性必红】`plugins/dsh-android-vdisplay/test/tools-callable.test.mjs:122`（另 `:144`/`:161`/`:174`）用 `../../../dsh-mobile-apk/app/src/main/java/com/snoworwind/pocketharness/VdisplayController.kt` 读壳侧源码——该相对路径只在协调仓布局成立；apk 自包含树里 4 个用例 `readFileSync` 抛错。而 `scripts/check-plugin-tests.mjs` 在 `GATES` 里 `ci:true`，apk 仓 `.github/workflows/pr-gate.yml:41#expect=-%20uses%3A%20actions%2Fcheckout%4011d5960a326750d5838078e36cf38b85af677262%20%23%20v4` 会跑它。影响：apk 仓 CI 与 apk 自包含构建结构性变红（对应协调仓评审 S-11 第二项 / §4.4-V-M4，本轮工作树仍未修）。
 - [B02] 4. 【已确认】`scripts/check-snapshot-builder-output.mjs:156` 的「两树同版」用硬编码`<ROOT>/dsh-mobile-apk/scripts/build-snapshot-013.mjs` 且 `existsSync` 为假时静默跳过（无 SKIP 计数，`:157`）——apk 自包含树里这条判据根本不存在，而它正是「0.14.0 归档段被删、构建器 exit 0 不产 tar」事故的反回归防线。
-- [B02] 5. 【未证实，需跑一次才能定性】`scripts/check-plugin-tests.mjs:33` 对「没有 test 目录」的插件只 WARN（删测试即从判据里消失）；且本轮工作树里 `scripts/patches/tests/` 的 16 个补丁回归测试只有 3 个被 pr-gate 硬编码调用（`.github/workflows/pr-gate.yml:41-43`），第 4 个经 `scripts/check-runtime-assets.mjs:96` 的行为回归间接执行，其余 12 个仍无执行路径（评审 I-6 的同族结论，未本轮复测是否已改）。
+- [B02] 5. 【未证实，需跑一次才能定性】`scripts/check-plugin-tests.mjs:33` 对「没有 test 目录」的插件只 WARN（删测试即从判据里消失）；且本轮工作树里 `scripts/patches/tests/` 的 16 个补丁回归测试只有 3 个被 pr-gate 硬编码调用（`.github/workflows/pr-gate.yml:40#expect=steps%3A`），第 4 个经 `scripts/check-runtime-assets.mjs:96` 的行为回归间接执行，其余 12 个仍无执行路径（评审 I-6 的同族结论，未本轮复测是否已改）。
 - [B03] 1. 已证实：`scripts/verify-vdisplay-float.mjs:95-103` 的「非法档位必须被拒」是永久假通过 + 顺手改设备状态。链路：`setVdisplayScale(0.123)` → `VdisplayPrefs.setScale` 用 `coerceIn(0.4, 1.0)` 把值钳成 0.4 存盘（`VdisplayController.kt:753-756`）→ 返回的 `VdisplayPrefs.scale()` 是数值 0.4（`MainActivity.kt:795#expect=%2F**`），既不是 `true` 也不是 `{ok:true}` → 脚本走 `else` 分支打印 `PASS 非法档位被拒 → rejected`。而第 3 步之后没有任何还原（对比第 1、2 步都有还原），设备档位就停在 0.4（默认 0.75），后续所有 vdisplay 用例的几何随之变化。影响：断言假绿 + 跨轮设备状态漂移。
 - [B03] 2. 已证实：`scripts/verify-browser-panel.mjs:123-128` 用 `browserHostShow({..., newTab:true})` 声称建多页签，但 `showPayload`（`BrowserHost.kt:384-394`）只解析 `url` 与 `session`，`newTab` 是死参数（`newTab` 只在 `navigateOp` `BrowserHost.kt:1035` 被读）；脚本结尾（`:137-138` 打印 PASSED）也不调 `browserHostClose`，于是留下两个隔离页签常驻。影响：与可疑点 1 叠加——`/json/list` 变成多 target，而 `verify-state-sync.mjs:248-250` 与 `verify-webview-015.mjs:3-4` 的取值规则都是「取第一个 target」，取错即整批桥断言假红。同结论见 `coord:docs/COMPAT-REVIEW-0.14.0-2026-09-19.md:453`（M4）。
 - [B03] 3. 已证实：`scripts/verify-vdisplay-viewer.mjs:2` 与 `scripts/verify-vdisplay-float.mjs:4` 的头部都声称覆盖「多查看器仲裁」，脚本内却没有任何第二查看器断言（全文只有一个硬编码 `viewerId: 'files-sidebar'`，`:161`/`:173`）。真正的仲裁在 `VdisplayController.attachViewerSurface` 的 `ViewerArbitration.decide(...) == Verdict.OCCUPIED` → `viewer-target-occupied`（`VdisplayController.kt:483-492`），当前没有任何套件打到这条路径。
-- [B03] 4. 已证实（正则语义）/ 未证实（真实 dump 文本形态）：`scripts/t0-check.ps1:14` 的禁用判定写成 `"shell-termux[sS]{0,200}?disabled:s*true"`——`s*` 是「零个或多个字母 s」，疑似想写 `\s*`。于是只有 `disabled:true` 紧贴形态命中，任何带空白的 `disabled: true` 都会逃逸，T0 会对「shell-termux 被禁」假绿。修法一行：`disabled:\s*true`。
+- [B03] 4. 已证实（正则语义）/ 未证实（真实 dump 文本形态）：`scripts/t0-check.ps1:14` 的禁用判定写成 `"shell-linux[sS]{0,200}?disabled:s*true"`——`s*` 是「零个或多个字母 s」，疑似想写 `\s*`。于是只有 `disabled:true` 紧贴形态命中，任何带空白的 `disabled: true` 都会逃逸，T0 会对「shell-linux 被禁」假绿。修法一行：`disabled:\s*true`。
 - [B03] 5. 已证实：`scripts/deploy-device.ps1:31` 调 `Join-Path $PSScriptRoot "..\web-restart.ps1"`，两仓均无此文件（全仓只有 `docs/archive/orphan-scripts/web-restart.ps1`）→ 「部署完重启 dsh web」这一步静默失效（`$ErrorActionPreference = "Continue"` 吞掉 `&` 的报错，脚本仍以正常语义结束）。另一条同族：`scripts/device-smoke.ps1:14` 的 T1 依赖设备上手放的 `/data/data/com.termux/files/home/run-t1.sh`，该文件两仓都不存在 → 干净设备上 T1 不可复现。
 - [B03] | 套件 | 验什么 | 连接方式 | 参数约定 | 已知假失败陷阱 | 依赖 |
 - [B03] |---|---|---|---|---|---|
@@ -409,8 +414,8 @@ Linux 发现补充（P04，坑 373）：bootstrap `index.js` 串行发现 → `g
 - [B03] | `scripts/device-smoke.ps1` | T0 配置断言 → T1 headless 冒烟（真 bash）→ T2 黄金会话回归（工具名序列对比），一条链 | 走 `run-as com.termux`（legacy Termux 形态）与设备内 `/data/data/com.termux/...` 路径 | `pwsh scripts/device-smoke.ps1 -Serial <s>`，默认 `127.0.0.1:16416` | ① T1 依赖设备上手放的 `run-t1.sh`（两仓都没有，干净设备不可复现）；② T2 会覆盖受控文件 `scripts/golden/last-run.json`，跑完工作树必脏；③ T2 是黄金序列比对，模型 / 提示词一变即红（不是产品回归）；④ 应用是内嵌形态（`/data/user/0/com.snoworwind.pocketharness/files/home`）时整条链的前提不成立 | 设备上装着旧 Termux 形态的 dsh 与 `.dsh/sessions/...` 会话目录；`$env:LOCALAPPDATA\Android\Sdk\platform-tools\adb.exe` 在场 |
 - [B03] | `scripts/deploy-device.ps1` | 把已构建的插件包推进设备 profile 层 `node_modules`（termux 形态），然后重启 `dsh web` | adb push 到 `/data/local/tmp` → `run-as com.termux sh -c` 拷进 `~/.dsh/profiles/<Profile>/node_modules/@dsh-android/<pkg>` 并 `chmod -R a+rX` | `pwsh scripts/deploy-device.ps1 -Serial <s> [-Package <name>] [-Profile web]` | ① 最后一步 `..\web-restart.ps1` 不存在 → 重启静默失效（可疑点 5）；② 暂存目录是仓库根的 `.deploy-staging`（`:14`），与 `deploy-embedded.ps1` 共用同一路径（两者不可并跑）；③ `lib/index.js` 不存在直接 throw（`:11`），先跑 `scripts/build.mjs` | 插件已 `lib/` 构建；设备已装 Termux 形态 dsh 且 profile 目录存在 |
 - [B03] | `scripts/deploy-embedded.ps1` | 把插件推进内嵌形态：`/data/user/0/com.snoworwind.pocketharness/files/home/.dsh/profiles/web/node_modules/@dsh-android/<pkg>` | `adb push` → `run-as com.snoworwind.pocketharness sh -c` 拷贝 + `chmod` | `pwsh scripts/deploy-embedded.ps1 -Serial <s> -Package <name>`（仓根执行）；根目录取 `$PSScriptRoot` 的父目录，默认 serial 取环境变量 `ADB_SERIAL`（缺失即报错），无 `-Profile` 参数（写死 `web`，`:17`） | ① `-Package` 语义有缺陷：既当仓库相对目录又当设备包名（传 `plugins/dsh-android-bridge` 会在 `@dsh-android/` 下嵌出同形子路径 → 插件解析不到）——须传纯包名（协调仓 `coord:docs/0.14.0-preview-VERIFICATION-LOG.md:211,253` 已登记为 N-5 未修）；② 与 `deploy-device.ps1` 共用 `.deploy-staging`，不可并跑 | 内嵌形态应用已装且跑过一次（`files/home` 已解压）；`run-as` 可用 |
-- [B03] | `scripts/t0-check.ps1` | `--dump-config` 输出里 `shell-termux` / `bash-sandbox` / `permission` 三行在场，且 `shell-termux` 不得是 `disabled` | `adb shell run-as com.termux sh -c` 调设备内 node 跑 `--dump-config` 并 `cat` 结果 | `pwsh scripts/t0-check.ps1 -Serial <s>` | ① 禁用判定正则写错（可疑点 4）→ 对「被禁」假绿；② 只在 `shell-termux` 后 200 字符窗口内找 `disabled`，dump 排版一变即漏；③ `matrix()` 行匹配是纯子串，插件改名可能误命中 | 设备内 Termux 形态引擎在位（`/data/data/com.termux/files/usr/lib/node_modules/@deepseek-ai/dsh`） |
-- [B03] | `scripts/e2e-phone-test.ps1` | 旧 RPC 端到端：`session.create` → `session.prompt`（让模型跑 bash echo/uname）→ 轮询 `session.history` 最多 120s | 纯宿主侧 HTTP，不接 adb：要求操作者事先把宿主端口转发好 | 无参数；`$base` 写死 `http://127.0.0.1:3081`，请求体落到 `D:\coding\dsh-mobile\.deploy-tmp` | ① 点号 wire + 旧端口 3081，而现行文档口径是 `forward 23080→3080`（`docs/AGENTS/build-and-env.md:205#expect=forward%20tcp%3A23080%20tcp%3A3080`）且 `/api` 需 `EngineAuth` cookie（`历史 BRIDGE-API 副本（当前契约见§6 K04）`）→ 大概率直接被拒（未证实，本轮未实跑）；② 脚本内无 serial / pkg 参数，无法在多设备上选择；③ 轮询结束不判「有没有拿到回复」，只看最后一条事件类型 | 宿主转发在位 + 引擎 cookie；同目录 `scripts/dsh-agent-chat.ps1` 才是 0.13.3+ 的斜杠 wire 版本（它自己 `:4` 就写明本脚本是旧 wire 旧端口），新验收优先用它 |
+- [B03] | `scripts/t0-check.ps1` | `--dump-config` 输出里 `shell-linux` / `bash-sandbox` / `permission` 三行在场，且 `shell-linux` 不得是 `disabled` | `adb shell run-as com.termux sh -c` 调设备内 node 跑 `--dump-config` 并 `cat` 结果 | `pwsh scripts/t0-check.ps1 -Serial <s>` | ① 禁用判定正则写错（可疑点 4）→ 对「被禁」假绿；② 只在 `shell-linux` 后 200 字符窗口内找 `disabled`，dump 排版一变即漏；③ `matrix()` 行匹配是纯子串，插件改名可能误命中 | 设备内 Termux 形态引擎在位（`/data/data/com.termux/files/usr/lib/node_modules/@deepseek-ai/dsh`） |
+- [B03] | `scripts/e2e-phone-test.ps1` | 旧 RPC 端到端：`session.create` → `session.prompt`（让模型跑 bash echo/uname）→ 轮询 `session.history` 最多 120s | 纯宿主侧 HTTP，不接 adb：要求操作者事先把宿主端口转发好 | 无参数；`$base` 写死 `http://127.0.0.1:3081`，请求体落到 `D:\coding\dsh-mobile\.deploy-tmp` | ① 点号 wire + 旧端口 3081，而现行文档口径是 `forward 23080→3080`（`docs/AGENTS/build-and-env.md:207#expect=forward%20tcp%3A23080%20tcp%3A3080`）且 `/api` 需 `EngineAuth` cookie（`历史 BRIDGE-API 副本（当前契约见§6 K04）`）→ 大概率直接被拒（未证实，本轮未实跑）；② 脚本内无 serial / pkg 参数，无法在多设备上选择；③ 轮询结束不判「有没有拿到回复」，只看最后一条事件类型 | 宿主转发在位 + 引擎 cookie；同目录 `scripts/dsh-agent-chat.ps1` 才是 0.13.3+ 的斜杠 wire 版本（它自己 `:4` 就写明本脚本是旧 wire 旧端口），新验收优先用它 |
 - [B03] *CDP 与 adb 的能力边界对照
 - [B03] | 套件 | 走 CDP 的断言（DOM / devtools） | 走 adb 的断言（含系统读） | 有 adb 用户级操作（input / screencap / uiautomator / logcat）？ |
 - [B03] |---|---|---|---|
@@ -432,11 +437,11 @@ Linux 发现补充（P04，坑 373）：bootstrap `index.js` 串行发现 → `g
 | 从 | 到 | 关系 | 证据 |
 |---|---|---|---|
 | K01 | 引擎进程与快照面 | EngineStartFlow 在工作线程调 refreshSnapshot/startEngine/engineProcessAlive，Activity 侧只传 Activity 与 pickToken | app/src/main/java/com/snoworwind/pocketharness/EngineStartFlow.kt:408 |
-| K01 | Python 用户包持久化 | 共享 `shellEnv()` 仅在检测到唯一 Python 次版本且 user-site 目录可创建时设置 `PIP_USER` / `PYTHONUSERBASE`；`refreshSnapshot` swap 前搬离旧 `usr`、swap 后在 `finish()` 清理 previous 前救援，冷启恢复先于残渣回收，startEngine prelude 再幂等复核 | app/src/main/java/com/snoworwind/pocketharness/PythonPackages.kt:1#expect=package%20com.snoworwind.pocketharness |
-| K01 | 快照事务（跨进程真源） | 0.14.8 P1：启动请求与安全模式重启都不得在刷新窗口内被静默丢弃。判据 = 事务 journal（`SnapshotTransaction.readMarker(filesDir)`，跨进程）而不是本 Activity 实例的内存态所有权；`start()`/`restart()` 的 destroyed 与 running 必须分开处置，安全模式重启在**停旧引擎之前**先判事务 | app/src/main/java/com/snoworwind/pocketharness/EngineStartFlow.kt:659；app/src/main/java/com/snoworwind/pocketharness/EngineManager.kt:211 |
+| K01 | 用户包与 home 持久化 | 用户 apt/pip/npm 全局包分别落在 rootfs 与 `$HOME/.local`；受管组件更新只替换 node/engine，home 种子只补缺失文件，旧 `usr` 中用户全局 npm 包在修复前搬进 home | app/src/main/java/com/snoworwind/pocketharness/LinuxLegacyMigration.kt:86#expect=fun%20preserveNodeGlobals |
+| K01 | 升级事务（跨进程真源） | 启动请求与安全模式重启不得在实例准备/升级窗口内被静默丢弃。判据 = Linux 升级 journal（跨进程），而不是本 Activity 的内存态所有权；安全模式重启在**停旧引擎之前**先判该 journal | app/src/main/java/com/snoworwind/pocketharness/EngineManager.kt:97#expect=internal%20fun%20recoverLinuxUpgrade |
 
-K01 journal 发布：`SnapshotTransaction.writeMarker` 拒绝目标或临时路径为非普通文件，写入并同步临时文件后才替换，失败不得直接截断旧 journal；模拟器三层验收仍未完成。
-| K01 | 引擎鉴权与探活 | HTTP 探活成功后注入首屏 cookie 并设置 `engineHttpReady`；`showWeb` 才发起首次导航，原生引导页保持到首个引擎文档 `onPageCommitVisible`，之后切入 WebView | app/src/main/java/com/snoworwind/pocketharness/MainActivity.kt:308；app/src/main/java/com/snoworwind/pocketharness/MainActivity.kt:1148#expect=bootstrapScript, app/src/main/java/com/snoworwind/pocketharness/EngineStartFlow.kt:781#expect=activity.runOnUiThread |
+K01 journal 发布：`LinuxUpgradeTransaction.atomicWrite` 写同目录临时文件并 fsync 后替换，失败不得截断旧 journal；恢复是幂等的，未完成升级回滚、已提交升级只清备份。
+| K01 | 引擎鉴权与探活 | HTTP 探活成功后注入首屏 cookie 并设置 `engineHttpReady`；`showWeb` 才发起首次导航，原生引导页保持到首个引擎文档 `onPageCommitVisible`，之后切入 WebView | app/src/main/java/com/snoworwind/pocketharness/MainActivity.kt:308；app/src/main/java/com/snoworwind/pocketharness/MainActivity.kt:1148#expect=bootstrapScript, app/src/main/java/com/snoworwind/pocketharness/EngineStartFlow.kt:772#expect=prepareLinuxInstance |
 | K01 | 前台服务与看门狗 | startEngineService 挂载前台服务，回撤阈值取 WatchdogV2.effectiveFailureCount | app/src/main/java/com/snoworwind/pocketharness/EngineStartFlow.kt:670 |
 | K01 | 诊断落盘 | 启动分段、引导页 stall、HTTP/TLS/渲染进程错误全部经 LogCollector 写壳侧自有文件 | app/src/main/java/com/snoworwind/pocketharness/MainActivity.kt:1133#expect=%2F%2F%20Foreground%20crashes%20and%20foreground%20eviction%20also%20recreate%20once%2C%20without%20engine%20restart. |
 | K01 | 沉浸式与开发者日志真源 | onCreate/onWindowFocusChanged 读 ImmersiveMode，onResume 读 DevLogControl（单一真源，壳侧不再持第二份） | app/src/main/java/com/snoworwind/pocketharness/WebUiChrome.kt:19 |
@@ -446,27 +451,28 @@ K01 journal 发布：`SnapshotTransaction.writeMarker` 拒绝目标或临时路�
 | K01 | 无障碍控制面 | webViewRef 进程级持有主 WebView，控制服务拿到 null 即回页面不在场 | app/src/main/java/com/snoworwind/pocketharness/MainActivity.kt:139 |
 | K01 | 引擎侧页面契约 | onConsoleMessage 消费 dsh-boot-ready 与 dsh-boot-stall 两个前缀，判据由页面侧 readyWatch 发布 | app/src/main/java/com/snoworwind/pocketharness/MainActivity.kt:675#expect=%2F**%20%E9%A6%96%E5%90%AF%E5%90%91%E5%AF%BC%E5%B7%B2%E7%A7%BB%E9%99%A4%EF%BC%88%E5%86%B3%E7%AD%96%202026-08-23%EF%BC%89%EF%BC%9A%E5%88%9D%E5%A7%8B%E9%A1%B5%EF%BC%88GuideChrome%20%E8%BF%90%E8%A1%8C%E6%97%B6%E7%8A%B6%E6%80%81%2F%E8%A7%A3%E5%8E%8B%E8%BF%9B%E5%BA%A6%2F%E5%B4%A9%E6%BA%83%2F%E6%97%A5%E5%BF%97%EF%BC%89 |
 | K01 | 来件与选择器 | onCreate 投递 VIEW/SEND 来件，桥回调接 DirectoryPickerController/MediaPickController/FileIncoming | app/src/main/java/com/snoworwind/pocketharness/MainActivity.kt:268 |
-| K01 | 快照与更新面 | 启动前部署 APK 内嵌快照，历史中断恢复走 SnapshotTransaction，自动回撤走 UndoGate | app/src/main/java/com/snoworwind/pocketharness/EngineStartFlow.kt:294 |
+| K01 | 实例与更新面 | 启动前准备 APK 内置 Linux 实例，中断的升级事务先恢复再启动；撤销走 UndoGate | app/src/main/java/com/snoworwind/pocketharness/EngineStartFlow.kt:772#expect=prepareLinuxInstance |
 | K01 | 内置控制台 | 引导页进入 ConsoleActivity；onStart 只将启动任务提交给专用 worker，文件检查、shellEnv 构造与 ProcessBuilder.start 在后台执行；状态/输出回主线程前复查 Activity 生命周期 | app/src/main/java/com/snoworwind/pocketharness/ConsoleActivity.kt:154 |
 | K01 | 系统外部角色 | BootReceiver 接 ACTION_BOOT_COMPLETED 决定是否自启前台服务，分享面板经 VIEW/SEND 进本 Activity | app/src/main/java/com/snoworwind/pocketharness/BootReceiver.kt:24 |
-| K02 | K01 | 启动全程用可见引导页承载文案；只有引擎 HTTP 就绪且首个页面文档提交后才切 WebUI | EngineStartFlow.kt:738-780、MainActivity.kt:308-371、MainActivity.kt:1150#expect=%2F%2F%20%E6%96%B0%E6%96%87%E6%A1%A3%EF%BC%9A%E4%B8%8A%E4%B8%80%E6%96%87%E6%A1%A3%E7%9A%84%E5%B1%82%E6%A0%88%E4%BF%A1%E5%8F%B7%E4%BD%9C%E5%BA%9F%EF%BC%88%E9%A1%B5%E9%9D%A2%E6%8F%92%E4%BB%B6%E5%9C%A8%E6%96%B0%E6%96%87%E6%A1%A3%E9%87%8C%E9%87%8D%E6%96%B0%E6%8E%A8%EF%BC%89%E3%80%82 |
-| K02 | K03 | 刷新期禁启动、事务恢复、update-pending 健康 3 拍才删 usr-old 三处握手；刷新窗口内的启动请求**不得静默丢弃**（0.14.8 P1）：`start()`/`restart()` 拿不到世代所有权时按 destroyed/running 分开处置，running 走 boot-fail 留痕 + 有界等待后自动续跑；安全模式重启在停旧引擎前先判事务 journal | EngineStartFlow.kt:659、1417；EngineManager.kt:601#expect=endSnapshotTransaction%28%29 |
-| K02 | UndoGate | 看门狗 UNDO、启动超时与客户端插件树失败共用闸门：可点名时外科拔除非 Hard 插件；整份回撤只用当前 snapshot fingerprint 下的壳侧 HEALTHY known-good ID；被拒后复位锁存以继续引擎重试 | EngineService.kt:207-293、EngineStartFlow.kt:345-390、UndoGate.kt:278-434 |
+| K02 | K01 | 启动全程用可见引导页承载文案；只有引擎 HTTP 就绪且首个页面文档提交后才切 WebUI | MainActivity.kt:308-371、MainActivity.kt:1150#expect=%2F%2F%20%E6%96%B0%E6%96%87%E6%A1%A3%EF%BC%9A%E4%B8%8A%E4%B8%80%E6%96%87%E6%A1%A3%E7%9A%84%E5%B1%82%E6%A0%88%E4%BF%A1%E5%8F%B7%E4%BD%9C%E5%BA%9F%EF%BC%88%E9%A1%B5%E9%9D%A2%E6%8F%92%E4%BB%B6%E5%9C%A8%E6%96%B0%E6%96%87%E6%A1%A3%E9%87%8C%E9%87%8D%E6%96%B0%E6%8E%A8%EF%BC%89%E3%80%82 |
+| K02 | K03 | 实例准备/升级窗口内启动请求不得静默丢弃：`start()`/`restart()` 拿不到世代所有权时按 destroyed/running 分开处置；安全模式重启在停旧引擎前先判升级 journal | EngineManager.kt:97#expect=internal%20fun%20recoverLinuxUpgrade |
+| K02 | UndoGate | 看门狗 UNDO、启动超时与客户端插件树失败共用闸门：可点名时外科拔除非 Hard 插件；整份回撤只用当前 snapshot fingerprint 下的壳侧 HEALTHY known-good ID；被拒后复位锁存以继续引擎重试 | EngineService.kt:186#expect=recoverLinuxUpgrade%28%29 |
 | K02 | 通知链 NotifyStore/NotifyCenter | 每拍按字节偏移消费 .task-done.ndjson，双读不双发 | WatchdogV2.kt:258-309、NotifyCenter.kt:188 |
 | K02 | 控制载体 ControlCarrier | 随前台引擎服务起停，a11y 关着也承载 browser*/vd* | EngineService.kt:43 |
 | K02 | ConsoleSession | 复用 usrDir 与 shellEnv 起交互 shell，不起第二个引擎；start/restart 按 generation 接受进程，过期创建立即销毁；destroy 使代次失效并关启动 worker；reader 规范化 CRLF 并把输出交给独立批处理器 | ConsoleSession.kt:63-81,142-211；ConsoleOutputBatcher.kt:8-20 |
 | K02 | 门禁 check-boot-budget | files/boot-segments.log 是该门禁的唯一产物 | LogCollector.kt:395-424 |
 | K02 | 页面失败诊断与恢复 | onClientPluginTreeFailed 的文件 detail 和直接 logcat 共用脱敏后截断的 diagnosticLine；原文保留于恢复字段，供后续回撤编排 | EngineStartFlow.kt:330-341、LogCollector.kt:528-537 |
 | K03 | 引导与启动 | refreshSnapshot 的进度/失败文案与恢复前置由启动流拉起，刷新期 snapshotRefreshing 闸门禁止拉引擎 | app/src/main/java/com/snoworwind/pocketharness/EngineStartFlow.kt:427 |
-| K03 | 引擎探活与看门狗 | 每 5 秒一拍 onEngineProbe 驱动 .update-pending 的 usr-old 确认或回退 | app/src/main/java/com/snoworwind/pocketharness/EngineService.kt:348 |
+| K03 | 引擎探活与看门狗 | 每 5 秒一拍 onEngineProbe 记录客体健康；启动前先恢复未完成的升级事务 | app/src/main/java/com/snoworwind/pocketharness/EngineService.kt:337#expect=watchdog%20tick%20failed |
 | K03 | 引擎总管 EngineManager | 事务/残渣/空间的调用方，也是 usr、home、.snapshot-fingerprint 的持有者；启动前 profile 自愈调用 `SnapshotFs.replaceWithVerifiedBackup` 校验 live 字节、唯一同步备份后原子发布，失败不落幂等标记并在下次启动重试 | EngineManager.kt:99、SnapshotFs.kt:226 |
-| K03 | 构建与发布 | 内嵌 assets/snapshot.tar.xz 与 snapshot.sha256 是首次解压与刷新两条路径的唯一输入，指纹翻转是刷新触发条件 | app/src/main/java/com/snoworwind/pocketharness/EngineManager.kt:68 |
+| K03 | home shell 身份迁移 | seed 更新只迁移已知工厂 id/包名组合，用户配置与自建行保留；链接及超限拒绝 | app/src/main/java/com/snoworwind/pocketharness/LinuxFileTree.kt:58#expect=fun%20migrateShellIdentity,app/src/main/java/com/snoworwind/pocketharness/LinuxInstanceInstaller.kt:224#expect=migrateHomeShellIdentity |
+| K03 | 构建与发布 | APK 内嵌 Linux 四件套与 manifest；从固定源码 deploy 树直接装配客体 engine/home | scripts/source-build/build-linux-payload.mjs:1#expect=%23!/usr/bin/env%20node |
 | K03 | 插件注入层 | profiles 的 package.json 与 cordis.patch.yml 决定引擎实际挂载集，工厂 disabled 语义以 FactoryProfilePatch 为权威 | app/src/main/java/com/snoworwind/pocketharness/FactoryProfilePatch.kt:79 |
 
 | K03 | 交互面 MainActivity | DownloadSaver 由 WebView 下载/外链回调拉起，回执经 window.__dshExportResult 回灌页面 | app/src/main/java/com/snoworwind/pocketharness/MainActivity.kt:89 |
 | K03 | EngineAuth | DownloadSaver 下载引擎同源 URL 时附加鉴权并做一次 401 自愈重试 | app/src/main/java/com/snoworwind/pocketharness/DownloadSaver.kt:101 |
-| K03 | 开发选项与诊断 | boot-fail.log、update-status.txt 与 diagnostics 镜像目录是本块失败终态的落盘点 | app/src/main/java/com/snoworwind/pocketharness/EngineManager.kt:193 |
-| K03 | 公共导出目录供给 | Documents/dshdata 的创建与**结果记账**（`status|trigger|epochMs|detail` 落在私有目录）；触发点经 onCreate/onResume 与「引擎是否在跑」解耦，且除 OK 外每轮都重试——旧实现只从 startEngine()/shellEnv() 进入，引擎活着早退就永远不再供给（0.14.1 用户反馈：Documents 下一直没有 dshdata）。存储 chip 的判据取该结果，只有 OK 才显示「已就绪」；授权路线按 SDK 分流（API<30 无 All Files Access，改请求运行时 READ/WRITE） | app/src/main/java/com/snoworwind/pocketharness/PublicRepoProvision.kt:1、MainActivity.kt:356、EngineManager.kt:1474#expect=provisionPublicRepo%28PublicRepoProvision.TRIGGER_ENGINE_START%29 |
+| K03 | 开发选项与诊断 | boot-fail.log、engine.log 与 diagnostics 镜像目录是本块失败终态的落盘点 | app/src/main/java/com/snoworwind/pocketharness/LogCollector.kt:568#expect=fun%20writeBootFail |
+| K03 | 公共导出目录供给 | Documents/dshdata 的创建与**结果记账**（`status|trigger|epochMs|detail` 落在私有目录）；触发点经 onCreate/onResume 与「引擎是否在跑」解耦，且除 OK 外每轮都重试——旧实现只从 startEngine() 的宿主环境进入，引擎活着早退就永远不再供给（0.14.1 用户反馈：Documents 下一直没有 dshdata）。存储 chip 的判据取该结果，只有 OK 才显示「已就绪」；授权路线按 SDK 分流（API<30 无 All Files Access，改请求运行时 READ/WRITE） | app/src/main/java/com/snoworwind/pocketharness/PublicRepoProvision.kt:1、MainActivity.kt:356、EngineManager.kt:380#expect=internal%20fun%20provisionPublicRepo |
 | K04 | 引导与启动 | MainActivity/EngineService 是桥与控制承载的唯一安装与起停点（EngineAuth.initContext 必须先于装桥） | app/src/main/java/com/snoworwind/pocketharness/MainActivity.kt:162 |
 | K04 | 交互面 | 主 WebView 仅 addJavascriptInterface MainFrameBridge；可信顶层同步 facade 经 invoke 认证后分派 AndroidBridge/BackGateBridge，页面类型面保持原 ABI | app/src/main/java/com/snoworwind/pocketharness/MainFrameBridge.kt:36 |
 | K04 | 无障碍控制面 | ControlCarrier.handle 的兜底分支把语义/输入类 op 交给 DeviceControlService，a11y 缺席时返回结构化拒绝 | app/src/main/java/com/snoworwind/pocketharness/ControlCarrier.kt:110 |
@@ -484,7 +490,7 @@ K01 journal 发布：`SnapshotTransaction.writeMarker` 拒绝目标或临时路�
 | K05 | 引擎 manage 插件 | clear/input 广播逐次解析结果；未知旧壳回执只走同屏回读兼容，不自动清空重放 | `plugins/dsh-android-manage/src/index.ts:2107#expect=parseAdbKeyboardBroadcastResult(result.stdout)`、`plugins/dsh-android-manage/src/index.ts:2133#expect=parseAdbKeyboardBroadcastResult(result.stdout)` |
 | K05 | EngineManager | 截图落 filesDir/home/tmp/dsh-tmp，与引擎 TMPDIR 与 DSH_FILES_DIR 同源，读图与旧目录清理都依赖这条路径约定 | app/src/main/java/com/snoworwind/pocketharness/DeviceControlService.kt:896#expect=dsh-tmp |
 | K05 | MainActivity | webSnapshot / webAction 在自有 WebView 上求值（MainActivity.webViewRef），并受壳侧范围门约束 | app/src/main/java/com/snoworwind/pocketharness/DeviceControlService.kt:954#expect=handleWebSnapshot |
-| K06 | 引擎 bridge 插件 androidPrivilege | sh* 四 op 的唯一常规调用方；档位/危险命令/范围第一道都在引擎侧 | plugins/dsh-android-bridge/src/index.ts:1034 |
+| K06 | 引擎 bridge 插件 androidPrivilege | sh* 四 op 的唯一常规调用方；档位/危险命令/范围第一道都在引擎侧 | plugins/dsh-android-bridge/src/index.ts:1034#expect=a11ySource%3A%20a11y.source%2C |
 | K06 | 引擎 screen-scope.ts | 同一判定算法的 JS 副本，与壳侧由跨语言 fixture 双向锁死 | plugins/dsh-android-bridge/src/screen-scope.ts:405 |
 | K06 | 控制队列承载 ControlCarrier/ControlPoller | 特权 op 的唯一壳侧入口与单线程执行者 | app/src/main/java/com/snoworwind/pocketharness/ControlCarrier.kt:107 |
 | K06 | bridge 范围门与 shell 静态参数还原 | 两份实现按真实参数核对显示选项；路径/包装拒绝、注释/重定向剔除、CLI 拼写与位置校验 | app/src/main/java/com/snoworwind/pocketharness/ShellOps.kt:273#expect=internal%20fun%20realOnlyScreenCommandAllowed, plugins/dsh-android-bridge/src/screen-scope.ts:392 |
@@ -496,7 +502,7 @@ K01 journal 发布：`SnapshotTransaction.writeMarker` 拒绝目标或临时路�
 | K06 | 构建门禁块 | check-bounded-io / check-control-ops / gen-screen-scope-fixture 三条门禁约束本块形态 | scripts/check-bounded-io.mjs:54 |
 | K06 | 引擎启动流 EngineStartFlow | 引擎就绪时补投待发来件，闭合冷启动竞态 | app/src/main/java/com/snoworwind/pocketharness/EngineStartFlow.kt:550 |
 | K07 | ShizukuTransport | 建屏前必须 ensureBound，输入/拉起/SF token 反查全走 runController 的固定 argv | app/src/main/java/com/snoworwind/pocketharness/VdisplayController.kt:324 |
-| K07 | K06 ScreenScope | `vdInput` 在 bridge 服务面校验目标范围，`VdisplayController.input` 在固定 argv 执行前再次校验；显式 target 直接解析，不得被 selected 覆盖 | plugins/dsh-android-bridge/src/index.ts:1045, app/src/main/java/com/snoworwind/pocketharness/VdisplayController.kt:608 |
+| K07 | K06 ScreenScope | `vdInput` 在 bridge 服务面校验目标范围，`VdisplayController.input` 在固定 argv 执行前再次校验；显式 target 直接解析，不得被 selected 覆盖 | plugins/dsh-android-bridge/src/index.ts:1045#expect=const%20mode%20%3D%20policy%3F.mode, app/src/main/java/com/snoworwind/pocketharness/VdisplayController.kt:608 |
 | K07 | K05 | realScreenScopeError 用 displayIdForAlias 把 virtual-N 解析成动态 displayId 并钉给 a11y 取树/截屏 | app/src/main/java/com/snoworwind/pocketharness/DeviceControlService.kt:827#expect=realScreenScopeError |
 | K05 | K07 | 屏幕范围门的 SF token 空间用 activeAliases 求交，屏一销毁其 token 立刻失效 | app/src/main/java/com/snoworwind/pocketharness/ShellOps.kt:963#expect=VdisplayController.activeAliases |
 | K07 | K08 浏览器宿主 | 同一套「可信舞台几何 → 原生 SurfaceView」与无 catch 的 onMain 是两份同款实现 | app/src/main/java/com/snoworwind/pocketharness/VdisplayHost.kt:207 |
@@ -517,7 +523,7 @@ K01 journal 发布：`SnapshotTransaction.writeMarker` 拒绝目标或临时路�
 | K09 | 引擎事件流 | MuxClient 消费 $events 的 ready/waterfall/emit/cancel 四类帧 | app/src/main/java/com/snoworwind/pocketharness/OverlayPanel.kt:87 |
 | K09 | 引擎 live 文件 | FileObserver 消费 home/.dsh/.live.ndjson 的 tool_call/tool_result/turn_end | app/src/main/java/com/snoworwind/pocketharness/OverlayLiveFeed.kt:26 |
 | K09 | 宿主进程 | 非前台服务，存活依赖 EngineService 前台服务抬升进程优先级 | app/src/main/AndroidManifest.xml:65 |
-| K10 | P01 | .notify.ndjson 的 kind / popup / outcomeLabel 是跨层唯一契约；引擎只写 todo 与 report，提问审批不走文件而走 WS waterfall | plugins/dsh-android-bridge/src/index.ts:1564 |
+| K10 | P01 | .notify.ndjson 的 kind / popup / outcomeLabel 是跨层唯一契约；引擎只写 todo 与 report，提问审批不走文件而走 WS waterfall | plugins/dsh-android-bridge/src/index.ts:1564#expect=%2A%2F |
 | K10 | K09 | 同一 waterfall 由两条独立 $events 流各持 pending：首个应答者结算、另一方收 cancel；通知侧只提交单题答案，面板侧全量按序提交 | app/src/main/java/com/snoworwind/pocketharness/NotifyBridge.kt:207 |
 | K10 | MainActivity | contentIntent 只拉起 Activity 并携带 dsh.notify.kind / dsh.notify.target，全仓无消费点且 MainActivity 无 onNewIntent，点击不会跳到对应会话 | app/src/main/java/com/snoworwind/pocketharness/NotifyCenter.kt:828 |
 | K10 | 设置页桥面 AndroidBridge | getNotifySetting / setNotifySetting 是 suppressForeground 与 cat.* 的唯一 UI 出入口，写后读回判定 applied | app/src/main/java/com/snoworwind/pocketharness/AndroidBridge.kt:385 |
@@ -529,10 +535,10 @@ K01 journal 发布：`SnapshotTransaction.writeMarker` 拒绝目标或临时路�
 | P01 | K06 | sh* op 经队列投到壳侧 Shizuku 通道；屏幕范围门两侧同算法、由跨语言 fixture 锁死等价性 | plugins/dsh-android-bridge/src/shell-ops.ts:120 |
 | P01 | P02 | manage 在 guard 里 bindSession 提供会话来源，并用 internal=animation-scales 走白名单；其私有调用点依赖 ALS 继承 | `plugins/dsh-android-manage/src/index.ts:147#expect=priv.bindSession%3F.(exec%3F.agent%3F.session)` |
 | P01 | P03 | 浏览器 op 与设备 op 共用同一单槽 controlExec，长导航会占住队列（S-7 残余） | plugins/dsh-android-browser/src/tools.ts:262 |
-| P01 | K07 虚拟屏宿主 | vdInfo 注册表投影用于别名到 displayId 与 SF token 核对，注册表不可达一律空集 fail-closed | plugins/dsh-android-bridge/src/index.ts:645 |
-| P01 | K10 通知中心 | .notify.ndjson 的 kind/report/todo 字段与 popup 是跨层唯一契约；提问与审批不走本文件而走 WS waterfall | plugins/dsh-android-bridge/src/index.ts:1612 |
-| P01 | 壳侧 prefs 写端 | 授权三门口、屏幕范围、控制令牌、心跳全部由壳侧 AdbState/ScreenScopePrefs/DeviceControlService 写，插件只读 | plugins/dsh-android-bridge/src/index.ts:234 |
-| P01 | P04 | file-open 的来件五条 exact 路由复用同一枚 shellControlToken 与 authorizeMobileRoute，不另造令牌方案 | plugins/dsh-android-bridge/src/index.ts:251 |
+| P01 | K07 虚拟屏宿主 | vdInfo 注册表投影用于别名到 displayId 与 SF token 核对，注册表不可达一律空集 fail-closed | plugins/dsh-android-bridge/src/index.ts:645#expect=let%20prev%3A%20string%20%7C%20null%20%3D%20null |
+| P01 | K10 通知中心 | .notify.ndjson 的 kind/report/todo 字段与 popup 是跨层唯一契约；提问与审批不走本文件而走 WS waterfall | plugins/dsh-android-bridge/src/index.ts:1612#expect=queue%2C |
+| P01 | 壳侧 prefs 写端 | 授权三门口、屏幕范围、控制令牌、心跳全部由壳侧 AdbState/ScreenScopePrefs/DeviceControlService 写，插件只读 | plugins/dsh-android-bridge/src/index.ts:234#expect=%2F%2A%2A%200.13.5%20W4%EF%BC%9A%E8%BD%AE%E8%AF%A2%E5%BF%83%E8%B7%B3%EF%BC%88epoch%20ms%EF%BC%89%E2%80%94%E2%80%94%E5%88%A4%E5%AE%9A%E6%9C%8D%E5%8A%A1%E6%98%AF%E5%90%A6%E7%9C%9F%E7%9A%84%E6%B4%BB%E7%9D%80%EF%BC%88%E9%98%B2%E5%83%B5%E5%B0%B8%20a11yEnabled%EF%BC%89%E3%80%82%20%2A%2F |
+| P01 | P04 | file-open 的来件五条 exact 路由复用同一枚 shellControlToken 与 authorizeMobileRoute，不另造令牌方案 | plugins/dsh-android-bridge/src/index.ts:251#expect=%2F%2F%20The%20explicit%20guest%20marker%20identifies%20the%20Android%20shell%27s%20Debian%20execution%20context. |
 | P01 | 门禁链 | check-control-ops 六面 / gen-screen-scope-fixture 跨语言 fixture / check-tool-surface-budget 从 DEVICE_TOOL_GROUPS 推导初始可见集 | plugins/dsh-android-bridge/src/capability-gate.ts:12 |
 | P02 | 授权桥与控制队列 | guard 经 bindSession、screenAccessResolved 与 gateFor 做会话/范围/档位门；服务缺失即 fail-closed 桩 | `plugins/dsh-android-manage/src/index.ts:143#expect=const%20guard%20%3D%20async`、`plugins/dsh-android-manage/src/index.ts:147#expect=priv.bindSession%3F.` |
 | P02 | 无障碍执行面 | a11yExec 通过 controlExec 投递 snapshot/click/longClick/setText/scroll/global/screenshot/state/nodeText/webSnapshot/webAction | `plugins/dsh-android-manage/src/index.ts:1382#expect=const%20a11yExec%20%3D%20async` |
@@ -550,17 +556,17 @@ K01 journal 发布：`SnapshotTransaction.writeMarker` 拒绝目标或临时路�
 | P03 | K08 | op 分发分支与六面登记（handle 逐行分支 + SUPPORTED_OPS）决定工具可达性 | app/src/main/java/com/snoworwind/pocketharness/DeviceControlService.kt:680#expect=fun%20handle |
 | P03 | K07 | vd* 工具经同一控制队列落到 VdisplayController，状态真源与建销幂等都在壳侧 | plugins/dsh-android-vdisplay/src/index.ts:198 |
 | P03 | K07 | 面板两阶段契约：先 vdisplayBounds 落 bounds 记录，Surface 创建后再仲裁 attach | plugins/dsh-android-vdisplay/src/client/index.ts:196#expect=visible%3A%20%21occupiedRef.current%20%26%26%20%21collapsed |
-| P03 | 桥控制队列（dsh-android-bridge） | controlExec 是唯一通路，档位门与范围门在服务面复查（browser*/vdInfo/vdCreate/vdDestroy 刻意不在档位门内） | plugins/dsh-android-bridge/src/index.ts:949 |
+| P03 | 桥控制队列（dsh-android-bridge） | controlExec 是唯一通路，档位门与范围门在服务面复查（browser*/vdInfo/vdCreate/vdDestroy 刻意不在档位门内） | plugins/dsh-android-bridge/src/index.ts:949#expect=if%20%28%21r.ok%29%20return%20%5B%5D |
 | P03 | 注入层与侧栏面板（dsh-client-ui-responsive） | 浏览器面板与虚拟屏 Tab 经 androidBridge 直连壳侧，与插件共用同一 op 契约与 stage bounds 语义 | dsh-client-ui-responsive/src/client/mobile/native-browser-presentation.ts:70#expect=window.androidBridge |
 | P03 | 测试与门禁 | 交付面由 output.schema 门禁（含 browser_* 夹具）、六面登记门禁与插件单测共同守住 | scripts/check-tool-output-schema.mjs:153 |
 | P04 | 桥与鉴权 | 五条 file-incoming 与四条 env/runtime-cache 路由全部走 authorizeMobileRoute，令牌与控制队列同一枚 shellControlToken；route-auth.ts 只是转发不复制 | plugins/dsh-android-file-open/src/route-auth.ts:47 |
 | P04 | 壳侧文件来件 FileIncoming | 壳把来件拷进 files/home/.dsh/workspaces/incoming 后 POST 本插件；pending ledger 的写者与 cleanup/TTL 共用锁，原子替换完整清单；pending/.sessions 引用读失败时不清理，引用文件与三种元数据受保护 | app/src/main/java/com/snoworwind/pocketharness/FileIncoming.kt:32 |
 | P04 | 客户端注入层 | 草稿链的公开元数据与 claim/content/complete、clean、runtime-cache scan/execute 全由页面驱动，页面是唯一的草稿消费者 | dsh-client-ui-responsive/src/client/mobile/incoming-draft.ts:175 |
-| P04 | 工具链表 dsh-shell-termux | PROBE_BINARIES/REQUIRED_TOOLCHAIN/TOOLCHAIN_REPRESENTATIVE 是工具链状态的单一来源，linux-env 不再维护第二份字面量 | dsh-shell-termux/src/index.ts:42 |
-| P04 | 授权档位 androidPrivilege | 工具面 adbTier 与 bridge 服务同源（同一次判定），linux-env 自算的 deployedAdbTier 只作服务缺席兜底 | plugins/dsh-android-bridge/src/index.ts:569 |
+| P04 | 工具链表 dsh-shell-linux | PROBE_BINARIES/REQUIRED_TOOLCHAIN/TOOLCHAIN_REPRESENTATIVE 是工具链状态的单一来源，linux-env 不再维护第二份字面量 | dsh-shell-linux/src/index.ts:28#expect=if%20%28mode%20%3D%3D%3D%20undefined%29%20return%20fallback |
+| P04 | 授权档位 androidPrivilege | 工具面 adbTier 与 bridge 服务同源（同一次判定），linux-env 自算的 deployedAdbTier 只作服务缺席兜底 | plugins/dsh-android-bridge/src/index.ts:569#expect=%2A%20%20%20%E5%86%99%EF%BC%9A%60settings%20put%20global%20%3C%E4%B8%89%E9%94%AE%E4%B9%8B%E4%B8%80%3E%20%3C%E6%95%B0%E5%80%BC%7Cnull%3E%60%EF%BC%8C%E5%8F%AF%E5%A4%9A%E6%AE%B5%E4%BB%A5%20%60%3B%60%20%E8%BF%9E%E6%8E%A5 |
 | P04 | 设置服务 settings | 读走 describe 后按 ns 查找（坑 48），写只有一处 set providers.route.models + revision + SETTINGS_CONFLICT 重试 | plugins/dsh-model-capability/src/settings-writer.ts:239 |
 | P04 | 会话与工作区服务 | 空白会话经 sessionController.create 铸 durable id，临时工作区经 workspaceRegistry.create/delete 自愈（复用 canonical 条目、删非 canonical 残留） | plugins/dsh-android-file-open/src/index.ts:302 |
-| P04 | 构建与快照装配 | 三个插件靠 profile-web.cordis.patch.yml 的 insert 才被挂载；model-capability 依赖构建期生成的 lib/catalog-snapshot.json，缺失即整段 engine-catalog 阶段禁用 | scripts/profile-web.cordis.patch.yml:112#expect=-%20id:%20android-linux-env |
+| P04 | 构建与快照装配 | 三个插件靠 profile-web.cordis.patch.yml 的 insert 才被挂载；model-capability 依赖构建期生成的 lib/catalog-snapshot.json，缺失即整段 engine-catalog 阶段禁用 | scripts/profile-web.cordis.patch.yml:107#expect=-%20id%3A%20android-linux-env |
 | P04 | 引擎鉴权与日志面 | 运行时缓存清理与当前代 engine.log 共享 files 域：删当前代即断 EngineAuth.tokenFromLog 的令牌链，因此只删历史代 | plugins/dsh-android-linux-env/src/runtime-cache.ts:40 |
 | S01 | K04 | 页面经 window.androidBridge 与 dshBackBridge 调壳侧桥面，页面类型面在 android-bridge.ts 与 back-stack.ts，壳侧实现在 AndroidBridge.kt 与 BackGate.kt | dsh-client-ui-responsive/src/client/android-bridge.ts:17 |
 | S01 | K04 | 壳侧 pushWebInsets 写 --dsh-android-system-* 与 --dsh-android-ime-bottom，注入层样式与键盘边界消费 | app/src/main/java/com/snoworwind/pocketharness/MainActivity.kt:1691#expect=pushWebInsets |
@@ -569,17 +575,17 @@ K01 journal 发布：`SnapshotTransaction.writeMarker` 拒绝目标或临时路�
 | S01 | K04 | 页面看门狗与就绪快报经 console.error 前缀 [dsh-boot-stall] / [dsh-boot-ready] 上报，壳侧落 files/boot-diag.log | dsh-host-web-compat/lib/index.js:302 |
 | S01 | 引擎侧 file-open 插件 | 来件草稿消费端轮询 /api/android/file-incoming 与 claim/content/complete，端点由该插件注册 | plugins/dsh-android-file-open/src/index.ts:527 |
 | S01 | 引擎侧 linux-env 插件 | 开发者选项的运行时缓存面板读写 /api/android/runtime-cache/scan 与 execute | dsh-client-ui-responsive/src/client/dev-section/runtime-cache.tsx:91 |
-| S01 | 引擎侧 linux-env 插件 | shell-termux 导出的 PROBE_BINARIES / REQUIRED_TOOLCHAIN / TOOLCHAIN_REPRESENTATIVE 被工具链状态的面板复用 | dsh-shell-termux/src/index.ts:39 |
+| S01 | 引擎侧 linux-env 插件 | shell-linux 导出的 PROBE_BINARIES / REQUIRED_TOOLCHAIN / TOOLCHAIN_REPRESENTATIVE 被工具链状态的面板复用 | dsh-shell-linux/src/index.ts:25#expect=if%20%28policy%20%3D%3D%3D%20undefined%20%7C%7C%20policy%20%3D%3D%3D%20null%29%20return%20fallback |
 | S01 | 门禁脚本 | 注入类缺陷三条防线之二由 smoke-injections.mjs 与 boot-watchdog.test.mjs 常驻，脚本与源码脱同步即整条红 | dsh-host-web-compat/scripts/boot-watchdog.test.mjs:231 |
-| S01 | 构建链 | 三个子仓由 profile-web.cordis.patch.yml 的 insert 行装载，快照构建只 pack 不 build | scripts/profile-web.cordis.patch.yml:38#expect=-%20insert: |
+| S01 | 构建链 | 三个子仓由 profile-web.cordis.patch.yml 的 insert 行装载，快照构建只 pack 不 build | scripts/profile-web.cordis.patch.yml:37#expect=-%20insert%3A |
 | B01 | 门禁块 | 27 项门禁集在 check-release-gates.mjs 唯一声明，本地链逐条内联、发布链走聚合入口 --run --require | scripts/check-release-gates.mjs:28-104,136-140 |
 | B01 | 壳侧快照解压 | 归档软链与权限判据必须对齐设备侧 SnapshotExtractor 的沙箱边界，构建期净化是为了不让设备静默丢弃条目 | scripts/build-snapshot-013.mjs:933-966,1029 |
 | B01 | 插件源码与 vendor 固化面 | 注入内容取自 plugin-dirs.json 指向的插件目录与 vendor 固化副本，补丁由 apply-patches.mjs 施加 | scripts/plugin-dirs.json:1,scripts/patches/apply-patches.mjs:2471#expect=const%20order |
 | B01 | 树内副本即权威 | 2026-10-15 起不再做跨树逐字节比对；补丁面由本仓 registry↔IMPLS 自洽判据守 | `scripts/check-patch-mirror.mjs:53#expect=const%20regPath` |
 | B01 | 发布链 build-release.ps1 | 复用同一门禁集与指纹对账，输入走设备侧 make-snapshot.sh 产出的 snapshot/snapshot-*.tar.xz | scripts/build-release.ps1:56-61,89-114,147 |
 | B01 | CI 与云端构建链 | 云端 build-apk.mjs 与本地链门禁集差集必须为 0。0.14.5：原先并列的 apk 仓独立快照 workflow `build-snapshot.yml`（走 inject-snapshot.py 三包注入、无引擎 overlay/补丁/语法降级）已删除，快照构建入口收敛为单一链 | scripts/check-release-gates.mjs:191-212 |
-| B01 | 来源审计 ARM64 构建 | 官方 `1f81c047` / 0.2.1-rc.3 源码构建 CLI/Web/第一方包；Android 构建阶段设置 official client profile/title 并核验 bundle；Cordis 按目标源码、不回退旧版本；bootstrap/InRelease/deb 认证、native 来源审计与 overlay pin 恢复。PTC 与 MiMo 多文件 exact verifier 及全部 pnpm 同包副本同步；最终 snapshot 检查复用同一判据。依赖闭包门禁还递归检查已启用 telemetry 消费者的第三方精确版本，并与 `engine-overlay.json` 的 nested SDK pins 对账。v0.14.9 来源链已正式运行，完整设备三层验收仍未完成，见升级记录。 | .github/workflows/build-apk-source.yml:222#expect=./gradlew%20--version,scripts/patches/registry.json:214#expect=%E9%A6%96%E9%A1%B5%20HTML,scripts/patches/apply-patches.mjs:234#expect=planMimoThinking,scripts/source-build/reconcile-engine-patch-copies.mjs:79#expect=const%20entries,scripts/source-build/check-dsh-source-snapshot.mjs:25 |
-| B01 | 来源草稿资产边界 | 写权限任务先拒绝额外/缺失/链接/非普通资产，要求哈希清单与实际上传集合一一对应，再核验字节，最后调用 gh 创建草稿；真实 shell 负控见坑 371 | .github/workflows/release-source-draft.yml:94#expect=root%20%3D%20pathlib.Path%28%27.%27%29,scripts/source-build/test_prepare_source_release.py:96#expect=self.put%28abi%2C%20path%2C%20original%29 |
+| B01 | Linux 来源审计 ARM64 构建 | 固定 Harness 源码底座、独立重放补丁、工厂目录装配及四件套 manifest；不经过 Termux 包或快照链 | scripts/source-build/build-linux-payload.mjs:1#expect=%23!/usr/bin/env%20node |
+| B01 | 生产签名发布边界 | release-source-draft 只接受 main，来源构建双副本比对后由隔离作业生产签名并创建 ARM64 draft prerelease | .github/workflows/release-source-draft.yml:21#expect=run%3A%20test%20%22%24SOURCE_REF%22%20%3D%20refs%2Fheads%2Fmain |
 | B02 | B01 | 门禁集由两条编排器逐项调用；聚合入口断言本地链与云端链门禁集差集为 0，并锁发布链必须走 --run | scripts/check-release-gates.mjs:135 |
 | B02 | B03 | 冷启动预算的真数据只能来自设备产物，--require-real 由设备验收承担，构建机与 CI 只计 SKIP | scripts/check-boot-budget.mjs:671 |
 | B02 | K03 | 快照指纹、剥离后置断言、运行时补丁资产三门禁共同守内嵌 assets/snapshot.tar.xz 与 assets/patched 同源 | scripts/check-runtime-assets.mjs:126 |
@@ -610,7 +616,7 @@ K01 journal 发布：`SnapshotTransaction.writeMarker` 拒绝目标或临时路�
 | 2. 引擎反复被重启或长时间不重启 | K02 | `cat files/boot-segments.log` 看 t_boot_start / t_listen 世代与失败密度；`grep dsh-watchdog`（logcat 或 `Documents/dshdata/log/dsh-日期.log`，需开发者日志开）；熔断态 grep `watchdog circuit open`，半死态 grep `DEGRADED_HTTP` 与 `DEGRADED_HTTP 连续`。 |
 | 3. 端口被占 / 双引擎 | K02 | grep `killExistingEngine: port 3080 still occupied`；设备侧 `adb shell "ps -A | grep -E 'linker|node'"`（进程名是 linker64 不是 node，坑 31）。 |
 | 4. 页面白屏但端口在 | K02 | `adb forward tcp:23080 tcp:3080` 后 `curl -i http://127.0.0.1:23080/`（200/401 都算活）；grep `DEGRADED_LOG` 与 `plugin tree failed to load`（后者只判不重启）。 |
-| 5. 诊断包找不到 | K02 | `mirrorDiagnosticsToShared` 无 All Files Access 时回落私有目录，界面按实际路径回填（EngineStartFlow.kt:724）；`adb shell run-as com.snoworwind.pocketharness ls files/diagnostics`。 |
+| 5. 诊断包找不到 | K02 | `mirrorDiagnosticsToShared` 无 All Files Access 时回落私有目录，界面按实际路径回填（`mirrorDiagnosticsToShared` 回落私有目录）；`adb shell run-as com.snoworwind.pocketharness ls files/diagnostics`。 |
 | 1. 启动长期停在「正在更新运行时」或每次开机都重解压：`adb -s <serial> shell run-as com.snoworwind.pocketharness ls -la files/ | grep -E "snapshot|usr-old|update"`；`... cat files/.snapshot-transaction`（看 `phase=` 与 `moved=` 条目）；logcat grep `dsh-engine|dsh-snap`，失败真因在 `files/boot-fail.log` 的 `dsh-boot-fail stage=snapshot-refresh-failed` 行（`error=` / `cause=`），镜像副本在 `Documents/dshdata/diagnostics/snapshot-refresh-failed-*`。 | K03 | （待补） |
 | 2. 报「运行时更新失败（诊断已保存）」但看不到原因：`grep -E "存储空间不足|Directory not empty|InsufficientSpace" files/boot-fail.log`；空间类真因只落在 cause 里（UI 文案是通用的），`df /data` 对账；`Directory not empty` 类看 `~/.failed-<ts>` 残渣是否在场。 | K03 | （待补） |
 | 3. 插件列表在、点开不可用（0.14.0 实报形态）：`grep -n "disabled: true" files/home/.dsh/profiles/web/cordis.patch.yml`；查 `files/.profile-patch-repair-<版本名>` 标记是否已写（没写=上次启动修复失败，下轮重试）；对照 `files/home/.dsh/profiles/web/?` 的 node_modules 是否半合并（1/10 形态）。 | K03 | （待补） |
@@ -677,13 +683,13 @@ K01 journal 发布：`SnapshotTransaction.writeMarker` 拒绝目标或临时路�
 | 1. 分享文件后不出现草稿会话、也没有提示：`adb logcat -s dsh-file-open`（找 `incoming processed` / `pending incoming flushed` / `incoming rejected (ownership assertion)` / `temp workspace clean skipped`）；再看引擎日志 grep `未认领来件过期清理`、`路径不在临时工作区内`；队列现场 `adb shell run-as com.snoworwind.pocketharness ls files/home/.dsh/workspaces/incoming/.sessions`（残留记录 = 补建失败或未领取）。401 形态的静默丢件查壳侧与引擎的令牌是否同源（`dsh-adb.xml` 的 `controlToken`，`X-DSH-Control-Token` 头）。 | P04 | （待补） |
 | 2. 设置页「临时工作区」占用不清零 / 点清理返回 `removed: 0`：`/clean` 只删 `.tool-temp.ndjson` 记账项；前缀形态不一致会让 `ownedInsideWorkspace` 判为越界。grep 引擎日志 `已自愈删除非 canonical 的临时工作区残留`、`workspaceRegistry.list 失败`；对照响应里的 `removed` 与清单文件行数。 | P04 | （待补） |
 | 3. 自定义供应商不出现思考档位 / 出现了但请求被网关拒：轨迹文件 `$DSH_HOME/model-capability.log`（默认开，`DSH_MODEL_CAPABILITY_TRACE=0` 关）grep `tick:`、`runAutoPass(`、`未给出统一 thinkingFormat`、`仅部分目录声明`、`SETTINGS_CONFLICT`、`namespace-absent`；引擎日志 grep `auto-apply`。 | P04 | （待补） |
-| 4. 工具链状态与设置页/实际不符：`android_toolchain_status` 的 `missing` 是包名口径（bash 缺失 | P04 | 整表 `unusable`），也是 ST-17 单一表的回归点：`grep -n "PROBE_BINARIES" dsh-shell-termux/src/index.ts plugins/dsh-android-linux-env/src/index.ts`；档位显示以 `android_privilege_status`（`androidPrivilege.status()`）为准，工具文本里的 adbTier 只是部署默认视图。 |
+| 4. 工具链状态与设置页/实际不符：`android_toolchain_status` 的 `missing` 是包名口径（bash 缺失 | P04 | 整表 `unusable`），也是 ST-17 单一表的回归点：`grep -n "PROBE_BINARIES" dsh-shell-linux/src/index.ts plugins/dsh-android-linux-env/src/index.ts`；档位显示以 `android_privilege_status`（`androidPrivilege.status()`）为准，工具文本里的 adbTier 只是部署默认视图。 |
 | 5. 点了「清除运行时缓存」几乎没释放：本版白名单只有 `engine.log.1..N` 与 `DSH_HOME/.node-compile-cache`（`cache/` 整类以 `reason=not-allowlisted` 跳过）。看 GET `/api/android/runtime-cache/scan` 返回的 `skipped[].reason`（`log-root-unresolved` / `current-generation-absent` / `not-allowlisted` / `preserved` / `scope-rejected`）与 `label`（`$DSH_HOME/...` 形态）；审计落 `$DSH_FILES_DIR/audit/runtime-cache.ndjson`。 | P04 | （待补） |
 | 白屏/停在 Loading plugins，且服务出的 HTML 里能看到垫片文本 | S01 | 装配后不可解析（坑 61）：跑 `node dsh-host-web-compat/scripts/smoke-injections.mjs`（逐段解析 + 页面标记）；看 `files/boot-diag.log`（`adb shell "run-as com.snoworwind.pocketharness cat files/boot-diag.log"`）里的 `dsh-boot-diag` 行与 `pageSideRuntime=`；logcat 过滤 `[dsh-boot-stall]` / `[dsh-boot-ready]`；grep `POLYFILL_SCRIPT_BODY`、`assertInjectionsParse`。 |
 | DSH 原生布局、设置、输入区或菜单显示异常 | S01 | 先确认引擎与客户端包都来自本次固定版本；再核对插件只注入 Android inset/IME 与 add-on 样式，不再有退役的 mobile chrome、composer、settings-tree 样式或控件。不要用旧 data-dsh-frame/topbar 锚点判定 UI。 |
 | 设置、菜单或输入区与 DSH 原版不一致 | S01 | 对比同版本 DSH Web UI 并检查宿主实际装载的插件树；设置分类、弹出菜单、输入区均由 DSH 原生组件渲染。只有系统安全区或 IME 偏移异常时，检查 data-dsh-android-frame 与 --dsh-android-* inset。 |
 | 点工具行文件链接弹「无法打开该文件」或点击无反应 | S01 | 会话身份/端点：CDP 读 `document.documentElement.getAttribute('data-dsh-session-id')`；页面 console 的 `[dsh-open-path]` 警告与底部提示条；端点返回体里的 `error` 取值 `session-unknown` / `not-found-in-session` / `not-found`（`dsh-host-web-compat/lib/index.js:895-940`）。 |
-| 目录选择器连弹多次或选完无反应 | S01 | poll 一次性投递与 token：`adb logcat` 看 SAF 与 `dsh-log`；grep `takePoll`（同一 requestId 只投一次）、`x-dsh-pick-token`；返回 `403 forbidden` 即 `DSH_PICK_TOKEN` 与页面 `getPickToken()` 不一致（`EngineManager.kt:2373#expect=%22DSH_PICK_TOKEN%22%20to%20%28pickToken%20%3F%3A%20%22%22%29`）。 |
+| 目录选择器连弹多次或选完无反应 | S01 | poll 一次性投递与 token：`adb logcat` 看 SAF 与 `dsh-log`；grep `takePoll`（同一 requestId 只投一次）、`x-dsh-pick-token`；返回 `403 forbidden` 即 `DSH_PICK_TOKEN` 与页面 `getPickToken()` 不一致（`EngineManager.kt:660#expect=%22DSH_PICK_TOKEN%22%20to%20%28pickToken%20%3F%3A%20%22%22%29`）。 |
 | 返回键直接退出应用或层数不降 | S01 | `adb logcat -d | grep dsh-back`（`BackGate.TAG`）；CDP 读 `window.__dshBackDepth` / `__dshBackKinds`；层判据 grep `RIGHT_FULLSCREEN_SELECTOR`（`data-sidebar-right-open` 是权威 open 信号）、`data-sidebar-right-expand`。 |
 | 打包刚起步就红在「补丁自洽不一致」：跑 `node scripts/check-patch-mirror.mjs`（现行只判 registry↔IMPLS id 双向闭合，见 `:56-72`）；跨树镜像比对已于 2026-10-15 按用户决定移除，不会再因对端漂移判红。 | B01 | （待补） |
 | 设备装上后引擎起不来、日志 `Cannot find module` / `ERR_MODULE_NOT_FOUND`：注入丢件，跑 `node scripts/check-inject-completeness.mjs .deploy-tmp\build-\13-「abi」\snap-final2.tar.xz`，并在构建日志 grep `[fill]` `[prune]` `[add]`（inject-all.py:336-358）。 | B01 | （待补） |
@@ -692,7 +698,7 @@ K01 journal 发布：`SnapshotTransaction.writeMarker` 拒绝目标或临时路�
 | 权限模式门禁红 / 发行 tar 可执行位丢失：确认没走 `-SkipInject`（ps1:329-334），并核「该 ABI」的 snap-final2 是否由 inject-all.py 重打包产出（9p 下 chmod 不生效，gotchas.md 第 44 条）。 | B01 | （待补） |
 | 引擎补丁「marker 全绿但行为不对」：看快照构建日志里四项行为回归（boot-pending-G1 / pi-toolcall-G2 / arkweb-resource-protocol-H1 / external-draft-conversation-seam-J1，build-snapshot-013.mjs:315-349）与 `apply-patches.mjs --list`。 | B01 | （待补） |
 | 1. PR 卡在 `static` 作业某一步 | B02 | 读该步名对应脚本，本地复现：`git status` → `node scripts/check-release-gates.mjs`（先看接线断言）→ `node scripts/check-gate-skips.mjs --list`（看声明/接线/SKIP 审计三张表）。 |
-| 2. 「本地全绿、云端建不出」 | B02 | `node scripts/check-release-gates.mjs` 的 `两份编排器门禁集差集 = 0` 一行；再 grep `GATE_SCRIPTS`（`scripts/build-apk.mjs:61`）与 `scripts/build-apk-013.ps1` 的 `node (Join-Path $Root "scripts\check-` 行。 |
+| 2. 「本地全绿、云端建不出」 | B02 | `node scripts/check-release-gates.mjs` 的 `两份编排器门禁集差集 = 0` 一行；再 grep `GATE_SCRIPTS`（`scripts/build-apk.mjs:62#expect=const%20market%20%3D%20externalNamed%28%27dshmarketplace-plugin%27%29`）与 `scripts/build-apk-013.ps1` 的 `node (Join-Path $Root "scripts\check-` 行。 |
 | 3. 「门禁说 PASSED 但问题还在」 | B02 | 先在输出里找 `SKIP(` 与 `SKIP=`：SKIP 不为 0 表示该判据本轮没真跑（`SKIP(#n)` 行会写落点）；再确认跑的是真检档还是 `--self-test`（CI 里 `scripts/check-browser-syntax-floor.mjs` 只有自证）。 |
 | 4. 「改了门禁脚本却没生效」 | B02 | `node scripts/check-patch-mirror.mjs`——**现行只做树内自洽**（registry↔IMPLS id 双向闭合）；原先的跨树逐字节与 `MIRROR_TOP` 清单已于 2026-10-15 按用户决定移除，故本项现在只能发现「登记与实现不一致」，不再能发现跨仓副本落后。 |
 | 5. 「发布链以 SKIP=0 通过但真检没跑」 | B02 | 在 `check-release-gates.mjs --run` 输出里逐门禁找 `SKIP(#`；聚合入口只认 `SKIP=`（`scripts/check-release-gates.mjs:246`），`scripts/check-boot-budget.mjs:681` 那种带 `#` 的 SKIP 不进合计；设备真检必须显式跑 `node scripts/check-boot-budget.mjs --require-real`（当前零调用点）。 |
@@ -776,7 +782,7 @@ K01 journal 发布：`SnapshotTransaction.writeMarker` 拒绝目标或临时路�
   - （看门狗线程 → 新 Thread）`UndoGate.execute` → `runCli`（ProcessBuilder + `ProcIo.readBounded(proc, 60)`）。全链无协程，只有裸 Thread / 守护线程 / 主线程 / JavaBridge 线程。
 - **耦合**（点名具体符号）：
   - 偏好键：`dsh_settings/immersive_mode`（`ShellState.kt:38-39`）、`MainActivity.DevLogPrefs`（`ShellState.kt:99`）、`dsh_engine_auth/cookie`（`EngineAuth.kt:46-47`）、`dsh-adb.xml` 的 `controlToken`（壳 `DeviceControlService.token` 写、引擎 `controlTokenFrom` 实时读）。
-  - 文件：`filesDir/engine.log(.1/.2)`（`EngineAuth.tokenFromLog` 只读尾部 64KiB，取最后一个 `dsh web: …?token=`）、`filesDir/home/.dsh/.credentials.yaml`（`credentialsSecret` 读，值绝不进日志）、`filesDir/.undo-auto-armed` / `.undo-auto-done` / `.undo-known-good` / `undo-gate.log`（观察窗、重试窗、匹配 `.snapshot-fingerprint` 的 known-good ID、自动回撤证据）、`filesDir/.plugin-hard-manifest.json` / `.plugin-soft-manifest.json`（外科拔除保护与清单变化判定）、`filesDir/audit/audit.ndjson`（`ControlAudit` 写，与插件 `plugins/dsh-android-bridge/src/index.ts:135-144` 同路径同格式）。完整数据分类与 SharedPreferences keys 见 `docs/AGENTS/PERSISTENT-DATA.md`。
+  - 文件：`filesDir/engine.log(.1/.2)`（`EngineAuth.tokenFromLog` 只读尾部 64KiB，取最后一个 `dsh web: …?token=`）、`filesDir/home/.dsh/.credentials.yaml`（`credentialsSecret` 读，值绝不进日志）、`filesDir/.undo-auto-armed` / `.undo-auto-done` / `.undo-known-good` / `undo-gate.log`（观察窗、重试窗、匹配 `.snapshot-fingerprint` 的 known-good ID、自动回撤证据）、`filesDir/.plugin-hard-manifest.json` / `.plugin-soft-manifest.json`（外科拔除保护与清单变化判定）、`filesDir/audit/audit.ndjson`（`ControlAudit` 写，与插件 `plugins/dsh-android-bridge/src/index.ts:135#expect=%2F%2A%2A%20%E5%B7%B2%E9%85%8D%E5%AF%B9%EF%BC%88%E7%AC%AC%E4%B8%89%E9%81%93%E4%BA%BA%E9%97%A8%EF%BC%9B0.14%20%E8%B5%B7%20%3D%20%E7%9C%9F%E5%AE%9E%20adb%20pair%20%E6%8F%A1%E6%89%8B%E6%88%90%E5%8A%9F%EF%BC%89%20%2A%2F` 同路径同格式）。完整数据分类与 SharedPreferences keys 见 `docs/AGENTS/PERSISTENT-DATA.md`。
   - 全局单例/共享态：`EngineAuth`（`@Volatile cached` + `appContext` + 对象锁）、`ShellAppContext`（桥 getter 无 Context 形参时的唯一真源入口）、`ControlCarrier.a11y`（`DeviceControlService` 连接/销毁时写）、`ControlCarrier` 的三组路由集合 `BROWSER_OPS`/`VD_OPS`/`SHELL_OPS`（与 `ControlProtocolV2.SUPPORTED_OPS` 是两份手抄清单，靠 `scripts/check-control-ops.mjs` 的 D2「carrier ⊇ 契约 neverA11y op」守）。
   - 协议常量：`ControlProtocolV2.PV=2`、`F_*` 掩码位、`o` 列＝walk 全量行号（`DeviceControlService.resolveTarget` 用 `rows[handle]` 索引 `Snapshot.rows`）、`b` 列恒 4n。
   - 环境变量：`DSH_HOME`/`DSH_UNDO_ROOT`/`DSH_UNDO_PROFILE`/`OPENSSL_CONF`（`UndoGate.runCli` 注入，缺 `OPENSSL_CONF` 会令 CLI 无输出被误判）。
@@ -846,7 +852,7 @@ flowchart TD
   - 键盘：`AdbKeyboardReceiver.onReceive`（`AdbKeyboardReceiver.kt:23`）← `am broadcast -n com.snoworwind.pocketharness/.AdbKeyboardReceiver -a ADB_INPUT_TEXT/ADB_CLEAR_TEXT --es msg/--es auth`（显式限定接收组件，避免认证 nonce 扩散到其他应用；引擎 manage 的 `android_ui_input`，`plugins/dsh-android-manage/src/index.ts:2012#expect=return%20%7B`）。
   - 设置页只读：`statusJson`（:214）/`token`（:235）经 `AndroidBridge.a11yStatus`（`MainActivity.kt:800#expect=private%20fun%20probeEngineOffMainThread(onResult%3A%20(Boolean)%20-%3E%20Unit)%20%7B`）。
 - **运行顺序**：
-  1. 引擎工具面 → bridge `controlExec`（`plugins/dsh-android-bridge/src/index.ts:949`）→ 控制队列 enqueue（单在途；档位门、`A11Y_OPS` 门、`REAL_SCREEN_CONTROL_OPS` 范围门都在这一步）。
+  1. 引擎工具面 → bridge `controlExec`（`plugins/dsh-android-bridge/src/index.ts:949#expect=if%20%28%21r.ok%29%20return%20%5B%5D`）→ 控制队列 enqueue（单在途；档位门、`A11Y_OPS` 门、`REAL_SCREEN_CONTROL_OPS` 范围门都在这一步）。
   2. `ControlPoller` 取活后在后台线程执行：`ControlCarrier.handle` 先分流 neverA11y 三组（`BROWSER_OPS`/`VD_OPS`/`SHELL_OPS` 直连各 Holder），其余交给已连接的无障碍服务；无连接 → `a11y-unavailable` 结构化拒绝（`ControlCarrier.kt:110`）。
   3. `handle` 先过第二道范围门 `realScreenScopeError`（:701）：未知屏 → `screen-not-found`；范围不含 → `screen-out-of-scope`；真实屏带非 0 displayId → `screen-display-mismatch`；虚拟屏经 `VdisplayController.displayIdForAlias`（`VdisplayController.kt:133`）取动态 displayId 并固定 `activeScreenId/activeDisplayId`（绝不回退 display 0）。
   4. `snapshot` → `buildSnapshot(force=true)`（:496，3s 预算）→ `ControlProtocolV2.encode`（`ControlProtocolV2.kt:96`）回 V2 载荷（gen/rotation/尺寸/truncated）；动作 op 先 `requireFresh` 校验 gen（:935，无快照则当场重建而不是报过期），再 `resolveTarget`（:964）三级回指 → `performAction`，失败退 `dispatchGesture`（`tapAt` :1143 / `pressAt` :1083）。
@@ -861,7 +867,7 @@ flowchart TD
   - 引擎侧（K04）：`ControlProtocolV2.SUPPORTED_OPS`（`ControlProtocolV2.kt:46`）/`PV`/`Row`/`F_*` 与 `ControlPoller.envelope` 的 `caps`（`:56-72`）；`scripts/check-control-ops.mjs` 按行首引号解析 `handle` 分支名，所以 browser*/vd*/sh* 分支必须逐条留在 `handle` 里（:634-664）——**但它们运行时不可达**（`ControlCarrier` 已先分流），读代码时不要以为这些 op 在无障碍侧执行。
   - K06：`vd*`（:652-657）与 `sh*`（:661-664）在 handle 里只有一行转发（`VdisplayOps.handle` / `ShellOps.handle`），执行与授权全在 K06；`ControlCarrier.SHIZUKU_CACHE_MS`（`ControlCarrier.kt:47`）只回 `caps.shizuku`。
   - 偏好键：`dsh-adb.xml`（`PREFS` :42）的 `a11yEnabled`/`controlToken`/`controlHeartbeat`（:246-258，token 18 字节 base64url，:235）；屏幕范围**不再是偏好键**：`ScreenScopePrefs` 只保存在进程内存（`ScreenScope.kt:52` 起），K05 只读，写面在设置页，插件经控制应答 `caps.screenScope`/`vdInfo.data.scope` 读回（A02）。
-  - 路径：截图落 `filesDir/home/tmp/dsh-tmp`（:770），与引擎 `TMPDIR`（`EngineManager.kt:1455#expect=if%20%28%21killExistingEngine%28%29%29%20%7B`）/`DSH_FILES_DIR`（:1439）同源；`pruneShots` 只认同目录下 `shot-` 前缀（:1175）；`AdbKeyboardService.nonceFile` = `filesDir/adb-keyboard-nonce`（`AdbKeyboardService.kt:122`，引擎 `adbKeyboardAuthArg` 读同一文件，`index.ts:42`）。
+  - 路径：截图落 `filesDir/home/tmp/dsh-tmp`（:770），与引擎 `TMPDIR`（`LinuxGuestBoot.kt#expect=%22TMPDIR%3D%2Ftmp%22`）/`DSH_FILES_DIR`（:1439）同源；`pruneShots` 只认同目录下 `shot-` 前缀（:1175）；`AdbKeyboardService.nonceFile` = `filesDir/adb-keyboard-nonce`（`AdbKeyboardService.kt:122`，引擎 `adbKeyboardAuthArg` 读同一文件，`index.ts:42`）。
   - 常量与纯函数：`MAX_NODES=4000` / `MAX_DEPTH=40` / `TREE_BUDGET_MS=3000` / `TOKEN_BYTES=18`（:48-52）、`WindowPick.order`（:409，回归 `WindowPickTest.kt`）、`GlobalActionCatalog.TABLE`（`GlobalActionCatalog.kt:23`，回归 `GlobalActionCatalogTest.kt`）、`WEB_SNAPSHOT_JS`/`WEB_ACTION_JS`（:60/:131）依赖 `MainActivity.webViewRef`（:852）。
   - 节点所有权：`DeviceControlService.handle()` 打开 lease（`:682`），`buildSnapshot()` 在当前请求 recycler 中推进代际并提升 `rowNodes`（`:617`）；API 32 及以下才调用 `recycle()`，分界纯函数 `AccessibilityNodeRecycler.shouldRecycleAtApi()`（`AccessibilityNodeRecycler.kt:13#expect=fun%20shouldRecycleAtApi,`）。
   - 心跳口径：引擎 `a11yFacts()` 区分 `heartbeat`、明确关闭 `disabled`、启用标记下心跳缺失/过期/未来 `stale` 与未声明/不可读 `unknown`；只有非未来且 20 秒内的独立无障碍心跳开放路由。诊断保留有符号心跳年龄；控制队列可在服务缺席时运行，不作为无障碍在线证据。
@@ -1133,10 +1139,10 @@ flowchart TD
 #### K10 通知中心
 
 - **一句话**：把引擎的两条事件信道（文件 `.notify.ndjson` + WS waterfall）渲染成五类系统通知，并把用户在通知栏里做的回答/授权经耐久队列投回引擎（`$events/result`）。
-- **入口/触发**：① 文件信道：引擎只写 `todo` / `report` 两行（`plugins/dsh-android-bridge/src/index.ts:1593` / `:1612`），`NotifyStore.start` 的 FileObserver（`NotifyStore.kt:197`，位集 `WATCH_MASK`）与启动 drain（`:186`）消费，**外加看门狗 tick 的兜底 drain**（`EngineService.kt:123` → `NotifyStore.drainTick`，`NotifyStore.kt:233`）；② WS 信道：`NotifyBridge.onFrame`（`NotifyBridge.kt:165`）收 `ready` / `waterfall` / `cancel` 三种帧，承载 question / approval；③ 用户动作：不可变通知入口 → 原生界面及系统凭据认证 → 一次性许可 → `NotifyActionReceiver.onReceive`（`NotifyActionReceiver.kt:82`）；④ 设置面：`AndroidBridge.getNotifySetting/setNotifySetting`（`AndroidBridge.kt:385` / `:381`）→ `NotifyCenter.settingsSnapshot/applySetting`（`NotifyCenter.kt:257` / `:276`）；⑤ 常驻拉起：`EngineService.onCreate`（`EngineService.kt:40-41`）。
+- **入口/触发**：① 文件信道：引擎只写 `todo` / `report` 两行（`plugins/dsh-android-bridge/src/index.ts:1593#expect=%3F%20%27%E7%B3%BB%E7%BB%9F%E8%AE%BE%E7%BD%AE%20%E2%86%92%20%E6%97%A0%E9%9A%9C%E7%A2%8D%20%E2%86%92%20%E5%BC%80%E5%90%AF%E3%80%8CDeepCode%20%E8%AE%BE%E5%A4%87%E6%8E%A7%E5%88%B6%E3%80%8D%27` / `:1612`），`NotifyStore.start` 的 FileObserver（`NotifyStore.kt:197`，位集 `WATCH_MASK`）与启动 drain（`:186`）消费，**外加看门狗 tick 的兜底 drain**（`EngineService.kt:123` → `NotifyStore.drainTick`，`NotifyStore.kt:233`）；② WS 信道：`NotifyBridge.onFrame`（`NotifyBridge.kt:165`）收 `ready` / `waterfall` / `cancel` 三种帧，承载 question / approval；③ 用户动作：不可变通知入口 → 原生界面及系统凭据认证 → 一次性许可 → `NotifyActionReceiver.onReceive`（`NotifyActionReceiver.kt:82`）；④ 设置面：`AndroidBridge.getNotifySetting/setNotifySetting`（`AndroidBridge.kt:385` / `:381`）→ `NotifyCenter.settingsSnapshot/applySetting`（`NotifyCenter.kt:257` / `:276`）；⑤ 常驻拉起：`EngineService.onCreate`（`EngineService.kt:40-41`）。
 - **运行顺序**：进程启动 → `EngineService.onCreate` → `NotifyStore.start`（装 `ShellListener`、跑存量抑制迁移、挂 FileObserver、把启动 drain 提交到单线程后台 executor）→ `NotifyBridge.start`（建 MuxClient 流、`NotifyDecisionQueue.ensureScheduled` 重评滞留决策、起心跳线程）。**事件到达** → `drain(trigger=watch:<name>)` 读偏移 → `drainBytes` 取完整行 → 逐行 `dispatch`（置 `notifyChannelActive`、登记 `lastReportLineRaw`、打延迟点）→ `notifyEvent` → `deliverEvent`：kind 分流（`resolve` 撤通知即终态）→ 类别门 → 权限门 → report 抑制门 → `formDecision` 定形态 → `channelFor` 解析渠道 → **P3 去重**（同 id 同内容 2 s 内丢弃）→ `notify()` → 探针 `result=` → **最后**才推进偏移（`:398`，至少一次语义）。**兜底到达**（每 5 s，不依赖任何文件事件）→ `drainTick` → 走同一条 `drain`（`trigger=tick`；每 5 分钟记一行 `notify tick alive ticks=… lag=… watchEvents=… watchEventAgeMs=…` 心跳）。WS 到达 → `handleValue`：`ready` 换代并 3s 后对账过期 pending + 后台线程补投决策队列；`waterfall` 登记 pending 并投递提问/审批；`cancel` 走 `markSettled → settleInteractive`（重投后撤）。用户点动作 → `outcomeFor` 构造协议 outcome → `enqueue` 落盘 → 幂等热身 `NotifyStore.start`/`NotifyBridge.start` → `goAsync` + 后台线程 `flush → postResult` → 成功本地结算 / 失效或失败走 `postDeliveryFailure` 可见态。跑完交给谁：成功投递交给系统通知栏与 `NotifyProbe` 记账；决策交给引擎网关；失败交给可见的「提交失败，点击重试」条目。
 - **嵌套与线程**：最多三层。主线程（服务回调）：`EngineService.onCreate → NotifyStore.start` 注册监听并提交启动 drain；启动 drain 的文件 IO、偏移提交和通知投递在 `dsh-notify-store-drain` 单线程 daemon executor。FileObserver 回调线程：`onEvent → drain → dispatch → notifyEvent`；**看门狗单线程执行器**（`EngineService.kt:116`，5 s 固定延迟、持唤醒锁）：`drainTick → drain → dispatch → notifyEvent`——它与 FileObserver 线程**并发跑同一份 offset**，故 `drain` 必须 `@Synchronized`（否则同一批行各投一遍：真机实测同 id 80 ms 内 5 次）；MuxClient 读线程：`onFrame → handleValue → notifyEvent`，其 `ready` 分支把 3s 对账 `handler.postDelayed` 抛回主线程。动作广播主线程：`onReceive → outcomeFor → NotifyDecisionQueue.enqueue` 只落盘，重活交 `goAsync` + 后台线程 `flush → postResult`（同步 HTTP，禁主线程）。定时器：`scheduleRetry` 由主线程 Handler 触发后起后台线程 flush；`NotifySuppressQueue.scheduleTick` 的 Handler 只排程，前台判定与 flush 在单线程 daemon executor 执行；`NotifyBridge` 心跳是独立 daemon 线程 `notify-probe`。结算：`settleInteractive` 在主线程 notify，400ms 后再 cancel。
-- **耦合**：偏好文件 `dsh-notify`（`NotifyCenter.PREFS`，`NotifyCenter.kt:33`）被四处共用——`channelsInitialized` / `channel.<category>`（`:34-35`）、`suppressForeground` + `suppressForegroundSchema` + `suppressForegroundLegacy`（`:36` / `:55` / `:59`，读写方都是 NotifyCenter）、`notify.offset`（`NotifyStore.KEY_OFFSET`，`NotifyStore.kt:66`）、`notify.markerOffset`（`WatchdogV2.kt:29`，经 `NotifyCenter.prefs(context)` 读写，`WatchdogV2.kt:236` / `:243`）。落盘面：`files/notify-decisions.ndjson`（`NotifyDecisionQueue.kt:28`，>256KB 压缩）、`files/notify-responder.log`（`NotifyProbe.kt:21`，>128KB 轮转到 `.1` 并追加；保留一代诊断日志）、`files/home/.dsh/.notify.ndjson` 与 `.1` 残段、`.task-done.ndjson`（`NotifyStore.kt:36-38`）。引擎契约：`plugins/dsh-android-bridge/src/index.ts:1457-1479`（写盘 + 512KB 轮转；`kind` 是唯一分类权威）、`notify-projection.ts:55` / `:79`（outcomeLabel / popup 判定）；引擎侧插件权威源在协调仓同名路径，apk 仓为逐字节镜像（本轮 md5 核对一致）。双流：`NotifyBridge.STREAM_ID = "dsh-notify-responder"`（`NotifyBridge.kt:28`）与 `OverlayPanel` 的 `eventsClientId` 是两条独立 `$events` 流，同一 waterfall 事件分别落在 `NotifyBridge.pending`（`:66`）与 `OverlayPanel.pendingQuestions/pendingApprovals`（`OverlayPanel.kt:69-70`）。其它：`Face` 候选 ID 落 `channel.<category>`（`NotifyCenter.kt:84-102`）、固定 ID `ID_WATCHDOG/ID_TODO`（`:62-63`）、反馈面 `ShellListener` 只依赖 `OverlayService.instance` + `flashStatus`（`OverlayService.kt:683`）、桥面 `AndroidBridge.getNotifySetting/setNotifySetting` → 页面 `dsh-client-ui-responsive/src/client/dev-section/notify-settings.tsx`（`applied !== true` 不置位）。
+- **耦合**：偏好文件 `dsh-notify`（`NotifyCenter.PREFS`，`NotifyCenter.kt:33`）被四处共用——`channelsInitialized` / `channel.<category>`（`:34-35`）、`suppressForeground` + `suppressForegroundSchema` + `suppressForegroundLegacy`（`:36` / `:55` / `:59`，读写方都是 NotifyCenter）、`notify.offset`（`NotifyStore.KEY_OFFSET`，`NotifyStore.kt:66`）、`notify.markerOffset`（`WatchdogV2.kt:29`，经 `NotifyCenter.prefs(context)` 读写，`WatchdogV2.kt:236` / `:243`）。落盘面：`files/notify-decisions.ndjson`（`NotifyDecisionQueue.kt:28`，>256KB 压缩）、`files/notify-responder.log`（`NotifyProbe.kt:21`，>128KB 轮转到 `.1` 并追加；保留一代诊断日志）、`files/home/.dsh/.notify.ndjson` 与 `.1` 残段、`.task-done.ndjson`（`NotifyStore.kt:36-38`）。引擎契约：`plugins/dsh-android-bridge/src/index.ts:1457#expect=const%20r%20%3D%20step.kind%20%3D%3D%3D%20%27pull%27`（写盘 + 512KB 轮转；`kind` 是唯一分类权威）、`notify-projection.ts:55` / `:79`（outcomeLabel / popup 判定）；引擎侧插件权威源在协调仓同名路径，apk 仓为逐字节镜像（本轮 md5 核对一致）。双流：`NotifyBridge.STREAM_ID = "dsh-notify-responder"`（`NotifyBridge.kt:28`）与 `OverlayPanel` 的 `eventsClientId` 是两条独立 `$events` 流，同一 waterfall 事件分别落在 `NotifyBridge.pending`（`:66`）与 `OverlayPanel.pendingQuestions/pendingApprovals`（`OverlayPanel.kt:69-70`）。其它：`Face` 候选 ID 落 `channel.<category>`（`NotifyCenter.kt:84-102`）、固定 ID `ID_WATCHDOG/ID_TODO`（`:62-63`）、反馈面 `ShellListener` 只依赖 `OverlayService.instance` + `flashStatus`（`OverlayService.kt:683`）、桥面 `AndroidBridge.getNotifySetting/setNotifySetting` → 页面 `dsh-client-ui-responsive/src/client/dev-section/notify-settings.tsx`（`applied !== true` 不置位）。
 - **关键坐标**：
   - `app/src/main/java/com/snoworwind/pocketharness/NotifyCenter.kt:49` 抑制默认值常量（`DEFAULT_SUPPRESS_FOREGROUND = false`）
   - `app/src/main/java/com/snoworwind/pocketharness/NotifyCenter.kt:345` 渠道三态纯函数 `selectChannel`；`:357` / `:374` 映射读取与落 prefs
@@ -1216,7 +1222,7 @@ flowchart TD
 #### K11 Kotlin 单测面
 
 - **职责**：pure policy/core、process/capture settlement、源码wiring、instrumentation各自留账，源码扫描不证明真实UID0/Binder/SharedPreferences/PowerManager效果；不写固定测试总数、不把文件在场当PASS。
-- **actual新增类**：OwnershipRepairCoreTest、RootMaintenanceLeaseTest、ProcIoSettlementFixtureTest、ShizukuCaptureSettlementFixtureTest、ShizukuRpcLeaseWiringFixtureTest、StartupLifecycleOwnershipTest、ForegroundPageRecoveryPolicyTest、ForegroundPageRecoveryWiringTest、SnapshotFingerprintPolicyTest、SnapshotMigrationPolicyTest、BrowserHostCommandWiringTest；既有RootGrant/RootOwnership、Browser navigation/cleartext tests随源码更新。客户端插件装配失败两条新链：ClientPluginFailRouteTest（22 例：前缀逐字一致/失败行识别/failedIds 解析含 '-'、空、超限、截断/路由不吞第三方日志/latch 置位与清除/健康启动零动作）与 ClientRollbackGateTest（21 例：唯一命中才拔/多命中拒绝/命中硬清单拒绝/缺 id 拒绝/一次性入口 EXECUTE 与 SUPPRESS 两态/execute 传入 clientFailure 时走外科分支）。
+- **actual新增类**：OwnershipRepairCoreTest、RootMaintenanceLeaseTest、ProcIoSettlementFixtureTest、ShizukuCaptureSettlementFixtureTest、ShizukuRpcLeaseWiringFixtureTest、StartupLifecycleOwnershipTest、ForegroundPageRecoveryPolicyTest、ForegroundPageRecoveryWiringTest、LinuxPayloadIdentityTest、LinuxLegacyDataMigrationTest、BrowserHostCommandWiringTest；既有RootGrant/RootOwnership、Browser navigation/cleartext tests随源码更新。客户端插件装配失败两条新链：ClientPluginFailRouteTest（22 例：前缀逐字一致/失败行识别/failedIds 解析含 '-'、空、超限、截断/路由不吞第三方日志/latch 置位与清除/健康启动零动作）与 ClientRollbackGateTest（21 例：唯一命中才拔/多命中拒绝/命中硬清单拒绝/缺 id 拒绝/一次性入口 EXECUTE 与 SUPPRESS 两态/execute 传入 clientFailure 时走外科分支）。
 - **coverage职责**：held-node cap/race/schema；lease pure newBoot/scheme/wiring（真实prefs/root另验）；IO immutable partial/blocked cleanup/read/interrupt；capture writer不publish；每RPC授权/actualUID0lease；generation旧finally/caller-vs-worker/finite6/wakeowner；foreground quiet retry/recreate/userShutdown/holder；strictSHA；importmarker/活patch/quarantine；browser capturedSession/tab/profile-first/atomicopen。
 - **证据与时间范围（0.14.3交接）**：以下覆盖账本显式列新类并保留全JVM glob；当时的执行人应留Gradle XML/基线与日志。本 doc 编制任务当时未执行 tests/typecheck/checks/build；这只描述 0.14.3 交接，不代表当前 CI 或发布状态。设备验收流程见[模拟器验收规范](emulator-test-protocol.md)，当前构建与发布状态见 [known-gaps.md](known-gaps.md) 和 [版本历史](changelog-archive.md)。
 
@@ -1229,11 +1235,11 @@ flowchart TD
 > 权威源在协调仓 `plugins/dsh-android-bridge/`，本仓 `dsh-mobile-apk/plugins/dsh-android-bridge/` 是逐字节镜像（本轮 10 个文件 md5 全同）；以下行号取自 apk 仓副本。
 
 - **一句话**：把「模型或插件要驱动设备」收敛成一条受控链——档位门与屏幕范围门先判、单槽控制队列投递、壳侧执行、回执过无损 JSON 出口——并把会话事件投影成通知与实时流文件。
-- **入口/触发**：四类。① 模型工具 `android_privilege_status` / `android_shell_exec` / `android_termux_channel_exec`（`plugins/dsh-android-bridge/src/index.ts:1224`、`:1280`、`:1343`）与常驻 facade `android_capabilities`（`plugins/dsh-android-bridge/src/capability-gate.ts:250`，设备工具默认被 `tools.restrict` 掩蔽，调它才解锁）；② 其它插件经 cordis 服务面直调（`ctx.provide('androidPrivilege', svc)` 在 `index.ts:1438`，manage/vdisplay/browser/file-open 都走这条）；③ 壳侧 ControlPoller 长轮询两条 exact 路由 `/api/android/ui/pending`、`/api/android/ui/result`（`control-queue.ts:347`、`:367`），设置页读 `/api/android/privilege/status`（`index.ts:1669`）；④ 引擎 `session/event`（`index.ts:1558`）→ 写 `.notify.ndjson` / `.live.ndjson` / `.task-done.ndjson`。
+- **入口/触发**：四类。① 模型工具 `android_privilege_status` / `android_shell_exec` / `android_linux_channel_exec`（`plugins/dsh-android-bridge/src/index.ts:1224#expect=const%20gate%20%3D%20this.gateFor%28resolved.session%29`、`:1280`、`:1343`）与常驻 facade `android_capabilities`（`plugins/dsh-android-bridge/src/capability-gate.ts:250`，设备工具默认被 `tools.restrict` 掩蔽，调它才解锁）；② 其它插件经 cordis 服务面直调（`ctx.provide('androidPrivilege', svc)` 在 `index.ts:1438`，manage/vdisplay/browser/file-open 都走这条）；③ 壳侧 ControlPoller 长轮询两条 exact 路由 `/api/android/ui/pending`、`/api/android/ui/result`（`control-queue.ts:347`、`:367`），设置页读 `/api/android/privilege/status`（`index.ts:1669`）；④ 引擎 `session/event`（`index.ts:1558`）→ 写 `.notify.ndjson` / `.live.ndjson` / `.task-done.ndjson`。
 - **运行顺序**：装配期 `apply`（`index.ts:1416`）跑一次：按 `inject=['tools','webServer','shell','sandboxPolicy']`（`:112`）取面 → `provide androidPrivilege` → 注册 3 个工具（`:1649`）→ `installCapabilityGate`（`:1652`）→ 注册 3 条路由（`:1669`/`:1682`）→ 注册 `session/event` 监听。能力门禁启动先读持久授权再掩蔽工具；解锁先原子写入新授权全集，写失败则工具保持锁定并返回 `ok:false`；撤销会先更新内存态并重新掩蔽当前 agent，只有持久化成功才声称跨重启撤销，失败响应提示旧授权重启后可能恢复。稳态期每次工具调用：工具 execute → 工具壳黑名单/`gateFor`（UX 快速路径）→ 服务面 `authorizePrivileged`（`index.ts:909`：会话档位或具名 internal）→ `controlExec`（`:949`：档位门、A11Y 门、目标屏范围门）→ `ControlQueue.enqueue`（`control-queue.ts:139`，单槽）→ 壳侧长轮询 `waitForWork/take`（`:167`/`:191`）→ 壳侧执行（ShellOps / DeviceControlService）→ `settle`（`:202`）→ 工具回执给模型。轮次结束由事件监听投影 `kind:'report'`（`index.ts:1612`）交壳侧通知中心。插件 dispose 时 `controlQueue.cancel('plugin disposed')`（`index.ts:1444`）。
 - **嵌套与线程**：引擎侧全在 Node 单线程事件循环，最深三层 `工具 execute → execAdbShell/execAdbLine → controlExec → enqueue`（之后是 Promise 挂起，不占线程）；`callerAuth`（`index.ts:477`）是 AsyncLocalStorage，绑定的是**异步上下文**而不是线程，manage 在 `guard()` 里 `bindSession`（`plugins/dsh-android-manage/src/index.ts:138#expect=*%20%E3%80%8C%E5%B1%8F%E5%B9%95%E5%8F%82%E6%95%B0%E5%83%8F%E6%98%AF%E6%B2%A1%E7%94%9F%E6%95%88%E3%80%8D%EF%BC%8C%E5%AE%9E%E9%99%85%E6%98%AF%E3%80%8C%E5%8F%82%E6%95%B0%E6%A0%B9%E6%9C%AC%E6%B2%A1%E8%BF%9B%E9%97%A8%E3%80%8D%E3%80%82`）后才让 40+ 私有调用点继承。壳侧：`dsh-control-poller` 工作线程（`ControlPoller.kt:65` 起线程）HTTP 取活 → a11y 类 op 经 Handler 转主线程由 `AccessibilityService` 回调执行、sh/浏览器/虚拟屏 op 走各自承载 → 结果回填 POST；Shizuku 执行是另一进程的 Binder 线程（`ShizukuUserService`）。通知投影在引擎事件循环内同步跑纯函数 + `appendFileSync`，壳侧靠 FileObserver 按字节偏移消费（`NotifyStore.kt`、`OverlayLiveFeed.kt`）。
 - **耦合**：服务名与注入面 `androidPrivilege`（`index.ts:1438`）、`inject=['tools','webServer','shell','sandboxPolicy']`（`index.ts:112`）、`ctx.get('connection')` 供路由鉴权（`index.ts:1664`）。环境键：`DSH_WRITE_MODE`/`DSH_ADB_FULLACCESS`/`DSH_ADB_ALLOW`/`DSH_ADB_PAIRED`/`DSH_ADB_WIRELESS`（`currentStatus`，`index.ts:263-276`）、`DSH_ADB_PREFS_PATH`（`:193`）、`DSH_ADB_AUDIT_PATH`（`:136`）、`DSH_CONTROL_TOKEN_TEST` + `DSH_CONTROL_TOKEN`（`control-queue.ts:230-233`、`:323`）、`DSH_SCREEN_SCOPE_TEST` + `DSH_SCREEN_SCOPE`（仅测试开关；产品链路改走原生读回）、`DSH_HOME`。只读的壳侧真值文件：`/data/user/0/com.snoworwind.pocketharness/shared_prefs/dsh-adb.xml`（`SHELL_PREFS_DEFAULT`，`index.ts:165`；`parseAdbPrefsXml` `:202` 读 allowSwitch/paired/connected/pairPort/connectPort/a11yEnabled/controlToken/controlHeartbeat/fullAccess/wirelessOn）；屏幕范围不再有文件真值：原生只存进程内存（`ScreenScopePrefs`），插件经控制应答 `caps.screenScope` 与 `vdInfo.data.scope` 读回（A02；`ControlCarrier.capsExtra`）。本插件写的文件：`$DSH_HOME/.notify.ndjson`（`index.ts:1463`，512KB 轮转 `.1`）、`.live.ndjson`（`:1489`）、`.task-done.ndjson` 与 `.notify-probe.log`（`:1450`、`:1482`）、`files/audit/audit.ndjson`（`:136-154`）。op 名单真源：`SHELL_OPS`（`shell-ops.ts:17`）、`A11Y_OPS`（`control-policy.ts:79`）、`REAL_SCREEN_CONTROL_OPS`（`screen-scope.ts:70`）、`TIER_REQUIRED_OPS`（`index.ts:428`）、`INTERNAL_PRIVILEGED`（`index.ts:453`）；门禁 `scripts/check-control-ops.mjs` 按 `scripts/control-ops-pending.json` 的 families/neverFaces 校验六面登记，`scripts/check-tool-surface-budget.mjs` 从 `DEVICE_TOOL_GROUPS` 推导初始可见集，`scripts/gen-screen-scope-fixture.mjs` + `plugins/dsh-android-bridge/test/fixtures/screen-scope-cases.json` 锁死与壳侧 `ShellOps.decideScreenCommand`（`app/src/main/java/com/snoworwind/pocketharness/ShellOps.kt:249`）的等价性。跨块符号：manage 用 `bindSession` 与 `execAdbShell(cmd,{internal:'animation-scales'})`（`plugins/dsh-android-manage/src/index.ts:138#expect=*%20%E3%80%8C%E5%B1%8F%E5%B9%95%E5%8F%82%E6%95%B0%E5%83%8F%E6%98%AF%E6%B2%A1%E7%94%9F%E6%95%88%E3%80%8D%EF%BC%8C%E5%AE%9E%E9%99%85%E6%98%AF%E3%80%8C%E5%8F%82%E6%95%B0%E6%A0%B9%E6%9C%AC%E6%B2%A1%E8%BF%9B%E9%97%A8%E3%80%8D%E3%80%82`、`:423`）、vdisplay 用 `controlExec('vdInfo')`（`plugins/dsh-android-vdisplay/src/status.ts:220#expect=export%20async%20function%20readVdToolSnapshot`）、browser 用 `controlExec(BROWSER_OPS.caps/op)`（`plugins/dsh-android-browser/src/facts.ts:66`、`tools.ts:262`）；`shizukuReady` 读 `ControlQueue.stats().caps.shizuku`（`index.ts:584`）而 caps 由壳侧 `ControlCarrier.capsExtra` 产出（`app/src/main/java/com/snoworwind/pocketharness/ControlCarrier.kt:70`）；令牌 `shellControlToken()`（`index.ts:251`）被 file-open 复用；路由策略表 `scripts/api-route-auth-policy.json:126-155`。
-- **关键坐标**：`plugins/dsh-android-bridge/src/index.ts:949`（controlExec：档位门→A11Y 门→目标屏范围门→入队）、`plugins/dsh-android-bridge/src/index.ts:909`（authorizePrivileged：internal 按命令形态校验，无来源即拒）、`plugins/dsh-android-bridge/src/index.ts:472` 与 `:474`（SHELL_EXEC_TIMEOUT_MS=20s / SHELL_QUEUE_TIMEOUT_MS=25s 的不变式）、`plugins/dsh-android-bridge/src/index.ts:1034`（execAdbShell：黑名单 + 范围复查 + 双时限一并下发）、`plugins/dsh-android-bridge/src/control-queue.ts:139`（单槽 enqueue 与超时）、`plugins/dsh-android-bridge/src/screen-scope.ts:405`（screenCommandVerdict 段级自证四态）、`plugins/dsh-android-bridge/src/index.ts:755`（gateFor 两条通道等价、档位为唯一会话级门）、`plugins/dsh-android-bridge/src/index.ts:1558`（session/event → notify/live/marker 三路投影）。
+- **关键坐标**：`plugins/dsh-android-bridge/src/index.ts:949#expect=if%20%28%21r.ok%29%20return%20%5B%5D`（controlExec：档位门→A11Y 门→目标屏范围门→入队）、`plugins/dsh-android-bridge/src/index.ts:909#expect=const%20virtual%20%3D%20%28data.screens%20%3F%3F%20%5B%5D%29.filter%28%28s%29%20%3D%3E%20s.kind%20%3D%3D%3D%20%27virtual%27%29`（authorizePrivileged：internal 按命令形态校验，无来源即拒）、`plugins/dsh-android-bridge/src/index.ts:600#expect=export%20const%20SHELL_EXEC_TIMEOUT_MS` 与 `:602`（SHELL_EXEC_TIMEOUT_MS=20s / SHELL_QUEUE_TIMEOUT_MS=25s 的不变式）、`plugins/dsh-android-bridge/src/index.ts:1034#expect=a11ySource%3A%20a11y.source%2C`（execAdbShell：黑名单 + 范围复查 + 双时限一并下发）、`plugins/dsh-android-bridge/src/control-queue.ts:139`（单槽 enqueue 与超时）、`plugins/dsh-android-bridge/src/screen-scope.ts:405`（screenCommandVerdict 段级自证四态）、`plugins/dsh-android-bridge/src/index.ts:755#expect=%7D`（gateFor 两条通道等价、档位为唯一会话级门）、`plugins/dsh-android-bridge/src/index.ts:1558#expect=%7D`（session/event → notify/live/marker 三路投影）。
 - **不变量**：① `SHELL_EXEC_TIMEOUT_MS(20s) < SHELL_QUEUE_TIMEOUT_MS(25s)`（`index.ts:472`/`:474`，单测 `plugins/dsh-android-bridge/test/screen-scope.test.mjs:1204#expect=SHELL_EXEC_TIMEOUT_MS%20%3C%20SHELL_QUEUE_TIMEOUT_MS` 钉死）——反了会造出「引擎报超时但壳侧已执行」，模型重试即二次执行点击/输入/写入；② 特权面无会话来源一律拒、`internal` 名字必须在 `INTERNAL_PRIVILEGED` 且本次命令通过该名字的形态校验器（`index.ts:909-941`）——违反则要么被拒（可见），要么静默放行任意命令；③ 未知/未就绪/越界的屏一律拒，绝不回退 display 0（`screen-scope.ts:569-609`、`index.ts:991`、`ShellOps.kt:132`）——违反=读真实屏的隐私门失效；④ 队列一次只允许一个在途请求（`control-queue.ts:140`、`take` 的在途即拒 `:196`）——双交付会让同一 reqId 执行两次；⑤ 令牌缺失或短于 8 字符一律 403（`control-queue.ts:227`/`:236`）——违反=同机任意应用可取活/回填控制请求；⑥ 工具/HTTP 出口必须过 `toLosslessJson`（`lossless-json.ts:30`：可选键缺省整键不发）——违反则整条回执被工具面判 not lossless JSON 拒收；⑦ `reason.kind` 未知一律 `unknown`，不得映射成 `completed`（`notify-projection.ts:37-43`）——违反则失败轮次在通知栏显示「已完成」。
 - **症状 → 排查**：
   - 工具报「已有在途的设备控制请求——壳侧单线程，请串行调用」→ 上一个请求没回填：`grep -n "已有在途" plugins/dsh-android-bridge/src/control-queue.ts`，再看 `android_privilege_status` 的 `control.queue.lastTakeAt/lastResultAt` 差值（取了活很久不回填=壳侧执行卡住），审计 `files/audit/audit.ndjson` 末行有无对应 op。
@@ -1278,7 +1284,7 @@ flowchart TD
 ```
 
 - [P01] 已修（2026-10-31）：历史缺口档案移除了会漂移的 `bridge/index.ts` 行号，保留 F1 按 `args.screenId` 经 `screenAccessResolved` 判定的历史语义。
-漂移：`upstream cb1c315 docs/AGENTS/ARCHITECTURE.md section 9`（§9「0.13.5 设备控制面」）说 `adb → execAdbLine/execAdbShell（shell 执行、原图截图、pm/dumpsys 等系统面）`，源码 `plugins/dsh-android-bridge/src/index.ts:1034`/`:1070` 与 `plugins/dsh-android-bridge/src/shell-ops.ts:120` 已在 0.14.0 改成经控制队列投递壳侧 Shizuku、不再有 adb 客户端语义（该节自带 0.13.5 标注，属历史段落，按「以源码为准」记录）。
+漂移：`upstream cb1c315 docs/AGENTS/ARCHITECTURE.md section 9`（§9「0.13.5 设备控制面」）说 `adb → execAdbLine/execAdbShell（shell 执行、原图截图、pm/dumpsys 等系统面）`，源码 `plugins/dsh-android-bridge/src/index.ts:1034#expect=a11ySource%3A%20a11y.source%2C`/`:1070` 与 `plugins/dsh-android-bridge/src/shell-ops.ts:120` 已在 0.14.0 改成经控制队列投递壳侧 Shizuku、不再有 adb 客户端语义（该节自带 0.13.5 标注，属历史段落，按「以源码为准」记录）。
 
 #### P02 管理插件（dsh-android-manage）
 
@@ -1409,7 +1415,7 @@ flowchart TD
 - **耦合**（点名符号）：
   - 契约面：`BROWSER_OPS`/`BROWSER_TOOLS`/`VIEWPORT_PRESETS`/`IDENTITY_PROFILES`（`contract.ts:41/14/75/96`）是插件内唯一 op 名与档位表；`VD_OPS`/`VD_STATUS_PATH`（`status.ts:14/21`）与壳侧 `ControlProtocolV2.SUPPORTED_OPS`、`DeviceControlService.handle` 分支、`scripts/control-ops-pending.json` 的 families 三方对齐（`scripts/check-control-ops.mjs` 守）。
   - 权限面：`BROWSER_TOOL_CONTRACTS`（`contract.ts:138-156`）是每个 `browser_*` 工具权限的唯一表；`index.ts` 的 `tools/pre-execute` 请求 `approval` 服务并记录当前 execution 的批准事实，`tools.guard` 在 waterfall 后强制检查；截图另实时读取会话 `sandboxPolicy.overrideOf/resolve`，部署默认不构成用户显式选择。
-  - 控制面：`androidPrivilege.controlExec`（`plugins/dsh-android-bridge/src/index.ts:949`）是唯一通路；它内部按 `TIER_REQUIRED_OPS`（`index.ts:428`）判档位——`browser*` 与 `vdInfo/vdCreate/vdDestroy` 刻意不在列，`vdInput/vdLaunch/vdLaunchApp/vdMoveTask` 在列。
+  - 控制面：`androidPrivilege.controlExec`（`plugins/dsh-android-bridge/src/index.ts:949#expect=if%20%28%21r.ok%29%20return%20%5B%5D`）是唯一通路；它内部按 `TIER_REQUIRED_OPS`（`index.ts:428`）判档位——`browser*` 与 `vdInfo/vdCreate/vdDestroy` 刻意不在列，`vdInput/vdLaunch/vdLaunchApp/vdMoveTask` 在列。
   - 会话键：`sessionScope`（`AsyncLocalStorage`，`tools.ts:193`）自动把 `session` 塞进每个 op 参数；vdisplay 用 `sessionOf(exec)`（`plugins/dsh-android-vdisplay/src/index.ts:162`）。
   - 壳侧真源字段：`BrowserHost.status()` 的 `url/title/loadState/pageGeneration/canGoBack/canGoForward/tabId/tabs/reason`（`BrowserHost.kt:908-939`）、`tabSummaries()` 五字段（`BrowserHost.kt:91-101`）、`lastError`（`BrowserHost.kt:304`）；`VdisplayController.status()` 的 `state/code/guidance/ops/screens/viewers/ownerSessionId`（`VdisplayController.kt:233-268`）。
   - 面板/客户端：`window.androidBridge.vdisplayStatus/vdisplaySelect/vdisplayBounds/forceDestroyVdisplay`（`AndroidBridge.kt:329/330/326/348`），`vdisplayBounds` 的 `viewerId='files-sidebar'`（`plugins/dsh-android-vdisplay/src/client/index.ts:93`）与壳侧 viewer 仲裁表同名；收起信号 `[data-sidebar-right-expand]`（`plugins/dsh-android-vdisplay/src/client/index.ts:188#expect=document.querySelector`）。
@@ -1496,7 +1502,7 @@ vendored bootstrap 与注入集的关系（0.15.0）：`plugins/dsh-linux-bootst
 - **一句话**：三个引擎侧插件的合块——`dsh-android-file-open` 把壳侧拷好的外部文件变成一条「强制新会话、未发送的附件草稿」（配五条受鉴权的 exact 路由与自有临时项清单）、`dsh-android-linux-env` 提供工具链/环境配方视图与开发者选项的运行时缓存白名单清理、`dsh-model-capability` 为手填供应商路由探测能力并把缺失字段写回 settings.yaml。
 - **入口/触发**：① 外部应用 `ACTION_VIEW`/`ACTION_SEND` → 壳侧 `FileIncoming.processIncomingIntent`（`app/src/main/java/com/snoworwind/pocketharness/FileIncoming.kt:379`）→ POST `/api/android/file-incoming`；② 设置页/开发者选项 → file-incoming 五条 exact 路由（GET 统计、claim、content、complete、clean）、`/api/android/env/status|recipe`、`/api/android/runtime-cache/scan|execute`；③ cordis 装配调三个插件的 `apply()`：注册工具 `android_file_incoming_status` / `android_toolchain_status` / `android_env_recipe` / `model_capability_probe` / `model_capability_apply`，并给 model-capability 起 auto-apply 轮询。
 - **运行顺序**：
-  1. **装配期**（引擎起来即跑）：file-open `apply`（`plugins/dsh-android-file-open/src/index.ts:481`）先 `purgeStaleUnclaimed('boot')` 清上个进程的未认领残骸 → `mkdirSync(tmpWorkspace())` → `void incomingWorkspaceId()` 异步登记「临时工作区」→ 注册五条 exact 路由（每条都 `ctx.effect` 包裹）；linux-env `apply`（`plugins/dsh-android-linux-env/src/index.ts:337`）注册两个工具 + 两条 env 路由 + 两条 runtime-cache 路由；model-capability `apply`（`plugins/dsh-model-capability/src/index.ts:238`）读构建期注入的 `lib/catalog-snapshot.json` → 注册两个工具 → `autoApply !== false` 时装一个 `setTimeout(8s)` + `setInterval(5s)` 的签名轮询 effect。
+  1. **装配期**（引擎起来即跑）：file-open `apply`（`plugins/dsh-android-file-open/src/index.ts:481`）先 `purgeStaleUnclaimed('boot')` 清上个进程的未认领残骸 → `mkdirSync(tmpWorkspace())` → `void incomingWorkspaceId()` 异步登记「临时工作区」→ 注册五条 exact 路由（每条都 `ctx.effect` 包裹）；linux-env `apply`（`plugins/dsh-android-linux-env/src/index.ts:336#expect=status%3A%20item.status%2C`）注册两个工具 + 两条 env 路由 + 两条 runtime-cache 路由；model-capability `apply`（`plugins/dsh-model-capability/src/index.ts:238`）读构建期注入的 `lib/catalog-snapshot.json` → 注册两个工具 → `autoApply !== false` 时装一个 `setTimeout(8s)` + `setInterval(5s)` 的签名轮询 effect。
   2. **来件链**（用户动作触发）：壳侧后台单线程先在 pendingLock 下扫 TTL 并预留 delivery 窗口，再校验/净化/`copyIn` → 同锁原子写 pending ledger → POST → 鉴权 → `enqueueSession` 断言路径在临时工作区内 → 写 `.sessions/<entryId>.json` 并把 canonical 路径记进 `.tool-temp.ndjson`。pending/.sessions 任一引用索引读失败时壳侧 cleanup/TTL fail closed。
   3. **草稿链**（浏览器轮询驱动）：GET 拿公开元数据（顺带 TTL 复核及工作区登记重试）→ `IncomingDraftConsumer` 经客户端 `runtime.createSession(cwd)` 创建可寻址的空白会话，再由 `uiWorkspace.openSession(sessionId)` 导航（`sessions` 服务只持有身份/刷新/scope）；目标 scope 建立后才 POST claim（删队列记录、发进程内 ticket）→ GET content 流式回字节 → 放入该会话 composer 后 POST complete 收口；未认领记录在 boot/TTL 两档被墓碑化。插件内 `ensureSessions()` 目前只有定义，没有调用，不承担创建职责。
   4. **清理链**：设置页 POST clean（只删自有清单项）；开发者选项 GET scan → 展示体积 → POST execute 逐项删并落审计。
@@ -1504,22 +1510,22 @@ vendored bootstrap 与注入集的关系（0.15.0）：`plugins/dsh-linux-bootst
   6. 跑完把控制权交回：file-open 交浏览器 composer（不发送任何 user message）；linux-env/model-capability 把结果回给工具调用方或 HTTP 响应方。
 - **嵌套与线程**：全部 HTTP handler 与工具 `execute` 跑在引擎 Node 事件循环（上游 `webServer` 同一线程）——file-open 的 `readItems/statSync/rmSync/writeFileSync`、linux-env 的 `measure/removeTree` 都是**同步 fs**，会阻塞事件循环；`createReadStream` 的 data 回调同样在事件循环。壳侧拷贝在 `dsh-file-incoming` 单线程守护执行器（`FileIncoming.kt:301`），与引擎进程无关。典型三层链：`browser GET handler → purgeStaleUnclaimed → readItems(queueDir)`；`tools.execute → toolchainStatus → liveFacts(ctx,session) → sandboxPolicy.resolve`；`interval tick → runAutoPass → discover → probePassive`。model-capability 的探测是 `globalThis.fetch` 异步，不阻塞；草稿消费者按 entryId 的 `hydrating` 集合避免同一项并发 hydrate，创建后的会话记录在客户端 `createdSessions`。
 - **耦合**（点名符号）：
-  - 鉴权三件套全由 `@dsh-android/dsh-android-bridge` 拥有：`shellControlToken()`（实时读壳侧 prefs `dsh-adb.xml` 的 `controlToken`，`plugins/dsh-android-bridge/src/index.ts:251`）、`authorizeMobileRoute`/`sendMobileRouteRejection`、常量 `CONTROL_TOKEN_HEADER = 'x-dsh-control-token'` 与 `FALLBACK_LOOPBACK_HOSTS = ['127.0.0.1:3080','localhost:3080']`（`plugins/dsh-android-bridge/src/route-auth.ts:4/7`）。file-open 经 `plugins/dsh-android-file-open/src/route-auth.ts:47/50` 原样转发（本包不复制安全逻辑），linux-env 直接调用。
+  - 鉴权三件套全由 `@dsh-android/dsh-android-bridge` 拥有：`shellControlToken()`（实时读壳侧 prefs `dsh-adb.xml` 的 `controlToken`，`plugins/dsh-android-bridge/src/index.ts:251#expect=%2F%2F%20The%20explicit%20guest%20marker%20identifies%20the%20Android%20shell%27s%20Debian%20execution%20context.`）、`authorizeMobileRoute`/`sendMobileRouteRejection`、常量 `CONTROL_TOKEN_HEADER = 'x-dsh-control-token'` 与 `FALLBACK_LOOPBACK_HOSTS = ['127.0.0.1:3080','localhost:3080']`（`plugins/dsh-android-bridge/src/route-auth.ts:4/7`）。file-open 经 `plugins/dsh-android-file-open/src/route-auth.ts:47/50` 原样转发（本包不复制安全逻辑），linux-env 直接调用。
   - 路径契约：壳侧 `FileIncoming.tmpWorkspace`（`FileIncoming.kt:32`）= `filesDir/home/.dsh/workspaces/incoming`；引擎侧 `tmpWorkspace()`（`plugins/dsh-android-file-open/src/index.ts:36`）= `$DSH_HOME/workspaces/incoming`。两侧各持一份元数据名：`.sessions`、`.meta.ndjson`、`.pending-notify.ndjson`（壳）、`.tool-temp.ndjson`（引擎）。
   - 消费端注入层：`dsh-client-ui-responsive/src/client/mobile/incoming-draft.ts`（GET + claim + content + complete）、`dsh-client-ui-responsive/src/client/dev-section/DevSection.tsx`（GET + clean）、`dsh-client-ui-responsive/src/client/dev-section/runtime-cache.tsx`（scan + execute）。
   - 路由登记表 `scripts/api-route-auth-policy.json`（五条 file-incoming + env/status + env/recipe + runtime-cache scan/execute 全列 `access: protected`）；缺登记由 `scripts/check-api-route-auth.mjs` 判红。
-  - 工具链**单一来源** = `dsh-shell-termux` 根导出 `PROBE_BINARIES` / `REQUIRED_TOOLCHAIN` / `TOOLCHAIN_REPRESENTATIVE`（`dsh-shell-termux/src/index.ts:42/39/45`），linux-env 只消费（`plugins/dsh-android-linux-env/src/index.ts:30`），其 `package.json` 依赖 `file:../../dsh-shell-termux`。
-  - 授权档位权威 = `ctx.androidPrivilege.status().tier`（bridge `AndroidPrivilegeService.status`，`plugins/dsh-android-bridge/src/index.ts:569`），linux-env 只在服务缺席时回落 `deployedAdbTier()`（env 快照，恒 T0）；档位实时值来自 `sandboxPolicy.resolve({session})`（`plugins/dsh-android-linux-env/src/index.ts:72`）。
+  - 工具链**单一来源** = `dsh-shell-linux` 根导出 `PROBE_BINARIES` / `REQUIRED_TOOLCHAIN` / `TOOLCHAIN_REPRESENTATIVE`（`dsh-shell-linux/src/index.ts:28#expect=if%20%28mode%20%3D%3D%3D%20undefined%29%20return%20fallback`），linux-env 只消费（`plugins/dsh-android-linux-env/src/index.ts:30#expect=%2F%2F%20%E8%A7%84%E9%81%BF%E4%B8%A4%E4%B8%AA%E5%B7%B2%E8%B8%A9%E8%BF%87%E7%9A%84%E5%90%AF%E5%8A%A8%E5%8D%B3%E6%AD%BB%E5%BD%A2%E6%80%81%EF%BC%88ERR_PACKAGE_PATH_NOT_EXPORTED%20%2F%20%E6%B3%A8%E5%85%A5%E9%93%BE%E4%B8%A2%E6%96%B0%E5%A2%9E%E6%96%87%E4%BB%B6%EF%BC%89%E3%80%82`），其 `package.json` 依赖 `file:../../dsh-shell-linux`。
+  - 授权档位权威 = `ctx.androidPrivilege.status().tier`（bridge `AndroidPrivilegeService.status`，`plugins/dsh-android-bridge/src/index.ts:569#expect=%2A%20%20%20%E5%86%99%EF%BC%9A%60settings%20put%20global%20%3C%E4%B8%89%E9%94%AE%E4%B9%8B%E4%B8%80%3E%20%3C%E6%95%B0%E5%80%BC%7Cnull%3E%60%EF%BC%8C%E5%8F%AF%E5%A4%9A%E6%AE%B5%E4%BB%A5%20%60%3B%60%20%E8%BF%9E%E6%8E%A5`），linux-env 只在服务缺席时回落 `deployedAdbTier()`（env 快照，恒 T0）；档位实时值来自 `sandboxPolicy.resolve({session})`（`plugins/dsh-android-linux-env/src/index.ts:71#expect=export%20function%20liveFacts%28ctx%3A%20Context%2C%20session%3F%3A%20unknown%29%20%7B`）。
   - settings 面：读必须 `.find((d) => d.ns === 'llm-pi-ai')`（坑 48，`plugins/dsh-model-capability/src/settings-config.ts:50`、`plugins/dsh-model-capability/src/index.ts:417/429`）；写是 `settings.mutate('llm-pi-ai', [{ op: 'set', path: ['providers', route, 'models'] }], descriptor.revision)` + `SETTINGS_CONFLICT` 单次重试（`plugins/dsh-model-capability/src/settings-writer.ts:239`）。
   - 目录快照 `plugins/dsh-model-capability/lib/catalog-snapshot.json`（由 `scripts/build-snapshot-013.mjs:456` 按本次 ABI 引擎树生成，原先由 check-patch-mirror 的镜像面豁免该文件；镜像层已于 2026-10-15 移除，该豁免概念随之失效）→ `lookupCatalog`。
   - 装配集：`scripts/profile-web.cordis.patch.yml` 三条 `insert`（android-linux-env / android-file-open / model-capability）+ `scripts/plugin-dirs.json`。
-  - 运行时缓存读写的路径面：`$DSH_HOME`（壳侧注入点 `EngineManager.kt:2335#expect=%22DSH_HOME%22%20to%20ensurePrivateDshData%28%29.absolutePath`）、`$DSH_FILES_DIR`（`EngineManager.kt:2349#expect=%22DSH_FILES_DIR%22%20to%20context.filesDir.absolutePath`）、当前代 `engine.log`（壳侧 `EngineAuth.tokenFromLog` 的唯一输入）。
+  - 运行时缓存读写的路径面：`$DSH_HOME` / `$DSH_FILES_DIR`（壳体在客体命令的 `env -i` 之后注入，`EngineManager.kt:659#expect=%22DSH_HOME%22%20to%20ensurePrivateDshData%28%29.absolutePath`、`EngineManager.kt:658#expect=%22DSH_FILES_DIR%22%20to%20context.filesDir.absolutePath`）、当前代 `engine.log`（壳侧 `EngineAuth.tokenFromLog` 的唯一输入）。
 - **关键坐标**：
   - `plugins/dsh-android-file-open/src/index.ts:238` — `enqueueSession`：路径断言 + 队列落盘 + 自有临时项记账（POST 的验收判定）
   - `plugins/dsh-android-file-open/src/index.ts:431` — `safeResolveInside`：两侧 realpath 后的工作区包含判定（H3 + 前缀混用修复）；content 须校验并读取同一 FD（坑 369）；clean 仅允许顶层普通叶文件，不跟随链接、不递归，排除队列元数据（坑 370）。
   - `plugins/dsh-android-file-open/src/index.ts:525` — 五条 exact 路由的鉴权注册（拒绝先于 method 判定与任何副作用）
   - `plugins/dsh-android-file-open/src/index.ts:216` — `purgeStaleUnclaimed('boot'|'ttl')`：未认领草稿的墓碑化判据
-  - `plugins/dsh-android-linux-env/src/index.ts:353` — 两条 env 路由的 `wsvc.register`（对照同文件 `:342` 注释与 `:386/:400` 的 `ctx.effect` 形态）
+  - `plugins/dsh-android-linux-env/src/index.ts:352#expect=%7D` — 两条 env 路由的 `wsvc.register`（对照同文件 `:342` 注释与 `:386/:400` 的 `ctx.effect` 形态）
   - `plugins/dsh-android-linux-env/src/runtime-cache.ts:492` — `insideAllowedScope`：执行前的第二道白名单闸门；历史日志另在扫描与执行端核对普通文件，默认只 unlink，禁止递归删除日志槽目录（坑 367）。
   - `plugins/dsh-model-capability/src/index.ts:134` — `pickDialect`：无 `compat.thinkingFormat` 即不写 `reasoningEfforts`（坑 54）
   - `plugins/dsh-model-capability/src/settings-writer.ts:239` — 唯一的 settings 写入点（set + revision + 冲突重试）
@@ -1534,11 +1540,11 @@ vendored bootstrap 与注入集的关系（0.15.0）：`plugins/dsh-linux-bootst
   1. **分享文件后不出现草稿会话、也没有提示**：`adb logcat -s dsh-file-open`（找 `incoming processed` / `pending incoming flushed` / `incoming rejected (ownership assertion)` / `temp workspace clean skipped`）；再看引擎日志 grep `未认领来件过期清理`、`路径不在临时工作区内`；队列现场 `adb shell run-as com.snoworwind.pocketharness ls files/home/.dsh/workspaces/incoming/.sessions`（残留记录 = 补建失败或未领取）。401 形态的静默丢件查壳侧与引擎的令牌是否同源（`dsh-adb.xml` 的 `controlToken`，`X-DSH-Control-Token` 头）。
   2. **设置页「临时工作区」占用不清零 / 点清理返回 `removed: 0`**：`/clean` 只删 `.tool-temp.ndjson` 记账项；前缀形态不一致会让 `ownedInsideWorkspace` 判为越界。grep 引擎日志 `已自愈删除非 canonical 的临时工作区残留`、`workspaceRegistry.list 失败`；对照响应里的 `removed` 与清单文件行数。
   3. **自定义供应商不出现思考档位 / 出现了但请求被网关拒**：轨迹文件 `$DSH_HOME/model-capability.log`（默认开，`DSH_MODEL_CAPABILITY_TRACE=0` 关）grep `tick:`、`runAutoPass(`、`未给出统一 thinkingFormat`、`仅部分目录声明`、`SETTINGS_CONFLICT`、`namespace-absent`；引擎日志 grep `auto-apply`。
-  4. **工具链状态与设置页/实际不符**：`android_toolchain_status` 的 `missing` 是**包名**口径（bash 缺失 → 整表 `unusable`），也是 ST-17 单一表的回归点：`grep -n "PROBE_BINARIES" dsh-shell-termux/src/index.ts plugins/dsh-android-linux-env/src/index.ts`；档位显示以 `android_privilege_status`（`androidPrivilege.status()`）为准，工具文本里的 adbTier 只是部署默认视图。
+  4. **工具链状态与设置页/实际不符**：`android_toolchain_status` 的 `missing` 是**包名**口径（bash 缺失 → 整表 `unusable`），也是 ST-17 单一表的回归点：`grep -n "PROBE_BINARIES" dsh-shell-linux/src/index.ts plugins/dsh-android-linux-env/src/index.ts`；档位显示以 `android_privilege_status`（`androidPrivilege.status()`）为准，工具文本里的 adbTier 只是部署默认视图。
   5. **点了「清除运行时缓存」几乎没释放**：本版白名单只有 `engine.log.1..N` 与 `DSH_HOME/.node-compile-cache`（`cache/**` 整类以 `reason=not-allowlisted` 跳过）。看 GET `/api/android/runtime-cache/scan` 返回的 `skipped[].reason`（`log-root-unresolved` / `current-generation-absent` / `not-allowlisted` / `preserved` / `scope-rejected`）与 `label`（`$DSH_HOME/...` 形态）；审计落 `$DSH_FILES_DIR/audit/runtime-cache.ndjson`。
 - **可疑点**：
   1. 【已确认，安全面；COMPAT-REVIEW §5.12 / H-11 仍在待办】`FileIncoming.SAFE_PREFIXES`（`app/src/main/java/com/snoworwind/pocketharness/FileIncoming.kt:35-38`）含本应用私有目录 `/data/user/0/com.snoworwind.pocketharness/` 与 `/data/data/...`，任意第三方应用 `ACTION_VIEW` 一个 `file://…/home/.dsh/.credentials.yaml` 就能让壳把它拷进临时工作区；引擎侧 `enqueueSession`（`plugins/dsh-android-file-open/src/index.ts:238-261`）只断言「在临时工作区内且存在」，**不验来源**，于是该文件变成一条未发送草稿，经 claim/content 可被取出（借壳读自身凭据）。
-  2. 【已确认（代码面），一致性】linux-env 的两条 env 路由没有走 `ctx.effect`：`plugins/dsh-android-linux-env/src/index.ts:349-376` 在 `for` 循环里直接 `wsvc.register(...)`，而同文件 `:342` 的注释明确要求「热重载/卸载必须回收路由，不留重复 handler」，同文件 `:386/:400` 的 runtime-cache 路由与 file-open 五条（`plugins/dsh-android-file-open/src/index.ts:525/603/695/750/811`）都用了 `ctx.effect`。触发条件=热重载或卸载本插件；影响=旧 handler 残留、同名路由重复注册（未在设备上复现，运行期影响未证实）。
+  2. 【已确认（代码面），一致性】linux-env 的两条 env 路由没有走 `ctx.effect`：`plugins/dsh-android-linux-env/src/index.ts:348#expect=const%20root%20%3D%20process.env.DSH_FILES_DIR` 在 `for` 循环里直接 `wsvc.register(...)`，而同文件 `:342` 的注释明确要求「热重载/卸载必须回收路由，不留重复 handler」，同文件 `:386/:400` 的 runtime-cache 路由与 file-open 五条（`plugins/dsh-android-file-open/src/index.ts:525/603/695/750/811`）都用了 `ctx.effect`。触发条件=热重载或卸载本插件；影响=旧 handler 残留、同名路由重复注册（未在设备上复现，运行期影响未证实）。
   3. 【已确认（代码 + 目录快照实测），写回口径】`mergeCatalog` 给模型设 `model.compat` 时不写 `model.sources`（`plugins/dsh-model-capability/src/index.ts:166-169`），而 `report.unknown` 按 `sources` 是否为空判定（`:195-198`）；按真实算法在 `plugins/dsh-model-capability/lib/catalog-snapshot.json` 上实测：**181 / 961** 个模型 id 会落到「有 dialect、无 thinkingLevelMap」。于是 `model_capability_apply`（offline 默认 true）会把 `compat.thinkingFormat` 等写进 settings，同时工具文本把这批模型列进「未获得能力元数据：…」——报告与实际写入自相矛盾（触发条件：路由声明了这批 id 之一并调用 apply）。
   4. 【已确认（代码面），配置写入面】`planModelPatch` 的旧判据 `changes.length > 0 || next !== entry` 中对象身份恒真且 `changes` 跨 patch 累积，可能把无实际字段写入的字符串模型项规范化。2026-10-05 已改为 per-patch changed 判据并添加回归用例；待插件测试/镜像验证。
   5. 【2026-10-11 已修；原条目为历史记录】曾：诊断轨迹默认开启且 `tick()` 在早退前无条件写一行、**每 5 秒**一次 → `$DSH_HOME/model-capability.log` 约 1.7 万行/天。**现已两条都改掉**：0.14.2 改 120 秒兜底，本轮 A7 再**整体移除定时器** ⇒ **纯事件驱动（settings/document-updated），全插件无任何定时器**（启动期仅一次首读基线，同样不排定时器），且不再每轮无条件写日志。**仍成立**：日志无轮转/无上限（`plugins/dsh-model-capability/src/index.ts:181-185`）且不在运行时缓存白名单里（`plugins/dsh-android-linux-env/src/runtime-cache.ts:59`/`:73`），「清除运行时缓存」仍收不回这份增长。
@@ -1578,7 +1584,7 @@ flowchart TD
 本项目的主 Web UI 由固定版本的 DSH Web 前端完整拥有：页面框架、左右栏、会话列表、设置树、输入区、菜单、卡片和响应式行为都由 DSH 渲染。Android 适配插件只接入系统能力，不再复制或重排这些界面。UI 对齐目标与退役范围见 [dsh-client-ui-responsive 设计说明](../../dsh-client-ui-responsive/docs/design.md)。
 
 - 入口与装载：
-  - profile-web.cordis.patch.yml 把 dsh-shell-termux、dsh-host-web-compat、dsh-client-ui-responsive 注入固定快照；host-web-compat 在每个 index 响应前补旧 WebView 缺失的浏览器 API、主题/文件桥和启动诊断。
+  - profile-web.cordis.patch.yml 把 dsh-shell-linux、dsh-host-web-compat、dsh-client-ui-responsive 注入固定快照；host-web-compat 在每个 index 响应前补旧 WebView 缺失的浏览器 API、主题/文件桥和启动诊断。
   - dsh-client-ui-responsive/src/client/index.ts:78#expect=export%20function%20apply 的 apply() 只挂 Android 系统 inset/IME、窄视口事实、键盘边界、系统主题、系统返回桥、Android 设置槽位、BrowserHost/打开方式标签、文件/通知/导出桥。
   - 系统栏和输入法 inset 写入 --dsh-android-* 变量；适配样式只消费这些变量，不设置 DSH 页面组件的尺寸、顺序、显隐或布局。对应发布端是 MainActivity.kt:1691#expect=private%20fun%20pushWebInsets
 - 仍然依赖页面结构的窄边界：
@@ -1599,160 +1605,43 @@ flowchart TD
 
 ### 构建、门禁与设备验收
 
-#### B01 构建链与快照注入
+#### B01 Linux 来源构建与工厂载荷装配
 
-- **Auto Review 新会话默认与执行边界**：`scripts/profile-web.cordis.patch.yml` 完整配置 permission presets 并设置 `defaultPreset: auto`，同时装载固定版 `dsh-experimental-auto-review`；engine scope 补丁由 `scripts/patches/data/permission-auto-review-default.mjs` 修改权限服务、reviewer 与设置客户端。冷启动恢复时，若持久化 Auto 会话缺少 sandbox/approval 事实，权限服务按 Auto 固定规格补齐；reviewer 注册前，按持久化或有效 Auto 身份命中的 `tools/pre-execute` 先行拒绝，注册后会重钉全部现存会话。新会话创建时 Auto 是默认档。注册 reviewer 后每个原生工具、顶层 PTC `run_code` 源码及原有 PTC 内层调用都进入模型分类。high 在 reviewer listener 内直接返回 deny、记录原始 `exec`，不调用后续审批链；同一插件注册 `ctx.tools.guard`，waterfall 后仍对记录中的 exec 返回拒绝。medium deny 才继续进入逐次审批；低风险按 reviewer allow 继续。reviewer 异常 fail closed；插件卸载回退 `workspace-write`，Android shell 在 spawn 前拒绝受限档位。用户切换当前会话权限档位会退出 Auto Review；设置中的默认值仅用于新会话。三个固定 npm 包的 source fixture、运行时语义和 runner 反证在 `scripts/patches/tests/permission-auto-review-default.test.mjs`；本机测试不替代设备验收。
-- **Workspace Write 档位说明**：后置 engine 补丁 `scripts/patches/data/workspace-write-boundary-warning.mjs` 在当前会话选择器、新会话默认设置与 `/permission` 命令三条入口拦截档位变更；确认说明 Android 没有覆盖所有工具的路径级文件系统沙箱，Termux Shell 在 bash 启动前失败关闭，其他工具按各自实现并受 app UID 边界约束。选中后 settings 描述持续提示。它依赖 AR1 注册同一 client target；本代夹具与 runner 反证见 `scripts/patches/tests/workspace-write-boundary-warning.test.mjs`。
-- **当前来源链**：官方 0.2.1-rc.5 → native addon → 官方 host-libraries → Client compiler → 根 Client bundle → Web → 固定源码导出 → 临时部署闭包 → pnpm deploy → 恢复源码 → 快照/补丁/注入/双构建/隔离签名。Android client 构建注入 official profile、版本、提交短哈希与标题，并检查品牌槽位和 HTML title。PTC A1 的 planPatch 同时验证 index/process/persistent-process，patchRuntimeIndex 与 patchPersistentLaunch 分别处理两条 launch；固定 spawn 数、enforcing argv 与 companion 门均不得绕过。v0.14.10 来源构建与未完成的设备验收见 [升级记录](ENGINE-UPGRADE-2026-10-31.md)。
-- **下载失败快速止损与重试**：builder 和 signer 对固定 Temurin 17.0.20+8 各最多三次尝试；builder 在昂贵来源测试前以 `./gradlew --version` 下载/校验 wrapper，最多五次，只对暂态 HTTP/网络错误重试，失败不进入耗时构建。Termux bootstrap、Debian keys、NDK、固定 marketplace tarball、Debian Snapshot 元数据与 Node 资产经 `retry-curl.sh` 下载：curl 自身处理已识别的 HTTP/超时错误，外层只对退出码 5/6/7/18/52/55/56 有界重试；404、TLS 和本地文件错误快速失败。npm CLI 使用 `--fetch-retries=8`；pnpm 11+ 的 Harness install/deploy 使用经 pnpm 11.28.5 与 12.2.0 `config get` 逐项验证的 `pnpm_config_*` 环境变量，禁止把 npm `--fetch-*` 参数传给 pnpm。pnpm 12.2.0 的 Corepack 配置探测与 deploy 使用 `--pm-on-fail=ignore` 绕过 workspace 的 pnpm 11.28.5 pin。两者退避 1-30 秒且单请求超时 5 分钟；包仓 Python fetch 最多八次总请求并限制可重试错误类型。重试不改变固定 SHA-256/SHA-1、签名和 fingerprint 判据。workflow 合同、curl 传输负控、shell 504 实跑夹具和下载负控在 `scripts/source-build/retry-curl.test.mjs`、`cloud-workflow.test.mjs`、`engine-base-workflow.test.mjs`、`linux-assets-workflow.test.mjs` 与 `test_prepare_termux_signed_repo.py`；详情见 [构建与环境](build-and-env.md#来源链下载抖动与快速预检)、[坑 653](gotchas.md)、[坑 654](gotchas.md) 和[坑 655](gotchas.md)。
-- 以下旧来源链锚点仅作历史回查；当前固定源码与允许入口见 [构建环境](build-and-env.md)，本轮实际验证见升级记录。
-
-
-- **一句话**：把「一次打包命令」变成可发布的 APK：先在 WSL 内从基座建出注入前的运行时快照，再逐 ABI 注入插件与补丁、过完整门禁集、写快照指纹并 gradle 出包，任一 ABI 被拒即整链非 0。
-- **入口/触发**：
-  - 快照段：`node scripts/build-snapshot-013.mjs arm64 或 x86_64`（Windows 上自动重入 WSL；前置是 `.deploy-tmp/{arm64-base,x64-base}/base-usr.tar.xz`）。
-  - 打包段：`pwsh -File scripts\build-apk-013.ps1 [-Suffix ""] [-Fast] [-OnlyAbi 指定 ABI] [-SkipInject] [-ExportSnapshots]`，**在协调仓根执行**（apk 仓 AGENTS.md:30；apk 仓副本 scripts/ 与协调仓逐字节镜像，权威源在协调仓同名路径——本条目行号一律取 apk 仓副本）。
-  - 间接入口：发布链 `scripts/build-release.ps1:56,60,147` 与 CI/云端 `dsh-mobile-apk/scripts/build-apk.mjs` 跑同一套门禁集（`check-release-gates.mjs:136-140` 断言接线）。
-  - 一键发布 workflow 的 version 输入只通过环境变量进入 shell，先做版本格式与 `versionName` 相等断言；跨 job artifact 使用固定名称与下载目录，版本只用于验证后的 release 子目录。
-- **运行顺序**：
-  - 第 1 段（快照构建，无注入）：Windows 宿主自重重入 WSL（`build-snapshot-013.mjs:31-45`，可用 `DSH_NO_WSL_REEXEC=1` 关闭）→ 基座与 base-dsh 解压到 ext4 stage（`:120-126`，`xz -dT「XZ_THREADS 线程」 | tar -x`）→ 机密剥离 + seed settings.yaml + patchReload 出厂值（`:134-153`）→ 剥离清单后置断言（`:168-175`）→ 引擎 overlay 逐包 tgz 覆盖（`:192-275`，登记表 snapshot-config/engine-overlay.json）→ 引擎树补丁 `apply-patches.mjs --apply --scope engine` 并逐条复查 marker、再跑四项行为回归（`:291-350`）→ chrome87 语法降级 + 复扫（`:366-413`）→ combo 缓存预计算（`:415-447`）→ 能力目录快照（`:449-460`）→ Termux 索引/依赖闭包/deb 下载校验/提取（`:462-599`）→ dpkg status 初始化（`:601-615`）→ shebang 与 RUNPATH 重写（`:617-624`）→ 三缺陷固化 tar/git/rg + cordis.patch.yml 权威覆盖（`:626-693`）→ pnpm/canvas/apt-dpkg wrapper/install-clang.sh（`:694-864`）→ 错位目录剔除与瘦身（`:866-925`）→ 软链自净化（`:933-966`）→ 归档 `tar -c --mtime=@「固定纪元」 | xz -T「XZ_THREADS 线程」 -6` 并写 snapshot.sha256（`:968-989`）→ 归档内 LICENSES、旧 Termux 前缀软链、A1 出厂值三道自检（`:997-1046`）。产出 `.deploy-tmp/snapshot-013/「abi」/snapshot.tar.xz`。
-  - 第 2 段（打包编排）：循环外先跑静态门禁（`build-apk-013.ps1:37-146`，含补丁镜像 `:38`、契约 `:45`、状态登记/桥对称/SKIP 纪律 `:51-58`、中止语义自检 `:62`、指纹预检 `:69`、manifest/注释/有界读/路由鉴权/协议 V2/工具 schema/控制 op/插件单测/冷启动预算/构建器产出面/并发上限/Kotlin 单测数量）→ pi-ai 目录 diff（`:150-161`，信息性不拒）→ 读 build.gradle.kts 版本定 out 目录（`:164-165`）→ 逐 ABI（arm64、x86_64 顺序，`:182`）：overlay 抽验（`:193`）→ vendor 补丁门禁（`:211`）→ 注入段语法降级到暂存副本（`:229-264`，vendor 是入库跟踪文件，禁就地改写）→ 注入段 combo 增量预计算（`:270-276`）→ `inject-all.py` 单 pass 注入（`:283`）→ 挂载集（`:287`）、注入成员完整性（`:291`）、combo 覆盖（`:295`）、语法下限复扫（`:303`）、工具面预算（`:308`）、注入后鉴权（`:312`）、strip 后置（`:316`）→ 权限模式（`:326`）、第三方合规（`:338`）、许可资产入 assets（`:341-344`）、机密（`:350`）、elf（`:355`）、运行时补丁资产（`:365`）、A1 出厂值（`:370`）→ 清 assets 残留并写 snapshot.tar.xz + snapshot.sha256（`:377-381`）→ 指纹 `--require` 严格对账（`:384`）→ `gradlew :app:assembleDebug -PversionNameSuffix=`（`:388`）→ 拷到 `out/v「版本」/pocket-harness-v「版本」「后缀」-「abi」.apk`（`:391`）。
-  - 第 3 段（可选归档）：`-ExportSnapshots` 导出注入后快照 + 写 .sha256，并用 `check-snapshot-asset.ps1` 比对 APK 内嵌快照逐字节一致（`:403-420`）→ 交发布链/上传面。
-  - **APK 终端组装共用段**：本地 `build-apk-013.ps1`、云端 `build-apk.yml → build-apk.mjs`、发布 `build-release.ps1` 都把已准备好的 ABI 快照交给 `build-apk-engine.mjs assemble`；该引擎负责复制快照、写 SHA-256 指纹、严格跑 `check-snapshot-fingerprint.mjs --require`、Gradle `:app:assembleDebug`、复制命名产物。三条调用路径随后都对最终输出目录运行 `build-apk-engine.mjs verify`，由 `check-apk-signatures.mjs` 调 `apksigner verify --verbose` 并要求 v1/v2/v3 全为 true；云端 workflow 另有一次目录/单 APK 签名复核。（0.14.5：原先 `build-snapshot.yml` 那条独立快照构建工作流直接调用 Gradle、不属于这里描述的共享终端引擎链；**该 workflow 已删除**，现在只有下列三条路径属于终端组装面。）
-  - 收口：任一 ABI 被门禁拒绝或零产出 → 打印汇总后 `exit 1`（`:427-428`），由 `check-build-chain-abort.mjs:53-89` 静态锁住记账纪律。
-- **嵌套与线程**：主线程 = PowerShell 编排，逐 ABI 串行；每 ABI 一次 `gradlew --no-daemon`（`:388`，独立 JVM）。快照段在 Windows 上是父子进程：父进程 `execSync wsl.exe -e bash -lc`（`build-snapshot-013.mjs:40`）只转发退出码，子进程在 WSL 的 ext4 stage 里跑完全链，压缩/解压线程数统一取 `scripts/lib/shell.mjs:31` 的 XZ_THREADS（默认 8，`DSH_CPU_THREADS` 可覆写）。Python 注入（inject-all.py）与 node 门禁都是子进程调用、各自单线程；调用深度最多 3 层（ps1 → node/python 工具；build-snapshot → apply-patches.mjs → 其内部再无 spawn）。
-- **耦合**：
-  - `scripts/plugin-dirs.json` 的 `dirs`/`externals` 是注入集唯一出处：ps1:174-178 读它、`check-inject-completeness.mjs:37-38` 也读它；增删包只改这一处。
-  - `profile-web.cordis.patch.yml` 的 `name:` 行集合 ↔ 注入包 package.json 的 name：`check-patch-mounts.mjs:28-40` 双向差集（挂载 ⊇ 注入，且反向差集只允许 `@deepseek-ai/*` 在挂载侧）。
-  - registry.json 的 `scope` 分区：`engine` 归快照段（build-snapshot-013.mjs:294,297），`vendor` 归打包段（build-apk-013.ps1:211）；`marker` 由 build-snapshot-013.mjs:300-311 逐条复查，`requires` 由 apply-patches.mjs:2490#expect=requirementFailure 提前诊断。
-  - 补丁变换只用 `replaceOnce` / `replaceOnceRe` 校验锚点唯一；只有可选旧形态迁移可用 `replaceAtMostOnce` 变体。`scripts/patches/tests/replace-once.test.mjs` 对真实 ArkWeb 正则锚点造重复负控，runner 必须失败且保持目标文件不变。
-  - 环境变量面：`DSH_INJECT_PRESET`（ps1:17 写入 → inject-all.py:174 决定重压缩 preset，`-Fast`=1、发布档默认 9）、`SOURCE_DATE_EPOCH`（build-snapshot-013.mjs:982 与 inject-all.py:304 共用的固定 mtime，保可复现）、`DSH_SNAPSHOT_STAGE`/`DSH_NO_WSL_REEXEC`/`DSH_PROFILE_PATCH_RELOAD`（:88/:31/:149）、`XZ_THREADS`/`DSH_CPU_THREADS`（scripts/lib/shell.mjs:31）。
-  - 装配 profile 常量 `PROFILES=(web,headless)` 与负控 `headless-bad`（inject-all.py:32,35）必须与 `check-inject-completeness.mjs:28` 默认 `--profiles web,headless` 一致；权威 patch 只覆盖前两者、负控显式跳过（inject-all.py:273-281）。
-  - 路径契约：构建器写 `.deploy-tmp/snapshot-013/「abi」/snapshot.tar.xz`（:970）＝ 打包链读同一路径（ps1:186），由 `check-snapshot-builder-output.mjs:139-146` 锁同源；打包段再把它写进 `app/src/main/assets/{snapshot.tar.xz,snapshot.sha256}`（ps1:379-381），壳侧按此指纹判「快照是否变化」。
-  - 注入段与快照段的 combo 缓存键都以 sha256(client.js) 为准，所以降级必须发生在预计算之前（build-snapshot:359 顺序硬约束、ps1:268 注释同一约束）。
-  - 门禁集是唯一声明处 `check-release-gates.mjs:28-104`（现数 27 项），本地链必须逐条出现其脚本名，聚合入口只由 build-release.ps1 与 CI 调用。
-- **关键坐标**：
-  - `scripts/build-apk-013.ps1:182`（逐 ABI 主循环；-OnlyAbi/-Fast 只改循环范围）
-  - `scripts/build-apk-013.ps1:283`（inject-all.py 单 pass 注入调用）
-  - `scripts/build-apk-013.ps1:388`（gradle assembleDebug，出包唯一一步）
-  - `scripts/build-apk-engine.mjs:33` / `:86`（共用 assemble 与签名验证入口）；调用测试锁住本地、云端、发布三路汇合：`scripts/build-apk-engine.test.mjs:121`
-  - `scripts/patches/data/registry-scan-c4.mjs:11`（同步 flush 的 Loader 临时索引与 manifest 复用；详细设备计时/预算见 RUNTIME-PATCHES §7.6，自动补给的异步 checkpoint 见 model-capability README）
-  - `scripts/patches/data/client-index-loader-barrier.mjs:3`（G2：首页HTML在快照插件图前等待同一host Loader收敛；静态资源不参与等待）
-  - `scripts/patches/data/undo-safe-transaction-snippet.mjs:1`（Safe Mode 事务代码模板；由 `apply-patches.mjs:620#expect=const%20transaction` 注入 vendor 快照代码）
-  - `scripts/build-apk-013.ps1:427`（被拒非空即 exit 1 的收口）
-  - `scripts/build-snapshot-013.mjs:31`（Windows 宿主重入 WSL 的判据）
-  - `scripts/build-snapshot-013.mjs:297`（引擎树补丁 --apply --scope engine）
-  - `scripts/build-snapshot-013.mjs:985`（归档 tar | xz，快照产物的唯一产出点）
-  - `scripts/inject-all.py:321`（补缺循环：包内新增文件补 push，坑 63 的主链修复点）
-  - `scripts/patches/apply-patches.mjs:2456#expect=const%20mode`（mode 推导：无 --apply 即 check）与 `scripts/patches/apply-patches.mjs:2460#expect=const%20scope`（--scope 默认 vendor）
-- **不变量**：
-  - 注入集与 patch 挂载集双向一致，注入成员集合与源包逐项一致且 lib 内相对 import 可解析（`check-patch-mounts.mjs`、`check-inject-completeness.mjs:98-115`）——违反的症状是设备侧 `ERR_MODULE_NOT_FOUND`、引擎启动即死。
-  - 新包目录与补缺文件父目录由 `inject-all.py` 的 `ensure_parent_dirs` 共用 `seen_dirs` 记账，包含输入中已有空包目录的情况；不得先裸写目录再补父目录，否则双构建读取器拒绝重复成员。覆盖：`scripts/source-build/test_inject_all.py` 新包与仅目录包两种夹具（坑 439）。
-  - 归档里不得有指向旧 Termux 前缀的绝对软链（build-snapshot-013.mjs:1029 判 0），权限只能由 inject-all.py 重打包按内容归一（ELF/shebang=0700、数据=0600，`:210-214`）——WSL 9p 下 chmod 无效，所以「归档前 chmod」是无效步骤。
-  - 产物 tar 与声明 sha256 逐字节一致（ps1:384 `--require`）；发布快照资产必须与 APK 内嵌快照同源（check-snapshot-asset.ps1:26），禁止手工从 `.deploy-tmp/snapshot-013/` 拷发布资产。
-  - 双仓逐字节镜像（**已退役，2026-10-15**）：原先涵盖 `scripts/patches/**`、`scripts/build-apk-013.ps1`、`scripts/build-snapshot-013.mjs`、`scripts/inject-all.py`、`scripts/plugin-dirs.json`、`scripts/profile-web.cordis.patch.yml`、`scripts/lib/shell.mjs`、`scripts/snapshot-config/engine-overlay.json` 等；现由树内副本自洽 + 各自门禁保障，不做跨树比对（AGENTS §4 铁律 9）。
-  - `-Fast` 与发布档的差异只有两处：`OnlyAbi` 缺省 x86_64（ps1:16）与 `DSH_INJECT_PRESET=1`（ps1:17）；门禁集不缩、产物体积更大、禁作发布资产。`-SkipInject` 是另一条 dev 档：跳过注入与文件模式门禁（只告警，ps1:326-335），直接打包 build-snapshot 原始产物。
-- **症状 → 排查**：
-  - 打包刚起步就红在「补丁镜像不一致」：跑 `node scripts/check-patch-mirror.mjs`；对端探测顺序与镜像面清单见该脚本 `:56-72`（脚本自身也在镜像面内）。
-  - 设备装上后引擎起不来、日志 `Cannot find module` / `ERR_MODULE_NOT_FOUND`：注入丢件，跑 `node scripts/check-inject-completeness.mjs .deploy-tmp\build-\13-「abi」\snap-final2.tar.xz`，并在构建日志 grep `[fill]` `[prune]` `[add]`（inject-all.py:336-358）。
-  - 快照「看起来没更新」：比对 `.deploy-tmp\snapshot-013\「abi」\snapshot.tar.xz` 的 mtime 与同级 snapshot.sha256 内容；跑 `node scripts/check-snapshot-builder-output.mjs`（坑 151：产出面被删会静默复用陈旧 tar）。
-  - 老 WebView 白屏无报错：`node scripts/check-browser-syntax-floor.mjs --scan 「注入后 tar」`；降级落点在 build-snapshot-013.mjs:366-413（快照段）与 build-apk-013.ps1:229-264（注入段，vendor 走暂存副本）。
-  - 权限模式门禁红 / 发行 tar 可执行位丢失：确认没走 `-SkipInject`（ps1:329-334），并核「该 ABI」的 snap-final2 是否由 inject-all.py 重打包产出（9p 下 chmod 不生效，gotchas.md 第 44 条）。
-  - 引擎补丁「marker 全绿但行为不对」：看快照构建日志里四项行为回归（boot-pending-G1 / pi-toolcall-G2 / arkweb-resource-protocol-H1 / external-draft-conversation-seam-J1，build-snapshot-013.mjs:315-349）与 `apply-patches.mjs --list`。
-- **可疑点**：
-  1. `scripts/build-apk-013.ps1:166` 无条件重设 `$apkDir = Join-Path $Root "dsh-mobile-apk"`，把 `:22-23` 的「apk 仓自包含布局」检测**作废**（已确认，代码可判）：从 apk 仓根直跑时该目录不存在，第 3 步写 assets 与 `Push-Location` 会失败；与脚本自身注释（`:20-21` 声称两种布局共用同一份脚本）矛盾。当前文档口径是「在协调仓根执行」（apk AGENTS.md:30），故影响为潜在；协调仓 `coord:docs/review/state-audit/build-runtime.md:385` 已记录同一条。
-  2. `scripts/build-apk-013.ps1:206-212` 注释称 vendor 补丁「默认 ensure 语义（缺席即施加）」，实际调用不带 `--apply`/`--scope`，`scripts/patches/apply-patches.mjs:2456#expect=const%20mode`、`scripts/patches/apply-patches.mjs:2460#expect=const%20scope` 推导为 `mode=check`（已确认）：只校验不施加，补丁必须先打在入库的 `vendor/*/lib/` 里；缺一条即 `Deny-Abi` 拒打包（失败关闭，但排查时按注释预期会找不到「自动施加」这一步）。0.13.7-CERTIFICATION.md:11 亦记 `mode=check`，即注释是旧语义残留。
-  3. `scripts/make-snapshot.sh:8` 的 `SNAP_PKG_ROOT` 默认 `/data/user/0/com.snoworwind.pocketharness`（不含 `/files`），`:158` 的 sed 会把 heredoc 兜底 patch 的 `/data/data/com.termux/files/usr` 改写成 `.../com.snoworwind.pocketharness/usr/bin/bash`（已确认，触发条件 = 设备上找不到外部权威 patch，走 `:156` 警告分支）→ 设备侧 assertBash 失败、注入包全不装配。该脚本是备选发布入口的输入端（`build-release.ps1:89-114` 要求设备侧产出 `snapshot/snapshot-*.tar.xz`），且这条入口的快照无软链净化、无归档自检（协调仓 `coord:docs/COMPAT-REVIEW-0.14.0-2026-09-19.md:1337` 记 I-4）。
-  4. `scripts/build-apk-013.ps1:141-144` 注释称「本次构建前必须重跑 Kotlin 单测由发布链步骤保证」，但 `build-release.ps1` 全文没有 `testDebugUnitTest`（已确认）：发布链经 `check-release-gates.mjs --run --require` 调用 `check-kotlin-test-count.mjs`（`:104` 条目、通用 argvFor 不带 `--allow-missing`），干净机器上无结果即 `exit 1`。本地链用 `--allow-missing`（ps1:145）所以不红——症状是「本地全绿、发布链在干净机器上红」（协调仓 `coord:docs/COMPAT-REVIEW-0.14.0-2026-09-19.md:1334` 记 I-1，P1）。
-  5. 【历史项已退役（2026-10-15）】旧 MIRROR_TOP 覆盖缺口只针对已移除的跨树逐字节镜像；现行本仓门禁只校验 registry↔IMPLS 自洽，不能把旧清单当作当前缺陷。入口见 `scripts/check-patch-mirror.mjs:53#expect=const%20regPath`。
-  - 补充（非可疑，语义澄清）：坑 63 的「只替换已有成员、新增文件丢弃」在**主链已被 inject-all.py 修复**（`:204-208` 注释 + `:321-338` 补缺循环 + 门禁 `check-inject-completeness.mjs:2`），但 `inject-snapshot.py:106-121`（只在整包缺席时走 need_add）仍是另外一条路径的注入器：`build-release.ps1:109`。（0.14.5：原先还有 apk 仓的独立快照 workflow（`build-snapshot.yml`，注入步），它只注入 3 个包、不做引擎 overlay/引擎补丁/语法降级，故也带坑 63 语义；**该 workflow 已删除**——快照构建入口已收敛为 `build-apk.yml` / `release.yml` 单一链，故其注入器语义不再适用。**2026-10-15：`release.yml` 亦已退役（本分支不出 Release，只允许来源链构建，见 AGENTS §4 铁律 9）**。）
-
-- 已修（2026-10-31）：`build-and-env.md` 已按源码说明共享 `XZ_THREADS` 与 `DSH_CPU_THREADS` 覆写。
-- 已退役：执行地图中的旧构建描述仅作发现时快照；当前线程配置与来源链步骤以 `build-and-env.md` 和来源构建源码为准。
-- 已退役：门禁数量为易漂移数据；当前按 `scripts/check-release-gates.mjs --list` 现数，旧桥文档快照的数字不作现状。
-- [B01] 历史漂移已修（2026-10-29）：build-and-env.md 已把旧本地链描述标作历史并以来源链实际调用为准；当前门禁接线由 PR Gate 检查。
-- 已修（2026-10-31）：`RUNTIME-PATCHES.md` 已将活动补丁执行边界改为本仓来源链 runner，不再称旧本地脚本会施加 vendor 补丁。
-漂移（**2026-09-25 已修**）：`docs/AGENTS/RUNTIME-PATCHES.md` 原写 engine 补丁「当前全量」14 项；该文件已按现数改为 **15 项**（`scripts/patches/registry.json` 实测 30 条总 / 15 条 engine / 15 条 vendor）。原条目点名的四条缺口（combo-single-lazy-A5、combo-parallel-C3、combo-probe-P1、boot-third-party-isolation-G3）中，**A5 与 C3 已于 0.14.2 追版时按实测撤销**（见 RUNTIME-PATCHES §7.4 与 `scripts/patches/README.md` 撤销段），P1 与 G3 仍在册 ⇒ 清单已与源码同源，此处不再是漂移。
-- 已修（2026-10-31）：`AGENTS.md` 的 vendor 目录摘要已与本仓现存 marketplace 与 undo-savepoint 副本一致。
-
-```mermaid
-flowchart TD
-  A["触发 本地打包命令 或 发布链 或 CI"] --> B["build-snapshot-013.mjs 快照构建"]
-  B --> C{"宿主是 Windows"}
-  C -->|"是"| D["重入 WSL 在 ext4 执行"]
-  C -->|"否"| E["本机 Linux 执行"]
-  D --> F["基座解压 引擎 overlay 引擎树补丁"]
-  E --> F
-  F --> G{"补丁 marker 与行为回归"}
-  G -->|"失败"| X["非零退出 拒绝出产物"]
-  G -->|"通过"| H["语法降级 与 combo 预计算"]
-  H --> I{"归档自检 LICENSES 与软链"}
-  I -->|"失败"| X
-  I -->|"通过"| J["产出 snapshot.tar.xz 与 sha256"]
-  J --> K["build-apk-013.ps1 编排"]
-  K --> L{"静态门禁 与 补丁镜像"}
-  L -->|"失败"| X
-  L -->|"通过"| M["逐 ABI 打包循环"]
-  M --> N["注入段降级 与 combo 增量"]
-  N --> O["inject-all.py 单 pass 注入并补缺"]
-  O --> P{"注入后产物门禁"}
-  P -->|"失败"| Q["Deny-Abi 记账 跳过本 ABI"]
-  P -->|"通过"| R["写 assets 快照与指纹 严格对账"]
-  Q --> S{"有 ABI 被拒 或 零产出"}
-  R --> T["gradle assembleDebug 出 APK"]
-  T --> U["可选 导出快照资产并核对 APK 内嵌"]
-  U --> S
-  S -->|"是"| X
-  S -->|"否"| V["交付 out 目录产物"]
-```
-
-组件来源证明调用链：`record-project-components.mjs inputs` → `committedComponent` 从固定提交读取清单与哈希 → `rejectUntrackedInputs` 拒绝额外源码 → 构建 → `outputs` 再从提交重建身份并核对报告 → 检查实际源码与输出 → 写出证明。覆盖由 `scripts/source-build/record-project-components.test.mjs` 的篡改与真实 CLI 负控维护；边界见 `gotchas.md` 坑 336。
-
-本地来源链隔离：`run-local-source-chain.mjs` → `prepareSourceWorkspace` 初建/续跑 → `rejectEscapedWriteRoots` → `canonicalPath` 解析 dangling link、递归宿主写树并跟随树内别名 → `rejectSourceLinks` 原仓保护 → 才运行 workflow 步骤。编排器只解析 workflow 的 `build-abi` 单构建步骤定义；CI 的 Termux 输入预检 artifact 下载步骤在本地映射成同一 `prepare-termux-signed-repo.py` 调用，避免本地与 CI 分叉输入校验。新增的锁定 Gradle 预热归到 `verify` 阶段，因此 `--from apk` 续跑也会先做这项快速网络预检。覆盖账本由 `scripts/source-build/local-source-workspace.test.mjs` 的初建/续跑、外部报告叶子、组件编译树、runtime/pnpm 正例及真实 runner 负控维护，见 `gotchas.md` 坑 339、506。
-
-本地 x86_64 QA 变体：调用同一 workflow 步骤，以 `--abi x86_64` 注入目标 ABI；`assertMaintainedSource` 只允许已提交的 `codex/x86-*` 分支显式跑本地 QA。云端 `build-apk-source.yml` 在 main 上通过 `abi` 输入选择 arm64 或 x86_64；草稿工作流用矩阵分别运行两个 ABI。Termux bootstrap、签名索引、Koffi、node-pty、base/snapshot 路径和最终 APK ABI 同步切换；x86 跳过 ARM64 Linux 资产与 Canvas native，最终来源证明绑定所选 ABI。
-
-模型能力凭据出口：工具/手动填充 → `probePassive` 或主动正/负控 → `endpointUrl` 与 `authHeaders` → fetch 拒绝重定向 → `diagnosticText` 清理 URL 与已知请求凭据 → 报告；`apply()` 的 provider 配置 → `safeDiagnostic` → diag/logger/writer trace 共用去敏出口。reasoning 校验读取内存原文后，仅去敏副本进入结果。覆盖账本为 `plugins/dsh-model-capability/test/capability-probe.test.mjs` 的真实双 HTTP 服务、回显凭据与 Unicode 负控，以及 `test/save-triggered-fill.test.mjs` 的生产 apply/discover 日志反例；设备层阻塞及证据见 `gotchas.md` 坑 340。
-
-归一化调用链：`export-dsh-engine.mjs` → `canonicalizePackedManifest` → `canonicalPackageJson`（保留条件导出及扩展字段内部顺序）→ 固定 gzip 头；来源 workflow 产出侧 → `collectEntries`（权限、目录入账，特殊类型拒绝）→ `normalizeSnapshot` → 未命中规则按原 Buffer 哈希，命中规则严格解码 → 同一 package 规则及精确 pnpm 规则 → v3 摘要。覆盖账本：`scripts/source-build/normalize-snapshot.test.mjs` 的二进制、特殊字段、顺序、真实 Node 加载、Unix 执行权限及 CLI 负控；边界见 `gotchas.md` 坑 337、338。
-
-Engine base 双副本：`build-base.yml` 的两路 `build-engine.sh` → `engine-base.mjs capture` 复制部署树 → 仅对 `engine-deploy/package.json` 与 `engine-deploy/pnpm-workspace.yaml` 调用受限 canonicalizer（JSON 条件导出顺序保留，YAML 非映射形态判红）→ `check-dsh-runtime-dependencies.mjs` 按 `(importer, dependency)` 固定报告序，另递归检查已启用 telemetry consumers 的精确第三方传递依赖与 Node 实际查找位置 → `indexTree`/`compare` 逐文件校验 → 通过后才写 candidate 与 cache。覆盖账本：`engine-base.test.mjs` 对映射键逆序的双副本做真实 archive compare，断言缺依赖仍判红，并用根目录正确但消费者嵌套副本过期的夹具证明版本错配判红；materialize 仅以可信 lock 验 manifest、输出哈希与 tree receipt 后落盘。
-来源依赖检查对第一方直接依赖和必需 peer 核对实际解析版本，并单独登记已审 Koffi 覆盖；另对当前启用的 `dsh-otel` 与 `dsh-session-telemetry-otel` 从实际 package 目录递归走 Node 查找路径，校验完整 `dependencies` 闭包、精确版本及缺包，诊断带消费者引用链。OpenTelemetry 消费者局部版本由 `engine-overlay.json` 的 `nested` 登记；八个 SDK/导出器包固定为 0.222.0 或 2.11.0，session telemetry 固定 `api-logs@0.222.0`。`engine-base.test.mjs` 覆盖陈旧嵌套包即使根目录版本正确仍判红，以及修正后的正控。完整来源构建与设备三层验收仍待本 PR 合并后补证；本轮按用户指示不做设备验证。
-来源 APK 注入完成后，`build-apk.mjs` 对最终快照执行 `check-snapshot-profile-identity.py`，核对 web/headless 两个生产 profile 的权威字节、applicationId 与应用私有 files 路径；headless-bad 仅在输入中存在时核对其仍与权威 patch 不同，不要求进入生产 APK。门禁同时拒绝重复/非规范 profile 路径及链接，再执行其他快照门禁；最终来源 APK 尚待构建验证。
-
-**ABI 参数化来源审计变体**：`.github/workflows/build-apk-source.yml` 是独立的 `workflow_dispatch` 入口。它从固定 Harness commit 通过官方 Host/Client 编译、根 workspace bundle 与 Web 步骤构建 CLI/UI；部署前临时把 overlay 清单中的第一方工作区包加入实际部署目标 `apps/cli` 的 production dependencies，并同步更新锁文件 `apps/cli` importer 后 pnpm deploy，以纳入这些包及其生产依赖闭包；deploy 完成即恢复上游 `apps/cli/package.json` 与锁文件，并把临时输入哈希和包清单附入 provenance。第一方 tarball 构建产物写入 deploy 树中对应符号链接的物理包目录，保留 pnpm 依赖目录与虚拟 store 链接；快照生成后把第一方包顶层 payload 物化为普通文件目录，并令 `.pnpm` store 中相同 payload 通过相对链接回指顶层文件，为顶层包合并包内和 `.pnpm` 同级的依赖链接并保留 Node 搜索优先级，之后重打包并更新快照 SHA-256。注入后、快照构建后分别由 `scripts/source-build/check-dsh-runtime-dependencies.mjs` 按 Node 的 `node_modules` 祖先查找规则验证必需依赖的 `package.json` 在运行时树中可达，并保存路径报告；该检查确认 pnpm 包依赖在运行时树内；APK 源码构建在打包步骤临时用 source-build 适配器把既有 overlay 门禁调用路由至 `source-build/check-dsh-source-snapshot.mjs`，从最终压缩快照核验固定来源包版本与 tarball 哈希、依赖链接、引擎补丁标记及内置预设载体（载体清单在 `scripts/source-build/preset-carriers.mjs`，与权威 overlay 门禁的 CARRIERS 同源，其单测读权威源文本双向比对以防重锚后脱钩）；原件由退出 trap 恢复，原件/适配器/检查器哈希记入策略 provenance，普通构建仍走 `check-engine-overlay.mjs`。同一打包步骤在跑门禁前用 `restore-overlay-pins.mjs` 按策略报告记下的清单把构建期摘除的第一方 overlay 钉并回 `engine-overlay.json`（摘除是为了让快照构建器不可回拉上游发布版 tarball 覆盖源码产物；而 `check-contract.mjs` 第 7 节按这份清单定运行时版本并判 profile 引擎包 insert 行同版），还原记录进策略 provenance，退出 trap 随后覆盖回原文件。Termux 官方 bootstrap ZIP 在 producer 与 build 两处对固定 GitHub Release URL 使用最多 8 次、最长 600 秒的瞬态错误重试，解压前仍校验 ABI 固定 SHA-256；独立 `termux-package-inputs` job 从该 bootstrap 读取密钥、验签本轮滚动 `InRelease`，按签名摘要/长度核验 `Packages.gz` 并逐项校验依赖闭包 `.deb`，将摘要、包版本和哈希写入 provenance。`build-abi` 的 primary/reference 两路依赖预检 job，并下载同一个按 ABI + run ID 命名的 attempt-independent artifact；失败 job 重跑复用成功 producer 的快照，完整 workflow rerun 则由 `overwrite: true` 替换同名快照；两路不再分别请求滚动仓库。PRoot recipe 从 `linux-backend-packages.json` 固定 commit 路径取件并校验 SHA-256；recipe 跨时间固定，Termux stable 包输入按轮记录，缺失 `.deb` 或签名索引不一致时失败关闭。profile 文件由上游 `profile.ts` 模板初始化。壳插件从项目源构建，host-web-compat 对照本次项目提交内的 JavaScript 源码，marketplace 用**固定 npm 发布产物**（`dshmarketplace-plugin-0.1.7.tgz`，sha256 钉在 workflow 里；不再从组件源码树重建——我们的镜像与 market-* 补丁都按发布字节定义，重建会用不同工具链产出不同字节、把补丁锚空，见坑 205）；此变体把旧 LFS 基座独有且未挂载的四个遗留包排除，名单与理由随策略清单附出。此流程不启用 LFS、不读取 `base/base-usr-*` 或 `base-dsh`，通过本地只读 HTTP 镜像把验签后的索引与 deb 交给既有快照构建器，最后按 ABI 输入出对应 APK 与来源清单/哈希；release 草稿对 arm64 与 x86_64 各运行一轮。当前构建副本只用临时证书；云端独立验证两个 runner 的 APK/快照后，隔离签名 job 才读取正式 PKCS12，并以仓库固定生产证书 pin 复核三签。实现分别位于 `scripts/source-build/prepare-termux-bootstrap.py`、`prepare-termux-signed-repo.py`、`seed-dsh-profiles.mjs`、`export-dsh-engine.mjs`、`inject-dsh-engine-packages.mjs`、`check-dsh-runtime-dependencies.mjs`、`materialize-dsh-pnpm-packages.mjs`、`check-dsh-source-snapshot.mjs`、`check-dsh-source-snapshot-gate.mjs`、`prepare-pnpm-deploy-runtime-closure.mjs`。Android 运行时闭包还锁定 Koffi 3.2.1、启用 Android/ARM64 目标并加入 Sharp WASM 后备；`check-android-native-runtime-packages.mjs` 核验 AArch64 ELF、WASM 可解析路径与包 payload 哈希。
+- **入口与边界**：`.github/workflows/build-apk.yml`、`build-apk-source.yml` 或 `release-source-draft.yml`；只接受 main 与 ARM64；不调用旧快照构建器。构建作业只用临时签名；`reference=true` 时独立 `sign-abi` 作业才持有生产签名密钥。详细输入/缓存/门禁迁移账本见 [Linux CI](LINUX-CI.md)。
+- **顺序**：固定源码双副本引擎底座 → 当前源码插件/marketplace → 固定 NDK 宿主库与 Linux 资产 → `build-linux-payload.mjs` 施加/独立重放引擎补丁 → 两套 profile 工厂插件目录装配与完整性检查 → 客体 engine/home 归档 → 四件套清单 → Kotlin 单测 → `build-linux-apk.mjs` 门禁/Gradle → APK 字节、载荷、三签检查 → 上传 → 可选独立比较。
+- **嵌套与线程**：Actions job 中 Node 编排子进程；宿主原生库与客体源码编译使用固定工具链；home 的 GNU xz 最多 8 线程，engine 的 Python lzma 单线程；不启动 Termux HTTP 镜像。
+- **耦合**：引擎底座只缓存引擎输入，当前项目组件收据在命中后重新冻结；Linux 资产使用精确内容键；插件依赖收集复用 `inject-all.py` 的纯 payload 函数，不执行其快照入口。ownership manifest 从最终目录装配推导；最终 APK 载荷以 manifest 与 SHA-256 绑定。
+- **覆盖账本**：`scripts/source-build/linux-payload.test.mjs`、`test_linux_ci_payload.py`、`native-runtime-inventory-workflow.test.mjs` 验证实际 profile seed、客体路径/秘密负控、artifact 传播和独立比较的签名边界；`linux-runtime-packages.test.mjs` 在 pnpm 布局夹具上验证 koffi/sharp/node-pty 的 glibc 解析与未审原生家族负控；`check-linux-ci.mjs --self-test` 防止旧链接回。源码组件篡改测试继续由 `record-project-components.test.mjs` 维护。
 
 ```mermaid
 flowchart LR
-  A["workflow_dispatch ABI（默认 arm64）"] --> B["检出项目源码 不启用 LFS"]
-  B --> R["核对插件 package-lock 根声明"]
-  R --> C["固定 Harness commit"]
-  C --> D["pnpm install 冻结锁文件"]
-  D --> P["当前 Harness 全仓源码构建"]
-  P --> V["原位替换固定 Cordis 源码 保留 node_modules"]
-  V --> W["只对齐五个旧版包的锁文件 importer"]
-  W --> Q["单独编译五个固定旧版包"]
-  Q --> E["导出 first-party overlay tarballs 与源码哈希"]
-  B --> F["构建副本下载 pinned Termux bootstrap ZIP"]
-  F --> G{"SHA-256 匹配"}
-  G -->|"否"| X["终止 不产 APK"]
-  G -->|"是"| H["按 SYMLINKS 重建 usr 并从 profile.ts seed"]
-  A --> T["独立 job 下载并校验同一 pinned bootstrap"]
-  T --> T1["bootstrap keyring 验签当轮 InRelease"]
-  T1 --> T2{"签名 Packages.gz 匹配"}
-  T2 -->|"否"| X
-  T2 -->|"是"| T3["下载闭包并逐 deb 核 SHA-256"]
-  T3 --> T4["写 provenance 并上传本轮包快照"]
-  T4 --> K["所选 ABI 的两路构建下载同一 artifact"]
-  H --> K
-  E --> L["快照构建 本地镜像只提供验过的 Termux 文件"]
-  K --> L
-  L --> M["既有注入与门禁"]
-  M --> N["assembleDebug ABI APK"]
-  N --> O["APK SHA-256 与来源清单"]
+  A[main ARM64] --> B[固定引擎源码底座]
+  B --> C[源码插件和 marketplace]
+  C --> D[固定 NDK 与 Debian Node 资产]
+  D --> E[Linux engine 和 factory home]
+  E --> F[源码独立重放和插件完整性]
+  F --> G[四件套 manifest]
+  G --> H[Kotlin 单测与 Linux 门禁]
+  H --> I[Gradle APK]
+  I --> J[载荷 原生库 三签复验]
+  J --> K[artifact]
 ```
 
+```mermaid
+flowchart LR
+  A[primary APK] --> C[核验 Linux manifest 与载荷]
+  B[reference APK] --> C
+  C --> D[比较除 JAR 签名外全部成员摘要]
+  D --> E{一致}
+  E -->|是| F[独立重建证明]
+  E -->|否| G[失败 禁止 verified artifact]
+```
+
+历史 PowerShell/Termux 构建器仍在源码树中用于追溯与独立回归，不属于本分支 CI；不允许用其产出 APK。
+
 #### B02 静态门禁链与 CI
+
+main 的活跃门禁与退役替代关系以 [Linux CI](LINUX-CI.md) 为准；以下旧快照/发布聚合门禁说明是保留工具的历史调用地图，已不接当前 PR/APK 工作流。
 
 
 - **一句话**：用 33 个 `scripts/check-*.mjs` 静态脚本守住「产物形态、跨层集合一致、SKIP 纪律」三类不变量，并由 `scripts/check-release-gates.mjs` 一处声明门禁集（当前 27 项），强制两仓 CI 与两条打包链逐项接线；发布链再以 `--run --require` 要求 SKIP=0。
@@ -1771,7 +1660,7 @@ flowchart LR
   2. `check-release-gates.mjs --run`【node 主线程】→ `spawnSync(process.execPath, [scripts/<gate>])`【逐个子进程，串行，`maxBuffer` 128MB】→ 子进程 stdout 回写父进程，父进程用 `/SKIP=(\d+)/` 累计 SKIP（`scripts/check-release-gates.mjs:246`）。
   3. pr-gate `static`【GitHub runner 的 bash 步骤，串行】→ `npm install/npm run build`【子进程】→ `node scripts/check-plugin-tests.mjs`【该门禁再 `spawnSync` 每个插件的 `node --test` 或 `npx vitest`，强制测试子进程 `NODE_ENV=test`，避免父进程 production 环境关闭 React `act()`】（`scripts/check-plugin-tests.mjs`）。CI 的 `static` 与 `compile` 两个作业并行，互不阻塞。
 - **耦合**（点名符号）：
-  - **唯一声明处**：`GATES` / `CI_GATES` / `ALL_GATES`（`scripts/check-release-gates.mjs:28`/`:106`/`:107`）与云端链的 `GATE_SCRIPTS`（`scripts/build-apk.mjs:61`）；`CI_GATES` 决定两仓 CI 必须出现的门禁名，`ALL_GATES` 决定两条链与发布链。
+  - **唯一声明处**：`GATES` / `CI_GATES` / `ALL_GATES`（`scripts/check-release-gates.mjs:28`/`:106`/`:107`）与云端链的 `GATE_SCRIPTS`（`scripts/build-apk.mjs:62#expect=const%20market%20%3D%20externalNamed%28%27dshmarketplace-plugin%27%29`）；`CI_GATES` 决定两仓 CI 必须出现的门禁名，`ALL_GATES` 决定两条链与发布链。
   - **注入集单一常量**：`scripts/plugin-dirs.json` 的 `dirs`/`externals` 被 `scripts/build-apk-013.ps1:174`、`scripts/build-apk.mjs`、`scripts/check-release-gates.mjs:164` 共同消费（`check-patch-mirror.mjs` 自 2026-10-15 起不再读它）；`scripts/release-plugin-src-gaps.json` 只承载 `$pluginSrcs ⊇ dirs` 的显式差集理由。
   - **台账（谁读谁写）**：`scripts/kotlin-test-baseline.json`（`scripts/check-kotlin-test-count.mjs` 读、`--update-baseline` 只许升档写）、`scripts/bridge-symmetry-baseline.json`（`scripts/check-bridge-symmetry.mjs` 只许减少）、`scripts/tool-surface-budget.json`（`scripts/check-tool-surface-budget.mjs` 取 +2% 阈值）、`scripts/contract.json` 与 `scripts/contract-pin-gaps.json`（`scripts/check-contract.mjs`）、`scripts/state-registry.json`（`scripts/check-state-registry.mjs` 逐条核对 evidence）、`scripts/api-route-auth-policy.json`（`scripts/check-api-route-auth.mjs`）、`scripts/control-ops-pending.json` 与 `scripts/control-ops-known-gaps.json`（`scripts/check-control-ops.mjs`）、`scripts/perf-instrumentation-gaps.json`（`scripts/check-perf-instrumentation.mjs`，gaps 为空是合法终态）、`scripts/third-party-licenses.json`（`scripts/check-third-party.mjs`）。
   - **跨块符号**：`ProcIo.readBounded`（`scripts/check-bounded-io.mjs` 守的调用面）、`AndroidBridge.kt` 的 `@JavascriptInterface` 与 `dsh-client-ui-responsive/src/client/android-bridge.ts` 的 `interface AndroidShellBridge`（`scripts/check-bridge-symmetry.mjs` 的 `baseline.surfaces`）、`DeviceControlService.kt` 的 `handle` when 分支 + `ControlProtocolV2.kt` 的 `SUPPORTED_OPS`（`scripts/check-control-ops.mjs` 的六处之一）、`assets/snapshot.sha256` 与 `assets/patched/*`（指纹与运行时资产两门禁的事实面）、`files/boot-segments.log`（`scripts/check-boot-budget.mjs` 的真数据输入）。
@@ -1779,10 +1668,10 @@ flowchart LR
 - **关键坐标**：
   - `scripts/check-release-gates.mjs:28`（GATES 唯一声明处，当前 27 项）/`:152`（接线断言 = `text.includes(gateName)`）/`:246`（SKIP 汇总正则）
   - `scripts/check-gate-skips.mjs:62`（声明集合必须被两条链逐项调用）/`:72`（SKIP 发射点静态审计）
-  - `scripts/build-apk.mjs:61`（云端链 GATE_SCRIPTS，与本地链差集须为 0）/`:197`（`--allow-missing`）
+  - `scripts/build-apk.mjs:62#expect=const%20market%20%3D%20externalNamed%28%27dshmarketplace-plugin%27%29`（云端链 GATE_SCRIPTS，与本地链差集须为 0）/`:197`（`--allow-missing`）
   - `scripts/build-apk-013.ps1:145`（本地链 `check-kotlin-test-count --allow-missing`）/`:427`（任一 ABI 被拒 = 整链非 0）
   - `scripts/build-release.ps1:60`（注入前 `--run --require`）/`:147`（注入后产物级复跑）
-  - `.github/workflows/pr-gate.yml:40`（apk CI 只跑 `check-patch-mirror.mjs --self`）/`:82`（语法下限只跑 `--self-test`）/`:138`（全量 Kotlin 单测接进 CI）
+  - `.github/workflows/pr-gate.yml:39#expect=full%3A%20%24%7B%7B%20steps.classify.outputs.full%20%7D%7D`（apk CI 只跑 `check-patch-mirror.mjs --self`）/`:82`（语法下限只跑 `--self-test`）/`:138`（全量 Kotlin 单测接进 CI）
   - `scripts/check-boot-budget.mjs:681`（`SKIP(#1)(real-data)` 发射点）/`:684`（随即 `selfTest()` 退出，`SKIP=` 汇总不打印）
   - `scripts/check-code-map.mjs:59#expect=const%20UNIVERSE`（UNIVERSE 覆盖全域；本门禁当前零调用点）
 - **不变量**：
@@ -1793,16 +1682,16 @@ flowchart LR
   5. 台账类基线只许朝「更严」方向变（用例数只升、不对称条目只减、工具字节只降），且 stale 条目（已修却仍在册）必须判红，迫使当场删除。
 - **症状 → 排查**：
   1. PR 卡在 `static` 作业某一步 → 读该步名对应脚本，本地复现：`git status` → `node scripts/check-release-gates.mjs`（先看接线断言）→ `node scripts/check-gate-skips.mjs --list`（看声明/接线/SKIP 审计三张表）。
-  2. 「本地全绿、云端建不出」→ `node scripts/check-release-gates.mjs` 的 `两份编排器门禁集差集 = 0` 一行；再 grep `GATE_SCRIPTS`（`scripts/build-apk.mjs:61`）与 `scripts/build-apk-013.ps1` 的 `node (Join-Path $Root "scripts\check-` 行。
+  2. 「本地全绿、云端建不出」→ `node scripts/check-release-gates.mjs` 的 `两份编排器门禁集差集 = 0` 一行；再 grep `GATE_SCRIPTS`（`scripts/build-apk.mjs:62#expect=const%20market%20%3D%20externalNamed%28%27dshmarketplace-plugin%27%29`）与 `scripts/build-apk-013.ps1` 的 `node (Join-Path $Root "scripts\check-` 行。
   3. 「门禁说 PASSED 但问题还在」→ 先在输出里找 `SKIP(` 与 `SKIP=`：SKIP 不为 0 表示该判据本轮没真跑（`SKIP(#n)` 行会写落点）；再确认跑的是真检档还是 `--self-test`（CI 里 `scripts/check-browser-syntax-floor.mjs` 只有自证）。
   4. 「改了门禁脚本却没生效」→ node scripts/check-patch-mirror.mjs 只验证本仓 registry↔IMPLS id 双向闭合；不再检查跨树文件镜像。入口见 `scripts/check-patch-mirror.mjs:53#expect=const%20regPath`。
   5. 「发布链以 SKIP=0 通过但真检没跑」→ 在 `check-release-gates.mjs --run` 输出里逐门禁找 `SKIP(#`；聚合入口只认 `SKIP=`（`scripts/check-release-gates.mjs:246`），`scripts/check-boot-budget.mjs:681` 那种带 `#` 的 SKIP 不进合计；设备真检必须显式跑 `node scripts/check-boot-budget.mjs --require-real`（当前零调用点）。
 - **可疑点**：
-  1. 【已确认，源码可复现】Kotlin 单测数量门禁的「防净零抵消」可被**整类删除**绕过：A 判据只对**现存源码测试类**要求有结果（`scripts/check-kotlin-test-count.mjs:129`），B 判据对结果里缺席的类直接 `continue`（`:153`）→ 删掉整个测试文件（例如 29 例的 `SnapshotTransactionTest.kt`）再在别处补足总数即恒绿。影响：一整类防线被无声削掉，而该门禁不在 CI（`ci:false`），只在两条链以 `--allow-missing` 跑。
+  1. 【已确认，源码可复现】Kotlin 单测数量门禁的「防净零抵消」可被**整类删除**绕过：A 判据只对**现存源码测试类**要求有结果（`scripts/check-kotlin-test-count.mjs:129`），B 判据对结果里缺席的类直接 `continue`（`:153`）→ 删掉整个测试文件（例如 29 例的 `LinuxComponentTransactionTest.kt`）再在别处补足总数即恒绿。影响：一整类防线被无声削掉，而该门禁不在 CI（`ci:false`），只在两条链以 `--allow-missing` 跑。
   2. 【已确认】发布链的「SKIP=0」存在盲区：聚合入口用 `/SKIP=(\d+)/` 统计（`scripts/check-release-gates.mjs:246`），而 `scripts/check-boot-budget.mjs` 真检缺席时打印的是 `SKIP(#1)(real-data)`（`:681`）并立刻 `selfTest()` 退出（`:684`）——该 SKIP 既不入合计、在 `--require` 档下也不判红；唯一能判红的 `--require-real` 零调用点（仅注释提到）。影响：无设备产物时发布链可打印 SKIP=0 全绿，冷启动预算真判据从未执行。
-  3. 【已确认，apk 树结构性必红】`plugins/dsh-android-vdisplay/test/tools-callable.test.mjs:122`（另 `:144`/`:161`/`:174`）用 `../../../dsh-mobile-apk/app/src/main/java/com/snoworwind/pocketharness/VdisplayController.kt` 读壳侧源码——该相对路径只在协调仓布局成立；apk 自包含树里 4 个用例 `readFileSync` 抛错。而 `scripts/check-plugin-tests.mjs` 在 `GATES` 里 `ci:true`，apk 仓 `.github/workflows/pr-gate.yml:64` 会跑它。影响：apk 仓 CI 与 apk 自包含构建结构性变红（对应协调仓评审 S-11 第二项 / §4.4-V-M4，本轮工作树仍未修）。
+  3. 【已确认，apk 树结构性必红】`plugins/dsh-android-vdisplay/test/tools-callable.test.mjs:122`（另 `:144`/`:161`/`:174`）用 `../../../dsh-mobile-apk/app/src/main/java/com/snoworwind/pocketharness/VdisplayController.kt` 读壳侧源码——该相对路径只在协调仓布局成立；apk 自包含树里 4 个用例 `readFileSync` 抛错。而 `scripts/check-plugin-tests.mjs` 在 `GATES` 里 `ci:true`，apk 仓 `.github/workflows/pr-gate.yml:41#expect=-%20uses%3A%20actions%2Fcheckout%4011d5960a326750d5838078e36cf38b85af677262%20%23%20v4` 会跑它。影响：apk 仓 CI 与 apk 自包含构建结构性变红（对应协调仓评审 S-11 第二项 / §4.4-V-M4，本轮工作树仍未修）。
   4. 【已确认】`scripts/check-snapshot-builder-output.mjs:156` 的「两树同版」用**硬编码**`<ROOT>/dsh-mobile-apk/scripts/build-snapshot-013.mjs` 且 `existsSync` 为假时静默跳过（无 SKIP 计数，`:157`）——apk 自包含树里这条判据根本不存在，而它正是「0.14.0 归档段被删、构建器 exit 0 不产 tar」事故的反回归防线。
-  5. 【未证实，需跑一次才能定性】`scripts/check-plugin-tests.mjs:33` 对「没有 test 目录」的插件只 WARN（删测试即从判据里消失）；且本轮工作树里 `scripts/patches/tests/` 的 16 个补丁回归测试只有 3 个被 pr-gate 硬编码调用（`.github/workflows/pr-gate.yml:41-43`），第 4 个经 `scripts/check-runtime-assets.mjs:96` 的行为回归间接执行，其余 12 个仍无执行路径（评审 I-6 的同族结论，未本轮复测是否已改）。
+  5. 【未证实，需跑一次才能定性】`scripts/check-plugin-tests.mjs:33` 对「没有 test 目录」的插件只 WARN（删测试即从判据里消失）；且本轮工作树里 `scripts/patches/tests/` 的 16 个补丁回归测试只有 3 个被 pr-gate 硬编码调用（`.github/workflows/pr-gate.yml:40#expect=steps%3A`），第 4 个经 `scripts/check-runtime-assets.mjs:96` 的行为回归间接执行，其余 12 个仍无执行路径（评审 I-6 的同族结论，未本轮复测是否已改）。
 
 - **门禁速查表**（触发点缩写：CI = 两仓 `pr-gate.yml`；链 = `build-apk-013.ps1` + `build-apk.mjs`；发布 = `build-release.ps1`；快照构建 = `build-snapshot-013.mjs`）
 
@@ -1844,14 +1733,14 @@ flowchart LR
 
 - **CI 与打包链的顺序**（含依赖：`npm` = 必须先构建插件 `lib/`，`快照` = 需要注入后 tar 或快照资产）
 
-**A. pr-gate `static` 作业（`.github/workflows/pr-gate.yml:11-111`，串行 16 步）**
+**A. pr-gate `static` 作业（`.github/workflows/pr-gate.yml:11#expect=%23%20release%2Fbuild%20workflows%20are%20dispatched%20explicitly%20rather%20than%20by%20push.`，串行 16 步）**
 1. 冲突标记扫描（`app/src` 的 kt/java/xml/html/js/yml）。
 2. 敏感信息扫描（`sk-`/`ghp_`/`AKIA`/`xox` 四类正则）。
 3. `check-patch-mirror.mjs --self` + 三份补丁回归测试（`scripts/patches/tests/{spj-migration-link-f5,atomic-stale-lock,publish-exclusive-reclaim}.test.mjs`）——只做树内自洽；跨仓一致性判据已于 2026-10-15 随镜像层移除（本分支不依赖协调仓）。
 4. `npm install && npm run build`（`plugins/dsh-android-manage`）→ `check-protocol-v2.mjs`（npm）。
 5. `npm install && npm run build`（同上，重复一次）→ `check-tool-output-schema.mjs`（npm）。
 6. `check-control-ops.mjs`（无前置）。
-7. `npm install && npm run build` 八个目录（`dsh-shell-termux` 必须在前，`linux-env` 直接 import 它；顺序 termux → 插件）→ `check-plugin-tests.mjs`（npm）。
+7. `npm install && npm run build` 八个目录（`dsh-shell-linux` 必须在前，`linux-env` 直接 import 它；顺序 termux → 插件）→ `check-plugin-tests.mjs`（npm）。
 8. `check-manifest-hardening.mjs` + `check-bounded-io.mjs` + `check-api-route-auth.mjs`（源码档，不需要快照）。
 9. `check-boot-budget.mjs` 默认档（CI 无设备 → `SKIP(#1)(real-data)` + 自证）。
 10. `check-snapshot-builder-output.mjs`（只读源码与配置）。
@@ -1862,7 +1751,7 @@ flowchart LR
 15. `check-state-registry.mjs` + `check-bridge-symmetry.mjs` + `check-gate-skips.mjs` + `check-kotlin-comments.mjs` + `check-build-chain-abort.mjs` + `check-perf-instrumentation.mjs`（离线可跑，与两条链同源）。
 16. `npm install && npm run build` 八个目录 → `check-tool-surface-budget.mjs`（npm；真跑各插件 `apply()`，缺产物时门禁拒绝而非假绿）。
 
-**B. pr-gate `compile` 作业（`.github/workflows/pr-gate.yml:113-148`）**：setup-java 17 → Android SDK 36 → `./gradlew :app:compileDebugKotlin --no-daemon` → `./gradlew :app:testDebugUnitTest --no-daemon`（全量，0.14.1 新增）→ 失败时上传 HTML 报告。**不依赖 A 的任何产物**，也不依赖快照。
+**B. pr-gate `compile` 作业（`.github/workflows/pr-gate.yml:84#expect=exit%201`）**：setup-java 17 → Android SDK 36 → `./gradlew :app:compileDebugKotlin --no-daemon` → `./gradlew :app:testDebugUnitTest --no-daemon`（全量，0.14.1 新增）→ 失败时上传 HTML 报告。**不依赖 A 的任何产物**，也不依赖快照。
 
 **C. 本地链 `scripts/build-apk-013.ps1`**
 1. 注入前门禁段（`:38-146`，顺序即文件顺序）：patch-mirror → contract `--require` → state-registry → bridge-symmetry → gate-skips → build-chain-abort `--self-test` → snapshot-fingerprint（预检）→ manifest-hardening → kotlin-comments → bounded-io → api-route-auth（源码档）→ protocol-v2 → tool-output-schema → control-ops → plugin-tests（**需本机 `plugins/*/lib`**）→ boot-budget（默认档）→ snapshot-builder-output → build-parallel-cap → kotlin-test-count `--allow-missing`（**用的是上一次 gradle 结果**）。
@@ -1877,7 +1766,7 @@ flowchart LR
 
 **D. 云端链（`build-apk.yml` → `build-snapshot-013.mjs` → `build-apk.mjs`）**
 1. checkout（含 LFS 底座）→ node 24 → python → java 17。
-2. `npm ci`（有锁文件）/`npm install` + `npm run build` 七个目录（bridge/manage/linux-env/file-open/model-capability/shell-termux/ui-responsive）。
+2. `npm ci`（有锁文件）/`npm install` + `npm run build` 七个目录（bridge/manage/linux-env/file-open/model-capability/shell-linux/ui-responsive）。
 3. stage 底座 `base/` → `node scripts/build-snapshot-013.mjs <abi>`：剥离阶段跑 `check-strip-noop.mjs --stage`（`scripts/build-snapshot-013.mjs:169`）→ 浏览器语法降级 + `--scan`（`:383`/`:405`）→ 归档 → 归档内 LICENSES 自检（≥4，`:1007`）→ 归档内旧 Termux 前缀软链必须为 0（`:1029`）→ `check-perf-instrumentation.mjs --require`（`:1039`）。
 4. `node scripts/build-apk.mjs --abi <abi>`：注入前门禁（`:156-206`，与本地链同集）→ 注入（降级 → combo 预计算 → inject-all）→ 注入后门禁（`:290-325`）→ 许可资产 → 指纹 `--require` → gradle。
 5. `upload-artifact`（`out/v*/*.apk`）。
@@ -1894,13 +1783,13 @@ flowchart LR
   - `scripts/check-code-map.mjs`——33 个 `check-*.mjs` 里**唯一零外部调用点**：不在 `GATES`、不在两条链、不在两仓 CI、不在 `MIRROR_TOP`（该清单与镜像层已于 2026-10-15 按用户决定移除），且只存在于 apk 仓（协调仓 `scripts/` 无同名文件）；文档 `docs/AGENTS/EXECUTION-MAP.md` 未写时它会 `exit 2`。
   - `scripts/check-snapshot-secrets.ps1`——旧 PowerShell 实现，已被 `.mjs` 取代，零调用点（其旧缺陷正是「归档不可读时静默继续」）。
   - `scripts/tests/boot-pending.test.mjs`、`scripts/tests/pi-toolcall.test.mjs`——零调用点。
-  - `scripts/patches/tests/` 的 16 个补丁回归测试里，只有 3 个被 pr-gate 硬编码（`.github/workflows/pr-gate.yml:41-43`），第 4 个经 `scripts/check-runtime-assets.mjs:96` 的行为回归间接执行，其余 12 个无执行路径（与评审 I-6 同族）。
+  - `scripts/patches/tests/` 的 16 个补丁回归测试里，只有 3 个被 pr-gate 硬编码（`.github/workflows/pr-gate.yml:40#expect=steps%3A`），第 4 个经 `scripts/check-runtime-assets.mjs:96` 的行为回归间接执行，其余 12 个无执行路径（与评审 I-6 同族）。
   - 旗标模式零调用点：`--require-real`、`--pull`（`scripts/check-boot-budget.mjs`）、`--list`（`scripts/check-build-parallel-cap.mjs` / `scripts/check-bridge-symmetry.mjs` / `scripts/check-state-registry.mjs` / `scripts/check-code-map.mjs`）；`--as-shipped` 无显式调用方，但其行为已折进 `scripts/check-browser-syntax-floor.mjs` 的默认真实产物反向对照（`scripts/check-browser-syntax-floor.mjs:658-670`）。
   - ~~半接线~~（2026-10-15 已消解）：原先 apk 侧 `check-patch-mirror.mjs --self` 打印 `SKIP=0` 却从未做跨仓比对（靠协调仓 CI 的 `--require-peer`）；现镜像层整体移除，`--self` 与默认调用等价，输出 `SKIP=0` 名副其实——判据只覆盖树内自洽。
 - **假绿机制（只看文本在场或判据可绕过）**：
   1. `scripts/check-release-gates.mjs:152` 的接线断言是 `text.includes(<门禁文件名>)`——门禁名出现在**注释**里即算「已接线」；`scripts/check-gate-skips.mjs:40`/`:49` 同样按正则扫文本（`{ script: '...'` 与 `["'/\\]check-*.mjs`）。
   2. 聚合入口的 SKIP 统计只认 `SKIP=`（`scripts/check-release-gates.mjs:246`），漏掉 `SKIP(#n)` 形态 → 见可疑点 2。
-  3. CI 里的 `check-browser-syntax-floor.mjs --self-test`（`.github/workflows/pr-gate.yml:82`）只证「判据能判红」，不扫本次产物；产物合规只在两条链上验。
+  3. CI 里的 `check-browser-syntax-floor.mjs --self-test`（`.github/workflows/pr-gate.yml:81#expect=--include%3D%27%2A.txt%27%20--include%3D%27%2A.patch%27%20--include%3D%27%2A.svg%27%20%7C%7C%20rc%3D%24%3F`）只证「判据能判红」，不扫本次产物；产物合规只在两条链上验。
   4. `scripts/check-build-parallel-cap.mjs` 只约束 5 个文件的**源码文本**，`-T0\b` 正则漏 `-T$(nproc)`/`-T"$N"`/`-P`，gradle 并行度不在判据内（评审 I-11）。
   5. `scripts/check-contract.mjs:165` 的版本钉只读 `peerDependencies` + `devDependencies`，`dependencies` 不在判据内（评审 I-10）→ `host-web-compat` 打绿但覆盖面为空。
   6. `scripts/check-plugin-tests.mjs:33`/`:35` 对「无 test 目录/无测试文件」的插件只 WARN；`scripts/check-kotlin-test-count.mjs` 可被整类删除绕过（可疑点 1）——两条同族「删掉即判绿」。
@@ -1956,7 +1845,7 @@ flowchart TD
   1. 已证实：`scripts/verify-vdisplay-float.mjs:95-103` 的「非法档位必须被拒」是**永久假通过 + 顺手改设备状态**。链路：`setVdisplayScale(0.123)` → `VdisplayPrefs.setScale` 用 `coerceIn(0.4, 1.0)` 把值钳成 0.4 存盘（`VdisplayController.kt:753-756`）→ 返回的 `VdisplayPrefs.scale()` 是**数值 0.4**（`MainActivity.kt:795#expect=%2F**`），既不是 `true` 也不是 `{ok:true}` → 脚本走 `else` 分支打印 `PASS 非法档位被拒 → rejected`。而第 3 步之后**没有任何还原**（对比第 1、2 步都有还原），设备档位就停在 0.4（默认 0.75），后续所有 vdisplay 用例的几何随之变化。影响：断言假绿 + 跨轮设备状态漂移。
   2. 已证实：`scripts/verify-browser-panel.mjs:123-128` 用 `browserHostShow({..., newTab:true})` 声称建多页签，但 `showPayload`（`BrowserHost.kt:384-394`）只解析 `url` 与 `session`，`newTab` 是**死参数**（`newTab` 只在 `navigateOp` `BrowserHost.kt:1035` 被读）；脚本结尾（`:137-138` 打印 PASSED）也不调 `browserHostClose`，于是留下两个隔离页签常驻。影响：与可疑点 1 叠加——`/json/list` 变成多 target，而 `verify-state-sync.mjs:248-250` 与 `verify-webview-015.mjs:3-4` 的取值规则都是「取第一个 target」，取错即整批桥断言假红。同结论见 `coord:docs/COMPAT-REVIEW-0.14.0-2026-09-19.md:453`（M4）。
   3. 已证实：`scripts/verify-vdisplay-viewer.mjs:2` 与 `scripts/verify-vdisplay-float.mjs:4` 的头部都声称覆盖「多查看器仲裁」，脚本内却没有任何第二查看器断言（全文只有一个硬编码 `viewerId: 'files-sidebar'`，`:161`/`:173`）。真正的仲裁在 `VdisplayController.attachViewerSurface` 的 `ViewerArbitration.decide(...) == Verdict.OCCUPIED` → `viewer-target-occupied`（`VdisplayController.kt:483-492`），当前**没有任何套件打到这条路径**。
-  4. 已证实（正则语义）/ 未证实（真实 dump 文本形态）：`scripts/t0-check.ps1:14` 的禁用判定写成 `"shell-termux[sS]{0,200}?disabled:s*true"`——`s*` 是「零个或多个字母 s」，疑似想写 `\s*`。于是只有 `disabled:true` 紧贴形态命中，任何带空白的 `disabled: true` 都会逃逸，T0 会对「shell-termux 被禁」假绿。修法一行：`disabled:\s*true`。
+  4. 已证实（正则语义）/ 未证实（真实 dump 文本形态）：`scripts/t0-check.ps1:14` 的禁用判定写成 `"shell-linux[sS]{0,200}?disabled:s*true"`——`s*` 是「零个或多个字母 s」，疑似想写 `\s*`。于是只有 `disabled:true` 紧贴形态命中，任何带空白的 `disabled: true` 都会逃逸，T0 会对「shell-linux 被禁」假绿。修法一行：`disabled:\s*true`。
   5. 已证实：`scripts/deploy-device.ps1:31` 调 `Join-Path $PSScriptRoot "..\web-restart.ps1"`，两仓均无此文件（全仓只有 `docs/archive/orphan-scripts/web-restart.ps1`）→ 「部署完重启 dsh web」这一步静默失效（`$ErrorActionPreference = "Continue"` 吞掉 `&` 的报错，脚本仍以正常语义结束）。另一条同族：`scripts/device-smoke.ps1:14` 的 T1 依赖设备上手放的 `/data/data/com.termux/files/home/run-t1.sh`，该文件两仓都不存在 → 干净设备上 T1 不可复现。
 
 | 套件 | 验什么 | 连接方式 | 参数约定 | 已知假失败陷阱 | 依赖 |
@@ -1972,8 +1861,8 @@ flowchart TD
 | `scripts/device-smoke.ps1` | T0 配置断言 → T1 headless 冒烟（真 bash）→ T2 黄金会话回归（工具名序列对比），一条链 | 走 `run-as com.termux`（**legacy Termux 形态**）与设备内 `/data/data/com.termux/...` 路径 | `pwsh scripts/device-smoke.ps1 -Serial <s>`，默认 `127.0.0.1:16416` | ① T1 依赖设备上手放的 `run-t1.sh`（两仓都没有，干净设备不可复现）；② T2 会**覆盖受控文件** `scripts/golden/last-run.json`，跑完工作树必脏；③ T2 是黄金序列比对，模型 / 提示词一变即红（不是产品回归）；④ 应用是内嵌形态（`/data/user/0/com.snoworwind.pocketharness/files/home`）时整条链的前提不成立 | 设备上装着旧 Termux 形态的 dsh 与 `.dsh/sessions/...` 会话目录；`$env:LOCALAPPDATA\Android\Sdk\platform-tools\adb.exe` 在场 |
 | `scripts/deploy-device.ps1` | 把已构建的插件包推进**设备 profile 层** `node_modules`（termux 形态），然后重启 `dsh web` | adb push 到 `/data/local/tmp` → `run-as com.termux sh -c` 拷进 `~/.dsh/profiles/<Profile>/node_modules/@dsh-android/<pkg>` 并 `chmod -R a+rX` | `pwsh scripts/deploy-device.ps1 -Serial <s> [-Package <name>] [-Profile web]` | ① 最后一步 `..\web-restart.ps1` 不存在 → 重启静默失效（可疑点 5）；② 暂存目录是**仓库根的 `.deploy-staging`**（`:14`），与 `deploy-embedded.ps1` 共用同一路径（两者不可并跑）；③ `lib/index.js` 不存在直接 throw（`:11`），先跑 `scripts/build.mjs` | 插件已 `lib/` 构建；设备已装 Termux 形态 dsh 且 profile 目录存在 |
 | `scripts/deploy-embedded.ps1` | 把插件推进**内嵌形态**：`/data/user/0/com.snoworwind.pocketharness/files/home/.dsh/profiles/web/node_modules/@dsh-android/<pkg>` | `adb push` → `run-as com.snoworwind.pocketharness sh -c` 拷贝 + `chmod` | `pwsh scripts/deploy-embedded.ps1 -Serial <s> -Package <name>`（仓根执行）；**根目录取 `$PSScriptRoot` 的父目录，默认 serial 取 `ADB_SERIAL`**（缺失即报错），无 `-Profile` 参数（写死 `web`，`:17`） | ① `-Package` 语义有缺陷：既当仓库相对目录又当设备包名（传 `plugins/dsh-android-bridge` 会在 `@dsh-android/` 下嵌出同形子路径 → 插件解析不到）——须传**纯包名**（协调仓 `coord:docs/0.14.0-preview-VERIFICATION-LOG.md:211,253` 已登记为 N-5 未修）；② 与 `deploy-device.ps1` 共用 `.deploy-staging`，不可并跑 | 内嵌形态应用已装且跑过一次（`files/home` 已解压）；`run-as` 可用 |
-| `scripts/t0-check.ps1` | `--dump-config` 输出里 `shell-termux` / `bash-sandbox` / `permission` 三行在场，且 `shell-termux` 不得是 `disabled` | `adb shell run-as com.termux sh -c` 调设备内 node 跑 `--dump-config` 并 `cat` 结果 | `pwsh scripts/t0-check.ps1 -Serial <s>` | ① 禁用判定正则写错（可疑点 4）→ 对「被禁」假绿；② 只在 `shell-termux` 后 200 字符窗口内找 `disabled`，dump 排版一变即漏；③ `matrix()` 行匹配是纯子串，插件改名可能误命中 | 设备内 Termux 形态引擎在位（`/data/data/com.termux/files/usr/lib/node_modules/@deepseek-ai/dsh`） |
-| `scripts/e2e-phone-test.ps1` | 旧 RPC 端到端：`session.create` → `session.prompt`（让模型跑 bash echo/uname）→ 轮询 `session.history` 最多 120s | 纯宿主侧 HTTP，**不接 adb**：要求操作者事先把宿主端口转发好 | 无参数；`$base` 写死 `http://127.0.0.1:3081`，请求体落到 `D:\coding\dsh-mobile\.deploy-tmp` | ① 点号 wire + 旧端口 3081，而现行文档口径是 `forward 23080→3080`（`docs/AGENTS/build-and-env.md:205#expect=forward%20tcp%3A23080%20tcp%3A3080`）且 `/api` 需 `EngineAuth` cookie（`历史 BRIDGE-API 副本（当前契约见§6 K04）`）→ 大概率直接被拒（未证实，本轮未实跑）；② 脚本内无 serial / pkg 参数，无法在多设备上选择；③ 轮询结束不判「有没有拿到回复」，只看最后一条事件类型 | 宿主转发在位 + 引擎 cookie；同目录 `scripts/dsh-agent-chat.ps1` 才是 0.13.3+ 的斜杠 wire 版本（它自己 `:4` 就写明本脚本是旧 wire 旧端口），新验收优先用它 |
+| `scripts/t0-check.ps1` | `--dump-config` 输出里 `shell-linux` / `bash-sandbox` / `permission` 三行在场，且 `shell-linux` 不得是 `disabled` | `adb shell run-as com.termux sh -c` 调设备内 node 跑 `--dump-config` 并 `cat` 结果 | `pwsh scripts/t0-check.ps1 -Serial <s>` | ① 禁用判定正则写错（可疑点 4）→ 对「被禁」假绿；② 只在 `shell-linux` 后 200 字符窗口内找 `disabled`，dump 排版一变即漏；③ `matrix()` 行匹配是纯子串，插件改名可能误命中 | 设备内 Termux 形态引擎在位（`/data/data/com.termux/files/usr/lib/node_modules/@deepseek-ai/dsh`） |
+| `scripts/e2e-phone-test.ps1` | 旧 RPC 端到端：`session.create` → `session.prompt`（让模型跑 bash echo/uname）→ 轮询 `session.history` 最多 120s | 纯宿主侧 HTTP，**不接 adb**：要求操作者事先把宿主端口转发好 | 无参数；`$base` 写死 `http://127.0.0.1:3081`，请求体落到 `D:\coding\dsh-mobile\.deploy-tmp` | ① 点号 wire + 旧端口 3081，而现行文档口径是 `forward 23080→3080`（`docs/AGENTS/build-and-env.md:207#expect=forward%20tcp%3A23080%20tcp%3A3080`）且 `/api` 需 `EngineAuth` cookie（`历史 BRIDGE-API 副本（当前契约见§6 K04）`）→ 大概率直接被拒（未证实，本轮未实跑）；② 脚本内无 serial / pkg 参数，无法在多设备上选择；③ 轮询结束不判「有没有拿到回复」，只看最后一条事件类型 | 宿主转发在位 + 引擎 cookie；同目录 `scripts/dsh-agent-chat.ps1` 才是 0.13.3+ 的斜杠 wire 版本（它自己 `:4` 就写明本脚本是旧 wire 旧端口），新验收优先用它 |
 
 **CDP 与 adb 的能力边界对照**
 
@@ -2026,9 +1915,19 @@ node scripts/check-code-map.mjs --self-test   # 判别力自检（8 个用例，
 node scripts/verify-client-plugin-fail-recovery.mjs --self-test   # 客户端插件失败链的离线自检（不碰 adb）
 ```
 
-覆盖全域（脚本里定义，构建产物与第三方目录除外）：`app/src/**/*.kt` 与 `AndroidManifest.xml`、`plugins/*/{src,test}/**`、三个子仓 src/lib、`scripts/{check-,verify-,build-,inject-}*` 与 `scripts/patches/**`、`scripts/snapshot-config/**`。
+覆盖全域（脚本里定义，构建产物与第三方目录除外）：`app/src/**/*.kt` 与 `AndroidManifest.xml`、`plugins/*/{src,test}/**`、三个子仓 src/lib、`scripts/{check-,verify-,build-,inject-}*` 与 `scripts/patches/**`、`scripts/runtime-config/**`。
 
 <!-- COVERAGE
+scripts/source-build/proot_source_provenance.py
+scripts/source-build/prepare-proot-source-backend.py
+scripts/source-build/test_proot_source_backend.py
+scripts/source-build/inventory-native-runtime.py
+scripts/source-build/test_native_runtime_inventory.py
+scripts/source-build/native-runtime-inventory-workflow.test.mjs
+scripts/source-build/build-proot-source.py
+scripts/source-build/test_proot_source_build.py
+scripts/source-build/proot-source/pocket_shmem_path.h
+scripts/source-build/proot-source/talloc-cross-answers.txt
 app/src/main/java/com/snoworwind/pocketharness/TerminalNative.kt
 app/src/main/java/com/snoworwind/pocketharness/TerminalStageBounds.kt
 app/src/main/java/com/snoworwind/pocketharness/TerminalView.kt
@@ -2058,8 +1957,12 @@ scripts/source-build/read-apk-snapshot.py
 vendor/dsh-undo-savepoint/test/import-plaintext.test.mjs
 plugins/dsh-linux-bootstrap/test/github-limits.test.mjs
 plugins/dsh-linux-bootstrap/test/client-http.test.mjs
+plugins/dsh-linux-bootstrap/test/reactivate.test.mjs
 scripts/source-build/linux-plugin-dependencies.test.mjs
 plugins/dsh-linux-bootstrap/test/github-limits-negative-control.mjs
+app/src/main/java/com/snoworwind/pocketharness/LinuxGuestBoot.kt
+app/src/main/java/com/snoworwind/pocketharness/LinuxInstanceInstaller.kt
+app/src/test/java/com/snoworwind/pocketharness/LinuxGuestBootTest.kt
 app/src/main/java/com/snoworwind/pocketharness/EngineTransport.kt
 app/src/androidTest/java/com/snoworwind/pocketharness/EngineTransportInstrumentedTest.kt
 glob:scripts/patches/tests/fixtures/dsh-client-ui-sidebar-right-0.2.0-rc.2/**
@@ -2068,7 +1971,7 @@ glob:scripts/patches/tests/fixtures/dsh-client-ui-sidebar-right-mobile-0.2.0-rc.
 app/src/main/java/com/snoworwind/pocketharness/RootMaintenanceLease.kt
 app/src/main/java/com/snoworwind/pocketharness/BrowserHostProfile.kt
 app/src/main/java/com/snoworwind/pocketharness/ForegroundPageRecoveryPolicy.kt
-app/src/main/java/com/snoworwind/pocketharness/SnapshotFingerprintPolicy.kt
+app/src/main/java/com/snoworwind/pocketharness/LinuxUpgradeTransaction.kt
 app/src/main/java/com/snoworwind/pocketharness/ProfilePackageManifest.kt
 app/src/main/java/com/snoworwind/pocketharness/LinuxAssetIO.kt
 app/src/main/java/com/snoworwind/pocketharness/LinuxAssetPrepare.kt
@@ -2082,8 +1985,8 @@ app/src/test/java/com/snoworwind/pocketharness/StartupLifecycleOwnershipTest.kt
 app/src/test/java/com/snoworwind/pocketharness/EngineBootContinuationTest.kt
 app/src/test/java/com/snoworwind/pocketharness/ForegroundPageRecoveryPolicyTest.kt
 app/src/test/java/com/snoworwind/pocketharness/ForegroundPageRecoveryWiringTest.kt
-app/src/test/java/com/snoworwind/pocketharness/SnapshotFingerprintPolicyTest.kt
-app/src/test/java/com/snoworwind/pocketharness/SnapshotMigrationPolicyTest.kt
+app/src/test/java/com/snoworwind/pocketharness/LinuxPayloadIdentityTest.kt
+app/src/test/java/com/snoworwind/pocketharness/LinuxLegacyDataMigrationTest.kt
 app/src/test/java/com/snoworwind/pocketharness/BrowserHostCommandWiringTest.kt
 scripts/patches/ptc-android-native-A1.mjs
 scripts/patches/pi-upstream-streaming-020.mjs
@@ -2104,7 +2007,7 @@ app/src/main/java/com/snoworwind/pocketharness/GuideManagementController.kt
 app/src/main/java/com/snoworwind/pocketharness/PluginManagementRepository.kt
 app/src/main/java/com/snoworwind/pocketharness/PluginManagementPage.kt
 app/src/main/java/com/snoworwind/pocketharness/SnapshotRecoveryNotice.kt
-app/src/main/java/com/snoworwind/pocketharness/RuntimeTree.kt
+app/src/main/java/com/snoworwind/pocketharness/LinuxFileTree.kt
 app/src/main/java/com/snoworwind/pocketharness/GuidePageRenderer.kt
 app/src/main/java/com/snoworwind/pocketharness/SafeMode.kt
 app/src/main/java/com/snoworwind/pocketharness/SafeConsole.kt
@@ -2117,7 +2020,7 @@ app/src/main/java/com/snoworwind/pocketharness/BootReceiver.kt
 app/src/main/java/com/snoworwind/pocketharness/ShimmerTextView.kt
 app/src/main/java/com/snoworwind/pocketharness/DsUi.kt
 app/src/main/java/com/snoworwind/pocketharness/EngineManager.kt
-app/src/main/java/com/snoworwind/pocketharness/PythonPackages.kt
+app/src/main/java/com/snoworwind/pocketharness/LinuxLegacyMigration.kt
 app/src/main/java/com/snoworwind/pocketharness/ReverseMigration.kt
 app/src/main/java/com/snoworwind/pocketharness/SnapshotRefreshStage.kt
 app/src/main/java/com/snoworwind/pocketharness/EngineService.kt
@@ -2125,9 +2028,11 @@ app/src/main/java/com/snoworwind/pocketharness/EngineProbe.kt
 app/src/main/java/com/snoworwind/pocketharness/LiveProbe.kt
 app/src/main/java/com/snoworwind/pocketharness/WatchdogV2.kt
 app/src/main/java/com/snoworwind/pocketharness/LogCollector.kt
-app/src/main/java/com/snoworwind/pocketharness/SnapshotTransaction.kt
+app/src/main/java/com/snoworwind/pocketharness/LinuxCandidateProbe.kt
 app/src/main/java/com/snoworwind/pocketharness/SnapshotFs.kt
-app/src/main/java/com/snoworwind/pocketharness/SnapshotRefreshPolicy.kt
+app/src/main/java/com/snoworwind/pocketharness/LinuxDataBackup.kt
+app/src/main/java/com/snoworwind/pocketharness/LinuxBackupActivity.kt
+plugins/dsh-android-linux-env/src/guest-self-check.ts
 app/src/main/java/com/snoworwind/pocketharness/PublicRepoProvision.kt
 app/src/main/java/com/snoworwind/pocketharness/SnapshotExtractor.kt
 app/src/main/java/com/snoworwind/pocketharness/SnapshotUserData.kt
@@ -2270,7 +2175,7 @@ glob:dsh-client-ui-responsive/src/client/dev-section/*
 dsh-client-ui-responsive/src/client/general-settings/GeneralSettings.tsx
 dsh-host-web-compat/lib/index.js
 glob:dsh-host-web-compat/scripts/*
-dsh-shell-termux/src/index.ts
+dsh-shell-linux/src/index.ts
 scripts/build-apk-013.ps1
 scripts/build-snapshot-013.mjs
 scripts/make-snapshot.sh
@@ -2291,7 +2196,7 @@ scripts/patches/mimo-thinking-toggle-056.mjs
 scripts/patches/tests/mimo-thinking-toggle-056.test.mjs
 glob:scripts/patches/tests/*.test.mjs
 glob:scripts/patches/tests/fixtures/**
-glob:scripts/snapshot-config/*
+glob:scripts/runtime-config/*
 scripts/profile-web.cordis.patch.yml
 scripts/build-apk.mjs
 scripts/build-hard-manifest.mjs
@@ -2379,7 +2284,7 @@ scripts/verify-webview-settings.test.mjs
 - [K10] 已修（2026-10-31）：引擎通知信道注释说明由壳侧按偏移消费、由引擎写入方负责轮转，不再声称壳侧截断文件。
 - [K10] 已退役：旧 `0.14.1-preview-NOTIFY-REALTIME-AND-STATE-SYNC.md` 不在当前仓库；本仓通知契约见 `ARCHITECTURE.md`、`modules.md` 与 `BRIDGE-API.md`，不再维护该旧稿行号。
 - [P01] 已修（2026-10-31）：历史缺口档案移除了会漂移的 `bridge/index.ts` 行号，保留 F1 按 `args.screenId` 经 `screenAccessResolved` 判定的历史语义。
-- [P01] 漂移：`upstream cb1c315 docs/AGENTS/ARCHITECTURE.md section 9`（§9「0.13.5 设备控制面」）说 `adb → execAdbLine/execAdbShell（shell 执行、原图截图、pm/dumpsys 等系统面）`，源码 `plugins/dsh-android-bridge/src/index.ts:1034`/`:1070` 与 `plugins/dsh-android-bridge/src/shell-ops.ts:120` 已在 0.14.0 改成经控制队列投递壳侧 Shizuku、不再有 adb 客户端语义（该节自带 0.13.5 标注，属历史段落，按「以源码为准」记录）。
+- [P01] 漂移：`upstream cb1c315 docs/AGENTS/ARCHITECTURE.md section 9`（§9「0.13.5 设备控制面」）说 `adb → execAdbLine/execAdbShell（shell 执行、原图截图、pm/dumpsys 等系统面）`，源码 `plugins/dsh-android-bridge/src/index.ts:1034#expect=a11ySource%3A%20a11y.source%2C`/`:1070` 与 `plugins/dsh-android-bridge/src/shell-ops.ts:120` 已在 0.14.0 改成经控制队列投递壳侧 Shizuku、不再有 adb 客户端语义（该节自带 0.13.5 标注，属历史段落，按「以源码为准」记录）。
 - [P02] 漂移：`docs/AGENTS/gotchas.md:178` 说坑 72 的锚点是 `plugins/dsh-android-manage/src/lossless-json.ts` 与 `plugins/dsh-android-manage/test/privilege-status.test.mjs`，源码里这两个文件只在 bridge 插件下（`plugins/dsh-android-bridge/src/lossless-json.ts:1`、`plugins/dsh-android-bridge/test/privilege-status.test.mjs:1`），manage 当前源文件另有本轮新增 `tmp-cache.ts`。
   - `plugins/dsh-android-manage/src/index.ts:2563#expect=return%20%5BscreenList%2C%20screenshot%2C%20uiTree` — 注册数组共 14 个工具（uiDetail 是 0.14 D4 补回的第 14 个）。
 - [P02] 耦合边允许外部角色右端已修：可见耦合表只对符合查点 ID 形状的右端检查登记；注释与判定分别见 `scripts/check-code-map.mjs:323#expect=%E5%8F%B3%E7%AB%AF%E5%8F%AF%E4%BB%A5%E6%98%AF%E3%80%8C%E5%A4%96%E9%83%A8%E8%A7%92%E8%89%B2%E3%80%8D%E6%96%87%E5%AD%97`、`scripts/check-code-map.mjs:327#expect=if%20(ID_SHAPE.test(c.to)`
@@ -2390,7 +2295,7 @@ scripts/verify-webview-settings.test.mjs
 - [P04] 已修（2026-10-31）：`FileIncoming.safeTarget` 注释现说明保留原始 DSH_HOME 前缀是契约要求；插件仍会 realpath 工作区与候选路径后再检查归属。
 - [S01] 漂移：`dsh-mobile-apk/docs/AGENTS/gotchas.md:103`（坑 61）说防线③是「常驻 `node dsh-host-web-compat/scripts/smoke-injections.mjs` 门禁」，源码 `dsh-host-web-compat/lib/index.js:783,791` 已是两次 `tapIndex`，而 `dsh-host-web-compat/scripts/smoke-injections.mjs:50` 仍断言 `transforms.length === 1` —— 该门禁当下是红的（apk 仓 `.github/workflows` 不跑它）。
 - [S01] 已修（2026-10-31）：现行 BRIDGE-API 方法清单已与 `AndroidBridge.kt` 同步，包含通知设置 getter/setter。
-- [S01] 漂移：apk 仓 `dsh-shell-termux/README.md` 与协调仓同名副本不是逐字节镜像（6 行行尾 CRLF/LF 差异，正文逐字相同，无功能影响）。
+- [S01] 漂移：apk 仓 `dsh-shell-linux/README.md` 与协调仓同名副本不是逐字节镜像（6 行行尾 CRLF/LF 差异，正文逐字相同，无功能影响）。
 - [B01] 已修（2026-10-31）：`build-and-env.md` 已改为共享 `XZ_THREADS` 设置与 `DSH_CPU_THREADS` 覆写，不再写死 `-T0` 或线程数。
 - [B01] 已退役：执行地图中的旧构建描述仅作发现时快照；当前线程配置与来源链步骤以 `build-and-env.md` 和来源构建源码为准。
 - [B01] 已退役：门禁数量为易漂移数据；当前按 `scripts/check-release-gates.mjs --list` 现数，旧桥文档快照的数字不作现状。

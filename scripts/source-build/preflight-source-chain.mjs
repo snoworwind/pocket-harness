@@ -116,6 +116,8 @@ function stepSourceBuildTests() {
     'check-package-lock-roots.test.mjs',
     'reconcile-harness-vendor-lock.test.mjs',
     'check-android-native-runtime-packages.test.mjs',
+    'linux-runtime-packages.test.mjs',
+    'fetch-overlay-tarballs.test.mjs',
   ]
   const failed = []
   for (const suite of suites) {
