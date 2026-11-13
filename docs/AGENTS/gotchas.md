@@ -4065,3 +4065,17 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
      真因：生产门禁默认从 DSH_ABI 选目标；旧 ARM64 测试未显式传 ABI，进入 x86 作业后用 x64 判据检查 ARM64 树，负控也在到达预期判据前失败。
      修法：ARM64 夹具显式传 arm64，x64 夹具显式传 x86_64；生产默认行为不变。分别以 DSH_ABI=arm64/x86_64 跑完整来源脚本回归，确保环境不会改变夹具语义。
      复验：双环境正向 loader 与缺绑定、源码 shadow、异架构 ELF 等受控负向用例；最终来源链须重新执行，旧 run 不记为通过。
+
+
+706. **来源预检的独立 self-test 也必须覆盖两种 ABI（2026-11-13）**
+     现象：修好 Node 夹具后，x86 开发来源 run 43401048477 继续在 verify-linux-native-apk.py --self-test 拒绝 ARM64 夹具。
+     真因：Python 单测与 Node 回归没有执行这个独立 self-test；其 verify() 默认继承 DSH_ABI，而 self-test 只创建 arm64-v8a 目录。
+     修法：self-test 对 arm64/x86_64 分别建立目录、ZIP 成员和受控负向，并显式传 ABI；Python 单测在两个环境里实际调用该 CLI 防漏。
+     复验：两个 DSH_ABI 环境均验证自检的正向、篡改、压缩模式和符号链接拒绝；重跑实际来源预检，不将旧失败 run 标绿。
+
+
+707. **目标 ELF 正确不代表 addon 包身份正确（2026-11-13，双 ABI 集中复核）**
+     现象：build-guest-addons.py 已接受 x86 编译器，却仍读取 linux-arm64/package.json 并在收据声明 ARM64 包名；原生 APK 检查也未把 schema-2 后端收据架构绑定到目标 ABI。
+     真因：参数化只覆盖 ELF 校验与目录名，没有覆盖包清单、依赖 loader 与来源身份。
+     修法：按目标读取源码包清单并核对包名；构建收据与打包阶段都检查目标身份，glibc loader 白名单随 ABI 选择；最终 APK 检查要求后端 architecture 与目标一致。
+     复验：双 ABI 构建夹具、错误包身份、异架构 loader 与错后端收据负控；本地完整来源预检逐 ABI 运行后再统一发 CI。

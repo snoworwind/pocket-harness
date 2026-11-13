@@ -138,6 +138,9 @@ def install_system_addon(root, addon, abi='arm64'):
     source = addon / 'bin/glibc/system.node'
     if not source.is_file():
         raise ValueError(f'guest addon binary missing: {source}')
+    manifest = json.loads((addon / 'package.json').read_text())
+    if manifest.get('name') != addon_package:
+        raise ValueError('guest addon package identity does not match target ABI')
     destination = root / '@deepseek-ai/dsh/node_modules' / addon_package
     shutil.rmtree(destination, ignore_errors=True)
     shutil.copytree(addon, destination, symlinks=True)
@@ -225,6 +228,7 @@ def self_test():
         addon = root / 'addon'
         (addon / 'bin/glibc').mkdir(parents=True)
         (addon / 'bin/glibc/system.node').write_bytes(b'glibc-addon')
+        (addon / 'package.json').write_text(json.dumps({'name': ABI_CONFIG['arm64']['addon']}))
         receipt = assemble(tree, pty, addon, root / 'out')
         expect('android prebuild pruned', not (root / 'out/@deepseek-ai/dsh/node_modules/.pnpm/node-pty@1.0.0/node_modules/node-pty/prebuilds/android-arm64').exists())
         expect('linux prebuild kept', (root / 'out/@deepseek-ai/dsh/node_modules/.pnpm/node-pty@1.0.0/node_modules/node-pty/prebuilds/linux-arm64/pty.node').read_bytes() == b'glibc-pty')

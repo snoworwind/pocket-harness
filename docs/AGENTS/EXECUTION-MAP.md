@@ -599,7 +599,7 @@ K01 journal 发布：`LinuxUpgradeTransaction.atomicWrite` 写同目录临时文
 | B03 | 注入层（dsh-client-ui-responsive / dsh-host-web-compat） | webview-015 的全部 DOM 锚点、polyfill 活性与内联脚本可解析断言都打在这两个子仓的产出上 | scripts/verify-webview-015.mjs:11-19 |
 | B03 | 部署面（deploy-device.ps1 / deploy-embedded.ps1 / web-restart.ps1） | 插件要先经这两个脚本进设备 node_modules，套件才有可验对象；重启腿当前缺失 | scripts/deploy-device.ps1:31 |
 | B03 | 客户端插件失败自愈链（EngineStartFlow.kt / LogCollector.kt / UndoGate.kt / PluginMounts.kt） | 套件按页面契约行 `[dsh-boot-failed]` 的设备落盘证据判绿：boot-diag 的 source=page-console 行、boot-fail 的 stage 记账、undo-gate 的一次性入口叙述行；改名或改字段序即整批断言失效 | scripts/verify-client-plugin-fail-recovery.mjs:11-19 |
-| B03 | 人（操作者） | 无 CI 接入，参数约定一脚本一样，target 重建与证据落盘全靠人；B 轨完全依赖人工规范 | docs/AGENTS/emulator-test-protocol.md:96-100 |
+| B03 | 人（操作者） | 无 CI 接入，参数约定一脚本一样，target 重建与证据落盘全靠人；B 轨完全依赖人工规范 | docs/AGENTS/emulator-test-protocol.md:100#expect=%E5%BA%94%E7%94%A8%E5%9C%A8%E5%89%8D%E5%8F%B0 |
 
 ## 5. 症状 → 查点索引
 
