@@ -423,13 +423,14 @@ engine 的 checkout/upstream/overlay/patches/build/deploy 步骤集中到 `scrip
 实验分支 PRoot/loader/talloc/shmem 的离线 NDK 源码构建入口及真实编译边界见
 [PRoot 源码构建](PROOT-SOURCE-BUILD.md)；已接入实验分支 Linux 资产与 APK 组装协议。
 来源链在本轮 APK 的注入后快照归一化步骤中生成 `native-runtime-inventory.json`，并将其传递到
-独立验证与最终签名 artifact；PR Gate 执行 `inventory-native-runtime.py --self-test` 和 Python
+独立验证与最终签名 artifact；无 Termux 快照的 Linux-bundle APK 则从 `assets/linux/manifest.json`
+生成 `mode: linux-guest` 的身份摘要与资产/原生库清单，不伪造 Termux 归一化摘要。PR Gate 执行 `inventory-native-runtime.py --self-test` 和 Python
 自动发现回归。该报告是盘点，不代表宿主程序已经从可写目录迁出或完成设备验收。
 
 实验分支 Linux 资产链使用 NDK_ROOT 指向固定官方 NDK r30，通过 build-proot-source.py 和 prepare-proot-source-backend.py 自编译后端，不再读取 Termux 后端包。主运行时构建不受此切换覆盖。来源协议、归档与许可证见 [PRoot 源码构建](PROOT-SOURCE-BUILD.md)。
 
 用户授权的 ARM64 本地 Linux 实验构建使用 `node scripts/source-build/run-local-source-chain.mjs --experimental-linux`，
-只接受 `codex/linux-runtime-experiment`，在 GitHub Actions 中不可启用。产物使用临时签名，仅供 Android 16 AVD 测试；不得合并 main 或作为正式发布产物。
+只接受 `codex/linux-runtime-experiment`。云端来源链通过显式 `linux_experiment=true` 输入仅放行同一实验分支与 ARM64，仍禁止正式发布。产物使用临时签名，仅供 Android 16 AVD 测试；不得合并 main 或作为正式发布产物。
 
 本地运行器解析工作流步骤 env，并将 github.workspace/ref 映射到隔离来源目录和真实分支；未知表达式拒绝，不执行 shell 字符串。本地没有 Actions 注入缓存时 DSH_INJECTED_SNAPSHOT 为空。
 

@@ -1045,14 +1045,48 @@ jobs:
           work=.deploy-tmp/source-build/normalization
           rm -rf "$work"
           mkdir -p "$work/tree"
-          unzip -p "$apk" assets/snapshot.tar.xz > "$work/snapshot.tar.xz"
-          tar -xJf "$work/snapshot.tar.xz" -C "$work/tree"
-          node scripts/source-build/normalize-snapshot.mjs "$work/tree" \
-            --out .deploy-tmp/source-build/snapshot-normalization.json
-          # Inventory the actual injected snapshot and the APK native payloads,
-          # including when the injected-snapshot cache was reused. Read-only.
-          python3 scripts/source-build/inventory-native-runtime.py "$work/tree" \
-            .deploy-tmp/source-build/native-runtime-inventory.json --abi "$DSH_ABI" --apk "$apk"
+          if unzip -l "$apk" assets/snapshot.tar.xz >/dev/null 2>&1; then
+            unzip -p "$apk" assets/snapshot.tar.xz > "$work/snapshot.tar.xz"
+            tar -xJf "$work/snapshot.tar.xz" -C "$work/tree"
+            node scripts/source-build/normalize-snapshot.mjs "$work/tree" \
+              --out .deploy-tmp/source-build/snapshot-normalization.json
+            # Inventory the actual injected snapshot and the APK native payloads,
+            # including when the injected-snapshot cache was reused. Read-only.
+            python3 scripts/source-build/inventory-native-runtime.py "$work/tree" \
+              .deploy-tmp/source-build/native-runtime-inventory.json --abi "$DSH_ABI" --apk "$apk"
+          else
+            # The Linux-bundle APK ships assets/linux/* and deliberately no Termux snapshot.
+            # Publish the guest payload identity instead of a snapshot digest nobody can recompute.
+            unzip -p "$apk" assets/linux/manifest.json > "$work/linux-manifest.json"
+            python3 - "$work/linux-manifest.json" "$apk" \
+              .deploy-tmp/source-build/snapshot-normalization.json \
+              .deploy-tmp/source-build/native-runtime-inventory.json <<'PY'
+          import hashlib, json, sys, zipfile
+
+          manifest_path, apk_path, normalization_out, inventory_out = sys.argv[1:5]
+          manifest_bytes = open(manifest_path, 'rb').read()
+          manifest = json.loads(manifest_bytes)
+          normalization = {
+              'schemaVersion': 1,
+              'mode': 'linux-guest',
+              'bundledTermuxSnapshot': False,
+              'manifestSha256': hashlib.sha256(manifest_bytes).hexdigest(),
+              'assets': {key: value for key, value in manifest.items() if key.endswith('Sha256')},
+              'note': 'The APK ships assets/linux/* instead of a Termux snapshot; the instance manifest hashes are the normalized identity.',
+          }
+          open(normalization_out, 'w').write(json.dumps(normalization, ensure_ascii=False, indent=2) + '\n')
+          with zipfile.ZipFile(apk_path) as archive:
+              names = archive.namelist()
+          inventory = {
+              'schemaVersion': 1,
+              'mode': 'linux-guest',
+              'manifest': manifest,
+              'assets': sorted(name for name in names if name.startswith('assets/')),
+              'nativeLibraries': sorted(name for name in names if name.startswith('lib/')),
+          }
+          open(inventory_out, 'w').write(json.dumps(inventory, ensure_ascii=False, indent=2) + '\n')
+          PY
+          fi
           rm -rf "$work"
 
       - name: Reverify final APK files before artifact upload

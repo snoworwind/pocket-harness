@@ -3941,3 +3941,10 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
     `build-linux-assets.sh` 恢复 Node headers 下载并用 `build-guest-addons.py` 编译该平台包，
     `build-snapshot-013.mjs` 把产物作为 `--addon` 传给 `package-guest-engine.py`。
     复验：Python 相关单测与 `linux-assets-workflow.test.mjs` 通过；云端 Linux 资产构建成功。
+
+693. **Linux-bundle APK 的来源证据不能继续提取 Termux 快照（2026-11-13，实验分支）**
+    现象：APK 打包移除 `assets/snapshot.tar.xz` 后，来源工作流的归一化步骤仍无条件 unzip 该成员。
+    真因：打包载荷已切换，最终证据生成仍假定所有 APK 都有 Termux 快照。
+    修法：存在快照时保留原归一化与盘点；否则必须读取 Linux manifest，生成明确标为
+    `linux-guest` 的 manifest SHA-256、载荷摘要和 APK 资产/原生库清单；缺 manifest 直接失败。
+    复验：工作流证据测试使用合成 ZIP 执行内联 Python，覆盖 Linux 身份与缺 manifest 负控；云端结果另行记录。
