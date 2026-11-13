@@ -3770,3 +3770,8 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
      真因：异步回调的对象返回值没有显式契约，动态 operation 也只被运行期 includes 校验，类型仍为 string；schema 推导却要求 phase/engine 字面量联合。
      修法：导出 LinuxEnvironmentStatus，execute 显式返回 Promise<该契约>；operation 用枚举数组 find 收窄，不用宽泛 string 或强制绕过类型检查。状态与系统指引回归继续覆盖 unavailable/failed/ready。
      复验：干净依赖安装后的 Linux CI 及完整门禁结果随 PR #333 收口；设备层不在此处宣称通过。
+
+722. **安装中的 Linux 不得因旧健康快照返回 ready=true（2026-11-14）**
+     现象与真因：reinstall 保留上一实例的 healthy 状态供展示，若 ready 只看该状态与 injectionActivated，会同时返回 phase=installing 和 ready=true，误导模型在管理事务期间继续调用 Linux。
+     修法：ready 同时要求 installed、非 busy、未停用、已激活、无错误和健康；未知 busy operation 收窄为 busy。Termux 主环境不受此判据影响。
+     复验：先对旧实现运行“busy + 旧 healthy”受控输入，断言 ready=false 实际失败；修复后同用例及 unavailable/failed/ready 状态契约通过。

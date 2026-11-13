@@ -287,10 +287,10 @@ function tools(ctx: Context, svc: { status(): { tier: string } } | undefined) {
         const operation = LINUX_PHASES.find(phase => phase === status.operation) ?? 'busy'
         const runtime = typeof status.runtime === 'object' ? status.runtime as { healthy?: boolean; reason?: string } | null : null
         return {
-          ready: status.injectionActivated === true && runtime?.healthy === true && !status.error && !status.lastError,
+          ready: status.installed === true && !status.busy && status.enabled !== false && status.injectionActivated === true && runtime?.healthy === true && !status.error && !status.lastError,
           engine: 'termux',
           phase: status.busy ? operation : status.error || status.lastError ? 'failed' :
-            !status.installed ? 'absent' : !status.injectionActivated ? 'inactive' : runtime?.healthy ? 'ready' : 'unhealthy',
+            !status.installed ? 'absent' : status.enabled === false || !status.injectionActivated ? 'inactive' : runtime?.healthy ? 'ready' : 'unhealthy',
           reason: status.error ?? status.lastError ?? runtime?.reason ?? 'Termux bash 为主环境。',
         }
       } catch { return { phase: 'failed', ready: false, engine: 'termux', reason: '无法读取 Linux 状态；Termux bash 可继续使用。' } }

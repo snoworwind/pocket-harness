@@ -31,4 +31,8 @@ test('Linux status and main-environment guidance survive an unavailable or faile
   assert.equal(failed.reason, 'controlled failure')
   ctx.linuxBootstrap.status = async () => ({ installed: true, injectionActivated: true, runtime: { healthy: true } })
   assert.equal((await tool.execute({})).ready, true)
+  ctx.linuxBootstrap.status = async () => ({ installed: true, injectionActivated: true, busy: true, operation: 'unknown-phase', runtime: { healthy: true } })
+  const busy = await tool.execute({})
+  assert.equal(busy.phase, 'busy')
+  assert.equal(busy.ready, false, 'cached health cannot make an installing runtime ready')
 })
