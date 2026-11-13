@@ -33,63 +33,66 @@ function link(root, path, target) {
 
 const pnpm = 'node_modules/.pnpm'
 
-function scaffold(root) {
-  put(root, `${pnpm}/koffi@3.2.1/node_modules/koffi/package.json`, JSON.stringify({
+function scaffold(root, abi = 'arm64') {
+  const adapt = value => typeof value === 'string' && abi === 'x86_64' ? value.replaceAll('arm64', 'x64') : value
+  const write = (root, path, data) => put(root, adapt(path), Buffer.isBuffer(data) && abi === 'x86_64' ? x64() : adapt(data))
+  const symlink = (root, path, target) => link(root, adapt(path), adapt(target))
+  write(root, `${pnpm}/koffi@3.2.1/node_modules/koffi/package.json`, JSON.stringify({
     name: 'koffi',
     version: '3.2.1',
     optionalDependencies: { '@koromix/koffi-linux-arm64': '3.2.1' },
   }))
   const binding = `${pnpm}/@koromix+koffi-linux-arm64@3.2.1/node_modules/@koromix/koffi-linux-arm64`
-  put(root, `${binding}/package.json`, JSON.stringify({ name: '@koromix/koffi-linux-arm64', version: '3.2.1' }))
-  put(root, `${binding}/index.js`, 'var BINARIES = { musl: "./musl_arm64/koffi.node", glibc: "./linux_arm64/koffi.node" };')
-  put(root, `${binding}/linux_arm64/koffi.node`, arm64())
-  put(root, `${binding}/musl_arm64/koffi.node`, arm64())
-  link(root, `${pnpm}/koffi@3.2.1/node_modules/@koromix/koffi-linux-arm64`, '../../../@koromix+koffi-linux-arm64@3.2.1/node_modules/@koromix/koffi-linux-arm64')
+  write(root, `${binding}/package.json`, JSON.stringify({ name: '@koromix/koffi-linux-arm64', version: '3.2.1' }))
+  write(root, `${binding}/index.js`, 'var BINARIES = { musl: "./musl_arm64/koffi.node", glibc: "./linux_arm64/koffi.node" };')
+  write(root, `${binding}/linux_arm64/koffi.node`, arm64())
+  write(root, `${binding}/musl_arm64/koffi.node`, arm64())
+  symlink(root, `${pnpm}/koffi@3.2.1/node_modules/@koromix/koffi-linux-arm64`, '../../../@koromix+koffi-linux-arm64@3.2.1/node_modules/@koromix/koffi-linux-arm64')
 
   for (const name of ['dsh-subprocess-local', 'dsh-win32-process']) {
     const directory = `${pnpm}/@deepseek-ai+${name}@1/node_modules/@deepseek-ai/${name}`
-    put(root, `${directory}/package.json`, JSON.stringify({
+    write(root, `${directory}/package.json`, JSON.stringify({
       name: `@deepseek-ai/${name}`,
       version: '1.0.0',
       dependencies: { koffi: '3.2.1' },
     }))
-    link(root, `${pnpm}/@deepseek-ai+${name}@1/node_modules/koffi`, '../../koffi@3.2.1/node_modules/koffi')
+    symlink(root, `${pnpm}/@deepseek-ai+${name}@1/node_modules/koffi`, '../../koffi@3.2.1/node_modules/koffi')
   }
 
   const pty = `${pnpm}/node-pty@1.2.0-beta.15_patch_hash=fixture/node_modules/node-pty`
-  put(root, `${pty}/package.json`, JSON.stringify({ name: 'node-pty', version: '1.2.0-beta.15' }))
-  put(root, `${pty}/prebuilds/linux-arm64/pty.node`, arm64())
-  link(
+  write(root, `${pty}/package.json`, JSON.stringify({ name: 'node-pty', version: '1.2.0-beta.15' }))
+  write(root, `${pty}/prebuilds/linux-arm64/pty.node`, arm64())
+  symlink(
     root,
     `${pnpm}/@deepseek-ai+dsh-subprocess-local@1/node_modules/node-pty`,
     '../../node-pty@1.2.0-beta.15_patch_hash=fixture/node_modules/node-pty',
   )
 
   const sharp = `${pnpm}/sharp@0.35.5/node_modules/sharp`
-  put(root, `${sharp}/package.json`, JSON.stringify({ name: 'sharp', version: '0.35.5' }))
-  put(root, `${sharp}/dist/sharp.mjs`, 'sharp = require("@img/sharp-linux-arm64/sharp.node");')
+  write(root, `${sharp}/package.json`, JSON.stringify({ name: 'sharp', version: '0.35.5' }))
+  write(root, `${sharp}/dist/sharp.mjs`, 'sharp = require("@img/sharp-linux-arm64/sharp.node");')
   const sharpBinding = `${pnpm}/@img+sharp-linux-arm64@0.35.5/node_modules/@img/sharp-linux-arm64`
-  put(root, `${sharpBinding}/package.json`, JSON.stringify({ name: '@img/sharp-linux-arm64', version: '0.35.5', exports: { './sharp.node': './index.cjs' } }))
-  put(root, `${sharpBinding}/index.cjs`, "module.exports = require('./lib/sharp-linux-arm64-0.35.5.node');")
-  put(root, `${sharpBinding}/lib/sharp-linux-arm64-0.35.5.node`, arm64())
-  link(
+  write(root, `${sharpBinding}/package.json`, JSON.stringify({ name: '@img/sharp-linux-arm64', version: '0.35.5', exports: { './sharp.node': './index.cjs' } }))
+  write(root, `${sharpBinding}/index.cjs`, "module.exports = require('./lib/sharp-linux-arm64-0.35.5.node');")
+  write(root, `${sharpBinding}/lib/sharp-linux-arm64-0.35.5.node`, arm64())
+  symlink(
     root,
     `${pnpm}/sharp@0.35.5/node_modules/@img/sharp-linux-arm64`,
     '../../../@img+sharp-linux-arm64@0.35.5/node_modules/@img/sharp-linux-arm64',
   )
   const attachment = `${pnpm}/@deepseek-ai+dsh-attachment-local@1/node_modules/@deepseek-ai/dsh-attachment-local`
-  put(root, `${attachment}/package.json`, JSON.stringify({ name: '@deepseek-ai/dsh-attachment-local', version: '1.0.0' }))
-  link(root, `${pnpm}/@deepseek-ai+dsh-attachment-local@1/node_modules/sharp`, '../../sharp@0.35.5/node_modules/sharp')
+  write(root, `${attachment}/package.json`, JSON.stringify({ name: '@deepseek-ai/dsh-attachment-local', version: '1.0.0' }))
+  symlink(root, `${pnpm}/@deepseek-ai+dsh-attachment-local@1/node_modules/sharp`, '../../sharp@0.35.5/node_modules/sharp')
 
   for (const name of ['dsh-subprocess-local', 'dsh-win32-process', 'dsh-attachment-local']) {
-    link(root, `node_modules/@deepseek-ai/${name}`, `../.pnpm/@deepseek-ai+${name}@1/node_modules/@deepseek-ai/${name}`)
+    symlink(root, `node_modules/@deepseek-ai/${name}`, `../.pnpm/@deepseek-ai+${name}@1/node_modules/@deepseek-ai/${name}`)
   }
 }
 
-function withFixture(fn) {
+function withFixture(fn, abi = 'arm64') {
   const root = mkdtempSync(join(tmpdir(), 'linux-runtime-packages-'))
   try {
-    scaffold(root)
+    scaffold(root, abi)
     fn(root)
   } finally {
     rmSync(root, { recursive: true, force: true })
@@ -166,3 +169,12 @@ test('engine artifact gate reads ELF headers even when filenames have no platfor
     }
   } finally { rmSync(root, { recursive: true, force: true }) }
 })
+
+test('x86 audit resolves both koffi consumers, sharp and node-pty to x64 ELF', () => withFixture(root => {
+  const report = checkLinuxRuntimePackages(root, undefined, 'x86_64')
+  assert.equal(report.target, 'linux-x64-glibc')
+  assert.equal(report.koffi.length, 2)
+  assert.match(report.sharp.path, /sharp-linux-x64/)
+  assert.match(report.nodePty.path, /prebuilds\/linux-x64/)
+  checkEngineArtifacts(root, 'x86_64')
+}, 'x86_64'))
