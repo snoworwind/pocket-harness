@@ -4,7 +4,7 @@
 
 ## 执行与证据
 
-1. `build-base.yml` 按内容键复用或双副本构建固定 Harness 源码，验证 deploy tree、源码包与锁文件收据；它与平台包来源无关，继续复用。
+1. `build-base.yml` 按内容键复用或双副本构建固定 Harness 源码，验证 deploy tree、源码包与锁文件收据；引擎生产图直接解析 Linux ARM64 glibc 的 Koffi/Sharp 与已审第三方 pins/消费者 overrides，不再装 Android Koffi/Sharp WASM fallback；源码构建后恢复上游清单与锁文件。
 2. `build-apk-source.yml` 构建清单中的壳插件，并对固定 marketplace 发布字节施加已登记补丁。
 3. 固定官方 NDK 编译宿主 PRoot/loader/talloc/shmem 与原生终端；Debian 签名快照、固定 Node 归档和客体 system addon 由 Linux 资产生产器提供。`linux-product-assets-v1` 精确内容键覆盖所有生产输入；不使用宽前缀恢复。
 4. `build-linux-payload.mjs` 直接复制已审计 deploy tree，施加引擎补丁、同步 pnpm 物理副本、物化第一方包；从上游官方 bundle 数据初始化 web/headless profile，按插件清单把源码构建产物与运行期依赖装入工厂 home。

@@ -162,7 +162,7 @@ fs.writeFileSync(process.env.GITHUB_WORKSPACE + '/.deploy-tmp/source-build/harne
   upstreamSourcesModified: false,
   omitted: ['Desktop Electron packaging', 'aggregate upstream test/script typechecks'],
   built: ['native host addon', 'Host package compilation and bundles', 'Client package compilation and bundles', 'package-local bundles', 'Web frontend'],
-  reason: 'Android uses the source-built CLI deployment closure; upstream package compilers still check every emitted package. Project tests and artifact gates run separately.'
+  reason: 'The Linux guest uses the source-built CLI deployment closure; upstream package compilers still check every emitted package. Project tests and artifact gates run separately.'
 }, null, 2) + '\n')
 NODE
 # Audit all overlay-pinned vendor source bytes at the official target.
@@ -226,33 +226,29 @@ const lock = yaml.load(fs.readFileSync(lockPath, 'utf8'))
 const reportPath = '.deploy-tmp/source-build/pnpm-deploy-runtime-closure.json'
 const report = JSON.parse(fs.readFileSync(reportPath, 'utf8'))
 const digest = (value) => crypto.createHash('sha256').update(value).digest('hex')
-const abi = process.env.DSH_ABI ?? 'arm64'
-const termuxCpu = abi === 'arm64' ? 'arm64' : abi === 'x86_64' ? 'x64' : null
-if (!termuxCpu) throw new Error(`unsupported DSH_ABI ${abi}`)
-const koffiAndroidPackage = `@koromix/koffi-android-${termuxCpu}`
+const koffiLinuxPackage = '@koromix/koffi-linux-arm64'
 const exact = (name, version) => {
   const key = Object.keys(lock.packages ?? {}).find((entry) => entry === `${name}@${version}` || entry.startsWith(`${name}@${version}(`))
   if (!key) throw new Error(`temporary runtime lock is missing ${name}@${version}`)
   return { lockKey: key, resolution: lock.packages[key].resolution }
 }
 report.resolvedLockfileSha256 = digest(fs.readFileSync(lockPath))
-report.androidRuntimeDependencies.resolvedPackages = {
+report.linuxRuntimeDependencies.resolvedPackages = {
   koffi: exact('koffi', '3.2.1'),
-  [koffiAndroidPackage]: exact(koffiAndroidPackage, '3.2.1'),
-  sharpWasm32: exact('@img/sharp-wasm32', '0.35.3'),
+  [koffiLinuxPackage]: exact(koffiLinuxPackage, '3.2.1'),
+  sharpLinuxArm64: exact('@img/sharp-linux-arm64', '0.35.5'),
 }
 fs.writeFileSync(reportPath, JSON.stringify(report, null, 2) + '\n')
 const policyPath = '.deploy-tmp/source-build/source-build-policy.json'
 const policy = JSON.parse(fs.readFileSync(policyPath, 'utf8'))
-policy.androidRuntimePackages = {
-  audit: '.deploy-tmp/source-build/android-native-runtime-packages.json',
+policy.linuxRuntimePackages = {
+  target: { os: 'linux', cpu: 'arm64', libc: 'glibc' },
   trustedPublisherInputs: [
-    { name: koffiAndroidPackage, version: '3.2.1', upstream: 'https://github.com/Koromix/koffi', role: `Android ${abi} Node-API binding for Koffi` },
-    { name: '@img/sharp-wasm32', version: '0.35.3', upstream: 'https://github.com/lovell/sharp', role: 'WebAssembly fallback for Sharp on Android' },
+    { name: koffiLinuxPackage, version: '3.2.1', upstream: 'https://github.com/Koromix/koffi' },
+    { name: '@img/sharp-linux-arm64', version: '0.35.5', upstream: 'https://github.com/lovell/sharp' },
   ],
   lockfileSha256: report.resolvedLockfileSha256,
-  lockfileIntegrityEntries: report.androidRuntimeDependencies.resolvedPackages,
-  note: 'These runtime binaries are publisher-provided official packages, not local source builds. Their package identity, resolution integrity, runtime payload hashes, ABI or module path are recorded by the source-build audits.'
+  lockfileIntegrityEntries: report.linuxRuntimeDependencies.resolvedPackages,
 }
 fs.writeFileSync(policyPath, JSON.stringify(policy, null, 2) + '\n')
 NODE
@@ -278,7 +274,7 @@ const policy = JSON.parse(fs.readFileSync(policyPath, 'utf8'))
 policy.sourceOnlyVendorTop = {
   baseOverlaySha256: baseHash,
   packages: sourceOnlyVendorTop,
-  reason: 'A clean Termux bootstrap does not inherit the partial-json transitive copy present in the legacy LFS runtime base; keep its exact Harness runtime version in the source-built engine overlay.'
+  reason: 'The Linux deploy closure explicitly includes the exact partial-json runtime dependency; record that addition alongside the source-built engine overlay.'
 }
 policy.harnessVendorSourceOverrides = '.deploy-tmp/source-build/harness-vendor-overrides.json'
 policy.harnessVendorSourceOverridesSha256 = require('node:crypto').createHash('sha256').update(fs.readFileSync('.deploy-tmp/source-build/harness-vendor-overrides.json')).digest('hex')
@@ -311,7 +307,7 @@ fs.writeFileSync('.deploy-tmp/source-build/source-build-policy.json', JSON.strin
   omittedFirstPartyPackageOverlays: sourcePackages,
   firstPartySourceInjection: injection,
   pnpmDeployRuntimeClosure: runtimeClosure,
-  firstPartyOverlayReason: 'The source-built package tarballs are injected into the physical targets of the pnpm deploy package links before bootstrap packaging. This supplies built lib files while preserving each package symlink and its sibling virtual-store dependency links; the snapshot builder skips re-extracting these packages.',
+  firstPartyOverlayReason: 'The source-built package tarballs are injected into the physical targets of the pnpm deploy package links before Linux runtime packaging. This supplies built lib files while preserving each package symlink and its sibling virtual-store dependency links; the Linux payload composer consumes the deploy tree directly.',
   exportedFirstPartyTarballs: 'Built from the pinned source, hashed in source-build-manifest.json, and injected into the pnpm deploy tree before that tree is copied into the APK runtime.',
 }, null, 2) + '\n')
 fs.writeFileSync('.deploy-tmp/source-build/effective-engine-overlay.json', JSON.stringify(manifest, null, 2) + '\n')

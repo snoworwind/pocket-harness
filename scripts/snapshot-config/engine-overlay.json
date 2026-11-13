@@ -7,7 +7,7 @@
     "Android assembles ui-settings-session-log and otel; desktop product telemetry and analytics payloads are inventoried but their rows are explicitly disabled.",
     "The complete Lexical family follows the official 0.49.0 source lock, not the previous Android-only 0.50.0 pin.",
     "pi-ai raw npm extraction does not carry upstream pnpm patches: requiredUpstreamPatches records the mandatory post-extraction parent hook.",
-    "Android Koffi 3.2.1 and the Sharp WASM runtime override remain intentional source-deploy policy.",
+    "Linux ARM64 glibc Koffi 3.2.1 and Sharp 0.35.5 are explicit source-deploy dependencies; Android fallback packages are not production inputs.",
     "keepUnpublished records unmounted legacy base residue; clean source builds omit it."
   ],
   "rootPackage": {

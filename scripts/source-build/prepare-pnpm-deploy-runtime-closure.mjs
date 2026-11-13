@@ -7,17 +7,21 @@ import { copyFileSync, mkdirSync, readFileSync, readdirSync, writeFileSync } fro
 import { execFileSync } from 'node:child_process'
 import { dirname, join, relative, resolve } from 'node:path'
 
+if (process.argv[2] === '--self-test') {
+  execFileSync(process.execPath, ['--test', new URL('./linux-runtime-closure.test.mjs', import.meta.url).pathname], { stdio: 'inherit' })
+  process.exit(0)
+}
+
 const args = process.argv.slice(2)
 let abi = 'arm64'
 if (args.length === 5) abi = args.pop()
 const [sourceArg, overlayArg, backupArg, reportArg] = args
 if (args.length !== 4 || !sourceArg || !overlayArg || !backupArg || !reportArg) {
-  console.error('usage: node prepare-pnpm-deploy-runtime-closure.mjs <harness-source-root> <engine-overlay.json> <backup-dir> <report.json> [arm64|x86_64]')
+  console.error('usage: node prepare-pnpm-deploy-runtime-closure.mjs <harness-source-root> <engine-overlay.json> <backup-dir> <report.json> [arm64]')
   process.exit(2)
 }
-if (!['arm64', 'x86_64'].includes(abi)) throw new Error(`unsupported Android ABI: ${abi}`)
-const termuxCpu = abi === 'arm64' ? 'arm64' : 'x64'
-const koffiAndroidPackage = `@koromix/koffi-android-${termuxCpu}`
+if (abi !== 'arm64') throw new Error('Linux experiment requires ARM64')
+const koffiLinuxPackage = '@koromix/koffi-linux-arm64'
 
 const sourceRoot = resolve(sourceArg)
 const sourceCommit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: sourceRoot, encoding: 'utf8' }).trim()
@@ -54,30 +58,24 @@ const workspaceConfig = yaml.load(originalWorkspace.toString('utf8'))
 const importer = lock.importers?.['apps/cli']
 if (!importer) throw new Error('pnpm-lock.yaml is missing the apps/cli importer')
 
-// The source audit targets Android ARM64, while pnpm deploy runs on Linux x64.
-// Include the upstream Koffi Android binding and Sharp's official WASM backend
-// explicitly in the production closure so those platform-specific runtime
-// fallbacks survive the cross-platform deployment step.
-const androidRuntimeDependencies = {
-  '@img/sharp-wasm32': '0.35.3',
-  [koffiAndroidPackage]: '3.2.1',
+// Resolve the guest's actual native packages and reviewed JavaScript pins through pnpm.
+// No bootstrap-era overlay downloader or Android fallback packages participate.
+const linuxRuntimeDependencies = {
+  [koffiLinuxPackage]: '3.2.1',
+  '@img/sharp-linux-arm64': '0.35.5',
 }
-const dependencies = { ...(manifest.dependencies ?? {}) }
+const thirdPartyPins = Object.fromEntries(Object.entries({ ...overlay.vendorTop, ...overlay.pins, 'partial-json': '0.1.7' })
+  .filter(([name]) => !name.startsWith('@deepseek-ai/')))
+const dependencies = { ...(manifest.dependencies ?? {}), ...thirdPartyPins, ...linuxRuntimeDependencies }
 const importerDependencies = { ...(importer.dependencies ?? {}) }
-for (const [name, version] of Object.entries(androidRuntimeDependencies)) {
-  dependencies[name] = version
+for (const [name, version] of Object.entries({ ...thirdPartyPins, ...linuxRuntimeDependencies })) {
   importerDependencies[name] = { specifier: version, version }
 }
 workspaceConfig.overrides = { ...(workspaceConfig.overrides ?? {}), koffi: '3.2.1' }
-const supported = workspaceConfig.supportedArchitectures ?? {}
-workspaceConfig.supportedArchitectures = {
-  ...supported,
-  // android：Termux/Bionic 运行时；linux：PRoot/Debian 客体运行时。两者都要装，
-  // 由客体装配器按平台裁剪，而不是让某一侧在安装期缺包。
-  os: [...new Set([...(supported.os ?? ['current']), 'android', 'linux'])],
-  cpu: [...new Set([...(supported.cpu ?? ['current']), termuxCpu, 'arm64'])],
-  libc: [...new Set([...(supported.libc ?? []), 'glibc'])],
+for (const [host, children] of Object.entries(overlay.nested ?? {})) {
+  for (const [dependency, version] of Object.entries(children)) workspaceConfig.overrides[`${host}>${dependency}`] = version
 }
+workspaceConfig.supportedArchitectures = { os: ['current', 'linux'], cpu: ['current', 'arm64'], libc: ['glibc'] }
 
 const packageDirs = new Map()
 function walk(dir) {
@@ -150,16 +148,17 @@ writeFileSync(reportFile, JSON.stringify({
   temporaryWorkspaceConfigSha256: sha256(temporaryWorkspace),
   packageCount: forcedWorkspacePackages.length,
   productionWorkspacePackages: forcedWorkspacePackages,
-  androidRuntimeDependencies: {
-    ...androidRuntimeDependencies,
+  linuxRuntimeDependencies: {
+    ...linuxRuntimeDependencies,
     abi,
-    koffiAndroidPackage,
+    koffiLinuxPackage,
     koffiOverride: '3.2.1',
     supportedArchitectures: workspaceConfig.supportedArchitectures,
-    rationale: `Koffi 3.1.1 has no Android binding; upstream Koffi 3.2.1 publishes ${koffiAndroidPackage}. sharp 0.35.5 retains @img/sharp-wasm32 0.35.3 as its Android-compatible fallback. Exact upstream packages for ${abi} are included in the pnpm lock and deployment closure.`,
+    thirdPartyPins,
+    consumerOverrides: overlay.nested ?? {},
   },
   removedFromManifestSections: removedFrom,
   removedFromImporterSections: removedFromImporter,
-  purpose: `Temporarily add pinned first-party workspace packages and required Android runtime fallback packages to the apps/cli production deploy graph, pin Koffi to its official Android-capable version, and enable Android ${abi} optional dependencies. Original apps/cli/package.json, pnpm-lock.yaml, and pnpm-workspace.yaml are restored after deployment.`,
+  purpose: 'Temporarily resolve the fixed source-built first-party packages and the Linux ARM64 glibc dependency closure. Restore all upstream manifests and locks after deploy.',
 }, null, 2) + '\n')
 console.log(`prepared apps/cli production dependency closure for ${forcedWorkspacePackages.length} first-party packages`)

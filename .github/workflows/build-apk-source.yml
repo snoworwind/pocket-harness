@@ -586,7 +586,6 @@ jobs:
             .deploy-tmp/source-build/pnpm-deploy-build-policy.json
             .deploy-tmp/source-build/pnpm-deploy-runtime-closure.json
             .deploy-tmp/source-build/pnpm-deploy-runtime-closure.lock.yaml
-            .deploy-tmp/source-build/android-native-runtime-packages.json
             .deploy-tmp/source-build/terminal-native-build.json
             .deploy-tmp/source-build/ndk-archive-sha1.txt
             .deploy-tmp/source-build/harness-web-preview-exclusion.json
@@ -659,7 +658,6 @@ jobs:
             .deploy-tmp/source-build/pnpm-deploy-build-policy.json
             .deploy-tmp/source-build/pnpm-deploy-runtime-closure.json
             .deploy-tmp/source-build/pnpm-deploy-runtime-closure.lock.yaml
-            .deploy-tmp/source-build/android-native-runtime-packages.json
             .deploy-tmp/source-build/terminal-native-build.json
             .deploy-tmp/source-build/ndk-archive-sha1.txt
             .deploy-tmp/source-build/harness-web-preview-exclusion.json
