@@ -6,7 +6,7 @@ main 的构建层是 Linux engine/home/四件套链，与旧 Termux 快照编排
 
 ## 引擎私有通信边界（2026-10-17）
 
-主 WebView、原生 HTTP、控制队列与 mux → 壳进程 `EngineTransport` 独占的 loopback 3080 listener → 应用私有 `files/engine-private.sock` → 引擎 HTTP server。TCP 端口从初始化到壳进程退出持续保留，引擎 stop/restart 不释放；绑定失败阻断凭据出口及页面加载。每条后端连接发送字节前通过 LocalSocket 的 SO_PEERCRED 验证 app UID，证明绑定的是本应用的安全主体，不能用 HTTP 状态、旧 token 日志或进程存活代替。APK 内 `engine-private-transport.cjs` 仅通过引擎 argv `--require` 注入，改写 HTTP 3080 bind，保留公开 origin/Host/服务 address；不依赖快照热推，不改上游 checkout。它不隔离已有任意代码执行能力的同 UID 插件。源码正反证与未完成的设备验收见 gotchas 坑 352。
+主 WebView、原生 HTTP、控制队列与 mux → 壳进程 `EngineTransport` 独占的 loopback 3080 listener → 应用私有 `files/engine-transport/engine-private.sock` → 引擎 HTTP server。TCP 端口从初始化到壳进程退出持续保留，引擎 stop/restart 不释放；绑定失败阻断凭据出口及页面加载。每条后端连接发送字节前通过 LocalSocket 的 SO_PEERCRED 验证 app UID，证明绑定的是本应用的安全主体，不能用 HTTP 状态、旧 token 日志或进程存活代替。APK 内 `engine-private-transport.cjs` 落在同一 `files/engine-transport/` 目录（该目录是客体里唯一被 bind 的应用文件目录，不再整目录绑定 `files/`），仅通过引擎 argv `--require` 注入，改写 HTTP 3080 bind，保留公开 origin/Host/服务 address；不依赖快照热推，不改上游 checkout。它不隔离已有任意代码执行能力的同 UID 插件。源码正反证与未完成的设备验收见 gotchas 坑 352。
 
 ## fx2 生命周期与恢复增量
 
