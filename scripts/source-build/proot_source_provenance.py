@@ -14,6 +14,9 @@ PATCH_PATHS = {
     'libtalloc/wscript',
     'libandroid-shmem/shmem.c',
     'proot/src/extension/ashmem_memfd/ashmem_memfd.c',
+    'proot/src/loader/loader.c',
+    'proot/src/loader/assembly-arm64.h',
+    'proot/src/loader/assembly-x86_64.h',
     'proot/src/tracee/event.c',
     'proot/src/tracee/tracee.c',
 }

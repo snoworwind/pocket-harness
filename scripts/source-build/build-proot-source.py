@@ -236,6 +236,115 @@ int event_loop()
     changes['proot/src/tracee/event.c'] = dict(
         beforeSha256=event_before, afterSha256=native.sha256_file(event))
 
+    loader = sources['proot'] / 'src/loader/loader.c'
+    loader_before = native.sha256_file(loader)
+    fatal_old = (
+        '#define FATAL() do {\t\t\t\t\t\t\\\n'
+        '\t\tSYSCALL(EXIT, 1, 182);\t\t\t\t\\\n'
+        '\t\t__builtin_unreachable();\t\t\t\\\n'
+        '\t} while (0)\n')
+    fatal_new = (
+        '/**\n'
+        ' * Report which load statement failed, and with which status, before the\n'
+        ' * silent exit-with-182.  Issue #322: a bare 182 cannot tell a failed\n'
+        ' * open(2) apart from a failed mmap(2), so the failure point was unknown.\n'
+        ' */\n'
+        'static word_t pocket_loader_number(char *out, word_t value)\n'
+        '{\n'
+        '\tchar digits[20];\n'
+        '\tword_t count = 0;\n'
+        '\tword_t index;\n'
+        '\n'
+        '\twhile (value != 0 && count < sizeof(digits)) {\n'
+        '\t\tdigits[count++] = (char) (\'0\' + (value % 10));\n'
+        '\t\tvalue /= 10;\n'
+        '\t}\n'
+        '\tif (count == 0)\n'
+        '\t\tdigits[count++] = \'0\';\n'
+        '\tfor (index = 0; index < count; index++)\n'
+        '\t\tout[index] = digits[count - 1 - index];\n'
+        '\treturn count;\n'
+        '}\n'
+        '\n'
+        '/** Best effort: a guest with no writable stderr simply sees no line.  */\n'
+        'static void pocket_loader_fatal(word_t site, word_t status)\n'
+        '{\n'
+        '\tstatic const char prefix[] = "[proot-loader] site=";\n'
+        '\tstatic const char middle[] = " status=";\n'
+        '\tchar line[64];\n'
+        '\tword_t at = 0;\n'
+        '\tword_t index;\n'
+        '\n'
+        '\tfor (index = 0; index < sizeof(prefix) - 1; index++)\n'
+        '\t\tline[at++] = prefix[index];\n'
+        '\tat += pocket_loader_number(line + at, site);\n'
+        '\tfor (index = 0; index < sizeof(middle) - 1; index++)\n'
+        '\t\tline[at++] = middle[index];\n'
+        '\tif ((long) status < 0)\n'
+        '\t\tstatus = (word_t) -status;\n'
+        '\tat += pocket_loader_number(line + at, status);\n'
+        '\tline[at++] = \'\\n\';\n'
+        '\t(void) SYSCALL(WRITE, 3, 2, (word_t) line, at);\n'
+        '}\n'
+        '\n'
+        '#define FATAL() do {\t\t\t\t\t\t\\\n'
+        '\t\tpocket_loader_fatal(__LINE__, 0);\t\t\\\n'
+        '\t\tSYSCALL(EXIT, 1, 182);\t\t\t\t\\\n'
+        '\t\t__builtin_unreachable();\t\t\t\\\n'
+        '\t} while (0)\n'
+        '#define FATAL_STATUS(status_) do {\t\t\t\t\\\n'
+        '\t\tpocket_loader_fatal(__LINE__, (word_t) (status_));\\\n'
+        '\t\tSYSCALL(EXIT, 1, 182);\t\t\t\t\\\n'
+        '\t\t__builtin_unreachable();\t\t\t\\\n'
+        '\t} while (0)\n')
+    replace_once(loader, fatal_old, fatal_new)
+    replace_once(loader,
+        '\t\t\tstatus = SYSCALL(CLOSE, 1, fd);\n'
+        '\t\t\tif (unlikely((int) status < 0))\n'
+        '\t\t\t\tFATAL();\n'
+        '\t\t\t/* Fall through.  */\n',
+        '\t\t\tstatus = SYSCALL(CLOSE, 1, fd);\n'
+        '\t\t\tif (unlikely((int) status < 0))\n'
+        '\t\t\t\tFATAL_STATUS(status);\n'
+        '\t\t\t/* Fall through.  */\n')
+    replace_once(loader,
+        '\t\t\tif (unlikely((int) fd < 0))\n\t\t\t\tFATAL();\n',
+        '\t\t\tif (unlikely((int) fd < 0))\n\t\t\t\tFATAL_STATUS(fd);\n')
+    replace_once(loader,
+        '\t\t\t\t\tstmt->mmap.prot, MAP_PRIVATE | MAP_FIXED, fd,\n'
+        '\t\t\t\t\tstmt->mmap.offset >> MMAP_OFFSET_SHIFT);\n'
+        '\t\t\tif (unlikely(status != stmt->mmap.addr))\n'
+        '\t\t\t\tFATAL();\n',
+        '\t\t\t\t\tstmt->mmap.prot, MAP_PRIVATE | MAP_FIXED, fd,\n'
+        '\t\t\t\t\tstmt->mmap.offset >> MMAP_OFFSET_SHIFT);\n'
+        '\t\t\tif (unlikely(status != stmt->mmap.addr))\n'
+        '\t\t\t\tFATAL_STATUS(status);\n')
+    replace_once(loader,
+        '\t\t\t\t\tstmt->mmap.prot, MAP_PRIVATE | MAP_FIXED | MAP_ANONYMOUS, -1, 0);\n'
+        '\t\t\tif (unlikely(status != stmt->mmap.addr))\n'
+        '\t\t\t\tFATAL();\n',
+        '\t\t\t\t\tstmt->mmap.prot, MAP_PRIVATE | MAP_FIXED | MAP_ANONYMOUS, -1, 0);\n'
+        '\t\t\tif (unlikely(status != stmt->mmap.addr))\n'
+        '\t\t\t\tFATAL_STATUS(status);\n')
+    replace_once(loader,
+        '\t\t\tstatus = SYSCALL(CLOSE, 1, fd);\n'
+        '\t\t\tif (unlikely((int) status < 0))\n'
+        '\t\t\t\tFATAL();\n\n'
+        '\t\t\t/* Right after execve, the stack content is as follow:\n',
+        '\t\t\tstatus = SYSCALL(CLOSE, 1, fd);\n'
+        '\t\t\tif (unlikely((int) status < 0))\n'
+        '\t\t\t\tFATAL_STATUS(status);\n\n'
+        '\t\t\t/* Right after execve, the stack content is as follow:\n')
+    changes['proot/src/loader/loader.c'] = dict(
+        beforeSha256=loader_before, afterSha256=native.sha256_file(loader))
+
+    for header, number in (('assembly-arm64.h', 64), ('assembly-x86_64.h', 1)):
+        path = sources['proot'] / 'src/loader' / header
+        header_before = native.sha256_file(path)
+        replace_once(path, '#define EXIT\t', '#define WRITE\t%d\n#define EXIT\t' % number)
+        changes['proot/src/loader/' + header] = dict(
+            beforeSha256=header_before, afterSha256=native.sha256_file(path))
+
     tracee = sources['proot'] / 'src/tracee/tracee.c'
     tracee_before = native.sha256_file(tracee)
     replace_once(tracee,

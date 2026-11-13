@@ -4122,3 +4122,9 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
      真因：Termux proot 5.1.107.102 的 `attach_child()` 只在 `sigstop == SIGSTOP_PENDING && !running` 时恢复子进程；内核若压根不投递 initial stop，该分支不成立，子进程永远停在停机状态。这是兼容层缺事件，不是 PRoot 逻辑写错，所以应用层重试/超时都不解决问题。
      修法：在 PRoot 源码加两个**默认关闭**的开关（构建期定点补丁，见 PROOT-SOURCE-BUILD.md）：`PROOT_POCKET_TRACE_WAIT=1` 打印每个 `waitpid` 状态；`PROOT_POCKET_RESUME_SILENT_CHILD=1` 对「已登记但从未报 stop」的子进程显式 `PTRACE_CONT`。后者是候选修复，正常内核不开启，行为不变。
      复验：补丁锚点在固定摘要源归档上唯一命中；改后的 `event.c` / `tracee.c` 在 Linux GCC + talloc 2.5.0 头文件下 `-fsyntax-only` 通过；`test_proot_source_build` / `test_proot_source_backend` 15 项通过（含 `PATCH_PATHS` 闭合校验）。真机效果仍需鸿蒙设备开开关复验，未验证前不改默认。
+
+716. **loader 182 不带落点，只能靠排除法猜是 open 还是 mmap（2026-11-13，issue #322 续）**
+     现象：真机 2%-10% 的 guest 执行无输出返回 182，两边都可能是 `src/loader/loader.c` 里 `FATAL()` 的任意一处。
+     真因：`FATAL()` 只做 `exit(182)`，失败站点与 errno 全部丢失。
+     修法：给 loader 加 `pocket_loader_fatal()`：向 stderr 写 `[proot-loader] site=<行号> status=<errno>` 后再退出 182；带 status 的四个站点（close/open/mmap-file/mmap-anon）改用 `FATAL_STATUS`。为此在 `assembly-arm64.h`/`assembly-x86_64.h` 补 `WRITE` 系统调用号。
+     复验：固定摘要源归档上 5 个文件锚点唯一命中；改后的 loader 用 `clang --target={aarch64,x86_64}-linux-gnu -fsyntax-only` 双 ABI 通过；source-build Python 147 项通过。真机 182 的落点待设备复验。
