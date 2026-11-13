@@ -4110,4 +4110,10 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
      现象：客体里 `bash` 的进程替换（`<(...)`/`>(...)`）报错，依赖 `/dev/fd/N` 的脚本、`tee`、部分测试框架一并失效。
      真因：`prepare-rootfs.sh` 只建了 `dev`/`proc`/`sys` 等目录，没有建 Debian 标准的 `/dev/fd`、`/dev/stdin|stdout|stderr` 符号链接；PRoot 下 `/proc/self/fd` 可用，但缺别名就没有名字可指向。
      修法：预处理阶段创建 `fd -> /proc/self/fd`、`stdin|stdout|stderr -> /proc/self/fd/0|1|2`；`--verify` 逐条核对链接目标，非链接的同名实体拒绝覆盖。
-     复验：`test_prepare_rootfs_proot.py` 覆盖四个链接目标，以及删除/改指向后 `--verify` 必须非零退出；设备终端实测 `cowsay`、`jq`、apt 均正常，50 次含外部子进程的任务 0 非零退出。
+     复验：`test_prepare_rootfs_proot.py` 覆盖四个链接目标，以及删除/改指向后 `--verify` 必须非零退出。设备上**以应用身份**重建链接后实测：`ls -l /dev/fd` 显示 `-> /proc/self/fd`，`cat <(echo PROC-SUBST-OK)` 输出 PROC-SUBST-OK，`diff <(echo a) <(echo a)` 输出 DIFF-OK，`echo x > /dev/stdout` 正常；同一条命令若链接由 root adb shell 创建则全部 `Permission denied`，真因见坑 713。
+
+713. **root adb 在应用数据目录里造的文件丢失 MLS 类别，untrusted_app 一律 EACCES（2026-11-13）**
+     现象：为省一次打包，用 root 在设备 rootfs 里补了 `/dev/fd`、`/dev/stdin|stdout|stderr` 四条标准符号链接。`ls -l` 看得到、`stat` 报 `cannot read symbolic link: Permission denied`，Bash 进程替换 `<( )` 报 `/dev/fd/63: Permission denied`，而同一目标的自建链接 `/dev/fdtest -> /proc/self/fd/1`、`/tmp/fdlink -> /proc/self/fd/1` 都正常。
+     真因：`ls -Z` 显示 root 创建的四条链接标签是 `u:object_r:app_data_file:s0`，没有进程的 MLS 类别（应用自建的带 `:c155,c256,c512,c768`）。SELinux 的类别不匹配让 untrusted_app 读链接即被拒；链接目标本身没问题，所以换个名字就"能工作"，极易误判成 PRoot 不支持 `/dev/fd`。
+     修法：应用数据目录下的功能性文件必须由**应用身份**创建（应用内 bash、或正式的解包/装配路径）；root adb 只用于读取和清障（`rm`），不要用来"补"功能文件。反证时先用 `ls -lZ` 比对标签再下结论。
+     复验：root adb 删除四条链接后，在应用终端里 `ln -s /proc/self/fd /dev/fd` 等重建，进程替换、`diff <( )`、`> /dev/stdout` 全部通过（.deploy-tmp/term-apt-20261113/ui-10-procsubst-ok.png）；正式 rootfs 由 CI 构建、应用进程解包，标签天然正确。
