@@ -1,11 +1,13 @@
 # known-gaps.md — 当前缺口与验收入口
 
 
-- 2026-11-13，Linux runtime 审计 R-07/R-17/R-18：pnpm 的 `file:` store 名仍含构建绝对路径，换构建根可能改变树摘要，尚未归一化；迁移兼容代码及 dex 中仍可能保留 snapshot/shell-termux 历史字符串，不代表产品使用旧运行时；开发来源构建默认单副本，verified 只表示就地核验，只有 `reference=true` 双副本独立比对后才可生产签名。双 ABI 当前候选未完成来源构建、直接 IO 导出设备负控、最终体积/首装耗时/迁移磁盘峰值实测，不能宣称审计或设备验收全部通过。
+- 2026-11-13，Linux runtime 审计 R-07/R-17/R-18：pnpm 的 `file:` store 名仍含构建绝对路径，换构建根可能改变树摘要，尚未归一化；迁移兼容代码及 dex 中仍可能保留 snapshot/shell-termux 历史字符串，不代表产品使用旧运行时；开发来源构建默认单副本，verified 只表示就地核验，只有 `reference=true` 双副本独立比对后才可生产签名。双 ABI `38108db8` 已完成来源构建及生产签名，但首启预检失败；修复后新包、直接 IO 导出设备负控、最终体积/首装耗时/迁移磁盘峰值实测仍待验证，不能宣称审计或设备验收全部通过。
 
 > 本分支宗旨及当前验证边界见 [SECURITY-HARDENING.md](SECURITY-HARDENING.md)。源码有改动不等于新包已验收；来源构建状态以 [变更记录](changelog-archive.md) 最新条目为准。下方带日期的状态只描述对应审查时点；0.14.10 已正式发布，但设备验收尚未完成，见[发布说明](../../release/v0.14.10/notes.md)。
 
 ## 当前入口
+
+- **PRoot 真机应用域可靠性（2026-11-13）**：[Issue #322](https://github.com/snoworwind/pocket-harness/issues/322) 报告旧 0.15.2 即使关闭 PRoot seccomp 加速器仍偶发 loader 182，以及 guest fork 挂死。不能把推测的 ASLR/ptrace 原因写作定论。0.16 候选预检补真实 flock 与 fork/管道；AVD su 域诊断不替代真机应用域重复执行、管道、多命令和 apt 验证。证据及首启失败见 `release/v0.16.0/validation-20261113.md`。
 
 - **原生侧栏终端：选区/复制、双指缩放未实现（2026-11-12）**：当前只有逐行拖动 + 惯性滚动；OMZ 彩色提示符、引导卡浅色/横屏与终端核心路径已在 0.15.2 真机验证，但完整 §2.1 CDP/ADB 矩阵未执行，Release 说明按未验收层记录。模型侧 bash/terminal 工具未改。
 - **route-auth 扫描器未识别 JavaScript 正则字面量（2026-11-03，静态审查待复现）**：`scripts/check-api-route-auth.mjs::stripSourceComments()` 先识别注释、再识别引号字符串，但不识别正则字面量。正则中的引号可能使扫描器进入字符串分支并把后续注释留在输出；鉴权调用形态随后通过 `includes` 查找，理论上可能把注释里的 guard 计作实际调用。源码注释当前称此边界“只会误判红”，但这项结论尚无正则字面量反例支撑。尚未运行针对性夹具，故标为**潜在假绿、未复现**，不得宣称已证实绕过或门禁可靠。下一步单独补 lexer 处理与注释 guard 负控，运行 `node scripts/check-api-route-auth.mjs --self-test` 和一条受控负控，并复核真实扫描输入面；修复前保留门禁现状、不把 #1396 helper 直接复制进来。

@@ -141,10 +141,29 @@ def install_system_addon(root, addon, abi='arm64'):
     manifest = json.loads((addon / 'package.json').read_text())
     if manifest.get('name') != addon_package:
         raise ValueError('guest addon package identity does not match target ABI')
-    destination = root / '@deepseek-ai/dsh/node_modules' / addon_package
-    shutil.rmtree(destination, ignore_errors=True)
-    shutil.copytree(addon, destination, symlinks=True)
-    return dict(package=addon_package, system=sha256_file(destination / 'bin/glibc/system.node'))
+    # pnpm's wrapper resolves its sibling optional dependency, not necessarily the
+    # engine's top-level copy. Replace every real package instance before preserving
+    # those links; otherwise a correct top-level ELF can hide a metadata-only sibling.
+    destinations = {path.parent for path in root.rglob('package.json')
+                    if path.parent.name == addon_package.split('/')[-1]
+                    and json.loads(path.read_text()).get('name') == addon_package}
+    destinations.add(root / '@deepseek-ai/dsh/node_modules' / addon_package)
+    installed = set()
+    for destination in sorted(destinations):
+        resolved = destination.resolve()
+        if not resolved.is_relative_to(root.resolve()) or resolved == root.resolve():
+            raise ValueError('guest addon package escapes engine tree')
+        if resolved.exists() and (not (resolved / 'package.json').is_file()
+                                 or json.loads((resolved / 'package.json').read_text()).get('name') != addon_package):
+            raise ValueError('guest addon destination package identity mismatch')
+        if resolved in installed:
+            continue
+        installed.add(resolved)
+        if resolved.exists():
+            shutil.rmtree(resolved)
+        shutil.copytree(addon, resolved, symlinks=True)
+    return dict(package=addon_package, system=sha256_file(source),
+                installedPaths=sorted(str(path.relative_to(root.resolve())) for path in installed))
 
 
 def write_archive(root, archive, epoch=None):

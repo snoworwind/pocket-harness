@@ -4086,3 +4086,10 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
      真因与边界：本地同版 debootstrap/QEMU 8.2.2 对同一固定 56,162,922 字节 Packages 跑原版 STANZAS，宿主 Perl 0.43 秒、QEMU ARM64 Perl 45.91 秒，输出 SHA-256 完全相同（520d777c…）。这是显著的仿真解析开销证据，不等于单个微基准已解释 CI 的全部 31 分钟。
      修法：使用官方 --second-stage-target 接口，在宿主运行编排/元数据解析，保留 in_target 的 chroot dpkg/维护脚本语义；run-linux-bootstrap.py 每 30 秒给出内部日志与耗时，15 分钟上限、超时或取消清理独立进程组，失败不打包。固定快照、验签、逐 deb 摘要与目标架构复核不变；helper 纳入来源证明与内容键。
      复验：本地临时 Linux 容器使用同一固定签名 snapshot，InRelease SHA-256 与源码完全一致；最小 ARM64 rootfs 第二阶段成功，14.9 秒，已越过该位置。容器宿主为 ARM64 Mac 上的 amd64 用户环境，目标包执行不能等同于 CI x86 主机上的 QEMU，完整工具集/CI 耗时仍待来源链。单测覆盖目标/元数据绑定、错误退出、超时、忽略 TERM 的子进程及 CLI 取消；官方选项见 https://manpages.debian.org/bookworm/debootstrap/debootstrap.8.en.html 。
+
+
+709. **候选预检必须走真实 API 和 pnpm 消费者路径，顶层 ELF 存在仍会首启失败（2026-11-13）**
+     现象：来源 run 43409484559 双 ABI 构建、独立比对和签名通过，但 ARM64 干净首启失败。错误先是 addon 根入口未导出；修正后暴露 wrapper sibling 缺二进制，再暴露引擎根下没有直接 node-pty 依赖。
+     真因：预检绕开公开子路径、装配仅写顶层 addon，且把传递依赖误当直接依赖。旧 printf 内建命令还不能检查 Issue #322 的 fork/管道故障。
+     修法：预检通过 /flock 实际加锁，从 subprocess-local 解析 PTY 并执行真实 fork/管道；装配替换所有同名 pnpm 真实包且保留树内链接，拒绝越界目标；门禁沿 wrapper 查找 glibc addon。修正“关闭 seccomp 就修复 182”的无证据注释，不自动重试用户命令。
+     复验：双 ABI 包装夹具、缺失 sibling/越界链接、锁失败、PTY 错退出/错误输出/缺 fork 输出负控；设备暂存树 su 域 100 次成功及 HTTP 401/200 仅为诊断。最终新 APK 与真机应用域仍待验证，见 release/v0.16.0/validation-20261113.md。

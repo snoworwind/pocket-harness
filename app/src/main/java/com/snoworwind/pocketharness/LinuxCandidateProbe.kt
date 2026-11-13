@@ -11,6 +11,24 @@ import java.util.concurrent.TimeUnit
 
 /** Trial uses a private home and an ephemeral loopback port; no live auth cache or user profile is mutated. */
 internal object LinuxCandidateProbe {
+  // Use the exported API and acquire a lock: importing flock alone is lazy and does not load its addon.
+  internal val nativeProbeScript = """
+    const {createRequire}=require('node:module');
+    const fs=require('node:fs');
+    const r=createRequire('/opt/dsh/@deepseek-ai/dsh/package.json');
+    (async()=>{
+      const {tryLockExclusive}=r('@deepseek-ai/node-addon-system/flock');
+      const file=require('node:path').join(require('node:os').tmpdir(),'dsh-probe-'+process.pid);
+      const fd=fs.openSync(file,'wx',0o600);
+      try { await tryLockExclusive(fd); } finally { fs.closeSync(fd); fs.unlinkSync(file); }
+      const subprocess=createRequire(r.resolve('@deepseek-ai/dsh-subprocess-local/package.json'));
+      const p=subprocess('node-pty').spawn('/bin/bash',['-c','set -e -o pipefail; /bin/true; printf PTY_FORK | /bin/cat; printf PTY_OK'],{env:process.env});
+      let s='';
+      p.onData(x=>s+=x);
+      p.onExit(e=>process.exit(e.exitCode===0&&s.includes('PTY_FORK')&&s.includes('PTY_OK')?0:1));
+    })().catch(error=>{console.error(error);process.exit(1);});
+  """.trimIndent()
+
   internal fun glibcSatisfies(actual: String, minimum: String): Boolean {
     fun version(value: String): List<Int>? = Regex("(?:glibc )?(\\d+)\\.(\\d+)").matchEntire(value.trim())
       ?.groupValues?.drop(1)?.map { it.toInt() }
@@ -57,8 +75,7 @@ internal object LinuxCandidateProbe {
       process = launch(listOf("/usr/bin/getconf", "GNU_LIBC_VERSION"), output)
       check(process.waitFor(20, TimeUnit.SECONDS)) { "glibc preflight timed out" }
       check(process.exitValue() == 0 && glibcSatisfies(output.readText(), manifest.getString("minimumGlibc"))) { "rootfs glibc does not satisfy candidate runtime" }
-      val nodeScript = "const {createRequire}=require('module');const r=createRequire('/opt/dsh/@deepseek-ai/dsh/package.json');r('@deepseek-ai/node-addon-system');const p=r('node-pty').spawn('/bin/bash',['-c','printf PTY_OK'],{env:process.env});let s='';p.onData(x=>s+=x);p.onExit(e=>process.exit(e.exitCode===0&&s.includes('PTY_OK')?0:1));"
-      process = launch(listOf("NODE", "--expose-internals", "-e", nodeScript), output)
+      process = launch(listOf("NODE", "--expose-internals", "-e", nativeProbeScript), output)
       check(process.waitFor(30, TimeUnit.SECONDS) && process.exitValue() == 0) { "guest Node/addon/PTY preflight failed" }
       val log = File(trial, "engine.log")
       process = launch(listOf("NODE", "--expose-internals", "/opt/dsh/" + LinuxGuestBoot.ENGINE_ENTRY, "web", "--port", port.toString(), "--no-open"), log)

@@ -20,8 +20,8 @@ removed only when no installed instance references it.
 explicit shared Node.js path instead of letting Debian's `/etc/profile`
 replace it in a login shell. On Android, PRoot is launched with
 `PROOT_NO_SECCOMP=1` to disable PRoot's seccomp accelerator; Android's own
-seccomp policy remains in force. The target Android 16 / Linux 6.6.98 ROM
-intermittently exited 182 in the accelerator before guest output. Failed install
+seccomp policy remains in force. Issue #322 reports intermittent loader exit 182
+even with this flag enabled; the precise loader failure remains unconfirmed. Failed install
 probes persist host/guest cwd, the relevant guest and PRoot environment,
 stdout and stderr to the private bootstrap state file, with each stream bounded
 to 4096 characters. `execute` returns stdout, stderr, exit status, signal,

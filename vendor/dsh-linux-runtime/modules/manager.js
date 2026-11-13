@@ -494,9 +494,9 @@ function prootExecutionEnvironment(backend, instanceRoot) {
     ? path.join(nativeLibraryDir, ANDROID_NATIVE_PROOT_LOADER)
     : path.join(backend, 'libexec', 'proot', 'loader');
   environment.PROOT_TMP_DIR = path.join(instanceRoot, 'proot-tmp');
-  // The target Android 16 / 6.6.98 ROM intermittently exits 182 in PRoot's
-  // seccomp accelerator before the guest emits anything. Use one consistent
-  // execution mode for install probes and linux_bash on Android.
+  // Keep Android probes and execution in the same compatibility mode. Disabling
+  // the optional PRoot accelerator does not eliminate loader exit 182 (#322),
+  // and must not be described as a proven fix for that failure.
   if (androidHost) environment.PROOT_NO_SECCOMP = '1';
   else delete environment.PROOT_NO_SECCOMP;
   return environment;
