@@ -107,6 +107,20 @@ class ReleasePreparationTest(unittest.TestCase):
                 self.assertFalse(self.output.exists())
                 self.put(abi, path, original)
 
+    def test_linux_payloads_survive_actual_post_snapshot_reclamation(self):
+        cleanup = SCRIPT.with_name('reclaim-build-disk.mjs')
+        result = subprocess.run(['node', str(cleanup), '--root', str(self.root / 'arm64'), '--min-free-mb', '0'], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.run_prepare()
+        self.assertEqual((self.output / 'linux-runtime-plugin.tar.xz').read_text(), 'verified archive fixture')
+
+    def test_missing_linux_payloads_still_block_release_preparation(self):
+        import shutil
+        shutil.rmtree(self.root / 'arm64/.deploy-tmp/linux-build/assets')
+        with self.assertRaisesRegex(ValueError, 'missing arm64 evidence: .deploy-tmp/linux-build/assets/'):
+            self.run_prepare()
+        self.assertFalse(self.output.exists())
+
     def test_missing_abi_blocks_preparation(self):
         import shutil
         shutil.rmtree(self.root / 'x86_64')

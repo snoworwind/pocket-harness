@@ -3781,3 +3781,9 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
      真因：build-linux-assets.sh 调用 proot_source_provenance.py 时传了 $WORK/provenance 目录；CLI 的入口明确要求 proot-backend-inputs.json 文件。先前模块级 receipt 单测和手工文件调用通过，未覆盖整链调用参数。
      修法：传入 $WORK/provenance/proot-backend-inputs.json。新增 BackendTests 用夹具直接执行构建脚本中那条命令，而不是重写一份正确调用；同用例把文件路径退回目录，断言仍须拒绝，保持校验 fail-closed。
      复验：新增用例先在旧脚本受控失败，再在修复后通过；prepare-proot-source-backend.py --self-test 覆盖此正反控。整轮来源草稿重建结果见 0.15.3 迁移记录；不据此声明设备验收通过。
+
+724. **可下载 Linux payload 被旧的快照后磁盘回收策略删除（2026-11-14）**
+     现象：run 43523224700 的两 ABI 均完成独立 APK 比对与正式签名，但 prepare 报 missing arm64 evidence: .deploy-tmp/linux-build/assets/**，草稿未生成。
+     真因：旧版所有 Linux payload 已嵌入快照，reclaim-build-disk 将 assets 当成封包后的临时输入删除；迁移到独立下载附件时虽然三层 artifact 上传清单都已增加 assets，清理器仍在上传前删除它们。
+     修法：assets 与 provenance/native-libs 一起保留至附件发布，保留的 assets 必须是真实目录，拒绝链接；其余解包 rootfs、编译暂存和旧输入仍按原策略回收，磁盘余量门禁不放宽。
+     复验：新增“实际回收 CLI → 实际发布准备”的集成用例，在旧实现稳定复现 missing assets，修复后通过；删除 payload 的负控仍阻断发布。回收器 --self-test 另验证保留字节、链接拒绝、外部目录不被修改及原有空间/边界判据。
