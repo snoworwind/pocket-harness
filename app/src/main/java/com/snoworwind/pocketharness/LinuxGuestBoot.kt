@@ -78,6 +78,40 @@ internal object LinuxGuestBoot {
     return launch.copy(argv = argv)
   }
 
+  /**
+   * Host-side PRoot switch file for issue #322 diagnostics.
+   *
+   * `$HOME/.dsh/proot-env` is guest-visible (home is bound at the same path) and can be written
+   * from the native terminal with builtins only, so it still works on a guest where fork hangs:
+   * `printf 'PROOT_POCKET_TRACE_WAIT=1\n' > ~/.dsh/proot-env`. Only the reviewed keys are honored;
+   * anything else is ignored, and a symlink or oversized file is refused.
+   */
+  internal fun prootEnvOverrides(file: File): Map<String, String> {
+    if (!file.isFile || java.nio.file.Files.isSymbolicLink(file.toPath())) return emptyMap()
+    if (file.length() > 4096) return emptyMap()
+    return runCatching {
+      file.readLines().asSequence()
+        .map { it.trim() }
+        .filter { it.isNotEmpty() && !it.startsWith("#") }
+        .mapNotNull { line ->
+          val key = line.substringBefore('=', "").trim()
+          val value = line.substringAfter('=', "").trim()
+          when {
+            key !in PROOT_SWITCH_KEYS -> null
+            value.isEmpty() || value.length > 32 || value.any { it.isWhitespace() } -> null
+            else -> key to value
+          }
+        }
+        .toMap()
+    }.getOrDefault(emptyMap())
+  }
+
+  /** The only environment keys the switch file may set; both are read by the PRoot binary itself. */
+  private val PROOT_SWITCH_KEYS = setOf(
+    "PROOT_POCKET_TRACE_WAIT",
+    "PROOT_POCKET_RESUME_SILENT_CHILD",
+  )
+
   private fun validateGuestEnvironment(values: Map<String, String>) {
     require(values.keys.all { it.matches(Regex("[A-Za-z_][A-Za-z0-9_]*")) &&
       it !in setOf("LD_LIBRARY_PATH", "LD_PRELOAD") && !it.startsWith("PROOT_") && !it.startsWith("TERMUX") }) {
