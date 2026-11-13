@@ -185,7 +185,7 @@ adb -s <serial> install -r -t out\v<版本>\pocket-harness-v<版本>-arm64.apk
 
 ### 5.3 门禁（哪些是自动挡）
 
-`scripts/check-release-gates.mjs` 是聚合入口（`--list` 现数）。关键几条与文档直接相关：
+当前 Linux 链的接线入口是 `scripts/source-build/check-linux-ci.mjs`；`scripts/check-release-gates.mjs` 是保留的历史 Termux 聚合器（`--list` 只盘点旧声明），不作为现行发布通过证据。关键独立门禁与文档的关系如下：
 
 | 门禁 | 守什么 |
 |---|---|
