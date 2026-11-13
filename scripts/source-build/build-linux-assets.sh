@@ -202,7 +202,12 @@ sha256sum "$NATIVE_LIBS"/*.so > "$WORK/provenance/linux-native-libraries.sha256"
 node scripts/source-build/check-linux-native-libraries.mjs "$WORK/native-libs" "$ABI"
 find "$ROOTFS/var/cache/apt/archives" -type f -name '*.deb' -print0 | sort -z | xargs -0 -r sha256sum > "$WORK/provenance/debian-debs.sha256"
 
-sudo tar --sort=name --mtime="@$EPOCH" --owner=0 --group=0 --numeric-owner --exclude='./dev/*' --exclude='./proc/*' \
+# Device nodes must never ship (they are bound from the host at run time), but the standard
+# /dev/fd, /dev/stdin, /dev/stdout and /dev/stderr symlinks must: Bash process substitution
+# and anything reading /proc/self/fd through those names depends on them.  Drop only the
+# non-link entries, then archive the whole dev tree except the runtime-only subtrees.
+sudo find "$ROOTFS/dev" -mindepth 1 -maxdepth 1 ! -type d ! -type l -exec rm -f {} +
+sudo tar --sort=name --mtime="@$EPOCH" --owner=0 --group=0 --numeric-owner --exclude='./dev/pts/*' --exclude='./dev/shm/*' --exclude='./proc/*' \
   -cJf "$STAGE/$ROOTFS_ASSET" -C "$ROOTFS" .
 sudo chmod 644 "$STAGE/$ROOTFS_ASSET"
 

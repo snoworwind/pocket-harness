@@ -4134,3 +4134,9 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
      真因：恢复原语选错，不是条件判断错。`sigstop == SIGSTOP_IGNORED && !running` 准确命中「已由 fork 事件登记、从未报 stop、也没运行过」。
      修法：置 `child->sigstop = SIGSTOP_ALLOWED`，按 `seccomp == ENABLED ? PTRACE_CONT : PTRACE_SYSCALL` 显式写 `child->restart_how`，再调用 `restart_tracee(child, 0)`；成功/失败都把结果与 errno 打到 stderr（`proot-resume:` 前缀，进 engine.log），不要只留 VERBOSE。迟到的 initial stop 仍由事件循环处理（此时 sigstop 已是 ALLOWED，不会重复挂起）。
      复验与判据：改后 `tracee.c` 在 Linux GCC + talloc 2.5.0 下 `-fsyntax-only` 通过。真机必须三条同时成立：`bash -c '/bin/true; echo OK'` 打出 OK；`ls /`/`cat /etc/os-release` 仍是 Debian rootfs（证明 syscall 拦截没丢）；嵌套 `bash -c 'bash -c "echo NESTED"'` 与 `yes | head -1` 正常。只满足第一条 = 换了症状，不算修复。
+
+718. **rootfs 打包的 `--exclude='./dev/*'` 把 /dev/fd 修复整包丢掉：构建期 verify 全绿，装机后 `ls /dev/fd` 是 ENOENT（2026-11-13）**
+     现象：`prepare-rootfs.sh` 已建好 `fd/stdin/stdout/stderr` 四个标准链接，`--verify` 在构建宿主上也通过；但新 APK 干净安装后终端里 `cat <(echo x)` 报 `/dev/fd/63: No such file or directory`，`ls /dev/fd` 直接不存在。
+     真因：`build-linux-assets.sh` 归档 rootfs 时用 `--exclude='./dev/*'`（为了不带 device node），把同样是 `dev/` 下条目的四个**符号链接**一起排除了。构建期的 verify 看的是还没打包的目录树，所以永远绿；缺陷只在装机后才暴露。解包出来的 `dev/` 里只剩安装器运行时创建的空文件，`stdout` 那个普通文件还是 `echo > /dev/stdout` 失败时 shell 自己造的。
+     修法：打包前只删 `dev/` 下**非目录非链接**的条目（device node），tar 改为只排除运行时子树 `./dev/pts/*`、`./dev/shm/*`，保留 `./dev/fd|stdin|stdout|stderr` 四条标准链接；`/proc` 仍整段排除。
+     复验：`test_linux_assets_dev_archive` 三条断言（tar 不再整段排除 dev、删 device node 在 tar 之前、prepare-rootfs 仍建四条链接）；修复后需重新出包，在设备上确认 `ls -l /dev/fd`、`cat <(echo …)`、`diff <( )`、`> /dev/stdout` 全部可用。**旧包（run 43432157196）不含此修复，不得据其判 /dev/fd 通过。**
