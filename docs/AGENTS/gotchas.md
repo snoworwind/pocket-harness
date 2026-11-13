@@ -3979,3 +3979,10 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
     id+包名的精确组合，用户配置、自建条目保留；链接和超限 patch 拒绝写。上游与历史证据原名保留。
     复验：包锁根声明、桥对称、工具名承诺、有界读和来源检查通过；新增迁移正反例与名称契约。
     Kotlin/插件编译及最终来源 APK 由云端继续验证，不能用旧 lib 或旧构建结果代替。
+
+697. **PTC 的回归必须随主运行时迁移，不能继续锁旧 Bionic wrapper（2026-11-13）**
+    现象：Linux 工厂 patch 改用 `/opt/node/bin/node` 后，PR Gate 只有旧 wrapper 静态回归失败。
+    真因：测试仍把旧 snapshot 构建器与 linker64 wrapper 当现行真源，未验证客体的 Node bind 与 env 隔离。
+    修法：改为 `ptc-linux-launch.test.mjs`，同时核对 PTC launch、引擎 NODE 解析、受管 Node bind、
+    `env -i` 和 loader 环境边界；旧 wrapper、宿主 linker、错误 Node 路径与缺 bind 都必须拒绝。
+    复验：定向测试和补丁回归总入口执行通过；没有新增失败豁免。
