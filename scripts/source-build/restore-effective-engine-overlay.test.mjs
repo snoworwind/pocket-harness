@@ -15,7 +15,7 @@ function fixture(t) {
   const originalPath = join(root, 'original.json')
   const effectivePath = join(root, 'effective.json')
   const policyPath = join(root, 'policy.json')
-  const targetPath = join(root, 'runtime-config', 'engine-overlay.json')
+  const targetPath = join(root, 'snapshot-config', 'engine-overlay.json')
   const reportPath = join(root, 'receipt.json')
   const original = {
     engineVersion: '0.2.1-rc.2',
@@ -94,7 +94,7 @@ test('symlinked effective overlay is rejected', t => {
 test('symlinked receipt output is rejected before replacing the snapshot overlay', t => {
   const data = fixture(t)
   const sinkPath = join(data.root, 'sink.json')
-  mkdirSync(join(data.root, 'runtime-config'))
+  mkdirSync(join(data.root, 'snapshot-config'))
   writeFileSync(data.targetPath, 'existing target\n')
   writeFileSync(sinkPath, 'receipt sink\n')
   symlinkSync(sinkPath, data.reportPath)

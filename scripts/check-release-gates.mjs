@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// 历史 Termux 聚合器（当前 Linux 链不用；维护入口 scripts/source-build/check-linux-ci.mjs）。check-release-gates.mjs — 门禁聚合入口（0.13.8-b 批 B2：#208.E2 + F-ENV-13）
+// check-release-gates.mjs — 门禁聚合入口（0.13.8-b 批 B2：#208.E2 + F-ENV-13）
 //
 // 为什么需要它：issue #208 的根因是「同一批门禁在四条路径上有四份实现」——云端链只调 4 项、
 // 两仓 CI 未接、发布链只跑机密与 elf。各自再写一份必然第三次漂移。本脚本是**唯一声明处**：

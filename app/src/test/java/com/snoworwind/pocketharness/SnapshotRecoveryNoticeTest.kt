@@ -195,16 +195,13 @@ class SnapshotRecoveryNoticeTest {
    * 防「纯函数写好了但生产代码仍用旧的不复位逻辑」——那正是本缺陷的原始形态。
    */
   @Test
-  fun `unknown Linux recovery journal preserves the live instance`() {
-    LinuxInstallerFixture().use { f ->
-      f.install()
-      val root = java.io.File(f.files, "linux")
-      val before = LinuxFileTree.digest(root)
-      java.io.File(f.files, LinuxUpgradeTransaction.JOURNAL).writeText("broken")
-      assertTrue(LinuxInstanceInstaller.ensure(f.source(), f.files) is LinuxInstanceInstaller.Result.Failed)
-      assertEquals(before, LinuxFileTree.digest(root))
-      assertTrue(java.io.File(f.files, LinuxUpgradeTransaction.JOURNAL).exists())
-    }
+  fun `engine manager consults the convergence predicate`() {
+    val src = java.io.File("src/main/java/com/snoworwind/pocketharness/EngineManager.kt")
+      .takeIf { it.isFile }
+      ?: java.io.File("app/src/main/java/com/snoworwind/pocketharness/EngineManager.kt")
+    val text = src.readText()
+    assertTrue("恢复入口必须问收敛判据", text.contains("recoveryConverged"))
+    assertTrue("必须有清空动作", text.contains("pendingRecoveryFailure = null"))
   }
 
   /**
@@ -219,14 +216,24 @@ class SnapshotRecoveryNoticeTest {
    * 现在改成**只在上报函数自己的函数体里**断言：从函数声明切到下一个顶格 `}`，其余行不参与。
    */
   @Test
-  fun `Linux candidate rejection returns a diagnosable failure without changing live components`() {
-    LinuxInstallerFixture().use { f ->
-      f.install()
-      f.trial = { _, _ -> error("candidate-rejected-for-test") }
-      val result = LinuxInstanceInstaller.ensure(f.source("two"), f.files) as LinuxInstanceInstaller.Result.Failed
-      assertTrue(result.detail.contains("candidate-rejected-for-test"))
-      assertEquals("node-one", java.io.File(f.files, "linux/node/bin/node").readText())
-    }
+  fun `recovery entry point wires the rejection notice into the failure surface`() {
+    val text = engineStartFlowSource()
+    // ① 调用点：恢复入口必须调用上报函数（传的是恢复明细）。
+    assertTrue(
+      "恢复入口必须调用上报函数",
+      text.contains("reportRecoveryRejectionIfAny(activity, activity.engineManager.pendingRecoveryFailure)"),
+    )
+    // ② 上报函数**体内**必须：落结构化码 + 写一次性标记 + 镜像诊断包。
+    val body = functionBody(text, "private fun reportRecoveryRejectionIfAny")
+    assertTrue("必须走既有失败通道 writeBootFail", body.contains("writeBootFail"))
+    assertTrue("必须落一次性标记（供页面注入）", body.contains("SnapshotRecoveryNotice.markPending"))
+    assertTrue("必须镜像诊断包", body.contains("mirrorDiagnosticsToShared"))
+    assertTrue("结构化码必须来自单一真源", body.contains("notice.code"))
+    // ③ **反向**：该函数体内**不得**切引导页相位 —— 这是 lead 已裁决的设计取舍。
+    //    拒绝不阻断启动，紧随其后就会被 Starting/showWeb 覆盖 ⇒ 只留下一闪而过的错误页。
+    //    把取舍钉成断言，防止将来有人「顺手补一个错误页」把体验改坏。
+    assertFalse("不得在恢复上报里切引导页相位（会被 showWeb 覆盖成一闪而过）", body.contains("applyGuidePhase"))
+    assertFalse("不得在恢复上报里 showGuide", body.contains("showGuide"))
   }
 
   @Test

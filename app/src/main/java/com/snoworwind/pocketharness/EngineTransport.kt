@@ -57,8 +57,7 @@ object EngineTransport {
       // Linux still forbids a second listener; allow rebinding after the previous shell's TIME_WAIT.
       server.reuseAddress = true
       server.bind(InetSocketAddress(InetAddress.getByName("127.0.0.1"), 3080), 32)
-      val directory = privateDirectory(context.filesDir)
-      endpoint = File(directory, "engine-private.sock")
+      endpoint = File(context.filesDir, "engine-private.sock")
       listener = server
       android.webkit.CookieManager.getInstance().setCookie(
         "http://127.0.0.1:3080", admissionCookie() + "; Path=/; HttpOnly; SameSite=Strict",
@@ -105,20 +104,11 @@ object EngineTransport {
     initialize(context)
     val socket = endpoint ?: throw IOException("Missing engine socket")
     if (socket.exists() && !socket.delete()) throw IOException("Could not remove stopped engine socket")
-    val preload = File(socket.parentFile, "engine-private-transport.cjs")
-    if (java.nio.file.Files.isSymbolicLink(preload.toPath())) throw IOException("Engine preload must not be a symlink")
+    val preload = File(context.filesDir, "engine-private-transport.cjs")
     context.assets.open("engine-private-transport.cjs").use { input ->
       preload.outputStream().use { input.copyTo(it) }
     }
     return preload
-  }
-
-  /** Only this directory is bound into the managed engine, rather than all application files. */
-  internal fun privateDirectory(filesDir: File): File {
-    val directory = File(filesDir, "engine-transport")
-    if (java.nio.file.Files.isSymbolicLink(directory.toPath()) ||
-      (!directory.isDirectory && !directory.mkdirs())) throw IOException("Invalid engine transport directory")
-    return directory
   }
 
   /** Unauthenticated connections never consume a backend or streaming slot.

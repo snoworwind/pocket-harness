@@ -173,7 +173,7 @@ async function unpackedSize(dir) {
   return total
 }
 
-test('offline legacy helpers retain lifecycle behavior without registering a model tool', { ...posix, timeout: 30_000 }, () => fixture(async filesDir => {
+test('offline production host + bootstrap + runtime install, execute, reinstall and uninstall', { ...posix, timeout: 30_000 }, () => fixture(async filesDir => {
   const bundle = join(filesDir, 'signed-bundle')
   await mkdir(bundle)
   const base = 'https://github.com/snoworwind/pocket-harness/releases/download/v0.6.0/'
@@ -238,8 +238,7 @@ test('offline legacy helpers retain lifecycle behavior without registering a mod
     assert.equal((await service.status()).installed, true)
     assert.equal((await host.isInjected({ runtimeId: 'linux-runtime' })).active, true)
     assert.equal(ctx.get('linuxRuntimeManager').status().healthy, true)
-    assert.equal(tools.has('linux_bash'), false)
-    assert.equal((await ctx.get('linuxRuntimeManager').execute({ command: 'echo usable' })).stdout, 'native-fixture-ok\n')
+    assert.equal((await tools.get('linux_bash').execute({ command: 'echo usable' })).stdout, 'native-fixture-ok\n')
     await service.reinstall({ confirmed: true, activate: true })
     assert.equal(ctx.get('linuxRuntimeManager').status().healthy, true)
     const ownedManager = ctx.get('linuxRuntimeManager')

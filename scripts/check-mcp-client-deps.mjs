@@ -161,7 +161,7 @@ if (missing.size > 0) {
   fail(
     `${WATCHED} 的运行期依赖闭包在快照内不可解析 ${String(names.length)} 条: [${names.join(', ')}]`
     + '\n  设备后果：boot 阶段 ERR_MODULE_NOT_FOUND 硬崩、engine exit=1（用户看见「引擎起不来」）。'
-    + '\n  修法：把缺失包（含其传递闭包）登记进 scripts/runtime-config/engine-overlay.json 的'
+    + '\n  修法：把缺失包（含其传递闭包）登记进 scripts/snapshot-config/engine-overlay.json 的'
     + ' vendorTop（顶层第三方依赖）或 packages（@deepseek-ai 域）。'
     + '\n  注意：该宿主不在我们装配的行面上（用户自己挂的 entry），故 check-engine-overlay 的正向闭包'
     + ' 不覆盖它——这正是本门禁的判别力所在。'

@@ -22,18 +22,18 @@
 
 ## 铁律：APK 只能从源码构建
 
-本仓**任何 APK 都必须由来源链产出**，禁止用 `build-apk-013.ps1`、`build-release.ps1` 或其他本地/协调仓链产出、归集或发布 APK。理由：只有来源链的输入面可从源码复核——它只构建**已提交 HEAD**、在**隔离检出**内执行、**不读 `base/*.tar.xz` LFS 底座**（Linux 资产由固定签名输入及源码装配）、不使用协调仓，并把 `project-component-provenance` / `component-source-provenance` 写进产物。
+本仓**任何 APK 都必须由来源链产出**，禁止用 `build-apk-013.ps1`、`build-release.ps1` 或其他本地/协调仓链产出、归集或发布 APK。理由：只有来源链的输入面可从源码复核——它只构建**已提交 HEAD**、在**隔离检出**内执行、**不读 `base/*.tar.xz` LFS 底座**（Termux 基座由官方验签仓库包组装）、不使用协调仓，并把 `project-component-provenance` / `component-source-provenance` 写进产物。
 
 | 项 | 允许（来源链） | 禁止 |
 |---|---|---|
 | 云端入口 | `.github/workflows/build-apk-source.yml`（`build-apk.yml` 复用的就是它） | 旧 LFS Release 链：`release.yml` 已删除，不得复活 |
 | 本地入口 | `node scripts/source-build/run-local-source-chain.mjs` | `pwsh -File scripts/build-apk-013.ps1 ...`、`scripts/build-release.ps1` |
-| 底座输入 | 固定 Debian 签名快照 + 固定 Node + 源码编译宿主 | `base/*.tar.xz` LFS 归档 |
+| 底座输入 | Termux 官方签名仓库 + 固定 bootstrap（逐 deb 哈希） | `base/*.tar.xz` LFS 归档 |
 | 产物要求 | 携带来源链 provenance，且 `sourceRepository` 必须等于**本次构建实际所在仓库** | 无 provenance、或 provenance 指向其他仓库的产物 |
 
 **发布面（2026-10-17 用户更新决定；2026-11-08 扩展双 ABI）**：允许手动来源构建成功后自动创建 ARM64 与 x86_64 双 APK 预发布草稿，禁止自动公开；入口、权限隔离与资产要求以 [RELEASE.md §5](../RELEASE.md#5-来源链预发布草稿2026-10-17-按用户决定) 为准。旧 `release.yml` 和手工发布脚本不恢复，公开前须完成候选设备验收；x86_64 能力限制随草稿说明披露。
 
-**「独立」的含义（避免歧义）**：本仓的构建、验证都不需要 kelai141 名下任何仓库——来源链只取 `deepseek-ai/deepseek-harness`、Debian 签名快照、官方 Node、npm registry 与 Android SDK。Linux launcher/runtime/bootstrap 源码由本仓按来源提交导入并在树内哈希校验；其上游出处与许可必须保留，构建时不访问旧仓。**跨树镜像纪律已整体退役**（2026-10-15）：`check-patch-mirror.mjs` 只保留 registry↔IMPLS 自洽面，`check-release-gates.mjs` 的「两树同版」断言删除，`scripts/patches/**` 与各子仓副本在本仓内即权威，不再有「先合本仓镜像 PR、再合协调仓权威源 PR」这条要求。手工发布脚本（`upload-release.mjs` / `sync-release-notes.mjs`）与 `.github/workflows/release.yml` 均已删除；新草稿入口仅走来源链；残留的本地/协调仓链脚本（`build-apk-013.ps1` / `build-release.ps1`）禁止作为构建入口；`build-snapshot-013.mjs` 已退役，仅供历史追溯和独立回归，当前来源链不调用。保留的许可声明、仓库字段、README 来源说明及历史记录描述事实来源，不得改写成「我们的」。
+**「独立」的含义（避免歧义）**：本仓的构建、验证都不需要 kelai141 名下任何仓库——来源链只取 `deepseek-ai/deepseek-harness`、Termux 官方签名仓、npm registry 与 Android SDK。Linux launcher/runtime/bootstrap 源码由本仓按来源提交导入并在树内哈希校验；其上游出处与许可必须保留，构建时不访问旧仓。**跨树镜像纪律已整体退役**（2026-10-15）：`check-patch-mirror.mjs` 只保留 registry↔IMPLS 自洽面，`check-release-gates.mjs` 的「两树同版」断言删除，`scripts/patches/**` 与各子仓副本在本仓内即权威，不再有「先合本仓镜像 PR、再合协调仓权威源 PR」这条要求。手工发布脚本（`upload-release.mjs` / `sync-release-notes.mjs`）与 `.github/workflows/release.yml` 均已删除；新草稿入口仅走来源链；残留的本地/协调仓链脚本（`build-apk-013.ps1` / `build-release.ps1`）禁止作为构建入口；`build-snapshot-013.mjs` 仍由来源链内部调用，不得独立运行它绕过来源校验。保留的许可声明、仓库字段、README 来源说明及历史记录描述事实来源，不得改写成「我们的」。
 
 ## 引擎吸收：2026-10-19
 
@@ -41,7 +41,7 @@
 
 ## 维护方式
 
-2026-10-20 用户决定：仓库转为公开（全历史审计无凭证后执行），公开仓标准托管 runner 免费，CI 配额问题解除，`PR_GATE_MODE=on`；`main` 启用分支保护——必须走 PR、4 项必检、管理员同样受限、禁止强推与删除、仅保留 merge commit。此前 2026-10-18 的「保持私有、不启用分支保护」决定随之作废，但通过 PR 交付与复核同一提交的原则不变。Actions 仍强制 SHA 固定，默认 token 只读。2026-11-08 起草稿来源链对 ARM64 与 x86_64 分别双构建并签名；当前候选为两种 ABI 装配 Debian/glibc 四件套与 Canvas；来源构建和设备证据未完成时如实保持未验收，现行接线见 LINUX-CI.md。
+2026-10-20 用户决定：仓库转为公开（全历史审计无凭证后执行），公开仓标准托管 runner 免费，CI 配额问题解除，`PR_GATE_MODE=on`；`main` 启用分支保护——必须走 PR、4 项必检、管理员同样受限、禁止强推与删除、仅保留 merge commit。此前 2026-10-18 的「保持私有、不启用分支保护」决定随之作废，但通过 PR 交付与复核同一提交的原则不变。Actions 仍强制 SHA 固定，默认 token 只读。2026-11-08 起草稿来源链对 ARM64 与 x86_64 分别双构建并签名；x86_64 暂缺离线 PRoot Linux 资产与 Android Canvas native，设备证据不可得时如实保持未验收。
 
 本仓作为独立项目的长期维护线，以 `main` 为默认分支；安全加固与来源链规则继续适用。
 

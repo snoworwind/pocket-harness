@@ -8,7 +8,7 @@
 //   5. 内置预设载体非空：agent-preset 的 skills/ 与 web-app 的 presets/（0.14.2 起，见 CARRIERS）
 // 退出 0 = PASS；1 = FAIL（拒绝打包）。双仓同版（雷点 10）。
 //
-// 用法：node scripts/check-engine-overlay.mjs <snapshot.tar.xz> [--manifest scripts/runtime-config/engine-overlay.json]
+// 用法：node scripts/check-engine-overlay.mjs <snapshot.tar.xz> [--manifest scripts/snapshot-config/engine-overlay.json]
 import { readFileSync, writeFileSync, rmSync } from 'node:fs'
 import { join, dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -27,11 +27,11 @@ let manArg = null
   const i = process.argv.indexOf('--manifest')
   if (i > 0) manArg = resolve(process.argv[i + 1])
 }
-const manifestPath = manArg ?? join(HERE, 'runtime-config', 'engine-overlay.json')
+const manifestPath = manArg ?? join(HERE, 'snapshot-config', 'engine-overlay.json')
 if (!snap) { console.error('用法: node scripts/check-engine-overlay.mjs <snapshot.tar.xz> [--manifest <engine-overlay.json>]'); process.exit(2) }
 const M = JSON.parse(readFileSync(manifestPath, 'utf8'))
 // W8 合规核验：overlay 新引 npm 依赖的许可证登记（非 copyleft 面，漂移即拒）
-const LICENSES = JSON.parse(readFileSync(join(HERE, 'runtime-config', 'engine-overlay-licenses.json'), 'utf8')).licenses
+const LICENSES = JSON.parse(readFileSync(join(HERE, 'snapshot-config', 'engine-overlay-licenses.json'), 'utf8')).licenses
 // 引擎树补丁登记表（marker 抽验来源，0.13.5 起）
 const PATCH_REGISTRY = JSON.parse(readFileSync(join(HERE, 'patches', 'registry.json'), 'utf8'))
 
@@ -490,7 +490,7 @@ CARRIERS.forEach((c, idx) => {
 // 与构建期的剔除步互为镜像：清单说了不算，产物说了算。剔除步失效（基座换代 / 路径变更）时
 // 这里判红，而不是让死代码悄悄回流每个快照。
 {
-  const stale = (JSON.parse(readFileSync(join(HERE, 'runtime-config', 'slim.json'), 'utf8')).engineStalePackages ?? [])
+  const stale = (JSON.parse(readFileSync(join(HERE, 'snapshot-config', 'slim.json'), 'utf8')).engineStalePackages ?? [])
   const present = res.present ?? {}
   const names = new Set(Object.values(present).map((m) => m?.name).filter(Boolean))
   for (const entry of stale) {

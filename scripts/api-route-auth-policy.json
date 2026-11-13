@@ -66,9 +66,7 @@
     {
       "source": "plugins/dsh-model-capability/src/index.ts",
       "expression": "MANUAL_FILL_ROUTE",
-      "resolvesTo": [
-        "/api/android/model-capability/fill"
-      ],
+      "resolvesTo": ["/api/android/model-capability/fill"],
       "literalEvidence": "export const MANUAL_FILL_ROUTE = '/api/android/model-capability/fill'",
       "reason": "A6 手动补齐路由的路径常量：宿主注册与页面调用共用同一字面量，避免两处各写一份导致漂移。"
     },
@@ -704,75 +702,6 @@
       "verdict": "not-mounted",
       "packageName": "@deepseek-ai/dsh-webhook-github",
       "evidence": "依据三条：packages/bundle/base/cordis.patch.yml 与 packages/bundle/web-app/cordis.patch.yml 均无 webhook-github 行；本仓 scripts/profile-web.cordis.patch.yml 无 insert；上游 apps/cli/package.json 的 dependencies 已无该包（仅留在 devDependencies），发布安装树不产出。发行 profile 不挂载，config.path 无实际注册。"
-    },
-    {
-      "source": "packages/boot/plugin-manager/src/index.ts",
-      "form": "fetch",
-      "expression": "DETAIL_FILE_PATH",
-      "pathText": "/api/plugin-manager/detail-file",
-      "pathEvidence": {
-        "file": "packages/boot/plugin-manager/src/index.ts",
-        "marker": "const DETAIL_FILE_PATH = '/api/plugin-manager/detail-file'"
-      },
-      "verdict": "protected",
-      "guardedBy": "packages/client/connection/src/index.ts :: web :: API_PATH",
-      "bundleRowId": "plugin-manager",
-      "evidence": "插件详情图片的 Fetch 路由，注册在 connection.fetch 载体上；该载体由 client-connection 的 /api 前缀 handler 统一鉴权后才分发，路径本身无独立 guard。"
-    },
-    {
-      "source": "packages/boot/plugin-market/src/index.ts",
-      "form": "fetch",
-      "expression": "DETAIL_FILE_PATH",
-      "pathText": "/api/plugin-market/detail-file",
-      "pathEvidence": {
-        "file": "packages/boot/plugin-market/src/index.ts",
-        "marker": "const DETAIL_FILE_PATH = '/api/plugin-market/detail-file'"
-      },
-      "verdict": "not-mounted",
-      "packageName": "@deepseek-ai/dsh-plugin-market",
-      "evidence": "本产品 profile 不挂载插件市场包；该行只在上游 base/web-app bundle 中存在时才会注册，当前装配集不含该包。"
-    },
-    {
-      "source": "packages/session-query/session-log-export/src/index.ts",
-      "form": "fetch",
-      "expression": "SESSION_MARKDOWN_EXPORT_PATH",
-      "pathText": "/api/session.markdown",
-      "pathEvidence": {
-        "file": "packages/session-query/session-log-export/src/routes.ts",
-        "marker": "export const SESSION_MARKDOWN_EXPORT_PATH = '/api/session.markdown'"
-      },
-      "verdict": "protected",
-      "guardedBy": "packages/client/connection/src/index.ts :: web :: API_PATH",
-      "bundleRowId": "session-log-download",
-      "evidence": "会话导出路由由 web-app bundle 的 session-log-download 行挂载，注册在 connection.fetch 上；/api 前缀由 client-connection 的承载 handler 统一鉴权。"
-    },
-    {
-      "source": "packages/experimental/liveshare/src/host/owner-http-routes.ts",
-      "form": "fetch",
-      "expression": "'/api/liveshare.ownerCredential'",
-      "pathText": "/api/liveshare.ownerCredential",
-      "verdict": "not-mounted",
-      "packageName": "@deepseek-ai/dsh-experimental-liveshare",
-      "evidence": "实验性 liveshare 包不在任何上游 bundle 行，也不在本产品 profile 注入集；该 owner 凭据路由不会被装配。"
-    },
-    {
-      "source": "packages/experimental/liveshare/src/host/owner-http-routes.ts",
-      "form": "fetch",
-      "expression": "path",
-      "pathText": null,
-      "dynamicPathReason": "该注册的 path 取自运行时参数而非构建期常量，无法静态解析为字面量；已按未挂载处理。",
-      "verdict": "not-mounted",
-      "packageName": "@deepseek-ai/dsh-experimental-liveshare",
-      "evidence": "同一实验包的动态路径注册；本产品不挂载 liveshare，故不需要鉴权判定，仅登记存在性与不挂载依据。"
-    },
-    {
-      "source": "packages/experimental/liveshare/src/host/owner-http-routes.ts",
-      "form": "fetch",
-      "expression": "'/api/liveshare.ownerLoginStart'",
-      "pathText": "/api/liveshare.ownerLoginStart",
-      "verdict": "not-mounted",
-      "packageName": "@deepseek-ai/dsh-experimental-liveshare",
-      "evidence": "实验包 owner 登录起点路由；不在上游 bundle 行，也不在本产品装配集内，故不存在暴露面。"
     }
   ]
 }

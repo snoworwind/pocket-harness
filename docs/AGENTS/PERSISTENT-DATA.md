@@ -105,5 +105,3 @@ Do not copy raw preference files into ordinary diagnostics or exports: several c
 ## 原生插件管理的待重启状态
 
 `PluginManagementRepository` 新增 SharedPreferences `plugin_management_pending`。键绑定插件 entryId 与 moduleName，只保存已被运行时确认持久化、但需要重启的期望启用状态；运行时实际状态匹配后移除。实际配置仍由引擎 `pluginManager` 写入原有 profile patch。配置编辑走 `settings/mutate` 与 revision 校验，省略的字段（包括脱敏 secret）保持原值。本改动不迁移或重写用户文件。
-
-Linux shell 身份迁移：home seed 更新时将旧工厂 `shell-termux` / `@dsh-android/dsh-shell-termux` 配对条目迁为 `shell-linux` / `@dsh-android/dsh-shell-linux`；仅改身份，不覆盖用户配置、不删除旧用户文件。自定义 id/包名不匹配时原样保留。

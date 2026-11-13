@@ -66,25 +66,40 @@ test('all seven routes authenticate before any bootstrap action and enforce HTTP
   assert.equal(h.routes.size, 0)
 })
 
-test('retired lifecycle routes never download or mutate, even with confirmation', async () => {
+test('mutations require bounded explicit confirmation; manual check never installs', async () => {
   const h = harness()
-  for (const action of ['check', 'install', 'reinstall', 'uninstall', 'auto-update-on', 'auto-update-off']) {
-    for (const body of [{}, { confirmed: true }, { confirmed: 'true' }, '{', 'x'.repeat(1025)]) {
-      const response = await h.call(action, { body })
-      assert.equal(response.code, 410)
-      assert.equal(response.payload.errorCode, 'linux-operation-retired')
-    }
+  for (const action of ['install', 'reinstall', 'uninstall', 'auto-update-on', 'auto-update-off']) {
+    for (const body of [{}, { confirmed: 'true' }, '{', 'x'.repeat(1025)]) assert.equal((await h.call(action, { body })).code, 400)
   }
   assert.deepEqual(h.bootstrap.calls, [])
+  const response = await h.call('check', { body: {} })
+  assert.equal(response.code, 200)
+  assert.equal(response.payload.availableVersion, '1.2.0')
+  assert.deepEqual(h.bootstrap.calls, [['check', { source: 'manual' }]])
+  assert.equal(response.payload.installed, false)
+  await h.call('auto-update-on')
+  assert.equal(h.bootstrap.state.autoUpdateEnabled, true)
+  assert.equal(h.bootstrap.calls.length, 2, 'enabling auto update must not check or install')
+  await h.call('install')
+  assert.deepEqual(h.bootstrap.calls.at(-1), ['install', { runtimeId: 'debian-minimal', confirmed: true, activate: true }])
 })
 
-test('retired lifecycle responses never expose or invoke old subprocess failures', async () => {
+test('Linux install failures return stable codes without exposing raw subprocess stderr', async () => {
   const bootstrap = makeBootstrap()
-  bootstrap.install = async () => { throw new Error('private legacy subprocess failure') }
-  const response = await harness(bootstrap).call('install')
-  assert.equal(response.code, 410)
-  assert.equal(response.payload.errorCode, 'linux-operation-retired')
-  assert.doesNotMatch(JSON.stringify(response.payload), /private legacy/)
+  bootstrap.install = async () => {
+    throw Object.assign(new Error('find: /private/app/files/usr/bin/find: Permission denied'), {
+      code: 'linux-rootfs-prepare-failed',
+    })
+  }
+  const h = harness(bootstrap)
+  const response = await h.call('install')
+  assert.equal(response.code, 500)
+  assert.equal(response.payload.code, 'linux-rootfs-prepare-failed')
+  assert.match(response.payload.error, /根文件系统准备失败/)
+  assert.match(response.payload.error, /files\/linux-environment\/linux-bootstrap-state\.json/)
+  assert.match(response.payload.error, /linux-bootstrap-state\.json.*lastError/)
+  assert.doesNotMatch(JSON.stringify(response.payload), /private\/app|Permission denied/)
+  h.dispose()
 })
 
 test('normalized status preserves the bootstrap diagnostic code', () => {
@@ -96,7 +111,7 @@ test('missing bootstrap is explicit 503, blocked compatibility is visible, statu
   assert.equal((await harness(undefined).call('status')).code, 200)
   const absent = harness(null)
   assert.equal((await absent.call('status')).code, 503)
-  assert.equal((await absent.call('install')).code, 410)
+  assert.equal((await absent.call('install')).code, 503)
   const h = harness(makeBootstrap({ updateBlocked: true, updateAvailable: true, latestReleaseVersion: '2.0.0' }))
   const response = await h.call('status')
   assert.equal(response.payload.availableVersion, undefined)
@@ -104,14 +119,17 @@ test('missing bootstrap is explicit 503, blocked compatibility is visible, statu
   assert.deepEqual(h.bootstrap.calls, [])
 })
 
-test('parallel retired lifecycle calls cannot enter an installer or create busy state', async () => {
+test('operations serialize and expose busy status without concurrent mutation', async () => {
   const bootstrap = makeBootstrap()
-  bootstrap.install = () => { throw new Error('must not be entered') }
+  let finish
+  bootstrap.install = () => new Promise(resolve => { finish = resolve })
   const h = harness(bootstrap)
-  const responses = await Promise.all([h.call('install'), h.call('uninstall'), h.call('reinstall')])
-  assert.ok(responses.every(response => response.code === 410))
-  assert.equal((await h.call('status')).payload.busy, false)
-  assert.deepEqual(bootstrap.calls, [])
+  const first = h.call('install')
+  while (!finish) await new Promise(resolve => setImmediate(resolve))
+  assert.equal((await h.call('uninstall')).code, 409)
+  assert.equal((await h.call('status')).payload.busy, true)
+  finish()
+  assert.equal((await first).code, 200)
 })
 
 test('automatic checks require installed baseline mismatch and respect persisted attempt deduplication', async () => {

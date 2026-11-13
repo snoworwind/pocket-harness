@@ -1,6 +1,6 @@
 - insert:
     - id: mobile-hard
-      name: '@dsh-android/dsh-shell-linux'
+      name: '@dsh-android/dsh-shell-termux'
       config:
         keepUnknown: true
     - id: user-official

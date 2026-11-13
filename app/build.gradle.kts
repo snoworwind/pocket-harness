@@ -9,7 +9,6 @@ val linuxNativeLibraryDir = providers.gradleProperty("linuxNativeLibraryDir").or
 // 侧栏原生终端 .so：来源链用 NDK r30 预编译后按 jniLibs 目录注入（不做 AGP externalNativeBuild，
 // 以免 Kotlin 单测作业也被迫依赖 NDK）。属性未提供时本模块没有该 .so，TerminalNative.available=false。
 val terminalNativeLibraryDir = providers.gradleProperty("terminalNativeLibraryDir").orNull
-val linuxNativeAbiDir = providers.gradleProperty("linuxNativeAbiDir").orNull ?: "arm64-v8a"
 
 android {
   namespace = "com.snoworwind.pocketharness"
@@ -22,14 +21,15 @@ android {
     // Guest ELF execution is mediated by the APK-installed PRoot executable and
     // its static loader in nativeLibraryDir; writable app data holds guest files.
     targetSdk = 34
-    // 0.16.0 version bump; the bundled engine is still 0.2.2-rc.1.
+    // 0.15.2 version bump; the bundled engine is still 0.2.2-rc.1.
     // All delivered APKs still require v1/v2/v3 signatures.
-    versionCode = 60
+    versionCode = 59
     // Snapshot builds append a suffix (e.g. -SN-1-RC13) via -PversionNameSuffix; release builds pass none.
     val snapshotSuffix = providers.gradleProperty("versionNameSuffix").getOrElse("")
     // 版本号单一来源：UI（GuidePageRenderer）、桥（androidBridge.version）、诊断日志、引擎环境变量
     // （DSH_APP_VERSION，见 EngineManager.engineEnv）全部读这里，禁止任何地方再硬编码版本字面量。
-    versionName = "0.16.0" + snapshotSuffix
+    versionName = "0.15.2" + snapshotSuffix
+    buildConfigField("String", "TERMUX_VERSION", "\"0.118.3\"")
     // 0.14.0-preview：虚拟屏 P0 建屏矩阵走仪器测试入口（app UID 下运行 = P0-6 要测的调用者身份），
     // 不新增任何产品面（Activity/Bridge/Manifest 均不动）。见 .deploy-tmp/iter-0140/vdisplay-p0.md §8.8。
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -126,7 +126,7 @@ tasks.configureEach {
     doFirst {
       val libraryRoot = file(linuxNativeLibraryDir)
       for (name in listOf("libpocketharness_proot.so", "libpocketharness_proot_loader.so", "libtalloc.so", "libandroid-shmem.so")) {
-        val library = libraryRoot.resolve("$linuxNativeAbiDir/$name")
+        val library = libraryRoot.resolve("arm64-v8a/$name")
         if (!library.isFile || !library.canExecute()) {
           throw GradleException("Missing executable Linux APK native library: $library")
         }
@@ -146,12 +146,11 @@ tasks.configureEach {
 tasks.whenTaskAdded {
   if (name == "mergeDebugAssets" || name == "mergeReleaseAssets") {
     doFirst {
-      // 产品只内置 Linux 实例；旧 Termux 快照不再被任何 ABI 的构建接受（审计 R-13）。
-      val linuxAssets = file("src/main/assets/linux/manifest.json")
-      if (!linuxAssets.exists()) {
+      val snap = file("src/main/assets/snapshot.tar.xz")
+      if (!snap.exists()) {
         throw GradleException(
-          "缺少运行时资产：需要 assets/linux/manifest.json（内置 Linux 实例）。" +
-          "旧 assets/snapshot.tar.xz 路径已退役，请按来源链生成 → app/src/main/assets（见 docs/AGENTS/LINUX-CI.md）",
+          "缺少运行时快照 assets/snapshot.tar.xz —— " +
+          "请按 ARM64 来源链生成并放入 app/src/main/assets/snapshot.tar.xz（见 README.md）",
         )
       }
     }

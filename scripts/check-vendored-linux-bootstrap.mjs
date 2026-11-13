@@ -43,7 +43,7 @@ const MANIFEST = {
   'client/index.js': '747de10f2ce2545ed9b8b63f0261a5fc656b0b9417af5895536731781daaf072',
   'src/asset-bundle.js': '2520d8fec29dbaa7da1d6e602ff313ffed8ae1f124e7a94f6f4276f4474dd622',
   'src/github.js': '8bf1bdac19fb17dc866087342b55714661e762124953bb6f697a4c87f04e70c3',
-  'src/index.js': '45460c08fd694715b6a6e42c37da7c675f72cf58e77391ad7052d828a2b3691f',
+  'src/index.js': '33da07d3a547ec3fec8f1f73eb09eea3431c0728e2d914bddb9cf4f74744f37e',
   'src/manifest.js': 'a9b8512e24dfbb1b225c2bc260d3d0496b7e8834ef975d17c69355baf1911067',
   'src/routes.js': '678391176bcd81ba6cbbbab293a4731d07e37e99c51178d7605821eac6aa5bb9',
   'src/status.js': '494238e39094999e44105d1c56ca562f88ce3e65146bd3070806d4c82dd98f7b',
@@ -56,11 +56,11 @@ const LOCAL_PATCHES = {
   'README.md': 'b6a54ef5116942484304b8ea31da9bf514a22dcb6496ce2cd99aaadc82db8fb2',
   'src/asset-bundle.js': '7e32ce0f57ee0a7f75dfd2d2af6ff61357d63b6c34e4f0dbf7aa23cf4300e416',
   'src/github.js': '7b6369b5910ecb3e8b49f75a4dae3ca60ceac2d4164bf7f05f71c81803aa110c',
-  'src/index.js': '45460c08fd694715b6a6e42c37da7c675f72cf58e77391ad7052d828a2b3691f',
+  'src/index.js': 'de54c95989799da58c3830e2d56d69ab61dae5e3cb716269b5d73eade07d9da4',
 }
 
 /** Files this repo adds, including local security regression tests. */
-const ADDED = ['build.mjs', 'build-client.mjs', 'package.json', 'package-lock.json', 'test/github-limits.test.mjs', 'test/github-limits-negative-control.mjs', 'test/client-http.test.mjs', 'test/reactivate.test.mjs']
+const ADDED = ['build.mjs', 'build-client.mjs', 'package.json', 'package-lock.json', 'test/github-limits.test.mjs', 'test/github-limits-negative-control.mjs', 'test/client-http.test.mjs']
 
 /** `lib/` is a build product (gitignored, rebuilt by `npm run build`); `node_modules` is never vendored. */
 const IGNORED_DIRS = new Set(['node_modules', 'lib', '.git'])

@@ -62,14 +62,14 @@ const UNIVERSE = [
   { root: 'dsh-client-ui-responsive/src', keep: (p) => /\.(ts|tsx|css)$/.test(p) },
   { root: 'dsh-host-web-compat/lib', keep: (p) => /\.(js|ts|d\.ts)$/.test(p) },
   { root: 'dsh-host-web-compat/scripts', keep: (p) => /\.(mjs|js)$/.test(p) },
-  { root: 'dsh-shell-linux/src', keep: (p) => /\.ts$/.test(p) },
+  { root: 'dsh-shell-termux/src', keep: (p) => /\.ts$/.test(p) },
   {
     root: 'scripts',
     keep: (p) => !p.includes('/') && /\.(mjs|ps1|py|sh)$/.test(p)
       && /^(check-|verify-|build-|inject-|make-snapshot|relocate-snapshot|update-snapshot-patch)/.test(p),
   },
   { root: 'scripts/patches', keep: (p) => /\.(mjs|js)$/.test(p) },
-  { root: 'scripts/runtime-config', keep: () => true },
+  { root: 'scripts/snapshot-config', keep: () => true },
 ]
 const SKIP_DIRS = new Set(['node_modules', '.git', 'build', 'out', 'release', '.gradle', '__pycache__', '.deploy-tmp'])
 

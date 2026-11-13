@@ -29,7 +29,7 @@ export function checkPackageLockRoot(directory) {
 }
 
 export function packageDirectories(repoRoot) {
-  const candidates = ['dsh-client-ui-responsive', 'dsh-shell-linux']
+  const candidates = ['dsh-client-ui-responsive', 'dsh-shell-termux']
   const pluginRoot = path.join(repoRoot, 'plugins')
   for (const entry of fs.readdirSync(pluginRoot, { withFileTypes: true })) {
     if (entry.isDirectory()) candidates.push(path.join('plugins', entry.name))
@@ -48,7 +48,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   // 插件循环）按 `if [ -f package-lock.json ]` 决定 `npm ci` 还是 `npm install`，锁一缺就从
   // 「严格按锁文件」降级成「重新解析版本区间」——产出不再可复现，全链仍然绿。
   // 故对**具名**的两个目录（它们不靠发现，是写死在 packageDirectories 里的）断言必须在场。
-  const named = ['dsh-client-ui-responsive', 'dsh-shell-linux']
+  const named = ['dsh-client-ui-responsive', 'dsh-shell-termux']
   const errors = [
     ...named
       .filter((relative) => !directories.includes(path.join(repoRoot, relative)))

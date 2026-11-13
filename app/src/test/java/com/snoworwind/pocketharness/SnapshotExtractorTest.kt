@@ -183,36 +183,4 @@ class SnapshotExtractorTest {
     }
   }
 
-
-  // Android SELinux denies hard links inside app data; the Debian rootfs ships perl hard
-  // links, so extraction must materialize identical bytes instead of failing the install.
-  @Test
-  fun hardlinkFallbackCopiesBytesWhenTheHostRejectsLinks() {
-    val root = Files.createTempDirectory("snapshot-extractor-hardlink-test").toFile()
-    try {
-      val source = File(root, "usr/bin/perl5.40.1").apply {
-        parentFile!!.mkdirs()
-        writeBytes(ByteArray(4096) { (it % 251).toByte() })
-        setExecutable(true)
-      }
-      val target = File(root, "usr/bin/perl")
-      SnapshotExtractor.linkOrCopy(target, source) { _, _ ->
-        throw java.nio.file.FileSystemException(target.absolutePath, source.absolutePath, "EACCES")
-      }
-      assertTrue("fallback must materialize a regular file", target.isFile)
-      assertTrue("fallback must copy the exact bytes", source.readBytes().contentEquals(target.readBytes()))
-      assertTrue("executable bit must survive the fallback", target.canExecute())
-      val linked = File(root, "usr/bin/perl-link")
-      SnapshotExtractor.linkOrCopy(linked, source)
-      assertTrue("supported platforms still create a hard link", Files.isSameFile(linked.toPath(), source.toPath()))
-      assertFalse("an unresolvable link must fail closed", runCatching {
-        SnapshotExtractor.linkOrCopy(File(root, "usr/bin/missing"), File(root, "usr/bin/absent")) { _, _ ->
-          throw java.io.IOException("link denied")
-        }
-      }.isSuccess)
-    } finally {
-      SnapshotFs.deletePath(root)
-    }
-  }
-
 }

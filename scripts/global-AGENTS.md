@@ -1,54 +1,56 @@
 <!-- dsh-mobile-factory-baseline -->
-# Pocket Harness 运行时与操作纪律（出厂基线）
+# DSH Mobile 运行时与操作纪律（出厂基线）
 
-> 本文件随安装包发布，升级时整份替换。自己的长期约定请写 `~/.agents/AGENTS.md`；
-> 项目约定写项目根 `AGENTS.md`，个人覆盖写同目录 `AGENTS.local.md`。
+> 本文件随安装包发布，**升级时整份替换**，不要在这里写自己的长期约定。
+> 你自己的全局约定写到 `~/.agents/AGENTS.md`（不受升级影响）；项目级约定写项目根的
+> `AGENTS.md`，个人覆盖写同目录 `AGENTS.local.md`。见文末「约定放在哪儿」。
 
-## 1. 当前执行环境
+## 1. 两层运行时
 
-引擎、普通 `bash`、终端、Python 和 Undo CLI 都在 PRoot 的 Debian/glibc 客体中执行。
-没有第二个 `linux_bash` 工具，也不需要再次安装 Linux。Android 平台能力通过插件与桥提供。
-PRoot 不提供独立内核、安全沙箱或 Android root；`uname` 仍可能显示 Android 宿主内核。
-
-| 内容 | 客体路径 | 升级规则 |
+| 层 | 路径 | 升级时 |
 |---|---|---|
-| APK 管理的 Node / npm / pnpm | `/opt/node` | 随 APK 校验和更新，不要在此存用户资产 |
-| APK 管理的引擎 | `/opt/dsh` | 随 APK 校验和更新，不要修改其中的包 |
-| Debian 与 apt 软件 | `/usr`、`/etc`、`/var` | 首装铺底，普通 APK 更新不重铺；显式重置才删除 |
-| 用户 home | `/root`，即 `$HOME` | 持久保留；工厂种子只补缺失文件 |
+| 出厂运行时 | `$PREFIX`（应用目录下的 `files/usr`） | **整棵替换** |
+| 用户面 | `$HOME`（`files/home`，即 `~`） | 用户数据保留，出厂配置按白名单更新 |
 
-- 使用 apt 管理 Debian 软件；npm 全局前缀为 `$HOME/.local`，pnpm 用户目录也在 home。
-- PATH 默认先取 `/opt/node/bin`，再取 `~/.local/bin` 与 pnpm 用户命令目录，然后是 Debian 系统目录。
-  apt 安装的同名 Node/npm 仍可用绝对路径显式调用；用户交互 shell 的自定义 PATH 可以改变命令选择。
-- 引擎搜索使用其依赖的 `@vscode/ripgrep`；命令行 `rg` 使用 apt 版本。版本和行为可能不同。
-- 引擎的原生构建默认使用 `/usr/bin/python3`、gcc/g++、make。显式切换 pyenv、conda 或编译器后，
-  先记录实际版本和路径；不要把不同工具链的结果当成同一构建证据。
-- Python 用户包保存在 `~/.local`。Python minor/SOABI 变化后需要为新解释器重装原生扩展；旧文件不自动删除。
-- Node 通过 `NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt` 使用 Debian 的额外 CA；
-  修改证书后重启引擎。Node 内置 OpenSSL/SQLite 与命令行版本可不同。
+- **绝不往 `$PREFIX` 写东西。** 引擎正跑在里面，升级时整棵替换，写在里面的东西会丢。
+- **删除 `$PREFIX` 里被依赖的文件等于让引擎永久不可用，没有自动回滚**：启动闸门会拒绝拉起，
+  而重新解压又依赖引擎被成功拉起过。装工具、装编译器一律落 `~/.dsh/opt/` 这类用户面目录。
 
-## 2. 操作与排障
+## 2. 容易被误判成「代码有 bug」的环境事实
 
-- 使用正常的 Debian `/tmp`。不要沿用旧 Android linker64 的 Node 派生限制；遇到子进程问题，
-  先检查 `process.execPath`、命令路径和实际错误，再给最小复现。
-- 首装会解包大型 rootfs；保持前台，不要在准备中强停。中断后的重试会校验并复用已完成组件。
-- 运行时更新由 APK 管理。起不来先看 `boot-fail.log`、`engine.log` 和 Linux 试运行诊断；
-  不要删 rootfs 或清应用数据来“修复”受管 node/engine 缺件。
-- Linux 环境页是只读状态与自检。需要重置时先从原生管理中心导出备份；重置会删除 apt 软件和配置。
-  导出的备份含凭据，应保存在可信位置。
-- 应用内 Undo 保护配置与插件代码，不代表用户 home、apt 软件或手写资产都有可用回滚点。
-  破坏性操作前自己备份，并分别验证备份可读与目标内容。
+1. **临时目录不可用**：不要用 `/tmp`，用 `$HOME/tmp`（出厂快照已建好）。写临时文件失败时命令常常
+   **静默通过**，所以「通过」的判定必须带正对照（期望值/计数），不能只看输出为空。
+2. **node 不能派生 node 子进程**：`process.execPath` 是 Android 的 `linker64`（node 是 ELF 共享对象），
+   因此 `node --test`、vitest 默认 `forks` 池、任何 `spawnSync(process.execPath, ...)` 都会失败。
+   绕行：测试**逐文件直跑**、vitest 加 `--pool=threads`。判据：`node -e 'console.log(process.execPath)'`。
+3. **共享存储（`/storage/emulated/0`，FUSE）建不了符号链接**，atomic rename 也不可靠：依赖安装
+   （pnpm/npm）一律装到 `$HOME` 下的副本里。安装失败留下的**半装 `node_modules` 是假状态**，
+   会让后续一切报「找不到模块」，必须删干净，不要留在项目树里。
+4. **切到后台 = 整个应用进程组被系统冻结**（不只是 UI）：长任务、构建、虚拟机要留前台或分屏。
+   冻结不等于被杀，回前台会继续，但定时器会集中补触发、网络连接会超时。
+5. **共享存储的媒体扫描按扩展名归类**（`.ts` 会被当成视频），源码目录会被相册收录。在目录里放
+   一个空的 `.nomedia` 即可让扫描器跳过整棵子树（只影响媒体索引，不影响读写）。
 
-## 3. Android 环境事实
+## 3. 升级、恢复与排障
 
-- 公共共享存储可能不支持符号链接或可靠的原子 rename，依赖安装优先放在私有 home。
-- 后台可能冻结应用进程组；长任务保持前台或分屏。回前台后需要重新核对网络和超时状态。
-- 公共源码目录可放 `.nomedia` 避免媒体扫描。
-- 大范围扫描先明确目标文件，避免无目的地遍历整棵 rootfs 或引擎树。
-- 破坏性命令单独执行并先 dry-run；每次结论同时保留正向证据和失败条件，不把空输出当成功。
+- 运行时（快照）更新完成的**唯一判据**：`files/.snapshot-fingerprint` 翻转，且
+  `files/.snapshot-transaction` 消失。刷新期间不要强停应用。
+- 引擎起不来先看 `files/boot-fail.log`：`refusal=` 直接写明拒启原因；再看
+  `files/engine.log.*`，`CANNOT LINK EXECUTABLE` 表示缺动态库。
+- 应用内「撤销/快照」只覆盖配置与插件代码。`~/.dsh/skills/`、`~/.dsh/opt/` 这类手写资产
+  **升级会保留，但不在快照保护范围内**，改动前自己备份。
+- 判断「某个文件是不是出厂自带」：以安装包内嵌快照清单为基准，**不要用 ctime/mtime**——
+  被复制过的出厂文件时间戳同样很新，据此判断必然误报。
 
-## 4. 约定放在哪儿
+## 4. I/O 与破坏性操作
 
-- `~/.dsh/AGENTS.md` 是随 APK 更新的出厂件，不存个人长期约定。
-- `~/.agents/AGENTS.md` 是用户全局约定；升级不覆盖。
-- 项目根 `AGENTS.md` 是项目约定，同目录 `AGENTS.local.md` 是个人覆盖。
+- 这台设备上的 I/O 很脆：「只读」不等于可以大范围读。先想清楚要哪几个文件，不要对 `$PREFIX`
+  起全树扫描或全树 grep。
+- 破坏性命令单独执行并先干跑（`-n` / `--dry-run`）；不要把命令写进提示文本的反引号里，
+  那会被 shell 当命令替换真的执行。
+
+## 5. 约定放在哪儿
+
+- 本文件（`~/.dsh/AGENTS.md`）：**出厂件**，随版本更新，改动会在下次升级时被替换。
+- 你自己的全局约定：`~/.agents/AGENTS.md`，所有会话都注入，升级不动它。
+- 项目约定：项目根的 `AGENTS.md`；个人本地覆盖用同目录 `AGENTS.local.md`。

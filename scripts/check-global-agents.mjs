@@ -29,8 +29,8 @@ function selfTest() {
     '<!-- dsh-mobile-factory-baseline -->',
     '# 基线',
     '本文件随安装包发布，升级时整份替换。',
-    'Node 在 /opt/node，引擎在 /opt/dsh，用户写 $HOME。',
-    '主运行时是 Debian/glibc，apt 数据保留。',
+    '不写 $PREFIX，写 $HOME。',
+    'node 的 process.execPath 是 linker64。',
     '共享存储放 .nomedia。',
     '自己的约定写 ~/.agents/AGENTS.md，项目级写 AGENTS.local.md。',
   ].join('\n')
@@ -41,7 +41,7 @@ function selfTest() {
   const cases = [
     { label: '正样本', text: good, expectPass: true },
     { label: '空正文', text: '   \n', expectPass: false },
-    { label: '缺必需锚点', text: good.replace('/opt/dsh', '未指定引擎目录'), expectPass: false },
+    { label: '缺必需锚点', text: good.replace('linker64', '平台限制'), expectPass: false },
     { label: '缺出厂标记', text: good.replace('<!-- dsh-mobile-factory-baseline -->\n', ''), expectPass: false },
     { label: '无一级标题', text: good.replace('# 基线\n', ''), expectPass: false },
     { label: '含应用绝对路径', text: good + '\n见 /data/data/com.example/files/usr\n', expectPass: false },

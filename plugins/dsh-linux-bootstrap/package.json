@@ -57,15 +57,14 @@
       "src/asset-bundle.js locally hardened: always authenticate and independently extract archive bytes; never reuse size-only slots or host unpacked trees",
       "src/index.js requires approved manifests for discovery, installation and reinstall; no optional verification bypass",
       "apply resolves dataDir from explicit config, declared linuxBootstrapConfig or DSH_FILES_DIR; it never reads unprovided Cordis ctx.filesDir",
-      "src/index.js locally patched to persist install diagnostics with a stable code and expose only a sanitized status summary",
-      "load() re-activates an installed runtime plugin that the host left inert after an engine restart, so a restart no longer disables an environment the user had enabled"
+      "src/index.js locally patched to persist install diagnostics with a stable code and expose only a sanitized status summary"
     ],
     "localPatches": {
       "client/index.js": "2098d477559bd1113cd75e08c1ad042c5ccfc07882d2f8fab3d939320e40d20f",
       "README.md": "b6a54ef5116942484304b8ea31da9bf514a22dcb6496ce2cd99aaadc82db8fb2",
       "src/asset-bundle.js": "7e32ce0f57ee0a7f75dfd2d2af6ff61357d63b6c34e4f0dbf7aa23cf4300e416",
       "src/github.js": "7b6369b5910ecb3e8b49f75a4dae3ca60ceac2d4164bf7f05f71c81803aa110c",
-      "src/index.js": "45460c08fd694715b6a6e42c37da7c675f72cf58e77391ad7052d828a2b3691f"
+      "src/index.js": "de54c95989799da58c3830e2d56d69ab61dae5e3cb716269b5d73eade07d9da4"
     }
   }
 }

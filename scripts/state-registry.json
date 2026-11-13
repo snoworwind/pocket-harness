@@ -9,14 +9,14 @@
   "states": [
     {
       "id": "external-linux-environment",
-      "holder": "壳侧 APK 内置的 Debian 主运行时；外部 bootstrap 注入已退役",
-      "writePath": "plugins/dsh-android-linux-env/src/linux-environment.ts:registerLinuxEnvironmentRoutes → 只读 status 与环境自检；生命周期动作统一返回 410 linux-operation-retired",
-      "sourceOfTruth": "files/linux/instance.json（首装资产身份与受管树摘要）与 APK 资产清单；DSH_APP_VERSION 来自 BuildConfig",
-      "syncPath": "受鉴权 GET status 映射实例与自检；Set-Cookie 之外无客户端副本。安装/更新/卸载由应用管理中心（原生）承担，Web 侧不再写入。",
+      "holder": "用户显式注入的外部 linuxBootstrap 服务；APK 只提供宿主适配与展示",
+      "writePath": "plugins/dsh-android-linux-env/src/linux-environment.ts:registerLinuxEnvironmentRoutes → linuxBootstrap.install/reinstall/uninstall/setAutoUpdateEnabled",
+      "sourceOfTruth": "外部 bootstrap 在 context.filesDir/linux-environment 下持久化的安装版本、应用版本基线、偏好与自动检查尝试；DSH_APP_VERSION 来自 BuildConfig",
+      "syncPath": "受鉴权 GET status 归一映射；POST 动作明确确认后委托同一服务并回读。客户端只做单次服务发现与显式刷新，无本地持久化副本；未注入 bootstrap 时无设置入口。",
       "evidence": {
         "kind": "grep",
         "file": "dsh-mobile-apk/plugins/dsh-android-linux-env/src/linux-environment.ts",
-        "pattern": "linux-operation-retired"
+        "pattern": "bootstrap.setAutoUpdateEnabled"
       }
     },
     {

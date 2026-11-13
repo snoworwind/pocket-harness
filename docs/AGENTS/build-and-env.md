@@ -1,7 +1,5 @@
 # build-and-env.md — 构建与验证命令 + 环境流程
 
-> main 的 CI 已是 Linux 专用 ARM64 云端来源链；输入、缓存、门禁与生产签名/草稿发布边界统一见 [Linux CI](LINUX-CI.md)。下述 Termux/双 ABI/旧发布链说明仅对应历史主线，不能用于当前出包。
-
 ## 0.2.2-rc.1 引擎来源链
 
 目标与版本证据见 [rc.1 升级记录](ENGINE-UPGRADE-2026-11-06.md)，此前版本见 [rc.5 升级记录](ENGINE-UPGRADE-2026-10-31.md) 和 [rc.2 升级记录](ENGINE-UPGRADE-2026-10-19.md)。源码阶段用官方 native → Host libraries → Client compiler → Client workspace bundle → Web 顺序；根 workspace bundle 已覆盖 package-local 配置，不能再追加旧 recursive bundle（新版 pnpm 拒绝实际循环依赖）。Android 直接调用这些阶段、绕过上游 `scripts/build.ts --profile official`，因此 `build-engine.sh` 会向所有阶段注入同一组官方客户端环境（提交短哈希、Harness 版本、`DSH_CLIENT_BUILD_PROFILE=official`、`DSH_CLIENT_TITLE=DeepSeek Harness`），并检查 Client 标题、官方品牌槽位和 Web HTML 标题确实进入产物。固定 Corepack 0.36.0；本地 Node 24 必须带匹配开发头文件。正式来源草稿对 main 的 ARM64 与 x86_64 分别执行独立双构建和签名；x86_64 尚不含离线 PRoot Linux 资产与 Android Canvas native。
@@ -26,7 +24,7 @@ rc.1 的 profile seeder 从 `packages/boot/app-boot/src/profile.ts` 读取 `init
 
 `build-linux-assets.yml` 的 PR job 校验来源/ELF/许可证并跑 PRoot 单测，不构建 APK、不创建 Release；手动 `gh workflow run build-linux-assets.yml --repo snoworwind/pocket-harness --ref main` 会在受控 runner 构建 ARM64 Linux 资产。APK 来源 workflow 在同一来源提交中重跑资产构建并将经验证的资产嵌入 Termux 快照，不依赖短期 Actions artifact。当前 Linux runtime 为 Termux PRoot；不再构建或打包 Bionilux。Termux PRoot 与依赖从官方签名仓库的 ARM64 软件包提取，builder 验证 InRelease 签名、Packages.gz 的签名索引摘要/字节数、精确 package/version/deb 摘要；源归档 SHA、包闭包、许可证和本地 ELF 修改写入 per-build provenance。Termux stable 包闭包按轮更新，recipe URL 与文件 SHA 固定到不可变 commit；APK 来源 workflow 由单一预检 job 构建并上传验签快照供两路 ARM64 builder 共用，快照不承诺跨时间字节复现，详见 [PRoot 迁移记录](../linux-env-findings/PROOT-MIGRATION-2026-10-22.md)。当前 PRoot package/version/source archive/recipe pins 在 `linux-inputs.json`、`linux-backend-packages.json` 与 `vendor/linux-proot/SOURCE.json` 三处闭合；滚动 signed repo 若出现更高版本，构建必须以 `Termux proot version is not reviewed` fail-closed，先核对官方 immutable recipe、归档 SHA 和签名包，再同步更新全部锁，不能放宽版本拒绝。`check-linux-sources.mjs --self-test` 校验 runtime/PRoot vendored 字节、实际打包的 bootstrap 源输入和等长投毒/未登记编译输入负控。`linux-assets-workflow.test.mjs` 锁定两个 workflow 的 Termux webroot/provenance 路径，防生成位置与消费位置漂移。Debian 13 key 从 ftp-master 官方地址按 SHA-256 与 primary fingerprint 固定，再与 runner keyring 合并；禁止因 runner keyring 旧而忽略未知签名。
 
-构建输入由 `linux-inputs.json` 与 `linux-backend-packages.json` 锁定：Termux PRoot 源归档摘要/版本、recipe commit 与文件摘要、官方 Node ARM64 SHA-256、Debian 固定 snapshot InRelease SHA-256/签名密钥。Termux `stable` InRelease 是滚动输入：每次来源 workflow 由单一预检 job 用固定 bootstrap keyring 验签，记录本轮摘要与精确包闭包，再把同一 artifact 交给两路 ARM64 构建，避免过期的提交级摘要锁和两路读取竞态。签名包闭包作为单个 tar 文件跨 Actions job 传递，保留 Debian epoch 文件名中的冒号；构建 job 解包前拒绝越界路径、链接和非预期根目录。多文件引擎补丁按各自 target 的稳定 marker 或行为锚点校验；AR1 UI 注释会被 chrome87 转换移除，细节见 [坑 508](gotchas.md)。`runtimeVersion` 是 Linux manifest/release tag 的唯一版本输入，runtime/bootstrap `package.json` 与 bootstrap `BOOTSTRAP_VERSION` 必须一致。APK ARM64 `jniLibs` 包含 Termux PRoot 可执行文件、PRoot loader 与依赖；ELF 结构及最终 APK 成员摘要由门禁逐字节核对。rootfs 在构建阶段经 `qemu-aarch64` 执行 Debian second stage，运行时由 PRoot `-0` 启动；这不代表 Android root 或安全隔离。debootstrap 初始化和重试前会检查 rootfs 下任意深度的残留 mount，检查失败即拒绝递归清理。Debian dpkg 包版本/源包版本与 deb 摘要、许可文件、源归档摘要随 provenance 提供；发行前仍需按 GPL 合规详档核对源码和 APK 许可材料，不可只凭构建成功宣布发行合规。`0.6.0` ARM64 APK 已由 run [39890983431](https://github.com/snoworwind/pocket-harness/actions/runs/39890983431) 成功构建并签名；rootfs `/dev/shm` 修复随 Linux runtime/bootstrap `0.6.1` 合入 commit `511b7e3`，run [39899439859](https://github.com/snoworwind/pocket-harness/actions/runs/39899439859) 已通过 primary/reference ARM64 构建、字节比对和签名，并生成草稿预发布标签 [`hardening-source-511b7e38e237-39899439859-1`](https://github.com/snoworwind/pocket-harness/releases/tag/hardening-source-511b7e38e237-39899439859-1)。该草稿未公开发布；本轮 0.6.2 候选的第一轮来源草稿 run [39922474317](https://github.com/snoworwind/pocket-harness/actions/runs/39922474317) 发现 Termux stable 已前进到 PRoot `5.1.107.99` 而仓内锁仍为 `.98`，两个 builder 均在 PRoot 资产组装时 fail-closed，未产出 APK/Release；本次 PR 将版本、源归档和 recipe 锁同步到 `.99`。Android PRoot exit 182 的兼容配置、login PATH 覆写及探针诊断修复已在 `0.6.2`，ARM64 设备验收仍未完成。
+构建输入由 `linux-inputs.json` 与 `linux-backend-packages.json` 锁定：Termux PRoot 源归档摘要/版本、recipe commit 与文件摘要、官方 Node ARM64 SHA-256、Debian 固定 snapshot InRelease SHA-256/签名密钥。Termux `stable` InRelease 是滚动输入：每次来源 workflow 由单一预检 job 用固定 bootstrap keyring 验签，记录本轮摘要与精确包闭包，再把同一 artifact 交给两路 ARM64 构建，避免过期的提交级摘要锁和两路读取竞态。签名包闭包作为单个 tar 文件跨 Actions job 传递，保留 Debian epoch 文件名中的冒号；构建 job 解包前拒绝越界路径、链接和非预期根目录。多文件引擎补丁按各自 target 的稳定 marker 或行为锚点校验；AR1 UI 注释会被 chrome87 转换移除，细节见 [坑 508](gotchas.md)。`runtimeVersion` 是 Linux manifest/release tag 的唯一版本输入，runtime/bootstrap `package.json` 与 bootstrap `BOOTSTRAP_VERSION` 必须一致。APK ARM64 `jniLibs` 包含 Termux PRoot 可执行文件、PRoot loader 与依赖；ELF 结构及最终 APK 成员摘要由门禁逐字节核对。rootfs 在构建阶段经 `qemu-aarch64` 执行 Debian second stage，运行时由 PRoot `-0` 启动；这不代表 Android root 或安全隔离。debootstrap 初始化和重试前会检查 rootfs 下任意深度的残留 mount，检查失败即拒绝递归清理。Debian dpkg 包版本/源包版本与 deb 摘要、许可文件、源归档摘要随 provenance 提供；发行前仍需按 GPL 合规详档核对源码和 APK 许可材料，不可只凭构建成功宣布发行合规。`0.6.0` ARM64 APK 已由 run [39890983431](https://github.com/snoworwind/pocket-harness/actions/runs/39890983431) 成功构建并签名；rootfs `/dev/shm` 修复随 Linux runtime/bootstrap `0.6.1` 合入 commit `511b7e3`，run [39899439859](https://github.com/snoworwind/pocket-harness/actions/runs/39899439859) 已通过 primary/reference ARM64 构建、字节比对和签名，并生成草稿预发布标签 [`hardening-source-511b7e38e237-39899439859-1`](https://github.com/snoworwind/pocket-harness/releases/tag/hardening-source-511b7e38e237-39899439859-1)。该草稿未公开发布；本轮 0.6.2 候选的第一轮来源草稿 run [39922474317](https://github.com/snoworwind/pocket-harness/actions/runs/39922474317) 发现 Termux stable 已前进到 PRoot `5.1.107.99` 而仓内锁仍为 `.98`，两个 builder 均在 PRoot 资产组装时 fail-closed，未产出 APK/Release；本次 PR 将版本、源归档和 recipe 锁同步到 `.99`。Android PRoot seccomp exit 182、login PATH 覆写及探针诊断修复已在 `0.6.2`，ARM64 设备验收仍未完成。
 
 固定 Debian Snapshot 的 InRelease 与 Packages 索引仍是 rootfs 构建唯一元数据来源。若 Snapshot 的单个 `.deb` 文件返回错误，`linux-debian-snapshot-wget.py` 只会对该固定 URL 下 `/pool/.../*.deb` 尝试 `deb.debian.org` 的对应路径；debootstrap 仍以已验签 Packages 索引中的 SHA-256 和字节数验证下载内容，因而版本不同或字节不匹配的镜像包会被拒绝。InRelease、Packages 与其他 URL 不会触发回退；helper 的 `--self-test` 含元数据负控，Linux 资产单测另验证参数透传、包下载回退与失败传播。根因和 CI 证据见 [坑 638](gotchas.md)。
 
@@ -198,7 +196,7 @@ Harness 与 vendor 源码均跟随当前官方目标；`prepare-harness-vendor-o
 
 `check-dsh-source-snapshot.mjs` 的内置预设载体断言与权威门禁 `check-engine-overlay.mjs` 的 CARRIERS 同源，清单在 `scripts/source-build/preset-carriers.mjs`：载体是 `agent-preset/skills/` 与 `web-app/presets/`（0.1.7 把 `dsh-agent-presets` 拆成 agent-preset + agent-preset-registry 后的新形态），判据是目录在场且递归文件数 ≥ 1。`preset-carriers.test.mjs` 读权威源文本双向比对两侧载体集合——权威源重锚而本侧没跟上的话，判红落在秒级的 PR 门禁上，而不是四十分钟后的云端构建（坑 200）。
 
-来源链在构建期会把 `@deepseek-ai/*` 从 `scripts/runtime-config/engine-overlay.json` 摘除（否则快照构建器会按登记表回拉上游发布版 tarball，整目录覆盖已注入的源码产物），摘除清单记进 `source-build-policy.json`；APK 步骤先由 `scripts/source-build/restore-overlay-pins.mjs` 把这份清单并回去，再跑门禁集——`check-contract.mjs` 第 7 节正是按它定运行时版本、并判 profile 里引擎包 insert 行是否与运行时同版（该门禁在拿不到 semver 时 SKIP，旧链因此从未真判过）。还原记录进策略 provenance，退出 trap 覆盖回原文件（坑 201）。
+来源链在构建期会把 `@deepseek-ai/*` 从 `scripts/snapshot-config/engine-overlay.json` 摘除（否则快照构建器会按登记表回拉上游发布版 tarball，整目录覆盖已注入的源码产物），摘除清单记进 `source-build-policy.json`；APK 步骤先由 `scripts/source-build/restore-overlay-pins.mjs` 把这份清单并回去，再跑门禁集——`check-contract.mjs` 第 7 节正是按它定运行时版本、并判 profile 里引擎包 insert 行是否与运行时同版（该门禁在拿不到 semver 时 SKIP，旧链因此从未真判过）。还原记录进策略 provenance，退出 trap 覆盖回原文件（坑 201）。
 
 `verify-webview-015.mjs --self-test` 在 jsdom 中验证探针的中英文 accessible name、设置入口优先级和缺失入口负控；PR Gate 先通过 `scripts/source-build/install-project-dependencies.mjs` 解析 `dsh-client-ui-responsive` 锁定依赖，再执行自检。它只证明探针判据没有假绿，不连接设备，也不替代下面的 CDP/ADB 验收。
 
@@ -233,13 +231,13 @@ Harness 与 vendor 源码均跟随当前官方目标；`prepare-harness-vendor-o
 6. **验证**：`adb -s <serial> forward tcp:23080 tcp:3080` → `http://127.0.0.1:23080/`；WebView CDP 与 RPC 信封写法见第 2 节。
 7. **插件依赖（门禁真检的前提，2026-09-22 补）**：聚合门禁会**真加载**插件构建产物（`check-tool-output-schema` 动态 import 每个插件入口、`check-protocol-v2` 跑 manage 的 lib 产物），故这些目录本机必须有 `node_modules`：
    - `plugins/dsh-android-*/`（`manage` 的 `@deepseek-ai/dsh-tools` 同时是引擎校验器来源，缺席时该门禁整体 SKIP）；
-   - `dsh-shell-linux/`（`plugins/dsh-android-linux-env/lib/index.js` → `@dsh-android/dsh-shell-linux` → 四个 peer 依赖 `@deepseek-ai/dsh-bash-local` / `dsh-shell` / `dsh-subprocess` / `dsh-sandbox`，具体版本以本包 `package.json` 为准。**这一个目录没装，聚合链会在第 6 条门禁处中止，后面 20 多条一条都不跑**）。
+   - `dsh-shell-termux/`（`plugins/dsh-android-linux-env/lib/index.js` → `@dsh-android/dsh-shell-termux` → 四个 peer 依赖 `@deepseek-ai/dsh-bash-local` / `dsh-shell` / `dsh-subprocess` / `dsh-sandbox`，具体版本以本包 `package.json` 为准。**这一个目录没装，聚合链会在第 6 条门禁处中止，后面 20 多条一条都不跑**）。
    装法（registry 已配 `registry.npmmirror.com`，各目录 `npm install` 即可）：
 
    ```powershell
    # 协调仓根与 dsh-mobile-apk/ 两棵树各自独立，都要装
    Get-ChildItem plugins -Directory | ForEach-Object { Push-Location $_.FullName; npm install; Pop-Location }
-   Push-Location dsh-shell-linux; npm install; Pop-Location
+   Push-Location dsh-shell-termux; npm install; Pop-Location
    ```
 
    未装时的行为是**如实 SKIP 并计数**（`SKIP(#n) 宿主缺 peer 依赖：…`），`--require`（本地链/发布链）下判红——不允许用 SKIP 冒充绿。
@@ -253,7 +251,7 @@ Harness 与 vendor 源码均跟随当前官方目标；`prepare-harness-vendor-o
 | 构建链 / 门禁 | 协调根 `scripts/` | 改后跑完整门禁；命令变更须同步本文档 |
 | 安卓能力插件 | 协调根 `plugins/dsh-android-*` | `npm run build` 通过；重装配须「权威 patch 覆盖 + 冷启动」（坑 19） |
 | UI 注入层 | 协调根 `dsh-client-ui-responsive/` | `npm test && npm run build` |
-| 执行器 / 页面兼容 | `dsh-shell-linux/`、`dsh-host-web-compat/` | 装配进快照 |
+| 执行器 / 页面兼容 | `dsh-shell-termux/`、`dsh-host-web-compat/` | 装配进快照 |
 | 上游引擎 | 协调根 `dsh/` | **禁改**（只读参考）；一律以补丁/插件/壳侧适配（vendor/ + PATCHES.md） |
 
 **每次改动关闭前必做三件事**：
@@ -308,7 +306,7 @@ gh workflow run build-apk-source.yml --repo snoworwind/pocket-harness --ref main
 
 **2026-10-17 云端核验快照**：Actions 已由用户重新启用。`81dc50c` 的 [源码构建 38935633493](https://github.com/snoworwind/dsh-mobile-apk/actions/runs/38935633493) 已通过原失败的输入预检、签名工具预检与固定来源检出，记录时正在编译 Harness；尚未取得最终 APK/上传成功结论。后续状态以该运行页面为准。旧禁用与夹具故障分别见坑 346、347。
 
-**云端 npm 缓存隔离**：来源工作流在依赖预检前覆盖 npm 缓存到 `$RUNNER_TEMP/dsh-npm-cache`，否则 `dsh-shell-linux/.npmrc` 的 Windows 绝对路径会被 Linux npm 落入组件树，并在 provenance 输出复核时报未跟踪输入。根因及反证见 gotchas.md 坑 350。
+**云端 npm 缓存隔离**：来源工作流在依赖预检前覆盖 npm 缓存到 `$RUNNER_TEMP/dsh-npm-cache`，否则 `dsh-shell-termux/.npmrc` 的 Windows 绝对路径会被 Linux npm 落入组件树，并在 provenance 输出复核时报未跟踪输入。根因及反证见 gotchas.md 坑 350。
 
 
 Linux bootstrap 本地安全分叉（2026-10-18）：`check-vendored-linux-bootstrap.mjs` 保留 MANIFEST 的上游摘要，用 LOCAL_PATCHES 单列 `src/asset-bundle.js`、`src/index.js` 与 README 的本地摘要，并要求与 `package.json.dshVendor.localPatches` 一致；新增的 package-lock / build scripts / client bundler 作为本仓来源输入独立钉哈希。不能把本地修改改记为上游原样。运行 `node scripts/check-vendored-linux-bootstrap.mjs --self-test` 验证漂移拒绝；构建客户端新增的 `esbuild` 依赖见 DEPENDENCIES.md。
@@ -409,42 +407,12 @@ engine 的 checkout/upstream/overlay/patches/build/deploy 步骤集中到 `scrip
 
 缓存与顺序（2026-11-12）：Linux assets 的 `Restore Linux ARM64 assets` 必须排在 `Install Linux asset cross-build tools` 之前，否则 `cache-hit` 在 Restore 之前求值、命中也会先跑 apt；apt update/install 有 5 次有界重试，避免 runner DNS 偶发失败直接判红。`injected snapshot` 与 Linux assets 使用内容键（不绑定 project commit）；Linux 命中后由 `attest-linux-cache.mjs` 校验 pinned 输入并把 provenance commit 标记改写为当前 commit。开发档 `fast=true` 只把 inject 压到 preset 1、Termux base 压到 `-6`，不跳过任何门禁/签名。发布草稿标题由 APK 文件名生成 `Pocket Harness vX.Y.Z (ARM64 + x86_64)`。
 
-引擎组件键按原始字节散列 `scripts/runtime-config/engine-overlay.json`。该文件在 `.gitattributes` 标记 `-text`，避免 `core.autocrlf` 在检出时改变组件键；`node --test scripts/source-build/base-lock.test.mjs` 包含隔离检出正控及删除属性的受控负控。
+引擎组件键按原始字节散列 `scripts/snapshot-config/engine-overlay.json`。该文件在 `.gitattributes` 标记 `-text`，避免 `core.autocrlf` 在检出时改变组件键；`node --test scripts/source-build/base-lock.test.mjs` 包含隔离检出正控及删除属性的受控负控。
 
 来源快照依赖检查按实际 pnpm 解析路径核对第一方包的直接依赖及必需 peer：精确版本声明必须命中同名同版本；范围声明仍只检查存在，不宣称传递依赖或范围版本已校验。Android 的六个受审 Koffi 消费者从声明 `3.1.1` 解析到 `3.2.1` 时单独记录为有意覆盖，其原生载荷仍由 `check-android-native-runtime-packages.mjs` 验证；其他错配失败关闭。上游版本或覆盖政策变化须重新核对该名单和设备验证。
-来源 APK 注入完成后，`scripts/check-snapshot-profile-identity.py` 直接流式读取最终 `snapIn`：要求 web/headless 两个生产装配 profile 为普通文件且与仓内权威 patch 逐字节一致；只在输入快照含 `headless-bad` 负控 profile 时要求它保持不同，生产快照无需携带该测试夹具。拒绝重复、非规范 tar 成员路径、profile 父路径链接/非目录、超大条目及被覆盖的负控 profile。同时从本仓 Gradle 取唯一 applicationId，验证 `shell-linux` 的 bashPath/prefix/home/cwd 四个 config 路径位于该应用 `files/` 且规范。`--self-test` 覆盖缺少生产 profile、错字节、重复、绝对/点段/父段路径别名、错误包名、应用路径穿越、文件与目录符号链接、超大条目及负控缺席/存在/被覆盖；也用仓内真实权威 patch 验正控。`cloud-workflow.test.mjs` 守注入后接线。既有 APK 资产可作兼容性反证，不能替代最终候选验证。
+来源 APK 注入完成后，`scripts/check-snapshot-profile-identity.py` 直接流式读取最终 `snapIn`：要求 web/headless 两个生产装配 profile 为普通文件且与仓内权威 patch 逐字节一致；只在输入快照含 `headless-bad` 负控 profile 时要求它保持不同，生产快照无需携带该测试夹具。拒绝重复、非规范 tar 成员路径、profile 父路径链接/非目录、超大条目及被覆盖的负控 profile。同时从本仓 Gradle 取唯一 applicationId，验证 `shell-termux` 的 bashPath/prefix/home/cwd 四个 config 路径位于该应用 `files/` 且规范。`--self-test` 覆盖缺少生产 profile、错字节、重复、绝对/点段/父段路径别名、错误包名、应用路径穿越、文件与目录符号链接、超大条目及负控缺席/存在/被覆盖；也用仓内真实权威 patch 验正控。`cloud-workflow.test.mjs` 守注入后接线。既有 APK 资产可作兼容性反证，不能替代最终候选验证。
 上游浏览器样式 `Browser.module.css`、屏幕范围跨语言 fixture 的源文件与 undo-savepoint `core.mjs` 保持 Git 原始检出字节；前者的来源摘要登记于 `upstream-browser/SOURCE.json`，后两者分别参与夹具生成和精确上下文补丁测试。`node --test scripts/source-build/checkout-reviewed-bytes.test.mjs` 验证 autocrlf 正控和逐文件去属性负控；测试对 LF/CRLF 两种 `.gitattributes` 行尾都确认恰好移除了目标规则，避免负控因行尾不匹配而失效。
 
 执行地图锚点同时验证文件/行存在、既有源码行快照与新/移动引用的显式内容片段。新锚点写成 ``path:line#expect=<URI 编码片段>``，片段应短且能区分目标源码；旧引用基线在 `scripts/check-code-map-anchor-baseline.json`。检查器变更先运行 `node scripts/check-code-map.mjs --self-test`，再跑正式检查。只有审阅所有源码行差异后才运行 `node scripts/check-code-map.mjs --refresh-anchor-baseline`；刷新会拒绝未标注的新坐标和旧坐标新增引用，除非先为其添加 `#expect=`。不得以刷新基线代替核对执行地图语义。耦合矩阵证据仍独立检查文件存在与行号范围。判据反例见 [gotchas.md](gotchas.md) 坑 601。
 
 来源派发前市场包预检从 `scripts/contract.json` 的 `runtimeCompat.metadataDeltas` 读取唯一 URL、版本与 SHA-256，并核对 `build-apk-source.yml` 消费同一发布包。`node scripts/source-build/preflight-source-chain.mjs --self-test` 覆盖真实输入和五项受控负控；完整预检中的 tar 重打包测试须在 Linux/CI 验证，Windows GNU tar 的反斜线成员路径会使该测试失败（见[坑 613](gotchas.md)）。
-
-## 原生可执行载荷迁移
-
-实施状态、工具范围和参考项目复核见 [原生迁移账本](NATIVE-RUNTIME-MIGRATION.md)。
-Linux 运行时 PRoot/loader/talloc/shmem 的离线 NDK 源码构建入口及真实编译边界见
-[PRoot 源码构建](PROOT-SOURCE-BUILD.md)；已接入 main 的 Linux 资产与 APK 组装协议。
-来源链在本轮 APK 的注入后快照归一化步骤中生成 `native-runtime-inventory.json`，并将其传递到
-独立验证与最终签名 artifact；无 Termux 快照的 Linux-bundle APK 则从 `assets/linux/manifest.json`
-生成 `mode: linux-guest` 的身份摘要与资产/原生库清单，不伪造 Termux 归一化摘要。PR Gate 执行 `inventory-native-runtime.py --self-test` 和 Python
-自动发现回归。该报告是盘点，不代表宿主程序已经从可写目录迁出或完成设备验收。
-
-Linux 资产链使用 NDK_ROOT 指向固定官方 NDK r30，通过 build-proot-source.py 和 prepare-proot-source-backend.py 自编译后端，不再读取 Termux 后端包。来源协议、归档与许可证见 [PRoot 源码构建](PROOT-SOURCE-BUILD.md)。
-
-ARM64 本地 Linux 来源构建使用 `node scripts/source-build/run-local-source-chain.mjs`，只接受 `main`（x86 QA 另有 `--abi x86_64` 的 `codex/x86-*` 例外）。云端来源链只接受 main 与 ARM64；构建副本使用临时签名，`reference=true` 时由隔离 `sign-abi` 作业以生产证书签名，`release-source-draft` 只创建 ARM64 draft prerelease。
-
-本地运行器解析工作流步骤 env，并将 github.workspace/ref 映射到隔离来源目录和真实分支；未知表达式拒绝，不执行 shell 字符串。本地没有 Actions 注入缓存时 DSH_INJECTED_SNAPSHOT 为空。
-
-自编译 PRoot 需要 gawk；不要依赖宿主默认 awk。构建器在编译前检查 GNU awk，来源链显式安装该包，工具身份随收据保存。
-
-本地运行器为每一步在隔离 RUNNER_TEMP 中创建专用 GITHUB_OUTPUT；GITHUB_ENV 继续跨步累计受允许的键。
-
-
-### Linux 双 ABI 来源构建（2026-11-13 当前候选）
-
-维护链以 [Linux CI](LINUX-CI.md) 为准：`build-apk-source` 支持 `abi=all|arm64|x86_64`，每个 ABI 独立缓存、验证、比对和签名。`release-source-draft` 请求 `abi=all` 与 `reference=true`。本地 x86 QA 也构建 Debian/Node/engine/home 四件套，不能使用旧快照兜底；只消费已提交 HEAD。当前候选尚待双 ABI 云端来源链与最终设备验证。
-
-ARM64 来源构建若停在 `Unpacking the base system...`，先区分内部元数据解析与目标包安装；现行宿主第二阶段及限时诊断见 [Linux CI](LINUX-CI.md) 与坑 708。不得直接延长 CI 超时或称其只是 QEMU 正常耗时。
-
-
-候选 Linux 首启预检必须通过真实导出的 `@deepseek-ai/node-addon-system/flock` API 获取文件锁，并从 `dsh-subprocess-local` 解析 node-pty，执行 fork/管道后再试跑引擎。pnpm 的 addon sibling 与顶层包可能不同；装配替换全部真实目标包，运行时门禁沿每个 wrapper 的解析路径检查 glibc ELF。来源构建成功不代表设备首启成功，当前证据见 `release/v0.16.0/validation-20261113.md`。

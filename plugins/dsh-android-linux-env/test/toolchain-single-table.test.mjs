@@ -1,13 +1,13 @@
 // ST-17 回归（离线）：工具链表单一来源 + 结构化 missing。
-// 判据：工具链状态出现结构化 missing（包名口径，与 dsh-shell-linux probe() 一致）；
-//       第二张字面量清单必须消失（表只在 shell-linux 里）。
+// 判据：工具链状态出现结构化 missing（包名口径，与 dsh-shell-termux probe() 一致）；
+//       第二张字面量清单必须消失（表只在 shell-termux 里）。
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { apply } from '../lib/index.js'
-import { PROBE_BINARIES, REQUIRED_TOOLCHAIN } from '@dsh-android/dsh-shell-linux'
+import { PROBE_BINARIES, REQUIRED_TOOLCHAIN } from '@dsh-android/dsh-shell-termux'
 
 function makeCtx(services = {}) {
   const routes = new Map()
@@ -45,25 +45,25 @@ function fixturePrefix(binaries) {
 }
 
 async function withPrefix(prefix, fn) {
-  const previous = process.env.DSH_GUEST_PREFIX
-  process.env.DSH_GUEST_PREFIX = prefix
+  const previous = process.env.TERMUX__PREFIX
+  process.env.TERMUX__PREFIX = prefix
   try {
     const harness = makeCtx({ androidPrivilege: { status: () => ({ tier: 'T0' }) } })
     apply(harness.ctx)
     return await fn(harness)
   } finally {
-    if (previous === undefined) delete process.env.DSH_GUEST_PREFIX
-    else process.env.DSH_GUEST_PREFIX = previous
+    if (previous === undefined) delete process.env.TERMUX__PREFIX
+    else process.env.TERMUX__PREFIX = previous
   }
 }
 
-test('ST-17 单一表：源里不再有第二张字面量清单，且 import 自 dsh-shell-linux', () => {
+test('ST-17 单一表：源里不再有第二张字面量清单，且 import 自 dsh-shell-termux', () => {
   const src = readFileSync(new URL('../src/index.ts', import.meta.url), 'utf8')
-  assert.ok(src.includes("from '@dsh-android/dsh-shell-linux'"), '必须 import 单一表')
+  assert.ok(src.includes("from '@dsh-android/dsh-shell-termux'"), '必须 import 单一表')
   for (const legacy of ["'busybox'", "'python'", "'openssl'", "'jq'"]) {
     assert.equal(src.includes(legacy), false, '旧第二张表残留：' + legacy)
   }
-  assert.ok(Array.isArray(PROBE_BINARIES) && PROBE_BINARIES.includes('ls'), 'shell-linux 的探针表必须在场')
+  assert.ok(Array.isArray(PROBE_BINARIES) && PROBE_BINARIES.includes('ls'), 'shell-termux 的探针表必须在场')
   assert.ok(Array.isArray(REQUIRED_TOOLCHAIN) && REQUIRED_TOOLCHAIN.includes('coreutils'), '包表必须在场')
 })
 

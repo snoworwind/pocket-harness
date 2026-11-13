@@ -48,6 +48,7 @@ test('component keys are deterministic and only change for their own inputs', ()
     write(root, 'scripts/patches/apply-patches.mjs', 'changed\n')
     const changed = computeComponentKeys(root, TOOLCHAIN)
     assert.notEqual(changed.engine, first.engine)
+    assert.equal(changed.termux, first.termux)
     assert.equal(changed.linux, first.linux)
   } finally {
     rmSync(root, { recursive: true, force: true })
@@ -128,18 +129,18 @@ test('verifyManifest binds lock, manifest, and every output byte', () => {
 // Git checkout must preserve the component-key input even with Windows autocrlf.
 test('engine overlay bytes survive autocrlf checkout, with a controlled missing-attribute negative', () => {
   const attributes = readFileSync(new URL('../../.gitattributes', import.meta.url), 'utf8')
-  const bytes = readFileSync(new URL('../runtime-config/engine-overlay.json', import.meta.url))
+  const bytes = readFileSync(new URL('../snapshot-config/engine-overlay.json', import.meta.url))
   const env = { ...process.env, GIT_CONFIG_GLOBAL: devNull, GIT_CONFIG_NOSYSTEM: '1' }
   for (const name of ['GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE', 'GIT_COMMON_DIR', 'GIT_OBJECT_DIRECTORY', 'GIT_ALTERNATE_OBJECT_DIRECTORIES']) delete env[name]
   for (const negative of [false, true]) {
     const root = mkdtempSync(join(tmpdir(), 'overlay-checkout-'))
-    const target = join(root, 'scripts/runtime-config/engine-overlay.json')
+    const target = join(root, 'scripts/snapshot-config/engine-overlay.json')
     const git = (...args) => execFileSync('git', ['-C', root, ...args], { env, stdio: 'pipe' })
     try {
       git('init', '-q')
       git('config', 'core.autocrlf', 'true')
       mkdirSync(dirname(target), { recursive: true })
-      writeFileSync(join(root, '.gitattributes'), negative ? attributes.replace(/^scripts\/runtime-config\/engine-overlay\.json -text\r?\n/m, '') : attributes)
+      writeFileSync(join(root, '.gitattributes'), negative ? attributes.replace(/^scripts\/snapshot-config\/engine-overlay\.json -text\r?\n/m, '') : attributes)
       writeFileSync(target, bytes)
       git('add', '.')
       rmSync(target)

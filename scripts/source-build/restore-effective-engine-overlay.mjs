@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Install the source-built engine overlay captured in a trusted engine-base cache.
 // A cache hit skips build-engine.sh, so its checked overlay transformations must be
-// restored before build-snapshot-013 reads runtime-config/engine-overlay.json.
+// restored before build-snapshot-013 reads snapshot-config/engine-overlay.json.
 import assert from 'node:assert/strict'
 import { createHash, randomUUID } from 'node:crypto'
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, unlinkSync, writeFileSync } from 'node:fs'

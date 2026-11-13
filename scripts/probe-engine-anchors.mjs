@@ -56,7 +56,7 @@ if (args.includes('--fixtures') && only) {
 }
 
 const contract = JSON.parse(readFileSync(join(ROOT, 'scripts', 'contract.json'), 'utf8'))
-const overlayPath = resolve(ROOT, value('--overlay') ?? 'scripts/runtime-config/engine-overlay.json')
+const overlayPath = resolve(ROOT, value('--overlay') ?? 'scripts/snapshot-config/engine-overlay.json')
 const overlay = JSON.parse(readFileSync(overlayPath, 'utf8'))
 if (!/^\d+\.\d+\.\d+(?:-[a-zA-Z0-9.-]+)?$/.test(contract.baseline)) throw new Error('无效 contract.baseline')
 if (overlay.engineVersion !== contract.baseline || overlay.rootPackage?.version !== contract.baseline) {

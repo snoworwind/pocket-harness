@@ -19,7 +19,3 @@ c-ares 与 Node 全文从已认证包的 copyright 保留在 `LICENSES/c-ares.tx
 - 仓库：`LICENSES/`（GPL-2.0/3.0、LGPL-2.1/3.0 全文）+ `THIRD_PARTY_NOTICES.md`（组件矩阵，含源码要约与再加工工具清单）+ `scripts/third-party-licenses.json` + `scripts/check-third-party.mjs`（矩阵覆盖 + copyleft 全文在场，三形态判定）；门禁由来源链 APK 打包执行，缺失即拒打包。
 - APK：`assets/licenses/`（LICENSES + notices，随包分发）。
 - 声明文：`docs/RELEASE.md §7`（D 章合规声明 + 源码要约 + 修改工具）。
-
-Linux 运行时源码 PRoot 后端使用 schema 2 来源协议，保留原始三个源码归档、补丁前后摘要、构建脚本、PRoot/talloc/shmem 源许可和 LGPL 所需 GPL 全文；来源校验与 notices 支持该协议。具体入口见 [PRoot 源码构建](PROOT-SOURCE-BUILD.md)。
-
-源码组件归档同时包含适配器使用的仓库根 LICENSE 和 ELF 夹具测试源码，支持脱离原工作区复建与自证。

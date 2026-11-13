@@ -8,8 +8,6 @@ import {
 } from '@dsh-android/dsh-android-bridge'
 
 export interface BootstrapStatus {
-  instance?: Record<string, unknown>
-  selfCheck?: Record<string, unknown>
   /** Current Linux bootstrap status shape. */
   installed?: boolean
   version?: string | null
@@ -265,8 +263,6 @@ export function normalizeLinuxStatus(status: BootstrapStatus) {
     runtime: { releaseUrl: status.pluginReleaseUrls.runtime },
   })
   return {
-    ...(status.instance ? { instance: status.instance } : {}),
-    ...(status.selfCheck ? { selfCheck: status.selfCheck } : {}),
     installed: status.installed ?? Boolean(status.installedLinuxVersion),
     version: status.version ?? status.installedLinuxVersion ?? undefined,
     mobileVersion: status.mobileVersion ?? status.currentMobileVersion ?? 'unknown',
@@ -353,12 +349,8 @@ export function registerLinuxEnvironmentRoutes(options: {
           res.end()
           return
         }
-        if (action !== 'status') {
-        send(res, 410, { ok: false, errorCode: 'linux-operation-retired', error: '当前版本由壳侧 APK 内置 Linux，安装、下载更新和卸载入口已停用；请在应用管理中心导出备份或确认重置。' })
-          return
-        }
         const bootstrap = options.bootstrap()
-        if (!bootstrap) { send(res, 503, { error: '无法读取壳侧 Linux 实例状态，请在应用管理中心查看诊断。' }); return }
+        if (!bootstrap) { send(res, 503, { error: 'Linux bootstrap 内部插件尚未启用。它随应用放在内置（hard）插件目录里，需要你显式启用后重载引擎；存在不等于启用。' }); return }
         if (action === 'status') {
           try {
             const status = normalizeLinuxStatus(await bootstrap.status())
@@ -367,7 +359,36 @@ export function registerLinuxEnvironmentRoutes(options: {
           catch { send(res, 500, { error: '无法读取 Linux 环境状态。' }) }
           return
         }
-
+        if (busy) { send(res, 409, { error: '另一项 Linux 环境操作正在进行，请稍后重试。' }); return }
+        busy = true
+        try {
+          if (action !== 'check') {
+            let confirmed = false
+            try { confirmed = await readConfirmation(req) } catch { send(res, 400, { error: '请求确认信息无效。' }); return }
+            if (!confirmed) { send(res, 400, { error: '操作需要用户明确确认。' }); return }
+          }
+          switch (action) {
+            case 'check': await bootstrap.checkForUpdates({ source: 'manual' }); break
+            case 'install': await bootstrap.install({ runtimeId: 'debian-minimal', confirmed: true, activate: true }); break
+            case 'reinstall': await bootstrap.reinstall({ confirmed: true, activate: true }); break
+            case 'uninstall': await bootstrap.uninstall({ confirmed: true }); break
+            case 'auto-update-on': await bootstrap.setAutoUpdateEnabled(true); break
+            case 'auto-update-off': await bootstrap.setAutoUpdateEnabled(false); break
+          }
+          send(res, 200, normalizeLinuxStatus(await bootstrap.status()))
+        } catch (error) {
+          const candidate = (error as { code?: unknown } | null)?.code
+          const code = typeof candidate === 'string' && /^linux-[a-z0-9-]+$/.test(candidate)
+            ? candidate
+            : 'linux-operation-failed'
+          const message = code === 'linux-rootfs-prepare-failed'
+            ? 'Linux 根文件系统准备失败。请查看应用私有目录 files/linux-environment/linux-bootstrap-state.json 中的 lastError。'
+            : code === 'linux-host-library-path-unavailable'
+              ? 'Linux 宿主运行环境未就绪。详细原因保存在应用私有目录 files/linux-environment/linux-bootstrap-state.json 中。'
+              : 'Linux 环境操作失败。详细原因保存在应用私有目录 files/linux-environment/linux-bootstrap-state.json 中。'
+          send(res, 500, { code, error: message })
+        }
+        finally { busy = false }
       },
     }))
   }

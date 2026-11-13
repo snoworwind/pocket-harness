@@ -39,7 +39,7 @@ ASSEMBLY_PROFILES = ('web', 'headless')
 # 负控夹具 profile：bashPath 刻意指向不存在路径，用于验证启动期「坏配置拒绝」路径。
 # 构建链不得覆盖它（覆盖即负控失效）；本门禁显式白名单，并反向断言它**仍然**不是权威内容。
 NEGATIVE_CONTROL_PROFILES = ('headless-bad',)
-# The web profile patch carries the shell-linux paths (bashPath/prefix/home/cwd).
+# The web profile patch carries the shell-termux paths (bashPath/prefix/home/cwd).
 # They must point at the CURRENT applicationId's data dir **including the /files/ segment** —
 # the old chain wrote $SNAP_PKG_ROOT=/data/user/0/<pkg> (no /files), so every bash call failed
 # with "not executable" / assertBash() threw at boot while the prefix-only assertion still passed

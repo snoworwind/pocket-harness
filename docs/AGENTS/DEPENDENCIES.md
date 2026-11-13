@@ -1,6 +1,6 @@
 # DEPENDENCIES.md — 引用库权威登记
 
-> 依赖以 [APK Gradle 声明](../../app/build.gradle.kts) 和 [引擎 overlay](../../scripts/runtime-config/engine-overlay.json) 为准。生成区由 `node scripts/check-maintenance-docs.mjs --write` 更新，`node scripts/check-maintenance-docs.mjs` 检查；源码声明不证明产物版本、ABI、hash 或测试通过。
+> 依赖以 [APK Gradle 声明](../../app/build.gradle.kts) 和 [引擎 overlay](../../scripts/snapshot-config/engine-overlay.json) 为准。生成区由 `node scripts/check-maintenance-docs.mjs --write` 更新，`node scripts/check-maintenance-docs.mjs` 检查；源码声明不证明产物版本、ABI、hash 或测试通过。
 
 ## 1. 工具链与构建声明
 
@@ -16,7 +16,7 @@
 ## 2. Gradle依赖
 
 <!-- generated:gradle-declarations:start -->
-当前源码声明：versionName `0.16.0` / versionCode `60`；suffix 来自 Gradle 属性。此处不证明 APK 产物或验收状态。
+当前源码声明：versionName `0.15.2` / versionCode `59`；suffix 来自 Gradle 属性。此处不证明 APK 产物或验收状态。
 
 | 配置 | 声明 |
 |---|---|
@@ -24,6 +24,7 @@
 | Kotlin | 2.0.21 |
 | Gradle wrapper | 8.11.1 |
 | Java target | 17 |
+| Termux | 0.118.3 |
 | compileSdk | 36 |
 | targetSdk | 34 |
 | minSdk | 26 |

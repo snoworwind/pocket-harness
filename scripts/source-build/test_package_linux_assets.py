@@ -1,4 +1,3 @@
-import base64
 import hashlib
 import importlib.util
 import io
@@ -28,19 +27,11 @@ class PackageLinuxAssetsTest(unittest.TestCase):
         (self.work / 'input').mkdir(parents=True)
         (self.work / 'assets').mkdir()
         self.inputs = json.loads(SCRIPT.with_name('linux-inputs.json').read_text())
-        # Both ABIs are fixture-complete so the product-asset test can exercise x86_64 too.
-        for platform, digest_key in (('linux-arm64', 'nodeSha256'), ('linux-x64', 'nodeSha256X64')):
-            node = self.work / 'input' / f'node-v{self.inputs["node"]}-{platform}.tar.xz'
-            self.archive(node, {f'node-v{self.inputs["node"]}-{platform}/{name}': text for name, text in {
-                'bin/node': 'fixture Node bytes, not a native runtime', 'lib/node_modules/npm/index.js': 'fixture npm', 'LICENSE': 'fixture license'}.items()})
-            with node.open('rb') as stream:
-                self.inputs[digest_key] = hashlib.sha256(stream.read()).hexdigest()
-        pnpm = self.work / 'input/pnpm.tgz'
-        with tarfile.open(pnpm, 'w:gz') as archive:
-            for name, text in {'package.json': json.dumps({'name': 'pnpm', 'version': self.inputs['pnpm']['version']}), 'bin/pnpm.cjs': '#!/usr/bin/env node\n', 'bin/pnpx.cjs': '#!/usr/bin/env node\n'}.items():
-                data = text.encode(); item = tarfile.TarInfo('package/' + name); item.size = len(data)
-                archive.addfile(item, io.BytesIO(data))
-        self.inputs['pnpm']['integrity'] = 'sha512-' + base64.b64encode(hashlib.sha512(pnpm.read_bytes()).digest()).decode()
+        node = self.work / 'input' / f'node-v{self.inputs["node"]}-linux-arm64.tar.xz'
+        self.archive(node, {f'node-v{self.inputs["node"]}-linux-arm64/{name}': text for name, text in {
+            'bin/node': 'fixture Node bytes, not a native runtime', 'lib/node_modules/npm/index.js': 'fixture npm', 'LICENSE': 'fixture license'}.items()})
+        with node.open('rb') as stream:
+            self.inputs['nodeSha256'] = hashlib.sha256(stream.read()).hexdigest()
         self.put('scripts/source-build/linux-inputs.json', json.dumps(self.inputs))
         for package in ['linux-runtime', 'linux-bootstrap']:
             directory = 'vendor/dsh-linux-runtime' if package == 'linux-runtime' else 'plugins/dsh-linux-bootstrap'
@@ -55,7 +46,7 @@ class PackageLinuxAssetsTest(unittest.TestCase):
                 self.put(directory + '/lib/index.js', 'export const fixture = true')
                 self.put(directory + '/lib/client.js', 'window.__ModuleLoader__ = true')
         self.put('LICENSES/GPL-2.0.txt', 'fixture license')
-        for name in ['proot-backend-aarch64.tar.xz', 'debian-minimal-aarch64.tar.xz', 'debian-minimal-amd64.tar.xz']:
+        for name in ['proot-backend-aarch64.tar.xz', 'debian-minimal-aarch64.tar.xz']:
             self.archive(self.work / 'assets' / name, {'fixture': 'fixture archive, not a native runtime'})
 
     def put(self, relative, text):

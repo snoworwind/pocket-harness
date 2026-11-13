@@ -166,7 +166,7 @@ class BootFailLogTest {
       "engine-start-false",        // startEngine() 返回 false
       "process-died-during-boot",  // 进程死亡（44 次 t_listen=-1 的主要形态）
       "boot-budget-exceeded",      // 预算内未就绪
-      "linux-prepare-failed",      // Linux 实例准备失败
+      "snapshot-refresh-failed",   // 快照解压失败
       "start-flow-exception",      // 启动线程未捕获异常
     )) {
       assertTrue("必须覆盖失败阶段 $stage", src.contains("\"$stage\""))

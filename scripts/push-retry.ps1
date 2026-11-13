@@ -77,7 +77,7 @@ function Push-WithRetry([string]$dir, [string]$branch, [string]$proxy) {
 $targets = @()
 if ($All) {
   $targets += @{ dir = $root; branch = "" }
-  foreach ($r in @("dsh-mobile-apk", "dsh-shell-linux", "dsh-client-ui-responsive", "dsh-host-web-compat")) {
+  foreach ($r in @("dsh-mobile-apk", "dsh-shell-termux", "dsh-client-ui-responsive", "dsh-host-web-compat")) {
     $d = Join-Path $root $r
     if (Test-Path (Join-Path $d ".git")) { $targets += @{ dir = $d; branch = "" } }
   }

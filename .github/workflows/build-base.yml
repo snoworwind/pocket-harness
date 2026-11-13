@@ -26,14 +26,14 @@ jobs:
       key: ${{ steps.plan.outputs.key }}
       reused: ${{ steps.reuse.outputs.reused }}
     steps:
-      - name: Require authorized source before checkout or cache access
+      - name: Require main before checkout or cache access
         env:
           SOURCE_REF: ${{ github.ref }}
           REQUESTED_REF: ${{ inputs.ref }}
           COMPONENT: ${{ inputs.component }}
         run: |
-          test "$COMPONENT" = engine
           test "$SOURCE_REF" = refs/heads/main
+          test "$COMPONENT" = engine
           case "$REQUESTED_REF" in main|refs/heads/main) ;; *) exit 1;; esac
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -101,7 +101,7 @@ jobs:
 
   build:
     needs: resolve
-    if: needs.resolve.outputs.reused != 'true'
+    if: needs.resolve.outputs.reused != 'true' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     strategy:
@@ -177,7 +177,7 @@ jobs:
 
   compare:
     needs: [resolve, build]
-    if: needs.resolve.outputs.reused != 'true'
+    if: needs.resolve.outputs.reused != 'true' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262

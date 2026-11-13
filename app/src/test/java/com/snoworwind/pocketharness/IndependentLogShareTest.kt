@@ -40,7 +40,6 @@ class IndependentLogShareTest {
       "boot-fail.log", "boot-fail.log.1",
       "boot-diag.log", "boot-diag.log.1",
       "boot-segments.log", "boot-segments.log.1",
-      "linux-trial-failed.log",
     )
     assertEquals("候选清单必须恰好等于白名单（多/少都是缺陷）", expected, names)
     // 反例：凭据 / 配置 / 工作区 / 会话类名一律不得出现

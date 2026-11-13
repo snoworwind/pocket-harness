@@ -266,6 +266,6 @@ class UserCopyTest {
     assertFalse("快照 id 不得拼进引导页副文案", guide.contains("\"已恢复到快照 \" + (result.snapshotId"))
     val console = codeOnly(source("src/main/java/com/snoworwind/pocketharness/ConsoleSession.kt"))
     assertFalse("快照内相对路径不得拼进控制台状态", console.contains("usr/bin/bash 不存在"))
-    assertTrue("拒启原因应进日志", console.contains("Log.w(TAG, \"console unavailable: \" + built.code"))
+    assertTrue("路径应进日志", console.contains("Log.w(TAG, \"console unavailable: bash missing at \""))
   }
 }

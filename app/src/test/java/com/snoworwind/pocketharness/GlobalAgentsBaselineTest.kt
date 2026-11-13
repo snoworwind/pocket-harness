@@ -30,12 +30,15 @@ class GlobalAgentsBaselineTest {
   private fun fixture(): Triple<File, File, File> {
     val root = Files.createTempDirectory("global-agents").toFile()
     val live = File(root, "live")
-    val stage = File(root, ".linux-home-stage")
+    val stage = SnapshotTransaction.stageRoot(root)
+    put(live, "usr/bin/node", "old-node")
+    put(stage, "usr/bin/node", "new-node")
     return Triple(root, live, stage)
   }
 
   private fun swap(root: File, live: File, stage: File) {
-    LinuxFileTree.mergeHomeSeed(stage, live)
+    SnapshotTransaction.swap(root, stage, File(live, "usr"), File(live, "home"),
+      SnapshotUserData.preservedNames.toSet(), "0123456789abcdef".repeat(4), 1L)
   }
 
   @Test fun freshInstallSeedsFactoryBaseline() {

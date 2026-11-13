@@ -11,8 +11,6 @@
 import { readFileSync, existsSync, statSync, lstatSync, readdirSync, mkdirSync, writeFileSync } from 'node:fs'
 import { join, resolve, relative, dirname } from 'node:path'
 import { createHash } from 'node:crypto'
-import { spawnSync } from 'node:child_process'
-import { fileURLToPath } from 'node:url'
 import { wslPath, sh, shellQuote } from './lib/shell.mjs'
 
 const usr = process.argv[2]?.startsWith('--') ? null : process.argv[2]
@@ -49,18 +47,6 @@ function readLinuxBackendEvidence() {
     failures.push(`PRoot 许可 provenance 或组件锁不可读: ${String(error.message ?? error)}`)
     return null
   }
-  const sourceBuild = report.schemaVersion === 2 && report.provenanceKind === 'source-build'
-  let sourceReceipt
-  if (sourceBuild) {
-    const result = spawnSync(process.env.PYTHON || 'python3', [
-      fileURLToPath(new URL('./source-build/proot_source_provenance.py', import.meta.url)), linuxBackendProvenancePath,
-    ], { encoding: 'utf8', timeout: 30000 })
-    if (result.error || result.status !== 0) {
-      failures.push(`PRoot source provenance 不符合源码构建协议: ${result.stderr || result.error || result.status}`)
-      return null
-    }
-    sourceReceipt = JSON.parse(readFileSync(join(dirname(linuxBackendProvenancePath), report.sourceBuildReceipt), 'utf8'))
-  } else {
   if (report.schemaVersion !== 1 || report.target !== 'proot'
     || report.repository !== 'https://packages.termux.dev/apt/termux-main'
     || report.targetVersion !== config.expectedVersions.proot) {
@@ -81,7 +67,6 @@ function readLinuxBackendEvidence() {
       || !/^[a-f0-9]{64}$/.test(item.sha256 ?? '') || !/^[a-f0-9]{64}$/.test(item.sourceSha256 ?? '')) {
       failures.push(`PRoot provenance 软件包信息与锁不一致: ${name}`)
     }
-  }
   }
   const compatibilitySourceHash = createHash('sha256').update(readFileSync('vendor/linux-proot/compat/termfold_compat.c')).digest('hex')
   if (report.compatibilityShim?.repository !== shim.repository
@@ -150,7 +135,7 @@ function readLinuxBackendEvidence() {
       failures.push(`PRoot license 文件缺失或不可读: ${relativePath} (${String(error.message ?? error)})`)
     }
   }
-  return { report, shim, sourceReceipt }
+  return { report, shim }
 }
 
 /** 目标存在性视图：Windows 直接 stat 对 9p 上的 root-600 文件会 EACCES 误报，
@@ -336,20 +321,15 @@ if (noticesPath) {
   }
   lines.push('')
   if (linuxBackendEvidence) {
-    const { report, shim, sourceReceipt } = linuxBackendEvidence
+    const { report, shim } = linuxBackendEvidence
     lines.push('## Linux PRoot backend')
     lines.push('')
-    lines.push(sourceReceipt
-      ? 'PRoot launcher、静态 loader、talloc 和 shmem 从固定摘要源码使用官方 NDK 构建；未使用 Termux 二进制包或 bootstrap。原始源码归档、补丁前后摘要、编译参数和原生文件摘要随来源证据提供，见 `proot-backend-inputs.json` 与 `proot-source-build-arm64.json`。'
-      : 'PRoot launcher、loader 和依赖由 Termux 官方签名仓库包提供。来源链使用官方 Termux bootstrap keyring 验证 InRelease，再验证 Packages.gz 与每个 `.deb` 的签名索引摘要；完整签名、索引、包及拆分后 APK native library 摘要见 `proot-backend-inputs.json`。')
+    lines.push('PRoot launcher、loader 和依赖由 Termux 官方签名仓库包提供。来源链使用官方 Termux bootstrap keyring 验证 InRelease，再验证 Packages.gz 与每个 `.deb` 的签名索引摘要；完整签名、索引、包及拆分后 APK native library 摘要见 `proot-backend-inputs.json`。')
     lines.push('')
-    lines.push('| 组件 | 版本 | 许可证 | 来源归档 SHA-256 | 上游源码 | 构建配方 |')
+    lines.push('| 组件 | 版本 | 许可证 | 来源归档 SHA-256 | 上游源码 | Termux 构建配方 |')
     lines.push('|---|---|---|---|---|---|')
-    const components = sourceReceipt
-      ? Object.entries(sourceReceipt.sources).map(([name, row]) => ({ package: name, version: row.version, license: row.license, sourceSha256: row.sha256, sourceUrl: row.url }))
-      : report.packages
-    for (const item of [...components].sort((a, b) => a.package.localeCompare(b.package))) {
-      lines.push(`| ${item.package} | ${item.version} | ${item.license} | \`${item.sourceSha256}\` | [源码归档](${item.sourceUrl}) | ${sourceReceipt ? '`scripts/source-build/build-proot-source.py`' : `[Termux 配方](${item.recipe})`} |`)
+    for (const item of [...report.packages].sort((a, b) => a.package.localeCompare(b.package))) {
+      lines.push(`| ${item.package} | ${item.version} | ${item.license} | \`${item.sourceSha256}\` | [源码归档](${item.sourceUrl}) | [Termux 配方](${item.recipe}) |`)
     }
     lines.push('')
     lines.push(`TermFold 兼容 shim：${shim.license}，来源 [${shim.repository}，commit ${shim.commit}](${shim.repository}/blob/${shim.commit}/${shim.path})；上游文件 SHA-256 \`${shim.upstreamSha256}\`。本仓适配源码及完整许可证一并随 APK 分发；源代码路径为 \`vendor/linux-proot/compat/\`。`)
@@ -368,12 +348,8 @@ if (noticesPath) {
   lines.push('## 源码要约（GPL §3）')
   lines.push('')
   lines.push('上表各 copyleft 组件的对应源码及完整构建脚本，见 <https://github.com/termux/termux-packages>（按版本标签对应）。')
-  if (linuxBackendEvidence?.sourceReceipt) {
-    lines.push('PRoot Linux 后端由固定源码和官方 NDK 构建；原始归档、补丁、构建配方与许可证随 Linux 来源资产提供。')
-  } else {
   lines.push('PRoot Linux 资产由 `scripts/source-build/build-linux-assets.sh` 构建；Termux PRoot 及依赖来自经签名仓库索引验证的官方包。')
   lines.push('本仓对 PRoot 的 `libtalloc.so.2` 动态依赖名作了受审查的 ELF 字符串修正，并将 launcher、loader 与依赖放入 APK native library 目录；')
-  }
   lines.push('另由 `vendor/linux-proot/compat/` 构建 TermFold 派生的 Android 兼容 preload，并由同一来源链生成 Debian rootfs 与许可证 provenance。')
   lines.push('对应源码、改写点、依赖锁与构建脚本随本仓发布；APK 从本仓 `main` 的源码来源链生成（见 `docs/RELEASE.md` 合规声明）。')
   mkdirSync(join(noticesPath, '..'), { recursive: true })

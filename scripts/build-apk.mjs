@@ -1,4 +1,4 @@
-// build-apk.mjs — 跨平台 APK 编排（复用已平台化的 gate 脚本；Windows 走 WSL、Linux 原生）；历史 Termux 链，仅供追溯/独立回归，当前产品不调用，禁止用于产出 APK。
+// build-apk.mjs — 跨平台 APK 编排（复用已平台化的 gate 脚本；Windows 走 WSL、Linux 原生）
 //
 // 对应本地 scripts/build-apk-013.ps1（PowerShell + wsl，仅 Windows）。本脚本是「可移植版」：
 // 在云端的 GHA ubuntu（原生 Linux）跑，也可在本地 Windows 跑（gate 脚本自带平台感知）。
@@ -19,8 +19,7 @@
 import { execFileSync, spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
-import { mkdirSync, existsSync, rmSync, copyFileSync, cpSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
-import { createHash } from 'node:crypto'
+import { mkdirSync, existsSync, rmSync, copyFileSync, cpSync, readFileSync, readdirSync } from 'node:fs'
 import { assembleApk, verifyApks } from './build-apk-engine.mjs'
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)))
@@ -399,27 +398,6 @@ try {
   log('许可资产就位')
 
   // ---- 6-8. Shared terminal stage: snapshot/fingerprint + Gradle + copy ----
-  // 内置 Linux 实例资产：rootfs/node/engine 三个来源链产物 + 清单。ARM64 产品包用它们
-  // 替代 Termux 快照；x86_64 QA 档没有客体资产，仍走旧快照。
-  const linuxAssetSrc = join(ROOT, '.deploy-tmp', 'linux-build', 'assets')
-  const linuxEngineSrc = join(ROOT, '.deploy-tmp', 'snapshot-013', ABI, 'engine-glibc.tar.xz')
-  const linuxHomeSrc = join(ROOT, '.deploy-tmp', 'snapshot-013', ABI, 'home-seed.tar.xz')
-  const nodeTag = `node-glibc-v${JSON.parse(readFileSync(join(ROOT, 'scripts/source-build/linux-inputs.json'), 'utf8')).node}-linux-arm64.tar.xz`
-  const bundledLinux = ABI === 'arm64' && existsSync(linuxEngineSrc) && existsSync(join(linuxAssetSrc, 'debian-minimal-aarch64.tar.xz')) && existsSync(join(linuxAssetSrc, nodeTag))
-  if (!bundledLinux) throw new Error('Linux experiment requires ARM64 guest assets; x86_64 Termux fallback is unsupported')
-  if (bundledLinux) {
-    const target = join(apkDir, 'app', 'src', 'main', 'assets', 'linux')
-    rmSync(target, { recursive: true, force: true })
-    mkdirSync(target, { recursive: true })
-    copyFileSync(join(linuxAssetSrc, 'debian-minimal-aarch64.tar.xz'), join(target, 'rootfs.tar.xz'))
-    copyFileSync(join(linuxAssetSrc, nodeTag), join(target, 'node.tar.xz'))
-    copyFileSync(linuxEngineSrc, join(target, 'engine.tar.xz'))
-    copyFileSync(linuxHomeSrc, join(target, 'home.tar.xz'))
-    execFileSync(process.platform === 'win32' ? 'python' : 'python3', [
-      join(ROOT, 'scripts/source-build/linux-instance-manifest.py'), target,
-    ], { stdio: 'inherit' })
-    log('内置 Linux 资产就位（rootfs/node/engine）')
-  }
   const name = `pocket-harness-v${VER}${SUFFIX}-${ABI}.apk`
   log('构建 APK…')
   const finalApk = assembleApk({
@@ -431,7 +409,6 @@ try {
     terminalNativeLibraryDir: existsSync(terminalNativeSo) ? terminalNativeLibraryDir : undefined,
     suffix: SUFFIX,
     clean: true,
-    bundleSnapshot: !bundledLinux,
     fingerprintGate: gate('check-snapshot-fingerprint.mjs'),
     log,
   }, (cmd, argv, opts) => spawnSync(cmd, argv, { cwd: ROOT, encoding: 'utf8', stdio: 'inherit', ...opts }))
@@ -442,10 +419,8 @@ try {
   }
   // 内嵌快照「真的能解压」门禁（0.14.7 / task-9 D-4）：必须紧跟 assembleApk —— 那时
   // assets/snapshot.tar.xz 正是本次被复制进 APK 的字节。判据与本地链同源（同一份脚本）。
-  if (!bundledLinux) {
-    log('门禁：内嵌快照可解压（设备同源 streaming 解码器全量解压）…')
-    run('node', [gate('check-snapshot-decode.mjs'), '--tar', join(apkDir, 'app', 'src', 'main', 'assets', 'snapshot.tar.xz'), '--require'])
-  }
+  log('门禁：内嵌快照可解压（设备同源 streaming 解码器全量解压）…')
+  run('node', [gate('check-snapshot-decode.mjs'), '--tar', join(apkDir, 'app', 'src', 'main', 'assets', 'snapshot.tar.xz'), '--require'])
   run(process.execPath, [gate('check-apk-signatures.mjs'), '--self-test'])
   verifyApks({ signatureGate: gate('check-apk-signatures.mjs'), directories: [OUT], certificateSha256File: process.env.POCKET_BUILD_CERTIFICATE_FILE, selfTest: false, log },
     (cmd, argv, opts) => spawnSync(cmd, argv, { cwd: ROOT, encoding: 'utf8', stdio: 'inherit', ...opts }))

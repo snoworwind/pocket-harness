@@ -1,0 +1,6 @@
+Termux resolv-conf 1.3 package license declaration
+Source: https://raw.githubusercontent.com/termux/termux-packages/master/packages/resolv-conf/build.sh
+
+The official package recipe declares:
+TERMUX_PKG_VERSION=1.3
+TERMUX_PKG_LICENSE="Public Domain"

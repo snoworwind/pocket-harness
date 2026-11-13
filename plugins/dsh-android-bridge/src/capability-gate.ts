@@ -29,7 +29,7 @@ export const DEVICE_TOOL_GROUPS: Readonly<Record<string, readonly string[]>> = {
     'android_ui_detail',
     // 特权 shell 与授权状态同属「手机控制」面：不常驻，避免模型一提浏览器就先去摸 ADB/shell。
     'android_shell_exec',
-    'android_linux_channel_exec',
+    'android_termux_channel_exec',
     'android_privilege_status',
   ],
   browser: [
@@ -488,7 +488,7 @@ export function capabilityTool(
 //   - 解锁动作只是 fiber.dispose()，不落任何持久化。
 // => **进程重启 = 解锁全部丢失**，用户看到「工具已更新·移除 40 个」并被迫每次重进重新授权。
 // 设备佐证：16416 上无障碍从未开启（accessibility_enabled=0），而聊天记录显示曾成功调用
-// android_shell_exec / android_linux_channel_exec —— 解锁后能用、重启后归零。
+// android_shell_exec / android_termux_channel_exec —— 解锁后能用、重启后归零。
 //
 // ## 三条纪律（每一条都有对应用例）
 //

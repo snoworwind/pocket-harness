@@ -15,11 +15,5 @@
   "prootSourceSha256": "30d12a6e2cc4147123756ff58edea262d3083bbc238c12d0ab9b39e3d1c40852",
   "termuxPackagesRecipeCommit": "b734bc49dc0eedb2c454e1c5d3c48d35d81d4bc9",
   "runtimeVersion": "0.6.2",
-  "minimumAppVersion": "0.14.0",
-  "nodeHeadersSha256": "00e9f08b9057f9f5428387a5ffd496e53f274565b40b144b7ba876700755352a",
-  "pnpm": {
-    "version": "11.28.5",
-    "integrity": "sha512-SEVj0wtMKtJ8tIqpT/KzAtvOvI/2vyiBbCWJiG4UbOf3bzVPO8GkOOb16XaMMCqgpvet2CMpA81M+BQmy8FNng=="
-  },
-  "nodeSha256X64": "cc2f601cee82d9a5a233302fe307abc600727035fd7d2c3a3571755989e95008"
+  "minimumAppVersion": "0.14.0"
 }

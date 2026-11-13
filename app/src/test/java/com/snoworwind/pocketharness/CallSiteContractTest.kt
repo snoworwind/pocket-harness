@@ -148,7 +148,7 @@ class CallSiteContractTest {
   fun engineServiceAlsoRunsTheRecoveryPrelude() {
     val code = codeOnly(source("EngineService.kt"))
     val ensureEngine = memberBody(code, "private fun ensureEngine(epoch: ServiceEpoch)")
-    val recoverAt = ensureEngine.indexOf("recoverLinuxUpgrade()")
+    val recoverAt = ensureEngine.indexOf("recoverInterruptedRefresh()")
     val watchdogAt = ensureEngine.indexOf("WatchdogV2.acquireWakeLock")
     assertTrue("FX-210.1：服务路径必须调恢复入口", recoverAt >= 0)
     assertTrue("FX-210.1：恢复必须先于看门狗装配", watchdogAt < 0 || recoverAt < watchdogAt)
@@ -716,7 +716,7 @@ class BootDiagnosticsContractTest {
     )
     assertTrue(
       "D3：停成功后必须归零重试计数与刷新账本（与手动重试同口径）",
-      body.contains("engineRetryCount = 0") && !body.contains("clearRefreshLedger()"),
+      body.contains("engineRetryCount = 0") && body.contains("clearRefreshLedger()"),
     )
     assertTrue(
       "D3：判据必须走纯函数 safeModeRestartDecision（可 JVM 反证）",
