@@ -420,3 +420,5 @@ engine 的 checkout/upstream/overlay/patches/build/deploy 步骤集中到 `scrip
 ### 可下载 Linux 插件来源链（2026-11-14）
 
 Termux 继续承载主引擎。Linux 资产构建通过 `build-proot-source.py` 使用锁定 PRoot/talloc/shmem 源码和 NDK r30，`prepare-proot-source-backend.py` 回放补丁并保留原归档、编译 receipt、许可证；APK 门禁复验 schema 2 receipt 和原生字节。构建机需 GNU awk；独立 Linux workflow 安装同一 NDK。APK snapshot 只携带 manifest/sidecar，归档保留在来源 artifact 中供最终 Release 上传。用户安装才下载 runtime/rootfs/Node，按清单 size/SHA-256 核验。`.github/workflows/publish-linux-runtime.yml` 在 hardening-source-* 来源 Release 正式公开（非 prerelease）后复验归档，创建同源 commit 的 `v<runtimeVersion>` Linux 附件 Release（`--latest=false`，不覆盖已有 tag/资产）。这一步提供 manifest 对应的下载 URL；草稿私有资产不能作为匿名安装源。开发证据与尚未执行项见 `release/v0.15.3/plugin-migration.md`。
+
+PRoot 来源证明 CLI 接受的是 `proot-backend-inputs.json` 文件，不是目录。资产构建的真实 shell 调用由 `test_proot_source_backend.py` 直接提取并执行，包含目录误传负控；失败现场见坑 723。

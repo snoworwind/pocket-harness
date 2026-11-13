@@ -180,7 +180,7 @@ python3 scripts/source-build/package-linux-assets.py "$WORK" "$EPOCH"
 qemu-aarch64-static -L "$ROOTFS" "$WORK/node-stage/bin/node" --version | grep -Fx "v$NODE_VERSION"
 cp "$WORK/input/debian-InRelease" "$WORK/provenance/"
 cp scripts/source-build/linux-inputs.json scripts/source-build/linux-source-manifest.json "$WORK/provenance/"
-python3 scripts/source-build/proot_source_provenance.py "$WORK/provenance"
+python3 scripts/source-build/proot_source_provenance.py "$WORK/provenance/proot-backend-inputs.json"
 mkdir -p "$WORK/provenance/linux-native-licenses"
 cp -a "$WORK/backend/share/licenses/." "$WORK/provenance/linux-native-licenses/"
 install -D -m644 vendor/linux-proot/compat/LICENSE \
