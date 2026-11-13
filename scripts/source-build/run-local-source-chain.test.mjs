@@ -36,7 +36,7 @@ test('planSteps：最终复验跟随 apk 阶段，而不是落入 misc', () => {
   }
   // 只有首个具名阶段之前的本地前置允许留在 misc；阶段开始后不得再有漏网步骤。
   assert.deepEqual(namesOf(planned.filter((item) => item.stage === 'misc')), [
-    'Require the explicit ARM64 Linux experiment',
+    'Require the maintained ARM64 source branch',
     'Isolate npm cache from checked-in developer settings',
   ])
   assert.ok(!planned.some(item => /Termux|injected snapshot/.test(item.name)))
@@ -50,7 +50,7 @@ test('--from apk 与 --only apk 的选择都包含 Build Linux ARM64 APK 和最�
     for (const name of [BUILD, ...FINAL]) {
       assert.ok(selected.includes(name), `${JSON.stringify(options)} 漏选：${name}`)
     }
-    assert.ok(!selected.includes('Assemble Linux engine and factory home from verified source'), 'apk 阶段不应重跑快照构建')
+    assert.ok(!selected.includes('Assemble Linux engine and factory home from verified source'), 'apk 阶段不应重跑 Linux 载荷装配')
   }
   // --to payload 停在快照阶段，不能顺带跑 APK 前才会用到的单测门禁。
   const toSnapshot = namesOf(selectPlanned(planned, { to: 'payload' }))
