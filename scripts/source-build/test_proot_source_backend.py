@@ -2,6 +2,8 @@
 import copy
 import importlib.util
 import json
+import os
+import subprocess
 from pathlib import Path
 import tempfile
 import unittest
@@ -62,6 +64,25 @@ class BackendTests(unittest.TestCase):
                 path.write_text(json.dumps(candidate))
                 with self.subTest(field=field), self.assertRaises(ValueError):
                     verify_backend(path)
+
+    def test_asset_builder_executes_provenance_cli_with_file_not_directory(self):
+        script = builder.HERE / 'build-linux-assets.sh'
+        line = next(line for line in script.read_text().splitlines()
+                    if line.startswith('python3 scripts/source-build/proot_source_provenance.py '))
+        with tempfile.TemporaryDirectory() as temporary:
+            work = Path(temporary)
+            proof = work / 'provenance'
+            proof.mkdir()
+            self.fixture(proof)
+            env = {**os.environ, 'WORK': str(work)}
+            result = subprocess.run(['bash', '-c', line], cwd=builder.ROOT, env=env, capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn('PASS source-built PRoot provenance', result.stdout)
+            bad = line.replace('/proot-backend-inputs.json', '')
+            self.assertNotEqual(bad, line)
+            rejected = subprocess.run(['bash', '-c', bad], cwd=builder.ROOT, env=env, capture_output=True, text=True)
+            self.assertNotEqual(rejected.returncode, 0)
+            self.assertIn('backend provenance must be a regular file', rejected.stderr)
 
     def test_assembly_rejects_changed_binary_before_publishing(self):
         with tempfile.TemporaryDirectory() as temporary:

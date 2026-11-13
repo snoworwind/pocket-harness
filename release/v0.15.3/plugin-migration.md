@@ -23,3 +23,5 @@ NDK pin 核对：Google `https://dl.google.com/android/repository/repository2-3.
 冷启动恢复还会调用 manager.verify，在无下载的前提下重新执行客体健康脚本；真实 Cordis 集成回归覆盖恢复后工具重新出现与再次卸载，不以文件存在替代该次执行验证。
 
 真实 ARM64 原生构建已通过：Linux/amd64 验证容器 + 已验 size/SHA-1/SHA-256 的官方 NDK r30，talloc configure/build、shmem 与 PRoot build 全通过，loader 与四件闭包通过 ELF 校验。receipt 与命令结论在 `.deploy-tmp/linux-plugin-0153-20261114/`；这不是 APK 构建或设备验收。
+
+五小时后检查发现来源草稿 run 43475958074 失败：x86_64 已完成双构建、实际 APK 比对与签名；ARM64 在所有原生/rootfs/Node 前置验证后因 provenance CLI 路径传错而中断，未产生双 ABI 草稿。修正调用为 JSON 文件，并以构建脚本的原始命令执行正控/目录负控；修复前回归失败、修复后通过。重建将直接触发 release-source-draft.yml；实际草稿结论以随后 run 为准。

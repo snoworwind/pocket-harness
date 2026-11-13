@@ -3775,3 +3775,9 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
      现象与真因：reinstall 保留上一实例的 healthy 状态供展示，若 ready 只看该状态与 injectionActivated，会同时返回 phase=installing 和 ready=true，误导模型在管理事务期间继续调用 Linux。
      修法：ready 同时要求 installed、非 busy、未停用、已激活、无错误和健康；未知 busy operation 收窄为 busy。Termux 主环境不受此判据影响。
      复验：先对旧实现运行“busy + 旧 healthy”受控输入，断言 ready=false 实际失败；修复后同用例及 unavailable/failed/ready 状态契约通过。
+
+723. **ARM64 资产构建把 provenance 目录传给只接受 JSON 文件的 CLI（2026-11-14）**
+     现象：来源草稿 run 43475958074 的 ARM64 primary/reference 在 PRoot、rootfs 与 Node 校验成功后均报 backend provenance must be a regular file；x86_64 已成功签名，但双 ABI 草稿未生成。
+     真因：build-linux-assets.sh 调用 proot_source_provenance.py 时传了 $WORK/provenance 目录；CLI 的入口明确要求 proot-backend-inputs.json 文件。先前模块级 receipt 单测和手工文件调用通过，未覆盖整链调用参数。
+     修法：传入 $WORK/provenance/proot-backend-inputs.json。新增 BackendTests 用夹具直接执行构建脚本中那条命令，而不是重写一份正确调用；同用例把文件路径退回目录，断言仍须拒绝，保持校验 fail-closed。
+     复验：新增用例先在旧脚本受控失败，再在修复后通过；prepare-proot-source-backend.py --self-test 覆盖此正反控。整轮来源草稿重建结果见 0.15.3 迁移记录；不据此声明设备验收通过。
