@@ -534,10 +534,25 @@ class EngineManager(private val context: Context, private val pickToken: String?
           return false
         }
       }
-      val started = startGuestWithLaunch(launch)
+      var started = startGuestWithLaunch(launch)
+      var spawn = observeGuestSpawn(started, attempt = 0)
+      if (spawn == GuestSpawnVerdict.RETRY_LOADER) {
+        // Issue #322: PRoot's loader shim can return 182 before the guest program runs.
+        // The first attempt did nothing (no output, no side effects), so exactly one retry
+        // is safe and keeps a 2-10% early exit from parking the engine behind the 90s cooldown.
+        LogCollector.log(TAG, "guest loader exited $GUEST_LOADER_FAILURE_EXIT before start; retrying once")
+        lastStartRefusalEvidence = "guest-loader-exit-$GUEST_LOADER_FAILURE_EXIT"
+        started = startGuestWithLaunch(launch)
+        spawn = observeGuestSpawn(started, attempt = 1)
+      }
       engineProcess = started
-      try { Thread.sleep(200) } catch (_: InterruptedException) { Thread.currentThread().interrupt() }
-      if (!started.isAlive && EngineProbe.portReachable(250)) {
+      if (spawn == GuestSpawnVerdict.LOADER_FAILED) {
+        lastStartRefusalCode = REFUSAL_GUEST_LOADER_FAILED
+        lastStartRefusal = "客体加载器在启动前退出 $GUEST_LOADER_FAILURE_EXIT（PRoot loader 失败）"
+        Log.e(TAG, "guest loader failed twice with exit $GUEST_LOADER_FAILURE_EXIT")
+        return false
+      }
+      if (spawn != GuestSpawnVerdict.RUNNING && EngineProbe.portReachable(250)) {
         engineProcess = null
         lastAvailability = EngineProbe.EngineAvailability.PORT_FOREIGN
         lastStartRefusalCode = REFUSAL_PORT_FOREIGN
@@ -553,6 +568,13 @@ class EngineManager(private val context: Context, private val pickToken: String?
       Log.e(TAG, "guest engine start failed", error)
       return false
     } finally { STARTING.set(false) }
+  }
+
+  /** Observe a fresh guest spawn long enough to tell a live engine from a pre-exec loader exit. */
+  private fun observeGuestSpawn(process: Process, attempt: Int): GuestSpawnVerdict {
+    try { Thread.sleep(200) } catch (_: InterruptedException) { Thread.currentThread().interrupt() }
+    val exitCode = if (process.isAlive) null else runCatching { process.exitValue() }.getOrNull()
+    return guestSpawnVerdict(process.isAlive, exitCode, attempt)
   }
 
   /** Only syscall evidence classifies storage failures; arbitrary exception prose stays unknown. */
@@ -1288,6 +1310,15 @@ description: 手机操控纪律：无障碍语义树优先、ref 语义点击/�
    */
   const val REFUSAL_LIVE_RUNTIME_INCOMPLETE = "live-runtime-incomplete"
 
+  /**
+   * PRoot loader shim 的致命加载失败码（issue #322）：程序在任何用户代码之前退出、无输出。
+   * 该退出不产生副作用，因此允许在引擎启动时重试一次；连续两次即拒启并给出专属原因码。
+   */
+  const val GUEST_LOADER_FAILURE_EXIT = 182
+
+  /** Refusal code: the guest loader failed before the engine program started. */
+  const val REFUSAL_GUEST_LOADER_FAILED = "linux-guest-loader-failed"
+
   /** Refusal code: Hard bundle ownership or installed identity could not be proven safely. */
   const val REFUSAL_HARD_BUNDLE_SELECTION = "hard-bundle-selection-unverified"
 
@@ -1624,6 +1655,20 @@ private object LinuxDnsServers {
     val cleared = runCatching { Files.deleteIfExists(target.toPath()) }.getOrDefault(false)
     Log.e(TAG, "Linux DNS state update failed; stale resolver ${if (cleared) "cleared" else "may remain"}", error)
   }
+}
+
+/** Lifecycle verdict for a freshly spawned guest engine (issue #322). */
+internal enum class GuestSpawnVerdict { RUNNING, RETRY_LOADER, LOADER_FAILED, EXITED }
+
+/**
+ * Only a pre-exec loader failure may be retried: exit 182 means the PRoot loader shim gave up
+ * before the guest program ran, so the attempt produced no output and no side effects.
+ */
+internal fun guestSpawnVerdict(alive: Boolean, exitCode: Int?, attempt: Int): GuestSpawnVerdict = when {
+  alive -> GuestSpawnVerdict.RUNNING
+  exitCode == EngineManager.GUEST_LOADER_FAILURE_EXIT && attempt == 0 -> GuestSpawnVerdict.RETRY_LOADER
+  exitCode == EngineManager.GUEST_LOADER_FAILURE_EXIT -> GuestSpawnVerdict.LOADER_FAILED
+  else -> GuestSpawnVerdict.EXITED
 }
 
 /** Empty/Private DNS state stays offline; never silently substitute a public resolver. */

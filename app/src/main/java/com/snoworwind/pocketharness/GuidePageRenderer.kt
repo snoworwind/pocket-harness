@@ -22,7 +22,8 @@ internal fun startupFailureHintResource(code: String?): Int = when (code) {
   EngineManager.REFUSAL_STORAGE_FULL -> R.string.ds_start_storage_full
   EngineManager.REFUSAL_RUNTIME_UNAVAILABLE,
   EngineManager.REFUSAL_LIVE_RUNTIME_INCOMPLETE,
-  EngineManager.REFUSAL_HARD_BUNDLE_SELECTION -> R.string.ds_start_runtime_unavailable
+  EngineManager.REFUSAL_HARD_BUNDLE_SELECTION,
+  EngineManager.REFUSAL_GUEST_LOADER_FAILED -> R.string.ds_start_runtime_unavailable
   else -> R.string.ds_start_unknown
 }
 

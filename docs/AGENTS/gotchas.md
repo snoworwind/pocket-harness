@@ -4117,3 +4117,9 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
      真因：`ls -Z` 显示 root 创建的四条链接标签是 `u:object_r:app_data_file:s0`，没有进程的 MLS 类别（应用自建的带 `:c155,c256,c512,c768`）。SELinux 的类别不匹配让 untrusted_app 读链接即被拒；链接目标本身没问题，所以换个名字就"能工作"，极易误判成 PRoot 不支持 `/dev/fd`。
      修法：应用数据目录下的功能性文件必须由**应用身份**创建（应用内 bash、或正式的解包/装配路径）；root adb 只用于读取和清障（`rm`），不要用来"补"功能文件。反证时先用 `ls -lZ` 比对标签再下结论。
      复验：root adb 删除四条链接后，在应用终端里 `ln -s /proc/self/fd /dev/fd` 等重建，进程替换、`diff <( )`、`> /dev/stdout` 全部通过（.deploy-tmp/term-apt-20261113/ui-10-procsubst-ok.png）；正式 rootfs 由 CI 构建、应用进程解包，标签天然正确。
+
+714. **PRoot loader 182 是"程序还没跑"的失败，却被当成普通崩溃：引擎白等 90 秒冷却（2026-11-13，issue #322）**
+     现象：真机报告 2%-10% 的调用无输出地返回 182，引擎侧看起来只是"起来又死了"，随后要等看门狗冷却（`START_COOLDOWN_MS=90s`）才重试。
+     真因：182 来自 PRoot loader shim（`src/loader/loader.c`）在 glibc loader 初始化前放弃，程序本身一行都没执行；它和真正的启动崩溃返回值相同，旧路径不区分，也不重试。
+     修法：`guestSpawnVerdict()` 只对 `alive=false && exit==182` 判 `RETRY_LOADER`（第一次）或 `LOADER_FAILED`（第二次）；启动时对 182 重试**一次**（该次没有任何副作用），连续两次则用 `linux-guest-loader-failed` 拒启，不再假装启动成功。其它退出码（0/1/127/137/255）一律不重试。
+     复验：`GuestLoaderSpawnTest` 覆盖存活不重试、182 首错重试、182 二错拒启、其它码不重试，以及专属原因码到提示资源的映射；`Issue342StartupDiagnosticTest` 保持既有的五类提示互不重叠。真机（鸿蒙兼容层）上的 182 率仍需新 APK 复验，见 issue #322。
