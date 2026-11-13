@@ -14,7 +14,7 @@ internal object BootPhaseTrace {
 
   const val ON_CREATE = "onCreate"
   const val WEBVIEW_CONSTRUCT = "webviewConstruct"
-  const val LINUX_PREPARE = "linuxPrepare"
+  const val SNAPSHOT_EXTRACT = "snapshotExtract"
   const val LOADER_SETTLE = "loaderSettle"
 
   @Volatile private var baseMs = 0L

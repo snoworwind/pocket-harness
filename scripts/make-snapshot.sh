@@ -90,13 +90,13 @@ find stage-root/home/.dsh -name '*.map' -delete 2>/dev/null || true
 # device in v0.10.8). Forced overwrite at snapshot time eliminates Termux environment drift.
 mkdir -p stage-root/home/.dsh/profiles/web
 cat > stage-root/home/.dsh/profiles/web/cordis.patch.yml <<'PATCH_EOF'
-# Android adaptation: dsh-shell-linux (bash tools) + host-web-compat (polyfill +
+# Android adaptation: dsh-shell-termux (bash tools) + host-web-compat (polyfill +
 # SAF directory-picker bridge) + ui-responsive (mobile form) + default model.
 - id: bash-sandbox
   disabled: true
 - insert:
-    - id: shell-linux
-      name: '@dsh-android/dsh-shell-linux'
+    - id: shell-termux
+      name: '@dsh-android/dsh-shell-termux'
       config:
         bashPath: /data/data/com.termux/files/usr/bin/bash
         prefix: /data/data/com.termux/files/usr
@@ -178,7 +178,7 @@ echo "fs-local link patch applied"
 fi
 # 2026-08-15 (Bug fix): Android has no bwrap/Landlock backend. This compatibility patch lets
 # sandbox-local.confine() return the original argv under the Termux runner; that is not a path
-# fence. dsh-shell-linux does not use this as authorization: it refuses read-only/workspace-write
+# fence. dsh-shell-termux does not use this as authorization: it refuses read-only/workspace-write
 # before bash spawn and requires an explicit danger-full-access session mode.
 PSB=usr/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-sandbox-local/lib/index.js
 if grep -q 'TERMUX__PREFIX' "$PSB"; then echo "sandbox-local patch already applied"; else
@@ -189,7 +189,7 @@ if grep -q 'TERMUX__PREFIX' "$PSB"; then echo "sandbox-local patch already appli
 # reports process.platform "android", not "linux"; both are allowed — this guards against a host
 # WSL/Termux env that would otherwise disable the sandbox globally). This branch only preserves
 # plugin startup; callers must not treat its original argv as confined execution. The Android
-# shell-linux provider enforces its own fail-closed mode check before starting bash.
+# shell-termux provider enforces its own fail-closed mode check before starting bash.
 sed -i 's|confine(argv, policy) {|confine(argv, policy) {\n\t\tif ((process.platform === "linux" \|\| process.platform === "android") \&\& process.env.TERMUX__PREFIX \&\& this.runnerCommand === void 0) return { argv: [...argv], enforcement: "partial", denialSignatures: [], runnerFailureRules: [] };|' "$PSB"
 echo "sandbox-local patch applied"
 fi

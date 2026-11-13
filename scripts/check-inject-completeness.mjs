@@ -29,8 +29,7 @@ import { fileURLToPath } from 'node:url'
 const HERE = dirname(fileURLToPath(import.meta.url))
 const ROOT = dirname(HERE)
 const argv = process.argv.slice(2)
-const treeMode = argv[0] === '--tree'
-const tar = treeMode ? argv[1] : argv[0]
+const tar = argv[0]
 const argOf = (n, d) => { const i = argv.indexOf('--' + n); return i >= 0 ? (argv[i + 1] ?? d) : d }
 const PROFILES = argOf('profiles', 'web,headless').split(',').map((s) => s.trim()).filter(Boolean)
 if (!tar || !existsSync(tar)) { console.error('用法: node scripts/check-inject-completeness.mjs <injected.tar.xz> [--profiles web,headless]'); process.exit(2) }
@@ -63,18 +62,8 @@ const sourceMembers = (dir) => {
   return out
 }
 
-function listTree(root, prefix = '') {
-  const entries = []
-  for (const entry of readdirSync(root, { withFileTypes: true })) {
-    const relative = prefix ? prefix + '/' + entry.name : entry.name
-    entries.push(entry.isDirectory() ? relative + '/' : relative)
-    if (entry.isDirectory()) entries.push(...listTree(join(root, entry.name), relative))
-  }
-  return entries
-}
-
 let listing = ''
-try { listing = treeMode ? listTree(tar).join('\n') : execFileSync(TAR, ['-tf', tar], { encoding: 'utf8', maxBuffer: 512 * 1024 * 1024 }) } catch (e) {
+try { listing = execFileSync(TAR, ['-tf', tar], { encoding: 'utf8', maxBuffer: 512 * 1024 * 1024 }) } catch (e) {
   console.error('CHECK-INJECT-COMPLETENESS FAILED：tar 不可读（' + e.message + '）')
   process.exit(2)
 }
@@ -83,7 +72,7 @@ console.log('tar 条目: ' + entries.size + '；装配 profile: ' + PROFILES.joi
 
 // 单次解压（重要：逐成员 tar -xO 会对 170MB xz 重解压 N 次，实测 >10min 超时）——
 // 只抽出需要的包 lib 树 + package.json，一次 -xf 完成，后续分析在本地文件上做。
-const scratch = treeMode ? tar : mkdtempSync(join(tmpdir(), 'inj-complete-'))
+const scratch = mkdtempSync(join(tmpdir(), 'inj-complete-'))
 const extractArgs = []
 for (const profile of PROFILES) {
   for (const dir of dirs) {
@@ -94,7 +83,7 @@ for (const profile of PROFILES) {
   }
 }
 try {
-  if (!treeMode) execFileSync(TAR, ['-xf', tar, '-C', scratch, '--', ...extractArgs], { stdio: ['ignore', 'ignore', 'ignore'], maxBuffer: 64 * 1024 * 1024 })
+  execFileSync(TAR, ['-xf', tar, '-C', scratch, '--', ...extractArgs], { stdio: ['ignore', 'ignore', 'ignore'], maxBuffer: 64 * 1024 * 1024 })
 } catch { /* 缺席成员按缺失处理（后续断言会报），不在此处中断 */ }
 
 let checkedPkgs = 0
@@ -117,11 +106,6 @@ for (const profile of PROFILES) {
     check(profile + ' 成员集合一致: ' + src.name + '（' + src.members.size + ' 项）', missing.length === 0 && extra.length === 0,
       (missing.length ? '缺 ' + missing.length + ' 项: [' + missing.slice(0, 5).join(', ') + ']' : '')
       + (extra.length ? (missing.length ? '；' : '') + '多 ' + extra.length + ' 项: [' + extra.slice(0, 5).join(', ') + ']' : ''))
-    if (treeMode) {
-      const changed = [...src.members].filter(member => present.has(member)
-        && !readFileSync(join(dir, member)).equals(readFileSync(join(scratch, pkgBase, member))))
-      check(profile + ' 注入源码字节一致: ' + src.name, changed.length === 0, changed.slice(0, 5).join(', '))
-    }
     // B. 相对导入可解析（直击 ERR_MODULE_NOT_FOUND）
     // 只对「源包确实有、但 tar 里没有」的导入目标判红（那才是注入丢件）；源包自身就不带的
     // 目标（如 ExportResultDialog.js -> ./ExportResultDialog.module.css，源码无该 css）记为 WARN。
@@ -208,7 +192,7 @@ for (const profile of PROFILES) {
       '悬空 ' + unresolvedBare.size + ' 条: [' + [...unresolvedBare].slice(0, 5).join(', ') + ']')
   }
 }
-if (!treeMode) rmSync(scratch, { recursive: true, force: true })
+rmSync(scratch, { recursive: true, force: true })
 check('至少核对到一个注入包', checkedPkgs > 0, 'checked=' + checkedPkgs)
 
 if (failures.length > 0) {

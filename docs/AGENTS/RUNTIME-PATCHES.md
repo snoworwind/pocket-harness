@@ -312,7 +312,7 @@ unlink ENOENT 容忍），与 attachment 资产逐字节同源——此前这三
 
 **0.14.5 启动重组降载（在 P1 内实现，不恢复 A4）**：首批真机 0.14.4 的 C3 实读为同一 registry 八次真实 `flush.changed → compose`，不是探针重复或多实例。源码 `dsh/` 只读；新增 P1 patch 在已有 `loader.await()` settle 屏障收敛启动期 dirty Fiber，保持构造时空 graph 的 rev/hash，完整 graph 在 web connection ready continuation 前发布。若已有条目先 active，保留原同步首 flush，之后启动 dirty 一次性合并（最多两次）；settle 后 HMR/add/remove 仍立即生效。行为 fixture 覆盖空图、三批延迟 activation、未丢 Fiber、ready 顺序、次数和运行期即时更新。每条 TOTAL 在 compose 返回时立即采同一 event-loop histogram 并同步输出，保持 C4/LogCollector last-row 语义；启动 phase 诊断以固定阶段 Map 聚合，最多四行，首事件后的 250ms 固定窗口收口，不会延迟 TOTAL 或改变 histogram。当前集成 0.14.5 APK 的 C3=2 通过；五次冷启动 C4 均为 157.7–217.1ms/17–25 samples，超过 100ms 预算；C2、C5/C5+（显式指定设备 probe 文件）、C6 通过。新增 phase 行记录构造 flush、loader settle wall time、延迟启动 flush 与首次 settle 后 compose start；离线 fixture 已通过，修正后的诊断 patch 尚待重建进 APK 与设备测量，目前不能断言 C4 根因已定位或修复。
 
-**引擎 overlay 追版**（`scripts/runtime-config/engine-overlay.json`，2026-09-25 现数）：
+**引擎 overlay 追版**（`scripts/snapshot-config/engine-overlay.json`，2026-09-25 现数）：
 `vendorTop` 17 → **36** 条（+19：`execa` 及其依赖闭包、`@sec-ant/readable-stream`、
 `@sindresorhus/merge-streams`、`get-stream`、`human-signals`、`is-plain-obj`、`is-stream`、
 `is-unicode-supported`、`npm-run-path`、`parse-ms`、`pretty-ms`、`signal-exit`、

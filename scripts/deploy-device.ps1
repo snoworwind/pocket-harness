@@ -1,6 +1,6 @@
 param(
   [string]$Serial = "127.0.0.1:16416",
-  [string]$Package = "dsh-shell-linux",
+  [string]$Package = "dsh-shell-termux",
   [string]$Profile = "web"
 )
 # Deploy one built adapter package into the device profile node_modules and restart dsh web.

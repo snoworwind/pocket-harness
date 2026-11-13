@@ -2,7 +2,6 @@ package com.snoworwind.pocketharness
 
 import java.io.File
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -66,17 +65,17 @@ class ForegroundPageRecoveryWiringTest {
     assertFalse(gone.contains("reload()"))
   }
 
-  @Test fun invalidLinuxAssetsCannotReplaceTheLiveRuntimeOrEnterWeb() {
-    LinuxInstallerFixture().use { f ->
-      f.install()
-      val source = f.source("two")
-      val bad = source.copy(open = { path -> if (path == "linux/node.tar.xz") "poison".byteInputStream() else source.open(path) })
-      assertTrue(LinuxInstanceInstaller.ensure(bad, f.files) is LinuxInstanceInstaller.Result.Failed)
-      assertEquals("node-one", java.io.File(f.files, "linux/node/bin/node").readText())
-    }
-    val presentation = source("MainActivity.kt").substringAfter("internal fun showWeb()").substringBefore("internal fun reloadEnginePage()")
-    assertTrue(presentation.contains("linuxInstanceReady()"))
-    assertFalse(presentation.contains("snapshotFingerprintProblem"))
+  @Test fun invalidBundledShaCannotEnterRefreshOrSpawnAndMigrationFilterPrecedesJournal() {
+    val manager = source("EngineManager.kt")
+    val refresh = between(manager, "fun refreshSnapshot(", "private fun refreshSnapshotInternal(")
+    assertTrue(ordered(refresh, "snapshotFingerprintProblem()", "refreshSnapshotInternal(onProgress"))
+    val spawn = between(manager, "fun startEngine(", "private fun ")
+    assertTrue(spawn.contains("snapshotFingerprintProblem()"))
+    assertTrue(ordered(spawn, "SnapshotUserData.retireReseededFactorySettings(", "val args = arrayOf("))
+    val internalRefresh = between(manager, "private fun refreshSnapshotInternal(", "fun recoverInterruptedRefresh()")
+    assertTrue(ordered(internalRefresh, "SnapshotUserData.prepareStagedSnapshot(", "SnapshotTransaction.writeMarker("))
+    val flow = source("EngineStartFlow.kt")
+    assertTrue(ordered(flow, "snapshotFingerprintProblem()", "if (engineAlreadyRunning && startupAvailability == EngineProbe.EngineAvailability.OUR_HTTP)"))
   }
 
   @Test fun activityRecreationRebindsEveryMainPageOwnerWithoutRestartingTheEngine() {
@@ -171,7 +170,7 @@ class ForegroundPageRecoveryWiringTest {
     val pending = between(startup, "if (startupOwnershipPending(", "if (!ownership.optBoolean")
     assertTrue(pending.contains("ownershipRetry.nextDelayMs()"))
     assertFalse(pending.contains("throw"))
-    assertFalse(pending.contains("recoverLinuxUpgrade()"))
+    assertFalse(pending.contains("recoverInterruptedRefresh()"))
     assertFalse(pending.contains("snapshotFresh()"))
     assertFalse(pending.contains("startEngine()"))
     assertFalse(pending.contains("showTestNotification"))
@@ -187,15 +186,15 @@ class ForegroundPageRecoveryWiringTest {
     val service = source("EngineService.kt")
     val startup = between(service, "private fun ensureEngine(epoch:", "private fun buildNotification()")
     assertTrue(ordered(startup, "startupOwnershipPending(", "engineManager.engineReady"))
-    assertTrue(ordered(startup, "recoverLinuxUpgrade()", "WatchdogV2.acquireWakeLock(this, epoch.wakeOwner)"))
-    val recoveryReturn = between(startup, "engineManager.recoverLinuxUpgrade()", "WatchdogV2.acquireWakeLock(")
+    assertTrue(ordered(startup, "recoverInterruptedRefresh()", "WatchdogV2.acquireWakeLock(this, epoch.wakeOwner)"))
+    val recoveryReturn = between(startup, "engineManager.recoverInterruptedRefresh()", "WatchdogV2.acquireWakeLock(")
     assertTrue(recoveryReturn.contains("if (!isEpochCurrent(epoch)) return"))
     assertTrue(startup.contains("epoch.watchdog.compareAndSet(null, exec)"))
     assertTrue(startup.contains("epoch.watchdog.get() !== exec"))
     assertTrue(startup.contains("WatchdogV2.refreshWakeLock(this, epoch.wakeOwner)"))
     val pending = between(startup, "if (startupOwnershipPending(", "if (!ownership.optBoolean")
     assertTrue(pending.contains("epoch.ownershipRetry.nextDelayMs()"))
-    assertFalse(pending.contains("recoverLinuxUpgrade"))
+    assertFalse(pending.contains("recoverInterruptedRefresh"))
     val teardown = between(service, "private fun retireEpoch(", "private fun ensureEngine(")
     assertTrue(teardown.contains("serviceEpoch.compareAndSet(epoch, null)"))
     assertTrue(teardown.contains("epoch.watchdog.getAndSet(null)"))

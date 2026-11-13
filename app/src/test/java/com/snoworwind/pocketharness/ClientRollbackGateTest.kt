@@ -151,8 +151,8 @@ class ClientRollbackGateTest {
   private val fixture = """
     # 顶层说明注释：属于它后面紧邻的那个条目，拔别的块时不得被误删。
     - insert:
-        - id: shell-linux
-          name: '@dsh-android/dsh-shell-linux'
+        - id: shell-termux
+          name: '@dsh-android/dsh-shell-termux'
           config:
             # 块内注释：随本块一起删除
             writeMode: workspace-write
@@ -177,7 +177,7 @@ class ClientRollbackGateTest {
                 name: MiMo 2.5
   """.trimIndent() + "\n"
 
-  private val hard = setOf("@dsh-android/dsh-shell-linux", "@dsh-android/dsh-android-bridge")
+  private val hard = setOf("@dsh-android/dsh-shell-termux", "@dsh-android/dsh-android-bridge")
 
   @Test
   fun 客户端点名_唯一命中才给出可拔条目() {
@@ -197,7 +197,7 @@ class ClientRollbackGateTest {
     // 三条同理。
     assertNull(
       "命中三条同样拒绝",
-      PluginMounts.clientPullCandidate(fixture, listOf("dsh-bad-probe", "dshmarketplace", "shell-linux"), emptySet()),
+      PluginMounts.clientPullCandidate(fixture, listOf("dsh-bad-probe", "dshmarketplace", "shell-termux"), emptySet()),
     )
   }
 
@@ -214,7 +214,7 @@ class ClientRollbackGateTest {
     // 硬清单 = 随版本走、只增不减、我们自己插入的条目：外科修复绝不动它。
     assertNull(
       "命中硬清单必须拒绝",
-      PluginMounts.clientPullCandidate(fixture, listOf("shell-linux"), setOf("@dsh-android/dsh-shell-linux")),
+      PluginMounts.clientPullCandidate(fixture, listOf("shell-termux"), setOf("@dsh-android/dsh-shell-termux")),
     )
     assertNull(
       "命中硬清单必须拒绝（另一条）",
@@ -223,7 +223,7 @@ class ClientRollbackGateTest {
     // 反证：不在硬清单里时同一条目是可拔的（否则上面的 null 可能来自别的原因）。
     assertNotNull(
       "同一条目不在硬清单时必须可拔",
-      PluginMounts.clientPullCandidate(fixture, listOf("shell-linux"), emptySet()),
+      PluginMounts.clientPullCandidate(fixture, listOf("shell-termux"), emptySet()),
     )
   }
 
@@ -265,8 +265,8 @@ class ClientRollbackGateTest {
         - id: dsh-client-bad-probe
           name: '@dsh-android/dsh-client-bad-probe'
     - insert:
-        - id: dsh-shell-linux
-          name: '@dsh-android/dsh-shell-linux'
+        - id: dsh-shell-termux
+          name: '@dsh-android/dsh-shell-termux'
   """.trimIndent() + "\n"
 
   @Test
@@ -276,7 +276,7 @@ class ClientRollbackGateTest {
     val candidate = PluginMounts.clientPullCandidate(
       deviceFixture,
       listOf("@dsh-android/dsh-client-bad-probe"),
-      setOf("@dsh-android/dsh-shell-linux"),
+      setOf("@dsh-android/dsh-shell-termux"),
     )
     assertNotNull("页面点名 entry name（包名）必须命中清单条目", candidate)
     assertEquals("返回清单自身的 id", "dsh-client-bad-probe", candidate!!.id)
@@ -290,7 +290,7 @@ class ClientRollbackGateTest {
     val candidate = PluginMounts.clientPullCandidate(
       deviceFixture,
       listOf("dsh-client-bad-probe", "@dsh-android/dsh-client-bad-probe"),
-      setOf("@dsh-android/dsh-shell-linux"),
+      setOf("@dsh-android/dsh-shell-termux"),
     )
     assertNotNull("同一条目被 id 与 name 同时点名仍只有一条候选", candidate)
     assertEquals("dsh-client-bad-probe", candidate!!.id)
@@ -327,7 +327,7 @@ class ClientRollbackGateTest {
 
   private val testHardManifest: PluginMounts.HardManifest by lazy {
     val entries = setOf(
-      PluginMounts.HardEntry("shell-linux", "@dsh-android/dsh-shell-linux"),
+      PluginMounts.HardEntry("shell-termux", "@dsh-android/dsh-shell-termux"),
       PluginMounts.HardEntry("android-bridge", "@dsh-android/dsh-android-bridge"),
     )
     PluginMounts.HardManifest("a".repeat(64), entries, profileEntries = entries, factoryBundles = emptySet())
@@ -356,7 +356,7 @@ class ClientRollbackGateTest {
       assertTrue("目标插件原块必须保留供用户恢复", after.contains("dsh-bad-probe-plugin"))
       assertTrue("目标插件必须在后置HOME层由Cordis disabled override隔离", homeAfter.contains("- id: \"dsh-bad-probe\"\n  name: \"dsh-bad-probe-plugin\"\n  disabled: true"))
       assertTrue("profile其它条目一条不少", PluginMounts.entryNames(after).containsAll(
-        listOf("@dsh-android/dsh-shell-linux", "dshmarketplace-plugin", "@dsh-android/dsh-android-bridge"),
+        listOf("@dsh-android/dsh-shell-termux", "dshmarketplace-plugin", "@dsh-android/dsh-android-bridge"),
       ))
       assertTrue("顶层说明注释不得被误删", after.contains("顶层说明注释"))
       assertTrue("disabled 条目不得受影响", after.contains("disabled: true"))

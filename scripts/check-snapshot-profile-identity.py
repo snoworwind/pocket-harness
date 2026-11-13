@@ -26,7 +26,7 @@ def verify(snapshot, authoritative, app_id):
     except UnicodeDecodeError:
         return ['authoritative patch is not UTF-8']
     for key in ('bashPath', 'prefix', 'home', 'cwd'):
-        # The patch stores these under `config` for the shell-linux row, so real
+        # The patch stores these under `config` for the shell-termux row, so real
         # authoritative keys are indented. Anchoring at column zero made the source
         # build reject every path despite the self-test's flat synthetic fixture.
         values = re.findall(r'^\s*' + key + r':\s*(\S+)\s*$', text, re.M)
@@ -76,7 +76,7 @@ def verify(snapshot, authoritative, app_id):
 
 def self_test():
     patch = (b'- insert:\n'
-             b'    - id: shell-linux\n'
+             b'    - id: shell-termux\n'
              b'      config:\n'
              b'        bashPath: /data/data/test.app/files/usr/bin/bash\n'
              b'        prefix: /data/data/test.app/files/usr\n'
@@ -121,7 +121,7 @@ def self_test():
         real_ids = APP_ID.findall(gradle)
         assert len(real_ids) == 1, 'real project applicationId must be unique'
         archive(path, [('web', real_patch), ('headless', real_patch)])
-        assert verify(path, real_patch, real_ids[0]) == [], 'real nested shell-linux config must pass'
+        assert verify(path, real_patch, real_ids[0]) == [], 'real nested shell-termux config must pass'
         with tarfile.open(path, 'w:xz') as tar:
             web = tarfile.TarInfo('home/.dsh/profiles/web/cordis.patch.yml')
             web.type = tarfile.SYMTYPE

@@ -28,7 +28,7 @@ APK ABI 必须与设备匹配；x86_64 模拟器不受支持。首次启动或�
 
 ## 构建
 
-APK 只能通过源码来源链构建；按 ARM64 与 x86_64 分别构建 Linux APK。云端构建：
+APK 只能通过源码来源链构建；仅构建 ARM64。云端构建：
 
 ```sh
 gh workflow run build-apk-source.yml --repo snoworwind/pocket-harness --ref main

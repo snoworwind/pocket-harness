@@ -493,7 +493,7 @@ def assemble(webroot_arg: str, provenance_arg: str, inputs_arg: str, bootstrap_u
 if __name__ == "__main__":
     if len(sys.argv) != 7:
         raise SystemExit("usage: prepare-proot-backend.py <termux-webroot> <termux-provenance.json> <linux-inputs.json> <extracted-bootstrap-usr> <backend-dir> <native-libs-dir>")
-    config_path = Path(__file__).resolve().parent.parent / "runtime-config" / "preinstall.json"
+    config_path = Path(__file__).resolve().parent.parent / "snapshot-config" / "preinstall.json"
     pins = json.loads(config_path.read_text(encoding="utf-8")).get("pins") or {}
     result = assemble(*sys.argv[1:], pins=pins)
     print("assembled authenticated Termux PRoot closure: " + result["targetVersion"])

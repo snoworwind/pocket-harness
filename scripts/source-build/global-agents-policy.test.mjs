@@ -8,13 +8,14 @@ import { FORBIDDEN_PATTERNS, MAX_BYTES, REQUIRED_SNIPPETS, validateGlobalAgents 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const BASELINE = join(dirname(dirname(HERE)), 'scripts', 'global-AGENTS.md')
 
-// 样本自动取自策略里的必需锚点：新增/改动锚点时本样本随之更新，
-// 避免「策略改了、负控样本没改」这种假绿。
-const [sentinel, ...rest] = REQUIRED_SNIPPETS.map(({ snippet }) => snippet)
 const minimum = [
-  sentinel,
+  '<!-- dsh-mobile-factory-baseline -->',
   '# 基线',
-  ...rest,
+  '本文件随安装包发布。',
+  '不写 $PREFIX，写 $HOME。',
+  'process.execPath 是 linker64。',
+  '共享存储放 .nomedia。',
+  '自己的约定写 ~/.agents/AGENTS.md，项目级写 AGENTS.local.md。',
 ].join('\n')
 
 test('仓库里的出厂基线通过全部判据', () => {

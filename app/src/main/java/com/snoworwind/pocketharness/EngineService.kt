@@ -183,9 +183,20 @@ class EngineService : Service() {
     }
     if (!ownership.optBoolean("ok")) LogCollector.log("dsh-root", "service preboot ownership repair incomplete: " + ownership.optString("reason"))
     if (!isEpochCurrent(epoch)) return
-    engineManager.recoverLinuxUpgrade()
+    val ready = engineManager.engineReady
     if (!isEpochCurrent(epoch)) return
-    if (!engineManager.engineReady) { epoch.startupQueued.set(false); return }
+    if (!ready) { epoch.startupQueued.set(false); return }
+    // FX-210.1：恢复入口是「服务路径与 Activity 路径」的共同前置——引擎已被前台服务拉起
+    // 时重开 app 也要消费 .snapshot-transaction 判据（此前只在 Activity 启动流内、且在
+    // 「引擎已在跑」早退之后）。幂等：无事务时只是一次 stat。
+    engineManager.recoverInterruptedRefresh()
+    // Recovery can wait in root/Binder/disk; never install after that wait without a new epoch check.
+    if (!isEpochCurrent(epoch)) return
+    if (engineManager.snapshotRecoveryBlocksRuntime()) {
+      Log.e("dsh-engine", "startup held: snapshot recovery journal remains unresolved")
+      epoch.startupQueued.set(false)
+      return
+    }
     WatchdogV2.acquireWakeLock(this, epoch.wakeOwner)
     if (!isEpochCurrent(epoch)) { WatchdogV2.releaseWakeLock(epoch.wakeOwner); return }
     val exec = Executors.newSingleThreadScheduledExecutor()

@@ -20,9 +20,6 @@ internal object TerminalNative {
 
   val available: Boolean get() = loadError == null
 
-  /** Export-only direct read; independent of terminal handles and safe on a worker thread. */
-  external fun nativeReadDirect(fd: Int, offset: Long, output: ByteArray): Int
-
   external fun nativeCreate(cols: Int, rows: Int): Long
 
   external fun nativeDestroy(handle: Long)

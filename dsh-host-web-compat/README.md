@@ -2,7 +2,7 @@
 
 [🌐 中文说明 / 中文 README](README.zh.md)
 
-> **DeepSeek Harness × Android ecosystem** · [dsh-mobile-apk](https://github.com/kelai141/dsh-mobile-apk) (shell APK) · [dsh-shell-linux](https://github.com/kelai141/dsh-shell-linux) (shell) · [dsh-client-ui-responsive](https://github.com/kelai141/dsh-client-ui-responsive) (mobile UI)
+> **DeepSeek Harness × Android ecosystem** · [dsh-mobile-apk](https://github.com/kelai141/dsh-mobile-apk) (shell APK) · [dsh-shell-termux](https://github.com/kelai141/dsh-shell-termux) (shell) · [dsh-client-ui-responsive](https://github.com/kelai141/dsh-client-ui-responsive) (mobile UI)
 
 Host plugin for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) that injects
 legacy-browser polyfills into every served page via the webserver `tapIndex` hook, and bridges the

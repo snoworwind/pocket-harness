@@ -18,7 +18,7 @@ package com.snoworwind.pocketharness
  *
  * - **P-1 永不追加**：追加判据是「该块任一 id 已在 live 中」⇒ 只要 live 里**任何**块
  *   （包括某个 insert 组的子条目）含了工厂顶层块的 id，工厂那一块就被判「已存在」而不追加。
- *   实测最小用例：live 只含 `shell-linux` 时工厂组的 `host-web-compat` 静默不补齐。
+ *   实测最小用例：live 只含 `shell-termux` 时工厂组的 `host-web-compat` 静默不补齐。
  * - **P-2 误归属**：工厂对 id X 声明的 `disabled` 会被写进「包含 X 的块」的**首个** id 行之后。
  *   若 X 是某 insert 组的**非首个子条目**，改的是组首子项，目标子条目一字未动。
  *

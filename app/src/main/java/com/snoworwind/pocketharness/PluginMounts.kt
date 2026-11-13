@@ -482,7 +482,7 @@ object PluginMounts {
       // 0.14.2（D11 同源）：命中行若不是**顶层条目首行**，它就在某个 `- insert:` 组里 —— 此时
       // 删的必须是**那一条子条目**（上溯到同组最近的同层 `- id:` / `- name:` 行），不是整个组。
       // 旧实现无条件删整组 ⇒ 同组里我们自己的硬清单插件被连坐摘掉（实测反证：2 子组里摘
-      // host-web-compat 会连带删掉 shell-web-compat 的兄弟 shell-linux）。
+      // host-web-compat 会连带删掉 shell-web-compat 的兄弟 shell-termux）。
       if (start != hit) {
         // 条目边界 = 组内承载命中行的那一条：从 start 之后找到**最后一个** `- id:` / `- name:`
         // 列表项行（就是本条目的首行），条目末行 = 其后第一个缩进不深于它的非空行。
@@ -975,7 +975,7 @@ object PluginMounts {
 
   private fun liveComposition(context: Context, patch: File): CompositionSnapshot? = compositionSnapshot(
     patch,
-    File(context.filesDir, "linux/engine/@deepseek-ai/dsh/node_modules"),
+    File(context.filesDir, "usr/lib/node_modules/@deepseek-ai/dsh/node_modules"),
   )
 
   internal fun onlineFactoryBundles(snapshotRoot: File, selected: Set<String>, profileModules: File? = null): Set<FactoryBundle>? =
@@ -1127,12 +1127,50 @@ object PluginMounts {
     return result
   }
 
-  /** Only the APK's embedded Hard identity is selectable for the primary guest. */
+  /** Selects only transaction-authorized online manifests; interrupted swaps are inconclusive. */
+  internal fun transactionMarkerAllowsHard(marker: SnapshotTransaction.Marker): Boolean =
+    marker.phase != SnapshotTransaction.Phase.SWAPPING && marker.phase != SnapshotTransaction.Phase.UNKNOWN &&
+      marker.purpose != SnapshotTransaction.Purpose.UNKNOWN &&
+      !(marker.phase == SnapshotTransaction.Phase.ONLINE_COMMITTED && marker.purpose != SnapshotTransaction.Purpose.ONLINE_UPDATE)
+
   fun ensureHard(context: Context, fingerprint: String?): HardManifest? {
     val fp = normalizeFingerprint(fingerprint) ?: return null
-    if (LinuxUpgradeTransaction.readMarker(context.filesDir) != null) return null
-    val embedded = readEmbeddedHard(context)?.takeIf { it.fingerprint == fp } ?: return null
-    return if (cacheHard(context, embedded)) embedded else null
+    val embedded = readEmbeddedHard(context) ?: return null
+    val marker = SnapshotTransaction.readMarker(context.filesDir)
+    if (marker != null) {
+      if (!transactionMarkerAllowsHard(marker)) return null
+      if (marker.purpose == SnapshotTransaction.Purpose.ONLINE_UPDATE) {
+        val base = normalizeFingerprint(marker.baseFingerprint) ?: return null
+        if (base != embedded.fingerprint) return null
+        when (marker.phase) {
+          SnapshotTransaction.Phase.SWAPPED, SnapshotTransaction.Phase.ONLINE_COMMITTED -> {
+            val selected = loadOnlineHardManifest(context, marker.fingerprint, base) ?: return null
+            if (fp == selected.fingerprint && !cacheHard(context, selected)) return null
+            return selected
+          }
+          SnapshotTransaction.Phase.STAGED -> {
+            val prior = normalizeFingerprint(marker.priorFingerprint)
+            if (prior != null && prior != embedded.fingerprint) {
+              val selected = loadOnlineHardManifest(context, prior, base) ?: return null
+              if (fp != selected.fingerprint || !cacheHard(context, selected)) return null
+              return selected
+            }
+            return embedded.takeIf { fp == it.fingerprint }
+          }
+          else -> return null
+        }
+      }
+    }
+    val online = readOnlineSnapshot(context)
+    if (online != null) {
+      if (online.first != embedded.fingerprint || online.second != fp) return null
+      val selected = loadOnlineHardManifest(context, online.second, online.first) ?: return null
+      if (!cacheHard(context, selected)) return null
+      return selected
+    }
+    if (fp != embedded.fingerprint) return null
+    val manifest = embedded
+    return if (cacheHard(context, manifest)) manifest else null
   }
 
   private fun cacheHard(context: Context, manifest: HardManifest): Boolean {
@@ -1159,9 +1197,9 @@ object PluginMounts {
   /** Never interpret absent or invalid ownership data as an empty protection set. */
   fun hardNames(context: Context, fingerprint: String?): Set<String>? = ensureHard(context, fingerprint)?.names
 
-  fun currentFingerprint(context: Context): String? =
-    if (LinuxInstanceInstaller.open(context.filesDir, verifyManaged = false) is LinuxInstanceInstaller.Result.Ready)
-      readEmbeddedHard(context)?.fingerprint else null
+  fun currentFingerprint(context: Context): String? = runCatching {
+    File(context.filesDir, ".snapshot-fingerprint").readText().trim().takeIf { it.matches(Regex("[0-9a-fA-F]{64}")) }
+  }.getOrNull()
 
   @Deprecated("Use ensureHard(context, fingerprint), which binds ownership to this packaged snapshot")
   fun hardNames(context: Context): Set<String> = readNames(hardFile(context))

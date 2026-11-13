@@ -486,40 +486,6 @@ export function createMobileBootstrap(options = {}) {
     }
   }
 
-  /**
-   * Re-activate an installed runtime plugin after an engine restart.
-   *
-   * The host injects a runtime plugin only inside the process that activated it,
-   * so a restart leaves the plugin on disk but inert. Without reactivation the
-   * next `synchronizeInjectionState` reads the host as inactive and silently
-   * disables an environment the user never turned off, losing `linux_bash`.
-   */
-  async function reactivateInstalledRuntime() {
-    if (!state.installedLinuxVersion || !state.enabled || !state.injectionActivated) return
-    if (manager || !state.pluginDirectory) return
-    const host = await hostInjection()
-    if (host?.active) return
-    const manifest = state.pinnedManifest ?? state.availableManifest
-    if (!manifest) return
-    const config = pluginConfig(manifest, state.runtimeId ?? DEFAULT_RUNTIME_ID)
-    try {
-      const hostResult = await pluginHost.install({
-        directory: state.pluginDirectory,
-        entry: RUNTIME_ENTRY,
-        config,
-        enable: true,
-      })
-      await resolveManager({ hostResult, directory: state.pluginDirectory, config })
-      installedPlugin = true
-    } catch (error) {
-      // Keep the file-backed state; the following synchronizeInjectionState
-      // decides whether the plugin is still injected and disables it if not.
-      state.lastError = safeError(error)
-      state.lastErrorCode = 'linux-runtime-reactivate-failed'
-      await save()
-    }
-  }
-
   async function load() {
     await mkdir(root, { recursive: true })
     await mkdir(cacheRoot, { recursive: true })
@@ -531,7 +497,6 @@ export function createMobileBootstrap(options = {}) {
       await save()
     }
     await updateMobileVersion()
-    await reactivateInstalledRuntime()
     await synchronizeInjectionState()
   }
 

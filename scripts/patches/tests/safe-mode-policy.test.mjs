@@ -35,7 +35,7 @@ const vendorPolicies = await Promise.all(vendorCores.map(async (path) => ({
   filter: (await import(pathToFileURL(path).href)).safeModeFilterInserts,
 })))
 const hardEntries = [
-  { id: 'mobile-hard', name: '@dsh-android/dsh-shell-linux' },
+  { id: 'mobile-hard', name: '@dsh-android/dsh-shell-termux' },
   { id: 'upstream-hard', name: '@deepseek-ai/dsh-shipped-core' },
   { id: 'undo', name: 'dsh-undo-savepoint' },
   { id: 'disabled-product', name: '@dsh-android/dsh-host-web-compat' },

@@ -274,7 +274,7 @@ class GuideAndConsoleBatch6Test {
       "引擎启动失败的标题同样",
       flow.contains("\"引擎启动失败（\" + diagnosticsLocationHint(dir) + \"）\""),
     )
-    assertTrue("标题只说事实", flow.contains("\"Linux 环境准备失败\""))
+    assertTrue("标题只说事实", flow.contains("GuidePhase.Error,\n                \"运行时更新失败\",") || flow.contains("\"运行时更新失败\","))
     assertTrue("路径挪到副文案", flow.contains("diagnosticsLocationHint(dir) + \"。可复制该路径或打开控制台查看 engine.log。\""))
   }
 
@@ -427,7 +427,7 @@ class GuideAndConsoleBatch6Test {
     assertFalse("调用线程不得创建进程", start.contains("ProcessBuilder"))
     val worker = session.substringAfter("private fun startProcess")
     assertTrue("文件系统、环境与进程启动都归 worker 执行", worker.contains("EngineManager(context") &&
-      worker.contains("LinuxGuestBoot.command(") && worker.contains("ProcessBuilder(spec.argv)"))
+      worker.contains("shellEnv()") && worker.contains("build(argv).start()"))
     assertTrue("状态锁必须覆盖代次检查与回调投递", session.contains(
       "private fun notifyIfCurrent(gen: Int, callback: () -> Unit): Boolean = synchronized(stateLock)",
     ))

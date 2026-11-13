@@ -1,6 +1,6 @@
 # check-snapshot-asset.ps1 — 发布快照资产一致性门禁（0.13.2 增补）
 # 背景（0.13.1 实锤教训）：Release 的 snapshot-<abi>.tar.xz 资产被误取为注入前的
-# build-snapshot 原始产物（缺 6 个注入包 + shell-linux 0.1.2 陈旧无 FENCE_KEYS），
+# build-snapshot 原始产物（缺 6 个注入包 + shell-termux 0.1.2 陈旧无 FENCE_KEYS），
 # 而 APK 内嵌的是注入后 snap-final2。铁律：发布快照资产必须与 APK 内嵌快照同源一致。
 # 用法：pwsh scripts\check-snapshot-asset.ps1 -ApkPath <apk> -SnapshotPath <xz>
 # 通过条件：APK 内嵌 assets/snapshot.tar.xz 的 sha256 == 待发布 snapshot 文件 sha256

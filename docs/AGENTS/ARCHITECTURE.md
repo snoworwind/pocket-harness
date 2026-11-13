@@ -1,12 +1,10 @@
 # ARCHITECTURE.md — 模块地图
 
-main 的构建层是 Linux engine/home/四件套链，与旧 Termux 快照编排解耦；来源、门禁及 artifact 边界见 [Linux CI](LINUX-CI.md)。
-
 第二轮授权边界：用户授予的屏幕范围、AI root 同意与开关及 su 探测状态改为壳进程内状态；敏感桥写入通过原生系统凭据确认，通知监听者只获不可变的确认界面入口。中继在创建私有后端前认证独立 relay 凭据；引擎会话鉴权仍保留。此设计不把同 uid 的任意代码执行包装成完整沙箱；兼容变化及设备待验项见 [修复账本](SECURITY-REMEDIATION-2026-10-17-R2.md)。
 
 ## 引擎私有通信边界（2026-10-17）
 
-主 WebView、原生 HTTP、控制队列与 mux → 壳进程 `EngineTransport` 独占的 loopback 3080 listener → 应用私有 `files/engine-transport/engine-private.sock` → 引擎 HTTP server。TCP 端口从初始化到壳进程退出持续保留，引擎 stop/restart 不释放；绑定失败阻断凭据出口及页面加载。每条后端连接发送字节前通过 LocalSocket 的 SO_PEERCRED 验证 app UID，证明绑定的是本应用的安全主体，不能用 HTTP 状态、旧 token 日志或进程存活代替。APK 内 `engine-private-transport.cjs` 落在同一 `files/engine-transport/` 目录（该目录是客体里唯一被 bind 的应用文件目录，不再整目录绑定 `files/`），仅通过引擎 argv `--require` 注入，改写 HTTP 3080 bind，保留公开 origin/Host/服务 address；不依赖快照热推，不改上游 checkout。它不隔离已有任意代码执行能力的同 UID 插件。源码正反证与未完成的设备验收见 gotchas 坑 352。
+主 WebView、原生 HTTP、控制队列与 mux → 壳进程 `EngineTransport` 独占的 loopback 3080 listener → 应用私有 `files/engine-private.sock` → 引擎 HTTP server。TCP 端口从初始化到壳进程退出持续保留，引擎 stop/restart 不释放；绑定失败阻断凭据出口及页面加载。每条后端连接发送字节前通过 LocalSocket 的 SO_PEERCRED 验证 app UID，证明绑定的是本应用的安全主体，不能用 HTTP 状态、旧 token 日志或进程存活代替。APK 内 `engine-private-transport.cjs` 仅通过引擎 argv `--require` 注入，改写 HTTP 3080 bind，保留公开 origin/Host/服务 address；不依赖快照热推，不改上游 checkout。它不隔离已有任意代码执行能力的同 UID 插件。源码正反证与未完成的设备验收见 gotchas 坑 352。
 
 ## fx2 生命周期与恢复增量
 

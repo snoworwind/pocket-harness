@@ -64,7 +64,7 @@ node scripts/patches/apply-patches.mjs vendor --list
   `@deepseek-ai/node-addon-system/flock` 会话目录写锁，该包只发布 darwin/linux 预编译
   （optionalDependencies 无 android）→ Android 上 tryLockExclusive() 抛 ERR_FLOCK_UNSUPPORTED_PLATFORM，
   整树 boot 都进不去。口径按上游自己的 browser-worker 先例 stub 为立即成功（单进程宿主，
-  进程内写声明已排除写者），一次性告警。同包的 landlock-run 无替代（Android 走 shell-linux 写面栅栏）。
+  进程内写声明已排除写者），一次性告警。同包的 landlock-run 无替代（Android 走 shell-termux 写面栅栏）。
 - **新增 atomic-stale-lock-F4**（scope=engine）：`dsh-atomic-write.withFileLock` 的 `<file>.lock`
   走 `wx` 建立、只在 `finally` 释放——进程被硬杀（划掉应用 / OOM / force-stop / 看门狗重启）即残留，
   之后每次写该文件都等到 deadline 抛错（实测：残留 `.credentials.yaml.lock` 让 boot 直接失败）。

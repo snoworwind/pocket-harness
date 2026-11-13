@@ -775,48 +775,6 @@ test('Android install rejects an unlaunchable APK-native PRoot before downloadin
   }
 });
 
-test('Android install creates the manager data directory before probing native PRoot', async () => {
-  // A fresh install has no `files/linux-environment/runtime` yet. The probe
-  // spawns with that path as cwd, and a missing cwd surfaces as a misleading
-  // `spawn <apk native proot> ENOENT`, so the directory must exist first.
-  const dataDir = tempDir();
-  assert.equal(existsSync(dataDir), false);
-  const nativeLibraryDir = path.join(tempDir(), 'native-libs');
-  await mkdir(nativeLibraryDir, { recursive: true });
-  for (const name of ['libpocketharness_proot.so', 'libpocketharness_proot_loader.so', 'libtalloc.so', 'libandroid-shmem.so']) {
-    await writeFile(path.join(nativeLibraryDir, name), 'test native executable');
-    await chmod(path.join(nativeLibraryDir, name), 0o755);
-  }
-  const fixture = makeManifest();
-  const keys = ['DSH_FILES_DIR', 'DSH_LINUX_NATIVE_LIBRARY_DIR', 'ANDROID_ROOT'];
-  const previous = Object.fromEntries(keys.map(key => [key, process.env[key]]));
-  process.env.DSH_FILES_DIR = dataDir;
-  process.env.DSH_LINUX_NATIVE_LIBRARY_DIR = nativeLibraryDir;
-  process.env.ANDROID_ROOT = '/system';
-  const probeCwds = [];
-  try {
-    const { manager, runner } = makeManager(fixture, {
-      dataDir,
-      allowedHostPaths: [path.join(dataDir, 'workspaces')],
-      runnerOptions: {
-        onRun: spec => {
-          if (spec.args?.length === 1 && spec.args[0] === '--version') probeCwds.push({ cwd: spec.cwd, existed: existsSync(spec.cwd) });
-        },
-      },
-    });
-    await manager.install(fixture.manifest);
-    assert.equal(probeCwds.length >= 1, true);
-    assert.equal(probeCwds[0].cwd, dataDir);
-    assert.equal(probeCwds.every(entry => entry.existed), true);
-    assert.equal(runner.calls.length > 0, true);
-  } finally {
-    for (const [key, value] of Object.entries(previous)) {
-      if (value === undefined) delete process.env[key];
-      else process.env[key] = value;
-    }
-  }
-});
-
 test('Android install accepts Termux PRoot banner when it reports the pinned version', async () => {
   const dataDir = tempDir();
   const fixture = makeManifest();
@@ -1047,41 +1005,3 @@ test('manifest validation rejects unsafe assets and unsupported selections', () 
   assert.throws(() => selectRuntime(fixture.manifest, 'debian-minimal', 'x64'), /not present in the manifest/);
   assert.throws(() => validateAsset({ url: fixture.manifest.runtimes[0].rootfsAsset.url, sha256: 'a'.repeat(64), size: 0, unpackedSize: 1 }), /size/);
 });
-
-// ── linux_bash tool registration ───────────────────────────────────────────────
-// `tools.register` takes compiled JSON Schemas. The engine's
-// `assertSupportedJsonSchema` rejects the authoring-only `required: true`
-// annotation, and a rejected registration used to be swallowed, so the tool was
-// silently absent while status still reported the runtime as enabled.
-const SUPPORTED_SCHEMA_KEYWORDS = new Set([
-  'type', 'oneOf', 'properties', 'required', 'additionalProperties',
-  'items', 'enum', 'const', 'description', 'title', 'default', 'examples',
-])
-
-function assertEngineSchema(schema, path = 'schema') {
-  assert.equal(typeof schema, 'object', `${path} must be an object`)
-  for (const key of Object.keys(schema)) {
-    assert.equal(SUPPORTED_SCHEMA_KEYWORDS.has(key), true, `${path}.${key} is not a supported keyword`)
-  }
-  if (schema.required !== undefined) {
-    assert.equal(Array.isArray(schema.required), true, `${path}.required must be an array of property names`)
-    for (const name of schema.required) assert.equal(typeof name, 'string', `${path}.required entries must be strings`)
-    assert.equal(schema.type, 'object', `${path}.required is only allowed on an object schema`)
-    for (const name of schema.required) assert.ok(name in (schema.properties ?? {}), `${path}.required names unknown property ${name}`)
-  }
-  if (schema.properties !== undefined) {
-    assert.equal(Array.isArray(schema.properties), false, `${path}.properties must be a map`)
-    for (const [name, child] of Object.entries(schema.properties)) assertEngineSchema(child, `${path}.properties.${name}`)
-  }
-  if (schema.items !== undefined) assertEngineSchema(schema.items, `${path}.items`)
-  if (schema.oneOf !== undefined) schema.oneOf.forEach((child, index) => assertEngineSchema(child, `${path}.oneOf[${index}]`))
-}
-
-test('offline runtime helpers cannot register the retired linux_bash tool', async () => {
-  const exports = await import('../lib/index.js')
-  assert.equal(exports.registerLinuxBash, undefined)
-  const registered = []
-  const manager = { dispose: async () => {} }
-  applyRuntime({ tools: { register: definition => { registered.push(definition) } }, provide() {} }, { manager })
-  assert.deepEqual(registered, [])
-})

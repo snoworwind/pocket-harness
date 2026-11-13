@@ -9,17 +9,12 @@ import tempfile
 import zipfile
 
 
-ABI_DIRS = {'arm64': 'arm64-v8a', 'x86_64': 'x86_64'}
-
-
-def expected_members(abi):
-    directory = f"lib/{ABI_DIRS[abi]}/"
-    return (
-        directory + 'libpocketharness_proot.so',
-        directory + 'libpocketharness_proot_loader.so',
-        directory + 'libtalloc.so',
-        directory + 'libandroid-shmem.so',
-    )
+EXPECTED = (
+    'lib/arm64-v8a/libpocketharness_proot.so',
+    'lib/arm64-v8a/libpocketharness_proot_loader.so',
+    'lib/arm64-v8a/libtalloc.so',
+    'lib/arm64-v8a/libandroid-shmem.so',
+)
 MAX_LIBRARY_BYTES = 64 * 1024 * 1024
 
 
@@ -42,38 +37,29 @@ def digest(path):
     return size, value.hexdigest()
 
 
-def verify(apk, native_library_root, license_root, provenance_path, abi=None):
-    abi = abi or os.environ.get('DSH_ABI', 'arm64')
-    if abi not in ABI_DIRS:
-        fail(f'unsupported ABI: {abi}')
-    members = expected_members(abi)
+def verify(apk, native_library_root, license_root, provenance_path):
     if os.path.islink(provenance_path) or not os.path.isfile(provenance_path):
         fail('Linux backend provenance must be a regular file')
     with open(provenance_path, 'r', encoding='utf-8') as stream:
         provenance = json.load(stream)
-    if provenance.get('schemaVersion') == 2:
-        from proot_source_provenance import verify_backend
-        verify_backend(provenance_path)
-        if provenance.get('architecture') != abi:
-            fail('source backend ABI does not match the APK target')
-    elif provenance.get('schemaVersion') != 1 or provenance.get('target') != 'proot':
+    if provenance.get('schemaVersion') != 1 or provenance.get('target') != 'proot':
         fail('Linux backend provenance has an unsupported schema or target')
     library_records = provenance.get('nativeLibraries')
     if not isinstance(library_records, list):
         fail('Linux backend provenance has no native library records')
     recorded_libraries = {item.get('name'): item for item in library_records if isinstance(item, dict)}
-    expected_names = {member.rsplit('/', 1)[1] for member in members}
+    expected_names = {member.rsplit('/', 1)[1] for member in EXPECTED}
     if len(recorded_libraries) != len(library_records) or set(recorded_libraries) != expected_names:
         fail('Linux backend provenance native library set is not exact')
 
     native_library_root = os.path.abspath(native_library_root)
     if os.path.islink(native_library_root) or not os.path.isdir(native_library_root):
         fail('native library root must be a real directory')
-    source_root = os.path.join(native_library_root, ABI_DIRS[abi])
+    source_root = os.path.join(native_library_root, 'arm64-v8a')
     if os.path.islink(source_root) or not os.path.isdir(source_root):
-        fail(f'{ABI_DIRS[abi]} native library directory must be a real directory')
+        fail('ARM64 native library directory must be a real directory')
     expected = {}
-    for member in members:
+    for member in EXPECTED:
         name = member.rsplit('/', 1)[1]
         source = os.path.join(source_root, name)
         if not os.path.isfile(source) or os.path.islink(source) or not os.access(source, os.X_OK):
@@ -81,7 +67,7 @@ def verify(apk, native_library_root, license_root, provenance_path, abi=None):
         source_hash = digest(source)
         recorded = recorded_libraries[name]
         if (recorded.get('size'), recorded.get('sha256')) != source_hash:
-            fail(f'source library differs from backend provenance: {name}')
+            fail(f'source library differs from Termux provenance: {name}')
         expected[member] = source_hash
 
     if os.path.islink(license_root) or not os.path.isdir(license_root):
@@ -117,7 +103,7 @@ def verify(apk, native_library_root, license_root, provenance_path, abi=None):
         for member, value in expected_licenses.items()
     }
     if recorded_licenses != source_licenses:
-        fail('Linux native license files differ from backend provenance')
+        fail('Linux native license files differ from Termux provenance')
 
     try:
         with zipfile.ZipFile(apk, 'r') as archive:
@@ -166,14 +152,13 @@ def verify(apk, native_library_root, license_root, provenance_path, abi=None):
     return expected
 
 
-def self_test_abi(abi):
-    members = expected_members(abi)
+def self_test():
     with tempfile.TemporaryDirectory(prefix='linux-native-apk-') as temporary:
-        source_root = os.path.join(temporary, 'native-libs', ABI_DIRS[abi])
+        source_root = os.path.join(temporary, 'native-libs', 'arm64-v8a')
         os.makedirs(source_root)
         source_files = [
             os.path.join(source_root, member.rsplit('/', 1)[1])
-            for member in members
+            for member in EXPECTED
         ]
         for index, source in enumerate(source_files):
             with open(source, 'wb') as stream:
@@ -200,38 +185,38 @@ def self_test_abi(abi):
             json.dump(provenance, stream)
         apk = os.path.join(temporary, 'fixture.apk')
         with zipfile.ZipFile(apk, 'w', compression=zipfile.ZIP_DEFLATED) as archive:
-            for member, source in zip(members, source_files):
+            for member, source in zip(EXPECTED, source_files):
                 archive.write(source, member)
             archive.write(os.path.join(licenses, 'proot', 'copyright'), 'assets/licenses/linux-native/proot/copyright')
-        verify(apk, os.path.join(temporary, 'native-libs'), licenses, provenance_path, abi)
+        verify(apk, os.path.join(temporary, 'native-libs'), licenses, provenance_path)
 
         linked_native_root = os.path.join(temporary, 'native-libs-link')
         os.symlink(os.path.join(temporary, 'native-libs'), linked_native_root)
         try:
-            verify(apk, linked_native_root, licenses, provenance_path, abi)
+            verify(apk, linked_native_root, licenses, provenance_path)
         except ValueError as error:
             if 'native library root must be a real directory' not in str(error):
                 raise
         else:
             raise AssertionError('symlinked native library root was accepted')
 
-        saved_abi = os.path.join(temporary, 'native-libs', ABI_DIRS[abi] + '-real')
+        saved_abi = os.path.join(temporary, 'native-libs', 'arm64-v8a-real')
         os.rename(source_root, saved_abi)
         os.symlink(saved_abi, source_root)
         try:
-            verify(apk, os.path.join(temporary, 'native-libs'), licenses, provenance_path, abi)
+            verify(apk, os.path.join(temporary, 'native-libs'), licenses, provenance_path)
         except ValueError as error:
-            if f'{ABI_DIRS[abi]} native library directory must be a real directory' not in str(error):
+            if 'ARM64 native library directory must be a real directory' not in str(error):
                 raise
         else:
-            raise AssertionError('symlinked target native library directory was accepted')
+            raise AssertionError('symlinked ARM64 native library directory was accepted')
         os.unlink(source_root)
         os.rename(saved_abi, source_root)
 
         linked_licenses = os.path.join(temporary, 'licenses-link')
         os.symlink(licenses, linked_licenses)
         try:
-            verify(apk, os.path.join(temporary, 'native-libs'), linked_licenses, provenance_path, abi)
+            verify(apk, os.path.join(temporary, 'native-libs'), linked_licenses, provenance_path)
         except ValueError as error:
             if 'license directory is missing or unsafe' not in str(error):
                 raise
@@ -239,13 +224,13 @@ def self_test_abi(abi):
             raise AssertionError('symlinked native license root was accepted')
 
         with zipfile.ZipFile(apk, 'w', compression=zipfile.ZIP_DEFLATED) as archive:
-            for member, source in zip(members, source_files):
+            for member, source in zip(EXPECTED, source_files):
                 with open(source, 'rb') as stream:
                     payload = stream.read()
-                archive.writestr(member, payload + (b'-tampered' if member == members[0] else b''))
+                archive.writestr(member, payload + (b'-tampered' if member == EXPECTED[0] else b''))
             archive.write(os.path.join(licenses, 'proot', 'copyright'), 'assets/licenses/linux-native/proot/copyright')
         try:
-            verify(apk, os.path.join(temporary, 'native-libs'), licenses, provenance_path, abi)
+            verify(apk, os.path.join(temporary, 'native-libs'), licenses, provenance_path)
         except ValueError as error:
             if 'bytes differ' not in str(error):
                 raise
@@ -253,11 +238,11 @@ def self_test_abi(abi):
             fail('self-test accepted a modified native library')
 
         with zipfile.ZipFile(apk, 'w', compression=zipfile.ZIP_STORED) as archive:
-            for member, source in zip(members, source_files):
+            for member, source in zip(EXPECTED, source_files):
                 archive.write(source, member)
             archive.write(os.path.join(licenses, 'proot', 'copyright'), 'assets/licenses/linux-native/proot/copyright')
         try:
-            verify(apk, os.path.join(temporary, 'native-libs'), licenses, provenance_path, abi)
+            verify(apk, os.path.join(temporary, 'native-libs'), licenses, provenance_path)
         except ValueError as error:
             if 'must be compressed' not in str(error):
                 raise
@@ -265,7 +250,7 @@ def self_test_abi(abi):
             fail('self-test accepted an unextracted native library')
 
         with zipfile.ZipFile(apk, 'w', compression=zipfile.ZIP_DEFLATED) as archive:
-            for member, source in zip(members, source_files):
+            for member, source in zip(EXPECTED, source_files):
                 info = zipfile.ZipInfo(member)
                 info.create_system = 3
                 info.external_attr = (stat.S_IFLNK | 0o777) << 16
@@ -273,18 +258,13 @@ def self_test_abi(abi):
                     archive.writestr(info, stream.read())
             archive.write(os.path.join(licenses, 'proot', 'copyright'), 'assets/licenses/linux-native/proot/copyright')
         try:
-            verify(apk, os.path.join(temporary, 'native-libs'), licenses, provenance_path, abi)
+            verify(apk, os.path.join(temporary, 'native-libs'), licenses, provenance_path)
         except ValueError as error:
             if 'not a regular file' not in str(error):
                 raise
         else:
             fail('self-test accepted a symlink native library')
-    print(f'PASS Linux native APK {abi}: payload match, extraction packaging, and regular-file checks')
-
-
-def self_test():
-    for abi in ABI_DIRS:
-        self_test_abi(abi)
+    print('PASS Linux native APK: payload match, extraction packaging, and regular-file checks')
 
 
 def main():
@@ -293,7 +273,6 @@ def main():
     parser.add_argument('native_library_root', nargs='?')
     parser.add_argument('license_root', nargs='?')
     parser.add_argument('provenance', nargs='?')
-    parser.add_argument('--abi', default=os.environ.get('DSH_ABI', 'arm64'), choices=sorted(ABI_DIRS))
     parser.add_argument('--self-test', action='store_true')
     args = parser.parse_args()
     if args.self_test:
@@ -301,11 +280,11 @@ def main():
         return
     if not args.apk or not args.native_library_root or not args.license_root or not args.provenance:
         parser.error('apk, native_library_root, license_root and provenance are required')
-    verified = verify(args.apk, args.native_library_root, args.license_root, args.provenance, args.abi)
-    for name in expected_members(args.abi):
+    verified = verify(args.apk, args.native_library_root, args.license_root, args.provenance)
+    for name in EXPECTED:
         size, sha = verified[name]
         print(f'{sha} {size} {name}')
-    print(f'PASS Linux native APK: exact {args.abi} PRoot, loader, and dependency payloads')
+    print('PASS Linux native APK: exact ARM64 PRoot, loader, and dependency payloads')
 
 
 if __name__ == '__main__':

@@ -29,6 +29,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       engine: ${{ steps.classify.outputs.engine }}
+      termux: ${{ steps.classify.outputs.termux }}
       linux: ${{ steps.classify.outputs.linux }}
       plugins: ${{ steps.classify.outputs.plugins }}
       app: ${{ steps.classify.outputs.app }}
@@ -128,6 +129,8 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with: { node-version: '24' }
+      - name: 快照 profile 身份门禁自检
+        run: python3 scripts/check-snapshot-profile-identity.py --self-test
       # APK assembly/version/signature contracts are small Node-only regressions; run them on every PR
       # instead of waiting for a manual local build or the release workflow to exercise them.
       - name: APK 组装、版本与签名回归
@@ -147,21 +150,9 @@ jobs:
       - name: 撤销存档导入安全回归
         if: always()
         run: node --test vendor/dsh-undo-savepoint/test/import-plaintext.test.mjs plugins/dsh-linux-bootstrap/test/github-limits.test.mjs plugins/dsh-linux-bootstrap/test/client-http.test.mjs
-      - name: Linux 运行时契约与载荷负控
-        if: always()
-        run: |
-          node scripts/source-build/check-linux-ci.mjs --self-test
-          node scripts/source-build/check-linux-names.mjs --self-test
-          node scripts/source-build/check-linux-runtime-packages.mjs --self-test
-          node scripts/source-build/fetch-overlay-tarballs.mjs --self-test
-          python3 scripts/source-build/verify-linux-payload.py --self-test
-          node --test scripts/source-build/linux-payload.test.mjs
       - name: 来源审计源码替换回归
         if: always()
         run: |
-          python3 scripts/source-build/inventory-native-runtime.py --self-test
-          python3 scripts/source-build/build-proot-source.py --self-test
-          python3 scripts/source-build/prepare-proot-source-backend.py --self-test
           python3 -m unittest discover -s scripts/source-build -p 'test_*.py' -v
           node --test scripts/source-build/*.test.mjs
           node scripts/source-build/check-package-lock-roots.mjs
@@ -189,8 +180,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # dsh-shell-linux 是 Debian 客体 shell 适配器；linux-env 编译依赖其声明产物。
-          mapfile -t plugin_dirs < <(node -e "const {dirs}=require('./scripts/plugin-dirs.json'); console.log(dirs.filter(d=>d==='dsh-shell-linux'||d.startsWith('plugins/')).join('\n'))")
+          # termux 位于统一清单首位，linux-env 编译依赖它的 lib；各消费者复用本次产物。
+          mapfile -t plugin_dirs < <(node -e "const {dirs}=require('./scripts/plugin-dirs.json'); console.log(dirs.filter(d=>d==='dsh-shell-termux'||d.startsWith('plugins/')).join('\n'))")
           test "${#plugin_dirs[@]}" -gt 0
           for d in "${plugin_dirs[@]}"; do
             node scripts/source-build/install-project-dependencies.mjs "$d" .deploy-tmp/source-build/plugin-lock-resolution-pr.json
@@ -246,12 +237,18 @@ jobs:
           node scripts/check-manifest-hardening.mjs
           node scripts/check-bounded-io.mjs
           node scripts/check-api-route-auth.mjs
+          # 引擎堆下限双源一致性（0.14.8）：壳侧 shellEnv() 与快照内启动器必须同区间
+          node scripts/check-engine-heap-floor.mjs
       # 冷启动预算（0.14.1 块F P0-2；【0.14.1 P0-a 修复】原来写死 --self-test，使真检被结构性绕开）。
       # 改为默认档：有真产物则真检（超预算 exit 1），无产物则显式 SKIP(real-data) 后跑自证。
       # CI 无设备，故常态是 SKIP+自证——**SKIP 不等于达标**，真检由设备验收步骤驱动（--pull/--segments）。
       - name: 冷启动预算门禁（真产物优先，无产物 SKIP+自证）
         if: always()
         run: node scripts/check-boot-budget.mjs
+      # 快照构建器产出面（0.14.1 P0 反回归）：锁归档段是否还在（被删 -> 静默复用陈旧快照）。
+      - name: 快照构建器产出面门禁
+        if: always()
+        run: node scripts/check-snapshot-builder-output.mjs
       # 浏览器语法下限（0.14.1 块C G-1）：CI 无构建树 -> --self-test 四向自证（反向必红/正向必绿/
       # 载荷不触发/工具链在场且版本钉住）。
       - name: 浏览器语法下限门禁（自证）
@@ -260,8 +257,15 @@ jobs:
       # 构建并发上限（0.14.1 用户拍板系统级约束）：打包固定 8 线程、不得吃满 16 逻辑核。
       - name: 构建并发上限门禁
         if: always()
-        run: node scripts/source-build/check-linux-ci.mjs --self-test
+        run: node scripts/check-build-parallel-cap.mjs
+      # 快照指纹对账（ST-04）：净检出下 tar 被 .gitignore 忽略 → SKIP 计数（构建链以 --require 严格跑）
+      - name: 快照指纹对账门禁
+        if: always()
+        run: node scripts/check-snapshot-fingerprint.mjs
       # 接线面聚合断言（0.13.8-b FX-208.2/E2）：本仓布局下解析到同名相对路径
+      - name: 门禁接线面聚合断言
+        if: always()
+        run: node scripts/check-release-gates.mjs
       # 制度性门禁（0.13.8-b 批 B2 ST-25/26/31）：状态登记制 / 桥面对称性 / 门禁覆盖与 SKIP 纪律。
       # 三者离线可跑（不依赖快照），故在 CI 与两条构建链同源；性能度量入口在无快照时计数 SKIP。
       - name: 制度性门禁（登记制 / 桥面对称 / SKIP 纪律）
@@ -269,11 +273,12 @@ jobs:
         run: |
           node scripts/check-state-registry.mjs
           node scripts/check-bridge-symmetry.mjs
-          node scripts/source-build/check-linux-ci.mjs
+          node scripts/check-gate-skips.mjs
           node scripts/check-kotlin-comments.mjs
           # 执行地图覆盖与锚点（0.14.2 D7）：纳入聚合声明集后，apk 侧 CI 也必须有独立调用点。
           node scripts/check-code-map.mjs --self-test
           node scripts/check-code-map.mjs
+          node scripts/check-build-chain-abort.mjs
           node scripts/check-perf-instrumentation.test.mjs
           node scripts/check-perf-instrumentation.mjs
       # 模型面工具 wire 预算（0.14.0 §4.1 渐进披露）：双口径；名单从 capability-gate 导出。
@@ -289,7 +294,7 @@ jobs:
     needs: changes
     # `apk` means "this change can alter what the Kotlin tests observe", not "the build
     # system was touched". Docs, workflow-only and generic source-build changes therefore
-    # skip the compile job; app/gradle/engine/linux/plugin changes still run it.
+    # skip the compile job; app/gradle/engine/termux/linux/plugin changes still run it.
     # Fail-safe: only an explicit `false` skips compilation. If classification produced no
     # output (the `changes` job failed), run the compile gate rather than silently passing.
     if: always() && vars.PR_GATE_MODE == 'on' && needs.changes.outputs.apk != 'false'
@@ -309,7 +314,7 @@ jobs:
           yes | sudo "${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0" >/dev/null 2>&1 || true
       # Kotlin 单测门禁（0.14.1 P0：此前 CI **从不跑** testDebugUnitTest——全仓 grep 零命中）。
       # 为什么必须补：本轮全量实跑 456 例，其中契约断言（CallSiteContractTest / BootDiagnosticsContractTest
-      # / ApiLevelGuardTest / UndoGateDecisionTest / LinuxComponentTransactionTest / NotificationContractTest /
+      # / ApiLevelGuardTest / UndoGateDecisionTest / SnapshotTransactionTest / NotificationContractTest /
       # OverlayHaloInvariantTest / BootFailLogTest …）**只有在 CI 里跑起来才是防线**；否则它们只是
       # 「本地跑过」，改坏实现不会有任何拦截——与 P0-a「判据真会红但被结构性绕开」是同一形态。
       # 全量实跑（Lead 本机，同 runner 档位）：456 tests / 0 failures / 1 skipped，冷启 BUILD ~39s。
@@ -324,7 +329,11 @@ jobs:
       # 步骤（结果目录已就位）、**不传 --allow-missing**：结果缺席即判红，逐类基线只许升。
       - name: Kotlin 单测数量反回归（逐类基线 + 无缺席 + 结果新鲜）
         run: node scripts/check-kotlin-test-count.mjs
+      # 快照解码器运行时反证：CI 净检出没有构建好的 snapshot.tar.xz，故用合成小归档。
       # 自测调用生产同源 Java streaming probe，校验正常解码、截断/翻转必失败；另独立运行 SHA-256 指纹门禁正反例。
+      # 这只证明门禁具备判别力，不代表最终 APK 的快照已通过解码；正式资产仍由 build-apk.mjs 在组装后以 --require 检验。
+      - name: 快照解码器反证自测（合成归档）
+        run: node scripts/check-snapshot-decode.mjs --self-test-runtime
       # 测试报告留档：失败时可直接下载 HTML 报告（否则只有日志尾部行）。
       - name: 上传单测报告（失败时）
         if: failure()

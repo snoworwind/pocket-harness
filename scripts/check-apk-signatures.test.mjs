@@ -115,9 +115,7 @@ test('Pocket Harness application identity is consistent across Android, runtime 
   assert.match(strings, /<string name="app_name">Pocket Harness<\/string>/)
   assert.match(manifest, /com\.snoworwind\.pocketharness\.action\.NOTIFY_ACTION/)
   assert.match(receiver, /ACTION_NOTIFY_ACTION\s*=\s*"com\.snoworwind\.pocketharness\.action\.NOTIFY_ACTION"/)
-  // 纯 Linux 档不再注入 Termux 的 legacy data dir；身份一致性由客体 env 的版本来源守。
-  assert.match(engine, /"DSH_APP_VERSION" to BuildConfig\.VERSION_NAME/)
-  assert.doesNotMatch(engine, /TERMUX_APP__LEGACY_DATA_DIR/)
+  assert.match(engine, /TERMUX_APP__LEGACY_DATA_DIR" to "\/data\/data\/\$\{BuildConfig\.APPLICATION_ID\}"/)
   assert.match(ownership, /PACKAGE_NAME: String get\(\) = BuildConfig\.APPLICATION_ID/)
   assert.doesNotMatch(engine, /data\/data\/com\.dsharnessmobile\.shell/)
 })

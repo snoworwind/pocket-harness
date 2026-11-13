@@ -22,8 +22,8 @@ class FactoryProfilePatchTest {
     - id: bash-sandbox
       disabled: true
     - insert:
-        - id: shell-linux
-          name: '@dsh-android/dsh-shell-linux'
+        - id: shell-termux
+          name: '@dsh-android/dsh-shell-termux'
     - id: ui-layout
       disabled: true
     - insert:
@@ -37,8 +37,8 @@ class FactoryProfilePatchTest {
     - id: bash-sandbox
       disabled: true
     - insert:
-        - id: shell-linux
-          name: '@dsh-android/dsh-shell-linux'
+        - id: shell-termux
+          name: '@dsh-android/dsh-shell-termux'
     - insert:
         - id: ui-responsive
           name: '@dsh-android/dsh-client-ui-responsive'
@@ -58,7 +58,7 @@ class FactoryProfilePatchTest {
     assertTrue("必须留下可追溯的纠正说明", result.changes.any { it.contains("ui-layout") })
     // 工厂块与用户块都不受影响
     assertTrue(result.text.contains("bash-sandbox"))
-    assertTrue(result.text.contains("shell-linux"))
+    assertTrue(result.text.contains("shell-termux"))
     assertTrue(result.text.contains("ui-responsive"))
   }
 
@@ -116,7 +116,7 @@ class FactoryProfilePatchTest {
     val result = FactoryProfilePatch.merge(live, currentFactory)
 
     assertTrue("工厂缺失块照旧追加（#167 语义不回归）", result.text.contains("android-manage"))
-    assertTrue(result.text.contains("shell-linux"))
+    assertTrue(result.text.contains("shell-termux"))
     assertFalse(result.text.contains("ui-layout"))
   }
 
@@ -306,15 +306,15 @@ class FactoryProfilePatchTest {
   fun p1_partialInsertGroupStillReceivesTheMissingSibling() {
     val factory = """
       - insert:
-          - id: shell-linux
-            name: '@dsh-android/dsh-shell-linux'
+          - id: shell-termux
+            name: '@dsh-android/dsh-shell-termux'
           - id: host-web-compat
             name: '@dsh-android/dsh-host-web-compat'
     """.trimIndent() + "\n"
     val live = """
       - insert:
-          - id: shell-linux
-            name: '@dsh-android/dsh-shell-linux'
+          - id: shell-termux
+            name: '@dsh-android/dsh-shell-termux'
             config:
               writeMode: workspace-write
     """.trimIndent() + "\n"
@@ -336,8 +336,8 @@ class FactoryProfilePatchTest {
   fun p1_missingSiblingIsAppendedWhenOnlyTheSecondChildIsPresent() {
     val factory = """
       - insert:
-          - id: shell-linux
-            name: '@dsh-android/dsh-shell-linux'
+          - id: shell-termux
+            name: '@dsh-android/dsh-shell-termux'
           - id: host-web-compat
             name: '@dsh-android/dsh-host-web-compat'
     """.trimIndent() + "\n"
@@ -349,11 +349,11 @@ class FactoryProfilePatchTest {
 
     val result = FactoryProfilePatch.merge(live, factory)
 
-    assertTrue("P-1：组首子条目缺席时也必须补", result.text.contains("id: shell-linux"))
+    assertTrue("P-1：组首子条目缺席时也必须补", result.text.contains("id: shell-termux"))
     val block = FactoryProfilePatch.topLevelBlocks(result.text).first { it.startsWith("- insert:") }
     assertEquals(
       "补进来的条目必须落在同一个组里（顺序 = 组首缺席项先补）",
-      listOf("shell-linux", "host-web-compat"),
+      listOf("shell-termux", "host-web-compat"),
       FactoryProfilePatch.blockIds(block),
     )
   }
@@ -363,7 +363,7 @@ class FactoryProfilePatchTest {
    * **该子条目自己**那一行上。
    *
    * 旧实现按「块」纠正 ⇒ 把 disabled 插到**组首子条目**之后，目标子条目一字未动
-   * （设备实读复现：声明纠正 `host-web-compat`，实际改的是 `shell-linux`）。
+   * （设备实读复现：声明纠正 `host-web-compat`，实际改的是 `shell-termux`）。
    */
   @Test
   fun p2_disabledCorrectionLandsOnTheTargetChildNotTheGroupHead() {
@@ -373,8 +373,8 @@ class FactoryProfilePatchTest {
     """.trimIndent() + "\n"
     val live = """
       - insert:
-          - id: shell-linux
-            name: '@dsh-android/dsh-shell-linux'
+          - id: shell-termux
+            name: '@dsh-android/dsh-shell-termux'
           - id: host-web-compat
             name: '@dsh-android/dsh-host-web-compat'
     """.trimIndent() + "\n"
@@ -382,7 +382,7 @@ class FactoryProfilePatchTest {
     val result = FactoryProfilePatch.merge(live, factory)
 
     val lines = result.text.lines()
-    val shellAt = lines.indexOfFirst { it.trim() == "- id: shell-linux" }
+    val shellAt = lines.indexOfFirst { it.trim() == "- id: shell-termux" }
     val siblingAt = lines.indexOfFirst { it.trim() == "- id: host-web-compat" }
     val disabledAt = lines.indexOfFirst { it.trim() == "disabled: true" }
     assertTrue("两个子条目都必须在场", shellAt >= 0 && siblingAt >= 0)
@@ -428,7 +428,7 @@ class FactoryProfilePatchTest {
   /** live 为显式空序列 `[]`（3 字节、非空）时必须按「空」处理并落工厂件（旧实现阻断全部追加）。 */
   @Test
   fun emptySequenceLiveStillReceivesTheFactoryFile() {
-    val factory = "- id: bash-sandbox\n  disabled: true\n- insert:\n    - id: shell-linux\n      name: '@dsh-android/dsh-shell-linux'\n"
+    val factory = "- id: bash-sandbox\n  disabled: true\n- insert:\n    - id: shell-termux\n      name: '@dsh-android/dsh-shell-termux'\n"
 
     val result = FactoryProfilePatch.merge("[]\n", factory)
 
@@ -445,7 +445,7 @@ class FactoryProfilePatchTest {
     assertEquals(listOf("first-row"), FactoryProfilePatch.blockIds(blocks[0]))
     assertEquals(listOf("second-row"), FactoryProfilePatch.blockIds(blocks[1]))
 
-    val tabbed = "- insert:\n\t- id: tabbed-child\n\t  name: '@dsh-android/dsh-shell-linux'\n"
+    val tabbed = "- insert:\n\t- id: tabbed-child\n\t  name: '@dsh-android/dsh-shell-termux'\n"
     assertEquals(
       "tab 缩进的子条目仍是条目（不是顶层项）",
       listOf("tabbed-child"),
@@ -499,7 +499,7 @@ class FactoryProfilePatchTest {
    * 真实工厂件（本仓镜像 `scripts/profile-web.cordis.patch.yml`）的**逐字节自一致**：
    * 零改动必须零重写。这是 D10 重写「块级 → 条目级」后最容易回归的性质——全文重建一旦漏字节，
    * 每次快照刷新都会无谓重写 patch（并可能把 CRLF/LF 与尾行吃掉）。
-   * 同时锁定工厂件的结构事实（26 个顶层条目；唯一多子条目组 = shell-linux + host-web-compat），
+   * 同时锁定工厂件的结构事实（26 个顶层条目；唯一多子条目组 = shell-termux + host-web-compat），
    * 该事实是 P-1/P-2 触发的唯一靶子；工厂变了这里必须先红。
    * 条目数自 20 增至 22 是 0.14.2-fx-1 的产品改动：新增 `ptc-runtime` 行把 PTC 代码执行的
    * `nodeExecutable` 钉死——linker64 回落会把 process.execPath 污染成 linker64，堆参数被当成程序路径。
@@ -529,11 +529,10 @@ class FactoryProfilePatchTest {
     val blocks = FactoryProfilePatch.topLevelBlocks(text)
     // 29 = 28 个顶层条目（rc.1 增加 fs observation；Web Fetch 保持上游默认；0.15.2 增加 ui-sidebar-terminal 禁用）+ 1 个注释头块。
     // 历史锚点：0.14.2 时代 20 个条目 ⇒ 21 块，正是本断言当时的期望值。
-    assertTrue("工厂件必须包含配置块", blocks.isNotEmpty())
-    assertFalse("第二套 Linux bootstrap 已退役", blocks.any { FactoryProfilePatch.blockIds(it).contains("linux-bootstrap") })
+    assertEquals("顶层条目数（工厂件结构改变时同步本断言）", 29, blocks.size)
     val groups = blocks.map { FactoryProfilePatch.blockIds(it) }.filter { it.size > 1 }
-    assertEquals("唯一多子条目组 = shell-linux + host-web-compat", 1, groups.size)
-    assertEquals(listOf("shell-linux", "host-web-compat"), groups.single())
+    assertEquals("唯一多子条目组 = shell-termux + host-web-compat", 1, groups.size)
+    assertEquals(listOf("shell-termux", "host-web-compat"), groups.single())
   }
 
   /**
@@ -541,7 +540,7 @@ class FactoryProfilePatchTest {
    * （设备上真实发生过的「同一组里少一个插件」形态），merge 必须把它补回**同一个** insert 组，
    * 且其余顶层块一字不动。
    *
-   * 旧实现在这里 @BQ@changes=0@BQ@ 且零日志：工厂件里 @BQ@shell-linux@BQ@ 已让该块被判定「存在」。
+   * 旧实现在这里 @BQ@changes=0@BQ@ 且零日志：工厂件里 @BQ@shell-termux@BQ@ 已让该块被判定「存在」。
    */
   @Test
   fun realFactoryMissingSiblingIsRestoredIntoItsOwnGroup() {
@@ -560,11 +559,11 @@ class FactoryProfilePatchTest {
     val result = FactoryProfilePatch.merge(live, factory)
 
     assertTrue("D10：缺失的组内兄弟必须被补回", result.text.contains("id: host-web-compat"))
-    assertTrue("补回的是同一个组（shell-linux 仍是组首）", result.text.contains("id: shell-linux"))
-    assertEquals("顶层条目数不变（补进组内，不是追加成新块）", FactoryProfilePatch.topLevelBlocks(factory).size, FactoryProfilePatch.topLevelBlocks(result.text).size)
+    assertTrue("补回的是同一个组（shell-termux 仍是组首）", result.text.contains("id: shell-termux"))
+    assertEquals("顶层条目数不变（补进组内，不是追加成新块）", 29, FactoryProfilePatch.topLevelBlocks(result.text).size)
     val group = FactoryProfilePatch.topLevelBlocks(result.text)
-      .first { FactoryProfilePatch.blockIds(it).contains("shell-linux") }
-    assertEquals(listOf("shell-linux", "host-web-compat"), FactoryProfilePatch.blockIds(group))
+      .first { FactoryProfilePatch.blockIds(it).contains("shell-termux") }
+    assertEquals(listOf("shell-termux", "host-web-compat"), FactoryProfilePatch.blockIds(group))
     assertTrue("改动必须有可追溯说明（旧实现零日志）", result.changes.any { it.contains("host-web-compat") })
 
     // 再次合并必须稳定（幂等），否则每次快照刷新都会重写 patch。
@@ -588,8 +587,8 @@ class FactoryProfilePatchTest {
             provider: xiaomimimo
             model: mimo-v2.5
     - insert:
-        - id: shell-linux
-          name: '@dsh-android/dsh-shell-linux'
+        - id: shell-termux
+          name: '@dsh-android/dsh-shell-termux'
   """.trimIndent() + "\n"
 
   /** 新形态（工厂件；就地覆盖 config，不再 disable / 不再换 id）。 */
@@ -599,8 +598,8 @@ class FactoryProfilePatchTest {
         provider: deepseek-official
         model: deepseek-v4-flash
     - insert:
-        - id: shell-linux
-          name: '@dsh-android/dsh-shell-linux'
+        - id: shell-termux
+          name: '@dsh-android/dsh-shell-termux'
   """.trimIndent() + "\n"
 
   /** 正例（判据本体）：旧形态必须迁成新形态，且**用户值一字不差保留**。 */
@@ -615,7 +614,7 @@ class FactoryProfilePatchTest {
     assertTrue("用户 provider 必须逐字保留", result.text.contains("provider: xiaomimimo"))
     assertTrue("用户 model 必须逐字保留", result.text.contains("model: mimo-v2.5"))
     assertFalse("不得保留工厂 pin 的 provider", result.text.contains("provider: deepseek-official"))
-    assertTrue("无关的工厂/用户块不得受影响", result.text.contains("shell-linux"))
+    assertTrue("无关的工厂/用户块不得受影响", result.text.contains("shell-termux"))
     assertTrue("必须留下可追溯说明", result.changes.any { it.contains("归一") })
   }
 
@@ -646,8 +645,8 @@ class FactoryProfilePatchTest {
           provider: xiaomimimo
           model: mimo-v2.5
       - insert:
-          - id: shell-linux
-            name: '@dsh-android/dsh-shell-linux'
+          - id: shell-termux
+            name: '@dsh-android/dsh-shell-termux'
     """.trimIndent() + "\n"
     val result = FactoryProfilePatch.normalizeLegacyAgentDefaultModel(alreadyNew)
     assertEquals("已归一形态不得被再改", alreadyNew, result.text)
@@ -697,8 +696,8 @@ class FactoryProfilePatchTest {
           provider: xiaomimimo
           model: mimo-v2.5
       - insert:
-          - id: shell-linux
-            name: '@dsh-android/dsh-shell-linux'
+          - id: shell-termux
+            name: '@dsh-android/dsh-shell-termux'
     """.trimIndent() + "\n"
     assertEquals(
       "合法结果必须通过校验",
@@ -718,8 +717,8 @@ class FactoryProfilePatchTest {
         config:
           provider: xiaomimimo
       - insert:
-          - id: shell-linux
-            name: '@dsh-android/dsh-shell-linux'
+          - id: shell-termux
+            name: '@dsh-android/dsh-shell-termux'
     """.trimIndent() + "\n"
     val why = FactoryProfilePatch.verifyNormalization(legacySinglePointLive, lostModel)
     assertTrue("漏搬 model 必须被判红，实得: " + why, why != null)
@@ -740,8 +739,8 @@ class FactoryProfilePatchTest {
           - id: agent-default-model-mobile
             name: '@deepseek-ai/dsh-agent-default-model'
       - insert:
-          - id: shell-linux
-            name: '@dsh-android/dsh-shell-linux'
+          - id: shell-termux
+            name: '@dsh-android/dsh-shell-termux'
     """.trimIndent() + "\n"
     val why = FactoryProfilePatch.verifyNormalization(legacySinglePointLive, keptMobile)
     assertTrue("残留 -mobile 必须被判红，实得: " + why, why != null)
@@ -757,8 +756,8 @@ class FactoryProfilePatchTest {
           provider: xiaomimimo
           model: mimo-v2.5
       - insert:
-          - id: shell-linux
-            name: '@dsh-android/dsh-shell-linux'
+          - id: shell-termux
+            name: '@dsh-android/dsh-shell-termux'
     """.trimIndent() + "\n"
     val why = FactoryProfilePatch.verifyNormalization(legacySinglePointLive, stillDisabled)
     assertTrue("残留 disabled 必须被判红，实得: " + why, why != null)

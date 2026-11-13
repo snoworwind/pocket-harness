@@ -7,11 +7,7 @@
  *  - 颜色统一转 RGB；DEFAULT 用 0xFFFFFFFF 作为哨兵，由 Kotlin 侧映射主题色。
  * 详细方案见 docs/AGENTS/NATIVE-TERMINAL-2026-11-10.md。
  */
-#define _GNU_SOURCE
 #include <jni.h>
-#include <errno.h>
-#include <fcntl.h>
-#include <unistd.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -258,43 +254,4 @@ Java_com_snoworwind_pocketharness_TerminalNative_nativeCellBytes(JNIEnv *env, jo
   (void)env;
   (void)self;
   return DSH_CELL_BYTES;
-}
-
-/* Read through O_DIRECT into an aligned buffer. Unsupported providers fail closed.
- * The descriptor belongs to this export only; restore flags before returning. */
-JNIEXPORT jint JNICALL
-Java_com_snoworwind_pocketharness_TerminalNative_nativeReadDirect(
-    JNIEnv *env, jobject self, jint fd, jlong offset, jbyteArray output) {
-  (void)self;
-  const size_t block = 1024 * 1024;
-  if (offset < 0 || offset % 4096 != 0 || (*env)->GetArrayLength(env, output) != (jsize)block) {
-    (*env)->ThrowNew(env, (*env)->FindClass(env, "java/io/IOException"), "Invalid direct read buffer or offset");
-    return -1;
-  }
-  void *buffer = NULL;
-  int flags = fcntl(fd, F_GETFL);
-  if (flags < 0 || posix_memalign(&buffer, 4096, block) != 0) {
-    (*env)->ThrowNew(env, (*env)->FindClass(env, "java/io/IOException"), "Cannot prepare direct read");
-    return -1;
-  }
-  int set = fcntl(fd, F_SETFL, flags | O_DIRECT);
-  int direct = set < 0 ? -1 : fcntl(fd, F_GETFL);
-  if (set < 0 || direct < 0 || !(direct & O_DIRECT)) {
-    if (set >= 0) fcntl(fd, F_SETFL, flags);
-    free(buffer);
-    (*env)->ThrowNew(env, (*env)->FindClass(env, "java/io/IOException"), "Storage provider does not support O_DIRECT verification");
-    return -1;
-  }
-  ssize_t count;
-  do { count = pread(fd, buffer, block, (off_t)offset); } while (count < 0 && errno == EINTR);
-  int saved = errno;
-  int restored = fcntl(fd, F_SETFL, flags);
-  if (count < 0 || restored < 0) {
-    free(buffer);
-    (*env)->ThrowNew(env, (*env)->FindClass(env, "java/io/IOException"), count < 0 ? strerror(saved) : "Cannot restore descriptor flags");
-    return -1;
-  }
-  if (count > 0) (*env)->SetByteArrayRegion(env, output, 0, (jsize)count, (const jbyte *)buffer);
-  free(buffer);
-  return (jint)count;
 }
