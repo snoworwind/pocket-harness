@@ -61,6 +61,23 @@ internal object LinuxGuestBoot {
     return launch.copy(argv = launch.argv.take(at) + values.map { (key, value) -> "$key=$value" } + launch.argv.drop(at))
   }
 
+  /** The shell owns TCP 3080; only the managed engine gets the private Unix-socket preload. */
+  internal fun withPrivateTransport(launch: Launch, preload: File): Launch {
+    require(preload.isFile && !java.nio.file.Files.isSymbolicLink(preload.toPath())) { "missing engine transport preload" }
+    val directory = preload.parentFile!!.canonicalFile
+    require(directory.name == "engine-transport" && !java.nio.file.Files.isSymbolicLink(preload.parentFile!!.toPath())) {
+      "invalid engine transport directory"
+    }
+    val argv = launch.argv.toMutableList()
+    val boundary = argv.indexOf("/usr/bin/env")
+    require(boundary >= 0) { "missing guest environment boundary" }
+    argv.addAll(boundary, listOf("-b", "${directory.absolutePath}:${directory.absolutePath}"))
+    val node = argv.indexOf("/opt/node/bin/node")
+    require(node >= 0) { "missing guest engine Node command" }
+    argv.addAll(node + 1, listOf("--require", preload.canonicalPath))
+    return launch.copy(argv = argv)
+  }
+
   private fun validateGuestEnvironment(values: Map<String, String>) {
     require(values.keys.all { it.matches(Regex("[A-Za-z_][A-Za-z0-9_]*")) &&
       it !in setOf("LD_LIBRARY_PATH", "LD_PRELOAD") && !it.startsWith("PROOT_") && !it.startsWith("TERMUX") }) {
@@ -136,13 +153,20 @@ internal object LinuxGuestBoot {
       "PKG_CONFIG=/usr/bin/pkg-config",
     )
     val isolatedEnv = argv.indexOf("/usr/bin/env")
+    val resolver = File(paths.filesDir, "linux-resolv.conf")
+    if (java.nio.file.Files.isSymbolicLink(resolver.toPath()) || (resolver.exists() && !resolver.isFile)) {
+      return Result.Refused("linux-guest-dns-invalid", "Android DNS 状态不是普通文件")
+    }
+    // A missing publication is offline, never the resolver baked into a build host/rootfs.
+    argv.addAll(isolatedEnv, listOf("-b", "${if (resolver.isFile) resolver.canonicalPath else "/dev/null"}:/etc/resolv.conf"))
+    val bridgeBoundary = argv.indexOf("/usr/bin/env")
     val bridge = File(paths.filesDir, "audit").apply { mkdirs() }
     val selected = listOf(bridge, File(paths.filesDir, "undo-emergency.mjs"), File(paths.filesDir, "adb-keyboard-nonce"),
       File(paths.filesDir, "linux/instance.json"), File(paths.filesDir, ".linux-legacy-migration.json"),
       File(paths.filesDir, "linux-trial-result.json"))
     val binds = selected.filter { it.exists() && !java.nio.file.Files.isSymbolicLink(it.toPath()) }
       .flatMap { listOf("-b", "${it.canonicalPath}:${it.canonicalPath}") }
-    argv.addAll(isolatedEnv, binds)
+    argv.addAll(bridgeBoundary, binds)
     validateGuestEnvironment(guestEnv)
     for ((key, value) in guestEnv) argv.add("$key=$value")
     argv.addAll(resolved)

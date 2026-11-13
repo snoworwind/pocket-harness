@@ -32,7 +32,7 @@ class EngineTransportInstrumentedTest {
     EngineTransport.initialize(context)
     // More than the old 32 streaming slots: these peers never authenticate.
     val untrusted = List(40) { java.net.Socket("127.0.0.1", 3080) }
-    val file = File(context.filesDir, "engine-private.sock")
+    val file = File(EngineTransport.privateDirectory(context.filesDir), "engine-private.sock")
     file.delete()
     LocalSocket().use { bound ->
       bound.bind(LocalSocketAddress(file.absolutePath, LocalSocketAddress.Namespace.FILESYSTEM))
