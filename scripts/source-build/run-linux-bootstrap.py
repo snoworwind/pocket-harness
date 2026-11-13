@@ -41,6 +41,20 @@ def run(rootfs, executable='debootstrap', timeout_seconds=900, heartbeat_seconds
     process = subprocess.Popen(command, env=env, start_new_session=True)
     def interrupted(signum, frame):
         raise InterruptedError('Linux bootstrap interrupted')
+    def cleanup():
+        # A failed or terminated parent may leave a child ignoring TERM.
+        if process.poll() is None:
+            os.killpg(process.pid, signal.SIGTERM)
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                pass
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        process.wait()
+
     previous_term = signal.signal(signal.SIGTERM, interrupted)
     try:
         while True:
@@ -50,23 +64,13 @@ def run(rootfs, executable='debootstrap', timeout_seconds=900, heartbeat_seconds
             try:
                 status = process.wait(timeout=min(heartbeat_seconds, remaining))
                 report()
+                if status:
+                    cleanup()
                 return status
             except subprocess.TimeoutExpired:
                 report()
     except BaseException:
-        # Kill the whole private process group, including target dpkg/QEMU children.
-        if process.poll() is None:
-            os.killpg(process.pid, signal.SIGTERM)
-            try:
-                process.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                pass
-        # A terminated parent can leave a child that ignores TERM in its group.
-        try:
-            os.killpg(process.pid, signal.SIGKILL)
-        except ProcessLookupError:
-            pass
-        process.wait()
+        cleanup()
         raise
     finally:
         signal.signal(signal.SIGTERM, previous_term)

@@ -85,6 +85,26 @@ class LinuxBootstrapTest(unittest.TestCase):
                 if child.poll() is None:
                     child.terminate(); child.wait(timeout=10)
 
+    def test_failed_parent_cannot_leave_a_running_descendant(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            body = ('import os,signal,time,sys\nfrom pathlib import Path\n'
+                    'p=Path(os.environ["DEBOOTSTRAP_DIR"])/"heartbeat"\n'
+                    'if os.fork() == 0:\n'
+                    ' signal.signal(signal.SIGTERM,signal.SIG_IGN)\n'
+                    ' while True:\n  p.write_text(str(time.monotonic()))\n  time.sleep(0.01)\n'
+                    'else:\n'
+                    ' deadline=time.monotonic()+3\n'
+                    ' while not p.exists() and time.monotonic()<deadline: time.sleep(0.01)\n'
+                    ' sys.exit(7)\n')
+            target, command = self.fixture(root, body)
+            self.assertEqual(MODULE.run(target, command, 5, 0.2), 7)
+            heartbeat = target / 'debootstrap/heartbeat'
+            self.assertTrue(heartbeat.exists())
+            before = heartbeat.read_text()
+            time.sleep(0.2)
+            self.assertEqual(before, heartbeat.read_text())
+
     def test_root_and_linked_metadata_are_rejected_before_spawn(self):
         with self.assertRaisesRegex(ValueError, 'dedicated rootfs'):
             MODULE.run('/')

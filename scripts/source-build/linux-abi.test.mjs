@@ -31,4 +31,6 @@ test('asset proof and cache key include both ABI mapping implementations', () =>
   check(build, workflow)
   assert.throws(() => check(build.replace('scripts/source-build/linux-abi.py', ''), workflow))
   assert.throws(() => check(build, workflow.replaceAll("'scripts/source-build/linux-abi.*', ", '')))
+  assert.throws(() => check(build.replace('sudo python3 scripts/source-build/run-linux-bootstrap.py "$ROOTFS"', 'sudo chroot "$ROOTFS" /debootstrap/debootstrap --second-stage'), workflow))
+  assert.throws(() => check(build, workflow.replaceAll("'scripts/source-build/run-linux-bootstrap.py', ", '')))
 })

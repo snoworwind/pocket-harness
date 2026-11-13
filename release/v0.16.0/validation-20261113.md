@@ -37,3 +37,6 @@ x86 开发 run `43401048477` 在独立的原生 APK self-test 发现第二处环
 使用官方宿主 --second-stage-target 接口，本地最小 ARM64 rootfs 第二阶段 14.9 秒成功，dpkg 架构 arm64、dpkg --audit 无错误；原始 InRelease SHA-256 为源码固定的 0584fba32e13e0ab8285fb16c27adea1ec03a73669c18702821094fd6ca86675。第一阶段按相同签名快照取件/逐 deb 校验，第二阶段断网执行。本地环境为 ARM64 Mac 上的 amd64 Linux 用户环境，目标包执行环境不等同于 GitHub x86 主机上的 QEMU；完整工具集仍须来源链验证。
 
 来源链改用 run-linux-bootstrap.py 在宿主编排，保留目标 chroot 包操作；每 30 秒输出内部日志，15 分钟上限，失败/超时/取消都不打包并清理目标进程组。证据路径：.deploy-tmp/dual-abi-20261113/debootstrap-investigation/。
+
+
+本地 Linux 门禁补充：`809d927a605d` 的完整静态/脚本/插件门禁 24/24 通过，证据 `.deploy-tmp/local-gate/6e93508065d7.json` 与同名 `.log`（本轮刻意不重跑 Kotlin，输入未变，沿用 PR #321 已通过证据）。随后对“父进程失败但仍有后代”的清理作追加修正，并在 Linux 单独执行全部 7 条 bootstrap 自检通过，日志 `/tmp/pocket-bootstrap-linux-selftest.log`。未把本地最小 rootfs 或这些门禁写作最终 APK/设备通过。
