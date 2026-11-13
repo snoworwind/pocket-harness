@@ -31,6 +31,8 @@ node('source-build/materialize-dsh-pnpm-packages.mjs', engine, '.deploy-tmp/engi
 node('gen-model-catalog.mjs', '--engine-root', stage, '--out', 'plugins/dsh-model-capability/lib/catalog-snapshot.json')
 run('python3', ['scripts/source-build/inject-linux-home.py', stage])
 node('check-inject-completeness.mjs', '--tree', stage)
+// Transform only the injected home copy; checked-in vendor files remain immutable.
+node('check-browser-syntax-floor.mjs', '--degrade', '--stage', join(stage, 'home'))
 node('check-browser-syntax-floor.mjs', '--scan', stage)
 run('python3', ['scripts/source-build/check-linux-home.py', join(stage, 'home')])
 node('build-hard-manifest.mjs', '--tree', stage, '--out', join(work, 'plugin-hard-manifest.json'))

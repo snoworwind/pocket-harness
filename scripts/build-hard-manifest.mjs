@@ -18,10 +18,17 @@ class DirectoryArchive:
   def __enter__(self): return self
   def __exit__(self,*args): pass
   def getmembers(self):
-    return [self.info(p) for p in self.root.rglob('*') if p.is_file()]
+    return [self.info(p) for p in self.root.rglob('*')]
   def info(self,p):
-    member=tarfile.TarInfo(p.relative_to(self.root).as_posix()); member.size=p.stat().st_size; return member
-  def extractfile(self,member): return (self.root/member.name).open('rb')
+    member=tarfile.TarInfo(p.relative_to(self.root).as_posix())
+    if p.is_symlink(): member.type=tarfile.SYMTYPE; member.linkname=os.readlink(p)
+    elif p.is_dir(): member.type=tarfile.DIRTYPE
+    else: member.size=p.stat().st_size
+    return member
+  def extractfile(self,member):
+    path=self.root/member.name
+    path.resolve().relative_to(self.root.resolve())
+    return path.open('rb')
 archive,out=sys.argv[1:3]
 names=[]
 # Python's bundled tarfile reader is used here for Windows/portable compatibility; it scans

@@ -33,7 +33,8 @@ cpSync('.deploy-tmp/linux-payload/assets', join(assets, 'linux'), { recursive: t
 copyFileSync('.deploy-tmp/linux-payload/plugin-hard-manifest.json', join(assets, 'plugin-hard-manifest.json'))
 mkdirSync(join(assets, 'licenses'))
 for (const file of readdirSync('LICENSES')) if (file.endsWith('.txt')) copyFileSync(join('LICENSES', file), join(assets, 'licenses', file))
-copyFileSync('THIRD_PARTY_NOTICES.md', join(assets, 'licenses/THIRD_PARTY_NOTICES.md'))
+run('python3', ['scripts/source-build/write-linux-notices.py', ROOT, join(assets, 'licenses/THIRD_PARTY_NOTICES.md')])
+copyFileSync('.deploy-tmp/linux-build/provenance/debian-packages.tsv', join(assets, 'licenses/DEBIAN-PACKAGES.tsv'))
 cpSync(licenses, join(assets, 'licenses/linux-native'), { recursive: true })
 const version = /versionName\s*=\s*"([^"]+)"/.exec(readFileSync('app/build.gradle.kts', 'utf8'))?.[1]
 if (!version) throw new Error('versionName missing')

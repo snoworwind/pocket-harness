@@ -67,7 +67,7 @@ function listTree(root, prefix = '') {
   const entries = []
   for (const entry of readdirSync(root, { withFileTypes: true })) {
     const relative = prefix ? prefix + '/' + entry.name : entry.name
-    entries.push(relative)
+    entries.push(entry.isDirectory() ? relative + '/' : relative)
     if (entry.isDirectory()) entries.push(...listTree(join(root, entry.name), relative))
   }
   return entries
@@ -117,6 +117,11 @@ for (const profile of PROFILES) {
     check(profile + ' 成员集合一致: ' + src.name + '（' + src.members.size + ' 项）', missing.length === 0 && extra.length === 0,
       (missing.length ? '缺 ' + missing.length + ' 项: [' + missing.slice(0, 5).join(', ') + ']' : '')
       + (extra.length ? (missing.length ? '；' : '') + '多 ' + extra.length + ' 项: [' + extra.slice(0, 5).join(', ') + ']' : ''))
+    if (treeMode) {
+      const changed = [...src.members].filter(member => present.has(member)
+        && !readFileSync(join(dir, member)).equals(readFileSync(join(scratch, pkgBase, member))))
+      check(profile + ' 注入源码字节一致: ' + src.name, changed.length === 0, changed.slice(0, 5).join(', '))
+    }
     // B. 相对导入可解析（直击 ERR_MODULE_NOT_FOUND）
     // 只对「源包确实有、但 tar 里没有」的导入目标判红（那才是注入丢件）；源包自身就不带的
     // 目标（如 ExportResultDialog.js -> ./ExportResultDialog.module.css，源码无该 css）记为 WARN。

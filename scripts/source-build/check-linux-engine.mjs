@@ -1,8 +1,7 @@
 #!/usr/bin/env node
 // Independently replay source package payloads and patches against the Linux composition tree.
 import { createHash } from 'node:crypto'
-import { spawn, execFileSync } from 'node:child_process'
-import { createReadStream } from 'node:fs'
+import { execFileSync } from 'node:child_process'
 import {
   existsSync,
   cpSync,
@@ -25,27 +24,23 @@ import { checkPresetCarriers } from './preset-carriers.mjs'
 import { verifyPackagePayload, packagePayload } from './verify-package-payload.mjs'
 import { collectPhysicalFiles, matchesPatchTarget, enginePatchTargets, verifyCanonicalEnginePatch } from './reconcile-engine-patch-copies.mjs'
 
-const snapshotArg = process.argv[2]
-if (!snapshotArg) {
+const compositionArg = process.argv[2]
+if (!compositionArg) {
   console.error('usage: node check-linux-engine.mjs <composition-root>')
   process.exit(2)
 }
 
-const snapshot = resolve(snapshotArg)
+const composition = resolve(compositionArg)
 const sourceBuildRoot = resolve('.deploy-tmp/source-build')
 const sourceManifestPath = resolve('.deploy-tmp/engine-overlay/source-build-manifest.json')
 const reportPath = process.argv[3] ? resolve(process.argv[3]) : join(sourceBuildRoot, 'linux-engine-check.json')
 const packageCache = resolve('.deploy-tmp/engine-overlay')
-const expectedCommit = '66491b05e3f05ad35bcdd4f6cd7ed26041d9e3db'
+const contract = JSON.parse(readFileSync('scripts/contract.json', 'utf8'))
+const expectedCommit = contract.upstream.commit
 const packagePrefix = 'usr/lib/node_modules/@deepseek-ai/dsh'
 const overlayPath = join(sourceBuildRoot, 'engine-overlay.original.json')
 const overridePath = join(sourceBuildRoot, 'harness-vendor-overrides.json')
 const sha256 = (data) => createHash('sha256').update(data).digest('hex')
-async function sha256File(file) {
-  const hash = createHash('sha256')
-  for await (const chunk of createReadStream(file)) hash.update(chunk)
-  return hash.digest('hex')
-}
 const within = (root, candidate) => {
   const rel = relative(root, candidate)
   return rel === '' || (rel !== '..' && !rel.startsWith(`..${sep}`) && !isAbsolute(rel))
@@ -53,8 +48,8 @@ const within = (root, candidate) => {
 const sourceManifest = JSON.parse(readFileSync(sourceManifestPath, 'utf8'))
 if (sourceManifest.commit !== expectedCommit) throw new Error(`unexpected Harness source commit: ${sourceManifest.commit}`)
 const sourceOverlay = JSON.parse(readFileSync(overlayPath, 'utf8'))
-if (sourceOverlay.engineVersion !== '0.2.2-rc.1' || sourceOverlay.rootPackage?.version !== '0.2.2-rc.1') {
-  throw new Error('source snapshot overlay must target official 0.2.2-rc.1')
+if (sourceOverlay.engineVersion !== contract.upstream.rootVersion || sourceOverlay.rootPackage?.version !== contract.upstream.rootVersion) {
+  throw new Error('Linux engine overlay must match the pinned source contract')
 }
 const expectedPackages = new Map(Object.entries(sourceOverlay.packages ?? {}).filter(([name]) => name.startsWith('@deepseek-ai/')))
 expectedPackages.set(sourceOverlay.rootPackage.name, sourceOverlay.rootPackage.version)
@@ -82,12 +77,12 @@ for (const item of sourceManifest.packages) {
   }
 }
 
-const tempRoot = mkdtempSync(join(tmpdir(), 'dsh-source-snapshot-'))
+const tempRoot = mkdtempSync(join(tmpdir(), 'linux-source-check-'))
 try {
-  const engineRoot = join(snapshot, packagePrefix)
+  const engineRoot = join(composition, packagePrefix)
   const physicalEngineRoot = realpathSync(engineRoot)
   // Reconstruct source-owned payload from hash-bound packs, then independently replay
-  // reviewed patches. Do not use snapshot bytes as their own expected JS reference.
+  // reviewed patches. Do not use candidate bytes as their own expected JS reference.
   const referenceStage = join(tempRoot, 'reference')
   const referenceEngine = join(referenceStage, packagePrefix)
   cpSync(engineRoot, referenceEngine, { recursive: true, dereference: false, verbatimSymlinks: true })
@@ -115,12 +110,12 @@ try {
       ? engineRoot
       : join(engineRoot, 'node_modules', ...item.name.split('/'))
     const packageJson = join(packageDir, 'package.json')
-    if (!existsSync(packageJson)) throw new Error(`snapshot is missing source package ${item.name}@${item.version}`)
+    if (!existsSync(packageJson)) throw new Error(`Linux engine is missing source package ${item.name}@${item.version}`)
     const physicalPackageDir = realpathSync(packageDir)
     if (!within(physicalEngineRoot, physicalPackageDir)) throw new Error(`${item.name} link escapes the source engine tree`)
     const manifest = JSON.parse(readFileSync(packageJson, 'utf8'))
     if (manifest.name !== item.name || manifest.version !== item.version) {
-      throw new Error(`${item.name} snapshot identity mismatch: ${manifest.name}@${manifest.version}, expected ${item.version}`)
+      throw new Error(`${item.name} Linux engine identity mismatch: ${manifest.name}@${manifest.version}, expected ${item.version}`)
     }
     const archive = join(packageCache, item.file)
     if (!existsSync(archive) || sha256(readFileSync(archive)) !== item.sha256) {
@@ -207,11 +202,11 @@ try {
     if (!patch.target.startsWith(runtimePrefix)) throw new Error(`engine patch target escaped the source runtime: ${patch.target}`)
     const targetRel = patch.target.slice(runtimePrefix.length)
     const target = resolve(engineRoot, targetRel)
-    if (!within(engineRoot, target) || !existsSync(target)) throw new Error(`source snapshot patch target missing: ${patch.id}`)
+    if (!within(engineRoot, target) || !existsSync(target)) throw new Error(`Linux engine patch target missing: ${patch.id}`)
     const physicalTarget = realpathSync(target)
-    if (!within(physicalEngineRoot, physicalTarget)) throw new Error(`source snapshot patch target link escaped: ${patch.id}`)
+    if (!within(physicalEngineRoot, physicalTarget)) throw new Error(`Linux engine patch target link escaped: ${patch.id}`)
     const content = readFileSync(target, 'utf8')
-    if (!patch.verifier && !content.includes(marker)) throw new Error(`source snapshot patch marker missing: ${patch.id} (${marker})`)
+    if (!patch.verifier && !content.includes(marker)) throw new Error(`Linux engine patch marker missing: ${patch.id} (${marker})`)
     // 副本面（设备实锤，0.14.2 追版后）：pnpm 布局下同一包在上层与 `.pnpm/**` store 各有一份物理文件，
     // 引擎补丁只按顶层 target 写入 ⇒ store 副本保持原样；而运行时按依赖查找可能解析到 store 那份
     // （`node-addon-require-builtin` 就是这样 ⇒ 未打补丁 ⇒ 引擎 boot 硬崩；同批 `pi-toolcall-G2` 亦然）。
@@ -221,7 +216,7 @@ try {
     const unpatched = copies.filter((file) => !readFileSync(file).equals(canonicalBytes))
     if (unpatched.length > 0) {
       const paths = unpatched.map((file) => relative(engineRoot, file).split(sep).join('/')).sort()
-      throw new Error(`source snapshot has unpatched copies of ${patch.id}: ${paths.join(', ')}`
+      throw new Error(`Linux engine has unpatched copies of ${patch.id}: ${paths.join(', ')}`
         + '（同一补丁目标在 pnpm store 里有副本没打上 ⇒ 运行时可能加载到未打补丁的那份）')
     }
     patchChecks.push({ id: patch.id, target: patch.target, marker, physicalCopies: copies.length })
@@ -252,7 +247,7 @@ try {
   mkdirSync(sourceBuildRoot, { recursive: true })
   writeFileSync(reportPath, JSON.stringify(report, null, 2) + '\n')
   const carriers = carrierChecks.map((carrier) => `${carrier.label} ${carrier.fileCount}`).join(', ')
-  console.log(`source snapshot check passed: ${packageChecks.length} pinned packages, ${dependencyCheck.dependencyCount} dependency links, ${patchChecks.length} engine patch markers, preset carriers: ${carriers}`)
+  console.log(`Linux engine check passed: ${packageChecks.length} pinned packages, ${dependencyCheck.dependencyCount} dependency links, ${patchChecks.length} engine patch markers, preset carriers: ${carriers}`)
 } finally {
   rmSync(tempRoot, { recursive: true, force: true })
 }

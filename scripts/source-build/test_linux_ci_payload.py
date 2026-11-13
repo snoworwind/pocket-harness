@@ -17,6 +17,8 @@ def load(name, filename):
 home_check = load('linux_home', 'check-linux-home.py')
 comparison = load('linux_compare', 'compare-linux-apks.py')
 injection = load('linux_inject', 'inject-linux-home.py')
+notices = load('linux_notices', 'write-linux-notices.py')
+guest = load('linux_guest', 'check-linux-guest.py')
 
 
 class LinuxCiPayloadTest(unittest.TestCase):
@@ -72,3 +74,36 @@ executable: /data/data/com.snoworwind.pocketharness/files/usr/libexec/dsh-node
                     make(right, 'right', payload, service)
                     with self.assertRaisesRegex(ValueError, 'payload differs'):
                         comparison.compare(left, right)
+
+    def test_notices_bind_real_debian_and_harness_inventory(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            def put(name, body):
+                path = root / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(body)
+            put('.deploy-tmp/linux-build/provenance/debian-packages.tsv', 'libc6\t2.41\tglibc\t2.41\n')
+            put('scripts/source-build/linux-inputs.json', json.dumps(dict(node='24.22.0', pnpm=dict(version='11.28.5'))))
+            put('.deploy-tmp/engine-overlay/source-build-manifest.json', json.dumps(dict(commit='a'*40, packages=[dict(name='fixture', version='1')])) )
+            notices.generate(root, root / 'notices.md')
+            self.assertIn('| libc6 | 2.41 | glibc | 2.41 |', (root / 'notices.md').read_text())
+            self.assertIn('| fixture | 1 |', (root / 'notices.md').read_text())
+            put('.deploy-tmp/linux-build/provenance/debian-packages.tsv', '')
+            with self.assertRaisesRegex(ValueError, 'complete Debian'):
+                notices.generate(root, root / 'notices.md')
+
+    def test_guest_native_abi_rejects_host_or_truncated_bindings(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / 'binding.node'
+            header = bytearray(20)
+            header[:6] = b'\x7fELF\x02\x01'
+            header[18:20] = (183).to_bytes(2, 'little')
+            path.write_bytes(header)
+            guest.aarch64(path)
+            header[18:20] = (62).to_bytes(2, 'little')
+            path.write_bytes(header)
+            with self.assertRaisesRegex(ValueError, 'AArch64'):
+                guest.aarch64(path)
+            path.write_bytes(b'bad')
+            with self.assertRaisesRegex(ValueError, 'AArch64'):
+                guest.aarch64(path)

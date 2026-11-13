@@ -243,8 +243,6 @@ jobs:
           node scripts/check-manifest-hardening.mjs
           node scripts/check-bounded-io.mjs
           node scripts/check-api-route-auth.mjs
-          # 引擎堆下限双源一致性（0.14.8）：LinuxGuestBoot 与壳侧堆预算约束保持一致
-          node scripts/check-engine-heap-floor.mjs
       # 冷启动预算（0.14.1 块F P0-2；【0.14.1 P0-a 修复】原来写死 --self-test，使真检被结构性绕开）。
       # 改为默认档：有真产物则真检（超预算 exit 1），无产物则显式 SKIP(real-data) 后跑自证。
       # CI 无设备，故常态是 SKIP+自证——**SKIP 不等于达标**，真检由设备验收步骤驱动（--pull/--segments）。
@@ -259,7 +257,7 @@ jobs:
       # 构建并发上限（0.14.1 用户拍板系统级约束）：打包固定 8 线程、不得吃满 16 逻辑核。
       - name: 构建并发上限门禁
         if: always()
-        run: node scripts/check-build-parallel-cap.mjs
+        run: node scripts/source-build/check-linux-ci.mjs --self-test
       # 接线面聚合断言（0.13.8-b FX-208.2/E2）：本仓布局下解析到同名相对路径
       # 制度性门禁（0.13.8-b 批 B2 ST-25/26/31）：状态登记制 / 桥面对称性 / 门禁覆盖与 SKIP 纪律。
       # 三者离线可跑（不依赖快照），故在 CI 与两条构建链同源；性能度量入口在无快照时计数 SKIP。
@@ -273,7 +271,6 @@ jobs:
           # 执行地图覆盖与锚点（0.14.2 D7）：纳入聚合声明集后，apk 侧 CI 也必须有独立调用点。
           node scripts/check-code-map.mjs --self-test
           node scripts/check-code-map.mjs
-          node scripts/check-build-chain-abort.mjs
           node scripts/check-perf-instrumentation.test.mjs
           node scripts/check-perf-instrumentation.mjs
       # 模型面工具 wire 预算（0.14.0 §4.1 渐进披露）：双口径；名单从 capability-gate 导出。

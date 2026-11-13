@@ -3956,7 +3956,9 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
     修法：独立 Linux payload/APK 入口从固定源码 deploy 树直接装配 engine/home；目录模式复用插件
     完整性检查，独立重放来源包与补丁；最终 APK 校验四件套摘要、宿主原生库字节与三签。
     Linux 资产生产不再构建退役 bootstrap/runtime 插件，换用精确 Linux product 缓存键。
-    PR Gate 移除旧快照产出/指纹/发布接线；草稿与生产签名入口关闭。迁移表见 `LINUX-CI.md`。
+    PR Gate 移除旧快照产出/指纹/发布接线及旧 launcher 堆预算/中止判据；草稿与生产签名入口关闭。
+    许可证通知按本轮 Debian/Harness 收据生成，不沿用 Termux 清单；目录 ownership 模式保留链接类型。
+    插件目录清单保留目录尾斜杠，避免把 `lib/types/` 当多余文件；先逐字节对账，再仅对注入副本降级语法。迁移表见 `LINUX-CI.md`。
     复验：Linux CI 自检与受控负控、合成 APK 缺件/篡改/旧 snapshot/错 ABI 反例、工厂 profile
     客体路径/秘密反例及独立比较签名边界测试通过；真实云端运行结果后续追加，不代表设备验收。
 
