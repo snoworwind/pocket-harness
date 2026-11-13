@@ -443,3 +443,5 @@ ARM64 本地 Linux 来源构建使用 `node scripts/source-build/run-local-sourc
 ### Linux 双 ABI 来源构建（2026-11-13 当前候选）
 
 维护链以 [Linux CI](LINUX-CI.md) 为准：`build-apk-source` 支持 `abi=all|arm64|x86_64`，每个 ABI 独立缓存、验证、比对和签名。`release-source-draft` 请求 `abi=all` 与 `reference=true`。本地 x86 QA 也构建 Debian/Node/engine/home 四件套，不能使用旧快照兜底；只消费已提交 HEAD。当前候选尚待双 ABI 云端来源链与最终设备验证。
+
+ARM64 来源构建若停在 `Unpacking the base system...`，先区分内部元数据解析与目标包安装；现行宿主第二阶段及限时诊断见 [Linux CI](LINUX-CI.md) 与坑 708。不得直接延长 CI 超时或称其只是 QEMU 正常耗时。

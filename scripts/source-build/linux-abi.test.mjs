@@ -21,7 +21,10 @@ test('asset proof and cache key include both ABI mapping implementations', () =>
   const check = (source, ci) => {
     const proof = source.split('SOURCE_PROOF_INPUTS=(')[1].split('\n)')[0]
     for (const name of ['linux-abi.mjs', 'linux-abi.py']) assert.ok(proof.includes(`scripts/source-build/${name}`))
-    assert.equal((ci.match(/hashFiles\('scripts\/source-build\/linux-abi\.\*'/g) || []).length, 2)
+    assert.equal((ci.match(/hashFiles\('scripts\/source-build\/run-linux-bootstrap\.py', 'scripts\/source-build\/linux-abi\.\*'/g) || []).length, 2)
+    assert.ok(proof.includes('scripts/source-build/run-linux-bootstrap.py'))
+    assert.ok(source.includes('sudo python3 scripts/source-build/run-linux-bootstrap.py "$ROOTFS"'))
+    assert.ok(!source.includes('chroot "$ROOTFS" /debootstrap/debootstrap --second-stage'))
     assert.ok(source.includes('ELF_MACHINE=$(abi elfName)'))
     assert.ok(source.includes('grep -i "Machine:.*$ELF_MACHINE"'))
   }

@@ -6,7 +6,7 @@ B01 原生载荷迁移盘点：来源链从实际 APK 解出注入后快照，�
 传递；PR Gate 调 `--self-test` 并自动发现 `test_native_runtime_inventory.py`。盘点不切换启动路径，
 剩余迁移与参考项目复核见 [实施账本](NATIVE-RUNTIME-MIGRATION.md)。
 
-K11 离线 Linux 资产：`build-linux-assets.yml` → `check-linux-sources.mjs`（完整源码集合与摘要）→ `build-linux-assets.sh`（受限目录、固定输入、ARM64 编译与 QEMU 正控；固定 Debian Snapshot 的 `.deb` 下载错误时只允许经 `linux-debian-snapshot-wget.py` 回退官方同路径包，仍由已签名索引 SHA-256/size 校验）→ `package-linux-assets.py`（插件/Node 归档及本地清单）→ 私有 Actions artifact。该资产链无 APK/Release 写权限；来源构建与运行时接线及尚缺的设备证据见 [known-gaps.md](known-gaps.md)。
+K11 离线 Linux 资产：`build-linux-assets.yml` → `check-linux-sources.mjs`（完整源码集合与摘要）→ `build-linux-assets.sh`（受限目录、固定输入、目标 ABI 编译与 QEMU 正控；第二阶段由 run-linux-bootstrap.py 在宿主解析元数据、chroot 执行目标包，内部日志与超时进程组清理；固定 Debian Snapshot 的 `.deb` 下载错误时只允许经 `linux-debian-snapshot-wget.py` 回退官方同路径包，仍由已签名索引 SHA-256/size 校验）→ `package-linux-assets.py`（插件/Node 归档及本地清单）→ 私有 Actions artifact。该资产链无 APK/Release 写权限；来源构建与运行时接线及尚缺的设备证据见 [known-gaps.md](known-gaps.md)。
 
 独立检出补充（K11 构建链）：本地编排器先从原仓冻结 `DSH_SOURCE_REPOSITORY`，所有隔离阶段使用相同身份，无须为隔离目录添加远端。`scripts/source-build/local-source-workspace.test.mjs` 覆盖遗漏身份的失败与显式冻结的成功；`scripts/maintenance-inputs.mjs` 在旧 push base 不可达时扫描当前树，`scripts/tests/maintenance-inputs.test.mjs` 覆盖缺失/有效 base 和无关变更。
 
