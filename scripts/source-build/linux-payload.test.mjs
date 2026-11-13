@@ -88,3 +88,10 @@ test('Linux naming gate rejects old package, class, tool, environment and config
   const result = spawnSync(process.execPath, [join(ROOT, 'scripts/source-build/check-linux-names.mjs'), '--self-test'], { encoding: 'utf8' })
   assert.equal(result.status, 0, result.stdout + result.stderr)
 })
+
+test('runtime audit fixtures remain valid inside an x86 source-build environment', () => {
+  const result = spawnSync(process.execPath, ['--test', join(ROOT, 'scripts/source-build/linux-runtime-packages.test.mjs')], {
+    env: { ...process.env, DSH_ABI: 'x86_64' }, encoding: 'utf8',
+  })
+  assert.equal(result.status, 0, result.stdout + result.stderr)
+})

@@ -100,7 +100,7 @@ function withFixture(fn, abi = 'arm64') {
 }
 
 test('audit resolves both koffi consumers, the sharp loader and node-pty to AArch64 ELF', () => withFixture((root) => {
-  const report = checkLinuxRuntimePackages(root)
+  const report = checkLinuxRuntimePackages(root, undefined, 'arm64')
   assert.equal(report.target, 'linux-arm64-glibc')
   assert.deepEqual(report.koffi.map((item) => item.consumer), [
     '@deepseek-ai/dsh-subprocess-local',
@@ -114,34 +114,34 @@ test('audit resolves both koffi consumers, the sharp loader and node-pty to AArc
 
 test('audit rejects a host x64 koffi binding', () => withFixture((root) => {
   put(root, `${pnpm}/@koromix+koffi-linux-arm64@3.2.1/node_modules/@koromix/koffi-linux-arm64/linux_arm64/koffi.node`, x64())
-  assert.throws(() => checkLinuxRuntimePackages(root), /AArch64 ELF/)
+  assert.throws(() => checkLinuxRuntimePackages(root, undefined, 'arm64'), /AArch64 ELF/)
 }))
 
 test('audit rejects an Android koffi binding and any unreviewed native family', () => withFixture((root) => {
   const android = `${pnpm}/@koromix+koffi-android-arm64@3.2.1/node_modules/@koromix/koffi-android-arm64`
   put(root, `${android}/package.json`, JSON.stringify({ name: '@koromix/koffi-android-arm64', version: '3.2.1' }))
   put(root, `${android}/android_arm64/koffi.node`, arm64())
-  assert.throws(() => checkLinuxRuntimePackages(root), /Android koffi binding/)
+  assert.throws(() => checkLinuxRuntimePackages(root, undefined, 'arm64'), /Android koffi binding/)
   rmSync(join(root, pnpm, '@koromix+koffi-android-arm64@3.2.1'), { recursive: true, force: true })
   put(root, `${pnpm}/evil@1/node_modules/evil/evil.node`, arm64())
-  assert.throws(() => checkLinuxRuntimePackages(root), /unreviewed guest native payload/)
+  assert.throws(() => checkLinuxRuntimePackages(root, undefined, 'arm64'), /unreviewed guest native payload/)
 }))
 
 test('audit rejects a node-pty source shadow and a hijacked sharp loader', () => withFixture((root) => {
   put(root, `${pnpm}/node-pty@1.2.0-beta.15_patch_hash=fixture/node_modules/node-pty/build/Release/pty.node`, arm64())
-  assert.throws(() => checkLinuxRuntimePackages(root), /shadow binding/)
+  assert.throws(() => checkLinuxRuntimePackages(root, undefined, 'arm64'), /shadow binding/)
   rmSync(join(root, pnpm, 'node-pty@1.2.0-beta.15_patch_hash=fixture/node_modules/node-pty/build'), { recursive: true, force: true })
   put(
     root,
     `${pnpm}/@img+sharp-linux-arm64@0.35.5/node_modules/@img/sharp-linux-arm64/index.cjs`,
     "module.exports = require('./lib/not-the-binding.node');",
   )
-  assert.throws(() => checkLinuxRuntimePackages(root), /missing module|sharp binding loader/)
+  assert.throws(() => checkLinuxRuntimePackages(root, undefined, 'arm64'), /missing module|sharp binding loader/)
 }))
 
 test('audit fails closed when a koffi consumer loses its binding', () => withFixture((root) => {
   rmSync(join(root, pnpm, '@deepseek-ai+dsh-win32-process@1/node_modules/koffi'))
-  assert.throws(() => checkLinuxRuntimePackages(root), /koffi is missing/)
+  assert.throws(() => checkLinuxRuntimePackages(root, undefined, 'arm64'), /koffi is missing/)
 }))
 
 test('engine metadata gate rejects maps, tests and test directories', () => {
