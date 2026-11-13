@@ -2798,7 +2798,7 @@
       ""
     ],
     "scripts/api-route-auth-policy.json:126": [
-      "\"registration\": \"path,\","
+      "\"kind\": \"exact\","
     ],
     "scripts/build-apk-013.ps1:141": [
       "Write-Host \"== /api 路由鉴权门禁 ==\""
