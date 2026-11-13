@@ -6,6 +6,7 @@ cd "$ROOT"
 node scripts/source-build/check-linux-sources.mjs
 python3 scripts/source-build/linux-debian-snapshot-wget.py --self-test
 SOURCE_PROOF_INPUTS=(
+  scripts/source-build/run-linux-bootstrap.py scripts/source-build/test_run_linux_bootstrap.py
   scripts/source-build/linux-abi.mjs scripts/source-build/linux-abi.py
   vendor/linux-proot
   scripts/source-build/build-linux-assets.sh scripts/source-build/retry-curl.sh scripts/source-build/linux-inputs.json
@@ -130,7 +131,8 @@ cleanup_mounts() {
 trap 'cleanup_mounts || true' EXIT
 sudo mount --bind /dev "$ROOTFS/dev"
 sudo mount -t proc proc "$ROOTFS/proc"
-sudo chroot "$ROOTFS" /debootstrap/debootstrap --second-stage
+# Keep metadata parsing native; only target package commands enter the foreign chroot.
+sudo python3 scripts/source-build/run-linux-bootstrap.py "$ROOTFS"
 test "$(sudo chroot "$ROOTFS" dpkg --print-architecture)" = "$DEBIAN_ARCH"
 # A foreign bootstrap leaves some alternatives unselected (awk/vim/nc point at
 # /etc/alternatives entries that exist but have no target), so probes would report

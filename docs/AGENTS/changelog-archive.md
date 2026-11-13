@@ -3,6 +3,7 @@
 > 全部版本历史都堆在这里（AGENTS.md 不再设更新记录表）。**新条目倒序加在表格最上方**。细节写进对应详档，这里只留一行摘要。
 
 | 时间 | 版本 | 更新内容 | 更新者 |
+| 2026-11-13 | **0.16.0 Linux 双 ABI 候选** | PR [#319](https://github.com/snoworwind/pocket-harness/pull/319) 合入 Linux 双 ABI 载荷/草稿链与装配、迁移、导出完整性修复；PR [#320](https://github.com/snoworwind/pocket-harness/pull/320) 修复真实 x86 来源作业暴露的测试环境耦合。代码与 PR CI 通过，来源构建及设备层状态以 [候选验证记录](../../release/v0.16.0/validation-20261113.md) 为准；尚未公开发布。 | Codex |
 | 2026-11-12 | **0.15.2 正式发布：侧栏原生终端（ARM64 + x86_64）** | PR [#272](https://github.com/snoworwind/pocket-harness/pull/272) 引入 libvterm（MIT）+ JNI + 原生 `TerminalView` 宿主 + `termView*` 桥 + 来源链预编译 `.so`，右侧栏新增 `terminal-native` tab 并替换上游 Web 终端入口；返工修复引导卡主题/横屏（#307）、OMZ 彩色提示符 RGB→ARGB（#308），补充 Linux 缓存自证与构建缓存（#300/#306）及 apt/步骤顺序可靠性修复（#310/#311/#313）。来源 run [43071819331](https://github.com/snoworwind/pocket-harness/actions/runs/43071819331)，Release `hardening-source-da3726a8826b-43071819331-1` 已公开并设为 Latest；真机验证终端核心路径、引导卡浅色/横屏与目录蓝色。模型侧 bash/terminal 工具未改。 | DSH Agent |
 | 2026-11-12 | **Linux 实验：引擎树在客体里启动** | 新增 `package-guest-engine.py` 与构建链接线：android 树裁非 linux-arm64 变体、覆盖自编译 node-pty/flock，产出 79 MB `engine-glibc.tar.xz`；在 Debian 13 aarch64 客体中 `dsh --version` 输出 `0.2.2-rc.1`。壳侧去 Termux 待实现。 | Codex |
 | 2026-11-12 | **Linux 实验：客体 addon 源码交叉构建（选项 B 起步）** | 新增 `build-guest-addons.py`，从固定 harness 源码交叉编译 glibc/aarch64 `flock` addon 并出收据；产物在 Debian 13 aarch64 Node v24.22.0 下 `require()` 成功。尚未接入资产打包。 | Codex |

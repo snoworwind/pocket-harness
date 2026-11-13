@@ -36,3 +36,5 @@ main 的来源链生成 ARM64 与 x86_64 Linux APK 与生产签名的草稿发�
 ABI 由 `linux-abi.mjs` / `linux-abi.py` 映射到 Debian、Node、ELF、addon 与产物路径，两文件同时进入源码归档和缓存键。本地 `--abi x86_64` 同样构建 Linux 四件套，不再跳过资产阶段或回退 snapshot；本地 QA 仍不作为正式发布来源。R-07/R-17/R-18 及设备证据缺口见 known-gaps.md。
 
 历史 `check-release-gates.mjs` 的旧快照/Termux 接线断言仍可能报旧 CI 缺口，不代表当前 Linux 发布链已执行这些门禁；它不是现行产品入口。不要补回旧快照调用来制造聚合器全绿，现行接线及负控由 `check-linux-ci.mjs` 和 PR Gate 承担。
+
+Debootstrap 第二阶段在宿主通过 `run-linux-bootstrap.py` 调用官方 `--second-stage-target` 接口：元数据解析不经 QEMU，目标 dpkg 仍在 chroot；内部日志每 30 秒输出，15 分钟硬上限，超时/取消终止目标进程组且不打包。复现、环境边界与证据见坑 708。

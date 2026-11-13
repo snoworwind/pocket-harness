@@ -19,6 +19,7 @@ comparison = load('linux_compare', 'compare-linux-apks.py')
 injection = load('linux_inject', 'inject-linux-home.py')
 notices = load('linux_notices', 'write-linux-notices.py')
 guest = load('linux_guest', 'check-linux-guest.py')
+native_apk = load('linux_native_apk', 'verify-linux-native-apk.py')
 
 
 class LinuxCiPayloadTest(unittest.TestCase):
@@ -92,6 +93,26 @@ executable: /data/data/com.snoworwind.pocketharness/files/usr/libexec/dsh-node
             put('.deploy-tmp/linux-build/provenance/debian-packages.tsv', '')
             with self.assertRaisesRegex(ValueError, 'complete Debian'):
                 notices.generate(root, root / 'notices.md')
+
+    def test_native_apk_binds_source_backend_to_target_abi(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            provenance = Path(temporary) / 'provenance.json'
+            provenance.write_text(json.dumps({'schemaVersion': 2, 'architecture': 'arm64'}))
+            with patch('proot_source_provenance.verify_backend') as verify_source:
+                with self.assertRaisesRegex(ValueError, 'source backend ABI'):
+                    native_apk.verify('unused.apk', 'unused', 'unused', provenance, 'x86_64')
+                verify_source.assert_called_once_with(provenance)
+
+    def test_native_apk_self_test_ignores_ambient_target(self):
+        import subprocess
+        import os
+        import sys
+        for abi in ('arm64', 'x86_64'):
+            result = subprocess.run([sys.executable, str(Path(__file__).with_name('verify-linux-native-apk.py')), '--self-test'],
+                                    env={**os.environ, 'DSH_ABI': abi}, capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn('APK arm64:', result.stdout)
+            self.assertIn('APK x86_64:', result.stdout)
 
     def test_guest_native_abi_rejects_host_or_truncated_bindings(self):
         with tempfile.TemporaryDirectory() as temporary:

@@ -4065,3 +4065,24 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
      真因：生产门禁默认从 DSH_ABI 选目标；旧 ARM64 测试未显式传 ABI，进入 x86 作业后用 x64 判据检查 ARM64 树，负控也在到达预期判据前失败。
      修法：ARM64 夹具显式传 arm64，x64 夹具显式传 x86_64；生产默认行为不变。分别以 DSH_ABI=arm64/x86_64 跑完整来源脚本回归，确保环境不会改变夹具语义。
      复验：双环境正向 loader 与缺绑定、源码 shadow、异架构 ELF 等受控负向用例；最终来源链须重新执行，旧 run 不记为通过。
+
+
+706. **来源预检的独立 self-test 也必须覆盖两种 ABI（2026-11-13）**
+     现象：修好 Node 夹具后，x86 开发来源 run 43401048477 继续在 verify-linux-native-apk.py --self-test 拒绝 ARM64 夹具。
+     真因：Python 单测与 Node 回归没有执行这个独立 self-test；其 verify() 默认继承 DSH_ABI，而 self-test 只创建 arm64-v8a 目录。
+     修法：self-test 对 arm64/x86_64 分别建立目录、ZIP 成员和受控负向，并显式传 ABI；Python 单测在两个环境里实际调用该 CLI 防漏。
+     复验：两个 DSH_ABI 环境均验证自检的正向、篡改、压缩模式和符号链接拒绝；重跑实际来源预检，不将旧失败 run 标绿。
+
+
+707. **目标 ELF 正确不代表 addon 包身份正确（2026-11-13，双 ABI 集中复核）**
+     现象：build-guest-addons.py 已接受 x86 编译器，却仍读取 linux-arm64/package.json 并在收据声明 ARM64 包名；原生 APK 检查也未把 schema-2 后端收据架构绑定到目标 ABI。
+     真因：参数化只覆盖 ELF 校验与目录名，没有覆盖包清单、依赖 loader 与来源身份。
+     修法：按目标读取源码包清单并核对包名；构建收据与打包阶段都检查目标身份，glibc loader 白名单随 ABI 选择；最终 APK 检查要求后端 architecture 与目标一致。
+     复验：双 ABI 构建夹具、错误包身份、异架构 loader 与错后端收据负控；本地完整来源预检逐 ABI 运行后再统一发 CI。
+
+
+708. **整个 debootstrap 第二阶段进入 ARM chroot，会把全量包索引解析也交给 QEMU（2026-11-13）**
+     现象：run 43396861701 在 09:16:59 UTC 打印 Unpacking the base system 后至 09:48:34 取消没有进展输出。日志不是下载卡住：1.0.134ubuntu2 的下一步先 setup_available，再多次解析依赖；整个 shell/Perl 都在 ARM64 chroot 内。
+     真因与边界：本地同版 debootstrap/QEMU 8.2.2 对同一固定 56,162,922 字节 Packages 跑原版 STANZAS，宿主 Perl 0.43 秒、QEMU ARM64 Perl 45.91 秒，输出 SHA-256 完全相同（520d777c…）。这是显著的仿真解析开销证据，不等于单个微基准已解释 CI 的全部 31 分钟。
+     修法：使用官方 --second-stage-target 接口，在宿主运行编排/元数据解析，保留 in_target 的 chroot dpkg/维护脚本语义；run-linux-bootstrap.py 每 30 秒给出内部日志与耗时，15 分钟上限、超时或取消清理独立进程组，失败不打包。固定快照、验签、逐 deb 摘要与目标架构复核不变；helper 纳入来源证明与内容键。
+     复验：本地临时 Linux 容器使用同一固定签名 snapshot，InRelease SHA-256 与源码完全一致；最小 ARM64 rootfs 第二阶段成功，14.9 秒，已越过该位置。容器宿主为 ARM64 Mac 上的 amd64 用户环境，目标包执行不能等同于 CI x86 主机上的 QEMU，完整工具集/CI 耗时仍待来源链。单测覆盖目标/元数据绑定、错误退出、超时、忽略 TERM 的子进程及 CLI 取消；官方选项见 https://manpages.debian.org/bookworm/debootstrap/debootstrap.8.en.html 。

@@ -38,6 +38,10 @@ export const COMPONENTS = Object.freeze({
     'vendor/dshmarketplace-plugin/package.json',
   ],
   linux: [
+    'scripts/source-build/run-linux-bootstrap.py',
+    'scripts/source-build/linux-abi.mjs',
+    'scripts/source-build/linux-abi.py',
+    'scripts/source-build/build-guest-addons.py',
     'scripts/source-build/linux-inputs.json',
     'scripts/source-build/build-proot-source.py',
     'scripts/source-build/proot-source',

@@ -88,10 +88,14 @@ adb devices -l
 adb -s <serial> shell getprop ro.build.version.sdk       # 必须为 36
 adb -s <serial> shell getprop ro.product.cpu.abi         # 必须为 arm64-v8a
 
-# 1. 快照就绪：唯一完成标志 = 指纹在场且 marker 已消失；刷新期间禁跑（假失败）
-#    指纹与 marker 都在 filesDir 根（context.filesDir），不在 files/home/ 下
-adb -s <serial> exec-out run-as com.snoworwind.pocketharness ls -l files/.snapshot-fingerprint
-adb -s <serial> exec-out run-as com.snoworwind.pocketharness ls -l files/.snapshot-transaction   # 报 No such file 才是刷新已完成
+# 1. Linux 实例就绪：先等首装/升级结束，再跑设备验收；禁止装配期间杀应用。
+# files/linux/instance.json 存在，首装 files/.linux-stage 已提交消失，
+# .linux-upgrade.json / .linux-reset.json 不存在，并由应用引擎就绪状态复核。
+# debuggable 包可用 run-as；生产包在官方可 root AVD 上用 adb root 后读取相同私有路径，
+# 真机则使用应用诊断导出，不得把 run-as 权限失败当作已就绪。
+adb -s <serial> exec-out run-as com.snoworwind.pocketharness cat files/linux/instance.json
+adb -s <serial> exec-out run-as com.snoworwind.pocketharness ls -ld files/.linux-stage files/.linux-upgrade.json files/.linux-reset.json
+# 三个暂存/事务路径均应不存在；首次装配或升级进行中只观察进度，不运行验收套件。
 
 # 2. 应用在前台（后台会被 CDP 目标解析拒绝）
 adb -s <serial> shell input keyevent 3
@@ -202,7 +206,7 @@ PR 描述里贴**结论表**（每行一条用户动作）：
 
 | 陷阱 | 现象 | 处置 |
 |---|---|---|
-| 快照刷新进行中跑验收 | 页面空白/超时，一堆假失败 | 先确认 `.snapshot-transaction` 消失、指纹翻转（§3） |
+| Linux 首装/升级进行中跑验收 | 页面空白/超时，一堆假失败 | 先确认实例清单就绪、暂存和 Linux 事务已提交消失，再核对引擎就绪（§3） |
 | 只跑 CDP 就宣称功能完好 | 「DOM 全绿但用户看不到」 | 本规范第 2 节；补 B 轨 |
 | 截图代替断言 | 「看着没问题」但状态机走的是错误分支 | 补 A 轨断言 |
 | CDP target 未重建 | 断言打在旧页面上 | 每个套件单独跑 + 重解析（§5） |
