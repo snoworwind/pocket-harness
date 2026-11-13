@@ -11,7 +11,7 @@ const run = (command, args) => {
   if (result.error) throw result.error
   if (result.status !== 0) throw new Error(`${command} failed (${result.status})`)
 }
-if (process.env.DSH_ABI !== 'arm64' || process.env.DSH_LINUX_EXPERIMENT !== '1') throw new Error('explicit ARM64 Linux experiment required')
+if (process.env.DSH_ABI !== 'arm64' || process.env.DSH_LINUX_RUNTIME !== '1') throw new Error('the maintained ARM64 Linux runtime build is required')
 const assets = join(ROOT, 'app/src/main/assets')
 const native = join(ROOT, '.deploy-tmp/linux-build/native-libs')
 const licenses = join(ROOT, '.deploy-tmp/linux-build/provenance/linux-native-licenses')

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate this run's dual-ABI source artifacts and package their evidence; never rebuild APKs."""
+"""Validate this run's ARM64 Linux source release artifact and package its evidence; never rebuild APKs."""
 import hashlib
 import glob
 import json
@@ -10,14 +10,8 @@ import shutil
 import sys
 import zipfile
 
-ABIS = ('arm64', 'x86_64')
-OPTIONAL_EVIDENCE_BY_ABI = {
-    # These files are produced only by build-apk-source.yml's ARM64 Linux-asset stages.
-    'x86_64': frozenset((
-        '.deploy-tmp/source-build/linux-bundle-injection.json',
-        '.deploy-tmp/linux-build/provenance/**',
-    )),
-}
+ABIS = ('arm64',)
+OPTIONAL_EVIDENCE_BY_ABI = {}
 
 
 def digest(path):
@@ -63,10 +57,17 @@ def validate_abi(source, abi, sha, repo, server):
         raise ValueError(f'expected exactly one source {abi} APK')
     apk = apks[0]
     proof = json.loads((evidence / 'independent-rebuild-verification.json').read_text(encoding='utf-8'))
-    if (proof.get('abi') != abi or proof.get('independentRebuildMatched') is not True
-            or proof.get('normalizationVersion') != 3 or proof.get('sourceCommit') != sha
+    if (proof.get('schemaVersion') != 2 or proof.get('runtime') != 'linux-arm64-glibc'
+            or proof.get('abi') != abi or proof.get('independentRebuildMatched') is not True
+            or proof.get('sourceCommit') != sha or not re.fullmatch(r'[a-f0-9]{64}', proof.get('payloadSha256') or '')
+            or not re.fullmatch(r'[a-f0-9]{64}', proof.get('primaryApkSha256') or '')
             or proof.get('signedApkSha256') != digest(apk)):
         raise ValueError(f'{abi} independent rebuild proof does not bind the final APK')
+    # Release assets must carry the production identity, never an ephemeral build key.
+    signing = (evidence / 'signing-certificate-sha256.txt').read_text(encoding='utf-8').strip().lower()
+    pinned = (Path(__file__).resolve().parents[2] / 'keystore/pocket-harness-cert-sha256.txt').read_text(encoding='utf-8').strip().lower()
+    if signing != pinned:
+        raise ValueError(f'{abi} APK was not signed with the pinned production identity')
     expected = f'{digest(apk)}  {apk.relative_to(source).as_posix()}'
     if expected not in (evidence / 'apk-sha256.txt').read_text(encoding='utf-8').splitlines():
         raise ValueError(f'{abi} APK hash mismatch')
@@ -84,16 +85,13 @@ def prepare(source_root, output, env):
     children = list(source_root.iterdir())
     if ({child.name for child in children} != set(ABIS)
             or any(child.is_symlink() or not child.is_dir() for child in children)):
-        raise ValueError('source artifact root must contain only real arm64 and x86_64 directories')
+        raise ValueError('source artifact root must contain only a real arm64 directory')
 
     artifacts = {
         abi: validate_abi(source_root / abi, abi, sha, repo, server)
         for abi in ABIS
     }
-    apk_versions = {re.fullmatch(r'pocket-harness-(v[\w.+-]+)-source-(?:arm64|x86_64)\.apk', row[2].name)[1]
-                    for row in artifacts.values()}
-    if len(apk_versions) != 1:
-        raise ValueError('ARM64 and x86_64 APK version names do not match')
+    apk_version = re.fullmatch(r'pocket-harness-(v[\w.+-]+)-source-arm64\.apk', artifacts['arm64'][2].name)[1]
 
     # Do not overwrite a previous release preparation or accept partial output as success.
     output.mkdir(parents=True, exist_ok=False)
@@ -108,19 +106,19 @@ def prepare(source_root, output, env):
                     archive.write(path, f'{abi}/{path.relative_to(source).as_posix()}')
 
     notes = output / 'notes.md'
-    notes.write_text(f'''Dual-ABI source build for main.
+    published = Path(__file__).resolve().parents[2] / 'release' / apk_version / 'notes.md'
+    if published.is_file():
+        notes.write_text(published.read_text(encoding='utf-8'), encoding='utf-8')
+    else:
+        notes.write_text(f'''Pocket Harness {apk_version} source release (ARM64).
 
 Commit: {sha}
 Build: {server}/{repo}/actions/runs/{env['GITHUB_RUN_ID']}
 
-Draft prerelease only. Device validation has NOT been performed for this candidate.
-Includes ARM64 and x86_64 APKs, signed with the independent Pocket Harness signing identity.
-The x86_64 build currently omits offline PRoot Linux assets and the Android Canvas native runtime;
-use the ARM64 APK for those capabilities. Complete device acceptance before making this release public.
-
-APK bytes are copied unchanged from this run's independently verified source builds. provenance.zip
-contains the evidence for both ABIs under separate top-level directories; verify downloaded assets
-with SHA256SUMS.txt.
+Draft prerelease for the maintained main line. The APK is copied unchanged from this run's
+independently verified ARM64 source build and signed with the Pocket Harness production
+identity. provenance.zip contains the full evidence; verify the downloaded assets with
+SHA256SUMS.txt before installing or publishing.
 ''', encoding='utf-8')
     assets.append(notes)
     assets.append(output / 'provenance.zip')

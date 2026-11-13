@@ -1,6 +1,6 @@
 # ARCHITECTURE.md — 模块地图
 
-本实验分支的构建层已独立为 Linux engine/home/四件套链，与旧 Termux 快照编排解耦；来源、门禁及 artifact 边界见 [Linux CI](LINUX-CI.md)。
+main 的构建层是 Linux engine/home/四件套链，与旧 Termux 快照编排解耦；来源、门禁及 artifact 边界见 [Linux CI](LINUX-CI.md)。
 
 第二轮授权边界：用户授予的屏幕范围、AI root 同意与开关及 su 探测状态改为壳进程内状态；敏感桥写入通过原生系统凭据确认，通知监听者只获不可变的确认界面入口。中继在创建私有后端前认证独立 relay 凭据；引擎会话鉴权仍保留。此设计不把同 uid 的任意代码执行包装成完整沙箱；兼容变化及设备待验项见 [修复账本](SECURITY-REMEDIATION-2026-10-17-R2.md)。
 

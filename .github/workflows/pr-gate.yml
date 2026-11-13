@@ -147,7 +147,7 @@ jobs:
       - name: 撤销存档导入安全回归
         if: always()
         run: node --test vendor/dsh-undo-savepoint/test/import-plaintext.test.mjs plugins/dsh-linux-bootstrap/test/github-limits.test.mjs plugins/dsh-linux-bootstrap/test/client-http.test.mjs
-      - name: Linux 来源链契约与载荷负控
+      - name: Linux 运行时契约与载荷负控
         if: always()
         run: |
           node scripts/source-build/check-linux-ci.mjs --self-test

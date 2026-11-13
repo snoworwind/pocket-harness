@@ -224,13 +224,12 @@ export function sourceCommit(source) {
 }
 
 /** Release builds use main; local x86 QA may opt into an isolated codex/x86-* branch. */
-export function assertMaintainedSource(source, { abi = 'arm64', allowX86Qa = false, allowLinuxExperiment = false } = {}) {
+export function assertMaintainedSource(source, { abi = 'arm64', allowX86Qa = false } = {}) {
   let ref
   try { ref = git(source, 'symbolic-ref', '--quiet', 'HEAD') } catch { /* Detached input is rejected. */ }
   const isMain = ref === 'refs/heads/main'
   const isX86QaBranch = abi === 'x86_64' && allowX86Qa && /^refs\/heads\/codex\/x86-[a-z0-9-]+$/.test(ref ?? '')
-  const isLinuxExperiment = allowLinuxExperiment && abi === 'arm64' && ref === 'refs/heads/codex/linux-runtime-experiment'
-  if (!isMain && !isX86QaBranch && !isLinuxExperiment) {
+  if (!isMain && !isX86QaBranch) {
     throw new Error('来源构建仅允许 main；本地 x86 QA 还可显式使用 codex/x86-* 分支。')
   }
 }

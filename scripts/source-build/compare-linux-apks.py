@@ -33,7 +33,7 @@ def compare(primary, reference):
     if left != right:
         changed = sorted(key for key in left.keys() | right.keys() if left.get(key) != right.get(key))
         raise ValueError('independent Linux APK payload differs: ' + ', '.join(changed[:20]))
-    return dict(schemaVersion=1, runtime='linux-arm64-glibc', independentRebuildMatched=True,
+    return dict(schemaVersion=2, runtime='linux-arm64-glibc', independentRebuildMatched=True,
                 payloadSha256=hashlib.sha256(json.dumps(left, sort_keys=True).encode()).hexdigest(),
                 apkPayloadFiles=len(left))
 
@@ -50,7 +50,9 @@ def main():
     sha = os.environ.get('GITHUB_SHA', '')
     if not re.fullmatch('[a-f0-9]{40}', sha):
         parser.error('source commit is required')
-    result.update(sourceCommit=sha, abi='arm64')
+    result.update(schemaVersion=2, sourceCommit=sha, abi='arm64',
+                  primaryApkSha256=hashlib.sha256(Path(files[0][0]).read_bytes()).hexdigest(),
+                  referenceApkSha256=hashlib.sha256(Path(files[1][0]).read_bytes()).hexdigest())
     Path('.deploy-tmp/source-build/independent-rebuild-verification.json').write_text(json.dumps(result, indent=2) + '\n')
     print('Independent Linux APK payloads match: ' + result['payloadSha256'])
 

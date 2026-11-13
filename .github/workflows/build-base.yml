@@ -6,13 +6,11 @@ on:
       component: {type: choice, options: [engine], default: engine}
       ref: {type: string, default: main}
       force: {type: boolean, default: false}
-      linux_experiment: {type: boolean, default: false}
   workflow_call:
     inputs:
       component: {type: string, default: engine}
       ref: {type: string, default: main}
       force: {type: boolean, default: false}
-      linux_experiment: {type: boolean, default: false}
 
 permissions:
   contents: read
@@ -24,8 +22,6 @@ concurrency:
 jobs:
   resolve:
     runs-on: ubuntu-24.04
-    env:
-      DSH_LINUX_EXPERIMENT: ${{ inputs.linux_experiment && '1' || '0' }}
     outputs:
       key: ${{ steps.plan.outputs.key }}
       reused: ${{ steps.reuse.outputs.reused }}
@@ -35,16 +31,10 @@ jobs:
           SOURCE_REF: ${{ github.ref }}
           REQUESTED_REF: ${{ inputs.ref }}
           COMPONENT: ${{ inputs.component }}
-          LINUX_EXPERIMENT: ${{ inputs.linux_experiment }}
         run: |
           test "$COMPONENT" = engine
-          if [ "${LINUX_EXPERIMENT:-false}" = true ]; then
-            test "$SOURCE_REF" = refs/heads/codex/linux-runtime-experiment
-            case "$REQUESTED_REF" in codex/linux-runtime-experiment|refs/heads/codex/linux-runtime-experiment) ;; *) exit 1;; esac
-          else
-            test "$SOURCE_REF" = refs/heads/main
-            case "$REQUESTED_REF" in main|refs/heads/main) ;; *) exit 1;; esac
-          fi
+          test "$SOURCE_REF" = refs/heads/main
+          case "$REQUESTED_REF" in main|refs/heads/main) ;; *) exit 1;; esac
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           ref: ${{ github.sha }}
@@ -111,7 +101,7 @@ jobs:
 
   build:
     needs: resolve
-    if: needs.resolve.outputs.reused != 'true' && (github.ref == 'refs/heads/main' || inputs.linux_experiment)
+    if: needs.resolve.outputs.reused != 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     strategy:
@@ -120,7 +110,6 @@ jobs:
         replica: [primary, reference]
     env:
       BASE_REPLICA: ${{ matrix.replica }}
-      DSH_LINUX_EXPERIMENT: ${{ inputs.linux_experiment && '1' || '0' }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -188,10 +177,8 @@ jobs:
 
   compare:
     needs: [resolve, build]
-    if: needs.resolve.outputs.reused != 'true' && (github.ref == 'refs/heads/main' || inputs.linux_experiment)
+    if: needs.resolve.outputs.reused != 'true'
     runs-on: ubuntu-24.04
-    env:
-      DSH_LINUX_EXPERIMENT: ${{ inputs.linux_experiment && '1' || '0' }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:

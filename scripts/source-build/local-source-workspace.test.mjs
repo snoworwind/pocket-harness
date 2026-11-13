@@ -40,8 +40,6 @@ test('main authorizes source builds; only explicit x86 QA authorizes codex/x86 b
   assert.doesNotThrow(() => assertMaintainedSource(source, { abi: 'x86_64', allowX86Qa: true }))
   git('checkout', '-qb', 'codex/linux-runtime-experiment')
   assert.throws(() => assertMaintainedSource(source), /仅允许 main/)
-  assert.doesNotThrow(() => assertMaintainedSource(source, { allowLinuxExperiment: true }))
-  assert.throws(() => assertMaintainedSource(source, { abi: 'x86_64', allowLinuxExperiment: true }), /仅允许 main/)
 
   git('checkout', '--detach', commit)
   assert.throws(() => assertMaintainedSource(source, { abi: 'x86_64', allowX86Qa: true }), /x86 QA/)

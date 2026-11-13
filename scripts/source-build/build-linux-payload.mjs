@@ -17,7 +17,7 @@ const run = (command, args, options = {}) => {
 }
 const node = (script, ...args) => run(process.execPath, [join(ROOT, 'scripts', script), ...args])
 const digest = bytes => createHash('sha256').update(bytes).digest('hex')
-if (process.env.DSH_ABI !== 'arm64' || process.env.DSH_LINUX_EXPERIMENT !== '1') throw new Error('explicit ARM64 Linux experiment required')
+if (process.env.DSH_ABI !== 'arm64' || process.env.DSH_LINUX_RUNTIME !== '1') throw new Error('the maintained ARM64 Linux runtime build is required')
 rmSync(work, { recursive: true, force: true })
 mkdirSync(engine, { recursive: true })
 cpSync(join(ROOT, '.deploy-tmp/engine-deploy'), engine, { recursive: true, verbatimSymlinks: true })

@@ -2,10 +2,6 @@ name: build-apk
 on:
   workflow_dispatch:
     inputs:
-      linux_experiment:
-        description: Explicitly authorize the ARM64 Linux experiment on its dedicated branch
-        type: boolean
-        default: false
       reference:
         description: Compare two independent APK builds
         type: boolean
@@ -21,6 +17,5 @@ jobs:
     uses: ./.github/workflows/build-apk-source.yml
     with:
       abi: arm64
-      linux_experiment: ${{ inputs.linux_experiment }}
       reference: ${{ inputs.reference }}
       fast: ${{ inputs.fast }}

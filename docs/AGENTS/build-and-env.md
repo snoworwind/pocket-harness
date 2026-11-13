@@ -1,6 +1,6 @@
 # build-and-env.md — 构建与验证命令 + 环境流程
 
-> `codex/linux-runtime-experiment` 当前 CI 已切换为 Linux 专用 ARM64 云端来源链；输入、缓存、门禁和禁止发布的边界统一见 [Linux CI](LINUX-CI.md)。下述 Termux/双 ABI/发布链说明仅对应历史主线，不能用于本实验分支出包。
+> main 的 CI 已是 Linux 专用 ARM64 云端来源链；输入、缓存、门禁与生产签名/草稿发布边界统一见 [Linux CI](LINUX-CI.md)。下述 Termux/双 ABI/旧发布链说明仅对应历史主线，不能用于当前出包。
 
 ## 0.2.2-rc.1 引擎来源链
 
@@ -422,17 +422,16 @@ engine 的 checkout/upstream/overlay/patches/build/deploy 步骤集中到 `scrip
 ## 原生可执行载荷迁移
 
 实施状态、工具范围和参考项目复核见 [原生迁移账本](NATIVE-RUNTIME-MIGRATION.md)。
-实验分支 PRoot/loader/talloc/shmem 的离线 NDK 源码构建入口及真实编译边界见
-[PRoot 源码构建](PROOT-SOURCE-BUILD.md)；已接入实验分支 Linux 资产与 APK 组装协议。
+Linux 运行时 PRoot/loader/talloc/shmem 的离线 NDK 源码构建入口及真实编译边界见
+[PRoot 源码构建](PROOT-SOURCE-BUILD.md)；已接入 main 的 Linux 资产与 APK 组装协议。
 来源链在本轮 APK 的注入后快照归一化步骤中生成 `native-runtime-inventory.json`，并将其传递到
 独立验证与最终签名 artifact；无 Termux 快照的 Linux-bundle APK 则从 `assets/linux/manifest.json`
 生成 `mode: linux-guest` 的身份摘要与资产/原生库清单，不伪造 Termux 归一化摘要。PR Gate 执行 `inventory-native-runtime.py --self-test` 和 Python
 自动发现回归。该报告是盘点，不代表宿主程序已经从可写目录迁出或完成设备验收。
 
-实验分支 Linux 资产链使用 NDK_ROOT 指向固定官方 NDK r30，通过 build-proot-source.py 和 prepare-proot-source-backend.py 自编译后端，不再读取 Termux 后端包。主运行时构建不受此切换覆盖。来源协议、归档与许可证见 [PRoot 源码构建](PROOT-SOURCE-BUILD.md)。
+Linux 资产链使用 NDK_ROOT 指向固定官方 NDK r30，通过 build-proot-source.py 和 prepare-proot-source-backend.py 自编译后端，不再读取 Termux 后端包。来源协议、归档与许可证见 [PRoot 源码构建](PROOT-SOURCE-BUILD.md)。
 
-用户授权的 ARM64 本地 Linux 实验构建使用 `node scripts/source-build/run-local-source-chain.mjs --experimental-linux`，
-只接受 `codex/linux-runtime-experiment`。云端来源链通过显式 `linux_experiment=true` 输入仅放行同一实验分支与 ARM64，仍禁止正式发布。产物使用临时签名，仅供 Android 16 AVD 测试；不得合并 main 或作为正式发布产物。
+ARM64 本地 Linux 来源构建使用 `node scripts/source-build/run-local-source-chain.mjs`，只接受 `main`（x86 QA 另有 `--abi x86_64` 的 `codex/x86-*` 例外）。云端来源链只接受 main 与 ARM64；构建副本使用临时签名，`reference=true` 时由隔离 `sign-abi` 作业以生产证书签名，`release-source-draft` 只创建 ARM64 draft prerelease。
 
 本地运行器解析工作流步骤 env，并将 github.workspace/ref 映射到隔离来源目录和真实分支；未知表达式拒绝，不执行 shell 字符串。本地没有 Actions 注入缓存时 DSH_INJECTED_SNAPSHOT 为空。
 

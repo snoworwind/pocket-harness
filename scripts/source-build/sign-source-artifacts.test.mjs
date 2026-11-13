@@ -37,17 +37,26 @@ test('signing refuses stale bytes, wrong commit and unverified claims before loa
   writeFileSync(apk, 'candidate')
   const abi = process.env.DSH_ABI || 'arm64'
   const otherAbi = abi === 'arm64' ? 'x86_64' : 'arm64'
-  const proof = { abi, independentRebuildMatched: true, normalizationVersion: 3, sourceCommit: 'a'.repeat(40),
-    primaryUnsignedApkSha256: createHash('sha256').update('candidate').digest('hex') }
+  const digest = createHash('sha256').update('candidate').digest('hex')
+  const linux = { schemaVersion: 2, runtime: 'linux-arm64-glibc', abi, independentRebuildMatched: true,
+    sourceCommit: 'a'.repeat(40), payloadSha256: 'c'.repeat(64), primaryApkSha256: digest, referenceApkSha256: 'd'.repeat(64) }
+  const legacy = { abi, independentRebuildMatched: true, normalizationVersion: 3, sourceCommit: 'a'.repeat(40),
+    primaryUnsignedApkSha256: digest }
   try {
-    writeFileSync(report, JSON.stringify(proof))
-    assert.deepEqual(verifyRebuildProof(root, apk, 'a'.repeat(40)), proof)
+    writeFileSync(report, JSON.stringify(linux))
+    assert.deepEqual(verifyRebuildProof(root, apk, 'a'.repeat(40)), linux)
     assert.throws(() => verifyRebuildProof(root, apk, 'a'.repeat(40), otherAbi), /independent proof/)
     assert.throws(() => verifyRebuildProof(root, apk, 'b'.repeat(40)), /independent proof/)
+    for (const broken of [{ runtime: 'android-bionic' }, { payloadSha256: '' }, { primaryApkSha256: 'e'.repeat(64) }, { independentRebuildMatched: false }, { abi: otherAbi }]) {
+      writeFileSync(report, JSON.stringify({ ...linux, ...broken }))
+      assert.throws(() => verifyRebuildProof(root, apk, 'a'.repeat(40)), /independent proof/)
+    }
+    writeFileSync(report, JSON.stringify(legacy))
+    assert.deepEqual(verifyRebuildProof(root, apk, 'a'.repeat(40)), legacy)
     writeFileSync(apk, 'tampered')
     assert.throws(() => verifyRebuildProof(root, apk, 'a'.repeat(40)), /independent proof/)
     writeFileSync(apk, 'candidate')
-    writeFileSync(report, JSON.stringify({ ...proof, independentRebuildMatched: false }))
+    writeFileSync(report, JSON.stringify({ ...linux, independentRebuildMatched: false }))
     assert.throws(() => verifyRebuildProof(root, apk, 'a'.repeat(40)), /independent proof/)
   } finally { rmSync(root, { recursive: true, force: true }) }
 })
@@ -67,7 +76,7 @@ test('actual final signer binds bytes for ARM64 and x86_64 and refuses a wrong c
     try {
       for (const certificate of ['cd'.repeat(32), expected]) {
         writeFileSync(apk, 'candidate')
-        const proof = { abi, independentRebuildMatched: true, normalizationVersion: 3, sourceCommit: 'a'.repeat(40), primaryUnsignedApkSha256: createHash('sha256').update('candidate').digest('hex') }
+        const proof = { schemaVersion: 2, runtime: 'linux-arm64-glibc', abi, independentRebuildMatched: true, sourceCommit: 'a'.repeat(40), payloadSha256: 'c'.repeat(64), primaryApkSha256: createHash('sha256').update('candidate').digest('hex') }
         writeFileSync(join(reports, 'independent-rebuild-verification.json'), JSON.stringify(proof))
         const result = spawnSync(process.execPath, [script], { cwd: root, encoding: 'utf8', env: { ...process.env, DSH_ABI: abi, GITHUB_SHA: 'a'.repeat(40), POCKET_SIGNING_KEYSTORE_BASE64: Buffer.from('test key, not production').toString('base64'), POCKET_SIGNING_KEYSTORE_PASSWORD: 'test-only', APKSIGNER: signer, TEST_CERT: certificate } })
         assert.equal(result.status, certificate === expected ? 0 : 1, result.stderr)

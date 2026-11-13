@@ -8,15 +8,17 @@ import { checkLinuxCi } from './check-linux-ci.mjs'
 import { parseWorkflowSteps } from './run-local-source-chain.mjs'
 const ROOT = resolve(import.meta.dirname, '../..')
 const read = path => readFileSync(join(ROOT, path), 'utf8')
-test('source entry only dispatches explicit ARM64 Linux artifacts and rejects releases', () => {
+test('source entry dispatches the maintained ARM64 Linux product', () => {
   checkLinuxCi(read('.github/workflows/build-apk-source.yml'))
   const wrapper = read('.github/workflows/build-apk.yml')
   assert.match(wrapper, /abi: arm64/)
-  assert.match(wrapper, /linux_experiment: \$\{\{ inputs.linux_experiment \}\}/)
-  assert.doesNotMatch(wrapper, /secrets:|draft_release|contents: write/)
+  assert.doesNotMatch(wrapper, /linux_experiment|secrets:|contents: write/)
   const release = read('.github/workflows/release-source-draft.yml')
-  assert.match(release, /exit 1/)
-  assert.doesNotMatch(release, /contents: write|gh release|secrets:|build-apk-source/)
+  assert.match(release, /refs\/heads\/main/)
+  assert.match(release, /build-apk-source\.yml/)
+  assert.match(release, /gh release create/)
+  assert.match(release, /--draft/)
+  assert.doesNotMatch(release, /x86_64/)
 })
 test('payload composer has no retired build inputs and checks actual source, plugins and home', () => {
   const build = read('scripts/source-build/build-linux-payload.mjs')
@@ -46,13 +48,13 @@ test('official bundle templates seed both Linux profiles without source node_mod
   } finally { rmSync(root, { recursive: true, force: true }) }
 })
 
-test('actual cloud branch guard rejects main, x86 and a missing explicit opt-in', () => {
-  const step = parseWorkflowSteps(read('.github/workflows/build-apk-source.yml')).find(item => item.name === 'Require the explicit ARM64 Linux experiment')
+test('actual cloud branch guard accepts only the maintained ARM64 main branch', () => {
+  const step = parseWorkflowSteps(read('.github/workflows/build-apk-source.yml')).find(item => item.name === 'Require the maintained ARM64 source branch')
   assert.ok(step?.run)
-  const good = { DSH_ABI: 'arm64', SOURCE_REF: 'refs/heads/codex/linux-runtime-experiment', LINUX_EXPERIMENT: 'true' }
+  const good = { DSH_ABI: 'arm64', SOURCE_REF: 'refs/heads/main' }
   const run = env => spawnSync('/bin/bash', ['-e', '-c', step.run], { env: { ...process.env, ...env } }).status
   assert.equal(run(good), 0)
-  for (const bad of [{ SOURCE_REF: 'refs/heads/main' }, { SOURCE_REF: 'refs/tags/v1' }, { DSH_ABI: 'x86_64' }, { LINUX_EXPERIMENT: 'false' }, { LINUX_EXPERIMENT: '' }]) assert.notEqual(run({ ...good, ...bad }), 0)
+  for (const bad of [{ SOURCE_REF: 'refs/heads/codex/linux-runtime-experiment' }, { SOURCE_REF: 'refs/tags/v1' }, { DSH_ABI: 'x86_64' }, { SOURCE_REF: '' }]) assert.notEqual(run({ ...good, ...bad }), 0)
 })
 
 test('directory injection gate ignores directory headers and rejects changed source bytes', () => {

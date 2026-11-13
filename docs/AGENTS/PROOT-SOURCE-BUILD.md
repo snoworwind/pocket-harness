@@ -1,4 +1,4 @@
-# PRoot 宿主闭包源码构建（实验分支）
+# PRoot 宿主闭包源码构建
 
 本实验由用户授权在 `codex/linux-runtime-experiment` 推进，不合并 main、不发布 APK。
 目标是替换 Termux `.deb` 原件，先建立可修改、可重建的宿主后端；完整 Linux 主运行时
@@ -82,7 +82,7 @@ loader 静态入口、talloc/shmem SONAME、无 RPATH/RUNPATH、无可写可执�
 独立目录的重建证据，不是不同 runner 的 APK 独立来源双构建，也不是 Android 运行证明。
 本地证据保存到 `.deploy-tmp/native-runtime-p0/`；真实已发布来源 APK 的解析复核也在该目录，
 不把旧 APK 的设备状态归给新源码产物。
-构建报告始终写 `deviceValidation=not-run`。实验分支现通过
+构建报告始终写 `deviceValidation=not-run`。main 现通过
 `prepare-proot-source-backend.py` 接入 Linux 资产链：重验 ELF/收据、原始归档摘要并重放补丁，
 生成 schema 2 的源码来源协议，保留三个源码归档和源许可证；APK 字节门禁和 notices
 分别消费该协议。schema 1 的历史包来源仍可审计，但源码产物禁止携带其验签包字段。

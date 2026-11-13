@@ -161,7 +161,7 @@ Linux 发现补充（P04，坑 373）：bootstrap `index.js` 串行发现 → `g
 | P04 | 文件打开、Linux 环境与模型能力插件 | 外部来件草稿、工具链与缓存清理、模型能力写回 | 壳侧 FileIncoming 投递 / 设置页 HTTP / cordis 装配 | 稳态控制 | 桥与鉴权、客户端注入层、shell-linux 工具链表、快照装配链 | 壳侧 FileIncoming.processIncomingIntent、设置页与开发者选项、cordis 装配 | plugins/dsh-android-file-open/src/index.ts,plugins/dsh-android-linux-env/src/runtime-cache.ts,plugins/dsh-model-capability/src/index.ts | 高 |
 | S01 | 引擎侧注入层（三个子仓） | DSH 原生 Web UI 拥有页面布局、响应式行为、设置、输入区、菜单与导航；客户端插件只接 Android inset/IME、主题/返回桥、原生能力槽位、文件与通知桥，以及隔离 BrowserHost | 客户端插件 apply() 装载；每个 index 响应经 tapIndex 注入 | 交互面 | K04（壳侧 androidBridge/dshBackBridge 桥面） | 引擎插件系统按 profile-web.cordis.patch.yml 的 insert 行拉起 | dsh-client-ui-responsive/src/client/index.ts,dsh-host-web-compat/lib/index.js,dsh-shell-linux/src/index.ts | 高 |
 
-| B01 | Linux 来源构建与工厂载荷装配 | 固定引擎源码底座 → Linux engine/home → 四件套与清单 → APK；可选双副本比较，实验分支禁止发布 | GitHub Actions 显式 ARM64 Linux 实验 | 构建与发布 | 门禁块,壳侧快照解压,插件源码与 vendor 固化面,可信上游签名/哈希 | 来源 workflow、双 ABI draft workflow、本地 source runner | scripts/build-apk-013.ps1,scripts/build-apk.mjs,scripts/build-apk-engine.mjs,scripts/build-apk-engine.test.mjs,scripts/build-release.ps1,scripts/check-apk-signatures.mjs,scripts/build-snapshot-013.mjs,scripts/inject-all.py,scripts/source-build/*,.github/workflows/build-apk.yml,.github/workflows/build-apk-source.yml,.github/workflows/release-source-draft.yml,webpages/tools/build.mjs,webpages/src/assets/app.js,webpages/src/assets/release.js,scripts/patches/data/undo-safe-transaction-snippet.mjs,scripts/patches/data/registry-scan-c4.mjs,scripts/patches/data/client-index-loader-barrier.mjs,scripts/patches/tests/client-index-loader-barrier.test.mjs,scripts/patches/tests/gateway-client-source-g1.test.mjs,scripts/patches/mimo-thinking-toggle-056.mjs,scripts/patches/tests/mimo-thinking-toggle-056.test.mjs,scripts/patches/data/permission-auto-review-default.mjs,scripts/patches/tests/permission-auto-review-default.test.mjs,scripts/patches/data/workspace-write-boundary-warning.mjs,scripts/patches/tests/workspace-write-boundary-warning.test.mjs | 高 |
+| B01 | Linux 来源构建与工厂载荷装配 | 固定引擎源码底座 → Linux engine/home → 四件套与清单 → APK；main 上双副本独立比对 → 隔离生产签名 → ARM64 draft 发布 | GitHub Actions main ARM64 来源链 | 构建与发布 | 门禁块,壳侧快照解压,插件源码与 vendor 固化面,可信上游签名/哈希 | 来源 workflow、双 ABI draft workflow、本地 source runner | scripts/build-apk-013.ps1,scripts/build-apk.mjs,scripts/build-apk-engine.mjs,scripts/build-apk-engine.test.mjs,scripts/build-release.ps1,scripts/check-apk-signatures.mjs,scripts/build-snapshot-013.mjs,scripts/inject-all.py,scripts/source-build/*,.github/workflows/build-apk.yml,.github/workflows/build-apk-source.yml,.github/workflows/release-source-draft.yml,webpages/tools/build.mjs,webpages/src/assets/app.js,webpages/src/assets/release.js,scripts/patches/data/undo-safe-transaction-snippet.mjs,scripts/patches/data/registry-scan-c4.mjs,scripts/patches/data/client-index-loader-barrier.mjs,scripts/patches/tests/client-index-loader-barrier.test.mjs,scripts/patches/tests/gateway-client-source-g1.test.mjs,scripts/patches/mimo-thinking-toggle-056.mjs,scripts/patches/tests/mimo-thinking-toggle-056.test.mjs,scripts/patches/data/permission-auto-review-default.mjs,scripts/patches/tests/permission-auto-review-default.test.mjs,scripts/patches/data/workspace-write-boundary-warning.mjs,scripts/patches/tests/workspace-write-boundary-warning.test.mjs | 高 |
 | B02 | 静态门禁链与 CI | 33 个静态门禁脚本与三层接线的唯一声明处 | PR/CI、两条打包链、发布链 | 测试与门禁 | B01,B03 | 提交 PR、推 main、构建/发版 | scripts/check-release-gates.mjs,scripts/check-gate-skips.mjs,.github/workflows/pr-gate.yml,scripts/build-apk-013.ps1 | 高 |
 | B03 | 设备验收套件（CDP 与 adb 面） | 12 个 CDP/设备断言套件 + 5 个部署冒烟脚本的设备侧验收入口 | 人手动逐个执行 node scripts/verify-*.mjs 与 pwsh scripts/*.ps1 | 测试与门禁 | S-12 双 ABI 包装机、快照刷新完成、桥面 / 浏览器宿主 / 虚拟屏 / 注入层各块 | 人（PR 前设备层验收；探针自检由 CI 接线） | scripts/verify-webview-015.mjs,scripts/verify-webview-settings.test.mjs,scripts/verify-state-sync.mjs,scripts/verify-browser-host.mjs,scripts/verify-browser-panel.mjs,scripts/verify-vdisplay-viewer.mjs,scripts/verify-vdisplay-float.mjs,scripts/verify-engine-log-copy.mjs,scripts/verify-screen-scope-matrix.mjs,scripts/verify-adb-only-tree.mjs,scripts/verify-notify-consumption.mjs,scripts/verify-auto-undo.mjs,scripts/verify-client-plugin-fail-recovery.mjs,scripts/device-smoke.ps1,scripts/deploy-device.ps1,scripts/deploy-embedded.ps1,scripts/t0-check.ps1,scripts/e2e-phone-test.ps1 | 高 |
 
@@ -585,7 +585,7 @@ K01 journal 发布：`LinuxUpgradeTransaction.atomicWrite` 写同目录临时文
 | B01 | 发布链 build-release.ps1 | 复用同一门禁集与指纹对账，输入走设备侧 make-snapshot.sh 产出的 snapshot/snapshot-*.tar.xz | scripts/build-release.ps1:56-61,89-114,147 |
 | B01 | CI 与云端构建链 | 云端 build-apk.mjs 与本地链门禁集差集必须为 0。0.14.5：原先并列的 apk 仓独立快照 workflow `build-snapshot.yml`（走 inject-snapshot.py 三包注入、无引擎 overlay/补丁/语法降级）已删除，快照构建入口收敛为单一链 | scripts/check-release-gates.mjs:191-212 |
 | B01 | Linux 来源审计 ARM64 构建 | 固定 Harness 源码底座、独立重放补丁、工厂目录装配及四件套 manifest；不经过 Termux 包或快照链 | scripts/source-build/build-linux-payload.mjs:1#expect=%23!/usr/bin/env%20node |
-| B01 | 实验分支发布边界 | 草稿工作流只读并恒失败，不接构建或生产 signer | .github/workflows/release-source-draft.yml:14#expect=exit%201 |
+| B01 | 生产签名发布边界 | release-source-draft 只接受 main，来源构建双副本比对后由隔离作业生产签名并创建 ARM64 draft prerelease | .github/workflows/release-source-draft.yml:21#expect=run%3A%20test%20%22%24SOURCE_REF%22%20%3D%20refs%2Fheads%2Fmain |
 | B02 | B01 | 门禁集由两条编排器逐项调用；聚合入口断言本地链与云端链门禁集差集为 0，并锁发布链必须走 --run | scripts/check-release-gates.mjs:135 |
 | B02 | B03 | 冷启动预算的真数据只能来自设备产物，--require-real 由设备验收承担，构建机与 CI 只计 SKIP | scripts/check-boot-budget.mjs:671 |
 | B02 | K03 | 快照指纹、剥离后置断言、运行时补丁资产三门禁共同守内嵌 assets/snapshot.tar.xz 与 assets/patched 同源 | scripts/check-runtime-assets.mjs:126 |
@@ -1607,7 +1607,7 @@ flowchart TD
 
 #### B01 Linux 来源构建与工厂载荷装配
 
-- **入口与边界**：`.github/workflows/build-apk.yml` 或 `build-apk-source.yml`；只接受专用实验分支、ARM64 与显式开关；不调用旧快照构建器、不本地构建、不生产签名、不发布。详细输入/缓存/门禁迁移账本见 [Linux CI](LINUX-CI.md)。
+- **入口与边界**：`.github/workflows/build-apk.yml`、`build-apk-source.yml` 或 `release-source-draft.yml`；只接受 main 与 ARM64；不调用旧快照构建器。构建作业只用临时签名；`reference=true` 时独立 `sign-abi` 作业才持有生产签名密钥。详细输入/缓存/门禁迁移账本见 [Linux CI](LINUX-CI.md)。
 - **顺序**：固定源码双副本引擎底座 → 当前源码插件/marketplace → 固定 NDK 宿主库与 Linux 资产 → `build-linux-payload.mjs` 施加/独立重放引擎补丁 → 两套 profile 工厂插件目录装配与完整性检查 → 客体 engine/home 归档 → 四件套清单 → Kotlin 单测 → `build-linux-apk.mjs` 门禁/Gradle → APK 字节、载荷、三签检查 → 上传 → 可选独立比较。
 - **嵌套与线程**：Actions job 中 Node 编排子进程；宿主原生库与客体源码编译使用固定工具链；home 的 GNU xz 最多 8 线程，engine 的 Python lzma 单线程；不启动 Termux HTTP 镜像。
 - **耦合**：引擎底座只缓存引擎输入，当前项目组件收据在命中后重新冻结；Linux 资产使用精确内容键；插件依赖收集复用 `inject-all.py` 的纯 payload 函数，不执行其快照入口。ownership manifest 从最终目录装配推导；最终 APK 载荷以 manifest 与 SHA-256 绑定。
@@ -1615,7 +1615,7 @@ flowchart TD
 
 ```mermaid
 flowchart LR
-  A[显式实验分支 ARM64] --> B[固定引擎源码底座]
+  A[main ARM64] --> B[固定引擎源码底座]
   B --> C[源码插件和 marketplace]
   C --> D[固定 NDK 与 Debian Node 资产]
   D --> E[Linux engine 和 factory home]
@@ -1641,7 +1641,7 @@ flowchart LR
 
 #### B02 静态门禁链与 CI
 
-当前实验分支的活跃门禁与退役替代关系以 [Linux CI](LINUX-CI.md) 为准；以下旧快照/发布聚合门禁说明是保留工具的历史调用地图，已不接当前 PR/APK 工作流。
+main 的活跃门禁与退役替代关系以 [Linux CI](LINUX-CI.md) 为准；以下旧快照/发布聚合门禁说明是保留工具的历史调用地图，已不接当前 PR/APK 工作流。
 
 
 - **一句话**：用 33 个 `scripts/check-*.mjs` 静态脚本守住「产物形态、跨层集合一致、SKIP 纪律」三类不变量，并由 `scripts/check-release-gates.mjs` 一处声明门禁集（当前 27 项），强制两仓 CI 与两条打包链逐项接线；发布链再以 `--run --require` 要求 SKIP=0。

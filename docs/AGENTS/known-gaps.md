@@ -194,7 +194,7 @@ Engine base 复用的实现与阶段证据保留在 [ENGINE-BASE-2026-10-19.md](
 
 ## 原生宿主可执行载荷迁移
 
-实验分支目标为免 Root、无 Termux 的完整 Linux/glibc 用户空间，允许 PRoot；用户明确禁止
+main 目标为免 Root、无 Termux 的完整 Linux/glibc 用户空间，允许 PRoot；用户明确禁止
 合并 main 和发布。当前源码已将主引擎、控制台、终端、Python/Undo 命令切到客体合同，
 宿主 PRoot/loader/talloc/shmem 自编译，客体组件使用 Debian apt/npm 固定包。
 `38f8a9a2` 的完整本地来源链已按用户要求停止，修复后尚未重新出包；最终 APK 无快照、首装客体启动、
@@ -204,7 +204,7 @@ Engine base 复用的实现与阶段证据保留在 [ENGINE-BASE-2026-10-19.md](
 [原生迁移账本](NATIVE-RUNTIME-MIGRATION.md)；宿主构建边界见
 [PRoot 源码构建](PROOT-SOURCE-BUILD.md)。
 
-### 实验分支设备验证缺口（2026-11-12，Android 16 API 36 ARM64 AVD）
+### ARM64 设备验证缺口（2026-11-12，Android 16 API 36 AVD）
 
 - 首个真机链路缺陷已修：首装时原生 PRoot 探测的 cwd 不存在会误报 `ENOENT`，见坑位 679；
   修复后 Linux 环境可安装，health 探针在 PRoot 里跑通共享 glibc Node（`v24.22.0`）。

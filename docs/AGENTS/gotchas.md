@@ -4019,3 +4019,29 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
      修法：`build-linux-apk.mjs` 与旧入口一致，显式传 `certificateSha256File:
      process.env.POCKET_BUILD_CERTIFICATE_FILE`；工作流复验步骤同样显式传该文件。
      复验：`linux-payload.test.mjs` 断言该参数；云端构建在修复后应通过签名门禁。
+
+701. **正式化不能只改名：实验开关、发布桩与签名证明必须同时收口（2026-11-13，0.16.0）**
+     现象：来源链此前只接受实验分支与 `linux_experiment=true`，发布工作流恒失败；
+     生产签名作业被移除，独立比对证明仍是旧 schema，release 准备脚本也只认双 ABI 旧字段。
+     真因：迁移只保证实验产物流水线跑通，正式入口（main、生产签名、draft 发布、证据清单）
+     没有随之建立；把开关改名会留下能构建但不能正式发布的半成品。
+     修法：base/来源/发布工作流只接受 main 与 ARM64；删除实验输入与恒失败桩；恢复隔离
+     `sign-abi`（仅 main + reference=true，持有生产 keystore secrets），独立比对写出 schema 2
+     证明并绑定两份 APK 摘要；签名器与 release 准备脚本校验 schema 2、生产证书指纹、提交与
+     APK 字节；release-source-draft 只打包 ARM64 生产签名 artifact 并创建 draft prerelease。
+     复验：`check-linux-ci.mjs` 自检锁定 main guard 与签名作业；`linux-payload.test.mjs` 执行
+     真实分支守卫；`sign-source-artifacts.test.mjs` 覆盖 schema 2 正/负控；
+     `test_prepare_source_release.py` 覆盖生产指纹、篡改、非 main 与 release 资产校验。
+
+702. **Android SELinux 拒绝 app 数据区硬链接，Debian rootfs 解包必须回退复制（2026-11-13，0.16.0 实修）**
+     现象：全新安装后的首次启动失败（`linux-prepare-failed`），日志停在
+     `rootfs/./usr/bin/perl5.40.1 -> rootfs/./usr/bin/perl`，同进程出现
+     `avc: denied { link } ... tclass=file`；应用随后只反复等待事务。
+     真因：Debian rootfs tar 用硬链接共享 `perl` 等文件；`SnapshotExtractor` 解包尾部统一调用
+     `Files.createLink`，而 untrusted_app 域在 app 数据区被 SELinux 禁止创建硬链接。
+     修法：新增 `SnapshotExtractor.linkOrCopy`：先尝试硬链接，平台以 IOException/
+     UnsupportedOperationException 拒绝时，按已通过归档与树摘要认证的字节复制，并保留可执行位与
+     读写权限；硬链接目标缺失或不可解析时仍失败关闭。复制不改变产品契约（树摘要按内容计算）。
+     复验：`SnapshotExtractorTest.hardlinkFallbackCopiesBytesWhenTheHostRejectsLinks` 覆盖平台拒绝
+     回退、支持平台仍建硬链接、不可解析链接失败三类；云端重出 APK 后在 Android 16 ARM64 AVD
+     重新执行首启安装验证。

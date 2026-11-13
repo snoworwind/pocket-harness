@@ -1,14 +1,112 @@
 name: release-source-draft
+
 on:
   workflow_dispatch:
   workflow_call:
+
 permissions:
   contents: read
+
+concurrency:
+  group: source-draft-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  reject-experimental-release:
-    runs-on: ubuntu-24.04
+  branch:
+    runs-on: ubuntu-latest
     steps:
-      - name: Reject release creation from the Linux experiment
+      - name: Require the maintained main branch
+        env:
+          SOURCE_REF: ${{ github.ref }}
+        run: test "$SOURCE_REF" = refs/heads/main
+
+  build:
+    needs: branch
+    permissions:
+      contents: read
+    secrets: inherit
+    uses: ./.github/workflows/build-apk-source.yml
+    with:
+      abi: arm64
+      reference: true
+
+  prepare:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.12'
+      - name: Download this run's production-signed ARM64 artifact
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: pocket-harness-arm64-source-${{ github.sha }}
+          path: source-artifacts/arm64
+      - name: Verify identity and package unchanged release assets
         run: |
-          echo '::error::Linux runtime experiment builds artifacts only; release and draft publication are disabled.'
-          exit 1
+          python3 -m unittest discover -s scripts/source-build -p 'test_prepare_source_release.py' -v
+          python3 scripts/source-build/prepare-source-release.py source-artifacts release-assets
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: source-draft-assets-${{ github.sha }}
+          path: release-assets/*
+          if-no-files-found: error
+          retention-days: 30
+
+  draft:
+    needs: prepare
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      # No checkout or build commands in the job holding the release token.
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: source-draft-assets-${{ github.sha }}
+          path: release-assets
+      - name: Create the ARM64 prerelease draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          SOURCE_SHA: ${{ github.sha }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd release-assets
+          # Validate the complete upload set before checking bytes or invoking gh.
+          # sha256sum alone permits omitted files, duplicate rows and external paths.
+          python3 - <<'PY'
+          import pathlib
+          import re
+          root = pathlib.Path('.')
+          files = list(root.iterdir())
+          if any(p.is_symlink() or not p.is_file() for p in files):
+              raise SystemExit('release assets must be regular files')
+          apks = [p.name for p in files if re.fullmatch(r'pocket-harness-v[\w.+-]+-source-arm64\.apk', p.name)]
+          if len(apks) != 1:
+              raise SystemExit('expected exactly one ARM64 release APK')
+          expected = {*apks, 'provenance.zip', 'notes.md'}
+          if {p.name for p in files} != expected | {'SHA256SUMS.txt'}:
+              raise SystemExit('unexpected or missing release asset')
+          rows = (root / 'SHA256SUMS.txt').read_text(encoding='utf-8').splitlines()
+          names = []
+          for row in rows:
+              match = re.fullmatch(r'[0-9a-f]{64}  ([^/\\]+)', row)
+              if not match:
+                  raise SystemExit('invalid release checksum row')
+              names.append(match[1])
+          if len(names) != len(expected) or set(names) != expected:
+              raise SystemExit('checksums must cover every uploaded asset exactly once')
+          PY
+          sha256sum --check SHA256SUMS.txt
+          tag="hardening-source-${SOURCE_SHA:0:12}-${RUN_ID}-${RUN_ATTEMPT}"
+          version=$(ls ./*.apk | head -1 | sed -E 's/.*pocket-harness-(v[^-]+)-source-.*/\1/')
+          gh release create "$tag" ./*.apk provenance.zip SHA256SUMS.txt notes.md \
+            --target "$SOURCE_SHA" --draft --prerelease \
+            --title "Pocket Harness ${version} (ARM64 Linux guest)" \
+            --notes-file notes.md

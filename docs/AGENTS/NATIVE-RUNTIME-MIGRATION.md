@@ -1,6 +1,6 @@
 # 脱离 Termux 的 Linux 运行时实验账本
 
-用户在 2026-11-12 明确的最终约束：**实验分支，不合并 main；免 Root；摆脱 Termux；
+用户在 2026-11-12 明确的约束：**免 Root；摆脱 Termux；
 完整 Linux/glibc 用户空间；允许 PRoot 等兼容层；接受 Android 权限和路径限制。**
 不要求 VM/QEMU 运行时，不把低 targetSdk 当作绕过限制的前提。
 本分支可提交实验结果，不执行合并或正式发布。后续 PR 如有，只用于审阅与 CI，不自动合并。

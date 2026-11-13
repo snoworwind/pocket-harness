@@ -27,18 +27,12 @@ for (const name of ['GIT_DIR', 'GIT_COMMON_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FIL
 const git = (root, ...args) => execFileSync('git', ['-C', root, ...args], { env: gitEnvironment, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }).trim()
 const fail = message => { throw new Error('engine-base: ' + message) }
 
-/** The explicit Linux experiment dispatch is the only non-main ref allowed to produce a base. */
-export const LINUX_EXPERIMENT_REF = 'refs/heads/codex/linux-runtime-experiment'
-
-export function experimentalDispatch(env = process.env) {
-  return env.GITHUB_ACTIONS === 'true' && env.DSH_LINUX_EXPERIMENT === '1' && env.GITHUB_REF === LINUX_EXPERIMENT_REF
-}
-
+/** Base publication is limited to the maintained main branch. */
 export function requireBuildSource(root, env = process.env) {
   const commit = git(root, 'rev-parse', 'HEAD')
   if (env.GITHUB_ACTIONS === 'true') {
     if (env.GITHUB_SHA !== commit || env.GITHUB_EVENT_NAME === 'pull_request') fail('base publication requires the authorized source workflow commit')
-    if (!experimentalDispatch(env) && env.GITHUB_REF !== 'refs/heads/main') fail('base publication requires the authorized source workflow commit')
+    if (env.GITHUB_REF !== 'refs/heads/main') fail('base publication requires the maintained main branch')
   } else if (git(root, 'symbolic-ref', '--quiet', 'HEAD') !== 'refs/heads/main') fail('local base production requires attached main')
   return commit
 }
@@ -80,7 +74,7 @@ export function makePlan(root, runtime, env = process.env) {
   const sourceCommit = requireBuildSource(root, env)
   git(root, 'diff', '--exit-code', 'HEAD', '--', ...COMPONENTS.engine)
   if (git(root, 'ls-files', '--others', '--exclude-standard', '--', ...COMPONENTS.engine)) fail('uncommitted engine inputs')
-  const sourceRef = experimentalDispatch(env) ? LINUX_EXPERIMENT_REF : 'refs/heads/main'
+  const sourceRef = 'refs/heads/main'
   return { schema: 1, component: 'engine', sourceCommit, sourceRef, buildRun: env.GITHUB_RUN_ID || `local-${new Date().toISOString()}`, toolchain: runtime, ...committedInputs(root, runtime) }
 }
 
@@ -315,7 +309,7 @@ export function materializeSelf(root, artifact, planPath, env = process.env) {
 
 export function publishCandidate(root, plan, primary, reference, destination, env = process.env) {
   const sourceCommit = requireBuildSource(root, env)
-  const expectedRef = experimentalDispatch(env) ? LINUX_EXPERIMENT_REF : 'refs/heads/main'
+  const expectedRef = 'refs/heads/main'
   if (plan.sourceCommit !== sourceCommit || plan.sourceRef !== expectedRef || committedInputs(root, plan.toolchain).key !== plan.key) fail('comparison plan drifted')
   const a = json(join(primary, 'manifest.json')), b = json(join(reference, 'manifest.json'))
   for (const manifest of [a, b]) {
