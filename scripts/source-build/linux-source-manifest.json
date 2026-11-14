@@ -7,47 +7,47 @@
       "sourceCommit": "3f86a853e346b4f2c268fbf6a76216294b5c4382",
       "sourcePath": "packages/linux-bootstrap",
       "files": {
-        "plugins/dsh-linux-bootstrap/README.md": "a593a4eb0dfdd18ebb81d50b91973b0a691f8f472cae5e033b7252db6bbc0df1",
+        "plugins/dsh-linux-bootstrap/README.md": "c149fc5100c9ad9031adc67df452b18985e4fa30807f2716c62c00fb3dc8f8f0",
         "plugins/dsh-linux-bootstrap/build-client.mjs": "43e1a6469c3244ccd6baad3b13ced28dc379f843d6e902670315af0b8ad64c20",
         "plugins/dsh-linux-bootstrap/build.mjs": "5f416603bd54c216ef30bc2e9211c38373b2b967e92fb2e7ccb72e332e5b03bc",
-        "plugins/dsh-linux-bootstrap/client/index.js": "2098d477559bd1113cd75e08c1ad042c5ccfc07882d2f8fab3d939320e40d20f",
+        "plugins/dsh-linux-bootstrap/client/index.js": "1033e2071425e7a157c845b12c8acc67eebe1c5607c4e6564b049298cb8f5a68",
         "plugins/dsh-linux-bootstrap/package-lock.json": "000885a600b8458a342ecb7e854cc0e1a218ce4a187d06f57a82ad4c38804742",
-        "plugins/dsh-linux-bootstrap/package.json": "38d694b9131fcd49c4e497902ee3244e1a06e09dc708c44c8a44664093a26f97",
+        "plugins/dsh-linux-bootstrap/package.json": "cce849100cfd383a2ffacd86f665442fa68224ee53041f9bcfbc4ea156b77bd6",
         "plugins/dsh-linux-bootstrap/src/asset-bundle.js": "7e32ce0f57ee0a7f75dfd2d2af6ff61357d63b6c34e4f0dbf7aa23cf4300e416",
         "plugins/dsh-linux-bootstrap/src/github.js": "7b6369b5910ecb3e8b49f75a4dae3ca60ceac2d4164bf7f05f71c81803aa110c",
-        "plugins/dsh-linux-bootstrap/src/index.js": "7356d9dac6226b6a1c060610be453dcc96c5e7827e421cdf781532b7d13e5a86",
+        "plugins/dsh-linux-bootstrap/src/index.js": "342ff27502be0ba30cd4f84abfe754fd862e5eefe762abdd949bc455959e46f8",
         "plugins/dsh-linux-bootstrap/src/manifest.js": "a9b8512e24dfbb1b225c2bc260d3d0496b7e8834ef975d17c69355baf1911067",
         "plugins/dsh-linux-bootstrap/src/routes.js": "678391176bcd81ba6cbbbab293a4731d07e37e99c51178d7605821eac6aa5bb9",
-        "plugins/dsh-linux-bootstrap/src/status.js": "494238e39094999e44105d1c56ca562f88ce3e65146bd3070806d4c82dd98f7b",
+        "plugins/dsh-linux-bootstrap/src/status.js": "45b1070993ef047b2edac4c3cb692bf170f7897dffde495892a7d40f08cd47fc",
         "plugins/dsh-linux-bootstrap/src/version.js": "d0131f71b60ff38183070ddd3ef7142a98ae8a2cb54e2a57b725fa2e0d6b3636",
-        "plugins/dsh-linux-bootstrap/test/client-http.test.mjs": "7d144fe7d028e85e6668095f0f29721c122c989af3a78cbf5f4e76cc04d94a79",
+        "plugins/dsh-linux-bootstrap/test/client-http.test.mjs": "d95b6493dacfd7c1d6e5ea42645957823e17cbebfcc470f86f3284ceb8c192f5",
         "plugins/dsh-linux-bootstrap/test/github-limits-negative-control.mjs": "464a2c6290e5521c72a834c228d9f72d5096c29c92b807183c30a1a11a1ad6a0",
         "plugins/dsh-linux-bootstrap/test/github-limits.test.mjs": "5668b2ab5ac13751616850f0d366f8e2aa9647ab767c293e2fa91cdc379bfb22"
       }
     }
   ],
   "files": {
-    "plugins/dsh-linux-bootstrap/README.md": "a593a4eb0dfdd18ebb81d50b91973b0a691f8f472cae5e033b7252db6bbc0df1",
+    "plugins/dsh-linux-bootstrap/README.md": "c149fc5100c9ad9031adc67df452b18985e4fa30807f2716c62c00fb3dc8f8f0",
     "plugins/dsh-linux-bootstrap/build-client.mjs": "43e1a6469c3244ccd6baad3b13ced28dc379f843d6e902670315af0b8ad64c20",
     "plugins/dsh-linux-bootstrap/build.mjs": "5f416603bd54c216ef30bc2e9211c38373b2b967e92fb2e7ccb72e332e5b03bc",
-    "plugins/dsh-linux-bootstrap/client/index.js": "2098d477559bd1113cd75e08c1ad042c5ccfc07882d2f8fab3d939320e40d20f",
+    "plugins/dsh-linux-bootstrap/client/index.js": "1033e2071425e7a157c845b12c8acc67eebe1c5607c4e6564b049298cb8f5a68",
     "plugins/dsh-linux-bootstrap/package-lock.json": "000885a600b8458a342ecb7e854cc0e1a218ce4a187d06f57a82ad4c38804742",
-    "plugins/dsh-linux-bootstrap/package.json": "38d694b9131fcd49c4e497902ee3244e1a06e09dc708c44c8a44664093a26f97",
+    "plugins/dsh-linux-bootstrap/package.json": "cce849100cfd383a2ffacd86f665442fa68224ee53041f9bcfbc4ea156b77bd6",
     "plugins/dsh-linux-bootstrap/src/asset-bundle.js": "7e32ce0f57ee0a7f75dfd2d2af6ff61357d63b6c34e4f0dbf7aa23cf4300e416",
     "plugins/dsh-linux-bootstrap/src/github.js": "7b6369b5910ecb3e8b49f75a4dae3ca60ceac2d4164bf7f05f71c81803aa110c",
-    "plugins/dsh-linux-bootstrap/src/index.js": "7356d9dac6226b6a1c060610be453dcc96c5e7827e421cdf781532b7d13e5a86",
+    "plugins/dsh-linux-bootstrap/src/index.js": "342ff27502be0ba30cd4f84abfe754fd862e5eefe762abdd949bc455959e46f8",
     "plugins/dsh-linux-bootstrap/src/manifest.js": "a9b8512e24dfbb1b225c2bc260d3d0496b7e8834ef975d17c69355baf1911067",
     "plugins/dsh-linux-bootstrap/src/routes.js": "678391176bcd81ba6cbbbab293a4731d07e37e99c51178d7605821eac6aa5bb9",
-    "plugins/dsh-linux-bootstrap/src/status.js": "494238e39094999e44105d1c56ca562f88ce3e65146bd3070806d4c82dd98f7b",
+    "plugins/dsh-linux-bootstrap/src/status.js": "45b1070993ef047b2edac4c3cb692bf170f7897dffde495892a7d40f08cd47fc",
     "plugins/dsh-linux-bootstrap/src/version.js": "d0131f71b60ff38183070ddd3ef7142a98ae8a2cb54e2a57b725fa2e0d6b3636",
-    "plugins/dsh-linux-bootstrap/test/client-http.test.mjs": "7d144fe7d028e85e6668095f0f29721c122c989af3a78cbf5f4e76cc04d94a79",
+    "plugins/dsh-linux-bootstrap/test/client-http.test.mjs": "d95b6493dacfd7c1d6e5ea42645957823e17cbebfcc470f86f3284ceb8c192f5",
     "plugins/dsh-linux-bootstrap/test/github-limits-negative-control.mjs": "464a2c6290e5521c72a834c228d9f72d5096c29c92b807183c30a1a11a1ad6a0",
     "plugins/dsh-linux-bootstrap/test/github-limits.test.mjs": "5668b2ab5ac13751616850f0d366f8e2aa9647ab767c293e2fa91cdc379bfb22",
     "vendor/dsh-linux-runtime/LICENSE": "e9f4502fb52418dcd3e320d8d15e1bd7b43094ec3f2fdd5c33dd88f5a2ba85d9",
     "vendor/dsh-linux-runtime/README.md": "b225f91a04b2a61bdc0578288b06dd50369832237252453ba8e6dbb36f8b4532",
-    "vendor/dsh-linux-runtime/lib/index.js": "991fc46eb4062a22219da74c97d13a88970769dd43f383c471d83b04870ebf14",
+    "vendor/dsh-linux-runtime/lib/index.js": "f937549ee721702ba79ed2aae728ca592037cdabd7d5e5c682812ce3e3b63305",
     "vendor/dsh-linux-runtime/modules/asset-installer.js": "036774735e016d605cecf91093384371903129ef15b17c7dd8927f9acdc8d7e1",
-    "vendor/dsh-linux-runtime/modules/manager.js": "07fb16585bcd1b82d3ad01278d6a36c93eb2bb12b130792776d097e7643784a7",
+    "vendor/dsh-linux-runtime/modules/manager.js": "fc6d2ec4ce0f5d1581f7c13ef30fe9783a868355ae24dc6f998f25eb9e7dc375",
     "vendor/dsh-linux-runtime/modules/manifest.js": "fe24abc8909fe03cea3f8e55b84123b6c197ecdfd808764a27965b1043edcecc",
     "vendor/dsh-linux-runtime/package.json": "a346748f69163a21f3b37932661adc050d220ca5a2963176bbac2cc8a7f5dd11",
     "vendor/dsh-linux-runtime/test/manager.test.mjs": "51cc31beb486735eda4283b37b4db0419ecc9d305fcdecc7fc35a787e71531b5",
@@ -69,7 +69,7 @@
     },
     "plugins/dsh-linux-bootstrap/client/index.js": {
       "upstreamSha256": "747de10f2ce2545ed9b8b63f0261a5fc656b0b9417af5895536731781daaf072",
-      "reason": "Use authenticated Android host HTTP routes; engine Cordis services are not browser services."
+      "reason": "Use authenticated Android host HTTP routes; engine Cordis services are not browser services. Installation progress/distribution observability updated without changing PRoot execution. Installation progress/distribution observability updated without changing PRoot execution."
     },
     "plugins/dsh-linux-bootstrap/package-lock.json": {
       "upstreamSha256": "0000000000000000000000000000000000000000000000000000000000000000",
@@ -81,7 +81,7 @@
     },
     "plugins/dsh-linux-bootstrap/src/index.js": {
       "upstreamSha256": "27708c714ba0a102a89a72611443c144a107307686146acc49b9fa4b4c1ba4b2",
-      "reason": "Report the internal bootstrap identity as 0.6.2 for the Android PRoot smoke-probe fix."
+      "reason": "Report the internal bootstrap identity as 0.6.2 for the Android PRoot smoke-probe fix. Installation progress/distribution observability updated without changing PRoot execution. Installation progress/distribution observability updated without changing PRoot execution."
     },
     "vendor/dsh-linux-runtime/README.md": {
       "upstreamSha256": "91a18de24c9ceb4f5aba6ce7b28d0e769ae26e1178d529d14e139b437214b187",
@@ -89,11 +89,11 @@
     },
     "vendor/dsh-linux-runtime/lib/index.js": {
       "upstreamSha256": "4cbe776c5079e445e47cd3949f907d304659573a3d448b629a1c1de0630109bc",
-      "reason": "Keep the internal runtime opt-in and source-built APK assets offline; the bootstrap owns asset staging while this package owns execution lifecycle."
+      "reason": "Keep the internal runtime opt-in and source-built APK assets offline; the bootstrap owns asset staging while this package owns execution lifecycle. Installation progress/distribution observability updated without changing PRoot execution."
     },
     "vendor/dsh-linux-runtime/modules/manager.js": {
       "upstreamSha256": "e7da654488bc9b26d500b2316e16c145a7239d0e8f052621bf3fc220ccad86d3",
-      "reason": "Use the Android PRoot mode proven on the target ROM; run the smoke probe and linux_bash with non-login bash to preserve the explicit shared Node PATH; persist bounded cwd, environment, stdout and stderr diagnostics; retain the Termux PRoot migration, rootfs preparation, constrained binds, process limits and installation rollback."
+      "reason": "Use the Android PRoot mode proven on the target ROM; run the smoke probe and linux_bash with non-login bash to preserve the explicit shared Node PATH; persist bounded cwd, environment, stdout and stderr diagnostics; retain the Termux PRoot migration, rootfs preparation, constrained binds, process limits and installation rollback. Installation progress/distribution observability updated without changing PRoot execution."
     },
     "vendor/dsh-linux-runtime/modules/manifest.js": {
       "upstreamSha256": "1722dd47005c62fad20ec22ddb710bbff72f4a1bc5fdbee7199bb73e31185971",
@@ -106,6 +106,18 @@
     "vendor/dsh-linux-runtime/test/manager.test.mjs": {
       "upstreamSha256": "4549fefea91b30dfceefab3a2a0418270da4f5ce7c5ecb9b4264081ec2607c02",
       "reason": "Cover Android PRoot environment selection, non-login shared Node PATH, both output streams and cwd/environment diagnostics, silent exit 182, rootfs preparation and installation rollback; update the fixture banner and expected manager pin to the currently reviewed Termux PRoot 5.1.107.102."
+    },
+    "plugins/dsh-linux-bootstrap/README.md": {
+      "upstreamSha256": "a593a4eb0dfdd18ebb81d50b91973b0a691f8f472cae5e033b7252db6bbc0df1",
+      "reason": "Expose authenticated install progress and actionable failure state; no PRoot execution changes. Installation progress/distribution observability updated without changing PRoot execution."
+    },
+    "plugins/dsh-linux-bootstrap/src/status.js": {
+      "upstreamSha256": "494238e39094999e44105d1c56ca562f88ce3e65146bd3070806d4c82dd98f7b",
+      "reason": "Expose authenticated install progress and actionable failure state; no PRoot execution changes. Installation progress/distribution observability updated without changing PRoot execution."
+    },
+    "plugins/dsh-linux-bootstrap/test/client-http.test.mjs": {
+      "upstreamSha256": "7d144fe7d028e85e6668095f0f29721c122c989af3a78cbf5f4e76cc04d94a79",
+      "reason": "Expose authenticated install progress and actionable failure state; no PRoot execution changes. Installation progress/distribution observability updated without changing PRoot execution."
     }
   },
   "sourceRef": "v5.1.107.102",

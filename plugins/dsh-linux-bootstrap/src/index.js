@@ -55,6 +55,7 @@ function initialState(autoUpdate) {
     lastError: null,
     lastErrorCode: null,
     runtime: null,
+    progress: null,
   }
 }
 
@@ -62,6 +63,7 @@ function publicError(state) {
   if (!state.lastError) return null
   if (state.lastErrorCode === 'linux-restore-failed') return 'Linux 启动恢复失败，未联网下载。请在设置中显式重装 Linux；Termux 可继续使用。'
   if (state.lastErrorCode === 'linux-insufficient-space') return '存储空间不足，请释放空间后重试安装 Linux。'
+  if (state.lastErrorCode === 'linux-download-failed') return state.lastError
   if (state.lastErrorCode === 'linux-rootfs-prepare-failed') return 'Linux 根文件系统准备失败。请查看应用私有目录 files/linux-environment/linux-bootstrap-state.json 中的 lastError。'
   if (state.lastErrorCode) return 'Linux 环境操作失败。详细原因保存在应用私有目录 files/linux-environment/linux-bootstrap-state.json 中。'
   return state.lastError
@@ -90,6 +92,7 @@ function availableRuntimes(state) {
 
 function statusShape(state, mobileVersion, operation, packageVersion) {
   return Object.freeze({
+    progress: state.progress,
     experimental: true,
     enabledByDefault: false,
     sandboxed: false,
@@ -232,6 +235,30 @@ export function createMobileBootstrap(options = {}) {
     try { onChange?.(lastStatus) } catch { /* UI errors do not affect bootstrap operations. */ }
     return lastStatus
   }
+  const progress = (stage, asset = null, details = {}) => {
+    const prior = state.progress
+    state.progress = { stage, asset, ...(stage === 'failed' ? { failedStage: prior?.failedStage ?? prior?.stage } : {}), startedAt: prior?.startedAt ?? new Date().toISOString(), ...details }
+    emit()
+  }
+  const assetName = asset => { try { return path.basename(new URL(asset.url).pathname) } catch { return 'unknown' } }
+  const transfer = adapter => async (asset, ...args) => {
+    const name = assetName(asset)
+    progress('download', name, { receivedBytes: 0, totalBytes: asset.size })
+    const onProgress = details => progress('download', name, details)
+    try { return args.length && typeof args[0] === 'string'
+      ? await adapter(asset, args[0], { onProgress })
+      : await adapter(asset, { ...(args[0] ?? {}), onProgress })
+    } catch (error) {
+      progress('failed', name)
+      throw error
+    }
+  }
+  const extract = adapter => async (...args) => {
+    const asset = state.progress?.asset
+    progress('extract', asset)
+    try { const result = await adapter(...args); progress('prepare', asset); return result }
+    catch (error) { progress('failed', asset); throw error }
+  }
   const save = () => persistState(statePath, state)
   const serial = (fn) => {
     const current = tail.then(fn, fn)
@@ -334,6 +361,9 @@ export function createMobileBootstrap(options = {}) {
 
   const pluginConfig = (manifest, runtimeId) => ({
     ...runtimePluginConfig,
+    ...(runtimePluginConfig.downloadAsset ? { downloadAsset: transfer(runtimePluginConfig.downloadAsset) } : {}),
+    ...(runtimePluginConfig.extractArchive ? { extractArchive: extract(runtimePluginConfig.extractArchive) } : {}),
+    onInstallProgress: stage => progress(stage),
     dataDir: path.join(root, 'runtime'),
     cacheDir: cacheRoot,
     arch,
@@ -352,24 +382,30 @@ export function createMobileBootstrap(options = {}) {
       if (comparison < 0) throw new Error(`Refusing to downgrade Linux runtime ${state.installedLinuxVersion} to ${manifest.version}`)
       if (comparison === 0 && !reinstall) throw new Error(`Linux runtime ${manifest.version} is already installed; use reinstall()`)
     }
+    state.availableManifest = publicManifest(manifest)
+    state.latestReleaseVersion = manifest.version
+    state.lastCheckAt = new Date().toISOString()
+    state.progress = null
     operation = reinstall ? 'reinstalling' : 'installing'
     state.lastError = null
     state.lastErrorCode = null
     emit()
 
+    progress('prepare')
     let result
     let hostResult
     let hostInstalled = false
     let resolvedManager = manager
     const config = pluginConfig(manifest, runtimeId)
     try {
+      await save()
       result = await installVerifiedPluginBundle({
         asset: manifest.plugins.runtime,
         destinationRoot: pluginRoot,
         hostStagingRoot,
         requireStagedBundle,
-        downloadAsset,
-        extractArchive,
+        downloadAsset: transfer(downloadAsset),
+        extractArchive: extract(extractArchive),
         fetchImpl,
         kind: 'plugin',
         packageName: RUNTIME_PACKAGE_NAME,
@@ -414,6 +450,7 @@ export function createMobileBootstrap(options = {}) {
       state.lastError = null
       state.lastErrorCode = null
       state.runtime = typeof resolvedManager.status === 'function' ? await resolvedManager.status() : { id: runtime.id, label: runtime.label, architecture: runtime.architecture, backend: runtime.backend }
+      progress('complete')
       await save()
       return emit()
     } catch (error) {
@@ -426,6 +463,7 @@ export function createMobileBootstrap(options = {}) {
         }
       }
       state.lastError = safeError(error)
+      progress('failed', state.progress?.asset)
       // Probe failures contain only controlled commands and bounded diagnostic output.
       await writeFile(path.join(root, '..', 'linux-trial-failed.log'), state.lastError.slice(-16384), { mode: 0o600 }).catch(() => {})
       state.lastErrorCode = typeof error?.code === 'string' && /^linux-[a-z0-9-]+$/.test(error.code)
@@ -449,6 +487,7 @@ export function createMobileBootstrap(options = {}) {
   async function checkForUpdatesInternal({ automatic = false } = {}) {
     await updateMobileVersion()
     if (automatic && (!state.autoUpdateEnabled || !state.enabled || !state.injectionActivated || !state.installedLinuxVersion || !state.installedSystemMobileVersion || !mobileVersion || state.installedSystemMobileVersion === mobileVersion || state.lastAutomaticCheckMobileVersion === mobileVersion)) return emit()
+    state.progress = null
     operation = automatic ? 'automatic-check' : 'checking'
     state.lastError = null
     state.lastErrorCode = null
@@ -541,6 +580,7 @@ export function createMobileBootstrap(options = {}) {
       if (error?.code !== 'ENOENT') throw error
       await save()
     }
+    if (state.progress?.stage !== 'failed') state.progress = null
     await updateMobileVersion()
     await restoreActivation()
     await synchronizeInjectionState()
@@ -595,6 +635,7 @@ export function createMobileBootstrap(options = {}) {
     uninstall: ({ confirmed = false } = {}) => ready.then(() => serial(async () => {
       if (confirmed !== true) throw new Error('uninstall requires confirmed:true')
       if (!state.installedLinuxVersion) return emit()
+      state.progress = null
       operation = 'uninstalling'
       state.lastError = null
       state.lastErrorCode = null

@@ -137,3 +137,11 @@ manual-check isolation, never-resurrect after manual removal, rollback, and the
 cutover/abort semantics of the runtime manager). Real-device installation, the
 Android `isInjected` implementation and the guest DNS path are tracked as open
 integration items rather than asserted here.
+
+## 0.15.3 安装反馈与测试分发
+
+APK 固定清单保持信任锚。publish-linux-runtime 的手动入口只接受本仓 main 成功的 release-source-draft run，从不可变 source-draft-assets 附件取件，复验后发布公开 prerelease runtime（latest=false）；APK 继续是草稿。已有版本只允许相同 commit 和逐字节相同附件，不移动 tag 或覆盖资产。
+
+安装状态包含阶段、资产名、下载字节数和开始时间；解包/健康检查不伪造百分比，提示首次安装需数分钟。页面每秒串行读取鉴权状态，离开即停止；重复安装的 409 转为读取已有任务。失败保存本次批准清单与资产诊断，冷启动不下载。
+
+本轮仅增加观测回调，不改 PRoot、seccomp、loader、bind 或探针逻辑。SGT-AL10 预检超时与 loader EFAULT 仍未解决。

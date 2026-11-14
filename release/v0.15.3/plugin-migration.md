@@ -27,3 +27,9 @@ NDK pin 核对：Google `https://dl.google.com/android/repository/repository2-3.
 五小时后检查发现来源草稿 run 43475958074 失败：x86_64 已完成双构建、实际 APK 比对与签名；ARM64 在所有原生/rootfs/Node 前置验证后因 provenance CLI 路径传错而中断，未产生双 ABI 草稿。修正调用为 JSON 文件，并以构建脚本的原始命令执行正控/目录负控；修复前回归失败、修复后通过。重建将直接触发 release-source-draft.yml；实际草稿结论以随后 run 为准。
 
 第二轮直接草稿 run 43523224700：双 ABI 独立 APK 比对和正式签名均通过，但准备阶段发现 Linux assets 缺失。根因是旧磁盘回收器在上传前删除已不再内嵌的 payload。保留该目录并增加“回收后发布”真实 CLI 集成回归；旧实现负控复现、修复后正控通过，缺 payload 仍拒绝发布。尚未生成草稿，不将签名成功等同于整轮成功。
+
+## 2026-11-14 安装链闭环与验收计划
+
+按用户决定继续保留 Linux，仅执行原计划 1/3/4：独立 runtime prerelease 分发、状态和安装 UI、最终来源包检查。明确不执行 PRoot 根因定位/修复。runtime 的唯一执行层改动是可选安装阶段通知，异常隔离；启动参数、探针和 loader 字节不变。
+
+最终构建后先在 Pixel_Android16（ARM64 / SDK36，命令显式 -gpu host）卸载旧版，再安装同提交 ARM64 来源 APK。待快照事务完成后验证 Termux、鉴权状态/UI、安装失败与成功路径、重启恢复和 Linux 命令；失败记录真实阶段，不放宽健康判据。模拟器/API/ABI/GPU、匿名下载及构建/装机证据将在完成后追加；当前仍待验收。

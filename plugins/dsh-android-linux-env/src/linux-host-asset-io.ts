@@ -251,7 +251,7 @@ async function extractVerifiedArchive(archivePath: string, destination: string, 
 /** Bootstrap 的两个 IO 适配器：批准归档的下载/复用与独立解码。 */
 export interface HostAssetIO {
   /** 交回已验证归档；显式安装可下载 APK 清单批准的资产，冷启动只读 retained archive。 */
-  downloadAsset(asset: { sha256?: unknown }, options?: { destination?: string }): Promise<string>
+  downloadAsset(asset: { sha256?: unknown }, options?: { destination?: string; onProgress?: (value: { receivedBytes: number; totalBytes: number }) => void }): Promise<string>
   /** 从 bootstrap 已验证的归档副本解码到新 staging；不使用宿主解包树。 */
   extractArchive(archivePath: string, destination: string, options?: { kind?: string }): Promise<void>
 }
@@ -293,7 +293,7 @@ export function createHostAssetIO(options: { filesDir: string; bundleDirectory?:
   if (typeof filesDir !== 'string' || filesDir === '') throw new TypeError('filesDir is required')
 
   return {
-    async downloadAsset(asset: { sha256?: unknown; url?: unknown; size?: unknown }): Promise<string> {
+    async downloadAsset(asset: { sha256?: unknown; url?: unknown; size?: unknown }, options?: { onProgress?: (value: { receivedBytes: number; totalBytes: number }) => void }): Promise<string> {
       const archive = retainedArchiveFor(filesDir, asset?.sha256)
       if (archive === null) {
         throw new LinuxHostAssetError(CODE_ASSET_SPEC_INVALID, `清单摘要不合规，拒绝推导落点：${String(asset?.sha256)}`)
@@ -342,20 +342,33 @@ export function createHostAssetIO(options: { filesDir: string; bundleDirectory?:
           }
           await requireLinuxDownloadSpace(stagingParent, asset.size)
           const response = await fetchLinuxAsset(assetUrl, controller.signal)
-          if (!response.ok || !response.body) throw new Error(`Linux asset download failed: HTTP ${response.status}`)
+          if (!response.ok || !response.body) throw new LinuxHostAssetError('linux-download-failed', `下载失败 [download] asset=${name} HTTP ${response.status} url=${assetUrl.href}`)
           let size = 0
           const hash = createHash('sha256')
           const expectedSize = asset.size
+          let lastProgress = 0
+          const reportProgress = (force = false) => {
+            if (force || Date.now() - lastProgress >= 250) {
+              lastProgress = Date.now()
+              try { options?.onProgress?.({ receivedBytes: size, totalBytes: expectedSize }) } catch { /* Observers cannot affect IO. */ }
+            }
+          }
+          reportProgress(true)
           const verifier = new Transform({ transform(chunk, _encoding, callback) {
             size += chunk.length
             if (size > expectedSize) { callback(new Error('Linux asset exceeds declared size')); return }
             hash.update(chunk)
+            reportProgress()
             callback(null, chunk)
           } })
           await pipeline(Readable.fromWeb(response.body as never), verifier, createWriteStream(temp, { flags: 'wx', mode: 0o600 }), { signal: controller.signal })
+          reportProgress(true)
           if (size !== expectedSize || hash.digest('hex') !== asset.sha256) throw new Error('Linux asset size or SHA-256 mismatch')
           await rename(temp, archive)
           return archive
+        } catch (error) {
+          if (error instanceof LinuxHostAssetError) throw error
+          throw new LinuxHostAssetError('linux-download-failed', `下载失败 [download] asset=${name} url=${assetUrl.href}: ${String(error instanceof Error ? error.message : error).slice(0, 300)}`)
         } finally {
           clearTimeout(timer)
           controller.abort()
@@ -445,8 +458,8 @@ export function createLinuxBootstrapConfig(options: {
     linuxAssetIO: assetIO,
     runtimePluginConfig: {
       allowedHostPaths,
-      downloadAsset: async (asset: { sha256?: unknown }, destination: string) => {
-        const source = await assetIO.downloadAsset(asset)
+      downloadAsset: async (asset: { sha256?: unknown }, destination: string, transferOptions?: Parameters<HostAssetIO['downloadAsset']>[1]) => {
+        const source = await assetIO.downloadAsset(asset, transferOptions)
         await pipeline(createReadStream(source), createWriteStream(destination, { flags: 'wx', mode: 0o600 }))
       },
       extractArchive: assetIO.extractArchive,

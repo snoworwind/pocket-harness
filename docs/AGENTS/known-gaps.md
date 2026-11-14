@@ -191,3 +191,7 @@
 ## 已收口事项的历史详档
 
 Engine base 复用的实现与阶段证据保留在 [ENGINE-BASE-2026-10-19.md](ENGINE-BASE-2026-10-19.md)；该文档记录 2026-10-19/20 的构建阶段，不作为当前阻塞清单。版本发布与设备验收范围以本页顶部链接和 [版本历史](changelog-archive.md) 为准。
+
+### 2026-11-14 Linux 安装链修复范围
+
+SGT-AL10 / Android 16 / kernel 6.6.98 / enforcing 的报告包括固定版本附件 404、真实 guest 预检 exit=255/timeout、最小启动 exit=182 与 loader site=214/status=14；本轮处理分发、状态和 UI，按用户要求不修 PRoot 根因。禁 seccomp 和一次 mmap EFAULT 重试均不能据此声称有效。host GPU ARM64 Android 16 模拟器的最终来源 APK 验收结果、真机剩余缺口与匿名下载证据统一见 release/v0.15.3/plugin-migration.md；模拟器不替代 SGT-AL10。

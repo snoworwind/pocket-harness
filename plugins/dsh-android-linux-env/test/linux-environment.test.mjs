@@ -246,7 +246,8 @@ test('normalizer accepts the current Linux status shape and the earlier proposal
   })
   assert.deepEqual(finalized, {
     installed: true, version: '1.2.0', mobileVersion: '0.14.9', installedSystemMobileVersion: undefined,
-    autoUpdate: true, availableVersion: '1.3.0', busy: false,
+    autoUpdate: true, availableVersion: '1.3.0', busy: false, operation: 'idle', progress: null,
+    pluginReleaseUrls: { bootstrap: 'https://github.com/snoworwind/pocket-harness/releases/tag/v1', runtime: 'https://github.com/snoworwind/pocket-harness/releases/tag/v1' },
     runtime: { id: 'debian-minimal', label: 'Debian minimal' },
     plugins: { bootstrap: { releaseUrl: 'https://github.com/snoworwind/pocket-harness/releases/tag/v1' }, runtime: { releaseUrl: 'https://github.com/snoworwind/pocket-harness/releases/tag/v1' } },
     injectionActivated: true, enabled: true, lastCheckAt: '2026-10-16T10:00:00Z', error: undefined,

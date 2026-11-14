@@ -9,6 +9,7 @@ import {
 
 export interface BootstrapStatus {
   /** Current Linux bootstrap status shape. */
+  progress?: { stage: string; asset?: string | null; receivedBytes?: number; totalBytes?: number; startedAt?: string } | null
   installed?: boolean
   version?: string | null
   mobileVersion?: string
@@ -272,6 +273,9 @@ export function normalizeLinuxStatus(status: BootstrapStatus) {
     autoUpdate: status.autoUpdate ?? status.autoUpdateEnabled ?? false,
     availableVersion: status.availableVersion ??
       (status.updateAvailable === true && !updateBlocked ? status.latestReleaseVersion ?? undefined : undefined),
+    ...(status.pluginReleaseUrls ? { pluginReleaseUrls: status.pluginReleaseUrls } : {}),
+    progress: status.progress ?? null,
+    operation: status.operation ?? 'idle',
     busy: status.busy ?? Boolean(status.operation && status.operation !== 'idle'),
     runtime: runtimeFace,
     plugins,

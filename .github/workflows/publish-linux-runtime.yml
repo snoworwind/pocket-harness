@@ -1,29 +1,67 @@
 name: publish-linux-runtime
 on:
+  workflow_dispatch:
+    inputs:
+      source_run_id:
+        description: Successful main release-source-draft run ID (immutable source artifact)
+        required: true
+        type: string
   release:
     types: [published]
 permissions:
+  actions: read
   contents: read
 concurrency:
-  group: linux-runtime-${{ github.event.release.tag_name }}
+  group: linux-runtime-publication
   cancel-in-progress: false
 jobs:
   verify:
-    if: startsWith(github.event.release.tag_name, 'hardening-source-') && !github.event.release.prerelease
+    if: github.event_name == 'workflow_dispatch' || (startsWith(github.event.release.tag_name, 'hardening-source-') && !github.event.release.prerelease)
     runs-on: ubuntu-24.04
+    outputs:
+      commit: ${{ steps.identity.outputs.commit }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
-      - name: Verify published source runtime payloads
+      - name: Select verified source identity
+        id: identity
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          SOURCE_TAG: ${{ github.event.release.tag_name }}
+          SOURCE_RUN: ${{ inputs.source_run_id }}
+          EVENT_NAME: ${{ github.event_name }}
           SOURCE_COMMIT: ${{ github.event.release.target_commitish }}
         run: |
           set -euo pipefail
-          gh release download "$SOURCE_TAG" --dir linux-input --pattern '*.tar.xz' --pattern linux-release.json --pattern linux-runtime-manifest.sha256
+          if [ "$EVENT_NAME" = workflow_dispatch ]; then
+            test "$GITHUB_REF" = refs/heads/main
+            [[ "$SOURCE_RUN" =~ ^[0-9]+$ ]]
+            python3 scripts/source-build/select-linux-source-run.py --self-test
+            gh api "repos/$GH_REPO/actions/runs/$SOURCE_RUN" > source-run.json
+            python3 scripts/source-build/select-linux-source-run.py source-run.json "$GH_REPO" >> "$GITHUB_OUTPUT"
+          else
+            [[ "$SOURCE_COMMIT" =~ ^[a-f0-9]{40}$ ]]
+            echo "commit=$SOURCE_COMMIT" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Verify source runtime payloads
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          SOURCE_RUN: ${{ inputs.source_run_id }}
+          EVENT_NAME: ${{ github.event_name }}
+          SOURCE_TAG: ${{ github.event.release.tag_name }}
+          SOURCE_COMMIT: ${{ steps.identity.outputs.commit }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = workflow_dispatch ]; then
+            gh run download "$SOURCE_RUN" --name "source-draft-assets-$SOURCE_COMMIT" --dir source-release
+            (cd source-release && sha256sum --check --strict SHA256SUMS.txt)
+            mkdir linux-input
+            cp source-release/*.tar.xz source-release/linux-release.json source-release/linux-runtime-manifest.sha256 linux-input/
+          else
+            gh release download "$SOURCE_TAG" --dir linux-input --pattern '*.tar.xz' --pattern linux-release.json --pattern linux-runtime-manifest.sha256
+          fi
           python3 scripts/source-build/prepare-linux-runtime-release.py --self-test
           python3 scripts/source-build/prepare-linux-runtime-release.py linux-input linux-verified "$GH_REPO" "$SOURCE_COMMIT"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
@@ -45,7 +83,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          SOURCE_COMMIT: ${{ github.event.release.target_commitish }}
+          SOURCE_COMMIT: ${{ needs.verify.outputs.commit }}
+          TEST_RELEASE: ${{ github.event_name == 'workflow_dispatch' }}
         run: |
           set -euo pipefail
           cd linux-verified
@@ -71,8 +110,15 @@ jobs:
           commit=$(cat commit.txt)
           # Existing tags/releases are immutable: never replace payloads or move refs.
           if gh api "repos/$GH_REPO/git/ref/tags/$tag" >existing-ref.json 2>ref-error.txt; then
-            echo "Version tag already exists; refusing to reuse $tag" >&2
-            exit 1
+            test "$(python3 -c 'import json; print(json.load(open("existing-ref.json"))["object"]["sha"])')" = "$commit"
+            gh release download "$tag" --dir existing
+            (cd existing && sha256sum --check --strict ../SHA256SUMS.txt)
+            cmp SHA256SUMS.txt existing/SHA256SUMS.txt
+            test "$(find existing -maxdepth 1 -type f | wc -l)" -eq 8
+            if [ "${TEST_RELEASE:-false}" != true ]; then
+              gh release edit "$tag" --draft=false --prerelease=false --latest=false
+            fi
+            exit 0
           elif ! grep -q 'HTTP 404' ref-error.txt; then
             cat ref-error.txt >&2
             exit 1
@@ -81,7 +127,9 @@ jobs:
             echo "Versioned release already exists; refusing to overwrite $tag" >&2
             exit 1
           fi
-          gh release create "$tag" ./*.tar.xz linux-release.json linux-runtime-manifest.sha256 SHA256SUMS.txt \
+          flags=()
+          if [ "${TEST_RELEASE:-false}" = true ]; then flags+=(--prerelease); fi
+          gh release create "$tag" "${flags[@]}" ./*.tar.xz linux-release.json linux-runtime-manifest.sha256 SHA256SUMS.txt \
             --target "$commit" --draft --latest=false --title "Pocket Harness Linux runtime $tag" \
-            --notes "Optional Linux runtime assets built with the corresponding Pocket Harness source release. Termux remains the main environment."
+            --notes "Optional Linux runtime assets built with the corresponding Pocket Harness source release. Termux remains the main environment. Runtime device compatibility has not been certified; known SGT-AL10 PRoot failures remain."
           gh release edit "$tag" --draft=false --latest=false

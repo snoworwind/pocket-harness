@@ -11,7 +11,7 @@
  * confirmed actions on the engine service.
  */
 import React, { useEffect, useState } from 'react'
-import { EXPERIMENTAL_NOTICE, autoUpdateAvailable, describeVersionStatus } from '../src/status.js'
+import { EXPERIMENTAL_NOTICE, autoUpdateAvailable, describeVersionStatus, describeInstallProgress } from '../src/status.js'
 
 export const name = 'dsh-linux-bootstrap-client'
 // Only browser-owned services belong in the client injection set.
@@ -56,6 +56,7 @@ export function LinuxEnvironmentSection({ linuxBootstrap }) {
   }, [linuxBootstrap])
 
   const run = async (action) => {
+    if (busy || status?.busy) return
     setBusy(true)
     setError('')
     try {
@@ -86,6 +87,7 @@ export function LinuxEnvironmentSection({ linuxBootstrap }) {
     h('h2', null, 'Linux环境'),
     h('p', { className: 'linux-environment-notice' }, EXPERIMENTAL_NOTICE),
     h('p', { role: 'status', 'aria-live': 'polite' }, describeVersionStatus(status)),
+    h('p', { role: 'status', 'aria-live': 'polite' }, describeInstallProgress(status)),
     runtimes.length > 1
       ? h(
           'label',
@@ -95,7 +97,7 @@ export function LinuxEnvironmentSection({ linuxBootstrap }) {
             'select',
             {
               value: selectedRuntime,
-              disabled: busy || installed,
+              disabled: busy || status?.busy || installed,
               onChange: (event) => setRuntimeId(event.currentTarget.value),
             },
             runtimes.map((runtime) =>
@@ -110,7 +112,7 @@ export function LinuxEnvironmentSection({ linuxBootstrap }) {
       h('input', {
         type: 'checkbox',
         checked: Boolean(autoUpdateEnabled),
-        disabled: busy || !linuxBootstrap || !autoUpdateAvailable(status),
+        disabled: busy || status?.busy || !linuxBootstrap || !autoUpdateAvailable(status),
         onChange: (event) => run(() => linuxBootstrap.setAutoUpdateEnabled(event.currentTarget.checked)),
       }),
       '自动更新（仅在已启用的 Linux 环境的 DSH Mobile 版本变化后检查并安装较新的 Linux 运行时）',
@@ -122,7 +124,7 @@ export function LinuxEnvironmentSection({ linuxBootstrap }) {
         'button',
         {
           type: 'button',
-          disabled: busy || !linuxBootstrap,
+          disabled: busy || status?.busy || !linuxBootstrap,
           onClick: () => run(() => linuxBootstrap.checkForUpdates({ source: 'manual' })),
         },
         '手动检查更新',
@@ -131,7 +133,7 @@ export function LinuxEnvironmentSection({ linuxBootstrap }) {
         'button',
         {
           type: 'button',
-          disabled: busy || !linuxBootstrap,
+          disabled: busy || status?.busy || !linuxBootstrap,
           onClick: () => {
             if (!confirmInstall()) return undefined
             return run(() => linuxBootstrap.install({ runtimeId: selectedRuntime, confirmed: true, activate: true }))
@@ -143,7 +145,7 @@ export function LinuxEnvironmentSection({ linuxBootstrap }) {
         'button',
         {
           type: 'button',
-          disabled: busy || !linuxBootstrap || !installed,
+          disabled: busy || status?.busy || !linuxBootstrap || !installed,
           onClick: () => {
             if (!confirmInstall()) return undefined
             return run(() => linuxBootstrap.reinstall({ confirmed: true, activate: true }))
@@ -155,7 +157,7 @@ export function LinuxEnvironmentSection({ linuxBootstrap }) {
         'button',
         {
           type: 'button',
-          disabled: busy || !linuxBootstrap || !installed,
+          disabled: busy || status?.busy || !linuxBootstrap || !installed,
           onClick: () => {
             if (!confirmRemove()) return undefined
             return run(() => linuxBootstrap.uninstall({ confirmed: true }))
@@ -167,7 +169,7 @@ export function LinuxEnvironmentSection({ linuxBootstrap }) {
     h(
       'p',
       { className: 'linux-environment-links' },
-      '插件下载页：',
+      urls.bootstrap || urls.runtime ? '插件下载页：' : '插件下载链接尚未就绪，请先检查版本。',
       ReleaseLink({ label: '引导插件', url: urls.bootstrap }),
       ' ',
       ReleaseLink({ label: '运行时插件', url: urls.runtime }),
@@ -185,6 +187,7 @@ export function createHttpBootstrap(fetchImpl = globalThis.fetch) {
       ...(body ? { headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) } : {}),
     })
     const status = await response.json()
+    if (response.status === 409 && action !== 'status') return request('status')
     if (!response.ok) throw new Error(status.error || `Linux request failed: ${response.status}`)
     return { ...status, updateAvailable: Boolean(status.availableVersion),
       pluginReleaseUrls: status.pluginReleaseUrls ?? {
@@ -193,7 +196,16 @@ export function createHttpBootstrap(fetchImpl = globalThis.fetch) {
   }
   return {
     status: () => request('status'),
-    subscribe: () => () => {},
+    subscribe: listener => {
+      let active = true
+      let timer
+      const poll = async () => {
+        try { const value = await request('status'); if (active) listener(value) } catch { /* Status retry does not end an in-flight operation. */ }
+        if (active) timer = setTimeout(poll, 1000)
+      }
+      void poll()
+      return () => { active = false; clearTimeout(timer) }
+    },
     checkForUpdates: () => request('check'),
     install: (body) => request('install', body),
     reinstall: (body) => request('reinstall', body),
