@@ -237,7 +237,11 @@ test('offline production host + bootstrap + runtime install, execute, reinstall 
   try {
     const service = createBootstrap({ ...config, pluginHost: host, runtimePluginConfig: { ...config.runtimePluginConfig, runCommand: nativeRunner } })
     await assert.rejects(service.install({ confirmed: false, activate: true }), /confirmed/)
+    const progressEvents = []
+    const unsubscribe = service.subscribe(status => { if (status.progress) progressEvents.push(status.progress) })
     await service.install({ confirmed: true, activate: true })
+    unsubscribe()
+    for (const stage of ['download', 'extract', 'probe', 'complete']) assert.ok(progressEvents.some(event => event.stage === stage), 'missing progress: ' + stage)
     assert.equal((await service.status()).installed, true)
     assert.equal((await host.isInjected({ runtimeId: 'linux-runtime' })).active, true)
     assert.equal(ctx.get('linuxRuntimeManager').status().healthy, true)

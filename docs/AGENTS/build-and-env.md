@@ -424,3 +424,7 @@ Termux 继续承载主引擎。Linux 资产构建通过 `build-proot-source.py` 
 PRoot 来源证明 CLI 接受的是 `proot-backend-inputs.json` 文件，不是目录。资产构建的真实 shell 调用由 `test_proot_source_backend.py` 直接提取并执行，包含目录误传负控；失败现场见坑 723。
 
 快照封包后，`linux-build/assets` 仍是最终 Release 附件输入，`reclaim-build-disk.mjs` 必须保留该真实目录；三层 APK artifact 清单的声明不能替代清理后的文件存在性。发布准备回归会先实际运行回收器，再验证附件可打包；见坑 724。
+
+### 草稿阶段 Linux 测试附件（0.15.3）
+
+先完成 main 的 release-source-draft.yml，再显式运行 `gh workflow run publish-linux-runtime.yml --ref main -f source_run_id=<成功run>`。手动入口从该次 source-draft-assets-<sha> CI 附件校验后发布 v<runtimeVersion> 的公开 prerelease，latest=false，不公开 APK 草稿。正式 published 入口仍可复用；已有版本仅在 commit 与全部附件一致时复用，正式发布可提升其 prerelease 标志，不改 tag 或文件。最终匿名下载五件并按 APK 清单核对 SHA-256/尺寸；具体构建和设备证据见 release/v0.15.3/plugin-migration.md。PRoot 的 SGT-AL10 运行问题仍未修复。

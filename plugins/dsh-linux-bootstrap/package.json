@@ -61,11 +61,12 @@
       "Cold-start restore re-verifies installed runtime bundle and reactivates explicit opt-in; failures retain Termux and persist diagnostics."
     ],
     "localPatches": {
-      "client/index.js": "2098d477559bd1113cd75e08c1ad042c5ccfc07882d2f8fab3d939320e40d20f",
-      "README.md": "a593a4eb0dfdd18ebb81d50b91973b0a691f8f472cae5e033b7252db6bbc0df1",
+      "client/index.js": "1033e2071425e7a157c845b12c8acc67eebe1c5607c4e6564b049298cb8f5a68",
+      "README.md": "c149fc5100c9ad9031adc67df452b18985e4fa30807f2716c62c00fb3dc8f8f0",
       "src/asset-bundle.js": "7e32ce0f57ee0a7f75dfd2d2af6ff61357d63b6c34e4f0dbf7aa23cf4300e416",
       "src/github.js": "7b6369b5910ecb3e8b49f75a4dae3ca60ceac2d4164bf7f05f71c81803aa110c",
-      "src/index.js": "7356d9dac6226b6a1c060610be453dcc96c5e7827e421cdf781532b7d13e5a86"
+      "src/index.js": "342ff27502be0ba30cd4f84abfe754fd862e5eefe762abdd949bc455959e46f8",
+      "src/status.js": "45b1070993ef047b2edac4c3cb692bf170f7897dffde495892a7d40f08cd47fc"
     }
   }
 }

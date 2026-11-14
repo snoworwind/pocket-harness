@@ -3787,3 +3787,7 @@ CI 39011926728（9bf4ed4）在 `check-contract.mjs` 仅报一条失败：`androi
      真因：旧版所有 Linux payload 已嵌入快照，reclaim-build-disk 将 assets 当成封包后的临时输入删除；迁移到独立下载附件时虽然三层 artifact 上传清单都已增加 assets，清理器仍在上传前删除它们。
      修法：assets 与 provenance/native-libs 一起保留至附件发布，保留的 assets 必须是真实目录，拒绝链接；其余解包 rootfs、编译暂存和旧输入仍按原策略回收，磁盘余量门禁不放宽。
      复验：新增“实际回收 CLI → 实际发布准备”的集成用例，在旧实现稳定复现 missing assets，修复后通过；删除 payload 的负控仍阻断发布。回收器 --self-test 另验证保留字节、链接拒绝、外部目录不被修改及原有空间/边界判据。
+
+725. **草稿 APK 的固定 Linux URL 需要独立公开附件闭环（2026-11-14）**：SGT-AL10 报告 v0.15.3 五个附件 404，因为原发布工作流只在正式非 prerelease APK 发布后执行，草稿附件不能匿名下载。新增 main 手动入口，以成功 release-source-draft run 的不可变 CI 附件为源，核对 run 身份、manifest、SHA-256、尺寸和完整附件集合，发布 latest=false 的 runtime prerelease，APK 保持草稿。已有 tag 只接受相同 commit 与完全相同附件，拒绝覆写。设备下载链以最终来源 APK 的清单匿名下载复核，不把 CI 绿当作 guest 可用。
+
+726. **安装失败不能留下旧清单与无阶段的页面（2026-11-14）**：原 availableManifest 仅在安装成功后更新，失败会残留 0.6.2；HTTP 错误缺资产/URL，浏览器 subscribe 是空实现，数分钟安装没有进度。现在批准清单后即持久化本次目标，状态透传下载字节、资产和 prepare/extract/probe 阶段；鉴权串行轮询、重复操作查询当前进度，链接缺失给说明。进度观察者异常不影响 IO/探针，失败仅停 Linux，保留 Termux。SGT-AL10 超时与 loader site=214/status=14 仅登记为未解决设备证据，本轮不修改 PRoot 根因。

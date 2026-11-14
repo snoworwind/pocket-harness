@@ -305,3 +305,5 @@ Linux 资产独立解包器按 plugin/runtime kind 区分链接政策，文件�
 namespace 迁移覆盖 main/java、test/java、androidTest/java、main/aidl 的 com/snoworwind/pocketharness 目录；ShizukuUserServiceBridge 的协议版本提升至 5，职责与 transaction 编号不变。详见 NAMESPACE-MIGRATION-2026-10-19.md。
 
 Linux 可选插件的启动恢复与下载边界见 `release/v0.15.3/plugin-migration.md`：linux-env 提供常驻 `linux_environment_status`，bootstrap 在 load 时先恢复已明确启用的 runtime，manager 安装前执行 getconf/Node/PTY/fork 验证。LogShare 封闭白名单新增 `linux-trial-failed.log`，不遍历整个 Linux 状态目录。
+
+0.15.3 安装反馈增量：manager 的可选 onInstallProgress 仅报告现有 guest 健康检查开始，观察者异常被隔离，不更改执行/探针语义。宿主下载器报告限频字节进度与固定 URL 错误；bootstrap/normalizeLinuxStatus/client 串起阶段与资产。当前 runtimeVersion 由 linux-inputs.json 独立固定，不依据 app 版本自动推导。SGT-AL10 根因未修复。

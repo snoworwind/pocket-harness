@@ -128,6 +128,7 @@ export function apply(ctx, config = {}) {
   const manager =
     config.manager ??
     createManager({
+      onInstallProgress: config.onInstallProgress,
       dataDir: config.dataDir,
       arch: config.arch,
       allowedHostPaths: config.allowedHostPaths,

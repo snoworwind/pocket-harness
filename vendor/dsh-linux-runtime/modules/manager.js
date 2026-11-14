@@ -666,6 +666,7 @@ export class LinuxRuntimeManager {
     this.arch = options.arch ?? 'arm64';
     this.fetchImpl = options.fetchImpl ?? globalThis.fetch;
     if (typeof this.fetchImpl !== 'function') throw new TypeError('fetchImpl must be a function');
+    this.onInstallProgress = stage => { try { options.onInstallProgress?.(stage); } catch { /* Presentation must not affect runtime. */ } };
     this.downloadAsset = options.downloadAsset;
     this.extractArchive = options.extractArchive;
     this.runCommand = options.runCommand ?? spawnCommand;
@@ -1197,6 +1198,7 @@ export class LinuxRuntimeManager {
       finalPublished = true;
       const health = this._healthForRecord(record);
       if (!health.healthy) throw new Error(`staged runtime is unhealthy: ${health.reason}`);
+      this.onInstallProgress('probe');
       await this._probeRuntime(health, selection.runtime.prootVersion, selection.runtime.minimumGlibc);
       await this._stopChildren();
       await this._writeActive(record);

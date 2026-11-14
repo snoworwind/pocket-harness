@@ -2420,3 +2420,5 @@ Linux runtime scope 退出：先注销工具/监听，再 await 自建 manager.d
 namespace 迁移：生产、测试、instrumentation、AIDL 与上述源码锚点统一使用 com/snoworwind/pocketharness；ShizukuUserServiceBridge.PROTOCOL_VERSION=5 经 UserServiceArgs.version 触发旧服务淘汰，RootAccess 的 app_process 入口与 IME 组件同步迁移。绑定回读支持新同包简写，旧 namespace 仅作为拒绝反例。前后完整检查与升级边界见 NAMESPACE-MIGRATION-2026-10-19.md。
 
 模型目录生成（B01）：pi-ai 厂商 JSON 的类型索引 → 条目声明 id → compact 能力 → 按真实 id 分组 → 插件 lookupCatalog。旧无类型目录保持 key 原样；类型索引缺声明或非法 id 拒绝。`scripts/source-build/model-catalog-identity.test.mjs` 覆盖身份正控与负控；实际出货目录仍跑全量冲突和写回用例，见 gotchas 坑 450。
+
+0.15.3 安装反馈：bootstrap 在 requireApprovedManifest 后持久化目标；transfer/extract 适配包装器发布 operation-local progress，host IO 限频报告下载字节，manager 仅通过隔离的 onInstallProgress 通知探针阶段。normalizeLinuxStatus 透传进度，客户端鉴权状态轮询串行且卸载时停止，409 转为状态读取。发布手动入口按 select-linux-source-run.py 验成功 main draft run 身份，下载该次不可变 CI 附件，现有 prepare-linux-runtime-release.py 验 manifest/尺寸/摘要后发布 prerelease。

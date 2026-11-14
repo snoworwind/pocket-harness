@@ -2,6 +2,7 @@
 
 > 全部版本历史都堆在这里（AGENTS.md 不再设更新记录表）。**新条目倒序加在表格最上方**。细节写进对应详档，这里只留一行摘要。
 
+| 2026-11-14 | **0.15.3：Linux 草稿测试分发与安装反馈** | 新增成功 main 草稿 run 的 runtime prerelease 入口，保留 APK 草稿；刷新失败目标、显示阶段/资产/字节进度，重复操作跟踪已有任务。PRoot 根因不在本轮范围；最终 host GPU 模拟器卸载重装待验。 | Codex |
 | 2026-11-14 | **0.15.3 开发：可下载 Linux 插件** | Termux 保持主环境；Linux payload 按需下载与验包、冷启动恢复、glibc/PTY/fork 预检和来源 PRoot 补丁迁移。versionCode 60；尚未发布，最终来源 APK 与设备验收待执行。见 [开发记录](../../release/v0.15.3/plugin-migration.md)。 | Codex |
 | 2026-11-12 | **0.15.2 正式发布：侧栏原生终端（ARM64 + x86_64）** | PR [#272](https://github.com/snoworwind/pocket-harness/pull/272) 引入 libvterm（MIT）+ JNI + 原生 `TerminalView` 宿主 + `termView*` 桥 + 来源链预编译 `.so`，右侧栏新增 `terminal-native` tab 并替换上游 Web 终端入口；返工修复引导卡主题/横屏（#307）、OMZ 彩色提示符 RGB→ARGB（#308），补充 Linux 缓存自证与构建缓存（#300/#306）及 apt/步骤顺序可靠性修复（#310/#311/#313）。来源 run [43071819331](https://github.com/snoworwind/pocket-harness/actions/runs/43071819331)，Release `hardening-source-da3726a8826b-43071819331-1` 已公开并设为 Latest；真机验证终端核心路径、引导卡浅色/横屏与目录蓝色。模型侧 bash/terminal 工具未改。 | DSH Agent |
 | 2026-11-10 | **0.15.2 版本线提升：侧栏原生终端（M2，实验性）** | PR [#272](https://github.com/snoworwind/pocket-harness/pull/272)：libvterm（MIT）+ JNI + 原生 TerminalView 宿主 + `termView*` 桥 + 来源链预编译 `.so`；右侧栏新增 `terminal-native` tab，以 `terminal-native` 替换上游 Web 终端入口；返工修复引导卡主题/横屏与 OMZ 彩色提示符后重新发布 0.15.2。模型侧 bash/terminal 工具未改。 | DSH Agent |

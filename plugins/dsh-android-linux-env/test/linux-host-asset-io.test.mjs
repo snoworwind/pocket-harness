@@ -697,7 +697,7 @@ test('uninstall survives an engine restart by reactivating the persisted plugin 
   } finally { await rm(filesDir, { recursive: true, force: true }) }
 })
 
-for (const mode of ['valid', 'digest', 'short', 'overflow']) {
+for (const mode of ['valid', 'digest', 'short', 'overflow', 'http404']) {
   test(`downloadable Linux asset verifies bytes before publication: ${mode}`, async () => {
     const filesDir = await tempFilesDir()
     const original = globalThis.fetch
@@ -706,7 +706,7 @@ for (const mode of ['valid', 'digest', 'short', 'overflow']) {
       size: bytes.length, sha256: sha256(bytes) }
     const body = mode === 'digest' ? Buffer.alloc(bytes.length) : mode === 'short' ? bytes.subarray(1) :
       mode === 'overflow' ? Buffer.concat([bytes, bytes]) : bytes
-    globalThis.fetch = async () => new Response(body)
+    globalThis.fetch = async () => mode === 'http404' ? new Response(null, { status: 404 }) : new Response(body)
     try {
       const bundleDirectory = join(filesDir, 'bundle')
       await mkdir(bundleDirectory)
@@ -715,10 +715,17 @@ for (const mode of ['valid', 'digest', 'short', 'overflow']) {
       await writeFile(join(bundleDirectory, 'linux-runtime-manifest.sha256'), sha256(body))
       const io = createHostAssetIO({ filesDir, bundleDirectory })
       if (mode === 'valid') {
-        const archive = await io.downloadAsset(asset)
+        const progress = []
+        const archive = await io.downloadAsset(asset, { onProgress: value => progress.push(value) })
+        assert.equal(progress.at(-1).receivedBytes, bytes.length)
+        assert.equal(progress.at(-1).totalBytes, bytes.length)
         assert.deepEqual(await readFile(archive), bytes)
       } else {
-        await assert.rejects(io.downloadAsset(asset), /size|SHA-256/)
+        await assert.rejects(io.downloadAsset(asset), error => {
+          assert.equal(error.code, 'linux-download-failed')
+          assert.match(error.message, mode === 'http404' ? /download.*asset=linux-runtime-plugin.tar.xz HTTP 404 url=https:\/\/github.com\// : /size|SHA-256/)
+          return true
+        })
         assert.equal(existsSync(retainedArchiveFor(filesDir, asset.sha256)), false)
       }
     } finally { globalThis.fetch = original; await rm(filesDir, { recursive: true, force: true }) }
@@ -775,4 +782,29 @@ test('download redirects allow the GitHub CDN and reject other origins before fe
 test('download space preflight fails readably before writing bytes', async () => {
   await assert.rejects(requireLinuxDownloadSpace('/fixture', 100, async () => ({ bavail: 1, bsize: 4096 })), error => error.code === 'linux-insufficient-space')
   await requireLinuxDownloadSpace('/fixture', 100, async () => ({ bavail: 1024 * 1024, bsize: 4096 }))
+})
+
+// A failed download must persist the currently approved target rather than a stale previous release.
+test('install failure refreshes persisted target manifest and retains actionable asset error', async () => {
+  const filesDir = await tempFilesDir()
+  try {
+    const asset = { size: 3, unpackedSize: 3, sha256: sha256(Buffer.from('new')) }
+    const manifest = makeManifest({ asset })
+    const root = join(filesDir, 'linux-environment')
+    await mkdir(root, { recursive: true })
+    await writeFile(join(root, 'linux-bootstrap-state.json'), JSON.stringify({ schemaVersion: 1, autoUpdateEnabled: false,
+      availableManifest: { version: '0.6.2' }, installedLinuxVersion: null, latestReleaseVersion: '0.6.2' }))
+    const error = Object.assign(new Error('下载失败 [download] asset=linux-runtime-plugin.tar.xz HTTP 404 url=' + manifest.plugins.runtime.url), { code: 'linux-download-failed' })
+    const service = createBootstrap({ dataDir: root, appVersionProvider: () => '0.15.3',
+      manifestProvider: async () => ({ manifest, releaseTag: TAG, sha256: '0'.repeat(64) }), verifyManifest: async () => true,
+      pluginHost: makePluginHost(), downloadAsset: async () => { throw error }, extractArchive: async () => {} })
+    await assert.rejects(installConfirmed(service), /HTTP 404/)
+    const state = JSON.parse(await readFile(join(root, 'linux-bootstrap-state.json'), 'utf8'))
+    assert.equal(state.availableManifest.version, manifest.version)
+    const status = await service.status()
+    assert.equal(status.busy, false)
+    assert.equal(status.installed, false)
+    assert.equal(status.progress.asset, 'linux-runtime-plugin.tar.xz')
+    assert.match(status.error, /HTTP 404.*url=/)
+  } finally { await rm(filesDir, { recursive: true, force: true }) }
 })
