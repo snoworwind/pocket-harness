@@ -12,7 +12,7 @@ from pathlib import Path
 def check_names(names):
     for name in names:
         parts = name.split('/')
-        if any(p in {'linux-bootstrap', 'dsh-linux-bootstrap', 'dsh-linux-runtime', 'linux-bundle'} for p in parts) or any(p.startswith('libpocketharness_proot') for p in parts):
+        if any(p in {'linux-bootstrap', 'dsh-linux-bootstrap', 'dsh-linux-runtime', 'linux-runtime', 'linux-bundle', 'linux-assets'} for p in parts) or any(p.startswith('libpocketharness_proot') for p in parts):
             raise ValueError('retired Linux payload in artifact: ' + name)
         if name.endswith(('/linux-release.json', '/linux-runtime-manifest.sha256', '/linux-environment.js', '/linux-host-asset-io.js', '/linux-tool-contract.js')):
             raise ValueError('retired Linux configuration in artifact: ' + name)
@@ -31,7 +31,8 @@ class RemovalTests(unittest.TestCase):
     def test_termux_survives_and_linux_payloads_are_rejected(self):
         check_names(['usr/bin/bash', 'usr/lib/node_modules/dsh-android-linux-env/lib/index.js'])
         for name in ['usr/lib/node_modules/@dsh-android/linux-bootstrap/lib/index.js',
-                     'usr/lib/linux-bundle/linux-release.json', 'lib/arm64-v8a/libpocketharness_proot.so',
+                     'usr/lib/linux-bundle/linux-release.json', 'usr/share/pocket-harness/linux-assets/node.tar.xz',
+                     'usr/lib/node_modules/@dsh-android/linux-runtime/lib/index.js', 'lib/arm64-v8a/libpocketharness_proot.so',
                      'usr/lib/node_modules/dsh-android-linux-env/lib/linux-environment.js']:
             with self.subTest(name=name), self.assertRaises(ValueError):
                 check_names([name])
