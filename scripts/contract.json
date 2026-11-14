@@ -115,11 +115,6 @@
       "repo": "plugins/dsh-android-linux-env"
     },
     {
-      "id": "linux-bootstrap",
-      "pkg": "@dsh-android/linux-bootstrap",
-      "repo": "plugins/dsh-linux-bootstrap"
-    },
-    {
       "id": "android-file-open",
       "pkg": "@dsh-android/dsh-android-file-open",
       "repo": "plugins/dsh-android-file-open"

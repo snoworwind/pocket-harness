@@ -95,7 +95,7 @@ test('ST-16：配方含三键来源标签，且工具面/状态路由仍在场',
   }
   const status = await callRoute(harness, '/api/android/env/status')
   assert.equal(status.adbTier, 'T0')
-  assert.deepEqual(harness.tools.map((t) => t.name).sort(), ['android_env_recipe', 'android_toolchain_status', 'linux_environment_status'])
+  assert.deepEqual(harness.tools.map((t) => t.name).sort(), ['android_env_recipe', 'android_toolchain_status'])
 })
 
 test('#222：环境 exact 路由在读取状态/配方前拒绝未认证与伪造 Host', async () => {
@@ -120,4 +120,17 @@ test('#222：环境 exact 路由在读取状态/配方前拒绝未认证与伪�
     assert.equal(forged.headers['cache-control'], 'no-store')
     assert.equal(forged.body, '', path + ' 403 必须空体')
   }
+})
+
+// Removal regression: even a legacy bootstrap service must never restore the retired feature.
+test('retired Linux host, routes, prompt and tools are not mounted', () => {
+  const unexpected = () => { throw new Error('retired Linux activation attempted') }
+  const harness = makeCtx({ linuxBootstrap: { status: unexpected }, androidPrivilege: { status: () => ({ tier: 'T0' }) } })
+  harness.ctx.provide = unexpected
+  harness.ctx.inject = unexpected
+  apply(harness.ctx)
+  assert.ok(harness.routes.has('/api/android/env/status'))
+  assert.ok(harness.routes.has('/api/android/env/recipe'))
+  assert.ok(![...harness.routes.keys()].some(path => path.includes('/linux')))
+  assert.deepEqual(harness.tools.map(tool => tool.name).sort(), ['android_env_recipe', 'android_toolchain_status'])
 })

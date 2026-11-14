@@ -6,7 +6,7 @@ Pocket Harness 是 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-ha
 
 ## 能做什么
 
-- **运行 Agent**：内嵌 Linux 运行时，提供 bash、Node.js 和项目插件。
+- **运行 Agent**：内嵌 Termux 运行时，提供 bash、Node.js 和项目插件；实验性 Debian/PRoot Linux 环境已移除。
 - **操作手机**：通过无障碍与 Shizuku 通道读取界面、执行输入和截屏。
 - **浏览网页**：使用与主界面隔离的浏览器工作台管理网页和标签页。
 - **使用虚拟屏**：在独立虚拟显示屏中运行和操作第三方应用（需要 Shizuku）。

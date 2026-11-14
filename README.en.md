@@ -6,7 +6,7 @@ Pocket Harness is an Android shell for [DeepSeek Harness](https://github.com/dee
 
 ## What it does
 
-- **Run an agent** with an embedded Linux runtime, including bash, Node.js and project plugins.
+- **Run an agent** with an embedded Termux runtime, including bash, Node.js and project plugins. The experimental Debian/PRoot Linux environment has been removed.
 - **Control the phone** through accessibility and Shizuku channels for UI inspection, input and screenshots.
 - **Browse the web** in a browser workbench isolated from the main UI, with page and tab management.
 - **Use a virtual display** to run and control third-party apps on a separate screen (requires Shizuku).

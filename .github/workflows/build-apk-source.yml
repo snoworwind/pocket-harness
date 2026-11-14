@@ -682,99 +682,6 @@ jobs:
           cp "$base_root/base-usr.tar.xz.provenance.json" \
             .deploy-tmp/source-build/termux-base-provenance.json
 
-      - name: Restore Linux ARM64 assets
-        id: linux-assets
-        if: env.DSH_ABI == 'arm64'
-        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
-        with:
-          path: |
-            .deploy-tmp/linux-build/assets
-            .deploy-tmp/linux-build/provenance
-            .deploy-tmp/linux-build/native-libs
-          key: linux-assets-${{ runner.os }}-${{ hashFiles('scripts/source-build/linux-inputs.json', 'scripts/source-build/linux-source-manifest.json', 'scripts/source-build/build-linux-assets.sh', 'scripts/source-build/package-linux-assets.py', 'scripts/source-build/prepare-proot-backend.py', 'scripts/source-build/build-proot-source.py', 'scripts/source-build/proot_source_provenance.py', 'scripts/source-build/prepare-proot-source-backend.py', 'scripts/source-build/proot-source/**', 'scripts/source-build/inventory-native-runtime.py', 'scripts/source-build/ensure-no-rootfs-mounts.py') }}
-
-      - name: Install Linux asset cross-build tools
-        if: env.DSH_ABI == 'arm64' && steps.linux-assets.outputs.cache-hit != 'true'
-        shell: bash
-        run: |
-          set -euo pipefail
-          retry() {
-            for attempt in 1 2 3 4 5; do
-              if "$@"; then return 0; fi
-              echo "apt attempt ${attempt} failed; retrying"
-              sleep 10
-            done
-            return 1
-          }
-          retry sudo apt-get update
-          retry sudo apt-get install -y gcc-aarch64-linux-gnu debootstrap debian-archive-keyring qemu-user-static binfmt-support xz-utils gawk
-          sudo update-binfmts --enable qemu-aarch64
-
-      - name: Prepare pinned Debian archive trust keys for Linux assets
-        if: env.DSH_ABI == 'arm64' && steps.linux-assets.outputs.cache-hit != 'true'
-        shell: bash
-        run: |
-          set -euo pipefail
-          keydir="$GITHUB_WORKSPACE/.deploy-tmp/linux-keyring"
-          homedir="$keydir/gnupg"
-          mkdir -p "$homedir"
-          chmod 700 "$homedir"
-          archive_sha=$(node -p 'require("./scripts/source-build/linux-inputs.json").debianArchiveKey13Sha256')
-          archive_fingerprint=$(node -p 'require("./scripts/source-build/linux-inputs.json").debianArchiveKey13Fingerprint')
-          release_sha=$(node -p 'require("./scripts/source-build/linux-inputs.json").debianReleaseKey13Sha256')
-          release_fingerprint=$(node -p 'require("./scripts/source-build/linux-inputs.json").debianReleaseKey13Fingerprint')
-          bash scripts/source-build/retry-curl.sh --fail --location --retry 8 --retry-max-time 600 https://ftp-master.debian.org/keys/archive-key-13.asc -o "$keydir/archive-key-13.asc"
-          bash scripts/source-build/retry-curl.sh --fail --location --retry 8 --retry-max-time 600 https://ftp-master.debian.org/keys/release-13.asc -o "$keydir/release-13.asc"
-          printf '%s  %s\n%s  %s\n' "$archive_sha" "$keydir/archive-key-13.asc" "$release_sha" "$keydir/release-13.asc" | sha256sum --check --strict
-          gpg --batch --quiet --homedir "$homedir" --import /usr/share/keyrings/debian-archive-keyring.gpg "$keydir/archive-key-13.asc" "$keydir/release-13.asc"
-          fingerprints=$(gpg --batch --homedir "$homedir" --with-colons --list-keys | awk -F: '$1 == "fpr" { print $10 }')
-          grep -Fx "$archive_fingerprint" <<<"$fingerprints"
-          grep -Fx "$release_fingerprint" <<<"$fingerprints"
-          gpg --batch --quiet --homedir "$homedir" --export > "$keydir/debian-archive-keyring.gpg"
-          test -s "$keydir/debian-archive-keyring.gpg"
-
-      # Debian/PRoot rootfs 构建约 6 分钟。缓存 key 只由 pinned 输入哈希决定；rootfs 内的包仍按
-      # linux-inputs.json 的 SHA256 校验，provenance 随缓存一起恢复，来源判据不变。
-      - name: Build source-owned offline ARM64 Linux assets
-        if: env.DSH_ABI == 'arm64' && steps.linux-assets.outputs.cache-hit != 'true'
-        shell: bash
-        env:
-          DEBIAN_KEYRING: ${{ github.workspace }}/.deploy-tmp/linux-keyring/debian-archive-keyring.gpg
-          TERMUX_WEBROOT: ${{ github.workspace }}/.deploy-tmp/source-build/termux-webroot
-          TERMUX_PROVENANCE: ${{ github.workspace }}/.deploy-tmp/source-build/termux-packages-provenance.json
-          TERMUX_BOOTSTRAP_USR: ${{ github.workspace }}/.deploy-tmp/source-build/bootstrap-extracted/usr
-        run: |
-          set -euo pipefail
-          bash scripts/source-build/build-linux-assets.sh
-
-      - name: Save Linux ARM64 assets
-        if: env.DSH_ABI == 'arm64' && steps.linux-assets.outputs.cache-hit != 'true'
-        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830
-        with:
-          path: |
-            .deploy-tmp/linux-build/assets
-            .deploy-tmp/linux-build/provenance
-            .deploy-tmp/linux-build/native-libs
-          key: linux-assets-${{ runner.os }}-${{ hashFiles('scripts/source-build/linux-inputs.json', 'scripts/source-build/linux-source-manifest.json', 'scripts/source-build/build-linux-assets.sh', 'scripts/source-build/package-linux-assets.py', 'scripts/source-build/prepare-proot-backend.py', 'scripts/source-build/build-proot-source.py', 'scripts/source-build/proot_source_provenance.py', 'scripts/source-build/prepare-proot-source-backend.py', 'scripts/source-build/proot-source/**', 'scripts/source-build/inventory-native-runtime.py', 'scripts/source-build/ensure-no-rootfs-mounts.py') }}
-
-      - name: Attest reused Linux assets for this commit
-        if: env.DSH_ABI == 'arm64' && steps.linux-assets.outputs.cache-hit == 'true'
-        shell: bash
-        run: |
-          set -euo pipefail
-          node scripts/source-build/attest-linux-cache.mjs --self-test
-          node scripts/source-build/attest-linux-cache.mjs .deploy-tmp/linux-build "$GITHUB_SHA"
-
-      - name: Reclaim the ARM64 Linux rootfs after packaging
-        if: env.DSH_ABI == 'arm64'
-        shell: bash
-        run: |
-          set -euo pipefail
-          # rootfs 是 debootstrap 的中间产物，打包进 assets 后不再需要；它由 root 拥有且体积大，
-          # arm64 作业在 snapshot 步骤前释放它，避免与 x86 不同步的 ENOSPC（x86 不构建 Linux assets）。
-          sudo rm -rf .deploy-tmp/linux-build/rootfs
-          df -h "$GITHUB_WORKSPACE" | tail -1
-
       - name: Build runtime snapshot from verified inputs
         shell: bash
         run: |
@@ -847,12 +754,6 @@ jobs:
             "$snapshot_stage/usr/lib/node_modules/@deepseek-ai/dsh" \
             .deploy-tmp/engine-overlay/source-build-manifest.json \
             .deploy-tmp/source-build/pnpm-package-materialization.json
-          if [[ "$DSH_ABI" == arm64 ]]; then
-            node scripts/source-build/prepare-linux-snapshot-bundle.mjs --self-test \
-              .deploy-tmp/linux-build/assets .deploy-tmp/linux-build/provenance
-            node scripts/source-build/prepare-linux-snapshot-bundle.mjs \
-              .deploy-tmp/linux-build/assets .deploy-tmp/linux-build/provenance "$snapshot_stage"
-          fi
           snapshot_archive="$GITHUB_WORKSPACE/$snapshot_root/snapshot.tar.xz"
           snapshot_repacked="$GITHUB_WORKSPACE/$snapshot_root/snapshot.source-built.tar.xz"
           (
@@ -1092,9 +993,6 @@ jobs:
             .deploy-tmp/source-build/gradle-artifacts-sha256.txt
             .deploy-tmp/source-build/signing-certificate-sha256.txt
             .deploy-tmp/source-build/package-manager-versions.txt
-            .deploy-tmp/source-build/linux-bundle-injection.json
-            .deploy-tmp/linux-build/assets/**
-            .deploy-tmp/linux-build/provenance/**
             .deploy-tmp/source-build/pnpm-deploy-build-policy.json
             .deploy-tmp/source-build/pnpm-deploy-runtime-closure.json
             .deploy-tmp/source-build/pnpm-deploy-runtime-closure.lock.yaml
@@ -1175,9 +1073,6 @@ jobs:
             .deploy-tmp/source-build/gradle-artifacts-sha256.txt
             .deploy-tmp/source-build/signing-certificate-sha256.txt
             .deploy-tmp/source-build/package-manager-versions.txt
-            .deploy-tmp/source-build/linux-bundle-injection.json
-            .deploy-tmp/linux-build/assets/**
-            .deploy-tmp/linux-build/provenance/**
             .deploy-tmp/source-build/pnpm-deploy-build-policy.json
             .deploy-tmp/source-build/pnpm-deploy-runtime-closure.json
             .deploy-tmp/source-build/pnpm-deploy-runtime-closure.lock.yaml
@@ -1284,9 +1179,6 @@ jobs:
             .deploy-tmp/source-build/gradle-artifacts-sha256.txt
             .deploy-tmp/source-build/signing-certificate-sha256.txt
             .deploy-tmp/source-build/package-manager-versions.txt
-            .deploy-tmp/source-build/linux-bundle-injection.json
-            .deploy-tmp/linux-build/assets/**
-            .deploy-tmp/linux-build/provenance/**
             .deploy-tmp/source-build/pnpm-deploy-build-policy.json
             .deploy-tmp/source-build/pnpm-deploy-runtime-closure.json
             .deploy-tmp/source-build/pnpm-deploy-runtime-closure.lock.yaml

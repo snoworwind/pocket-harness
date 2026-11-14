@@ -1,5 +1,7 @@
 # modules.md — 目录与源文件作用（关键函数锚点）
 
+> 0.15.3 当前候选：实验性 Debian/PRoot Linux 环境已移除。本文的 Linux bootstrap/runtime/资产构建描述均为历史记录；不再挂载宿主、安装路由、状态工具或 UI，不进入 APK/草稿附件。Termux 工具链、配方和缓存清理保留；旧 Linux 数据不自动删除。AndroidBridge 的 linuxAssetPrepare/Status 仅保留兼容签名，固定返回 linux-removed，不启动任务。历史源码及专用 CI 仅留作调查证据，见 release/v0.15.3/plugin-migration.md。
+
 第二轮安全修复新增 `NotifyConfirmActivity.kt`：通知动作的原生界面与系统凭据认证，认证后签发内存一次性许可给 `NotifyActionReceiver`。`MainActivity.confirmPrivilegedChange` 负责敏感桥授权的原生确认、系统凭据回调、超时撤销；`EngineTransport.admit` 在 selector 上限制未认证连接并在分配后端前验证 relay 凭据。授权存储与兼容变化见 [修复账本](SECURITY-REMEDIATION-2026-10-17-R2.md)。
 
 > grep 用法：`grep -n "<文件名>.kt" docs/AGENTS/modules.md`。行号随版本漂移，以函数名为准。

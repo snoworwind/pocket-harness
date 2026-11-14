@@ -41,7 +41,6 @@ export function assembleApk(options, runner = spawnSync) {
     artifactName,
     suffix = '',
     gradleCommand,
-    linuxNativeLibraryDir,
     terminalNativeLibraryDir,
     clean = false,
     log = console.log,
@@ -86,7 +85,6 @@ export function assembleApk(options, runner = spawnSync) {
 
   const gradle = gradleCommand ?? (process.platform === 'win32' ? 'gradlew.bat' : './gradlew')
   const gradleArgs = [':app:assembleRelease', '--no-daemon', `-PversionNameSuffix=${suffix}`]
-  if (linuxNativeLibraryDir) gradleArgs.push(`-PlinuxNativeLibraryDir=${resolve(linuxNativeLibraryDir)}`)
   if (terminalNativeLibraryDir) gradleArgs.push(`-PterminalNativeLibraryDir=${resolve(terminalNativeLibraryDir)}`)
   log(`Gradle: ${gradle} ${gradleArgs.join(' ')}`)
   execute(gradle, gradleArgs, { cwd: resolvedApkDir, shell: process.platform === 'win32' }, runner)

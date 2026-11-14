@@ -14,8 +14,8 @@
   "license": "MIT",
   "private": true,
   "scripts": {
-    "build": "tsc -p .",
-    "test": "npm run build && node --test test/env-recipe-schema.test.mjs test/recipe-live.test.mjs test/toolchain-single-table.test.mjs test/runtime-cache-allowlist.test.mjs test/runtime-cache-route.test.mjs test/linux-environment.test.mjs test/linux-host-asset-io.test.mjs test/offline-install-integration.test.mjs test/linux-tool-contract.test.mjs"
+    "build": "node -e \"require('node:fs').rmSync('lib', {recursive:true, force:true})\" && tsc -p .",
+    "test": "npm run build && node --test test/env-recipe-schema.test.mjs test/recipe-live.test.mjs test/toolchain-single-table.test.mjs test/runtime-cache-allowlist.test.mjs test/runtime-cache-route.test.mjs"
   },
   "dependencies": {
     "@dsh-android/dsh-android-bridge": "file:../dsh-android-bridge",

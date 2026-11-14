@@ -1,3 +1,5 @@
+> 当前决定（2026-11-14）：按用户要求移除实验性 Linux 环境。以下迁移、构建和发布内容保留为历史调查记录，不代表当前交付。当前范围见 [发布说明](notes.md)。历史源码保留，不进入产品构建；专用工作流已移至 docs/linux-env-findings/retired-workflows，GitHub 不再执行。旧数据不自动删除。
+
 # Linux 插件迁移（开发中）
 
 基线：9793fbb2，开发分支 codex/downloadable-linux-runtime。历史现场由本地 codex/preserve-linux-9779dbb5 保留。用户已有 docs/harmonyos/ 与 dsh-shell-linux/ 未纳入本次修改。

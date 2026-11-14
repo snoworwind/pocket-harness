@@ -11,14 +11,7 @@ import sys
 import zipfile
 
 ABIS = ('arm64', 'x86_64')
-OPTIONAL_EVIDENCE_BY_ABI = {
-    # These files are produced only by build-apk-source.yml's ARM64 Linux-asset stages.
-    'x86_64': frozenset((
-        '.deploy-tmp/source-build/linux-bundle-injection.json',
-        '.deploy-tmp/linux-build/provenance/**',
-        '.deploy-tmp/linux-build/assets/**',
-    )),
-}
+OPTIONAL_EVIDENCE_BY_ABI = {}
 
 
 def digest(path):
@@ -108,17 +101,6 @@ def prepare(source_root, output, env):
                 if path != apk:
                     archive.write(path, f'{abi}/{path.relative_to(source).as_posix()}')
 
-    # Keep downloadable runtime archives as first-class release assets, not buried in evidence ZIP.
-    linux_assets = artifacts['arm64'][0] / '.deploy-tmp/linux-build/assets'
-    for path in sorted(linux_assets.iterdir()):
-        if not path.is_file() or path.is_symlink():
-            raise ValueError('Linux release payload must be a regular file')
-        destination = output / path.name
-        if destination.exists():
-            raise ValueError('Linux release payload filename collides with another asset')
-        shutil.copyfile(path, destination)
-        assets.append(destination)
-
     notes = output / 'notes.md'
     notes.write_text(f'''Dual-ABI source build for main.
 
@@ -127,8 +109,8 @@ Build: {server}/{repo}/actions/runs/{env['GITHUB_RUN_ID']}
 
 Draft prerelease only. Device validation has NOT been performed for this candidate.
 Includes ARM64 and x86_64 APKs, signed with the independent Pocket Harness signing identity.
-The x86_64 build currently omits offline PRoot Linux assets and the Android Canvas native runtime;
-use the ARM64 APK for those capabilities. Complete device acceptance before making this release public.
+The experimental Debian/PRoot Linux plugin has been removed; Termux remains the main environment.
+The x86_64 build currently omits the Android Canvas native runtime. Complete device acceptance before making this release public.
 
 APK bytes are copied unchanged from this run's independently verified source builds. provenance.zip
 contains the evidence for both ABIs under separate top-level directories; verify downloaded assets

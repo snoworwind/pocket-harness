@@ -1,5 +1,7 @@
 # gpl-compliance.md — GPL 合规
 
+> 0.15.3 当前候选已移除实验性 Linux 插件及 APK PRoot 原生资产，以下 PRoot 专用分发说明为历史记录。历史源码的许可声明继续保留。当前草稿仅含双 ABI APK、来源证据与说明/校验文件。
+
 ## Linux PRoot 资产（2026-10-22，0.6.0）
 
 - PRoot、静态 loader、talloc、shmem 使用锁定源码归档和官方 NDK r30 构建，不取 Termux 预编译后端。原始归档、补丁前后摘要、编译参数与原生输出摘要随 source receipt 保留；装配时独立回放补丁。PRoot 为 GPL-2.0，talloc 为 LGPL-3.0-or-later，shmem 为 BSD-3-Clause。许可证及 source adapter 说明随 APK 与来源资产分发。

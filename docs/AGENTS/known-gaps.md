@@ -1,5 +1,7 @@
 # known-gaps.md — 当前缺口与验收入口
 
+> 0.15.3 当前候选：实验性 Debian/PRoot Linux 环境已移除。本文的 Linux bootstrap/runtime/资产构建描述均为历史记录；不再挂载宿主、安装路由、状态工具或 UI，不进入 APK/草稿附件。Termux 工具链、配方和缓存清理保留；旧 Linux 数据不自动删除。AndroidBridge 的 linuxAssetPrepare/Status 仅保留兼容签名，固定返回 linux-removed，不启动任务。历史源码及专用 CI 仅留作调查证据，见 release/v0.15.3/plugin-migration.md。
+
 > 本分支宗旨及当前验证边界见 [SECURITY-HARDENING.md](SECURITY-HARDENING.md)。源码有改动不等于新包已验收；来源构建状态以 [变更记录](changelog-archive.md) 最新条目为准。下方带日期的状态只描述对应审查时点；0.14.10 已正式发布，但设备验收尚未完成，见[发布说明](../../release/v0.14.10/notes.md)。
 
 ## 当前入口

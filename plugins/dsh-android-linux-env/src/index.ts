@@ -1,4 +1,3 @@
-import { LINUX_PHASES, LINUX_TOOL_GUIDANCE, type LinuxEnvironmentStatus } from './linux-tool-contract.js'
 /**
  * dsh-android-linux-env — 工具链与环境设置面板（PRD F1.3/F1.0/F1.5，M3.2）
  *
@@ -31,11 +30,6 @@ import {
 import { PROBE_BINARIES, REQUIRED_TOOLCHAIN, TOOLCHAIN_REPRESENTATIVE } from '@dsh-android/dsh-shell-termux'
 // 块 E：白名单扫描/执行/标签（设计与判据见 runtime-cache.ts 头注释）。
 import { displayLabel, executeCleanup, planCleanup, type CleanupPlan } from './runtime-cache.js'
-import {
-  createLinuxPluginHost, checkLinuxEnvironmentAfterMobileChange, registerLinuxEnvironmentRoutes, cordisScope,
-  type LinuxBootstrap,
-} from './linux-environment.js'
-import { createLinuxBootstrapConfig } from './linux-host-asset-io.js'
 
 export const name = 'dsh-android-linux-env'
 export const inject = ['tools', 'webServer', 'androidPrivilege'] as const
@@ -266,37 +260,7 @@ function tools(ctx: Context, svc: { status(): { tier: string } } | undefined) {
       recipeExport(ctx, exec?.agent?.session) as never,
   })
 
-  const linuxStatusTool = defineTool({
-    name: 'linux_environment_status',
-    description: 'Check optional Debian/glibc readiness before linux_bash; bash remains Termux.',
-    parameters: {},
-    output: {
-      schema: { type: 'object', additionalProperties: false, properties: {
-        phase: { type: 'string', enum: [...LINUX_PHASES], required: true },
-        ready: { type: 'boolean', required: true },
-        engine: { type: 'string', enum: ['termux'], required: true },
-        reason: { type: 'string', required: true },
-      } },
-      render: (_args, value: { phase: string; reason: string; ready: boolean; engine: string }) => [{ type: 'text', text: `${value.phase}: ${value.reason}` }],
-    },
-    execute: async (): Promise<LinuxEnvironmentStatus> => {
-      try {
-        const bootstrap = serviceOf<LinuxBootstrap>(ctx, 'linuxBootstrap')
-        if (!bootstrap) return { phase: 'unavailable', ready: false, engine: 'termux', reason: 'Linux bootstrap 尚未启用；Termux bash 可继续使用。' }
-        const status = await bootstrap.status()
-        const operation = LINUX_PHASES.find(phase => phase === status.operation) ?? 'busy'
-        const runtime = typeof status.runtime === 'object' ? status.runtime as { healthy?: boolean; reason?: string } | null : null
-        return {
-          ready: status.installed === true && !status.busy && status.enabled !== false && status.injectionActivated === true && runtime?.healthy === true && !status.error && !status.lastError,
-          engine: 'termux',
-          phase: status.busy ? operation : status.error || status.lastError ? 'failed' :
-            !status.installed ? 'absent' : status.enabled === false || !status.injectionActivated ? 'inactive' : runtime?.healthy ? 'ready' : 'unhealthy',
-          reason: status.error ?? status.lastError ?? runtime?.reason ?? 'Termux bash 为主环境。',
-        }
-      } catch { return { phase: 'failed', ready: false, engine: 'termux', reason: '无法读取 Linux 状态；Termux bash 可继续使用。' } }
-    },
-  })
-  return [statusTool, recipeTool, linuxStatusTool]
+  return [statusTool, recipeTool]
 }
 
 // ── 块 E：运行时缓存清理的宿主半（用户平面，零新增模型可见工具） ──────────────────────
@@ -375,37 +339,7 @@ function cacheExecutePayload(plan: CleanupPlan): Record<string, unknown> {
 export function apply(ctx: Context, _config: Record<string, unknown> = {}) {
   // 授权档位权威 = bridge 服务（androidPrivilege，patch 顺序 bridge 先于本插件）
   const svc = (ctx as unknown as { androidPrivilege?: { status(): { tier: string } } }).androidPrivilege
-  // 实验性内部 Linux 插件（bootstrap + runtime）：包随机放在内置（hard）插件目录，但**默认不启用**
-  // ——存在不等于启用。宿主只提供激活/卸载与只读在场查询；是否启用、何时安装一律由外部 bootstrap
-  // 服务与用户显式确认决定，本插件不下载、不解包、不替用户启用。
-  const pluginHost = createLinuxPluginHost({
-    root: process.env.DSH_FILES_DIR ? join(process.env.DSH_FILES_DIR, 'linux-environment', 'plugins') : undefined,
-    activate: (plugin, config) => cordisScope(ctx.plugin(plugin as Parameters<Context['plugin']>[0], config)),
-  })
-  if (typeof ctx.provide === 'function') {
-    ctx.provide('linuxPluginHost', pluginHost)
-    const filesDir = process.env.DSH_FILES_DIR
-    const appVersion = process.env.DSH_APP_VERSION
-    if (filesDir && appVersion && process.env.TERMUX__PREFIX) {
-      ctx.provide('linuxBootstrapConfig', createLinuxBootstrapConfig({ filesDir, appVersion }))
-    }
-    ctx.effect(() => () => pluginHost.uninstall())
-  }
-  if (typeof ctx.inject === 'function') {
-    // 版本变化检查只在内部 bootstrap 插件**已启用**（服务在场）后发生一次，且还需应用版本变化与
-    // 用户开启自动更新；服务缺席（未启用）不重试、不轮询。
-    ctx.inject(['linuxBootstrap'], scope => {
-      const bootstrap = serviceOf<LinuxBootstrap>(scope, 'linuxBootstrap')
-      if (bootstrap) void checkLinuxEnvironmentAfterMobileChange(bootstrap).catch(() => {
-        ctx.logger?.('dsh-android-linux-env')?.warn?.('Linux 环境版本变化检查失败，请通过设置页重试。')
-      })
-    })
-  }
   for (const t of tools(ctx, svc)) ctx.tools.register(t)
-  if (typeof ctx.inject === 'function') ctx.inject(['systemPrompt'], scope => {
-    const prompt = serviceOf<{ section(section: { name: string; order: number; text: string }): () => void }>(scope, 'systemPrompt')
-    if (prompt) scope.effect(() => prompt.section({ name: 'pocket-linux-environment', order: 45, text: LINUX_TOOL_GUIDANCE }))
-  })
   // register() 在运行期返回 disposer（上游 webserver 契约；file-open 同一形态）。声明为
   // `() => void` 才能走 ctx.effect——热重载/卸载必须回收路由，不留重复 handler。
   const wsvc = (ctx as unknown as { webServer?: { register(r: unknown): () => void } }).webServer
@@ -413,12 +347,6 @@ export function apply(ctx: Context, _config: Record<string, unknown> = {}) {
     const authOptions = () => ({
       token: shellControlToken,
       connection: serviceOf<ConnectionRouteAuth>(ctx, 'connection'),
-    })
-    registerLinuxEnvironmentRoutes({
-      webServer: wsvc,
-      effect: register => ctx.effect(register),
-      auth: authOptions,
-      bootstrap: () => serviceOf<LinuxBootstrap>(ctx, 'linuxBootstrap'),
     })
     for (const [path, builder] of [
       ['/api/android/env/status', () => toolchainStatus(svc?.status().tier, ctx)],

@@ -28,25 +28,9 @@ class ReleasePreparationTest(unittest.TestCase):
         for abi in module.ABIS:
             for line in paths.splitlines():
                 path = line.strip()
-                arm64_only_evidence = {
-                    '.deploy-tmp/source-build/linux-bundle-injection.json',
-                    '.deploy-tmp/linux-build/provenance/**',
-                }
-                if '*' not in path and not (abi == 'x86_64' and path in arm64_only_evidence):
+                if '*' not in path:
                     self.put(abi, path, '{}')
             self.put(abi, 'scripts/patches/tests/fixtures/test-0.2.2-rc.1/probe.js', 'fixture')
-            if abi == 'arm64':
-                self.put(abi, '.deploy-tmp/linux-build/provenance/linux-assets.json', '{}')
-                names = ['linux-bootstrap-plugin.tar.xz', 'linux-runtime-plugin.tar.xz', 'proot-backend-aarch64.tar.xz', 'debian-minimal-aarch64.tar.xz', 'node-glibc-v24.22.0-linux-arm64.tar.xz']
-                descriptors = []
-                for name in names:
-                    body = 'verified archive fixture'
-                    self.put(abi, '.deploy-tmp/linux-build/assets/' + name, body)
-                    descriptors.append(dict(url='https://github.com/fixture/fork/releases/download/v1/' + name, size=len(body), sha256=hashlib.sha256(body.encode()).hexdigest()))
-                manifest = dict(plugins=dict(bootstrap=descriptors[0], runtime=descriptors[1]), runtimes=[dict(backendAsset=descriptors[2], rootfsAsset=descriptors[3], nodeAsset=descriptors[4])])
-                body = json.dumps(manifest)
-                self.put(abi, '.deploy-tmp/linux-build/assets/linux-release.json', body)
-                self.put(abi, '.deploy-tmp/linux-build/assets/linux-runtime-manifest.sha256', hashlib.sha256(body.encode()).hexdigest())
         self.apks = {}
         self.base = '.deploy-tmp/source-build/'
         for abi in module.ABIS:
@@ -72,10 +56,7 @@ class ReleasePreparationTest(unittest.TestCase):
 
     def test_unchanged_apks_and_hidden_evidence_for_both_abis(self):
         self.run_prepare()
-        self.assertEqual((self.output / 'linux-runtime-plugin.tar.xz').read_text(), 'verified archive fixture')
-        self.assertTrue((self.root / 'arm64/.deploy-tmp/source-build/linux-bundle-injection.json').is_file())
-        self.assertFalse((self.root / 'x86_64/.deploy-tmp/source-build/linux-bundle-injection.json').exists())
-        self.assertFalse((self.root / 'x86_64/.deploy-tmp/linux-build/provenance').exists())
+        self.assertEqual({p.name for p in self.output.iterdir()}, {Path(p).name for p in self.apks.values()} | {'provenance.zip', 'notes.md', 'SHA256SUMS.txt'})
         for abi, apk in self.apks.items():
             self.assertEqual((self.root / abi / apk).read_bytes(), (self.output / Path(apk).name).read_bytes())
         with zipfile.ZipFile(self.output / 'provenance.zip') as archive:
@@ -87,7 +68,7 @@ class ReleasePreparationTest(unittest.TestCase):
             self.assertEqual(module.digest(self.output / name), sha)
         notes = (self.output / 'notes.md').read_text()
         self.assertIn('ARM64 and x86_64', notes)
-        self.assertIn('omits offline PRoot Linux assets', notes)
+        self.assertIn('Linux plugin has been removed', notes)
 
     def test_negative_controls(self):
         cases = [
@@ -106,20 +87,6 @@ class ReleasePreparationTest(unittest.TestCase):
                     self.run_prepare()
                 self.assertFalse(self.output.exists())
                 self.put(abi, path, original)
-
-    def test_linux_payloads_survive_actual_post_snapshot_reclamation(self):
-        cleanup = SCRIPT.with_name('reclaim-build-disk.mjs')
-        result = subprocess.run(['node', str(cleanup), '--root', str(self.root / 'arm64'), '--min-free-mb', '0'], capture_output=True, text=True)
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.run_prepare()
-        self.assertEqual((self.output / 'linux-runtime-plugin.tar.xz').read_text(), 'verified archive fixture')
-
-    def test_missing_linux_payloads_still_block_release_preparation(self):
-        import shutil
-        shutil.rmtree(self.root / 'arm64/.deploy-tmp/linux-build/assets')
-        with self.assertRaisesRegex(ValueError, 'missing arm64 evidence: .deploy-tmp/linux-build/assets/'):
-            self.run_prepare()
-        self.assertFalse(self.output.exists())
 
     def test_missing_abi_blocks_preparation(self):
         import shutil
@@ -174,19 +141,6 @@ class ReleasePreparationTest(unittest.TestCase):
         (self.root / 'arm64' / self.base / 'snapshot-normalization.json').unlink()
         with self.assertRaisesRegex(ValueError, 'missing arm64 evidence'):
             self.run_prepare()
-
-    def test_arm64_linux_bundle_evidence_remains_required(self):
-        (self.root / 'arm64' / self.base / 'linux-bundle-injection.json').unlink()
-        with self.assertRaisesRegex(ValueError, 'missing arm64 evidence: .deploy-tmp/source-build/linux-bundle-injection.json'):
-            self.run_prepare()
-        self.assertFalse(self.output.exists())
-
-    def test_arm64_linux_asset_provenance_remains_required(self):
-        import shutil
-        shutil.rmtree(self.root / 'arm64/.deploy-tmp/linux-build/provenance')
-        with self.assertRaisesRegex(ValueError, 'missing arm64 evidence: .deploy-tmp/linux-build/provenance/\\*\\*'):
-            self.run_prepare()
-        self.assertFalse(self.output.exists())
 
     def test_wrong_or_stale_independent_proof_blocks_preparation(self):
         path = self.root / 'x86_64' / self.base / 'independent-rebuild-verification.json'

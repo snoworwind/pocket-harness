@@ -123,7 +123,7 @@ test('release mode preserves existing intermediates when clean is not requested'
   assert.equal(readFileSync(marker, 'utf8'), 'existing')
 })
 
-test('source-built Linux native library directory is passed to Gradle as an absolute path', (t) => {
+test('retired Linux native property is ignored even when a caller supplies stale options', (t) => {
   const f = fixture(t)
   const nativeLibraryDir = join(f.root, 'linux-build', 'native-libs')
   let gradleArgs
@@ -139,7 +139,7 @@ test('source-built Linux native library directory is passed to Gradle as an abso
     writeFileSync(built, 'release-apk')
     return { status: 0 }
   })
-  assert.ok(gradleArgs.includes(`-PlinuxNativeLibraryDir=${resolve(nativeLibraryDir)}`))
+  assert.ok(!gradleArgs.some(arg => arg.startsWith('-PlinuxNativeLibraryDir=')))
 })
 
 test('every assemble removes stale APK output before Gradle so a zero-work success cannot deliver it', (t) => {

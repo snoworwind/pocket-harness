@@ -1,7 +1,7 @@
-# v0.15.3（开发草稿，未发布）
+# Pocket Harness 0.15.3
 
-Termux 继续作为主环境。Linux 改为按需下载的插件环境；Linux 安装或启动失败不会阻止 Termux 工具使用。
+移除问题较多的实验性 Debian/PRoot Linux 环境：不再提供安装面板、Linux 工具、自动恢复或下载入口，也不再将其 runtime、rootfs、Node 和 PRoot 打包进 APK 或发布附件。
 
-修复 Linux 重启后工具未恢复、glibc 预检被 PRoot warning 干扰，以及 rootfs 打包丢失 /dev/fd 别名。PRoot 对文件 mmap 的 EFAULT 增加一次限定重试与参数诊断，实际设备有效性尚待验证。
+Termux 主环境、工具链状态、环境配方与缓存清理继续保留。已有 Linux 用户数据不会自动删除；本版不再激活它。
 
-当前没有最终 APK、CDP 或 ADB 验收结论。发布前须核对最终来源构建、归档下载 URL、签名与设备验收。开发过程见 [插件迁移记录](plugin-migration.md)。
+本版为草稿候选，尚未公开发布。代码与 CI 验证结果随 PR 更新；最终 APK 的模拟器、CDP 和真机验收尚未执行，不宣称设备验收通过。

@@ -1,5 +1,5 @@
 {
-  "baseline": 18718,
+  "baseline": 18542,
   "perPlugin": {
     "dsh-android-bridge": {
       "count": 4,
@@ -22,15 +22,15 @@
       "bytes": 159
     },
     "dsh-android-linux-env": {
-      "count": 3,
-      "bytes": 446
+      "count": 2,
+      "bytes": 270
     },
     "dsh-model-capability": {
       "count": 2,
       "bytes": 2128
     }
   },
-  "initialVisible": 3068,
+  "initialVisible": 2892,
   "maskedGroups": [
     "phone",
     "browser",
@@ -41,7 +41,6 @@
     "android_env_recipe",
     "android_file_incoming_status",
     "android_toolchain_status",
-    "linux_environment_status",
     "model_capability_apply",
     "model_capability_probe"
   ]

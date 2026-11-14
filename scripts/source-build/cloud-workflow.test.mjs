@@ -150,9 +150,9 @@ test('source workflow uploads explicitly listed hidden provenance with APK', () 
   assert.match(upload, /^          if-no-files-found: error$/m)
   assert.match(upload, /^            \.deploy-tmp\/source-build\/project-component-provenance.json$/m)
   assert.match(upload, /^            \.deploy-tmp\/source-build\/apk-sha256.txt$/m)
-  assert.match(upload, /^            \.deploy-tmp\/source-build\/linux-bundle-injection.json$/m)
+  assert.doesNotMatch(upload, /^            \.deploy-tmp\/source-build\/linux-bundle-injection.json$/m)
   assert.match(upload, /^            \.deploy-tmp\/source-build\/independent-rebuild-verification.json$/m)
-  assert.match(upload, /^            \.deploy-tmp\/linux-build\/provenance\/\*\*$/m)
+  assert.doesNotMatch(upload, /^            \.deploy-tmp\/linux-build\/provenance\/\*\*$/m)
   assert.match(upload, /^            \.deploy-tmp\/source-build\/effective-engine-overlay-restoration\.json$/m)
   assert.doesNotMatch(upload, /^            \.deploy-tmp\/\*\*$/m)
 })
@@ -277,9 +277,9 @@ function checkTransientBuildStartup(source) {
   assert.doesNotMatch('Server returned HTTP response code: 404 for URL: https://example.invalid/gradle.zip', retryPattern,
     'permanent HTTP failures must not be retried as transient network errors')
 
-  assert.equal((source.match(/--retry 8 --retry-max-time 600/g) ?? []).length, 5,
-    'all five fixed downloads in the APK source workflow must use the longer bounded retry window')
-  assert.equal((source.match(/bash scripts\/source-build\/retry-curl\.sh/g) ?? []).length, 5,
+  assert.equal((source.match(/--retry 8 --retry-max-time 600/g) ?? []).length, 3,
+    'all three fixed downloads in the APK source workflow must use the longer bounded retry window')
+  assert.equal((source.match(/bash scripts\/source-build\/retry-curl\.sh/g) ?? []).length, 3,
     'all fixed APK source downloads must retry known curl transport errors')
   assert.match(source, /npm install -g corepack@0\.36\.0[\s\S]*?--fetch-retries=8 --fetch-retry-factor=2 --fetch-retry-mintimeout=1000[\s\S]*?--fetch-retry-maxtimeout=30000 --fetch-timeout=300000/)
   assert.match(source, /printf '%s  %s\\n' "\$ndk_sha1" "\$ndk_archive" \| sha1sum --check -/)
@@ -558,4 +558,14 @@ test('final injected snapshot is checked against profile identity before APK ass
   }
   assert.equal(check(source), true)
   assert.equal(check(source.replace("run(PYTHON, [gate('check-snapshot-profile-identity.py'), snapIn])", '')), false)
+})
+
+test('APK source and draft workflows no longer build or publish retired Linux payloads', () => {
+  const source = read('build-apk-source.yml')
+  const draft = read('release-source-draft.yml')
+  assert.doesNotMatch(source, /build-linux-assets\.sh|prepare-linux-snapshot-bundle|linux-build\/|linux-bundle-injection/)
+  assert.doesNotMatch(draft, /linux-release\.json|linux-runtime-manifest|\.\/\*\.tar\.xz/)
+  const build = readFileSync(new URL('../build-apk.mjs', import.meta.url), 'utf8')
+  assert.match(build, /verify-linux-removed\.py/)
+  assert.doesNotMatch(build, /linuxNativeLibraryDir|linuxBackendProvenance/)
 })

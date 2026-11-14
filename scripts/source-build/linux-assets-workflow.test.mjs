@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 
 const workspacePrefix = '${{ github.workspace }}'
-const readWorkflow = name => readFileSync(new URL(`../../.github/workflows/${name}`, import.meta.url), 'utf8')
+const readWorkflow = name => readFileSync(new URL(`../../docs/linux-env-findings/retired-workflows/${name}`, import.meta.url), 'utf8')
 
 function linuxTermuxPaths(workflowName) {
   const source = readWorkflow(workflowName)
@@ -24,7 +24,7 @@ function expectedProvenance(webroot) {
 test('both Linux asset workflows consume provenance beside the generated Termux webroot', () => {
   const producer = readFileSync(new URL('./prepare-termux-signed-repo.py', import.meta.url), 'utf8')
   assert.match(producer, /webroot\.parent \/ "termux-packages-provenance\.json"/)
-  for (const workflow of ['build-linux-assets.yml', 'build-apk-source.yml']) {
+  for (const workflow of ['build-linux-assets.yml']) {
     const paths = linuxTermuxPaths(workflow)
     assert.equal(paths.provenance, expectedProvenance(paths.webroot), `${workflow} provenance path must match the producer`)
   }
@@ -83,11 +83,11 @@ function checkLinuxAssetWorkflowDownloads(source) {
 }
 
 test('standalone Linux asset workflow retries pinned downloads without weakening digest checks', () => {
-  checkLinuxAssetWorkflowDownloads(readWorkflow('build-linux-assets.yml').replaceAll('\r\n', '\n'))
+  checkLinuxAssetWorkflowDownloads(readFileSync(new URL('../../docs/linux-env-findings/retired-workflows/build-linux-assets.yml', import.meta.url), 'utf8').replaceAll('\r\n', '\n'))
 })
 
 test('negative controls reject short standalone asset retries and removed digest checks', () => {
-  const source = readWorkflow('build-linux-assets.yml').replaceAll('\r\n', '\n')
+  const source = readFileSync(new URL('../../docs/linux-env-findings/retired-workflows/build-linux-assets.yml', import.meta.url), 'utf8').replaceAll('\r\n', '\n')
   for (const bad of [
     source.replace('--fetch-retries=8 --fetch-retry-factor=2', '--fetch-retries=2 --fetch-retry-factor=2'),
     source.replace('bash scripts/source-build/retry-curl.sh --fail --location --retry 8 --retry-max-time 600 "$BOOTSTRAP_URL"', 'curl --fail --location --retry 3 "$BOOTSTRAP_URL"'),

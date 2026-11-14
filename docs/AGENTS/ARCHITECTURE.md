@@ -1,5 +1,7 @@
 # ARCHITECTURE.md — 模块地图
 
+> 0.15.3 当前候选：实验性 Debian/PRoot Linux 环境已移除。本文的 Linux bootstrap/runtime/资产构建描述均为历史记录；不再挂载宿主、安装路由、状态工具或 UI，不进入 APK/草稿附件。Termux 工具链、配方和缓存清理保留；旧 Linux 数据不自动删除。AndroidBridge 的 linuxAssetPrepare/Status 仅保留兼容签名，固定返回 linux-removed，不启动任务。历史源码及专用 CI 仅留作调查证据，见 release/v0.15.3/plugin-migration.md。
+
 第二轮授权边界：用户授予的屏幕范围、AI root 同意与开关及 su 探测状态改为壳进程内状态；敏感桥写入通过原生系统凭据确认，通知监听者只获不可变的确认界面入口。中继在创建私有后端前认证独立 relay 凭据；引擎会话鉴权仍保留。此设计不把同 uid 的任意代码执行包装成完整沙箱；兼容变化及设备待验项见 [修复账本](SECURITY-REMEDIATION-2026-10-17-R2.md)。
 
 ## 引擎私有通信边界（2026-10-17）

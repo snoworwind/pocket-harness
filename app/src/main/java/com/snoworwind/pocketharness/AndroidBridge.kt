@@ -198,19 +198,13 @@ class AndroidBridge(
   @JavascriptInterface
   fun checkEngine(): String = EngineProbe.check().toString()
 
-  /**
-   * Linux 环境资产准备（实验性内部插件，默认不启用）。
-   *
-   * 只接资产清单（`url`/`sha256`/`size`），落点由宿主按摘要自行推导；除非 Linux 环境在场
-   * （根目录 + bootstrap 状态文件）一律拒绝，故它不会变成通用下载器。立即返回，结果用
-   * [linuxAssetPrepareStatus] 轮询 —— 下载不得阻塞 WebView 的 JS 线程。
-   */
+  /** Retired Linux asset bridge: retained only for older pages; never starts work. */
   @JavascriptInterface
-  fun linuxAssetPrepare(specJson: String): String =
-    LinuxAssetPrepare.start(ShellAppContext.get()?.filesDir, specJson)
+  fun linuxAssetPrepare(specJson: String): String = linuxAssetPrepareStatus()
 
   @JavascriptInterface
-  fun linuxAssetPrepareStatus(): String = LinuxAssetPrepare.status()
+  fun linuxAssetPrepareStatus(): String =
+    """{"ok":false,"phase":"removed","code":"linux-removed","error":"Linux 环境已移除，请使用 Termux"}"""
 
   @JavascriptInterface
   fun keepScreenOn(enable: Boolean) {

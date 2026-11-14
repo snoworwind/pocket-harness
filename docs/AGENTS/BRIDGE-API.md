@@ -1,5 +1,7 @@
 # BRIDGE-API.md — 当前桥与通道说明
 
+> 0.15.3 当前候选：实验性 Debian/PRoot Linux 环境已移除。本文的 Linux bootstrap/runtime/资产构建描述均为历史记录；不再挂载宿主、安装路由、状态工具或 UI，不进入 APK/草稿附件。Termux 工具链、配方和缓存清理保留；旧 Linux 数据不自动删除。AndroidBridge 的 linuxAssetPrepare/Status 仅保留兼容签名，固定返回 linux-removed，不启动任务。历史源码及专用 CI 仅留作调查证据，见 release/v0.15.3/plugin-migration.md。
+
 ## fx2 插件特权服务边界
 
 公共 `execAdbShell`、`execAdbLine`、`controlExec` 不接受调用者提供的 `internal` 标记；出现该字段即拒绝。SurfaceFlinger 查询只经私有固定调用路径获得免会话授权，不允许调用者提供任意 shell 文本。动画比例改用 `readAnimationScales` / `writeAnimationScales`：仅三个固定设置键，写值仅允许非负十进制字符串或 null，仍检查会话权限级别和危险操作开关。manage 插件复用桥内会话上下文，不保存额外授权凭证。

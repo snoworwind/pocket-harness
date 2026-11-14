@@ -39,7 +39,7 @@ class PublicationWorkflowTests(unittest.TestCase):
             gh = bin_dir / 'gh'
             gh.write_text(f'#!{sys.executable}\nimport json,sys\nfrom pathlib import Path\nif sys.argv[1] == "api": print("Not Found (HTTP 404)", file=sys.stderr); sys.exit(1)\nif sys.argv[1:3] == ["release","view"]: sys.exit(1)\nif sys.argv[1:3] == ["release","create"]: Path("../calls.json").write_text(json.dumps(sys.argv[1:]))\nelif sys.argv[1:3] == ["release","edit"]: Path("../edit.json").write_text(json.dumps(sys.argv[1:]))\nelse: sys.exit(1)\n')
             gh.chmod(0o755)
-            workflow = Path(__file__).resolve().parents[2] / '.github/workflows/publish-linux-runtime.yml'
+            workflow = Path(__file__).resolve().parents[2] / 'docs/linux-env-findings/retired-workflows/publish-linux-runtime.yml'
             script = workflow.read_text().split('        run: |\n')[-1]
             script = '\n'.join(line[10:] if line.startswith('          ') else line for line in script.splitlines())
             env = {**os.environ, 'PATH': str(bin_dir) + ':' + os.environ['PATH'], 'GH_REPO': 'fixture/repo', 'SOURCE_COMMIT': 'a' * 40}

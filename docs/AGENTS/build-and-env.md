@@ -1,5 +1,7 @@
 # build-and-env.md — 构建与验证命令 + 环境流程
 
+> 0.15.3 当前候选：实验性 Debian/PRoot Linux 环境已移除。本文的 Linux bootstrap/runtime/资产构建描述均为历史记录；不再挂载宿主、安装路由、状态工具或 UI，不进入 APK/草稿附件。Termux 工具链、配方和缓存清理保留；旧 Linux 数据不自动删除。AndroidBridge 的 linuxAssetPrepare/Status 仅保留兼容签名，固定返回 linux-removed，不启动任务。历史源码及专用 CI 仅留作调查证据，见 release/v0.15.3/plugin-migration.md。
+
 ## 0.2.2-rc.1 引擎来源链
 
 目标与版本证据见 [rc.1 升级记录](ENGINE-UPGRADE-2026-11-06.md)，此前版本见 [rc.5 升级记录](ENGINE-UPGRADE-2026-10-31.md) 和 [rc.2 升级记录](ENGINE-UPGRADE-2026-10-19.md)。源码阶段用官方 native → Host libraries → Client compiler → Client workspace bundle → Web 顺序；根 workspace bundle 已覆盖 package-local 配置，不能再追加旧 recursive bundle（新版 pnpm 拒绝实际循环依赖）。Android 直接调用这些阶段、绕过上游 `scripts/build.ts --profile official`，因此 `build-engine.sh` 会向所有阶段注入同一组官方客户端环境（提交短哈希、Harness 版本、`DSH_CLIENT_BUILD_PROFILE=official`、`DSH_CLIENT_TITLE=DeepSeek Harness`），并检查 Client 标题、官方品牌槽位和 Web HTML 标题确实进入产物。固定 Corepack 0.36.0；本地 Node 24 必须带匹配开发头文件。正式来源草稿对 main 的 ARM64 与 x86_64 分别执行独立双构建和签名；x86_64 尚不含离线 PRoot Linux 资产与 Android Canvas native。

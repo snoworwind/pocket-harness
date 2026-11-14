@@ -231,7 +231,7 @@ test('块 E 的平面裁定（用户裁定 7）：两条路由不注册任何模
   try {
     apply(harness.ctx)
     const names = registered.map((tool) => String(tool?.name ?? ''))
-    assert.deepEqual(names.sort(), ['android_env_recipe', 'android_toolchain_status', 'linux_environment_status'], '工具面必须与块 E 之前逐字一致')
+    assert.deepEqual(names.sort(), ['android_env_recipe', 'android_toolchain_status'], '工具面必须与块 E 之前逐字一致')
     assert.equal(names.some((name) => /cache/i.test(name)), false, '不得新增模型可见的缓存工具')
   } finally {
     for (const [key, value] of Object.entries(previousEnv)) {
